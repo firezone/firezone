@@ -2,7 +2,7 @@ defmodule API.GoogleDirectoryController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias Domain.{Google, Safe}
-  alias __MODULE__.Query
+  alias __MODULE__.DB
   import Ecto.Query
 
   action_fallback API.FallbackController
@@ -18,7 +18,7 @@ defmodule API.GoogleDirectoryController do
     ]
 
   def index(conn, _params) do
-    directories = Query.list_directories(conn.assigns.subject)
+    directories = DB.list_directories(conn.assigns.subject)
     render(conn, :index, directories: directories)
   end
 
@@ -37,11 +37,11 @@ defmodule API.GoogleDirectoryController do
     ]
 
   def show(conn, %{"id" => id}) do
-    directory = Query.fetch_directory(conn.assigns.subject, id)
+    directory = DB.fetch_directory(conn.assigns.subject, id)
     render(conn, :show, directory: directory)
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Google, Safe}
 

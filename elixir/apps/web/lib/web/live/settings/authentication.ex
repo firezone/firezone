@@ -176,7 +176,7 @@ defmodule Web.Settings.Authentication do
           {:noreply,
            socket
            |> init()
-           |> put_flash(:info, "Authentication provider deleted successfully.")
+           |> put_flash(:success, "Authentication provider deleted successfully.")
            |> push_patch(to: ~p"/#{socket.assigns.account}/settings/authentication")}
 
         {:error, reason} ->
@@ -215,7 +215,7 @@ defmodule Web.Settings.Authentication do
         {:noreply,
          socket
          |> init()
-         |> put_flash(:info, "Authentication provider #{action} successfully.")}
+         |> put_flash(:success, "Authentication provider #{action} successfully.")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         Logger.error("Failed to toggle authentication provider",
@@ -561,13 +561,18 @@ defmodule Web.Settings.Authentication do
 
   defp provider_card(assigns) do
     ~H"""
-    <div class="flex flex-col bg-neutral-50 rounded-lg p-4 w-96">
+    <div class="flex flex-col bg-neutral-50 rounded-lg p-4" style="width: 28rem;">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center flex-1 min-w-0 gap-2">
           <.provider_icon type={@type} class="w-7 h-7 flex-shrink-0" />
-          <span class="font-medium text-xl truncate" title={@provider.name}>
-            {@provider.name}
-          </span>
+          <div class="flex flex-col min-w-0">
+            <span class="font-medium text-xl truncate" title={@provider.name}>
+              {@provider.name}
+            </span>
+            <span class="text-xs text-neutral-500 font-mono">
+              ID: {@provider.id}
+            </span>
+          </div>
           <%= if Map.has_key?(@provider, :is_default) && @provider.is_default do %>
             <.badge type="primary" class="flex-shrink-0">DEFAULT</.badge>
           <% end %>
@@ -945,7 +950,7 @@ defmodule Web.Settings.Authentication do
     {:noreply,
      socket
      |> init()
-     |> put_flash(:info, "Authentication provider saved successfully.")
+     |> put_flash(:success, "Authentication provider saved successfully.")
      |> push_patch(to: ~p"/#{socket.assigns.account}/settings/authentication")}
   end
 
@@ -1071,7 +1076,7 @@ defmodule Web.Settings.Authentication do
             p.account_id == ^provider.account_id and p.id != ^provider.id and not p.is_disabled
         )
 
-      Safe.scoped(subject) |> Safe.exists?(query)
+      query |> Safe.scoped(subject) |> Safe.exists?()
     end)
   end
 
@@ -1146,7 +1151,7 @@ defmodule Web.Settings.Authentication do
            end) do
       socket =
         socket
-        |> put_flash(:info, "Default authentication provider set to #{provider.name}")
+        |> put_flash(:success, "Default authentication provider set to #{provider.name}")
         |> init()
 
       {:noreply, socket}
@@ -1191,7 +1196,7 @@ defmodule Web.Settings.Authentication do
            end) do
       socket =
         socket
-        |> put_flash(:info, "Default authentication provider cleared")
+        |> put_flash(:success, "Default authentication provider cleared")
         |> init()
 
       {:noreply, socket}

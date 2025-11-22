@@ -1,4 +1,6 @@
 defmodule Domain.Telemetry.Reporter.Oban do
+  alias __MODULE__.DB
+
   @moduledoc """
   A simple module for reporting Oban job exceptions to Sentry.
 
@@ -19,9 +21,6 @@ defmodule Domain.Telemetry.Reporter.Oban do
 
   def handle_event([:oban, :job, :exception], _measure, meta, _) do
     extra = build_extra(meta.reason, meta.job)
-
-    dbg(extra)
-    dbg(meta)
 
     # Handle sync errors before reporting to Sentry
     handle_sync_error(meta.reason, extra)
@@ -72,24 +71,57 @@ defmodule Domain.Telemetry.Reporter.Oban do
     |> Map.take([:id, :args, :meta, :queue, :worker])
   end
 
-  # Handle Entra sync errors - disable directory on 4xx errors
+  # Handle Entra sync errors with 4xx/5xx logic
   defp handle_sync_error(
          %Domain.Entra.SyncError{},
          %{cause: %Req.Response{status: status} = response, directory_id: directory_id}
        )
        when status >= 400 and status < 500 do
     error_message = extract_entra_error_message(response)
-    disable_entra_directory(directory_id, error_message)
+    handle_4xx_error(:entra, directory_id, error_message)
   end
 
-  # Handle Google sync errors - disable directory on 4xx errors
+  defp handle_sync_error(
+         %Domain.Entra.SyncError{},
+         %{cause: %Req.Response{status: status} = response, directory_id: directory_id}
+       )
+       when status >= 500 do
+    error_message = extract_entra_error_message(response)
+    handle_5xx_error(:entra, directory_id, error_message)
+  end
+
+  # Handle Google sync errors with 4xx/5xx logic
   defp handle_sync_error(
          %Domain.Google.SyncError{},
          %{cause: %Req.Response{status: status} = response, directory_id: directory_id}
        )
        when status >= 400 and status < 500 do
     error_message = extract_google_error_message(response)
-    disable_google_directory(directory_id, error_message)
+    handle_4xx_error(:google, directory_id, error_message)
+  end
+
+  defp handle_sync_error(
+         %Domain.Google.SyncError{},
+         %{cause: %Req.Response{status: status} = response, directory_id: directory_id}
+       )
+       when status >= 500 do
+    error_message = extract_google_error_message(response)
+    handle_5xx_error(:google, directory_id, error_message)
+  end
+
+  # Handle any other sync errors (non-HTTP errors)
+  defp handle_sync_error(
+         %Domain.Entra.SyncError{reason: reason},
+         %{directory_id: directory_id}
+       ) do
+    handle_5xx_error(:entra, directory_id, to_string(reason))
+  end
+
+  defp handle_sync_error(
+         %Domain.Google.SyncError{reason: reason},
+         %{directory_id: directory_id}
+       ) do
+    handle_5xx_error(:google, directory_id, to_string(reason))
   end
 
   # No special handling for other errors
@@ -160,27 +192,90 @@ defmodule Domain.Telemetry.Reporter.Oban do
     "Google API returned HTTP #{status}"
   end
 
-  # Disable Entra directory and store error
-  defp disable_entra_directory(directory_id, error_message) do
-    import Ecto.Query
-    alias Domain.{Entra, Safe}
+  # Handle 4xx errors - disable directory immediately
+  defp handle_4xx_error(provider, directory_id, error_message) do
+    now = DateTime.utc_now()
 
-    from(d in Entra.Directory, where: d.id == ^directory_id)
-    |> Safe.unscoped()
-    |> Safe.update_all(
-      set: [is_disabled: true, disabled_reason: "Sync error", error: error_message]
-    )
+    case DB.get_directory(provider, directory_id) do
+      # Directory doesn't exist, nothing to update
+      nil ->
+        :ok
+
+      directory ->
+        DB.update_directory(directory, %{
+          "errored_at" => now,
+          "error_message" => error_message,
+          "is_disabled" => true,
+          "disabled_reason" => "Sync error",
+          "is_verified" => false
+        })
+    end
   end
 
-  # Disable Google directory and store error
-  defp disable_google_directory(directory_id, error_message) do
-    import Ecto.Query
-    alias Domain.{Google, Safe}
+  # Handle 5xx errors - disable after 24 hours
+  defp handle_5xx_error(provider, directory_id, error_message) do
+    now = DateTime.utc_now()
 
-    from(d in Google.Directory, where: d.id == ^directory_id)
-    |> Safe.unscoped()
-    |> Safe.update_all(
-      set: [is_disabled: true, disabled_reason: "Sync error", error: error_message]
-    )
+    case DB.get_directory(provider, directory_id) do
+      # Directory doesn't exist, nothing to update
+      nil ->
+        :ok
+
+      directory ->
+        # If errored_at is not set, set it now
+        errored_at = directory.errored_at || now
+
+        # Check if we're past the 24-hour grace period
+        hours_since_error = DateTime.diff(now, errored_at, :hour)
+        should_disable = hours_since_error >= 24
+
+        updates = %{
+          "errored_at" => errored_at,
+          "error_message" => error_message
+        }
+
+        updates =
+          if should_disable do
+            Map.merge(updates, %{
+              "is_disabled" => true,
+              "disabled_reason" => "Sync error",
+              "is_verified" => false
+            })
+          else
+            updates
+          end
+
+        DB.update_directory(directory, updates)
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Entra, Google}
+
+    def get_directory(:entra, directory_id) do
+      from(d in Entra.Directory, where: d.id == ^directory_id)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def get_directory(:google, directory_id) do
+      from(d in Google.Directory, where: d.id == ^directory_id)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def update_directory(directory, attrs) do
+      changeset =
+        Ecto.Changeset.cast(directory, attrs, [
+          :errored_at,
+          :error_message,
+          :is_disabled,
+          :disabled_reason,
+          :is_verified
+        ])
+
+      {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
+    end
   end
 end

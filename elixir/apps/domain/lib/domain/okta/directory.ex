@@ -14,12 +14,12 @@ defmodule Domain.Okta.Directory do
     field :okta_domain, :string
 
     field :name, :string, default: "Okta"
-    field :error_count, :integer, read_after_writes: true
+    field :errored_at, :utc_datetime_usec
     field :is_disabled, :boolean, default: false, read_after_writes: true
     field :disabled_reason, :string
     field :synced_at, :utc_datetime_usec
-    field :error, :string
-    field :error_emailed_at, :utc_datetime_usec
+    field :error_message, :string
+    field :error_email_count, :integer, default: 0, read_after_writes: true
     field :is_verified, :boolean, default: false, read_after_writes: true
 
     subject_trail(~w[actor system]a)
@@ -36,11 +36,9 @@ defmodule Domain.Okta.Directory do
       :kid,
       :is_verified
     ])
-    |> validate_acceptance(:is_verified)
     |> validate_length(:okta_domain, min: 1, max: 255)
     |> validate_length(:name, min: 1, max: 255)
-    |> validate_number(:error_count, greater_than_or_equal_to: 0)
-    |> validate_length(:error, max: 2_000)
+    |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory)
     |> unique_constraint(:okta_domain,

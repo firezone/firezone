@@ -1252,14 +1252,76 @@ defmodule Web.CoreComponents do
     """
   end
 
+  @doc """
+  Renders a group as a badge with optional directory icon.
+  Used in contexts like policies list where we need a compact badge representation.
+  """
   attr :account, :any, required: true
   attr :group, :any, required: true
   attr :class, :string, default: nil
+  attr :return_to, :string, default: nil
+
+  def group_badge(assigns) do
+    # Build the navigate URL with return_to if provided
+    assigns =
+      if assigns[:return_to] do
+        assign(
+          assigns,
+          :navigate_url,
+          ~p"/#{assigns.account}/groups/#{assigns.group}?#{[return_to: assigns.return_to]}"
+        )
+      else
+        assign(assigns, :navigate_url, ~p"/#{assigns.account}/groups/#{assigns.group}")
+      end
+
+    ~H"""
+    <span
+      class={["inline-flex items-center rounded border border-neutral-200 overflow-hidden", @class]}
+      data-group-id={@group.id}
+    >
+      <span class={~w[
+          inline-flex items-center justify-center
+          py-0.5 px-1.5
+          text-neutral-800
+          bg-neutral-100
+          border-r
+          border-neutral-200
+        ]}>
+        <.provider_icon type={provider_type_from_idp_id(@group.idp_id)} class="h-3.5 w-3.5" />
+      </span>
+      <.link
+        title={"View Group \"#{@group.name}\""}
+        navigate={@navigate_url}
+        class="text-xs truncate min-w-0 py-0.5 pl-1.5 pr-2.5 text-neutral-900 bg-neutral-50"
+      >
+        {@group.name}
+      </.link>
+    </span>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :group, :any, required: true
+  attr :class, :string, default: nil
+  attr :return_to, :string, default: nil
 
   def group(assigns) do
+    # Build the navigate URL with return_to if provided
+    assigns =
+      if assigns[:return_to] do
+        assign(
+          assigns,
+          :navigate_url,
+          ~p"/#{assigns.account}/groups/#{assigns.group}?#{[return_to: assigns.return_to]}"
+        )
+      else
+        assign(assigns, :navigate_url, ~p"/#{assigns.account}/groups/#{assigns.group}")
+      end
+
     ~H"""
     <span class={["flex items-center", @class]} data-group-id={@group.id}>
-      <div class={~w[
+      <span :if={@group.idp_id} class={~w[
+          inline-flex items-center justify-center
           rounded-l
           py-0.5 px-1.5
           text-neutral-800
@@ -1267,19 +1329,14 @@ defmodule Web.CoreComponents do
           border-neutral-100
           border
         ]}>
-        <.directory_icon idp_id={@group.idp_id} class="h-3.5 w-3.5" />
-      </div>
+        <.provider_icon type={provider_type_from_idp_id(@group.idp_id)} class="h-2.5 w-2.5" />
+      </span>
       <.link
         title={"View Group \"#{@group.name}\""}
-        navigate={~p"/#{@account}/groups/#{@group}"}
-        class={~w[
-          text-xs
-          truncate
-          min-w-0
-          rounded-r pl-1.5 pr-2.5
-          py-0.5
-          text-neutral-900
-          bg-neutral-50
+        navigate={@navigate_url}
+        class={[
+          "text-xs truncate min-w-0 py-0.5 text-neutral-900 bg-neutral-50",
+          if(@group.idp_id, do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-2.5")
         ]}
       >
         {@group.name}
@@ -1474,63 +1531,31 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders a logo appropriate for the given directory.
+  Helper function to get provider type from idp_id
   """
-
-  attr :idp_id, :string, default: nil
-  attr :class, :string, default: "inline w-4 h-4 mr-1"
-
-  def directory_icon(%{idp_id: "google:" <> _rest} = assigns) do
-    ~H"""
-    <.provider_icon type="google" class={@class} />
-    """
-  end
-
-  def directory_icon(%{idp_id: "entra:" <> _rest} = assigns) do
-    ~H"""
-    <.provider_icon type="entra" class={@class} />
-    """
-  end
-
-  def directory_icon(%{idp_id: "okta:" <> _rest} = assigns) do
-    ~H"""
-    <.provider_icon type="okta" class={@class} />
-    """
-  end
-
-  def directory_icon(%{idp_id: "oidc:" <> _rest} = assigns) do
-    ~H"""
-    <.provider_icon type="oidc" class={@class} />
-    """
-  end
-
-  def directory_icon(assigns) do
-    ~H"""
-    <.provider_icon type="firezone" class={@class} />
-    """
-  end
+  def provider_type_from_idp_id("google:" <> _rest), do: "google"
+  def provider_type_from_idp_id("entra:" <> _rest), do: "entra"
+  def provider_type_from_idp_id("okta:" <> _rest), do: "okta"
+  def provider_type_from_idp_id("oidc:" <> _rest), do: "oidc"
+  def provider_type_from_idp_id(_), do: "firezone"
 
   @doc """
   Renders a logo appropriate for the given provider.
 
   <.provider_icon type={:google} class="w-5 h-5 mr-2" />
   """
-  attr :type, :string, required: false
+  attr :type, :string, required: true
   attr :rest, :global
 
   def provider_icon(%{type: "firezone"} = assigns) do
     ~H"""
-    <div class="inline-flex items-center justify-center w-8 h-8 p-1 border border-neutral-200 rounded-full">
-      <img src={~p"/images/logo.svg"} alt="Firezone Logo" class="w-full h-full" />
-    </div>
+    <img src={~p"/images/logo.svg"} alt="Firezone Logo" {@rest} />
     """
   end
 
   def provider_icon(%{type: "okta"} = assigns) do
     ~H"""
-    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
-      <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-full h-full" />
-    </div>
+    <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
     """
   end
 
@@ -1542,25 +1567,19 @@ defmodule Web.CoreComponents do
 
   def provider_icon(%{type: "oidc"} = assigns) do
     ~H"""
-    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
-      <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" class="w-full h-full" />
-    </div>
+    <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" {@rest} />
     """
   end
 
   def provider_icon(%{type: "google"} = assigns) do
     ~H"""
-    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
-      <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" class="w-full h-full" />
-    </div>
+    <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" {@rest} />
     """
   end
 
   def provider_icon(%{type: "entra"} = assigns) do
     ~H"""
-    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
-      <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-full h-full" />
-    </div>
+    <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" {@rest} />
     """
   end
 

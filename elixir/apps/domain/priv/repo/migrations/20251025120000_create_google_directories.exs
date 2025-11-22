@@ -10,12 +10,12 @@ defmodule Domain.Repo.Migrations.CreateGoogleDirectories do
 
       add(:name, :string, null: false)
       add(:impersonation_email, :string, null: false)
-      add(:error_count, :integer, null: false, default: 0)
+      add(:errored_at, :utc_datetime_usec)
       add(:synced_at, :utc_datetime_usec)
       add(:is_disabled, :boolean, default: false, null: false)
       add(:disabled_reason, :string)
-      add(:error, :text)
-      add(:error_emailed_at, :utc_datetime_usec)
+      add(:error_message, :text)
+      add(:error_email_count, :integer, default: 0, null: false)
       add(:is_verified, :boolean, default: false, null: false)
 
       subject_trail()

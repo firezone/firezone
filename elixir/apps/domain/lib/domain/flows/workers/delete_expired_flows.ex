@@ -1,4 +1,4 @@
-defmodule Domain.Flows.Jobs.DeleteExpiredFlows do
+defmodule Domain.Flows.Workers.DeleteExpiredFlows do
   @moduledoc """
   Job to delete expired flows.
   """

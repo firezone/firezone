@@ -1,13 +1,18 @@
-defmodule Domain.Billing.Jobs.CheckAccountLimits do
-  use Domain.Jobs.Job,
-    otp_app: :domain,
-    every: :timer.minutes(5),
-    executor: Domain.Jobs.Executors.GloballyUnique
+defmodule Domain.Billing.Workers.CheckAccountLimits do
+  @moduledoc """
+  Oban worker that checks account limits and updates warning messages.
+  Runs every 5 minutes.
+  """
+
+  use Oban.Worker,
+    queue: :default,
+    max_attempts: 3,
+    unique: [period: 300]
 
   alias Domain.{Accounts, Billing, Actors, Clients, Gateways}
 
-  @impl true
-  def execute(_config) do
+  @impl Oban.Worker
+  def perform(_job) do
     Accounts.all_active_accounts!()
     |> Enum.each(fn account ->
       # TODO: Slow DB queries

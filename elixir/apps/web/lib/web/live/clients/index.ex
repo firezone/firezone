@@ -95,9 +95,7 @@ defmodule Web.Clients.Index do
             </div>
           </:col>
           <:col :let={client} label="user">
-            <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
-              <.actor_name_and_role account={@account} actor={client.actor} />
-            </.link>
+            <.actor_name_and_role account={@account} actor={client.actor} return_to={@current_path} />
           </:col>
           <:col :let={client} field={{:clients, :last_seen_version}} label="version">
             <.version

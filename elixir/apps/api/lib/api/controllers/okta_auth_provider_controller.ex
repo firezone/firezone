@@ -2,7 +2,7 @@ defmodule API.OktaAuthProviderController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias Domain.{Okta, Safe}
-  alias __MODULE__.Query
+  alias __MODULE__.DB
   import Ecto.Query
 
   action_fallback API.FallbackController
@@ -18,7 +18,7 @@ defmodule API.OktaAuthProviderController do
     ]
 
   def index(conn, _params) do
-    providers = Query.list_providers(conn.assigns.subject)
+    providers = DB.list_providers(conn.assigns.subject)
     render(conn, :index, providers: providers)
   end
 
@@ -38,11 +38,11 @@ defmodule API.OktaAuthProviderController do
     ]
 
   def show(conn, %{"id" => id}) do
-    provider = Query.fetch_provider(conn.assigns.subject, id)
+    provider = DB.fetch_provider(conn.assigns.subject, id)
     render(conn, :show, provider: provider)
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Okta, Safe}
 

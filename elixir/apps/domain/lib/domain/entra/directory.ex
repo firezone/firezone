@@ -11,12 +11,12 @@ defmodule Domain.Entra.Directory do
     field :tenant_id, :string
 
     field :name, :string, default: "Entra"
-    field :error_count, :integer, read_after_writes: true
+    field :errored_at, :utc_datetime_usec
     field :is_disabled, :boolean, default: false, read_after_writes: true
     field :disabled_reason, :string
     field :synced_at, :utc_datetime_usec
-    field :error, :string
-    field :error_emailed_at, :utc_datetime_usec
+    field :error_message, :string
+    field :error_email_count, :integer, default: 0, read_after_writes: true
     field :sync_all_groups, :boolean, default: false, read_after_writes: true
     field :is_verified, :boolean, default: false, read_after_writes: true
 
@@ -29,8 +29,7 @@ defmodule Domain.Entra.Directory do
     |> validate_required([:name, :tenant_id, :is_verified])
     |> validate_length(:tenant_id, min: 1, max: 255)
     |> validate_length(:name, min: 1, max: 255)
-    |> validate_number(:error_count, greater_than_or_equal_to: 0)
-    |> validate_length(:error, max: 2_000)
+    |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory)
     |> unique_constraint(:tenant_id,

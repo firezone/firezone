@@ -118,10 +118,6 @@ if config_env() == :prod do
     adapter: env_var_to_config!(:erlang_cluster_adapter),
     adapter_config: env_var_to_config!(:erlang_cluster_adapter_config)
 
-  config :domain, Domain.Instrumentation,
-    client_logs_enabled: env_var_to_config!(:instrumentation_client_logs_enabled),
-    client_logs_bucket: env_var_to_config!(:instrumentation_client_logs_bucket)
-
   config :domain, Domain.Analytics,
     mixpanel_token: env_var_to_config!(:mixpanel_token),
     hubspot_workspace_id: env_var_to_config!(:hubspot_workspace_id)
@@ -144,13 +140,6 @@ if config_env() == :prod do
 
   config :domain, web_external_url: env_var_to_config!(:web_external_url)
 
-  # Enable background jobs only on dedicated nodes
-  config :domain, Domain.Tokens.Jobs.DeleteExpiredTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Billing.Jobs.CheckAccountLimits,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
   config :domain, Oban,
@@ -169,13 +158,40 @@ if config_env() == :prod do
       {Oban.Plugins.Cron,
        crontab: [
          # Delete expired flows every minute
-         {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows},
+         {"* * * * *", Domain.Flows.Workers.DeleteExpiredFlows},
 
          # Schedule Entra directory sync every 2 hours
          {"0 */2 * * *", Domain.Entra.Scheduler},
 
          # Schedule Google directory sync every 2 hours
-         {"0 */2 * * *", Domain.Google.Scheduler}
+         {"0 */2 * * *", Domain.Google.Scheduler},
+
+         # Directory sync error notifications - daily check for low error count
+         {"0 9 * * *", Domain.Telemetry.SyncErrorNotification,
+          args: %{provider: "entra", frequency: "daily"}},
+         {"0 9 * * *", Domain.Telemetry.SyncErrorNotification,
+          args: %{provider: "google", frequency: "daily"}},
+
+         # Directory sync error notifications - every 3 days for medium error count
+         {"0 9 */3 * *", Domain.Telemetry.SyncErrorNotification,
+          args: %{provider: "entra", frequency: "three_days"}},
+         {"0 9 */3 * *", Domain.Telemetry.SyncErrorNotification,
+          args: %{provider: "google", frequency: "three_days"}},
+
+         # Directory sync error notifications - weekly for high error count
+         {"0 9 * * 1", Domain.Telemetry.SyncErrorNotification,
+          args: %{provider: "entra", frequency: "weekly"}},
+         {"0 9 * * 1", Domain.Telemetry.SyncErrorNotification,
+          args: %{provider: "google", frequency: "weekly"}},
+
+         # Check account limits every 30 minutes
+         {"*/30 * * * *", Domain.Billing.Workers.CheckAccountLimits},
+
+         # Check for outdated gateways - Sundays at 9am
+         {"0 9 * * 0", Domain.Notifications.Workers.OutdatedGateways},
+
+         # Delete expired tokens every 5 minutes
+         {"*/5 * * * *", Domain.Tokens.Workers.DeleteExpiredTokens}
        ]}
     ],
     queues:
@@ -185,7 +201,8 @@ if config_env() == :prod do
           entra_scheduler: 1,
           entra_sync: 5,
           google_scheduler: 1,
-          google_sync: 5
+          google_sync: 5,
+          sync_error_notifications: 1
         ],
         else: []
       ),

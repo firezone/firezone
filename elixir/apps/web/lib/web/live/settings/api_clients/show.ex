@@ -1,7 +1,7 @@
 defmodule Web.Settings.ApiClients.Show do
   use Web, :live_view
-  alias Domain.{Actors, Tokens, Safe}
-  import Ecto.Changeset
+  alias Domain.{Actors, Tokens}
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
     if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
@@ -102,7 +102,7 @@ defmodule Web.Settings.ApiClients.Show do
           Enable API Client
         </.button_with_confirmation>
       </:action>
-      <:content flash={@flash}>
+      <:content>
         <.vertical_table id="api-client">
           <.vertical_table_row>
             <:label>Name</:label>
@@ -236,10 +236,10 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_event("disable", _params, socket) do
-    with {:ok, actor} <- disable_actor(socket.assigns.actor, socket.assigns.subject) do
+    with {:ok, actor} <- DB.disable_actor(socket.assigns.actor, socket.assigns.subject) do
       socket =
         socket
-        |> put_flash(:info, "API Client was disabled.")
+        |> put_flash(:success, "API Client was disabled.")
         |> assign(actor: actor)
         |> reload_live_table!("tokens")
 
@@ -248,11 +248,11 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_event("enable", _params, socket) do
-    {:ok, actor} = enable_actor(socket.assigns.actor, socket.assigns.subject)
+    {:ok, actor} = DB.enable_actor(socket.assigns.actor, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "API Client was enabled.")
+      |> put_flash(:success, "API Client was enabled.")
       |> assign(actor: actor)
       |> reload_live_table!("tokens")
 
@@ -261,53 +261,71 @@ defmodule Web.Settings.ApiClients.Show do
 
   def handle_event("revoke_all_tokens", _params, socket) do
     {:ok, deleted_tokens_count} =
-      Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
+      DB.delete_all_tokens_for_actor(socket.assigns.actor, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "#{deleted_tokens_count} token(s) were revoked.")
+      |> put_flash(:success, "#{deleted_tokens_count} token(s) were revoked.")
       |> reload_live_table!("tokens")
 
     {:noreply, socket}
   end
 
   def handle_event("revoke_token", %{"id" => id}, socket) do
-    {:ok, token} = Tokens.fetch_token_by_id(id, socket.assigns.subject)
-    {:ok, _token} = Tokens.delete_token(token, socket.assigns.subject)
+    {:ok, _token} = DB.delete_token(id, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "Token was revoked.")
+      |> put_flash(:success, "Token was revoked.")
       |> reload_live_table!("tokens")
 
     {:noreply, socket}
   end
 
   def handle_event("delete", _params, socket) do
-    with {:ok, _actor} <- delete_actor(socket.assigns.actor, socket.assigns.subject) do
+    with {:ok, _actor} <- DB.delete_actor(socket.assigns.actor, socket.assigns.subject) do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients")}
     end
   end
 
-  defp delete_actor(actor, subject) do
-    actor
-    |> Safe.scoped(subject)
-    |> Safe.delete()
-  end
+  defmodule DB do
+    import Ecto.Query
+    import Ecto.Changeset
+    alias Domain.{Safe, Tokens}
 
-  defp disable_actor(actor, subject) do
-    actor
-    |> change()
-    |> put_change(:disabled_at, DateTime.utc_now())
-    |> Safe.scoped(subject)
-    |> Safe.update()
-  end
+    def delete_all_tokens_for_actor(actor, subject) do
+      query = from(t in Tokens.Token, where: t.actor_id == ^actor.id)
 
-  defp enable_actor(actor, subject) do
-    actor
-    |> change()
-    |> put_change(:disabled_at, nil)
-    |> Safe.scoped(subject)
-    |> Safe.update()
+      case Safe.scoped(query, subject) |> Safe.delete_all(query, []) do
+        {count, _} -> {:ok, count}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+      end
+    end
+
+    def delete_token(token_id, subject) do
+      with {:ok, token} <- Tokens.fetch_token_by_id(token_id, subject) do
+        Safe.scoped(token, subject) |> Safe.delete()
+      end
+    end
+
+    def delete_actor(actor, subject) do
+      Safe.scoped(actor, subject) |> Safe.delete()
+    end
+
+    def disable_actor(actor, subject) do
+      actor
+      |> change()
+      |> put_change(:disabled_at, DateTime.utc_now())
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def enable_actor(actor, subject) do
+      actor
+      |> change()
+      |> put_change(:disabled_at, nil)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
   end
 end

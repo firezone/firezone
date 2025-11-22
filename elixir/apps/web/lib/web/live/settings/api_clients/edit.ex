@@ -1,13 +1,14 @@
 defmodule Web.Settings.ApiClients.Edit do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
-  alias Domain.{Actors, Safe}
   import Ecto.Changeset
+  alias Domain.Actors
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
     if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
-      with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []) do
-        changeset = actor_changeset(actor, %{})
+      with {:ok, actor} <- DB.fetch_api_client(id, socket.assigns.subject) do
+        changeset = changeset(actor, %{})
 
         socket =
           assign(socket,
@@ -58,52 +59,43 @@ defmodule Web.Settings.ApiClients.Edit do
   end
 
   def handle_event("change", %{"actor" => attrs}, socket) do
-    attrs =
-      attrs
-      |> Map.put("type", :api_client)
-
     changeset =
-      actor_changeset(socket.assigns.actor, attrs)
-      |> Map.put(:action, :insert)
+      changeset(socket.assigns.actor, attrs)
+      |> Map.put(:action, :update)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("submit", %{"actor" => attrs}, socket) do
-    attrs =
-      attrs
-      |> Map.put("type", :api_client)
+    changeset = changeset(socket.assigns.actor, attrs)
 
-    changeset = actor_changeset(socket.assigns.actor, attrs)
-
-    with {:ok, actor} <- update_actor(changeset, socket.assigns.subject) do
+    with {:ok, actor} <- DB.update_api_client(changeset, socket.assigns.subject) do
       socket =
         push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/#{actor}")
 
       {:noreply, socket}
     else
-      {:error, :unauthorized} ->
-        {:noreply,
-         put_flash(socket, :error, "You don't have permissions to perform this action.")}
-
-      {:error, {:unauthorized, _context}} ->
-        {:noreply,
-         put_flash(socket, :error, "You don't have permissions to perform this action.")}
-
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
   end
 
-  defp actor_changeset(actor, attrs) do
+  defp changeset(actor, attrs) do
     actor
-    |> cast(attrs, [:name, :type])
-    |> validate_required([:name, :type])
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> validate_length(:name, min: 1, max: 255)
   end
 
-  defp update_actor(changeset, subject) do
-    changeset
-    |> Safe.scoped(subject)
-    |> Safe.update()
+  defmodule DB do
+    alias Domain.{Safe, Actors}
+
+    def fetch_api_client(id, subject) do
+      Actors.fetch_actor_by_id(id, subject, preload: [])
+    end
+
+    def update_api_client(changeset, subject) do
+      Safe.scoped(changeset, subject) |> Safe.update()
+    end
   end
 end

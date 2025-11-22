@@ -2,7 +2,7 @@ defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
   alias Domain.{Policies, PubSub, Flows}
-  alias Web.Policies.Components.Query
+  alias Web.Policies.Components.DB
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
@@ -13,7 +13,7 @@ defmodule Web.Policies.Show do
              ]
            ) do
       providers =
-        Query.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
+        DB.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
 
       if connected?(socket) do
         :ok = PubSub.Account.subscribe(policy.account_id)
@@ -139,7 +139,7 @@ defmodule Web.Policies.Show do
               Group
             </:label>
             <:value>
-              <.group account={@account} group={@policy.actor_group} />
+              <.group_badge account={@account} group={@policy.actor_group} return_to={@current_path} />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -203,7 +203,10 @@ defmodule Web.Policies.Show do
               {flow.client.name}
             </.link>
             owned by
-            <.link navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"} class={link_style()}>
+            <.link
+              navigate={~p"/#{@account}/actors/#{flow.client.actor_id}?#{[return_to: @current_path]}"}
+              class={link_style()}
+            >
               {flow.client.actor.name}
             </.link>
             {flow.client_remote_ip}

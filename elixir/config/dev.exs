@@ -24,6 +24,9 @@ config :domain, Domain.Billing,
   webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111"),
   default_price_id: System.get_env("STRIPE_DEFAULT_PRICE_ID", "price_1OkUIcADeNU9NGxvTNA4PPq6")
 
+# For dev, we want to run things very frequently to aid development and testing.
+worker_dev_schedule = System.get_env("WORKER_DEV_SCHEDULE", "* * * * *")
+
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :domain, Oban,
@@ -40,14 +43,24 @@ config :domain, Oban,
     # Periodic jobs
     {Oban.Plugins.Cron,
      crontab: [
-       # Delete expired flows every minute
-       {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows},
-
-       # Schedule Entra directory sync every minute for development
-       {"* * * * *", Domain.Entra.Scheduler},
-
-       # Schedule Google directory sync every minute for development
-       {"* * * * *", Domain.Google.Scheduler}
+       {worker_dev_schedule, Domain.Flows.Workers.DeleteExpiredFlows},
+       {worker_dev_schedule, Domain.Entra.Scheduler},
+       {worker_dev_schedule, Domain.Google.Scheduler},
+       {worker_dev_schedule, Domain.Telemetry.SyncErrorNotification,
+        args: %{provider: "entra", frequency: "daily"}},
+       {worker_dev_schedule, Domain.Telemetry.SyncErrorNotification,
+        args: %{provider: "google", frequency: "daily"}},
+       {worker_dev_schedule, Domain.Telemetry.SyncErrorNotification,
+        args: %{provider: "entra", frequency: "three_days"}},
+       {worker_dev_schedule, Domain.Telemetry.SyncErrorNotification,
+        args: %{provider: "google", frequency: "three_days"}},
+       {worker_dev_schedule, Domain.Telemetry.SyncErrorNotification,
+        args: %{provider: "entra", frequency: "weekly"}},
+       {worker_dev_schedule, Domain.Telemetry.SyncErrorNotification,
+        args: %{provider: "google", frequency: "weekly"}},
+       {worker_dev_schedule, Domain.Billing.Workers.CheckAccountLimits},
+       {worker_dev_schedule, Domain.Notifications.Workers.OutdatedGateways},
+       {worker_dev_schedule, Domain.Tokens.Workers.DeleteExpiredTokens}
      ]}
   ],
   queues: [
@@ -55,7 +68,8 @@ config :domain, Oban,
     entra_scheduler: 1,
     entra_sync: 5,
     google_scheduler: 1,
-    google_sync: 5
+    google_sync: 5,
+    sync_error_notifications: 1
   ],
   engine: Oban.Engines.Basic,
   repo: Domain.Repo

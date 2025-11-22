@@ -224,10 +224,6 @@ config :domain, Domain.Cluster,
   adapter: nil,
   adapter_config: []
 
-config :domain, Domain.Instrumentation,
-  client_logs_enabled: true,
-  client_logs_bucket: "logs"
-
 config :domain, :enabled_features,
   idp_sync: true,
   traffic_filters: true,

@@ -28,14 +28,12 @@ defmodule Domain.Application do
       Domain.Cluster,
 
       # Application
-      Domain.Tokens,
       Domain.Relays,
       Domain.Gateways,
       Domain.Clients,
       Domain.Billing,
       Domain.Mailer,
       Domain.Mailer.RateLimiter,
-      Domain.Notifications,
       Domain.ComponentVersions,
 
       # Observability

@@ -1,7 +1,7 @@
 defmodule Domain.Billing do
   use Supervisor
   alias Domain.{Auth, Accounts, Actors, Clients, Gateways}
-  alias Domain.Billing.{Authorizer, Jobs, EventHandler}
+  alias Domain.Billing.{Authorizer, EventHandler}
   alias Domain.Billing.Stripe.APIClient
   require Logger
 
@@ -13,8 +13,7 @@ defmodule Domain.Billing do
 
   def init(_opts) do
     children = [
-      APIClient,
-      Jobs.CheckAccountLimits
+      APIClient
     ]
 
     if enabled?() do

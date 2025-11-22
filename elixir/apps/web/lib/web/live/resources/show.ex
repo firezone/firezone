@@ -236,7 +236,7 @@ defmodule Web.Resources.Show do
             </.link>
           </:col>
           <:col :let={policy} label="group">
-            <.group account={@account} group={policy.actor_group} />
+            <.group_badge account={@account} group={policy.actor_group} return_to={@current_path} />
           </:col>
           <:col :let={policy} label="status">
             <%= if is_nil(policy.disabled_at) do %>
@@ -300,7 +300,10 @@ defmodule Web.Resources.Show do
               {flow.client.name}
             </.link>
             owned by
-            <.link navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"} class={[link_style()]}>
+            <.link
+              navigate={~p"/#{@account}/actors/#{flow.client.actor_id}?#{[return_to: @current_path]}"}
+              class={[link_style()]}
+            >
               {flow.client.actor.name}
             </.link>
             {flow.client_remote_ip}

@@ -870,7 +870,10 @@ defmodule Web.Actors do
                     <div class="flex items-start justify-between gap-4">
                       <div class="flex-1 space-y-3">
                         <div class="flex items-center gap-2">
-                          <.directory_icon idp_id={identity.idp_id} class="w-5 h-5" />
+                          <.provider_icon
+                            type={provider_type_from_idp_id(identity.idp_id)}
+                            class="w-5 h-5"
+                          />
                           <div class="font-medium text-sm text-neutral-900">
                             {identity.issuer}
                           </div>
@@ -1252,8 +1255,14 @@ defmodule Web.Actors do
   end
 
   defp close_modal(socket) do
-    params = query_params(socket.assigns.uri)
-    push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")
+    # If we have a modal_return_to path from our global hook, navigate there
+    # Otherwise go to actors index
+    if return_to = Map.get(socket.assigns, :modal_return_to) do
+      push_navigate(socket, to: return_to)
+    else
+      params = query_params(socket.assigns.uri)
+      push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")
+    end
   end
 
   # Changesets

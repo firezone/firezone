@@ -121,7 +121,7 @@ defmodule Web.Resources.Index do
               </:empty>
 
               <:item :let={group}>
-                <.group account={@account} group={group} class="mr-2" />
+                <.group_badge account={@account} group={group} class="mr-2" return_to={@current_path} />
               </:item>
 
               <:tail :let={count}>

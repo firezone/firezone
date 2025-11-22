@@ -3,7 +3,7 @@ defmodule API.ResourceController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Resources
-  alias __MODULE__.Query
+  alias __MODULE__.DB
 
   action_fallback API.FallbackController
 
@@ -23,7 +23,7 @@ defmodule API.ResourceController do
     list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, resources, metadata} <-
-           Query.list_resources(conn.assigns.subject, list_opts) do
+           DB.list_resources(conn.assigns.subject, list_opts) do
       render(conn, :index, resources: resources, metadata: metadata)
     end
   end
@@ -43,7 +43,7 @@ defmodule API.ResourceController do
     ]
 
   def show(conn, %{"id" => id}) do
-    resource = Query.fetch_resource(conn.assigns.subject, id)
+    resource = DB.fetch_resource(conn.assigns.subject, id)
     render(conn, :show, resource: resource)
   end
 
@@ -90,9 +90,9 @@ defmodule API.ResourceController do
   def update(conn, %{"id" => id, "resource" => params}) do
     subject = conn.assigns.subject
     attrs = set_param_defaults(params)
-    resource = Query.fetch_resource(subject, id)
+    resource = DB.fetch_resource(subject, id)
 
-    with {:ok, updated_resource} <- Query.update_resource(resource, attrs, subject) do
+    with {:ok, updated_resource} <- DB.update_resource(resource, attrs, subject) do
       render(conn, :show, resource: updated_resource)
     end
   end
@@ -117,9 +117,9 @@ defmodule API.ResourceController do
 
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
-    resource = Query.fetch_resource(subject, id)
+    resource = DB.fetch_resource(subject, id)
 
-    with {:ok, resource} <- Query.delete_resource(resource, subject) do
+    with {:ok, resource} <- DB.delete_resource(resource, subject) do
       render(conn, :show, resource: resource)
     end
   end
@@ -128,7 +128,7 @@ defmodule API.ResourceController do
     Map.put_new(params, "filters", %{})
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Resources, Safe}
 

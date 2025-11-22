@@ -215,21 +215,39 @@ defmodule Domain.Entra.APIClient do
         {current_path, current_query} ->
           case get(current_path, current_query, access_token) do
             {:ok, %Req.Response{status: 200, body: body}} ->
-              values = Map.get(body, "value", [])
+              # Use Map.fetch to ensure the "value" key exists
+              # If the key is missing, it's an error condition (malformed response)
+              case Map.fetch(body, "value") do
+                {:ok, list} when is_list(list) ->
+                  # Empty list is valid - it means no results for this page
+                  # But the key must be present!
+                  next_state =
+                    case Map.get(body, "@odata.nextLink") do
+                      nil ->
+                        nil
 
-              next_state =
-                case Map.get(body, "@odata.nextLink") do
-                  nil ->
-                    nil
+                      next_link ->
+                        uri = URI.parse(next_link)
+                        next_path = String.replace(uri.path, "/v1.0", "")
+                        next_query = uri.query || ""
+                        {next_path, next_query}
+                    end
 
-                  next_link ->
-                    uri = URI.parse(next_link)
-                    next_path = String.replace(uri.path, "/v1.0", "")
-                    next_query = uri.query || ""
-                    {next_path, next_query}
-                end
+                  {[list], next_state}
 
-              {[values], next_state}
+                {:ok, _non_list} ->
+                  # Key exists but value is not a list - malformed response
+                  error = {:error, {:invalid_response, "value is not a list", body}}
+                  {[error], nil}
+
+                :error ->
+                  # Key is missing - this is an error! We must fail loudly to prevent false positives 
+                  # that could delete groups/users if the API response format changes
+                  error =
+                    {:error, {:missing_key, "Expected key 'value' not found in response", body}}
+
+                  {[error], nil}
+              end
 
             {:ok, %Req.Response{} = response} ->
               # Non-200 response

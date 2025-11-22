@@ -23,7 +23,7 @@ defmodule Web.Settings.DirectorySync do
 
   @types Map.keys(@modules)
 
-  @common_fields ~w[name is_verified error]a
+  @common_fields ~w[name is_verified error_message]a
 
   @fields %{
     Entra.Directory => @common_fields ++ ~w[tenant_id sync_all_groups]a,
@@ -88,7 +88,7 @@ defmodule Web.Settings.DirectorySync do
       when type in @types do
     schema = Map.get(@modules, type)
     directory = get_directory!(schema, id, socket.assigns.subject)
-    changeset = changeset(directory, %{is_verified: true})
+    changeset = changeset(directory, %{})
 
     # Extract public key if this is an Okta directory with a keypair
     public_jwk =
@@ -100,6 +100,7 @@ defmodule Web.Settings.DirectorySync do
 
     {:noreply,
      assign(socket,
+       directory: directory,
        directory_name: directory.name,
        verifying: false,
        type: type,
@@ -121,11 +122,14 @@ defmodule Web.Settings.DirectorySync do
   end
 
   def handle_event("validate", %{"directory" => attrs}, socket) do
+    # Preserve is_verified from the current form state
+    current = apply_changes(socket.assigns.form.source)
+    attrs = Map.put(attrs, "is_verified", current.is_verified)
+
     changeset =
-      socket.assigns.form.source
-      |> clear_verification_if_trigger_fields_changed()
-      |> apply_changes()
+      current
       |> changeset(attrs)
+      |> clear_verification_if_trigger_fields_changed()
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -212,15 +216,34 @@ defmodule Web.Settings.DirectorySync do
          "Directory sync is available on the Enterprise plan. Please upgrade your plan."
        )}
     else
-      # Set disabled_reason when disabling
-      disabled_reason = if new_disabled_state, do: "Disabled by admin", else: nil
-
+      # Set disabled_reason when disabling, clear error state when enabling
       changeset =
-        directory
-        |> Ecto.Changeset.change(
-          is_disabled: new_disabled_state,
-          disabled_reason: disabled_reason
-        )
+        if new_disabled_state do
+          # Disabling - set reason
+          changeset(directory, %{
+            "is_disabled" => true,
+            "disabled_reason" => "Disabled by admin"
+          })
+        else
+          # Enabling - check if directory is verified first
+          if directory.is_verified do
+            # Clear error state when enabling
+            changeset(directory, %{
+              "is_disabled" => false,
+              "disabled_reason" => nil,
+              "error_email_count" => 0,
+              "error_message" => nil,
+              "errored_at" => nil
+            })
+          else
+            # Can't enable unverified directory
+            changeset(directory, %{})
+            |> Ecto.Changeset.add_error(
+              :is_verified,
+              "Directory must be verified before enabling"
+            )
+          end
+        end
 
       case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
         {:ok, _directory} ->
@@ -246,7 +269,7 @@ defmodule Web.Settings.DirectorySync do
     else
       with {:ok, _job} <- Entra.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
            {:ok, _directory} <-
-             changeset(directory, %{error: nil})
+             changeset(directory, %{error_message: nil})
              |> Safe.scoped(socket.assigns.subject)
              |> Safe.update() do
         {:noreply, socket |> init()}
@@ -257,7 +280,7 @@ defmodule Web.Settings.DirectorySync do
             reason: reason
           )
 
-          case changeset(directory, %{error: "Failed to schedule directory sync."})
+          case changeset(directory, %{error_message: "Failed to schedule directory sync."})
                |> Safe.scoped(socket.assigns.subject)
                |> Safe.update() do
             {:ok, _directory} -> {:noreply, socket |> init()}
@@ -275,7 +298,7 @@ defmodule Web.Settings.DirectorySync do
     else
       with {:ok, _job} <- Google.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
            {:ok, _directory} <-
-             changeset(directory, %{error: nil})
+             changeset(directory, %{error_message: nil})
              |> Safe.scoped(socket.assigns.subject)
              |> Safe.update() do
         {:noreply, socket |> init()}
@@ -286,7 +309,7 @@ defmodule Web.Settings.DirectorySync do
             reason: reason
           )
 
-          case changeset(directory, %{error: "Failed to schedule directory sync."})
+          case changeset(directory, %{error_message: "Failed to schedule directory sync."})
                |> Safe.scoped(socket.assigns.subject)
                |> Safe.update() do
             {:ok, _directory} -> {:noreply, socket |> init()}
@@ -499,13 +522,18 @@ defmodule Web.Settings.DirectorySync do
     assigns = assign(assigns, :toggle_disabled, toggle_disabled)
 
     ~H"""
-    <div class="flex flex-col bg-neutral-50 rounded-lg p-4 w-96">
+    <div class="flex flex-col bg-neutral-50 rounded-lg p-4" style="width: 28rem;">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center flex-1 min-w-0">
           <.provider_icon type={@type} class="w-7 h-7 mr-2 flex-shrink-0" />
-          <span class="font-medium text-xl truncate" title={@directory.name}>
-            {@directory.name}
-          </span>
+          <div class="flex flex-col min-w-0">
+            <span class="font-medium text-xl truncate" title={@directory.name}>
+              {@directory.name}
+            </span>
+            <span class="text-xs text-neutral-500 font-mono">
+              ID: {@directory.id}
+            </span>
+          </div>
         </div>
         <div class="flex items-center">
           <.button_with_confirmation
@@ -669,7 +697,7 @@ defmodule Web.Settings.DirectorySync do
           <% end %>
         <% end %>
 
-        <%= if @directory.error do %>
+        <%= if @directory.error_message do %>
           <div class="flex items-start gap-2">
             <.icon
               name="hero-exclamation-triangle"
@@ -677,7 +705,7 @@ defmodule Web.Settings.DirectorySync do
               title="Error"
             />
             <span class="font-medium text-orange-600 flex-1">
-              {@directory.error}
+              {@directory.error_message}
             </span>
           </div>
         <% end %>
@@ -736,19 +764,19 @@ defmodule Web.Settings.DirectorySync do
                 else: "border-neutral-200 hover:border-neutral-300"
               )
             ]}>
-              <div class="flex items-center mb-2">
-                <input
-                  type="radio"
-                  name={@form[:sync_all_groups].name}
-                  value="false"
-                  checked={@form[:sync_all_groups].value == false}
-                  class="w-4 h-4 text-accent-600 border-neutral-300 focus:ring-accent-500"
-                />
-                <span class="ml-2 text-base font-semibold text-neutral-900">
+              <input
+                type="radio"
+                name={@form[:sync_all_groups].name}
+                value="false"
+                checked={@form[:sync_all_groups].value == false}
+                class="sr-only"
+              />
+              <div class="mb-2">
+                <span class="text-base font-semibold text-neutral-900">
                   Assigned groups only
                 </span>
               </div>
-              <span class="text-sm text-neutral-600 ml-6">
+              <span class="text-sm text-neutral-600">
                 Only groups assigned to the
                 <code class="text-xs"><strong>Firezone Authentication</strong></code>
                 managed application will be synced. Requires Entra ID P1/P2 or higher.
@@ -763,19 +791,19 @@ defmodule Web.Settings.DirectorySync do
                 else: "border-neutral-200 hover:border-neutral-300"
               )
             ]}>
-              <div class="flex items-center mb-2">
-                <input
-                  type="radio"
-                  name={@form[:sync_all_groups].name}
-                  value="true"
-                  checked={@form[:sync_all_groups].value == true}
-                  class="w-4 h-4 text-accent-600 border-neutral-300 focus:ring-accent-500"
-                />
-                <span class="ml-2 text-base font-semibold text-neutral-900">
+              <input
+                type="radio"
+                name={@form[:sync_all_groups].name}
+                value="true"
+                checked={@form[:sync_all_groups].value == true}
+                class="sr-only"
+              />
+              <div class="mb-2">
+                <span class="text-base font-semibold text-neutral-900">
                   All groups
                 </span>
               </div>
-              <span class="text-sm text-neutral-600 ml-6">
+              <span class="text-sm text-neutral-600">
                 All groups from your directory will be synced. Use this for Entra ID Free or to sync all groups without managing assignments.
               </span>
             </label>
@@ -1077,7 +1105,23 @@ defmodule Web.Settings.DirectorySync do
     |> handle_submit(socket)
   end
 
-  defp submit_directory(%{assigns: %{live_action: :edit, form: %{source: changeset}}} = socket) do
+  defp submit_directory(
+         %{assigns: %{live_action: :edit, form: %{source: changeset}, directory: directory}} =
+           socket
+       ) do
+    # If directory was disabled due to sync error and is now verified, clear error state and enable it
+    changeset =
+      if directory.disabled_reason == "Sync error" and get_field(changeset, :is_verified) == true do
+        changeset
+        |> put_change(:is_disabled, false)
+        |> put_change(:disabled_reason, nil)
+        |> put_change(:error_message, nil)
+        |> put_change(:errored_at, nil)
+        |> put_change(:error_email_count, 0)
+      else
+        changeset
+      end
+
     changeset
     |> Safe.scoped(socket.assigns.subject)
     |> Safe.update()

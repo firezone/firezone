@@ -1,7 +1,7 @@
 defmodule Web.Groups do
   use Web, :live_view
 
-  alias __MODULE__.Query
+  alias __MODULE__.DB
 
   alias Domain.{
     Actors,
@@ -15,7 +15,7 @@ defmodule Web.Groups do
       socket
       |> assign(page_title: "Groups")
       |> assign_live_table("groups",
-        query_module: Query,
+        query_module: DB,
         sortable_fields: [
           {:groups, :name},
           {:member_counts, :count},
@@ -43,7 +43,7 @@ defmodule Web.Groups do
 
   # Show Group Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    group = Query.get_group_with_actors!(id, socket.assigns.subject)
+    group = DB.get_group_with_actors!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
 
     {:noreply, assign(socket, group: group, show_member_filter: "")}
@@ -51,7 +51,7 @@ defmodule Web.Groups do
 
   # Edit Group Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    group = Query.get_group_with_actors!(id, socket.assigns.subject)
+    group = DB.get_group_with_actors!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
 
     if is_editable_group?(group) do
@@ -118,7 +118,7 @@ defmodule Web.Groups do
   end
 
   def handle_event("add_member", %{"actor_id" => actor_id}, socket) do
-    actor = Query.get_actor!(actor_id, socket.assigns.subject)
+    actor = DB.get_actor!(actor_id, socket.assigns.subject)
 
     {members_to_add, members_to_remove} =
       if Map.has_key?(socket.assigns, :members_to_remove) do
@@ -162,7 +162,7 @@ defmodule Web.Groups do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    group = Query.get_group!(id, socket.assigns.subject)
+    group = DB.get_group!(id, socket.assigns.subject)
 
     if is_editable_group?(group) do
       case delete_group(group, socket.assigns.subject) do
@@ -183,14 +183,12 @@ defmodule Web.Groups do
     changeset = changeset(group, attrs)
 
     case create_group(changeset, socket.assigns.subject) do
-      {:ok, group} ->
-        params = query_params(socket.assigns.uri)
-
+      {:ok, _group} ->
         socket =
           socket
-          |> put_flash(:success_inline, "Group created successfully")
+          |> put_flash(:success, "Group created successfully")
           |> reload_live_table!("groups")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}?#{params}")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/groups")
 
         {:noreply, socket}
 
@@ -228,7 +226,7 @@ defmodule Web.Groups do
   end
 
   def handle_groups_update!(socket, list_opts) do
-    with {:ok, groups, metadata} <- Query.list_groups(socket.assigns.subject, list_opts) do
+    with {:ok, groups, metadata} <- DB.list_groups(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          groups: groups,
@@ -274,7 +272,7 @@ defmodule Web.Groups do
           metadata={@groups_metadata}
         >
           <:col :let={group} class="w-12">
-            <.directory_icon idp_id={group.idp_id} class="w-8 h-8" />
+            <.provider_icon type={provider_type_from_idp_id(group.idp_id)} class="w-8 h-8" />
           </:col>
           <:col :let={group} field={{:groups, :name}} label="group" class="w-3/12">
             {group.name}
@@ -369,7 +367,10 @@ defmodule Web.Groups do
     >
       <:title>
         <div class="flex items-center gap-3">
-          <.directory_icon idp_id={@group.idp_id} class="w-8 h-8 flex-shrink-0" />
+          <.provider_icon
+            type={provider_type_from_idp_id(@group.idp_id)}
+            class="w-8 h-8 flex-shrink-0"
+          />
           <span>{@group.name}</span>
         </div>
       </:title>
@@ -488,7 +489,10 @@ defmodule Web.Groups do
     >
       <:title>
         <div class="flex items-center gap-3">
-          <.directory_icon idp_id={@group.idp_id} class="w-8 h-8 flex-shrink-0" />
+          <.provider_icon
+            type={provider_type_from_idp_id(@group.idp_id)}
+            class="w-8 h-8 flex-shrink-0"
+          />
           <span>Edit {@group.name}</span>
         </div>
       </:title>
@@ -750,14 +754,20 @@ defmodule Web.Groups do
   end
 
   defp close_modal(socket) do
-    params = query_params(socket.assigns.uri)
-    push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")
+    # If we have a modal_return_to path from our global hook, navigate there
+    # Otherwise go to groups index
+    if return_to = Map.get(socket.assigns, :modal_return_to) do
+      push_navigate(socket, to: return_to)
+    else
+      params = query_params(socket.assigns.uri)
+      push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")
+    end
   end
 
   # Member search helpers
   defp get_search_results(search_term, socket) do
     if has_content?(search_term) do
-      Query.search_actors(search_term, socket.assigns.subject, socket.assigns.members_to_add)
+      DB.search_actors(search_term, socket.assigns.subject, socket.assigns.members_to_add)
     else
       nil
     end
@@ -868,7 +878,7 @@ defmodule Web.Groups do
     |> Safe.delete()
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Actors, Safe}
 

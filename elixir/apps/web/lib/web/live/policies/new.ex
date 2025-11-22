@@ -2,11 +2,13 @@ defmodule Web.Policies.New do
   use Web, :live_view
   import Web.Policies.Components
   alias Domain.Policies
-  alias Web.Policies.Components.Query
 
   def mount(params, _session, socket) do
     providers =
-      Query.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
+      Web.Policies.Components.DB.all_active_providers_for_account(
+        socket.assigns.account,
+        socket.assigns.subject
+      )
 
     form =
       Policies.new_policy(%{}, socket.assigns.subject)
@@ -50,8 +52,8 @@ defmodule Web.Policies.New do
                   label="Group"
                   placeholder="Select Actor Group"
                   field={@form[:actor_group_id]}
-                  fetch_option_callback={&Query.fetch_group_option(&1, @subject)}
-                  list_options_callback={&Query.list_group_options(&1, @subject)}
+                  fetch_option_callback={&Web.Policies.Components.DB.fetch_group_option(&1, @subject)}
+                  list_options_callback={&Web.Policies.Components.DB.list_group_options(&1, @subject)}
                   value={@enforced_actor_group_id || @form[:actor_group_id].value}
                   disabled={not is_nil(@enforced_actor_group_id)}
                   required
@@ -62,7 +64,10 @@ defmodule Web.Policies.New do
 
                   <:option :let={group}>
                     <div class="flex items-center gap-3">
-                      <.directory_icon idp_id={group.idp_id} class="w-5 h-5 flex-shrink-0" />
+                      <.provider_icon
+                        type={provider_type_from_idp_id(group.idp_id)}
+                        class="w-5 h-5 flex-shrink-0"
+                      />
                       <span>{group.name}</span>
                     </div>
                   </:option>

@@ -15,7 +15,7 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
     Safe
   }
 
-  alias __MODULE__.Query
+  alias __MODULE__.DB
 
   @impl true
   def init(opts), do: opts
@@ -25,8 +25,8 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
         %{params: %{"as" => "client", "account_id_or_slug" => account_id_or_slug}} = conn,
         _opts
       ) do
-    with %Account{} = account <- Query.get_account_by_id_or_slug(account_id_or_slug),
-         provider when is_struct(provider) <- Query.get_default_provider_for_account(account) do
+    with %Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
+         provider when is_struct(provider) <- DB.get_default_provider_for_account(account) do
       redirect_path = redirect_path(account, provider)
 
       # Append original query params
@@ -66,7 +66,7 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
     ~p"/#{account}/sign_in/okta/#{provider}"
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
 
     alias Domain.{

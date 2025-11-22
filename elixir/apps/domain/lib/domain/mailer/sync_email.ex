@@ -8,7 +8,7 @@ defmodule Domain.Mailer.SyncEmail do
 
   def sync_error_email(directory, email) do
     default_email()
-    |> subject("Firezone Directory Sync Error")
+    |> subject("Directory Sync Error - #{directory.name}")
     |> to(email)
     |> render_body(__MODULE__, :sync_error, account: directory.account, directory: directory)
   end

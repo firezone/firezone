@@ -140,7 +140,8 @@ defmodule Web.Router do
         Web.LiveHooks.FetchSubject,
         Web.LiveHooks.EnsureAuthenticated,
         Web.LiveHooks.EnsureAdmin,
-        Web.LiveHooks.SetActiveSidebarItem
+        Web.LiveHooks.SetActiveSidebarItem,
+        Web.LiveHooks.HandleModalReturn
       ] do
       # Actors
       live "/actors", Actors

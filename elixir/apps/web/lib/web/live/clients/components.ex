@@ -2,22 +2,33 @@ defmodule Web.Clients.Components do
   use Web, :component_library
   import Web.CoreComponents
 
-  def actor_show_url(account, %Domain.Actors.Actor{type: :api_client} = actor) do
-    ~p"/#{account}/settings/api_clients/#{actor}"
+  def actor_show_url(account, actor, return_to \\ nil)
+
+  def actor_show_url(account, %Domain.Actors.Actor{type: :api_client} = actor, return_to) do
+    if return_to do
+      ~p"/#{account}/settings/api_clients/#{actor}?#{[return_to: return_to]}"
+    else
+      ~p"/#{account}/settings/api_clients/#{actor}"
+    end
   end
 
-  def actor_show_url(account, actor) do
-    ~p"/#{account}/actors/#{actor}"
+  def actor_show_url(account, actor, return_to) do
+    if return_to do
+      ~p"/#{account}/actors/#{actor}?#{[return_to: return_to]}"
+    else
+      ~p"/#{account}/actors/#{actor}"
+    end
   end
 
   attr :account, :any, required: true
   attr :actor, :any, required: true
   attr :class, :string, default: ""
+  attr :return_to, :string, default: nil
 
   def actor_name_and_role(assigns) do
     ~H"""
     <.link
-      navigate={actor_show_url(@account, @actor)}
+      navigate={actor_show_url(@account, @actor, @return_to)}
       class={["text-accent-500 hover:underline", @class]}
     >
       {@actor.name}

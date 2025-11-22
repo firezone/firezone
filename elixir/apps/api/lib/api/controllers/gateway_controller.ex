@@ -3,7 +3,7 @@ defmodule API.GatewayController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Gateways
-  alias __MODULE__.Query
+  alias __MODULE__.DB
 
   action_fallback API.FallbackController
 
@@ -39,7 +39,7 @@ defmodule API.GatewayController do
         list_opts
       end
 
-    with {:ok, gateways, metadata} <- Query.list_gateways(conn.assigns.subject, list_opts) do
+    with {:ok, gateways, metadata} <- DB.list_gateways(conn.assigns.subject, list_opts) do
       render(conn, :index, gateways: gateways, metadata: metadata)
     end
   end
@@ -102,7 +102,7 @@ defmodule API.GatewayController do
     end
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Gateways, Safe}
 

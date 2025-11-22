@@ -38,7 +38,7 @@ config :domain, Oban,
     # {Oban.Plugins.Cron,
     #  crontab: [
     #    # Delete expired flows every minute
-    #    {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+    #    {"* * * * *", Domain.Flows.Workers.DeleteExpiredFlows}
     #  ]}
   ],
   queues: [default: 10],

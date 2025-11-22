@@ -3,7 +3,7 @@ defmodule API.ActorController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.{Actors, Safe}
-  alias __MODULE__.Query
+  alias __MODULE__.DB
   import Ecto.Changeset
 
   action_fallback API.FallbackController
@@ -24,7 +24,7 @@ defmodule API.ActorController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, actors, metadata} <- Query.list_actors(conn.assigns.subject, list_opts) do
+    with {:ok, actors, metadata} <- DB.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
     end
   end
@@ -147,7 +147,7 @@ defmodule API.ActorController do
     |> Safe.update()
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Actors, Safe}
 

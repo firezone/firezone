@@ -270,6 +270,9 @@ Hooks.FormatJSON = {
 Hooks.Toast = {
   mounted() {
     const autoshow = this.el.dataset.autoshow !== "false";
+    
+    // Extract the flash key from the element's class (e.g., "flash-success" -> "success")
+    const flashKey = this.el.className.match(/flash-(\w+)/)?.[1];
 
     // Position the toast in the top-right corner with equal margins
     this.el.style.position = 'fixed';
@@ -302,6 +305,14 @@ Hooks.Toast = {
     this.el.style.position = 'relative';
     this.el.appendChild(progressBar);
     this.progressBar = progressBar;
+    
+    // Add click handler to the close button to clear flash
+    const closeButton = this.el.querySelector('button[popovertargetaction="hide"]');
+    if (closeButton && flashKey) {
+      closeButton.addEventListener('click', () => {
+        this.pushEvent("lv:clear-flash", {key: flashKey});
+      });
+    }
 
     if (autoshow) {
       // Auto-show the toast popover when mounted
@@ -333,6 +344,10 @@ Hooks.Toast = {
 
           setTimeout(() => {
             this.el.hidePopover();
+            // Clear the flash after auto-hide
+            if (flashKey) {
+              this.pushEvent("lv:clear-flash", {key: flashKey});
+            }
           }, 300); // Wait for transition to complete
         }
       }, 5000);

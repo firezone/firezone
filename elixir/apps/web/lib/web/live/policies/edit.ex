@@ -2,7 +2,6 @@ defmodule Web.Policies.Edit do
   use Web, :live_view
   import Web.Policies.Components
   alias Domain.Policies
-  alias Web.Policies.Components.Query
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
@@ -10,7 +9,10 @@ defmodule Web.Policies.Edit do
              preload: [:actor_group, :resource]
            ) do
       providers =
-        Query.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
+        Web.Policies.Components.DB.all_active_providers_for_account(
+          socket.assigns.account,
+          socket.assigns.subject
+        )
 
       form =
         policy
@@ -62,8 +64,8 @@ defmodule Web.Policies.Edit do
                   label="Group"
                   placeholder="Select Actor Group"
                   field={@form[:actor_group_id]}
-                  fetch_option_callback={&Query.fetch_group_option(&1, @subject)}
-                  list_options_callback={&Query.list_group_options(&1, @subject)}
+                  fetch_option_callback={&Web.Policies.Components.DB.fetch_group_option(&1, @subject)}
+                  list_options_callback={&Web.Policies.Components.DB.list_group_options(&1, @subject)}
                   value={@form[:actor_group_id].value}
                   required
                 >
@@ -73,7 +75,10 @@ defmodule Web.Policies.Edit do
 
                   <:option :let={group}>
                     <div class="flex items-center gap-3">
-                      <.directory_icon idp_id={group.idp_id} class="w-5 h-5 flex-shrink-0" />
+                      <.provider_icon
+                        type={provider_type_from_idp_id(group.idp_id)}
+                        class="w-5 h-5 flex-shrink-0"
+                      />
                       <span>{group.name}</span>
                     </div>
                   </:option>
@@ -233,52 +238,6 @@ defmodule Web.Policies.Edit do
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
-    end
-  end
-
-  defmodule Query do
-    import Ecto.Query
-    alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
-
-    def all_active_providers_for_account(account, subject) do
-      # Query all auth provider types that are not disabled
-      userpass_query =
-        from(p in Userpass.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      email_otp_query =
-        from(p in EmailOTP.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      oidc_query =
-        from(p in OIDC.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      google_query =
-        from(p in Google.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      entra_query =
-        from(p in Entra.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      okta_query =
-        from(p in Okta.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      # Combine all providers from different tables using Safe
-      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (okta_query |> Safe.scoped(subject) |> Safe.all())
     end
   end
 end

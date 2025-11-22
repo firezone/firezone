@@ -3,7 +3,7 @@ defmodule API.GatewayGroupController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.{Gateways, Tokens}
-  alias __MODULE__.Query
+  alias __MODULE__.DB
 
   action_fallback API.FallbackController
 
@@ -28,7 +28,7 @@ defmodule API.GatewayGroupController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, gateway_groups, metadata} <- Query.list_groups(conn.assigns.subject, list_opts) do
+    with {:ok, gateway_groups, metadata} <- DB.list_groups(conn.assigns.subject, list_opts) do
       render(conn, :index, gateway_groups: gateway_groups, metadata: metadata)
     end
   end
@@ -49,7 +49,7 @@ defmodule API.GatewayGroupController do
 
   # Show a specific Gateway Group / Site
   def show(conn, %{"id" => id}) do
-    gateway_group = Query.fetch_group(conn.assigns.subject, id)
+    gateway_group = DB.fetch_group(conn.assigns.subject, id)
     render(conn, :show, gateway_group: gateway_group)
   end
 
@@ -97,9 +97,9 @@ defmodule API.GatewayGroupController do
   # Update a Gateway Group / Site
   def update(conn, %{"id" => id, "gateway_group" => params}) do
     subject = conn.assigns.subject
-    gateway_group = Query.fetch_group(subject, id)
+    gateway_group = DB.fetch_group(subject, id)
 
-    with {:ok, gateway_group} <- Query.update_group(gateway_group, params, subject) do
+    with {:ok, gateway_group} <- DB.update_group(gateway_group, params, subject) do
       render(conn, :show, gateway_group: gateway_group)
     end
   end
@@ -125,9 +125,9 @@ defmodule API.GatewayGroupController do
   # Delete a Gateway Group / Site
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
-    gateway_group = Query.fetch_group(subject, id)
+    gateway_group = DB.fetch_group(subject, id)
 
-    with {:ok, gateway_group} <- Query.delete_group(gateway_group, subject) do
+    with {:ok, gateway_group} <- DB.delete_group(gateway_group, subject) do
       render(conn, :show, gateway_group: gateway_group)
     end
   end
@@ -217,7 +217,7 @@ defmodule API.GatewayGroupController do
     end
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Gateways, Safe, Repo}
 

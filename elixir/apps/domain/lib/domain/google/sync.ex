@@ -8,7 +8,7 @@ defmodule Domain.Google.Sync do
     max_attempts: 1
 
   alias Domain.{Safe, Google}
-  alias __MODULE__.Query
+  alias __MODULE__.DB
   require Logger
 
   @impl Oban.Worker
@@ -18,7 +18,7 @@ defmodule Domain.Google.Sync do
       timestamp: DateTime.utc_now()
     )
 
-    case Query.get_directory(directory_id) |> Safe.unscoped() |> Safe.one() do
+    case DB.get_directory(directory_id) |> Safe.unscoped() |> Safe.one() do
       nil ->
         Logger.info("Google directory deleted or sync disabled, skipping",
           google_directory_id: directory_id
@@ -33,7 +33,17 @@ defmodule Domain.Google.Sync do
   end
 
   defp update(directory, attrs) do
-    changeset = Ecto.Changeset.cast(directory, attrs, [:synced_at])
+    changeset =
+      Ecto.Changeset.cast(directory, attrs, [
+        :synced_at,
+        :error_email_count,
+        :error_message,
+        :errored_at,
+        :is_disabled,
+        :disabled_reason,
+        :is_verified
+      ])
+
     {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
   end
 
@@ -43,7 +53,16 @@ defmodule Domain.Google.Sync do
 
     fetch_and_sync_all(directory, access_token, synced_at)
     delete_unsynced(directory, synced_at)
-    update(directory, %{"synced_at" => synced_at})
+
+    # Clear error state on successful sync completion
+    update(directory, %{
+      "synced_at" => synced_at,
+      "error_email_count" => 0,
+      "error_message" => nil,
+      "errored_at" => nil,
+      "is_disabled" => false,
+      "disabled_reason" => nil
+    })
 
     duration = DateTime.diff(DateTime.utc_now(), synced_at)
 
@@ -120,8 +139,20 @@ defmodule Domain.Google.Sync do
           count: length(users)
         )
 
-        # Build identities for these users
-        identities = Enum.map(users, &map_user_to_identity/1)
+        # Build identities for these users - validate required fields
+        identities =
+          Enum.map(users, fn user ->
+            # Ensure critical fields exist
+            unless user["id"] do
+              raise Google.SyncError,
+                reason: "User missing required 'id' field",
+                cause: user,
+                directory_id: directory.id,
+                step: :process_user
+            end
+
+            map_user_to_identity(user, directory.id)
+          end)
 
         unless Enum.empty?(identities) do
           batch_upsert_identities(directory, synced_at, identities)
@@ -153,9 +184,26 @@ defmodule Domain.Google.Sync do
           count: length(groups)
         )
 
-        # Build and sync groups
+        # Build and sync groups - validate required fields are present
         group_attrs =
           Enum.map(groups, fn group ->
+            # Ensure critical fields exist - if Google returns incomplete data, we must fail
+            unless group["id"] do
+              raise Google.SyncError,
+                reason: "Group missing required 'id' field",
+                cause: group,
+                directory_id: directory.id,
+                step: :process_group
+            end
+
+            unless group["name"] || group["email"] do
+              raise Google.SyncError,
+                reason: "Group missing both 'name' and 'email' fields",
+                cause: group,
+                directory_id: directory.id,
+                step: :process_group
+            end
+
             %{
               idp_id: "google:#{group["id"]}",
               name: group["name"] || group["email"]
@@ -179,12 +227,19 @@ defmodule Domain.Google.Sync do
 
           Google.APIClient.stream_group_members(access_token, group_key)
           |> Stream.each(fn
-            {:error, reason} ->
-              Logger.debug("Failed to fetch members for group",
+            {:error, error} ->
+              Logger.error("Failed to fetch members for group",
                 group_key: group_key,
-                reason: inspect(reason),
+                group_name: group_name,
+                error: inspect(error),
                 google_directory_id: directory.id
               )
+
+              raise Google.SyncError,
+                reason: "Failed to stream group members for #{group_name}",
+                cause: error,
+                directory_id: directory.id,
+                step: :stream_group_members
 
             members when is_list(members) ->
               Logger.debug("Received members page",
@@ -199,9 +254,17 @@ defmodule Domain.Google.Sync do
                   member["type"] == "USER"
                 end)
 
-              # Build memberships (group_idp_id, user_idp_id)
+              # Build memberships (group_idp_id, user_idp_id) - validate required fields
               memberships =
                 Enum.map(user_members, fn member ->
+                  unless member["id"] do
+                    raise Google.SyncError,
+                      reason: "Member missing required 'id' field in group #{group_name}",
+                      cause: member,
+                      directory_id: directory.id,
+                      step: :process_member
+                  end
+
                   {"google:#{group_key}", "google:#{member["id"]}"}
                 end)
 
@@ -219,7 +282,7 @@ defmodule Domain.Google.Sync do
     account_id = directory.account_id
     directory_id = directory.id
 
-    case Query.batch_upsert_identities(account_id, directory_id, synced_at, identities) do
+    case DB.batch_upsert_identities(account_id, directory_id, synced_at, identities) do
       {:ok, %{upserted_identities: count}} ->
         Logger.debug("Upserted #{count} identities", google_directory_id: directory.id)
         :ok
@@ -240,7 +303,7 @@ defmodule Domain.Google.Sync do
     directory_id = directory.id
 
     {:ok, %{upserted_groups: count}} =
-      Query.batch_upsert_groups(account_id, directory_id, synced_at, groups)
+      DB.batch_upsert_groups(account_id, directory_id, synced_at, groups)
 
     Logger.debug("Upserted #{count} groups", google_directory_id: directory.id)
     :ok
@@ -250,7 +313,7 @@ defmodule Domain.Google.Sync do
     account_id = directory.account_id
     directory_id = directory.id
 
-    case Query.batch_upsert_memberships(account_id, directory_id, synced_at, memberships) do
+    case DB.batch_upsert_memberships(account_id, directory_id, synced_at, memberships) do
       {:ok, %{upserted_memberships: count}} ->
         Logger.debug("Upserted #{count} memberships", google_directory_id: directory.id)
         :ok
@@ -271,7 +334,7 @@ defmodule Domain.Google.Sync do
     directory_id = directory.id
 
     # Delete groups that weren't synced
-    {deleted_groups_count, _} = Query.delete_unsynced_groups(account_id, directory_id, synced_at)
+    {deleted_groups_count, _} = DB.delete_unsynced_groups(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced groups",
       google_directory_id: directory.id,
@@ -280,7 +343,7 @@ defmodule Domain.Google.Sync do
 
     # Delete identities that weren't synced
     {deleted_identities_count, _} =
-      Query.delete_unsynced_identities(account_id, directory_id, synced_at)
+      DB.delete_unsynced_identities(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced identities",
       google_directory_id: directory.id,
@@ -289,7 +352,7 @@ defmodule Domain.Google.Sync do
 
     # Delete memberships that weren't synced
     {deleted_memberships_count, _} =
-      Query.delete_unsynced_memberships(account_id, directory_id, synced_at)
+      DB.delete_unsynced_memberships(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced group memberships",
       google_directory_id: directory.id,
@@ -297,7 +360,7 @@ defmodule Domain.Google.Sync do
     )
 
     # Delete actors that no longer have any identities and were created by this directory
-    {deleted_actors_count, _} = Query.delete_actors_without_identities(account_id, directory_id)
+    {deleted_actors_count, _} = DB.delete_actors_without_identities(account_id, directory_id)
 
     Logger.debug("Deleted actors without identities",
       google_directory_id: directory.id,
@@ -305,9 +368,18 @@ defmodule Domain.Google.Sync do
     )
   end
 
-  defp map_user_to_identity(user) do
+  defp map_user_to_identity(user, directory_id) do
     # Map Google Workspace user fields to our identity schema
+    # Validate that critical fields are present
     primary_email = user["primaryEmail"]
+
+    unless primary_email do
+      raise Google.SyncError,
+        reason: "User missing required 'primaryEmail' field",
+        cause: user,
+        directory_id: directory_id,
+        step: :process_user
+    end
 
     %{
       idp_id: "google:#{user["id"]}",
@@ -319,7 +391,7 @@ defmodule Domain.Google.Sync do
     }
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.Safe
 

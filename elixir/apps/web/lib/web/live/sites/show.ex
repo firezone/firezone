@@ -363,7 +363,7 @@ defmodule Web.Sites.Show do
                 </:empty>
 
                 <:item :let={group}>
-                  <.group account={@account} group={group} />
+                  <.group_badge account={@account} group={group} return_to={@current_path} />
                 </:item>
 
                 <:tail :let={count}>
@@ -412,7 +412,7 @@ defmodule Web.Sites.Show do
             </.link>
           </:col>
           <:col :let={policy} label="group">
-            <.group account={@account} group={policy.actor_group} />
+            <.group_badge account={@account} group={policy.actor_group} return_to={@current_path} />
           </:col>
           <:col :let={policy} label="status">
             <%= if is_nil(policy.disabled_at) do %>

@@ -8,7 +8,7 @@ defmodule Domain.Entra.Sync do
     max_attempts: 1
 
   alias Domain.{Safe, Entra}
-  alias __MODULE__.Query
+  alias __MODULE__.DB
   require Logger
 
   @impl Oban.Worker
@@ -18,7 +18,7 @@ defmodule Domain.Entra.Sync do
       timestamp: DateTime.utc_now()
     )
 
-    case Query.get_directory(directory_id) |> Safe.unscoped() |> Safe.one() do
+    case DB.get_directory(directory_id) |> Safe.unscoped() |> Safe.one() do
       nil ->
         Logger.info("Entra directory deleted or sync disabled, skipping",
           entra_directory_id: directory_id
@@ -33,7 +33,17 @@ defmodule Domain.Entra.Sync do
   end
 
   defp update(directory, attrs) do
-    changeset = Ecto.Changeset.cast(directory, attrs, [:synced_at])
+    changeset =
+      Ecto.Changeset.cast(directory, attrs, [
+        :synced_at,
+        :error_email_count,
+        :error_message,
+        :errored_at,
+        :is_disabled,
+        :disabled_reason,
+        :is_verified
+      ])
+
     {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
   end
 
@@ -43,7 +53,16 @@ defmodule Domain.Entra.Sync do
 
     fetch_and_sync_all(directory, access_token, synced_at)
     delete_unsynced(directory, synced_at)
-    update(directory, %{"synced_at" => synced_at})
+
+    # Clear error state on successful sync completion
+    update(directory, %{
+      "synced_at" => synced_at,
+      "error_email_count" => 0,
+      "error_message" => nil,
+      "errored_at" => nil,
+      "is_disabled" => false,
+      "disabled_reason" => nil
+    })
 
     duration = DateTime.diff(DateTime.utc_now(), synced_at)
 
@@ -171,6 +190,33 @@ defmodule Domain.Entra.Sync do
           assignments: inspect(assignments, pretty: true, limit: :infinity)
         )
 
+        # Validate required fields in assignments before processing
+        Enum.each(assignments, fn assignment ->
+          unless assignment["principalId"] do
+            raise Entra.SyncError,
+              reason: "Assignment missing required 'principalId' field",
+              cause: assignment,
+              directory_id: directory.id,
+              step: :process_assignment
+          end
+
+          unless assignment["principalType"] do
+            raise Entra.SyncError,
+              reason: "Assignment missing required 'principalType' field",
+              cause: assignment,
+              directory_id: directory.id,
+              step: :process_assignment
+          end
+
+          unless assignment["principalDisplayName"] do
+            raise Entra.SyncError,
+              reason: "Assignment missing required 'principalDisplayName' field",
+              cause: assignment,
+              directory_id: directory.id,
+              step: :process_assignment
+          end
+        end)
+
         # Separate users and groups
         {user_assignments, group_assignments} =
           Enum.split_with(assignments, fn assignment ->
@@ -212,16 +258,16 @@ defmodule Domain.Entra.Sync do
                     fetched_count: length(users)
                   )
 
-                  Enum.map(users, &map_user_to_identity/1)
+                  Enum.map(users, fn user ->
+                    map_user_to_identity(user, directory.id)
+                  end)
 
-                {:error, reason} ->
-                  Logger.warning("Failed to fetch batch of users",
-                    user_ids: chunk,
-                    reason: inspect(reason),
-                    entra_directory_id: directory.id
-                  )
-
-                  []
+                {:error, error} ->
+                  raise Entra.SyncError,
+                    reason: "Failed to batch fetch users",
+                    cause: error,
+                    directory_id: directory.id,
+                    step: :batch_get_users
               end
             end)
 
@@ -261,12 +307,12 @@ defmodule Domain.Entra.Sync do
 
           Entra.APIClient.stream_group_transitive_members(access_token, group_id)
           |> Stream.each(fn
-            {:error, reason} ->
-              Logger.debug("Failed to fetch transitive members for group",
-                group_id: group_id,
-                reason: inspect(reason),
-                entra_directory_id: directory.id
-              )
+            {:error, error} ->
+              raise Entra.SyncError,
+                reason: "Failed to stream group transitive members for #{group_name}",
+                cause: error,
+                directory_id: directory.id,
+                step: :stream_group_transitive_members
 
             members when is_list(members) ->
               Logger.debug("Received transitive members page",
@@ -281,8 +327,22 @@ defmodule Domain.Entra.Sync do
                   member["@odata.type"] == "#microsoft.graph.user"
                 end)
 
+              # Validate required fields for user members before processing
+              Enum.each(user_members, fn member ->
+                unless member["id"] do
+                  raise Entra.SyncError,
+                    reason: "User member missing required 'id' field in group #{group_name}",
+                    cause: member,
+                    directory_id: directory.id,
+                    step: :process_group_member
+                end
+              end)
+
               # Build identities for these members
-              identities = Enum.map(user_members, &map_user_to_identity/1)
+              identities =
+                Enum.map(user_members, fn member ->
+                  map_user_to_identity(member, directory.id)
+                end)
 
               # Build memberships (group_idp_id, user_idp_id)
               memberships =
@@ -330,6 +390,25 @@ defmodule Domain.Entra.Sync do
           count: length(groups)
         )
 
+        # Validate required fields in groups before processing
+        Enum.each(groups, fn group ->
+          unless group["id"] do
+            raise Entra.SyncError,
+              reason: "Group missing required 'id' field",
+              cause: group,
+              directory_id: directory.id,
+              step: :process_group
+          end
+
+          unless group["displayName"] do
+            raise Entra.SyncError,
+              reason: "Group missing required 'displayName' field",
+              cause: group,
+              directory_id: directory.id,
+              step: :process_group
+          end
+        end)
+
         # Build and sync groups
         group_attrs =
           Enum.map(groups, fn group ->
@@ -361,12 +440,12 @@ defmodule Domain.Entra.Sync do
 
           Entra.APIClient.stream_group_transitive_members(access_token, group_id)
           |> Stream.each(fn
-            {:error, reason} ->
-              Logger.debug("Failed to fetch transitive members for group",
-                group_id: group_id,
-                reason: inspect(reason),
-                entra_directory_id: directory.id
-              )
+            {:error, error} ->
+              raise Entra.SyncError,
+                reason: "Failed to stream group transitive members",
+                cause: error,
+                directory_id: directory.id,
+                step: :stream_group_transitive_members
 
             members when is_list(members) ->
               Logger.debug("Received transitive members page",
@@ -381,8 +460,22 @@ defmodule Domain.Entra.Sync do
                   member["@odata.type"] == "#microsoft.graph.user"
                 end)
 
+              # Validate required fields for user members before processing
+              Enum.each(user_members, fn member ->
+                unless member["id"] do
+                  raise Entra.SyncError,
+                    reason: "User member missing required 'id' field in group #{group_name}",
+                    cause: member,
+                    directory_id: directory.id,
+                    step: :process_group_member
+                end
+              end)
+
               # Build identities for these members
-              identities = Enum.map(user_members, &map_user_to_identity/1)
+              identities =
+                Enum.map(user_members, fn member ->
+                  map_user_to_identity(member, directory.id)
+                end)
 
               # Build memberships (group_idp_id, user_idp_id)
               memberships =
@@ -411,7 +504,7 @@ defmodule Domain.Entra.Sync do
     issuer = issuer(directory)
     directory_id = directory.id
 
-    case Query.batch_upsert_identities(
+    case DB.batch_upsert_identities(
            account_id,
            issuer,
            directory_id,
@@ -438,7 +531,7 @@ defmodule Domain.Entra.Sync do
     directory_id = directory.id
 
     {:ok, %{upserted_groups: count}} =
-      Query.batch_upsert_groups(account_id, directory_id, synced_at, groups)
+      DB.batch_upsert_groups(account_id, directory_id, synced_at, groups)
 
     Logger.debug("Upserted #{count} groups", entra_directory_id: directory.id)
     :ok
@@ -449,7 +542,7 @@ defmodule Domain.Entra.Sync do
     directory_id = directory.id
     issuer = issuer(directory)
 
-    case Query.batch_upsert_memberships(account_id, issuer, directory_id, synced_at, memberships) do
+    case DB.batch_upsert_memberships(account_id, issuer, directory_id, synced_at, memberships) do
       {:ok, %{upserted_memberships: count}} ->
         Logger.debug("Upserted #{count} memberships", entra_directory_id: directory.id)
         :ok
@@ -470,7 +563,7 @@ defmodule Domain.Entra.Sync do
     directory_id = directory.id
 
     # Delete groups that weren't synced
-    {deleted_groups_count, _} = Query.delete_unsynced_groups(account_id, directory_id, synced_at)
+    {deleted_groups_count, _} = DB.delete_unsynced_groups(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced groups",
       entra_directory_id: directory.id,
@@ -479,7 +572,7 @@ defmodule Domain.Entra.Sync do
 
     # Delete identities that weren't synced
     {deleted_identities_count, _} =
-      Query.delete_unsynced_identities(account_id, directory_id, synced_at)
+      DB.delete_unsynced_identities(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced identities",
       entra_directory_id: directory.id,
@@ -488,7 +581,7 @@ defmodule Domain.Entra.Sync do
 
     # Delete memberships that weren't synced
     {deleted_memberships_count, _} =
-      Query.delete_unsynced_memberships(account_id, directory_id, synced_at)
+      DB.delete_unsynced_memberships(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced group memberships",
       entra_directory_id: directory.id,
@@ -496,7 +589,7 @@ defmodule Domain.Entra.Sync do
     )
 
     # Delete actors that no longer have any identities and were created by this directory
-    {deleted_actors_count, _} = Query.delete_actors_without_identities(account_id, directory_id)
+    {deleted_actors_count, _} = DB.delete_actors_without_identities(account_id, directory_id)
 
     Logger.debug("Deleted actors without identities",
       entra_directory_id: directory.id,
@@ -504,11 +597,30 @@ defmodule Domain.Entra.Sync do
     )
   end
 
-  defp map_user_to_identity(user) do
+  defp map_user_to_identity(user, directory_id) do
     # Map Microsoft Graph user fields to our identity schema
     # Note: 'mail' is the primary email, userPrincipalName is the UPN (user@domain.com)
     # We prefer 'mail' but fall back to userPrincipalName if mail is null
     #
+    # Validate that critical fields are present
+    unless user["id"] do
+      raise Entra.SyncError,
+        reason: "User missing required 'id' field",
+        cause: user,
+        directory_id: directory_id,
+        step: :process_user
+    end
+
+    primary_email = user["mail"] || user["userPrincipalName"]
+
+    unless primary_email do
+      raise Entra.SyncError,
+        reason: "User missing both 'mail' and 'userPrincipalName' fields",
+        cause: user,
+        directory_id: directory_id,
+        step: :process_user
+    end
+
     # TODO: Implement separate photo hydration job
     # Profile photos are NOT synced during directory sync because:
     # - Microsoft Graph doesn't provide direct URLs, only binary data via /users/{id}/photo/$value
@@ -519,7 +631,7 @@ defmodule Domain.Entra.Sync do
     #   3. Updates identity.firezone_avatar_url with the blob URL
     %{
       idp_id: "entra:#{user["id"]}",
-      email: user["mail"] || user["userPrincipalName"],
+      email: primary_email,
       name: user["displayName"],
       given_name: user["givenName"],
       family_name: user["surname"],
@@ -527,7 +639,7 @@ defmodule Domain.Entra.Sync do
     }
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.Safe
 

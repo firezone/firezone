@@ -1,25 +1,23 @@
-defmodule Domain.Notifications.Jobs.OutdatedGateways do
-  use Domain.Jobs.Job,
-    otp_app: :domain,
-    every: :timer.minutes(5),
-    executor: Domain.Jobs.Executors.GloballyUnique
+defmodule Domain.Notifications.Workers.OutdatedGateways do
+  @moduledoc """
+  Oban worker that checks for outdated gateways and sends notifications.
+  Scheduled via cron: every minute in dev, Sundays at 9am in prod.
+  """
+
+  use Oban.Worker,
+    queue: :default,
+    max_attempts: 3,
+    unique: [period: 86400]
 
   require Logger
   require OpenTelemetry.Tracer
 
   alias Domain.{Actors, Accounts, Clients, Gateways, Mailer}
 
-  @impl true
-  if Mix.env() == :prod do
-    def execute(_config) do
-      # Should only run on Sundays
-      day_of_week = Date.utc_today() |> Date.day_of_week()
-      if day_of_week == 7, do: run_check()
-    end
-  else
-    def execute(_config) do
-      run_check()
-    end
+  @impl Oban.Worker
+  def perform(_job) do
+    run_check()
+    :ok
   end
 
   defp run_check do

@@ -3,7 +3,7 @@ defmodule API.PolicyController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Policies
-  alias __MODULE__.Query
+  alias __MODULE__.DB
 
   action_fallback API.FallbackController
 
@@ -23,7 +23,7 @@ defmodule API.PolicyController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, policies, metadata} <- Query.list_policies(conn.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- DB.list_policies(conn.assigns.subject, list_opts) do
       render(conn, :index, policies: policies, metadata: metadata)
     end
   end
@@ -44,7 +44,7 @@ defmodule API.PolicyController do
 
   # Show a specific Policy
   def show(conn, %{"id" => id}) do
-    policy = Query.fetch_policy(conn.assigns.subject, id)
+    policy = DB.fetch_policy(conn.assigns.subject, id)
     render(conn, :show, policy: policy)
   end
 
@@ -90,9 +90,9 @@ defmodule API.PolicyController do
   # Update a Policy
   def update(conn, %{"id" => id, "policy" => params}) do
     subject = conn.assigns.subject
-    policy = Query.fetch_policy(subject, id)
+    policy = DB.fetch_policy(subject, id)
 
-    with {:ok, policy} <- Query.update_policy(policy, params, subject) do
+    with {:ok, policy} <- DB.update_policy(policy, params, subject) do
       render(conn, :show, policy: policy)
     end
   end
@@ -118,14 +118,14 @@ defmodule API.PolicyController do
   # Delete a Policy
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
-    policy = Query.fetch_policy(subject, id)
+    policy = DB.fetch_policy(subject, id)
 
-    with {:ok, policy} <- Query.delete_policy(policy, subject) do
+    with {:ok, policy} <- DB.delete_policy(policy, subject) do
       render(conn, :show, policy: policy)
     end
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Policies, Safe}
 

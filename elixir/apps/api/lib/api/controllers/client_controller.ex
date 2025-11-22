@@ -3,7 +3,7 @@ defmodule API.ClientController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Clients
-  alias __MODULE__.Query
+  alias __MODULE__.DB
 
   action_fallback(API.FallbackController)
 
@@ -32,7 +32,7 @@ defmodule API.ClientController do
       |> Pagination.params_to_list_opts()
       |> Keyword.put(:preload, :online?)
 
-    with {:ok, clients, metadata} <- Query.list_clients(conn.assigns.subject, list_opts) do
+    with {:ok, clients, metadata} <- DB.list_clients(conn.assigns.subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
     end
   end
@@ -166,7 +166,7 @@ defmodule API.ClientController do
     end
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Clients, Safe}
 

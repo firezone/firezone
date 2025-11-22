@@ -533,7 +533,7 @@ defmodule Web.Policies.Components do
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="hero-identification" class="w-5 h-5 mr-2" /> Identity provider
+            <.icon name="hero-identification" class="w-5 h-5 mr-2" /> Authentication provider
           </span>
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
@@ -553,7 +553,7 @@ defmodule Web.Policies.Components do
         ]}
       >
         <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the IdP used to sign in meets the criteria specified below.
+          Allow access when the provider used to sign in meets the criteria specified below.
         </p>
         <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
           <.input
@@ -818,7 +818,7 @@ defmodule Web.Policies.Components do
     """
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Actors}
 

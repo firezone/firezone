@@ -144,9 +144,13 @@ defmodule Domain.Google.APIClient do
                   {[error], nil}
 
                 :error ->
-                  # Key is missing - this means no results for this page, which is valid
-                  # Empty page means we're done
-                  {[[]], nil}
+                  # Key is missing - this is an error! Google API sometimes returns 200 with missing data
+                  # We must fail loudly to prevent false positives that could delete groups/users
+                  error =
+                    {:error,
+                     {:missing_key, "Expected key '#{result_key}' not found in response", body}}
+
+                  {[error], nil}
               end
 
             {:ok, %Req.Response{} = response} ->

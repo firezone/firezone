@@ -1,23 +1,9 @@
 defmodule Domain.Tokens do
-  use Supervisor
   alias Domain.Repo
   alias Domain.{Auth, Actors, Relays, Gateways}
-  alias Domain.Tokens.{Token, Authorizer, Jobs}
+  alias Domain.Tokens.{Token, Authorizer}
   require Ecto.Query
   require Logger
-
-  def start_link(_init_arg) do
-    Supervisor.start_link(__MODULE__, nil, name: __MODULE__)
-  end
-
-  @impl true
-  def init(_init_arg) do
-    children = [
-      Jobs.DeleteExpiredTokens
-    ]
-
-    Supervisor.init(children, strategy: :one_for_one)
-  end
 
   def fetch_token_by_id(id) do
     Token.Query.all()

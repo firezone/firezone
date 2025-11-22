@@ -107,7 +107,10 @@ defmodule Web.Clients.Show do
           <.vertical_table_row>
             <:label>Owner</:label>
             <:value>
-              <.link navigate={~p"/#{@account}/actors/#{@client.actor.id}"} class={[link_style()]}>
+              <.link
+                navigate={~p"/#{@account}/actors/#{@client.actor.id}?#{[return_to: @current_path]}"}
+                class={[link_style()]}
+              >
                 {@client.actor.name}
               </.link>
             </:value>
@@ -121,7 +124,7 @@ defmodule Web.Clients.Show do
               >
                 <.identity_identifier account={@account} identity={@current_token.identity} />
                 <.link
-                  navigate={~p"/#{@account}/actors/#{@client.actor_id}?#tokens-#{@current_token.id}"}
+                  navigate={"#{~p"/#{@account}/actors/#{@client.actor_id}"}?return_to=#{@current_path}#tokens-#{@current_token.id}"}
                   class={[link_style(), "text-xs"]}
                 >
                   show tokens
@@ -130,7 +133,7 @@ defmodule Web.Clients.Show do
               <div :if={@current_token && @client.actor.type == :service_account}>
                 token
                 <.link
-                  navigate={~p"/#{@account}/actors/#{@client.actor_id}?#tokens-#{@current_token.id}"}
+                  navigate={"#{~p"/#{@account}/actors/#{@client.actor_id}"}?return_to=#{@current_path}#tokens-#{@current_token.id}"}
                   class={[link_style()]}
                 >
                   {@current_token.name}
@@ -347,7 +350,10 @@ defmodule Web.Clients.Show do
 
             <p class="mt-2">
               To prevent the client owner from logging in again,
-              <.link navigate={~p"/#{@account}/actors/#{@client.actor_id}"} class={link_style()}>
+              <.link
+                navigate={~p"/#{@account}/actors/#{@client.actor_id}?#{[return_to: @current_path]}"}
+                class={link_style()}
+              >
                 disable the owning actor
               </.link>
               instead.

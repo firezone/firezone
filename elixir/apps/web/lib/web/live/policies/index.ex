@@ -81,9 +81,7 @@ defmodule Web.Policies.Index do
             </.link>
           </:col>
           <:col :let={policy} label="group" class="w-3/12">
-            <span class="flex items-center">
-              <.group account={@account} group={policy.actor_group} />
-            </span>
+            <.group_badge account={@account} group={policy.actor_group} return_to={@current_path} />
           </:col>
           <:col :let={policy} label="resource" class="w-2/12">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>

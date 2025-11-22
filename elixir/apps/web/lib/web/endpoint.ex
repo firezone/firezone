@@ -2,6 +2,20 @@ defmodule Web.Endpoint do
   use Sentry.PlugCapture
   use Phoenix.Endpoint, otp_app: :web
 
+  # NOTE: This is only used for the LiveView session. We store per-account cookies to allow
+  # multiple accounts to be logged in simultaneously. See Web.Session.Cookie.
+  @session_cookie [
+    store: :cookie,
+    key: "_firezone_key",
+    same_site: "Lax",
+    max_age: 8 * 60 * 60,
+    sign: true,
+    encrypt: true,
+    secure: {__MODULE__, :cookie_secure, []},
+    signing_salt: {__MODULE__, :cookie_signing_salt, []},
+    encryption_salt: {__MODULE__, :cookie_encryption_salt, []}
+  ]
+
   if Application.compile_env(:domain, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
     plug Web.Plugs.AllowEctoSandbox
@@ -46,16 +60,7 @@ defmodule Web.Endpoint do
     pass: ["*/*"],
     json_decoder: Phoenix.json_library()
 
-  plug Plug.Session,
-    store: :cookie,
-    key: "_firezone_key",
-    same_site: "Lax",
-    max_age: 4 * 60 * 60,
-    sign: true,
-    encrypt: true,
-    secure: {__MODULE__, :cookie_secure, []},
-    signing_salt: {__MODULE__, :cookie_signing_salt, []},
-    encryption_salt: {__MODULE__, :cookie_encryption_salt, []}
+  plug Plug.Session, @session_cookie
 
   plug Web.Plugs.FetchUserAgent
   plug Web.Router
@@ -107,16 +112,6 @@ defmodule Web.Endpoint do
   # Configures the LiveView session cookie options.
   # IMPORTANT: Must use the same key as Plug.Session so they share session data
   def live_view_session_options do
-    [
-      store: :cookie,
-      key: "_firezone_key",
-      same_site: "Lax",
-      max_age: 4 * 60 * 60,
-      sign: true,
-      encrypt: true,
-      secure: cookie_secure(),
-      signing_salt: cookie_signing_salt(),
-      encryption_salt: cookie_encryption_salt()
-    ]
+    @session_cookie
   end
 end

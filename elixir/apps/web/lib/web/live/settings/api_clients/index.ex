@@ -2,7 +2,7 @@ defmodule Web.Settings.ApiClients.Index do
   use Web, :live_view
   alias Domain.Actors
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Actors, Safe}
 
@@ -28,7 +28,7 @@ defmodule Web.Settings.ApiClients.Index do
         |> assign(page_title: "API Clients")
         |> assign(api_url: Domain.Config.get_env(:web, :api_external_url))
         |> assign_live_table("actors",
-          query_module: Query,
+          query_module: DB,
           sortable_fields: [
             {:actors, :name},
             {:actors, :status}
@@ -49,7 +49,7 @@ defmodule Web.Settings.ApiClients.Index do
 
   def handle_api_clients_update!(socket, list_opts) do
     with {:ok, actors, actors_metadata} <-
-           Query.list_actors(socket.assigns.subject, list_opts) do
+           DB.list_actors(socket.assigns.subject, list_opts) do
       socket =
         assign(socket,
           actors: actors,

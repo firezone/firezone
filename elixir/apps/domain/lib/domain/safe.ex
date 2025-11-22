@@ -188,6 +188,20 @@ defmodule Domain.Safe do
 
   def insert_all(first_arg, schema_or_source, entries, opts \\ [])
 
+  @spec insert_all(Scoped.t(), atom() | Ecto.Schema.t(), [map() | Keyword.t()], Keyword.t()) ::
+          {integer(), nil | [term()]} | {:error, :unauthorized}
+  def insert_all(%Scoped{subject: subject}, schema_or_source, entries, opts) do
+    schema = if is_atom(schema_or_source), do: schema_or_source, else: schema_or_source.__struct__
+
+    case permit(:insert_all, schema, subject) do
+      :ok ->
+        Repo.insert_all(schema_or_source, entries, opts)
+
+      {:error, :unauthorized} ->
+        {:error, :unauthorized}
+    end
+  end
+
   @spec insert_all(Unscoped.t(), atom() | Ecto.Schema.t(), [map() | Keyword.t()], Keyword.t()) ::
           {integer(), nil | [term()]}
   def insert_all(%Unscoped{}, schema_or_source, entries, opts) do
@@ -247,6 +261,20 @@ defmodule Domain.Safe do
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def update(repo, changeset, opts \\ []) when repo == Repo, do: Repo.update(changeset, opts)
 
+  @spec update_all(Scoped.t(), Keyword.t()) ::
+          {non_neg_integer(), nil | [term()]} | {:error, :unauthorized}
+  def update_all(%Scoped{subject: subject, queryable: queryable}, updates) do
+    schema = get_schema_module(queryable)
+
+    case permit(:update_all, schema, subject) do
+      :ok ->
+        Repo.update_all(queryable, updates)
+
+      {:error, :unauthorized} ->
+        {:error, :unauthorized}
+    end
+  end
+
   @spec update_all(Unscoped.t(), Keyword.t()) :: {non_neg_integer(), nil | [term()]}
   def update_all(%Unscoped{queryable: queryable}, updates) do
     Repo.update_all(queryable, updates)
@@ -299,6 +327,20 @@ defmodule Domain.Safe do
     do: Repo.delete(struct_or_changeset, opts)
 
   def delete_all(first_arg, queryable, opts \\ [])
+
+  @spec delete_all(Scoped.t(), Ecto.Queryable.t(), Keyword.t()) ::
+          {integer(), nil | [term()]} | {:error, :unauthorized}
+  def delete_all(%Scoped{subject: subject, queryable: queryable}, _queryable_arg, opts) do
+    schema = get_schema_module(queryable)
+
+    case permit(:delete_all, schema, subject) do
+      :ok ->
+        Repo.delete_all(queryable, opts)
+
+      {:error, :unauthorized} ->
+        {:error, :unauthorized}
+    end
+  end
 
   @spec delete_all(Unscoped.t(), Ecto.Queryable.t(), Keyword.t()) ::
           {integer(), nil | [term()]}

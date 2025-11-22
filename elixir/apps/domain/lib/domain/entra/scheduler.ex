@@ -5,7 +5,7 @@ defmodule Domain.Entra.Scheduler do
 
   use Oban.Worker, queue: :entra_scheduler, max_attempts: 1
   alias Domain.Safe
-  alias __MODULE__.Query
+  alias __MODULE__.DB
   require Logger
 
   @sync_job_opts [
@@ -22,7 +22,7 @@ defmodule Domain.Entra.Scheduler do
     Logger.debug("Scheduling Entra directory sync jobs")
 
     Safe.transact(fn ->
-      Query.directories_to_sync()
+      DB.directories_to_sync()
       |> Safe.unscoped()
       |> Safe.stream()
       |> Stream.each(&queue_sync_job/1)
@@ -37,7 +37,7 @@ defmodule Domain.Entra.Scheduler do
     {:ok, _job} = Domain.Entra.Sync.new(args, @sync_job_opts) |> Oban.insert()
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
 
     def directories_to_sync do

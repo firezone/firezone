@@ -3,7 +3,7 @@ defmodule API.ActorGroupController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Actors
-  alias __MODULE__.Query
+  alias __MODULE__.DB
 
   action_fallback API.FallbackController
 
@@ -23,7 +23,7 @@ defmodule API.ActorGroupController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, actor_groups, metadata} <- Query.list_groups(conn.assigns.subject, list_opts) do
+    with {:ok, actor_groups, metadata} <- DB.list_groups(conn.assigns.subject, list_opts) do
       render(conn, :index, actor_groups: actor_groups, metadata: metadata)
     end
   end
@@ -44,7 +44,7 @@ defmodule API.ActorGroupController do
 
   # Show a specific Actor Group
   def show(conn, %{"id" => id}) do
-    actor_group = Query.fetch_group(conn.assigns.subject, id)
+    actor_group = DB.fetch_group(conn.assigns.subject, id)
     render(conn, :show, actor_group: actor_group)
   end
 
@@ -94,9 +94,9 @@ defmodule API.ActorGroupController do
   # Update an Actor Group
   def update(conn, %{"id" => id, "actor_group" => params}) do
     subject = conn.assigns.subject
-    actor_group = Query.fetch_group(subject, id)
+    actor_group = DB.fetch_group(subject, id)
 
-    with {:ok, actor_group} <- Query.update_group(actor_group, params, subject) do
+    with {:ok, actor_group} <- DB.update_group(actor_group, params, subject) do
       render(conn, :show, actor_group: actor_group)
     end
   end
@@ -122,14 +122,14 @@ defmodule API.ActorGroupController do
   # Delete an Actor Group
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
-    actor_group = Query.fetch_group(subject, id)
+    actor_group = DB.fetch_group(subject, id)
 
-    with {:ok, actor_group} <- Query.delete_group(actor_group, subject) do
+    with {:ok, actor_group} <- DB.delete_group(actor_group, subject) do
       render(conn, :show, actor_group: actor_group)
     end
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Actors, Safe, Repo}
 
