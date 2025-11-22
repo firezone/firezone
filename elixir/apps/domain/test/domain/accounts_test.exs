@@ -360,7 +360,10 @@ defmodule Domain.AccountsTest do
           monthly_active_users_count: -1
         },
         config: %{
-          clients_upstream_dns: [%{protocol: "ip_port", address: "!!!"}]
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [%{address: "!!!"}]
+          }
         }
       }
 
@@ -369,9 +372,11 @@ defmodule Domain.AccountsTest do
       assert errors_on(changeset) == %{
                name: ["should be at most 64 character(s)"],
                config: %{
-                 clients_upstream_dns: [
-                   %{address: ["must be a valid IP address"]}
-                 ]
+                 clients_upstream_dns: %{
+                   addresses: [
+                     %{address: ["must be a valid IP address"]}
+                   ]
+                 }
                }
              }
     end
@@ -393,10 +398,13 @@ defmodule Domain.AccountsTest do
           }
         },
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8"}
-          ]
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [
+              %{address: "1.1.1.1"},
+              %{address: "8.8.8.8"}
+            ]
+          }
         }
       }
 
@@ -412,15 +420,11 @@ defmodule Domain.AccountsTest do
 
       assert is_nil(account.metadata.stripe.customer_id)
 
-      assert account.config.clients_upstream_dns == [
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
+      assert account.config.clients_upstream_dns.type == :custom
+
+      assert account.config.clients_upstream_dns.addresses == [
+               %Domain.Accounts.Config.ClientsUpstreamDns.Address{address: "1.1.1.1"},
+               %Domain.Accounts.Config.ClientsUpstreamDns.Address{address: "8.8.8.8"}
              ]
     end
 
@@ -474,7 +478,10 @@ defmodule Domain.AccountsTest do
           monthly_active_users_count: -1
         },
         config: %{
-          clients_upstream_dns: [%{protocol: "ip_port", address: "!!!"}]
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [%{address: "!!!"}]
+          }
         }
       }
 
@@ -489,9 +496,11 @@ defmodule Domain.AccountsTest do
                  monthly_active_users_count: ["must be greater than or equal to 0"]
                },
                config: %{
-                 clients_upstream_dns: [
-                   %{address: ["must be a valid IP address"]}
-                 ]
+                 clients_upstream_dns: %{
+                   addresses: [
+                     %{address: ["must be a valid IP address"]}
+                   ]
+                 }
                }
              }
     end
@@ -499,34 +508,36 @@ defmodule Domain.AccountsTest do
     test "trims client upstream dns config address fields", %{account: account} do
       attrs = %{
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "   1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8   "}
-          ]
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [
+              %{address: "   1.1.1.1"},
+              %{address: "8.8.8.8   "}
+            ]
+          }
         }
       }
 
       assert {:ok, account} = update_account_by_id(account.id, attrs)
 
-      assert account.config.clients_upstream_dns == [
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
+      assert account.config.clients_upstream_dns.type == :custom
+
+      assert account.config.clients_upstream_dns.addresses == [
+               %Domain.Accounts.Config.ClientsUpstreamDns.Address{address: "1.1.1.1"},
+               %Domain.Accounts.Config.ClientsUpstreamDns.Address{address: "8.8.8.8"}
              ]
     end
 
     test "returns error on duplicate upstream dns config addresses", %{account: account} do
       attrs = %{
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "1.1.1.1   "}
-          ]
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [
+              %{address: "1.1.1.1"},
+              %{address: "1.1.1.1   "}
+            ]
+          }
         }
       }
 
@@ -534,7 +545,30 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 clients_upstream_dns: ["all addresses must be unique"]
+                 clients_upstream_dns: %{
+                   addresses: ["all addresses must be unique"]
+                 }
+               }
+             }
+    end
+
+    test "returns error when custom type has no addresses", %{account: account} do
+      attrs = %{
+        config: %{
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: []
+          }
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 clients_upstream_dns: %{
+                   addresses: ["must have at least one custom resolver"]
+                 }
                }
              }
     end
@@ -542,9 +576,12 @@ defmodule Domain.AccountsTest do
     test "does not allow ports", %{account: account} do
       attrs = %{
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1:53"}
-          ]
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [
+              %{address: "1.1.1.1:53"}
+            ]
+          }
         }
       }
 
@@ -552,9 +589,11 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 clients_upstream_dns: [
-                   %{address: ["must not include a port"]}
-                 ]
+                 clients_upstream_dns: %{
+                   addresses: [
+                     %{address: ["must not include a port"]}
+                   ]
+                 }
                }
              }
     end
@@ -562,9 +601,12 @@ defmodule Domain.AccountsTest do
     test "returns error on dns config address in IPv4 sentinel range", %{account: account} do
       attrs = %{
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "100.64.10.1"}
-          ]
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [
+              %{address: "100.64.10.1"}
+            ]
+          }
         }
       }
 
@@ -572,9 +614,11 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 clients_upstream_dns: [
-                   %{address: ["cannot be in the CIDR 100.64.0.0/10"]}
-                 ]
+                 clients_upstream_dns: %{
+                   addresses: [
+                     %{address: ["cannot be in the CIDR 100.64.0.0/10"]}
+                   ]
+                 }
                }
              }
     end
@@ -582,9 +626,12 @@ defmodule Domain.AccountsTest do
     test "returns error on dns config address in IPv6 sentinel range", %{account: account} do
       attrs = %{
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "fd00:2021:1111:10::"}
-          ]
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [
+              %{address: "fd00:2021:1111:10::"}
+            ]
+          }
         }
       }
 
@@ -592,9 +639,11 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 clients_upstream_dns: [
-                   %{address: ["cannot be in the CIDR fd00:2021:1111::/48"]}
-                 ]
+                 clients_upstream_dns: %{
+                   addresses: [
+                     %{address: ["cannot be in the CIDR fd00:2021:1111::/48"]}
+                   ]
+                 }
                }
              }
     end
@@ -707,6 +756,60 @@ defmodule Domain.AccountsTest do
              }
     end
 
+    test "accepts all valid DoH providers", %{account: account} do
+      for provider <- [:google, :quad9, :cloudflare, :opendns] do
+        attrs = %{
+          config: %{
+            clients_upstream_dns: %{
+              type: :secure,
+              doh_provider: provider,
+              addresses: []
+            }
+          }
+        }
+
+        assert {:ok, account} = update_account_by_id(account.id, attrs)
+        assert account.config.clients_upstream_dns.doh_provider == provider
+        assert account.config.clients_upstream_dns.type == :secure
+      end
+    end
+
+    test "retains addresses when switching to secure DNS", %{account: account} do
+      # First set custom DNS
+      attrs = %{
+        config: %{
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [
+              %{address: "1.1.1.1"}
+            ]
+          }
+        }
+      }
+
+      assert {:ok, account} = update_account_by_id(account.id, attrs)
+      assert account.config.clients_upstream_dns.type == :custom
+      assert length(account.config.clients_upstream_dns.addresses) == 1
+
+      # Now switch to DoH provider
+      attrs = %{
+        config: %{
+          clients_upstream_dns: %{
+            type: :secure,
+            doh_provider: :cloudflare,
+            addresses: [
+              %{address: "1.1.1.1"}
+            ]
+          }
+        }
+      }
+
+      assert {:ok, account} = update_account_by_id(account.id, attrs)
+      assert account.config.clients_upstream_dns.type == :secure
+      assert account.config.clients_upstream_dns.doh_provider == :cloudflare
+      assert length(account.config.clients_upstream_dns.addresses) == 1
+    end
+
     test "updates account and broadcasts a message", %{account: account} do
       Bypass.open()
       |> Domain.Mocks.Stripe.mock_update_customer_endpoint(account)
@@ -728,10 +831,13 @@ defmodule Domain.AccountsTest do
           }
         },
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8"}
-          ]
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [
+              %{address: "1.1.1.1"},
+              %{address: "8.8.8.8"}
+            ]
+          }
         }
       }
 
@@ -754,15 +860,11 @@ defmodule Domain.AccountsTest do
       assert account.metadata.stripe.billing_email ==
                attrs.metadata.stripe.billing_email
 
-      assert account.config.clients_upstream_dns == [
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
+      assert account.config.clients_upstream_dns.type == :custom
+
+      assert account.config.clients_upstream_dns.addresses == [
+               %Domain.Accounts.Config.ClientsUpstreamDns.Address{address: "1.1.1.1"},
+               %Domain.Accounts.Config.ClientsUpstreamDns.Address{address: "8.8.8.8"}
              ]
     end
 
