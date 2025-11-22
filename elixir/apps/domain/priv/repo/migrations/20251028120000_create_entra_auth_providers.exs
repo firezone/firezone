@@ -20,8 +20,19 @@ defmodule Domain.Repo.Migrations.CreateEntraAuthProviders do
       timestamps()
     end
 
-    create(index(:entra_auth_providers, [:account_id, :issuer], unique: true))
-    create(index(:entra_auth_providers, [:account_id, :name], unique: true))
+    create(
+      index(:entra_auth_providers, [:account_id, :issuer],
+        name: :entra_auth_providers_account_id_issuer_index,
+        unique: true
+      )
+    )
+
+    create(
+      index(:entra_auth_providers, [:account_id, :name],
+        name: :entra_auth_providers_account_id_name_index,
+        unique: true
+      )
+    )
 
     execute(
       """

@@ -19,7 +19,12 @@ defmodule Domain.Repo.Migrations.CreateUserpassAuthProviders do
       timestamps()
     end
 
-    create(index(:userpass_auth_providers, [:account_id], unique: true))
+    create(
+      index(:userpass_auth_providers, [:account_id],
+        name: :userpass_auth_providers_account_id_index,
+        unique: true
+      )
+    )
 
     execute(
       """

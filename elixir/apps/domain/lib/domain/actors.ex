@@ -1,7 +1,7 @@
 defmodule Domain.Actors do
   alias Domain.Actors.Membership
   alias Domain.Repo
-  alias Domain.{Accounts, Auth, Tokens, Billing}
+  alias Domain.{Accounts, Auth, Billing}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
   require Logger
@@ -60,14 +60,6 @@ defmodule Domain.Actors do
   def create_managed_group(%Accounts.Account{} = account, attrs) do
     Group.Changeset.create(account, attrs)
     |> Repo.insert()
-    |> case do
-      {:ok, group} ->
-        {:ok, _results} = update_managed_group_memberships(account.id)
-        {:ok, group}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do
@@ -95,7 +87,7 @@ defmodule Domain.Actors do
     {:error, :managed_group}
   end
 
-  def update_group(%Group{directory: "firezone"} = group, attrs, %Auth.Subject{} = subject) do
+  def update_group(%Group{directory_id: nil} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Group.Query.all()
       |> Group.Query.by_id(group.id)
@@ -112,11 +104,6 @@ defmodule Domain.Actors do
 
   def update_group(%Group{}, _attrs, %Auth.Subject{}) do
     {:error, :synced_group}
-  end
-
-  def update_managed_group_memberships(account_id) do
-    Group.Query.update_everyone_group_memberships(account_id)
-    |> Repo.transaction()
   end
 
   def delete_group(%Group{directory: "firezone"} = group, %Auth.Subject{} = subject) do
@@ -222,14 +209,6 @@ defmodule Domain.Actors do
   def create_actor(%Accounts.Account{} = account, attrs) do
     Actor.Changeset.create(account.id, attrs)
     |> Repo.insert()
-    |> case do
-      {:ok, actor} ->
-        {:ok, _results} = update_managed_group_memberships(account.id)
-        {:ok, actor}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
   end
 
   def create_actor(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
@@ -237,14 +216,7 @@ defmodule Domain.Actors do
          :ok <- Accounts.ensure_has_access_to(subject, account),
          changeset = Actor.Changeset.create(account.id, attrs, subject),
          :ok <- ensure_billing_limits_not_exceeded(account, changeset) do
-      case Repo.insert(changeset) do
-        {:ok, actor} ->
-          {:ok, _results} = update_managed_group_memberships(account.id)
-          {:ok, actor}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
+      Repo.insert(changeset)
     end
   end
 
@@ -280,130 +252,5 @@ defmodule Domain.Actors do
     # we return :ok because we want Repo.insert() call to still put action and
     # rest of possible metadata if there are validation errors
     :ok
-  end
-
-  def change_actor(%Actor{} = actor, attrs \\ %{}) do
-    Actor.Changeset.update(actor, [], attrs)
-  end
-
-  def update_actor(%Actor{} = actor, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.all()
-      |> Actor.Query.by_id(actor.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Actor.Query,
-        with: fn actor ->
-          actor = maybe_preload_editable_memberships(actor, attrs)
-          synced_groups = list_readonly_groups(attrs)
-          changeset = Actor.Changeset.update(actor, attrs, synced_groups, subject)
-
-          cond do
-            changeset.data.type != :account_admin_user -> changeset
-            Map.get(changeset.changes, :type) == :account_admin_user -> changeset
-            other_enabled_admins_exist?(actor) -> changeset
-            is_nil(Map.get(changeset.changes, :type)) -> changeset
-            true -> :cant_remove_admin_type
-          end
-        end
-      )
-    end
-  end
-
-  defp maybe_preload_editable_memberships(%Actor{} = actor, attrs) do
-    if Map.has_key?(attrs, "memberships") || Map.has_key?(attrs, :memberships) do
-      memberships =
-        Membership.Query.by_actor_id(actor.id)
-        |> Membership.Query.only_editable_groups()
-        |> Membership.Query.lock()
-        |> Repo.all()
-
-      %{actor | memberships: memberships}
-    else
-      actor
-    end
-  end
-
-  defp list_readonly_groups(attrs) do
-    (Map.get(attrs, "memberships") || Map.get(attrs, :memberships) || [])
-    |> Enum.flat_map(fn membership ->
-      if group_id = Map.get(membership, "group_id") || Map.get(membership, :group_id) do
-        [group_id]
-      else
-        []
-      end
-    end)
-    |> case do
-      [] ->
-        []
-
-      group_ids ->
-        Group.Query.all()
-        |> Group.Query.not_editable()
-        |> Group.Query.by_id({:in, group_ids})
-        |> Repo.all()
-    end
-  end
-
-  def disable_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.all()
-      |> Actor.Query.by_id(actor.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Actor.Query,
-        with: fn actor ->
-          if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
-            {:ok, _num_tokens} = Tokens.delete_tokens_for(actor, subject)
-            Actor.Changeset.disable_actor(actor)
-          else
-            :cant_disable_the_last_admin
-          end
-        end
-      )
-    end
-  end
-
-  def enable_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.all()
-      |> Actor.Query.by_id(actor.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Actor.Query, with: &Actor.Changeset.enable_actor/1)
-    end
-  end
-
-  def delete_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(actor, subject),
-         true <- actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
-      Repo.delete(actor)
-    else
-      false ->
-        {:error, :cant_delete_the_last_admin}
-
-      other ->
-        other
-    end
-  end
-
-  def actor_disabled?(%Actor{disabled_at: nil}), do: false
-  def actor_disabled?(%Actor{}), do: true
-
-  def actor_active?(%Actor{disabled_at: nil}), do: true
-  def actor_active?(%Actor{}), do: false
-
-  defp other_enabled_admins_exist?(%Actor{
-         type: :account_admin_user,
-         account_id: account_id,
-         id: id
-       }) do
-    Actor.Query.not_disabled()
-    |> Actor.Query.by_type(:account_admin_user)
-    |> Actor.Query.by_account_id(account_id)
-    |> Actor.Query.by_id({:not, id})
-    |> Actor.Query.lock()
-    |> Repo.exists?()
-  end
-
-  defp other_enabled_admins_exist?(%Actor{}) do
-    false
   end
 end

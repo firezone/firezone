@@ -363,7 +363,7 @@
 #   end
 #
 #   defp get_or_create_identity(account, provider, actor, email \\ "test@test.local") do
-#     case Repo.get_by(Auth.Identity,
+#     case Repo.get_by(ExternalIdentity,
 #            account_id: account.id,
 #            provider_id: provider.id,
 #            actor_id: actor.id

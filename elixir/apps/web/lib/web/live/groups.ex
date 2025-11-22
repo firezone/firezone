@@ -18,6 +18,7 @@ defmodule Web.Groups do
         query_module: Query,
         sortable_fields: [
           {:groups, :name},
+          {:member_counts, :count},
           {:groups, :updated_at}
         ],
         callback: &handle_groups_update!/2
@@ -187,7 +188,7 @@ defmodule Web.Groups do
 
         socket =
           socket
-          |> put_flash(:info, "Group created successfully")
+          |> put_flash(:success_inline, "Group created successfully")
           |> reload_live_table!("groups")
           |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}?#{params}")
 
@@ -228,8 +229,6 @@ defmodule Web.Groups do
 
   def handle_groups_update!(socket, list_opts) do
     with {:ok, groups, metadata} <- Query.list_groups(socket.assigns.subject, list_opts) do
-      groups = Query.preload_member_count(groups)
-
       {:ok,
        assign(socket,
          groups: groups,
@@ -275,15 +274,15 @@ defmodule Web.Groups do
           metadata={@groups_metadata}
         >
           <:col :let={group} class="w-12">
-            <.directory_icon directory={group.directory} class="inline-block w-6 h-6" />
+            <.directory_icon idp_id={group.idp_id} class="w-8 h-8" />
           </:col>
           <:col :let={group} field={{:groups, :name}} label="group" class="w-3/12">
             {group.name}
           </:col>
-          <:col :let={group} label="members">
+          <:col :let={group} field={{:member_counts, :count}} label="members">
             {group.member_count}
           </:col>
-          <:col :let={group} field={{:groups, :updated_at}} label="updated" class="w-2/12">
+          <:col :let={group} field={{:groups, :updated_at}} label="updated">
             <.relative_datetime datetime={group.updated_at} />
           </:col>
           <:empty>
@@ -370,7 +369,7 @@ defmodule Web.Groups do
     >
       <:title>
         <div class="flex items-center gap-3">
-          <.directory_icon directory={@group.directory} class="w-8 h-8 flex-shrink-0" />
+          <.directory_icon idp_id={@group.idp_id} class="w-8 h-8 flex-shrink-0" />
           <span>{@group.name}</span>
         </div>
       </:title>
@@ -423,38 +422,28 @@ defmodule Web.Groups do
                 </p>
               </div>
               <div>
-                <p class="text-xs font-medium text-neutral-500 uppercase">Directory Type</p>
-                <p class="text-sm text-neutral-900 capitalize">
-                  {get_directory_type(@group.directory)}
-                </p>
-              </div>
-              <div :if={!is_firezone_directory?(@group.directory)}>
-                <p class="text-xs font-medium text-neutral-500 uppercase">
-                  {get_directory_identifier_label(@group.directory)}
-                </p>
-                <p class="text-sm text-neutral-900 font-mono break-all">
-                  {get_directory_identifier(@group.directory)}
+                <p class="text-xs font-medium text-neutral-500 uppercase">Directory</p>
+                <p class="text-sm text-neutral-900">
+                  {@group.directory_name}
                 </p>
               </div>
               <div>
-                <p class="text-xs font-medium text-neutral-500 uppercase">
-                  {if is_firezone_directory?(@group.directory),
-                    do: "Last Updated",
-                    else: "Last Synced"}
-                </p>
+                <p class="text-xs font-medium text-neutral-500 uppercase">Updated</p>
                 <p class="text-sm text-neutral-900">
-                  <%= if is_firezone_directory?(@group.directory) do %>
-                    <.relative_datetime datetime={@group.updated_at} />
-                  <% else %>
-                    <.relative_datetime datetime={@group.last_synced_at} />
-                  <% end %>
+                  <.relative_datetime datetime={@group.updated_at} />
                 </p>
               </div>
-              <%= if not is_firezone_directory?(@group.directory) and get_idp_id(@group.directory) do %>
+              <div :if={@group.last_synced_at}>
+                <p class="text-xs font-medium text-neutral-500 uppercase">Last Synced</p>
+                <p class="text-sm text-neutral-900">
+                  <.relative_datetime datetime={@group.last_synced_at} />
+                </p>
+              </div>
+              <%= if @group.idp_id && get_idp_id(@group.idp_id) do %>
                 <div class="col-span-2">
                   <p class="text-xs font-medium text-neutral-500 uppercase">Identity Provider ID</p>
                   <p class="text-sm text-neutral-900 font-mono break-all">
-                    {get_idp_id(@group.directory)}
+                    {get_idp_id(@group.idp_id)}
                   </p>
                 </div>
               <% end %>
@@ -494,11 +483,12 @@ defmodule Web.Groups do
       :if={@live_action == :edit}
       id="edit-group-modal"
       on_close="close_modal"
+      on_back={JS.patch(~p"/#{@account}/groups/#{@group}?#{query_params(@uri)}")}
       confirm_disabled={edit_form_unchanged?(@form, @members_to_add, @members_to_remove)}
     >
       <:title>
         <div class="flex items-center gap-3">
-          <.directory_icon directory={@group.directory} class="w-8 h-8 flex-shrink-0" />
+          <.directory_icon idp_id={@group.idp_id} class="w-8 h-8 flex-shrink-0" />
           <span>Edit {@group.name}</span>
         </div>
       </:title>
@@ -563,18 +553,43 @@ defmodule Web.Groups do
           </div>
         </.form>
       </:body>
+      <:back_button>Back</:back_button>
       <:confirm_button form="group-form" type="submit">Save</:confirm_button>
     </.modal>
     """
   end
 
   defp actor_type_badge(assigns) do
+    assigns = assign_new(assigns, :class, fn -> "w-7 h-7" end)
+
     ~H"""
-    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800 flex-shrink-0 uppercase">
-      {Phoenix.Naming.humanize(@actor.type)}
-    </span>
+    <div class={[
+      "inline-flex items-center justify-center rounded-full flex-shrink-0",
+      @class,
+      actor_type_icon_bg_color(@actor.type)
+    ]}>
+      <%= case @actor.type do %>
+        <% :service_account -> %>
+          <.icon name="hero-server" class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"} />
+        <% :account_admin_user -> %>
+          <.icon
+            name="hero-shield-check"
+            class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"}
+          />
+        <% _ -> %>
+          <.icon name="hero-user" class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"} />
+      <% end %>
+    </div>
     """
   end
+
+  defp actor_type_icon_bg_color(:service_account), do: "bg-blue-100"
+  defp actor_type_icon_bg_color(:account_admin_user), do: "bg-purple-100"
+  defp actor_type_icon_bg_color(_), do: "bg-neutral-100"
+
+  defp actor_type_icon_text_color(:service_account), do: "text-blue-800"
+  defp actor_type_icon_text_color(:account_admin_user), do: "text-purple-800"
+  defp actor_type_icon_text_color(_), do: "text-neutral-800"
 
   defp member_search_input(assigns) do
     assigns = assign_new(assigns, :placeholder, fn -> "Search to add members..." end)
@@ -651,18 +666,18 @@ defmodule Web.Groups do
     ~H"""
     <ul :if={@members != []} class="divide-y divide-neutral-200 h-64 overflow-y-auto">
       <li :for={actor <- @members} class={@item_class}>
-        <div class={if @has_actions, do: "flex-1 min-w-0 space-y-0.5", else: "space-y-0.5"}>
-          <div class="flex items-start gap-2">
-            <%= if Map.get(assigns, :badge) do %>
-              {render_slot(@badge, actor)}
-            <% end %>
+        <div class={["flex items-center gap-3", @has_actions && "flex-1 min-w-0"]}>
+          <%= if Map.get(assigns, :badge) do %>
+            {render_slot(@badge, actor)}
+          <% end %>
+          <div class={@has_actions && "flex-1 min-w-0"}>
             <p class={["text-sm font-medium text-neutral-900", @has_actions && "truncate"]}>
               {actor.name}
             </p>
+            <p :if={actor.email} class={["text-xs text-neutral-500", @has_actions && "truncate"]}>
+              {actor.email}
+            </p>
           </div>
-          <p :if={actor.email} class={["text-xs text-neutral-500", @has_actions && "truncate"]}>
-            {actor.email}
-          </p>
         </div>
         <%= if @has_actions do %>
           {render_slot(@actions, actor)}
@@ -678,34 +693,11 @@ defmodule Web.Groups do
     """
   end
 
-  defp is_firezone_directory?("firezone"), do: true
+  defp is_firezone_directory?(nil), do: true
   defp is_firezone_directory?(_), do: false
 
   defp is_editable_group?(%{name: "Everyone"}), do: false
-  defp is_editable_group?(group), do: is_firezone_directory?(group.directory)
-
-  defp get_directory_type(nil), do: "unknown"
-  defp get_directory_type("firezone"), do: "firezone"
-
-  defp get_directory_type(directory) do
-    case String.split(directory, ":", parts: 2) do
-      [provider, _idp_id] -> provider
-      _ -> directory
-    end
-  end
-
-  defp get_directory_identifier_label(directory) do
-    case get_directory_type(directory) do
-      "entra" -> "Tenant ID"
-      "google" -> "Customer Domain"
-      "okta" -> "Okta Domain"
-      _ -> "Identifier"
-    end
-  end
-
-  defp get_directory_identifier(directory) do
-    get_idp_id(directory)
-  end
+  defp is_editable_group?(group), do: is_firezone_directory?(group.idp_id)
 
   defp get_idp_id(nil), do: nil
 
@@ -736,7 +728,7 @@ defmodule Web.Groups do
 
   defp handle_success(socket, message) do
     socket
-    |> put_flash(:info, message)
+    |> put_flash(:success, message)
     |> reload_live_table!("groups")
     |> close_modal()
   end
@@ -882,9 +874,60 @@ defmodule Web.Groups do
 
     # Inlined from Domain.Actors.list_groups
     def list_groups(subject, opts \\ []) do
-      from(g in Actors.Group, as: :groups)
+      # Extract order_by to handle member_count sorting specially
+      {order_by, opts} = Keyword.pop(opts, :order_by, [])
+
+      member_counts_query =
+        from(m in Actors.Membership,
+          group_by: m.group_id,
+          select: %{
+            group_id: m.group_id,
+            count: count(m.actor_id)
+          }
+        )
+
+      query =
+        from(g in Actors.Group, as: :groups)
+        |> join(:left, [groups: g], mc in subquery(member_counts_query),
+          on: mc.group_id == g.id,
+          as: :member_counts
+        )
+        |> where(
+          [groups: g],
+          not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+        )
+        |> select_merge([groups: g, member_counts: mc], %{
+          count: coalesce(mc.count, 0),
+          member_count: coalesce(mc.count, 0)
+        })
+
+      # Apply manual ordering with NULLS LAST for count field
+      {query, final_order_by} =
+        case order_by do
+          [{:member_counts, :desc, :count}] ->
+            # Apply ordering manually with NULLS LAST, don't pass to Safe.list
+            updated_query =
+              query
+              |> order_by([member_counts: mc], fragment("? DESC NULLS LAST", mc.count))
+
+            {updated_query, []}
+
+          [{:member_counts, :asc, :count}] ->
+            # Apply ordering manually with NULLS FIRST, don't pass to Safe.list
+            updated_query =
+              query
+              |> order_by([member_counts: mc], fragment("? ASC NULLS FIRST", mc.count))
+
+            {updated_query, []}
+
+          _ ->
+            # Let Safe.list handle the ordering normally
+            {query, order_by}
+        end
+
+      query
       |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      |> Safe.list(__MODULE__, Keyword.put(opts, :order_by, final_order_by))
     end
 
     def cursor_fields do
@@ -930,34 +973,40 @@ defmodule Web.Groups do
       query =
         from(g in Actors.Group, as: :groups)
         |> where([groups: groups], groups.id == ^id)
+        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+          on: gd.id == d.id and d.type == :google,
+          as: :google_directory
+        )
+        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+          on: ed.id == d.id and d.type == :entra,
+          as: :entra_directory
+        )
+        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+          on: od.id == d.id and d.type == :okta,
+          as: :okta_directory
+        )
         |> join(:left, [groups: g], m in assoc(g, :memberships), as: :memberships)
         |> join(:left, [memberships: m], a in assoc(m, :actor), as: :actors)
+        |> select_merge(
+          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+          %{
+            directory_name:
+              fragment(
+                "COALESCE(?, ?, ?, 'Firezone')",
+                gd.name,
+                ed.name,
+                od.name
+              )
+          }
+        )
         |> preload([memberships: m, actors: a], memberships: m, actors: a)
 
       query |> Safe.scoped(subject) |> Safe.one!()
     end
 
     def preloads do
-      [
-        member_count: &preload_member_count/1
-      ]
-    end
-
-    def preload_member_count(groups) do
-      group_ids = Enum.map(groups, & &1.id)
-
-      counts =
-        from(m in Actors.Membership,
-          where: m.group_id in ^group_ids,
-          group_by: m.group_id,
-          select: {m.group_id, count(m.actor_id)}
-        )
-        |> Domain.Repo.all()
-        |> Map.new()
-
-      Enum.map(groups, fn group ->
-        %{group | member_count: Map.get(counts, group.id, 0)}
-      end)
+      []
     end
   end
 end

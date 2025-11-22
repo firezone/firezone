@@ -1,8 +1,16 @@
 defmodule Domain.Google.Directory do
   use Domain, :schema
 
+  @primary_key false
   schema "google_directories" do
+    # Allows setting the id manually for easier associations
+    field :id, Ecto.UUID, primary_key: true
     belongs_to :account, Domain.Accounts.Account
+
+    belongs_to :directory, Domain.Directory,
+      foreign_key: :id,
+      define_field: false
+
     field :domain, :string
 
     field :name, :string, default: "Google"
@@ -13,10 +21,9 @@ defmodule Domain.Google.Directory do
     field :synced_at, :utc_datetime_usec
     field :error, :string
     field :error_emailed_at, :utc_datetime_usec
+    field :is_verified, :boolean, default: false, read_after_writes: true
 
-    field :is_verified, :boolean, virtual: true, default: false
-
-    subject_trail(~w[actor identity system]a)
+    subject_trail(~w[actor system]a)
     timestamps()
   end
 
@@ -30,6 +37,7 @@ defmodule Domain.Google.Directory do
     |> validate_number(:error_count, greater_than_or_equal_to: 0)
     |> validate_length(:error, max: 2_000)
     |> assoc_constraint(:account)
+    |> assoc_constraint(:directory)
     |> unique_constraint(:domain,
       name: :google_directories_account_id_domain_index,
       message: "A Google directory for this domain already exists."
@@ -38,6 +46,5 @@ defmodule Domain.Google.Directory do
       name: :google_directories_account_id_name_index,
       message: "A Google directory with this name already exists."
     )
-    |> foreign_key_constraint(:account_id, name: :google_directories_account_id_fkey)
   end
 end

@@ -5,7 +5,6 @@ defmodule Domain.Actors.Group do
     field :name, :string
     field :type, Ecto.Enum, values: ~w[managed static]a, default: :static
 
-    field :directory, :string
     field :idp_id, :string
 
     field :last_synced_at, :utc_datetime_usec
@@ -14,22 +13,28 @@ defmodule Domain.Actors.Group do
 
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
     field :member_count, :integer, virtual: true
+    field :count, :integer, virtual: true
+    field :directory_name, :string, virtual: true
 
     has_many :actors, through: [:memberships, :actor]
 
     belongs_to :account, Domain.Accounts.Account
+    belongs_to :directory, Domain.Directory
 
-    subject_trail(~w[actor identity provider system]a)
+    subject_trail(~w[actor system]a)
     timestamps()
   end
 
   def changeset(changeset) do
     changeset
     |> validate_required(~w[name type]a)
-    |> trim_change(~w[name directory idp_id]a)
+    |> trim_change(~w[name idp_id]a)
     |> validate_length(:name, min: 1, max: 255)
-    |> unique_constraint(:name, name: :actor_groups_account_id_name_index)
-    |> unique_constraint(:base, name: :actor_groups_account_idp_fields_index)
-    |> check_constraint(:base, name: :directory_must_be_firezone_or_idp_id_present)
+    |> assoc_constraint(:account)
+    |> assoc_constraint(:directory)
+    |> unique_constraint(:name,
+      name: :actor_groups_account_id_name_index,
+      message: "A group with this name already exists."
+    )
   end
 end

@@ -9,7 +9,7 @@ defmodule Domain.Tokens.Token.Changeset do
 
   @create_attrs ~w[
     name
-    account_id identity_id actor_id relay_group_id gateway_group_id auth_provider_id
+    account_id actor_id relay_group_id gateway_group_id auth_provider_id
     secret_fragment secret_nonce
     remaining_attempts
     created_by_user_agent created_by_remote_ip
@@ -64,7 +64,6 @@ defmodule Domain.Tokens.Token.Changeset do
     |> validate_required(~w[secret_salt secret_hash]a)
     |> validate_required_assocs()
     |> assoc_constraint(:account)
-    |> assoc_constraint(:identity)
     |> assoc_constraint(:actor)
   end
 
@@ -73,7 +72,6 @@ defmodule Domain.Tokens.Token.Changeset do
       {_data_or_changes, :browser} ->
         changeset
         |> validate_required(:actor_id)
-        |> validate_required(:identity_id)
         |> validate_required(:expires_at)
 
       {_data_or_changes, :client} ->
@@ -96,7 +94,6 @@ defmodule Domain.Tokens.Token.Changeset do
       {_data_or_changes, :email} ->
         changeset
         |> validate_required(:actor_id)
-        |> validate_required(:identity_id)
         |> validate_required(:expires_at)
         |> validate_required(:remaining_attempts)
 

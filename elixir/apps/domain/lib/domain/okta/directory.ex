@@ -4,6 +4,10 @@ defmodule Domain.Okta.Directory do
   schema "okta_directories" do
     belongs_to :account, Domain.Accounts.Account
 
+    belongs_to :directory, Domain.Directory,
+      foreign_key: :id,
+      define_field: false
+
     field :client_id, :string
     field :private_key_jwk, :map
     field :kid, :string
@@ -16,10 +20,9 @@ defmodule Domain.Okta.Directory do
     field :synced_at, :utc_datetime_usec
     field :error, :string
     field :error_emailed_at, :utc_datetime_usec
+    field :is_verified, :boolean, default: false, read_after_writes: true
 
-    field :is_verified, :boolean, virtual: true, default: false
-
-    subject_trail(~w[actor identity system]a)
+    subject_trail(~w[actor system]a)
     timestamps()
   end
 
@@ -39,6 +42,7 @@ defmodule Domain.Okta.Directory do
     |> validate_number(:error_count, greater_than_or_equal_to: 0)
     |> validate_length(:error, max: 2_000)
     |> assoc_constraint(:account)
+    |> assoc_constraint(:directory)
     |> unique_constraint(:okta_domain,
       name: :okta_directories_account_id_okta_domain_index,
       message: "An Okta directory for this Okta domain already exists."
@@ -47,6 +51,5 @@ defmodule Domain.Okta.Directory do
       name: :okta_directories_account_id_name_index,
       message: "An Okta directory with this name already exists."
     )
-    |> foreign_key_constraint(:account_id, name: :okta_directories_account_id_fkey)
   end
 end

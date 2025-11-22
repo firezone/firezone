@@ -9,6 +9,8 @@ defmodule Domain.Clients.Client do
           psk_base: binary(),
           ipv4: Domain.Types.IP.t(),
           ipv6: Domain.Types.IP.t(),
+
+          # TODO: Remove fields redundant with Subject.Context
           last_seen_user_agent: String.t(),
           last_seen_remote_ip: Domain.Types.IP.t(),
           last_seen_remote_ip_location_region: String.t(),
@@ -20,7 +22,6 @@ defmodule Domain.Clients.Client do
           online?: boolean(),
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t(),
-          identity_id: Ecto.UUID.t(),
           device_serial: String.t() | nil,
           device_uuid: String.t() | nil,
           identifier_for_vendor: String.t() | nil,
@@ -56,7 +57,6 @@ defmodule Domain.Clients.Client do
 
     belongs_to :account, Domain.Accounts.Account
     belongs_to :actor, Domain.Actors.Actor
-    belongs_to :identity, Domain.Auth.Identity
 
     # Hardware Identifiers
     field :device_serial, :string
@@ -66,7 +66,7 @@ defmodule Domain.Clients.Client do
 
     # Verification
     field :verified_at, :utc_datetime_usec
-    field :verified_by, Ecto.Enum, values: [:system, :actor, :identity]
+    field :verified_by, Ecto.Enum, values: [:system, :actor]
     field :verified_by_subject, :map
 
     timestamps()

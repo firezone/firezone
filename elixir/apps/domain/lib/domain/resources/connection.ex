@@ -16,6 +16,6 @@ defmodule Domain.Resources.Connection do
 
     belongs_to :account, Domain.Accounts.Account
 
-    subject_trail(~w[actor identity system]a)
+    subject_trail(~w[actor system]a)
   end
 end

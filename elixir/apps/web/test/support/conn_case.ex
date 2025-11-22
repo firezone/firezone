@@ -50,7 +50,7 @@ defmodule Web.ConnCase do
     Phoenix.Flash.get(conn.assigns.flash, key)
   end
 
-  def authorize_conn(conn, %Domain.Auth.Identity{} = identity) do
+  def authorize_conn(conn, %Domain.ExternalIdentity{} = identity) do
     expires_in = DateTime.utc_now() |> DateTime.add(300, :second)
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0, "FooBar 1.1")
 

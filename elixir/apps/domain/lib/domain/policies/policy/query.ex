@@ -46,10 +46,37 @@ defmodule Domain.Policies.Policy.Query do
     |> where([actor_group: actor_group], actor_group.provider_id == ^provider_id)
   end
 
+  # Includes "Everyone" managed group logic
   def by_actor_id(queryable, actor_id) do
     queryable
-    |> with_joined_memberships()
-    |> where([memberships: memberships], memberships.actor_id == ^actor_id)
+    |> with_joined_actor_group()
+    |> with_named_binding(:actor, fn queryable, binding ->
+      join(
+        queryable,
+        :inner,
+        [],
+        actor in Domain.Actors.Actor,
+        on: actor.id == ^actor_id,
+        as: ^binding
+      )
+    end)
+    |> with_named_binding(:memberships, fn queryable, binding ->
+      join(
+        queryable,
+        :left,
+        [actor_group: actor_group],
+        memberships in assoc(actor_group, ^binding),
+        as: ^binding
+      )
+    end)
+    |> where(
+      [memberships: memberships, actor_group: actor_group, actor: actor],
+      memberships.actor_id == ^actor_id or
+        (actor_group.type == :managed and
+           is_nil(actor_group.idp_id) and
+           actor_group.name == "Everyone" and
+           actor_group.account_id == actor.account_id)
+    )
   end
 
   def by_gateway_group_id(queryable, gateway_group_id) do

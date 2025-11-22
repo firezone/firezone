@@ -55,10 +55,6 @@ defmodule Domain.Tokens.Token.Query do
     where(queryable, [tokens: tokens], tokens.actor_id == ^actor_id)
   end
 
-  def by_identity_id(queryable, identity_id) do
-    where(queryable, [tokens: tokens], tokens.identity_id == ^identity_id)
-  end
-
   def by_provider_id(queryable, provider_id) do
     queryable
     |> with_joined_identity()

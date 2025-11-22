@@ -12,11 +12,11 @@ defmodule Domain.Userpass.AuthProvider do
   @primary_key false
   schema "userpass_auth_providers" do
     # Allows setting the ID manually in changesets
-    field :id, Ecto.UUID, primary_key: true
+    field :id, :binary_id, primary_key: true
 
     belongs_to :account, Domain.Accounts.Account
 
-    belongs_to :auth_provider, Domain.AuthProviders.AuthProvider,
+    belongs_to :auth_provider, Domain.AuthProvider,
       foreign_key: :id,
       define_field: false
 
@@ -50,19 +50,11 @@ defmodule Domain.Userpass.AuthProvider do
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:account_id,
-      name: :userpass_auth_providers_pkey,
-      message: "A Username & Password authentication provider for this account already exists."
-    )
-    |> unique_constraint(:name,
-      name: :userpass_auth_providers_account_id_name_index,
-      message: "A Username & Password authentication provider with this name already exists."
+      name: :userpass_auth_providers_account_id_index,
+      message: "A Userpass authentication provider for this account already exists."
     )
     |> check_constraint(:context, name: :context_must_be_valid)
     |> check_constraint(:issuer, name: :issuer_must_be_firezone)
-    |> foreign_key_constraint(:account_id, name: :userpass_auth_providers_account_id_fkey)
-    |> foreign_key_constraint(:auth_provider_id,
-      name: :userpass_auth_providers_auth_provider_id_fkey
-    )
   end
 
   def default_portal_session_lifetime_secs, do: @default_portal_session_lifetime_secs

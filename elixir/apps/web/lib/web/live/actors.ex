@@ -1,10 +1,11 @@
 defmodule Web.Actors do
   use Web, :live_view
 
-  alias __MODULE__.Query
+  alias __MODULE__.DB
 
   alias Domain.{
     Actors,
+    ExternalIdentity,
     Tokens,
     Safe
   }
@@ -16,7 +17,7 @@ defmodule Web.Actors do
       socket
       |> assign(page_title: "Actors")
       |> assign_live_table("actors",
-        query_module: Query,
+        query_module: DB,
         sortable_fields: [
           {:actors, :name},
           {:actors, :email},
@@ -70,11 +71,11 @@ defmodule Web.Actors do
 
   # Show Actor Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    actor = Query.get_actor!(id, socket.assigns.subject)
+    actor = DB.get_actor!(id, socket.assigns.subject)
 
     # Load identities and tokens
-    identities = Query.get_identities_for_actor(actor.id, socket.assigns.subject)
-    tokens = Query.get_tokens_for_actor(actor.id, socket.assigns.subject)
+    identities = DB.get_identities_for_actor(actor.id, socket.assigns.subject)
+    tokens = DB.get_tokens_for_actor(actor.id, socket.assigns.subject)
 
     socket = handle_live_tables_params(socket, params, uri)
 
@@ -93,7 +94,7 @@ defmodule Web.Actors do
 
   # Add Token Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :add_token}} = socket) do
-    actor = Query.get_actor!(id, socket.assigns.subject)
+    actor = DB.get_actor!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
 
     # Default token expiration to 1 year from now
@@ -111,7 +112,7 @@ defmodule Web.Actors do
 
   # Edit Actor Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    actor = Query.get_actor!(id, socket.assigns.subject)
+    actor = DB.get_actor!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
     changeset = actor_changeset(actor, %{})
     is_last_admin = actor.type == :account_admin_user and not other_enabled_admins_exist?(actor)
@@ -126,7 +127,11 @@ defmodule Web.Actors do
 
   # Default handler
   def handle_params(params, uri, socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket =
+      socket
+      |> handle_live_tables_params(params, uri)
+      |> assign(created_token: nil)
+
     {:noreply, socket}
   end
 
@@ -176,7 +181,7 @@ defmodule Web.Actors do
 
         socket =
           socket
-          |> put_flash(:info, "User created successfully")
+          |> put_flash(:success, "User created successfully")
           |> reload_live_table!("actors")
           |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
@@ -207,7 +212,7 @@ defmodule Web.Actors do
 
         socket =
           socket
-          |> put_flash(:info, "Service account created successfully")
+          |> put_flash(:success, "Service account created successfully")
           |> reload_live_table!("actors")
           |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
@@ -218,7 +223,7 @@ defmodule Web.Actors do
 
         socket =
           socket
-          |> put_flash(:info, "Service account created successfully")
+          |> put_flash(:success, "Service account created successfully")
           |> reload_live_table!("actors")
           |> assign(created_token: encoded_token)
           |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
@@ -267,7 +272,7 @@ defmodule Web.Actors do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    actor = Query.get_actor!(id, socket.assigns.subject)
+    actor = DB.get_actor!(id, socket.assigns.subject)
 
     # Prevent users from deleting themselves
     if actor.id == socket.assigns.subject.actor.id do
@@ -287,7 +292,7 @@ defmodule Web.Actors do
   end
 
   def handle_event("disable", %{"id" => id}, socket) do
-    actor = Query.get_actor!(id, socket.assigns.subject)
+    actor = DB.get_actor!(id, socket.assigns.subject)
 
     # Prevent users from disabling themselves
     if actor.id == socket.assigns.subject.actor.id do
@@ -317,7 +322,7 @@ defmodule Web.Actors do
   end
 
   def handle_event("enable", %{"id" => id}, socket) do
-    actor = Query.get_actor!(id, socket.assigns.subject)
+    actor = DB.get_actor!(id, socket.assigns.subject)
 
     case enable_actor(actor, socket.assigns.subject) do
       {:ok, updated_actor} ->
@@ -374,7 +379,7 @@ defmodule Web.Actors do
         case Tokens.delete_token(token, socket.assigns.subject) do
           {:ok, _} ->
             # Reload tokens for the actor
-            tokens = Query.get_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+            tokens = DB.get_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
             socket = assign(socket, tokens: tokens)
             {:noreply, put_flash(socket, :info, "Token deleted successfully")}
 
@@ -388,16 +393,16 @@ defmodule Web.Actors do
   end
 
   def handle_event("delete_identity", %{"id" => identity_id}, socket) do
-    case Query.get_identity_by_id(identity_id, socket.assigns.subject) do
+    case DB.get_identity_by_id(identity_id, socket.assigns.subject) do
       nil ->
         {:noreply, put_flash(socket, :error, "Identity not found")}
 
       identity ->
-        case Query.delete_identity(identity, socket.assigns.subject) do
+        case DB.delete_identity(identity, socket.assigns.subject) do
           {:ok, _} ->
             # Reload identities for the actor
             identities =
-              Query.get_identities_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+              DB.get_identities_for_actor(socket.assigns.actor.id, socket.assigns.subject)
 
             socket = assign(socket, identities: identities)
             {:noreply, put_flash(socket, :info, "Identity deleted successfully")}
@@ -453,7 +458,7 @@ defmodule Web.Actors do
   end
 
   def handle_actors_update!(socket, list_opts) do
-    with {:ok, actors, metadata} <- Query.list_actors(socket.assigns.subject, list_opts) do
+    with {:ok, actors, metadata} <- DB.list_actors(socket.assigns.subject, list_opts) do
       {:ok, assign(socket, actors: actors, actors_metadata: metadata)}
     end
   end
@@ -614,12 +619,6 @@ defmodule Web.Actors do
                 {"Admin", :account_admin_user}
               ]}
               required
-            />
-
-            <.input
-              field={@form[:allow_email_sign_in]}
-              label="Allow user to sign in via Email"
-              type="checkbox"
             />
           </div>
         </.form>
@@ -791,7 +790,7 @@ defmodule Web.Actors do
                       <.icon name="hero-envelope" class="w-4 h-4" /> Send Welcome Email
                     </button>
                     <button
-                      :if={not Actors.actor_disabled?(@actor) and @actor.id != @subject.actor.id}
+                      :if={is_nil(@actor.disabled_at) and @actor.id != @subject.actor.id}
                       type="button"
                       phx-click="disable"
                       phx-value-id={@actor.id}
@@ -800,7 +799,7 @@ defmodule Web.Actors do
                       <.icon name="hero-lock-closed" class="w-4 h-4" /> Disable
                     </button>
                     <button
-                      :if={Actors.actor_disabled?(@actor)}
+                      :if={not is_nil(@actor.disabled_at)}
                       type="button"
                       phx-click="enable"
                       phx-value-id={@actor.id}
@@ -840,7 +839,7 @@ defmodule Web.Actors do
                     )
                   ]}
                 >
-                  <.icon name="hero-identification" class="w-5 h-5" /> Identities
+                  <.icon name="hero-identification" class="w-5 h-5" /> External Identities
                 </button>
                 <button
                   type="button"
@@ -864,35 +863,111 @@ defmodule Web.Actors do
           <%= if @actor.type != :service_account and @active_tab == "identities" do %>
             <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
               <%= if @identities == [] do %>
-                <div class="text-center text-neutral-500 p-8">No identities to display.</div>
+                <div class="text-center text-neutral-500 p-8">No external identities to display.</div>
               <% else %>
                 <div class="divide-y divide-neutral-200">
-                  <div
-                    :for={identity <- @identities}
-                    class="p-4 hover:bg-neutral-50 flex items-center justify-between"
-                  >
-                    <div class="flex-1">
-                      <div class="flex items-center gap-2">
-                        <.directory_icon directory={identity.directory} class="w-5 h-5" />
-                        <div>
-                          <div class="font-medium text-sm text-neutral-900" title="Issuer">
+                  <div :for={identity <- @identities} class="p-4 hover:bg-neutral-50">
+                    <div class="flex items-start justify-between gap-4">
+                      <div class="flex-1 space-y-3">
+                        <div class="flex items-center gap-2">
+                          <.directory_icon idp_id={identity.idp_id} class="w-5 h-5" />
+                          <div class="font-medium text-sm text-neutral-900">
                             {identity.issuer}
                           </div>
-                          <div class="text-xs text-neutral-500" title="IDP ID">
-                            {identity.idp_id}
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                          <div :if={identity.directory_id}>
+                            <span class="text-xs uppercase text-neutral-500">Directory</span>
+                            <div class="text-neutral-900">{identity.directory_name}</div>
                           </div>
+
+                          <div>
+                            <span class="text-xs uppercase text-neutral-500">
+                              Identity Provider ID
+                            </span>
+                            <div class="text-neutral-900">{extract_idp_id(identity.idp_id)}</div>
+                          </div>
+
+                          <%= if identity.email do %>
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">Email</span>
+                              <div class="text-neutral-900">{identity.email}</div>
+                            </div>
+                          <% end %>
+
+                          <%= if identity.name do %>
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">Name</span>
+                              <div class="text-neutral-900">{identity.name}</div>
+                            </div>
+                          <% end %>
+
+                          <%= if identity.given_name do %>
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">Given Name</span>
+                              <div class="text-neutral-900">{identity.given_name}</div>
+                            </div>
+                          <% end %>
+
+                          <%= if identity.family_name do %>
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">Family Name</span>
+                              <div class="text-neutral-900">{identity.family_name}</div>
+                            </div>
+                          <% end %>
+
+                          <%= if identity.middle_name do %>
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">Middle Name</span>
+                              <div class="text-neutral-900">{identity.middle_name}</div>
+                            </div>
+                          <% end %>
+
+                          <%= if identity.nickname do %>
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">Nickname</span>
+                              <div class="text-neutral-900">{identity.nickname}</div>
+                            </div>
+                          <% end %>
+
+                          <%= if identity.preferred_username do %>
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">
+                                Preferred Username
+                              </span>
+                              <div class="text-neutral-900">{identity.preferred_username}</div>
+                            </div>
+                          <% end %>
+
+                          <%= if identity.profile do %>
+                            <div class="col-span-2">
+                              <span class="text-xs uppercase text-neutral-500">Profile</span>
+                              <div class="text-neutral-900 break-all">{identity.profile}</div>
+                            </div>
+                          <% end %>
+
+                          <%= if identity.last_synced_at do %>
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">Last Synced</span>
+                              <div class="text-neutral-900">
+                                <.relative_datetime datetime={identity.last_synced_at} />
+                              </div>
+                            </div>
+                          <% end %>
                         </div>
                       </div>
+
+                      <button
+                        type="button"
+                        phx-click="delete_identity"
+                        phx-value-id={identity.id}
+                        class="text-red-600 hover:text-red-800 flex-shrink-0"
+                        data-confirm="Are you sure you want to delete this identity?"
+                      >
+                        <.icon name="hero-trash" class="w-5 h-5" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      phx-click="delete_identity"
-                      phx-value-id={identity.id}
-                      class="text-red-600 hover:text-red-800"
-                      data-confirm="Are you sure you want to delete this identity?"
-                    >
-                      <.icon name="hero-trash" class="w-5 h-5" />
-                    </button>
                   </div>
                 </div>
               <% end %>
@@ -904,7 +979,7 @@ defmodule Web.Actors do
               <%= if @actor.type == :service_account do %>
                 <div class="flex justify-between items-center mb-4">
                   <h3 class="text-sm font-semibold text-neutral-900">Tokens</h3>
-                  <.add_button navigate={
+                  <.add_button patch={
                     ~p"/#{@account}/actors/#{@actor.id}/add_token?#{query_params(@uri)}"
                   }>
                     Add Token
@@ -921,47 +996,63 @@ defmodule Web.Actors do
                   </div>
                 <% else %>
                   <div class="divide-y divide-neutral-200">
-                    <div
-                      :for={token <- @tokens}
-                      class="p-4 hover:bg-neutral-50 flex items-center justify-between"
-                    >
-                      <div class="flex-1 grid gap-4 grid-cols-3">
-                        <div>
-                          <div class="text-xs text-neutral-500">Last used</div>
-                          <div class="text-sm text-neutral-900">
-                            <.relative_datetime datetime={token.last_seen_at} />
+                    <div :for={token <- @tokens} class="p-4 hover:bg-neutral-50">
+                      <div class="flex items-start justify-between gap-4">
+                        <div class="flex-1 space-y-3">
+                          <%= if token.auth_provider_name do %>
+                            <div class="flex items-center gap-2">
+                              <.provider_icon type={token.auth_provider_type} class="w-5 h-5" />
+                              <div class="font-medium text-sm text-neutral-900">
+                                {token.auth_provider_name}
+                              </div>
+                            </div>
+                          <% end %>
+
+                          <div class="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">
+                                {if @actor.type == :service_account,
+                                  do: "Last used",
+                                  else: "Last seen"}
+                              </span>
+                              <div class="text-neutral-900">
+                                <.relative_datetime datetime={token.last_seen_at} />
+                              </div>
+                            </div>
+
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">Location</span>
+                              <div class="text-neutral-900 flex items-center gap-2">
+                                <%= if token_location(token) do %>
+                                  <.icon
+                                    name={token_user_agent_icon(token.last_seen_user_agent)}
+                                    class="w-4 h-4 flex-shrink-0"
+                                  />
+                                  <span>{token_location(token)}</span>
+                                <% else %>
+                                  -
+                                <% end %>
+                              </div>
+                            </div>
+
+                            <div>
+                              <span class="text-xs uppercase text-neutral-500">Expires</span>
+                              <div class="text-neutral-900">
+                                <.relative_datetime datetime={token.expires_at} />
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div>
-                          <div class="text-xs text-neutral-500">Location</div>
-                          <div class="text-sm text-neutral-900 flex items-center gap-2">
-                            <%= if token_location(token) do %>
-                              <.icon
-                                name={token_user_agent_icon(token.last_seen_user_agent)}
-                                class="w-4 h-4 flex-shrink-0"
-                              />
-                              <span>{token_location(token)}</span>
-                            <% else %>
-                              -
-                            <% end %>
-                          </div>
-                        </div>
-                        <div>
-                          <div class="text-xs text-neutral-500">Expires</div>
-                          <div class="text-sm text-neutral-900">
-                            <.relative_datetime datetime={token.expires_at} />
-                          </div>
-                        </div>
+                        <button
+                          type="button"
+                          phx-click="delete_token"
+                          phx-value-id={token.id}
+                          class="text-red-600 hover:text-red-800"
+                          data-confirm="Are you sure you want to delete this token?"
+                        >
+                          <.icon name="hero-trash" class="w-5 h-5" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        phx-click="delete_token"
-                        phx-value-id={token.id}
-                        class="ml-4 text-red-600 hover:text-red-800"
-                        data-confirm="Are you sure you want to delete this token?"
-                      >
-                        <.icon name="hero-trash" class="w-5 h-5" />
-                      </button>
                     </div>
                   </div>
                 <% end %>
@@ -977,11 +1068,11 @@ defmodule Web.Actors do
       :if={@live_action == :edit}
       id="edit-actor-modal"
       on_close="close_modal"
+      on_back={JS.patch(~p"/#{@account}/actors/#{@actor}?#{query_params(@uri)}")}
       confirm_disabled={not @form.source.valid?}
     >
       <:title>Edit {@actor.name}</:title>
       <:body>
-        <.flash id="actor-success-inline" kind={:success_inline} style="inline" flash={@flash} />
         <.flash :if={@actor.created_by_directory_id} kind={:warning} style="wide">
           This actor was created by directory sync. Manual changes may be overwritten during the next sync.
         </.flash>
@@ -1029,6 +1120,7 @@ defmodule Web.Actors do
           </div>
         </.form>
       </:body>
+      <:back_button>Back</:back_button>
       <:confirm_button form="actor-form" type="submit">Save</:confirm_button>
     </.modal>
 
@@ -1100,7 +1192,7 @@ defmodule Web.Actors do
       </div>
       <span
         :if={@actor.identity_count > 0}
-        class="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center w-4 h-4 text-[10px] font-medium text-white bg-neutral-800 rounded-full border-2 border-neutral-50"
+        class="absolute top-0 left-0 inline-flex items-center justify-center w-3.5 h-3.5 text-[6px] font-semibold text-white bg-neutral-800 rounded-full"
       >
         {@actor.identity_count}
       </span>
@@ -1136,10 +1228,14 @@ defmodule Web.Actors do
   defp actor_display_type(%{type: :account_user}), do: "User"
   defp actor_display_type(_), do: "User"
 
+  defp extract_idp_id(idp_id) do
+    String.split(idp_id, ":", parts: 2) |> List.last()
+  end
+
   # Utility helpers
   defp handle_success(socket, message) do
     socket
-    |> put_flash(:info, message)
+    |> put_flash(:success, message)
     |> reload_live_table!("actors")
     |> close_modal()
   end
@@ -1331,7 +1427,7 @@ defmodule Web.Actors do
   defp other_enabled_admins_exist?(actor) do
     case actor do
       %{type: :account_admin_user, account_id: account_id, id: id} ->
-        Query.other_enabled_admins_exist?(account_id, id)
+        DB.other_enabled_admins_exist?(account_id, id)
 
       _ ->
         false
@@ -1345,7 +1441,7 @@ defmodule Web.Actors do
     |> Safe.update()
   end
 
-  defmodule Query do
+  defmodule DB do
     import Ecto.Query
     alias Domain.{Actors, Safe, Auth, Tokens, Repo}
 
@@ -1363,13 +1459,13 @@ defmodule Web.Actors do
       |> select_merge([actors: actors], %{
         email:
           fragment(
-            "COALESCE(?, (SELECT email FROM auth_identities WHERE actor_id = ? AND email IS NOT NULL ORDER BY inserted_at DESC LIMIT 1))",
+            "COALESCE(?, (SELECT email FROM external_identities WHERE actor_id = ? AND email IS NOT NULL ORDER BY inserted_at DESC LIMIT 1))",
             actors.email,
             actors.id
           ),
         identity_count:
           fragment(
-            "(SELECT COUNT(*) FROM auth_identities WHERE actor_id = ?)",
+            "(SELECT COUNT(*) FROM external_identities WHERE actor_id = ?)",
             actors.id
           )
       })
@@ -1390,8 +1486,33 @@ defmodule Web.Actors do
     end
 
     def get_identities_for_actor(actor_id, subject) do
-      from(i in Auth.Identity, as: :identities)
+      from(i in ExternalIdentity, as: :identities)
       |> where([identities: i], i.actor_id == ^actor_id)
+      |> join(:left, [identities: i], d in assoc(i, :directory), as: :directory)
+      |> join(:left, [directory: d], gd in Domain.Google.Directory,
+        on: gd.id == d.id and d.type == :google,
+        as: :google_directory
+      )
+      |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+        on: ed.id == d.id and d.type == :entra,
+        as: :entra_directory
+      )
+      |> join(:left, [directory: d], od in Domain.Okta.Directory,
+        on: od.id == d.id and d.type == :okta,
+        as: :okta_directory
+      )
+      |> select_merge(
+        [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+        %{
+          directory_name:
+            fragment(
+              "COALESCE(?, ?, ?, 'Firezone')",
+              gd.name,
+              ed.name,
+              od.name
+            )
+        }
+      )
       |> order_by([identities: i], desc: i.inserted_at)
       |> Safe.scoped(subject)
       |> Safe.all()
@@ -1410,13 +1531,80 @@ defmodule Web.Actors do
     def get_tokens_for_actor(actor_id, subject) do
       from(t in Tokens.Token, as: :tokens)
       |> where([tokens: t], t.actor_id == ^actor_id)
+      |> join(:left, [tokens: t], ap in assoc(t, :auth_provider), as: :auth_provider)
+      |> join(:left, [auth_provider: ap], gap in Domain.Google.AuthProvider,
+        on: gap.id == ap.id,
+        as: :google_auth_provider
+      )
+      |> join(:left, [auth_provider: ap], eap in Domain.Entra.AuthProvider,
+        on: eap.id == ap.id,
+        as: :entra_auth_provider
+      )
+      |> join(:left, [auth_provider: ap], oap in Domain.Okta.AuthProvider,
+        on: oap.id == ap.id,
+        as: :okta_auth_provider
+      )
+      |> join(:left, [auth_provider: ap], oidcap in Domain.OIDC.AuthProvider,
+        on: oidcap.id == ap.id,
+        as: :oidc_auth_provider
+      )
+      |> join(:left, [auth_provider: ap], uap in Domain.Userpass.AuthProvider,
+        on: uap.id == ap.id,
+        as: :userpass_auth_provider
+      )
+      |> join(:left, [auth_provider: ap], eoap in Domain.EmailOTP.AuthProvider,
+        on: eoap.id == ap.id,
+        as: :email_otp_auth_provider
+      )
+      |> select_merge(
+        [
+          google_auth_provider: gap,
+          entra_auth_provider: eap,
+          okta_auth_provider: oap,
+          oidc_auth_provider: oidcap,
+          userpass_auth_provider: uap,
+          email_otp_auth_provider: eoap
+        ],
+        %{
+          auth_provider_name:
+            fragment(
+              "COALESCE(?, ?, ?, ?, ?, ?)",
+              gap.name,
+              eap.name,
+              oap.name,
+              oidcap.name,
+              uap.name,
+              eoap.name
+            ),
+          auth_provider_type:
+            fragment(
+              """
+              CASE
+                WHEN ? IS NOT NULL THEN 'google'
+                WHEN ? IS NOT NULL THEN 'entra'
+                WHEN ? IS NOT NULL THEN 'okta'
+                WHEN ? IS NOT NULL THEN 'oidc'
+                WHEN ? IS NOT NULL THEN 'userpass'
+                WHEN ? IS NOT NULL THEN 'email_otp'
+                ELSE NULL
+              END
+              """,
+              gap.id,
+              eap.id,
+              oap.id,
+              oidcap.id,
+              uap.id,
+              eoap.id
+            )
+        }
+      )
       |> order_by([tokens: t], desc: t.inserted_at)
       |> Safe.scoped(subject)
       |> Safe.all()
     end
 
     def get_identity_by_id(identity_id, subject) do
-      from(i in Auth.Identity, as: :identities)
+      from(i in ExternalIdentity, as: :identities)
       |> where([identities: i], i.id == ^identity_id)
       |> Safe.scoped(subject)
       |> Safe.one()

@@ -135,12 +135,19 @@ defmodule API.ActorGroupController do
 
     def list_groups(subject, opts \\ []) do
       from(g in Actors.Group, as: :groups)
+      |> where(
+        [groups: g],
+        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+      )
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_group(subject, id) do
-      from(g in Actors.Group, where: g.id == ^id)
+      from(g in Actors.Group,
+        where: g.id == ^id,
+        where: not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+      )
       |> Safe.scoped(subject)
       |> Safe.one!()
     end

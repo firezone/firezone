@@ -775,7 +775,7 @@ defmodule Web.CoreComponents do
   @doc """
   Renders a user avatar from either its identity picture or its gravatar.
   """
-  attr :identity, :any, required: true
+  attr :actor, :any, required: true
   attr :size, :integer, required: true
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
@@ -785,12 +785,12 @@ defmodule Web.CoreComponents do
 
   def avatar(assigns) do
     ~H"""
-    <img src={build_gravatar_url(@identity, @size)} {@rest} />
+    <img src={build_gravatar_url(@actor, @size)} {@rest} />
     """
   end
 
-  defp build_gravatar_url(identity, size) do
-    email = identity.actor.email
+  defp build_gravatar_url(actor, size) do
+    email = actor.email
     hash = Base.encode16(:crypto.hash(:md5, email), case: :lower)
     "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=retro"
   end
@@ -1189,19 +1189,7 @@ defmodule Web.CoreComponents do
     """
   end
 
-  def created_by(%{schema: %{created_by: :provider}} = assigns) do
-    ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by Directory Sync
-    """
-  end
-
   def created_by(%{schema: %{created_by: :actor}} = assigns) do
-    ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by {@schema.created_by_subject["name"]}
-    """
-  end
-
-  def created_by(%{schema: %{created_by: :identity}} = assigns) do
     ~H"""
     <.relative_datetime datetime={@schema.inserted_at} /> by {@schema.created_by_subject["name"]}
     """
@@ -1279,7 +1267,7 @@ defmodule Web.CoreComponents do
           border-neutral-100
           border
         ]}>
-        <.directory_icon directory={@group.directory} class="h-3.5 w-3.5" />
+        <.directory_icon idp_id={@group.idp_id} class="h-3.5 w-3.5" />
       </div>
       <.link
         title={"View Group \"#{@group.name}\""}
@@ -1489,24 +1477,30 @@ defmodule Web.CoreComponents do
   Renders a logo appropriate for the given directory.
   """
 
-  attr :directory, :map, default: %{}
+  attr :idp_id, :string, default: nil
   attr :class, :string, default: "inline w-4 h-4 mr-1"
 
-  def directory_icon(%{directory: "google:" <> _rest} = assigns) do
+  def directory_icon(%{idp_id: "google:" <> _rest} = assigns) do
     ~H"""
     <.provider_icon type="google" class={@class} />
     """
   end
 
-  def directory_icon(%{directory: "entra:" <> _rest} = assigns) do
+  def directory_icon(%{idp_id: "entra:" <> _rest} = assigns) do
     ~H"""
     <.provider_icon type="entra" class={@class} />
     """
   end
 
-  def directory_icon(%{directory: "okta:" <> _rest} = assigns) do
+  def directory_icon(%{idp_id: "okta:" <> _rest} = assigns) do
     ~H"""
     <.provider_icon type="okta" class={@class} />
+    """
+  end
+
+  def directory_icon(%{idp_id: "oidc:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="oidc" class={@class} />
     """
   end
 
@@ -1526,13 +1520,17 @@ defmodule Web.CoreComponents do
 
   def provider_icon(%{type: "firezone"} = assigns) do
     ~H"""
-    <img src={~p"/images/logo.svg"} alt="Firezone Logo" {@rest} />
+    <div class="inline-flex items-center justify-center w-8 h-8 p-1 border border-neutral-200 rounded-full">
+      <img src={~p"/images/logo.svg"} alt="Firezone Logo" class="w-full h-full" />
+    </div>
     """
   end
 
   def provider_icon(%{type: "okta"} = assigns) do
     ~H"""
-    <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
+    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
+      <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-full h-full" />
+    </div>
     """
   end
 
@@ -1544,19 +1542,25 @@ defmodule Web.CoreComponents do
 
   def provider_icon(%{type: "oidc"} = assigns) do
     ~H"""
-    <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" {@rest} />
+    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
+      <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" class="w-full h-full" />
+    </div>
     """
   end
 
   def provider_icon(%{type: "google"} = assigns) do
     ~H"""
-    <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" {@rest} />
+    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
+      <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" class="w-full h-full" />
+    </div>
     """
   end
 
   def provider_icon(%{type: "entra"} = assigns) do
     ~H"""
-    <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" {@rest} />
+    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
+      <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-full h-full" />
+    </div>
     """
   end
 

@@ -15,10 +15,8 @@ defmodule Domain.Tokens.Token do
     field :name, :string
 
     # track which auth provider was used to authenticate
-    belongs_to :auth_provider, Domain.AuthProviders.AuthProvider
+    belongs_to :auth_provider, Domain.AuthProvider
 
-    # set for browser and client tokens, empty for service account tokens
-    belongs_to :identity, Domain.Auth.Identity
     # set for browser and client tokens
     belongs_to :actor, Domain.Actors.Actor
     # set for relay tokens
@@ -51,7 +49,10 @@ defmodule Domain.Tokens.Token do
 
     field :expires_at, :utc_datetime_usec
 
-    subject_trail(~w[actor identity system]a)
+    field :auth_provider_name, :string, virtual: true
+    field :auth_provider_type, :string, virtual: true
+
+    subject_trail(~w[actor system]a)
     timestamps()
   end
 end

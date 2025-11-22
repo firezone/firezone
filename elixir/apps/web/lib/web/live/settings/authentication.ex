@@ -2,7 +2,7 @@ defmodule Web.Settings.Authentication do
   use Web, :live_view
 
   alias Domain.{
-    AuthProviders,
+    AuthProvider,
     EmailOTP,
     Userpass,
     OIDC,
@@ -50,7 +50,7 @@ defmodule Web.Settings.Authentication do
   # New Auth Provider
   def handle_params(%{"type" => type}, _url, %{assigns: %{live_action: :new}} = socket)
       when type in @new_types do
-    schema = AuthProviders.AuthProvider.module!(type)
+    schema = AuthProvider.module!(type)
     struct = struct(schema)
     attrs = %{id: Ecto.UUID.generate()}
     changeset = changeset(struct, attrs, socket)
@@ -65,7 +65,7 @@ defmodule Web.Settings.Authentication do
         %{assigns: %{live_action: :edit}} = socket
       )
       when type in @edit_types do
-    schema = AuthProviders.AuthProvider.module!(type)
+    schema = AuthProvider.module!(type)
     provider = get_provider!(schema, id, socket.assigns.subject)
     changeset = changeset(provider, %{is_verified: true}, socket)
 
@@ -989,7 +989,7 @@ defmodule Web.Settings.Authentication do
 
       changeset
       |> put_change(:id, id)
-      |> put_assoc(:auth_provider, %AuthProviders.AuthProvider{id: id, account_id: account_id})
+      |> put_assoc(:auth_provider, %AuthProvider{id: id, account_id: account_id})
     else
       changeset
     end
@@ -1039,7 +1039,7 @@ defmodule Web.Settings.Authentication do
     import Ecto.Query
 
     parent =
-      from(p in AuthProviders.AuthProvider, where: p.id == ^provider.id)
+      from(p in AuthProvider, where: p.id == ^provider.id)
       |> Safe.scoped(subject)
       |> Safe.one!()
 
@@ -1113,7 +1113,7 @@ defmodule Web.Settings.Authentication do
   end
 
   defp provider_type(module) do
-    AuthProviders.AuthProvider.type!(module.__struct__)
+    AuthProvider.type!(module.__struct__)
   end
 
   defp assign_default_provider(provider_id, socket) do

@@ -19,8 +19,12 @@ defmodule Domain.Repo.Migrations.CreateGoogleAuthProviders do
       timestamps()
     end
 
-    create(index(:google_auth_providers, [:account_id, :issuer], unique: true))
-    create(index(:google_auth_providers, [:account_id, :name], unique: true))
+    create(
+      index(:google_auth_providers, [:account_id],
+        name: :google_auth_providers_account_id_index,
+        unique: true
+      )
+    )
 
     execute(
       """

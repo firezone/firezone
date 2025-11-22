@@ -1,4 +1,4 @@
-defmodule Domain.AuthProviders.AuthProvider do
+defmodule Domain.AuthProvider do
   use Domain, :schema
 
   @provider_types %{

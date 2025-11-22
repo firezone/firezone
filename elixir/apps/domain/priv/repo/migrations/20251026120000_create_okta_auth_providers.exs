@@ -23,8 +23,19 @@ defmodule Domain.Repo.Migrations.CreateOktaAuthProviders do
       timestamps()
     end
 
-    create(index(:okta_auth_providers, [:account_id, :client_id], unique: true))
-    create(index(:okta_auth_providers, [:account_id, :name], unique: true))
+    create(
+      index(:okta_auth_providers, [:account_id, :client_id],
+        name: :okta_auth_providers_account_id_client_id_index,
+        unique: true
+      )
+    )
+
+    create(
+      index(:okta_auth_providers, [:account_id, :name],
+        name: :okta_auth_providers_account_id_name_index,
+        unique: true
+      )
+    )
 
     execute(
       """

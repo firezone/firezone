@@ -1,6 +1,7 @@
 defmodule Web.Settings.ApiClients.Show do
   use Web, :live_view
-  alias Domain.{Actors, Tokens}
+  alias Domain.{Actors, Tokens, Safe}
+  import Ecto.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
     if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
@@ -60,7 +61,7 @@ defmodule Web.Settings.ApiClients.Show do
           Edit API Client
         </.edit_button>
       </:action>
-      <:action :if={Actors.actor_active?(@actor)}>
+      <:action :if={is_nil(@actor.disabled_at)}>
         <.button_with_confirmation
           id="disable"
           style="warning"
@@ -80,7 +81,7 @@ defmodule Web.Settings.ApiClients.Show do
           Disable API Client
         </.button_with_confirmation>
       </:action>
-      <:action :if={Actors.actor_disabled?(@actor)}>
+      <:action :if={@actor.disabled_at}>
         <.button_with_confirmation
           id="enable"
           style="warning"
@@ -121,7 +122,7 @@ defmodule Web.Settings.ApiClients.Show do
     <.section>
       <:title>API Tokens</:title>
 
-      <:action :if={Actors.actor_active?(@actor) and @actor.type == :api_client}>
+      <:action :if={is_nil(@actor.disabled_at) and @actor.type == :api_client}>
         <.add_button
           :if={@actor.type == :api_client}
           navigate={~p"/#{@account}/settings/api_clients/#{@actor}/new_token"}
@@ -130,7 +131,7 @@ defmodule Web.Settings.ApiClients.Show do
         </.add_button>
       </:action>
 
-      <:action :if={Actors.actor_active?(@actor)}>
+      <:action :if={is_nil(@actor.disabled_at)}>
         <.button_with_confirmation
           id="revoke_all_tokens"
           style="danger"
@@ -235,7 +236,7 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_event("disable", _params, socket) do
-    with {:ok, actor} <- Actors.disable_actor(socket.assigns.actor, socket.assigns.subject) do
+    with {:ok, actor} <- disable_actor(socket.assigns.actor, socket.assigns.subject) do
       socket =
         socket
         |> put_flash(:info, "API Client was disabled.")
@@ -247,7 +248,7 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_event("enable", _params, socket) do
-    {:ok, actor} = Actors.enable_actor(socket.assigns.actor, socket.assigns.subject)
+    {:ok, actor} = enable_actor(socket.assigns.actor, socket.assigns.subject)
 
     socket =
       socket
@@ -283,8 +284,30 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    with {:ok, _actor} <- Actors.delete_actor(socket.assigns.actor, socket.assigns.subject) do
+    with {:ok, _actor} <- delete_actor(socket.assigns.actor, socket.assigns.subject) do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients")}
     end
+  end
+
+  defp delete_actor(actor, subject) do
+    actor
+    |> Safe.scoped(subject)
+    |> Safe.delete()
+  end
+
+  defp disable_actor(actor, subject) do
+    actor
+    |> change()
+    |> put_change(:disabled_at, DateTime.utc_now())
+    |> Safe.scoped(subject)
+    |> Safe.update()
+  end
+
+  defp enable_actor(actor, subject) do
+    actor
+    |> change()
+    |> put_change(:disabled_at, nil)
+    |> Safe.scoped(subject)
+    |> Safe.update()
   end
 end

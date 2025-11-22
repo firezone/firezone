@@ -29,7 +29,6 @@ defmodule Domain.Clients.Client.Changeset do
         last_seen_remote_ip_location_lon: fragment("EXCLUDED.last_seen_remote_ip_location_lon"),
         last_seen_version: fragment("EXCLUDED.last_seen_version"),
         last_seen_at: fragment("EXCLUDED.last_seen_at"),
-        identity_id: fragment("EXCLUDED.identity_id"),
         device_serial: fragment("EXCLUDED.device_serial"),
         device_uuid: fragment("EXCLUDED.device_uuid"),
         identifier_for_vendor: fragment("EXCLUDED.identifier_for_vendor"),
@@ -102,11 +101,11 @@ defmodule Domain.Clients.Client.Changeset do
     )
   end
 
-  def upsert(actor_or_identity, %Auth.Subject{} = subject, attrs) do
+  def upsert(actor, %Auth.Subject{} = subject, attrs) do
     %Clients.Client{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, &generate_name/0)
-    |> put_assocs(actor_or_identity)
+    |> put_assocs(actor)
     |> put_change(:last_seen_user_agent, subject.context.user_agent)
     |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: subject.context.remote_ip})
     |> put_change(:last_seen_remote_ip_location_region, subject.context.remote_ip_location_region)
@@ -121,13 +120,6 @@ defmodule Domain.Clients.Client.Changeset do
     |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
     |> put_change(:last_seen_at, DateTime.utc_now())
     |> put_client_version()
-  end
-
-  defp put_assocs(changeset, %Auth.Identity{} = identity) do
-    changeset
-    |> put_change(:identity_id, identity.id)
-    |> put_change(:actor_id, identity.actor_id)
-    |> put_change(:account_id, identity.account_id)
   end
 
   defp put_assocs(changeset, %Actors.Actor{} = actor) do

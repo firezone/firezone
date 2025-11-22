@@ -125,10 +125,14 @@ defmodule Domain.Policies do
     end
   end
 
-  def filter_by_conforming_policies_for_client(policies, %Clients.Client{} = client) do
+  def filter_by_conforming_policies_for_client(
+        policies,
+        %Clients.Client{} = client,
+        auth_provider_id
+      ) do
     Enum.filter(policies, fn policy ->
       policy.conditions
-      |> Condition.Evaluator.ensure_conforms(client)
+      |> Condition.Evaluator.ensure_conforms(client, auth_provider_id)
       |> case do
         {:ok, _expires_at} -> true
         {:error, _violated_properties} -> false
@@ -138,10 +142,10 @@ defmodule Domain.Policies do
 
   @infinity ~U[9999-12-31 23:59:59.999999Z]
 
-  def longest_conforming_policy_for_client(policies, client, token_expires_at) do
+  def longest_conforming_policy_for_client(policies, client, auth_provider_id, expires_at) do
     policies
     |> Enum.reduce(%{failed: [], succeeded: []}, fn policy, acc ->
-      case ensure_client_conforms_policy_conditions(client, policy) do
+      case ensure_client_conforms_policy_conditions(policy, client, auth_provider_id) do
         {:ok, expires_at} ->
           %{acc | succeeded: [{expires_at, policy} | acc.succeeded]}
 
@@ -154,26 +158,27 @@ defmodule Domain.Policies do
         {:error, {:forbidden, violated_properties: Enum.uniq(failed)}}
 
       %{succeeded: succeeded} ->
-        {expires_at, policy} =
-          succeeded
-          |> Enum.max_by(fn {expires_at, _policy} -> expires_at || @infinity end)
+        {condition_expires_at, policy} =
+          succeeded |> Enum.max_by(fn {exp, _policy} -> exp || @infinity end)
 
-        {:ok, policy, min_expires_at(expires_at, token_expires_at)}
+        {:ok, policy, min_expires_at(condition_expires_at, expires_at)}
     end
   end
 
-  def ensure_client_conforms_policy_conditions(
-        %Clients.Client{} = client,
-        %__MODULE__.Policy{} = policy
-      ) do
-    ensure_client_conforms_policy_conditions(client, Cacheable.to_cache(policy))
+  defp ensure_client_conforms_policy_conditions(
+         %__MODULE__.Policy{} = policy,
+         %Clients.Client{} = client,
+         auth_provider_id
+       ) do
+    ensure_client_conforms_policy_conditions(client, Cacheable.to_cache(policy), auth_provider_id)
   end
 
-  def ensure_client_conforms_policy_conditions(
-        %Clients.Client{} = client,
-        %Cacheable.Policy{} = policy
-      ) do
-    case Condition.Evaluator.ensure_conforms(policy.conditions, client) do
+  defp ensure_client_conforms_policy_conditions(
+         %Cacheable.Policy{} = policy,
+         %Clients.Client{} = client,
+         auth_provider_id
+       ) do
+    case Condition.Evaluator.ensure_conforms(policy.conditions, client, auth_provider_id) do
       {:ok, expires_at} ->
         {:ok, expires_at}
 

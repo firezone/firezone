@@ -6,7 +6,7 @@ defmodule Web.SignIn.Email do
         %{
           "account_id_or_slug" => account_id_or_slug,
           "auth_provider_id" => provider_id,
-          "signed_idp_id" => signed_idp_id
+          "signed_email" => signed_email
         } = params,
         _session,
         socket
@@ -15,11 +15,11 @@ defmodule Web.SignIn.Email do
     secret_key_base = socket.endpoint.config(:secret_key_base)
 
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         {:ok, idp_id} <-
+         {:ok, email} <-
            Plug.Crypto.verify(
              secret_key_base,
-             "signed_idp_id",
-             signed_idp_id,
+             "signed_email",
+             signed_email,
              max_age: 3600
            ) do
       form = to_form(%{"secret" => nil})
@@ -30,7 +30,7 @@ defmodule Web.SignIn.Email do
       socket =
         assign(socket,
           form: form,
-          idp_id: idp_id,
+          email: email,
           account_id_or_slug: account_id_or_slug,
           account: account,
           provider_id: provider_id,
@@ -73,7 +73,7 @@ defmodule Web.SignIn.Email do
 
             <div>
               <p>
-                If <strong>{@idp_id}</strong> is registered, a sign-in token has been sent.
+                If <strong>{@email}</strong> is registered, a sign-in token has been sent.
               </p>
               <form
                 id="verify-sign-in-token"
@@ -119,7 +119,7 @@ defmodule Web.SignIn.Email do
               </form>
               <.resend
                 resend_action={@resend_action}
-                idp_id={@idp_id}
+                email={@email}
                 redirect_params={@redirect_params}
               /> or
               <.link navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"} class={link_style()}>
@@ -163,7 +163,7 @@ defmodule Web.SignIn.Email do
       action={@resend_action}
       method="post"
     >
-      <.input type="hidden" name="email[idp_id]" value={@idp_id} />
+      <.input type="hidden" name="email[email]" value={@email} />
       <.input :for={{key, value} <- @redirect_params} type="hidden" name={key} value={value} />
       <span>
         Did not receive it?

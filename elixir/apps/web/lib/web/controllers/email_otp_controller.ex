@@ -6,9 +6,9 @@ defmodule Web.EmailOTPController do
 
   alias Domain.{
     Accounts,
-    Auth,
+    Actors,
     EmailOTP,
-    Repo,
+    Safe,
     Tokens
   }
 
@@ -38,19 +38,19 @@ defmodule Web.EmailOTPController do
           "email" => email_params
         } = params
       ) do
-    idp_id = email_params["idp_id"]
+    email = email_params["email"]
 
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
          %EmailOTP.AuthProvider{} <- fetch_provider(account, auth_provider_id) do
-      conn = maybe_send_email_otp(conn, account, idp_id, params, auth_provider_id)
+      conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id)
 
-      signed_idp_id =
-        Plug.Crypto.sign(conn.secret_key_base, "signed_idp_id", idp_id)
+      signed_email =
+        Plug.Crypto.sign(conn.secret_key_base, "signed_email", email)
 
       redirect_params =
         params
         |> sanitize()
-        |> Map.put("signed_idp_id", signed_idp_id)
+        |> Map.put("signed_email", signed_email)
 
       conn
       |> maybe_put_resent_flash(params)
@@ -79,20 +79,19 @@ defmodule Web.EmailOTPController do
     cookie_key = state_cookie_key(auth_provider_id)
     conn = fetch_cookies(conn, signed: [cookie_key])
     context_type = context_type(params)
-    issuer = "firezone"
 
     with {:ok, cookie_binary} <- Map.fetch(conn.cookies, cookie_key),
-         {fragment, idp_id, _stored_params} <- :erlang.binary_to_term(cookie_binary),
+         {fragment, email, _stored_params} <- :erlang.binary_to_term(cookie_binary),
          conn = delete_resp_cookie(conn, cookie_key),
          {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
          %EmailOTP.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
-         %Auth.Identity{} = identity <- fetch_identity(account, issuer, idp_id),
-         :ok <- check_admin(identity, context_type),
+         %Actors.Actor{} = actor <- fetch_actor(account, email),
+         :ok <- check_admin(actor, context_type),
          secret = String.downcase(nonce) <> fragment,
-         {:ok, identity, _expires_at} <- verify_secret(identity, secret, conn),
-         {:ok, token} <- create_token(conn, identity, provider, params) do
-      :ok = Domain.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, identity.id})
-      signed_in(conn, context_type, account, identity, token, params)
+         {:ok, actor, _expires_at} <- verify_secret(actor, secret, conn),
+         {:ok, token} <- create_token(conn, actor, provider, params) do
+      :ok = Domain.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, actor.id})
+      signed_in(conn, context_type, account, actor, token, params)
     else
       error ->
         handle_error(conn, error, params)
@@ -104,18 +103,17 @@ defmodule Web.EmailOTPController do
     handle_error(conn, :invalid_params, params)
   end
 
-  defp maybe_send_email_otp(conn, account, idp_id, params, auth_provider_id) do
+  defp maybe_send_email_otp(conn, account, email, params, auth_provider_id) do
     context_type = context_type(params)
     context = auth_context(conn, context_type)
-    issuer = "firezone"
 
     {fragment, error} =
       Web.Auth.execute_with_constant_time(
         fn ->
-          with %Auth.Identity{} = identity <- fetch_identity(account, issuer, idp_id),
-               {:ok, identity, fragment, nonce} <- request_sign_in_token(identity, context),
+          with %Actors.Actor{} = actor <- fetch_actor(account, email),
+               {:ok, actor, fragment, nonce} <- request_sign_in_token(actor, context),
                {:ok, fragment} <-
-                 send_email_otp(conn, identity, fragment, nonce, auth_provider_id, params) do
+                 send_email_otp(conn, actor, fragment, nonce, auth_provider_id, params) do
             {fragment, nil}
           else
             {:error, :rate_limited} ->
@@ -156,7 +154,7 @@ defmodule Web.EmailOTPController do
         @constant_execution_time
       )
 
-    conn = put_auth_state(conn, auth_provider_id, {fragment, idp_id, sanitize(params)})
+    conn = put_auth_state(conn, auth_provider_id, {fragment, email, sanitize(params)})
 
     case error do
       :rate_limited ->
@@ -178,24 +176,23 @@ defmodule Web.EmailOTPController do
     from(p in EmailOTP.AuthProvider,
       where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
     )
-    |> Repo.one()
+    |> Safe.unscoped()
+    |> Safe.one()
   end
 
-  defp fetch_identity(account, issuer, idp_id) do
+  defp fetch_actor(account, email) do
     import Ecto.Query
 
-    account_id = account.id
-
-    # Fetch identity by idp_id, issuer, and account_id, ensuring the associated actor is not disabled
-    from(i in Auth.Identity,
-      where: i.idp_id == ^idp_id and i.issuer == ^issuer and i.account_id == ^account_id
+    # Fetch actor by email and account_id, ensuring the actor is not disabled
+    from(a in Actors.Actor,
+      where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at),
+      preload: [:account]
     )
-    |> join(:inner, [i], a in assoc(i, :actor))
-    |> where([_i, a], is_nil(a.disabled_at))
-    |> Repo.one()
+    |> Safe.unscoped()
+    |> Safe.one()
   end
 
-  defp request_sign_in_token(identity, context) do
+  defp request_sign_in_token(actor, context) do
     # Token expiration: 30 minutes
     sign_in_token_expiration_seconds = 30 * 60
     # Max attempts: 3
@@ -204,17 +201,16 @@ defmodule Web.EmailOTPController do
     nonce = String.downcase(Domain.Crypto.random_token(5, encoder: :user_friendly))
     expires_at = DateTime.utc_now() |> DateTime.add(sign_in_token_expiration_seconds, :second)
 
-    # Delete all existing email tokens for this identity
-    {:ok, _count} = Tokens.delete_all_tokens_by_type_and_assoc(:email, identity)
+    # Delete all existing email tokens for this actor
+    {:ok, _count} = delete_all_email_tokens_for_actor(actor)
 
     {:ok, token} =
       Tokens.create_token(%{
         type: :email,
         secret_fragment: Domain.Crypto.random_token(27),
         secret_nonce: nonce,
-        account_id: identity.account_id,
-        actor_id: identity.actor_id,
-        identity_id: identity.id,
+        account_id: actor.account_id,
+        actor_id: actor.id,
         remaining_attempts: sign_in_token_max_attempts,
         expires_at: expires_at,
         created_by_user_agent: context.user_agent,
@@ -223,12 +219,25 @@ defmodule Web.EmailOTPController do
 
     fragment = Tokens.encode_fragment!(token)
 
-    {:ok, identity, fragment, nonce}
+    {:ok, actor, fragment, nonce}
   end
 
-  defp send_email_otp(conn, identity, fragment, nonce, auth_provider_id, params) do
+  defp delete_all_email_tokens_for_actor(actor) do
+    import Ecto.Query
+
+    query =
+      from(t in Domain.Tokens.Token,
+        where: t.type == :email and t.account_id == ^actor.account_id and t.actor_id == ^actor.id
+      )
+
+    {num_deleted, _} = Safe.delete_all(Safe.unscoped(), query)
+
+    {:ok, num_deleted}
+  end
+
+  defp send_email_otp(conn, actor, fragment, nonce, auth_provider_id, params) do
     Domain.Mailer.AuthEmail.sign_in_link_email(
-      identity,
+      actor,
       DateTime.utc_now(),
       auth_provider_id,
       nonce,
@@ -237,7 +246,7 @@ defmodule Web.EmailOTPController do
       sanitize(params)
     )
     |> Domain.Mailer.deliver_with_rate_limit(
-      rate_limit_key: {:sign_in_link, identity.id},
+      rate_limit_key: {:sign_in_link, actor.id},
       rate_limit: 3,
       rate_limit_interval: :timer.minutes(5)
     )
@@ -247,31 +256,24 @@ defmodule Web.EmailOTPController do
     end
   end
 
-  defp verify_secret(identity, encoded_token, conn) do
+  defp verify_secret(actor, encoded_token, conn) do
     context = auth_context(conn, :browser)
 
     with {:ok, token} <- Tokens.use_token(encoded_token, %{context | type: :email}),
-         true <- token.identity_id == identity.id do
-      {:ok, _count} = Tokens.delete_all_tokens_by_type_and_assoc(:email, identity)
-      {:ok, identity, nil}
+         true <- token.actor_id == actor.id do
+      {:ok, _count} = delete_all_email_tokens_for_actor(actor)
+      {:ok, actor, nil}
     else
       {:error, :invalid_or_expired_token} -> {:error, :invalid_secret}
       false -> {:error, :invalid_secret}
     end
   end
 
-  defp check_admin(
-         %Auth.Identity{actor: %Domain.Actors.Actor{type: :account_admin_user}},
-         _context_type
-       ),
-       do: :ok
+  defp check_admin(%Actors.Actor{type: :account_admin_user}, _context_type), do: :ok
+  defp check_admin(%Actors.Actor{type: :account_user}, :client), do: :ok
+  defp check_admin(_actor, _context_type), do: {:error, :not_admin}
 
-  defp check_admin(%Auth.Identity{actor: %Domain.Actors.Actor{type: :account_user}}, :client),
-    do: :ok
-
-  defp check_admin(_identity, _context_type), do: {:error, :not_admin}
-
-  defp create_token(conn, identity, provider, params) do
+  defp create_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
     type = context_type(params)
@@ -295,9 +297,9 @@ defmodule Web.EmailOTPController do
       type: context.type,
       secret_nonce: params["nonce"],
       secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-      account_id: identity.account_id,
-      actor_id: identity.actor_id,
-      identity_id: identity.id,
+      account_id: actor.account_id,
+      actor_id: actor.id,
+      auth_provider_id: provider.id,
       expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second),
       created_by_user_agent: context.user_agent,
       created_by_remote_ip: context.remote_ip
@@ -310,7 +312,7 @@ defmodule Web.EmailOTPController do
 
   # Context: :browser
   # Store session cookie and redirect to portal or redirect_to parameter
-  defp signed_in(conn, :browser, account, _identity, token, params) do
+  defp signed_in(conn, :browser, account, _actor, token, params) do
     conn
     |> Web.Session.Cookie.put_account_cookie(account.id, token)
     |> Redirector.portal_signed_in(account, params)
@@ -318,11 +320,11 @@ defmodule Web.EmailOTPController do
 
   # Context: :client
   # Store a cookie and redirect to client handler which redirects to the final URL based on platform
-  defp signed_in(conn, :client, _account, identity, token, params) do
+  defp signed_in(conn, :client, _account, actor, token, params) do
     Redirector.client_signed_in(
       conn,
-      identity.actor.name,
-      identity.actor.email,
+      actor.name,
+      actor.email,
       token,
       params["state"]
     )
@@ -357,19 +359,26 @@ defmodule Web.EmailOTPController do
   end
 
   defp handle_error(conn, {:error, :invalid_secret}, params) do
-    conn = fetch_cookies(conn, signed: [@cookie_key])
+    cookie_key = state_cookie_key(params["auth_provider_id"])
+    conn = fetch_cookies(conn, signed: [cookie_key])
 
-    signed_idp_id =
+    {_fragment, email, _stored_params} =
+      case Map.get(conn.cookies, cookie_key) do
+        binary when is_binary(binary) -> :erlang.binary_to_term(binary)
+        _ -> {"", "", %{}}
+      end
+
+    signed_email =
       Plug.Crypto.sign(
         conn.secret_key_base,
-        "signed_idp_id",
-        Map.get(conn.cookies[@cookie_key] || %{}, "idp_id", "")
+        "signed_email",
+        email
       )
 
     redirect_params =
       params
       |> sanitize()
-      |> Map.put("signed_idp_id", signed_idp_id)
+      |> Map.put("signed_email", signed_email)
 
     auth_provider_id = params["auth_provider_id"]
     error = "The sign in token is invalid or expired."

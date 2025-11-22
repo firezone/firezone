@@ -680,7 +680,7 @@ defmodule Domain.ActorsTest do
         assert group.inserted_at
         assert group.updated_at
 
-        assert group.created_by == :provider
+        assert group.created_by == :system
         assert group.provider_id == provider.id
         assert group.created_by_subject == %{"email" => nil, "name" => "Provider"}
 
@@ -1773,7 +1773,7 @@ defmodule Domain.ActorsTest do
     end
 
     test "handles accounts with no actors", %{account: account} do
-      Repo.delete_all(Auth.Identity)
+      Repo.delete_all(ExternalIdentity)
       Repo.delete_all(Actors.Actor)
 
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
@@ -2874,7 +2874,7 @@ defmodule Domain.ActorsTest do
       identity = Fixtures.Auth.create_identity(account: account, actor: actor_to_delete)
 
       assert {:ok, _actor} = delete_actor(actor_to_delete, subject)
-      refute Repo.get(Domain.Auth.Identity, identity.id)
+      refute Repo.get(Domain.ExternalIdentity, identity.id)
     end
 
     test "deletes actor clients", %{
@@ -3056,11 +3056,11 @@ defmodule Domain.ActorsTest do
 
       assert delete_unsynced_actors(provider, now) == {:ok, %{deleted_actors: 1}}
 
-      assert Repo.get(Auth.Identity, other_account_identity.id)
-      assert Repo.get(Auth.Identity, identity1.id)
-      refute Repo.get(Auth.Identity, identity2.id)
+      assert Repo.get(ExternalIdentity, other_account_identity.id)
+      assert Repo.get(ExternalIdentity, identity1.id)
+      refute Repo.get(ExternalIdentity, identity2.id)
 
-      assert Repo.aggregate(Auth.Identity, :count) == 3
+      assert Repo.aggregate(ExternalIdentity, :count) == 3
     end
   end
 

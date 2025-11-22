@@ -190,31 +190,6 @@ defmodule Domain.Tokens do
     {:ok, num_deleted}
   end
 
-  def delete_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      {num_deleted, _} =
-        Token.Query.all()
-        |> Token.Query.by_actor_id(actor.id)
-        |> Authorizer.for_subject(subject)
-        |> Repo.delete_all()
-
-      {:ok, num_deleted}
-    end
-  end
-
-  def delete_tokens_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
-    with :ok <- Auth.Authorizer.ensure_has_access_to(identity, subject),
-         :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      {num_deleted, _} =
-        Token.Query.all()
-        |> Token.Query.by_identity_id(identity.id)
-        |> Authorizer.for_subject(subject)
-        |> Repo.delete_all()
-
-      {:ok, num_deleted}
-    end
-  end
-
   def delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       {num_deleted, _} =
@@ -237,26 +212,6 @@ defmodule Domain.Tokens do
 
       {:ok, num_deleted}
     end
-  end
-
-  def delete_tokens_for(%Auth.Identity{} = identity) do
-    {num_deleted, _} =
-      Token.Query.all()
-      |> Token.Query.by_identity_id(identity.id)
-      |> Repo.delete_all()
-
-    {:ok, num_deleted}
-  end
-
-  def delete_all_tokens_by_type_and_assoc(:email, %Auth.Identity{} = identity) do
-    {num_deleted, _} =
-      Token.Query.all()
-      |> Token.Query.by_type(:email)
-      |> Token.Query.by_account_id(identity.account_id)
-      |> Token.Query.by_identity_id(identity.id)
-      |> Repo.delete_all()
-
-    {:ok, num_deleted}
   end
 
   def delete_expired_tokens do

@@ -1,6 +1,6 @@
 defmodule API.IdentityControllerTest do
   use API.ConnCase, async: true
-  alias Domain.Auth.Identity
+  alias Domain.ExternalIdentity
 
   setup do
     account = Fixtures.Accounts.create_account()

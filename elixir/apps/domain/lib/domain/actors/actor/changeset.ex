@@ -31,14 +31,6 @@ defmodule Domain.Actors.Actor.Changeset do
     |> changeset()
   end
 
-  def create_with_identity(attrs) do
-    %Actors.Actor{memberships: []}
-    |> cast(attrs, ~w[email type account_id]a)
-    |> validate_required(~w[email type account_id]a)
-    |> cast_assoc(:identities, with: &Auth.Identity.Changeset.create/2)
-    |> changeset()
-  end
-
   def update(%Actor{} = actor, attrs, blacklisted_groups, %Auth.Subject{} = subject) do
     update(actor, blacklisted_groups, attrs)
     |> validate_granted_permissions(subject)

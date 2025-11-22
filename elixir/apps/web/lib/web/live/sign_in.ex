@@ -259,8 +259,8 @@ defmodule Web.SignIn do
   end
 
   def email_form(assigns) do
-    idp_id = Phoenix.Flash.get(assigns.flash, :email_idp_id)
-    form = to_form(%{"idp_id" => idp_id}, as: "email")
+    email = Phoenix.Flash.get(assigns.flash, :email)
+    form = to_form(%{"email" => email}, as: "email")
     assigns = Map.put(assigns, :email_form, form)
 
     ~H"""
@@ -276,7 +276,7 @@ defmodule Web.SignIn do
       <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
 
       <.input
-        field={@email_form[:idp_id]}
+        field={@email_form[:email]}
         type="email"
         label="Email"
         placeholder="Enter your email"

@@ -12,11 +12,11 @@ defmodule Domain.Google.AuthProvider do
   @primary_key false
   schema "google_auth_providers" do
     # Allows setting the ID manually in changesets
-    field :id, Ecto.UUID, primary_key: true
+    field :id, :binary_id, primary_key: true
 
     belongs_to :account, Domain.Accounts.Account
 
-    belongs_to :auth_provider, Domain.AuthProviders.AuthProvider,
+    belongs_to :auth_provider, Domain.AuthProvider,
       foreign_key: :id,
       define_field: false
 
@@ -36,7 +36,7 @@ defmodule Domain.Google.AuthProvider do
 
     field :name, :string, default: "Google"
 
-    subject_trail(~w[actor identity system]a)
+    subject_trail(~w[actor system]a)
     timestamps()
   end
 
@@ -56,18 +56,10 @@ defmodule Domain.Google.AuthProvider do
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:issuer,
-      name: :google_auth_providers_account_id_issuer_index,
+      name: :google_auth_providers_account_id_index,
       message: "A Google authentication provider for this account already exists."
     )
-    |> unique_constraint(:name,
-      name: :google_auth_providers_account_id_name_index,
-      message: "A Google authentication provider with this name already exists."
-    )
     |> check_constraint(:context, name: :context_must_be_valid)
-    |> foreign_key_constraint(:account_id, name: :google_auth_providers_account_id_fkey)
-    |> foreign_key_constraint(:auth_provider_id,
-      name: :google_auth_providers_auth_provider_id_fkey
-    )
   end
 
   def default_portal_session_lifetime_secs, do: @default_portal_session_lifetime_secs

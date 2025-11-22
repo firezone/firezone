@@ -48,7 +48,7 @@ defmodule Web.NavigationComponents do
           <.dropdown id="user-menu">
             <:button>
               <span class="sr-only">Open user menu</span>
-              <.avatar identity={@subject.identity} size={25} class="rounded-full" />
+              <.avatar actor={@subject.actor} size={25} class="rounded-full" />
             </:button>
             <:dropdown>
               <.subject_dropdown subject={@subject} />
@@ -69,7 +69,7 @@ defmodule Web.NavigationComponents do
         {@subject.actor.name}
       </span>
       <span class="block text-sm text-neutral-900 truncate">
-        {@subject.identity.actor.email}
+        {@subject.actor.email}
       </span>
     </div>
     <ul class="py-1 text-neutral-700" aria-labelledby="user-menu-dropdown">

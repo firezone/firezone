@@ -97,7 +97,11 @@ defmodule Domain.Cache.Client do
 
     policy =
       for({_id, %{resource_id: ^rid_bytes} = p} <- cache.policies, do: p)
-      |> Policies.longest_conforming_policy_for_client(client, subject.expires_at)
+      |> Policies.longest_conforming_policy_for_client(
+        client,
+        subject.auth_provider_id,
+        subject.expires_at
+      )
 
     with %Cache.Cacheable.Resource{} <- resource,
          {:ok, policy, expires_at} <- policy,
@@ -139,20 +143,25 @@ defmodule Domain.Cache.Client do
     If opts[:toggle] is set to true, we ensure that all added resources also have
   """
 
-  @spec recompute_connectable_resources(t() | nil, Clients.Client.t(), Keyword.t()) ::
+  @spec recompute_connectable_resources(
+          t() | nil,
+          Clients.Client.t(),
+          Auth.Subject.t(),
+          Keyword.t()
+        ) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def recompute_connectable_resources(nil, client) do
+  def recompute_connectable_resources(nil, client, subject) do
     hydrate(client)
-    |> recompute_connectable_resources(client)
+    |> recompute_connectable_resources(client, subject)
   end
 
-  def recompute_connectable_resources(cache, client, opts \\ []) do
+  def recompute_connectable_resources(cache, client, subject, opts \\ []) do
     {toggle, _opts} = Keyword.pop(opts, :toggle, false)
 
     connectable_resources =
       cache.policies
-      |> conforming_resource_ids(client)
+      |> conforming_resource_ids(client, subject.auth_provider_id)
       |> adapted_resources(cache.resources, client)
 
     added = connectable_resources -- cache.connectable_resources
@@ -196,10 +205,10 @@ defmodule Domain.Cache.Client do
     yield deleted IDs, so we send those back.
   """
 
-  @spec add_membership(t(), Clients.Client.t()) ::
+  @spec add_membership(t(), Clients.Client.t(), Auth.Subject.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def add_membership(cache, client) do
+  def add_membership(cache, client, subject) do
     # TODO: Optimization
     # For simplicity, we rehydrate the cache here. This could be made more efficient by calculating which
     # policies and resources we are missing, and selectively fetching, filtering, and updating the cache.
@@ -210,17 +219,17 @@ defmodule Domain.Cache.Client do
     # Use the previous connectable IDs so that the recomputation yields the difference
     cache = %{hydrate(client) | connectable_resources: previously_connectable}
 
-    recompute_connectable_resources(cache, client)
+    recompute_connectable_resources(cache, client, subject)
   end
 
   @doc """
     Removes all policies, resources, and memberships associated with the given group_id from the cache.
   """
 
-  @spec delete_membership(t(), Actors.Membership.t(), Clients.Client.t()) ::
+  @spec delete_membership(t(), Actors.Membership.t(), Clients.Client.t(), Auth.Subject.t()) ::
           {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def delete_membership(cache, membership, client) do
+  def delete_membership(cache, membership, client, subject) do
     gid_bytes = dump!(membership.group_id)
 
     updated_policies =
@@ -247,17 +256,22 @@ defmodule Domain.Cache.Client do
         memberships: updated_memberships
     }
 
-    recompute_connectable_resources(cache, client)
+    recompute_connectable_resources(cache, client, subject)
   end
 
   @doc """
     Updates any relevant resources in the cache with the new group name.
   """
 
-  @spec update_resources_with_group_name(t(), Gateways.Group.t(), Clients.Client.t()) ::
+  @spec update_resources_with_group_name(
+          t(),
+          Gateways.Group.t(),
+          Clients.Client.t(),
+          Auth.Subject.t()
+        ) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def update_resources_with_group_name(cache, group, client) do
+  def update_resources_with_group_name(cache, group, client, subject) do
     group = Domain.Cache.Cacheable.to_cache(group)
 
     # Get updated resources
@@ -277,7 +291,7 @@ defmodule Domain.Cache.Client do
 
     # For these updates we need to make sure the resource is toggled deleted then created.
     # See https://github.com/firezone/firezone/issues/9881
-    recompute_connectable_resources(cache, client, toggle: toggle)
+    recompute_connectable_resources(cache, client, subject, toggle: toggle)
   end
 
   @doc """
@@ -312,7 +326,7 @@ defmodule Domain.Cache.Client do
           %{cache | resources: Map.put(cache.resources, resource.id, resource)}
         end
 
-      recompute_connectable_resources(cache, client)
+      recompute_connectable_resources(cache, client, subject)
     else
       {:ok, [], [], cache}
     end
@@ -335,9 +349,9 @@ defmodule Domain.Cache.Client do
     Removes a policy from the cache. If we can't find another policy granting access to the resource,
     we return the deleted resource ID.
   """
-  @spec delete_policy(t(), Policies.Policy.t(), Clients.Client.t()) ::
+  @spec delete_policy(t(), Policies.Policy.t(), Clients.Client.t(), Auth.Subject.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
-  def delete_policy(cache, policy, client) do
+  def delete_policy(cache, policy, client, subject) do
     policy = Domain.Cache.Cacheable.to_cache(policy)
 
     if Map.has_key?(cache.policies, policy.id) do
@@ -358,7 +372,7 @@ defmodule Domain.Cache.Client do
 
       cache = %{cache | resources: resources}
 
-      recompute_connectable_resources(cache, client)
+      recompute_connectable_resources(cache, client, subject)
     else
       {:ok, [], [], cache}
     end
@@ -376,11 +390,11 @@ defmodule Domain.Cache.Client do
   @spec add_resource_connection(
           t(),
           Resources.Connection.t(),
-          Auth.Subject.t(),
-          Clients.Client.t()
+          Clients.Client.t(),
+          Auth.Subject.t()
         ) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
-  def add_resource_connection(cache, connection, subject, client) do
+  def add_resource_connection(cache, connection, client, subject) do
     rid_bytes = dump!(connection.resource_id)
 
     if Map.has_key?(cache.resources, rid_bytes) do
@@ -409,7 +423,7 @@ defmodule Domain.Cache.Client do
 
       # For these updates we need to make sure the resource is toggled deleted then created.
       # See https://github.com/firezone/firezone/issues/9881
-      recompute_connectable_resources(cache, client, toggle: true)
+      recompute_connectable_resources(cache, client, subject, toggle: true)
     else
       {:ok, [], [], cache}
     end
@@ -421,10 +435,15 @@ defmodule Domain.Cache.Client do
     return the updated resource.
   """
 
-  @spec delete_resource_connection(t(), Resources.Connection.t(), Clients.Client.t()) ::
+  @spec delete_resource_connection(
+          t(),
+          Resources.Connection.t(),
+          Clients.Client.t(),
+          Auth.Subject.t()
+        ) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def delete_resource_connection(cache, connection, client) do
+  def delete_resource_connection(cache, connection, client, subject) do
     rid_bytes = dump!(connection.resource_id)
 
     if Map.has_key?(cache.resources, rid_bytes) do
@@ -444,7 +463,7 @@ defmodule Domain.Cache.Client do
 
       # For these updates we need to make sure the resource is toggled deleted then created.
       # See https://github.com/firezone/firezone/issues/9881
-      recompute_connectable_resources(cache, client, toggle: true)
+      recompute_connectable_resources(cache, client, subject, toggle: true)
     else
       {:ok, [], [], cache}
     end
@@ -463,10 +482,10 @@ defmodule Domain.Cache.Client do
     we return only the updated cache.
   """
 
-  @spec update_resource(t(), Resources.Resource.t(), Clients.Client.t()) ::
+  @spec update_resource(t(), Resources.Resource.t(), Clients.Client.t(), Auth.Subject.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def update_resource(cache, resource, client) do
+  def update_resource(cache, resource, client, subject) do
     resource = Domain.Cache.Cacheable.to_cache(resource)
 
     if Map.has_key?(cache.resources, resource.id) do
@@ -480,7 +499,7 @@ defmodule Domain.Cache.Client do
       resources = %{cache.resources | resource.id => resource}
       cache = %{cache | resources: resources}
 
-      recompute_connectable_resources(cache, client)
+      recompute_connectable_resources(cache, client, subject)
     else
       {:ok, [], [], cache}
     end
@@ -500,7 +519,6 @@ defmodule Domain.Cache.Client do
 
           policy = Cache.Cacheable.to_cache(policy)
           policies = Map.put(cache.policies, policy.id, policy)
-
           {policy, %{cache | policies: policies, resources: resources}}
         end)
 
@@ -524,20 +542,20 @@ defmodule Domain.Cache.Client do
     end
   end
 
-  defp conforming_resource_ids(policies, client) when is_map(policies) do
-    policies
-    |> Map.values()
-    |> conforming_resource_ids(client)
-  end
-
-  defp conforming_resource_ids(policies, client) do
-    policies
-    |> Policies.filter_by_conforming_policies_for_client(client)
-    |> Enum.map(& &1.resource_id)
-    |> Enum.uniq()
-  end
-
   defp adapt(resource, client) do
     Resources.adapt_resource_for_version(resource, client.last_seen_version)
+  end
+
+  defp conforming_resource_ids(policies, client, auth_provider_id) when is_map(policies) do
+    policies
+    |> Map.values()
+    |> conforming_resource_ids(client, auth_provider_id)
+  end
+
+  defp conforming_resource_ids(policies, client, auth_provider_id) do
+    policies
+    |> Policies.filter_by_conforming_policies_for_client(client, auth_provider_id)
+    |> Enum.map(& &1.resource_id)
+    |> Enum.uniq()
   end
 end

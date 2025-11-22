@@ -157,7 +157,7 @@ defmodule Domain.Google.Sync do
         group_attrs =
           Enum.map(groups, fn group ->
             %{
-              idp_id: group["id"],
+              idp_id: "google:#{group["id"]}",
               name: group["name"] || group["email"]
             }
           end)
@@ -202,7 +202,7 @@ defmodule Domain.Google.Sync do
               # Build memberships (group_idp_id, user_idp_id)
               memberships =
                 Enum.map(user_members, fn member ->
-                  {group_key, member["id"]}
+                  {"google:#{group_key}", "google:#{member["id"]}"}
                 end)
 
               unless Enum.empty?(memberships) do
@@ -218,9 +218,8 @@ defmodule Domain.Google.Sync do
   defp batch_upsert_identities(directory, synced_at, identities) do
     account_id = directory.account_id
     directory_id = directory.id
-    domain = directory.domain
 
-    case Query.batch_upsert_identities(account_id, directory_id, domain, synced_at, identities) do
+    case Query.batch_upsert_identities(account_id, directory_id, synced_at, identities) do
       {:ok, %{upserted_identities: count}} ->
         Logger.debug("Upserted #{count} identities", google_directory_id: directory.id)
         :ok
@@ -238,10 +237,10 @@ defmodule Domain.Google.Sync do
 
   defp batch_upsert_groups(directory, synced_at, groups) do
     account_id = directory.account_id
-    domain = directory.domain
+    directory_id = directory.id
 
     {:ok, %{upserted_groups: count}} =
-      Query.batch_upsert_groups(account_id, synced_at, domain, groups)
+      Query.batch_upsert_groups(account_id, directory_id, synced_at, groups)
 
     Logger.debug("Upserted #{count} groups", google_directory_id: directory.id)
     :ok
@@ -249,9 +248,9 @@ defmodule Domain.Google.Sync do
 
   defp batch_upsert_memberships(directory, synced_at, memberships) do
     account_id = directory.account_id
-    domain = directory.domain
+    directory_id = directory.id
 
-    case Query.batch_upsert_memberships(account_id, synced_at, domain, memberships) do
+    case Query.batch_upsert_memberships(account_id, directory_id, synced_at, memberships) do
       {:ok, %{upserted_memberships: count}} ->
         Logger.debug("Upserted #{count} memberships", google_directory_id: directory.id)
         :ok
@@ -269,10 +268,10 @@ defmodule Domain.Google.Sync do
 
   defp delete_unsynced(directory, synced_at) do
     account_id = directory.account_id
-    domain = directory.domain
+    directory_id = directory.id
 
     # Delete groups that weren't synced
-    {deleted_groups_count, _} = Query.delete_unsynced_groups(account_id, domain, synced_at)
+    {deleted_groups_count, _} = Query.delete_unsynced_groups(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced groups",
       google_directory_id: directory.id,
@@ -281,7 +280,7 @@ defmodule Domain.Google.Sync do
 
     # Delete identities that weren't synced
     {deleted_identities_count, _} =
-      Query.delete_unsynced_identities(account_id, domain, synced_at)
+      Query.delete_unsynced_identities(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced identities",
       google_directory_id: directory.id,
@@ -290,7 +289,7 @@ defmodule Domain.Google.Sync do
 
     # Delete memberships that weren't synced
     {deleted_memberships_count, _} =
-      Query.delete_unsynced_memberships(account_id, domain, synced_at)
+      Query.delete_unsynced_memberships(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced group memberships",
       google_directory_id: directory.id,
@@ -298,7 +297,7 @@ defmodule Domain.Google.Sync do
     )
 
     # Delete actors that no longer have any identities and were created by this directory
-    {deleted_actors_count, _} = Query.delete_actors_without_identities(account_id, directory.id)
+    {deleted_actors_count, _} = Query.delete_actors_without_identities(account_id, directory_id)
 
     Logger.debug("Deleted actors without identities",
       google_directory_id: directory.id,
@@ -311,7 +310,7 @@ defmodule Domain.Google.Sync do
     primary_email = user["primaryEmail"]
 
     %{
-      idp_id: user["id"],
+      idp_id: "google:#{user["id"]}",
       email: primary_email,
       name: Map.get(user, "name", %{}) |> Map.get("fullName"),
       given_name: Map.get(user, "name", %{}) |> Map.get("givenName"),
@@ -332,17 +331,16 @@ defmodule Domain.Google.Sync do
       |> where([directories: d], d.is_disabled == false)
     end
 
-    def batch_upsert_identities(_account_id, _directory_id, _domain, _last_synced_at, []),
+    def batch_upsert_identities(_account_id, _directory_id, _last_synced_at, []),
       do: {:ok, %{upserted_identities: 0}}
 
-    def batch_upsert_identities(account_id, directory_id, domain, last_synced_at, identity_attrs) do
+    def batch_upsert_identities(account_id, directory_id, last_synced_at, identity_attrs) do
       query = build_identity_upsert_query(length(identity_attrs))
 
       params =
         build_identity_upsert_params(
           account_id,
           directory_id,
-          domain,
           last_synced_at,
           identity_attrs
         )
@@ -365,8 +363,7 @@ defmodule Domain.Google.Sync do
       account_id = offset + 1
       issuer = offset + 2
       directory_id = offset + 3
-      directory = offset + 4
-      last_synced_at = offset + 5
+      last_synced_at = offset + 4
 
       """
       WITH input_data AS (
@@ -374,11 +371,11 @@ defmodule Domain.Google.Sync do
         AS t(idp_id, email, name, given_name, family_name, preferred_username)
       ),
       existing_identities AS (
-        SELECT ai.id, ai.actor_id, ai.idp_id
-        FROM auth_identities ai
-        WHERE ai.account_id = $#{account_id}
-          AND ai.directory = $#{directory}
-          AND ai.idp_id IN (SELECT idp_id FROM input_data)
+        SELECT ei.id, ei.actor_id, ei.idp_id
+        FROM external_identities ei
+        WHERE ei.account_id = $#{account_id}
+          AND ei.issuer = $#{issuer}
+          AND ei.idp_id IN (SELECT idp_id FROM input_data)
       ),
       existing_actors_by_email AS (
         SELECT DISTINCT ON (id.idp_id) a.id AS actor_id, id.idp_id
@@ -426,8 +423,8 @@ defmodule Domain.Google.Sync do
         FROM existing_actors_by_email eabe
         JOIN input_data id ON id.idp_id = eabe.idp_id
       )
-      INSERT INTO auth_identities (
-        id, actor_id, issuer, idp_id, directory, name, given_name, family_name, preferred_username,
+      INSERT INTO external_identities (
+        id, actor_id, issuer, idp_id, directory_id, email, name, given_name, family_name, preferred_username,
         last_synced_at, account_id, created_by, inserted_at
       )
       SELECT
@@ -435,7 +432,8 @@ defmodule Domain.Google.Sync do
         aam.actor_id,
         $#{issuer},
         aam.idp_id,
-        $#{directory},
+        $#{directory_id},
+        aam.email,
         aam.name,
         aam.given_name,
         aam.family_name,
@@ -446,9 +444,10 @@ defmodule Domain.Google.Sync do
         $#{last_synced_at}
       FROM all_actor_mappings aam
       LEFT JOIN existing_identities ei ON ei.idp_id = aam.idp_id
-      ON CONFLICT (account_id, issuer, idp_id) WHERE (issuer IS NOT NULL OR idp_id IS NOT NULL)
+      ON CONFLICT (account_id, idp_id, issuer)
       DO UPDATE SET
-        directory = EXCLUDED.directory,
+        directory_id = EXCLUDED.directory_id,
+        email = EXCLUDED.email,
         name = EXCLUDED.name,
         given_name = EXCLUDED.given_name,
         family_name = EXCLUDED.family_name,
@@ -458,9 +457,7 @@ defmodule Domain.Google.Sync do
       """
     end
 
-    defp build_identity_upsert_params(account_id, directory_id, domain, last_synced_at, attrs) do
-      directory = "google:#{domain}"
-
+    defp build_identity_upsert_params(account_id, directory_id, last_synced_at, attrs) do
       params =
         Enum.flat_map(attrs, fn a ->
           [
@@ -478,23 +475,20 @@ defmodule Domain.Google.Sync do
           Ecto.UUID.dump!(account_id),
           @issuer,
           Ecto.UUID.dump!(directory_id),
-          directory,
           last_synced_at
         ]
     end
 
-    def batch_upsert_groups(_account_id, _last_synced_at, _domain, []),
+    def batch_upsert_groups(_account_id, _directory_id, _last_synced_at, []),
       do: {:ok, %{upserted_groups: 0}}
 
-    def batch_upsert_groups(account_id, last_synced_at, domain, group_attrs) do
-      directory = "google:#{domain}"
-
+    def batch_upsert_groups(account_id, directory_id, last_synced_at, group_attrs) do
       values =
         Enum.map(group_attrs, fn attrs ->
           %{
             id: Ecto.UUID.generate(),
             name: attrs.name,
-            directory: directory,
+            directory_id: directory_id,
             idp_id: attrs.idp_id,
             account_id: account_id,
             inserted_at: last_synced_at,
@@ -508,23 +502,22 @@ defmodule Domain.Google.Sync do
       {count, _} =
         Safe.unscoped()
         |> Safe.insert_all(Domain.Actors.Group, values,
-          on_conflict: {:replace, [:name, :last_synced_at, :updated_at]},
-          conflict_target:
-            {:unsafe_fragment, ~s/(account_id, directory, idp_id) WHERE directory <> 'firezone'/},
+          on_conflict: {:replace, [:name, :directory_id, :last_synced_at, :updated_at]},
+          conflict_target: {:unsafe_fragment, ~s[(account_id, idp_id) WHERE idp_id IS NOT NULL]},
           returning: false
         )
 
       {:ok, %{upserted_groups: count}}
     end
 
-    def batch_upsert_memberships(_account_id, _last_synced_at, _domain, []),
+    def batch_upsert_memberships(_account_id, _directory_id, _last_synced_at, []),
       do: {:ok, %{upserted_memberships: 0}}
 
-    def batch_upsert_memberships(account_id, last_synced_at, domain, tuples) do
+    def batch_upsert_memberships(account_id, directory_id, last_synced_at, tuples) do
       query = build_membership_upsert_query(length(tuples))
 
       params =
-        build_membership_upsert_params(account_id, last_synced_at, domain, tuples)
+        build_membership_upsert_params(account_id, directory_id, last_synced_at, tuples)
 
       case Safe.unscoped() |> Safe.query(query, params) do
         {:ok, %Postgrex.Result{num_rows: num_rows}} -> {:ok, %{upserted_memberships: num_rows}}
@@ -541,8 +534,8 @@ defmodule Domain.Google.Sync do
 
       offset = count * 2
       account_id = offset + 1
-      last_synced_at = offset + 2
-      directory = offset + 3
+      issuer = offset + 2
+      last_synced_at = offset + 3
 
       """
       WITH membership_input AS (
@@ -551,17 +544,16 @@ defmodule Domain.Google.Sync do
       ),
       resolved_memberships AS (
         SELECT
-          ai.actor_id,
+          ei.actor_id,
           ag.id as group_id
         FROM membership_input mi
-        JOIN auth_identities ai ON (
-          ai.idp_id = mi.user_idp_id
-          AND ai.account_id = $#{account_id}
-          AND ai.directory = $#{directory}
+        JOIN external_identities ei ON (
+          ei.idp_id = mi.user_idp_id
+          AND ei.account_id = $#{account_id}
+          AND ei.issuer = $#{issuer}
         )
         JOIN actor_groups ag ON (
           ag.idp_id = mi.group_idp_id
-          AND ag.directory = $#{directory}
           AND ag.account_id = $#{account_id}
         )
       )
@@ -579,53 +571,45 @@ defmodule Domain.Google.Sync do
       """
     end
 
-    defp build_membership_upsert_params(account_id, last_synced_at, domain, tuples) do
-      directory = "google:#{domain}"
-
+    defp build_membership_upsert_params(account_id, _directory_id, last_synced_at, tuples) do
       params =
         Enum.flat_map(tuples, fn {group_idp_id, user_idp_id} ->
           [group_idp_id, user_idp_id]
         end)
 
-      params ++ [Ecto.UUID.dump!(account_id), last_synced_at, directory]
+      params ++ [Ecto.UUID.dump!(account_id), @issuer, last_synced_at]
     end
 
-    def delete_unsynced_groups(account_id, domain, synced_at) do
-      directory = "google:#{domain}"
-
+    def delete_unsynced_groups(account_id, directory_id, synced_at) do
       query =
         from(g in Domain.Actors.Group,
           where: g.account_id == ^account_id,
-          where: g.directory == ^directory,
+          where: g.directory_id == ^directory_id,
           where: g.last_synced_at != ^synced_at or is_nil(g.last_synced_at)
         )
 
       Safe.delete_all(Safe.unscoped(), query)
     end
 
-    def delete_unsynced_identities(account_id, domain, synced_at) do
-      directory = "google:#{domain}"
-
+    def delete_unsynced_identities(account_id, directory_id, synced_at) do
       query =
-        from(i in Domain.Auth.Identity,
+        from(i in Domain.ExternalIdentity,
           where: i.account_id == ^account_id,
-          where: i.directory == ^directory,
+          where: i.directory_id == ^directory_id,
           where: i.last_synced_at != ^synced_at or is_nil(i.last_synced_at)
         )
 
       Safe.delete_all(Safe.unscoped(), query)
     end
 
-    def delete_unsynced_memberships(account_id, domain, synced_at) do
-      directory = "google:#{domain}"
-
+    def delete_unsynced_memberships(account_id, directory_id, synced_at) do
       # Delete memberships for groups in this directory that haven't been synced
       query =
         from(m in Domain.Actors.Membership,
           join: g in Domain.Actors.Group,
           on: m.group_id == g.id,
           where: g.account_id == ^account_id,
-          where: g.directory == ^directory,
+          where: g.directory_id == ^directory_id,
           where: m.last_synced_at != ^synced_at or is_nil(m.last_synced_at)
         )
 
@@ -642,7 +626,7 @@ defmodule Domain.Google.Sync do
           where: a.created_by_directory_id == ^directory_id,
           where:
             fragment(
-              "NOT EXISTS (SELECT 1 FROM auth_identities WHERE actor_id = ?)",
+              "NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)",
               a.id
             )
         )

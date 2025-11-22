@@ -20,6 +20,9 @@ defmodule Domain.Telemetry.Reporter.Oban do
   def handle_event([:oban, :job, :exception], _measure, meta, _) do
     extra = build_extra(meta.reason, meta.job)
 
+    dbg(extra)
+    dbg(meta)
+
     # Handle sync errors before reporting to Sentry
     handle_sync_error(meta.reason, extra)
 

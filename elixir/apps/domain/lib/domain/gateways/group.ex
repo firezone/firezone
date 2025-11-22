@@ -24,7 +24,7 @@ defmodule Domain.Gateways.Group do
 
     has_many :connections, Domain.Resources.Connection, foreign_key: :gateway_group_id
 
-    subject_trail(~w[actor identity system]a)
+    subject_trail(~w[actor system]a)
     timestamps()
   end
 end

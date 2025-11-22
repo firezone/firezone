@@ -1,9 +1,7 @@
 defmodule Domain.Auth do
   require Ecto.Query
-  alias Domain.Repo
   alias Domain.{Accounts, Actors, Tokens}
   alias Domain.Auth.{Authorizer, Subject, Context, Permission, Roles, Role}
-  alias Domain.Auth.Identity
   require Logger
 
   # Tokens
@@ -88,8 +86,6 @@ defmodule Domain.Auth do
     :ok
   end
 
-  # used in tests and seeds
-  @doc false
   def build_subject(%Tokens.Token{type: type} = token, %Context{} = context)
       when type in [:browser, :client, :api_client] do
     account = Accounts.fetch_account_by_id!(token.account_id)
@@ -97,54 +93,16 @@ defmodule Domain.Auth do
     with {:ok, actor} <- Actors.fetch_active_actor_by_id(token.actor_id) do
       permissions = fetch_type_permissions!(actor.type)
 
-      %Subject{
-        identity: nil,
-        actor: actor,
-        permissions: permissions,
-        account: account,
-        expires_at: token.expires_at,
-        context: context,
-        token_id: token.id
-      }
-      |> maybe_fetch_subject_identity(token)
-    end
-  end
-
-  defp maybe_fetch_subject_identity(%{actor: %{type: :service_account}} = subject, _token) do
-    {:ok, subject}
-  end
-
-  defp maybe_fetch_subject_identity(%{actor: %{type: :api_client}} = subject, _token) do
-    {:ok, subject}
-  end
-
-  defp maybe_fetch_subject_identity(_subject, %{identity_id: nil}) do
-    {:error, :not_found}
-  end
-
-  # Maybe we need a NOWAIT here to prevent timeouts when background jobs are updating the identity
-  defp maybe_fetch_subject_identity(subject, token) do
-    Identity.Query.not_disabled()
-    |> Identity.Query.by_id(token.identity_id)
-    |> Ecto.Query.select([identities: identities], identities)
-    |> Repo.update_all(
-      set: [
-        last_seen_user_agent: subject.context.user_agent,
-        last_seen_remote_ip: subject.context.remote_ip,
-        last_seen_remote_ip_location_region: subject.context.remote_ip_location_region,
-        last_seen_remote_ip_location_city: subject.context.remote_ip_location_city,
-        last_seen_remote_ip_location_lat: subject.context.remote_ip_location_lat,
-        last_seen_remote_ip_location_lon: subject.context.remote_ip_location_lon,
-        last_seen_at: DateTime.utc_now()
-      ]
-    )
-    |> case do
-      {1, [identity]} ->
-        identity = Repo.preload(identity, :actor)
-        {:ok, %{subject | identity: identity}}
-
-      {0, []} ->
-        {:error, :not_found}
+      {:ok,
+       %Subject{
+         actor: actor,
+         permissions: permissions,
+         account: account,
+         expires_at: token.expires_at,
+         context: context,
+         token_id: token.id,
+         auth_provider_id: token.auth_provider_id
+       }}
     end
   end
 

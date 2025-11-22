@@ -61,7 +61,10 @@ defmodule Web.Policies.New do
                   </:options_group>
 
                   <:option :let={group}>
-                    {group.name}
+                    <div class="flex items-center gap-3">
+                      <.directory_icon idp_id={group.idp_id} class="w-5 h-5 flex-shrink-0" />
+                      <span>{group.name}</span>
+                    </div>
                   </:option>
 
                   <:no_options :let={name}>

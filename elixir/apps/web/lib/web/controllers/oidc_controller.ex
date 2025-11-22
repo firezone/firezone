@@ -4,11 +4,12 @@ defmodule Web.OIDCController do
   alias Domain.{
     Accounts,
     Actors,
-    AuthProviders,
-    Auth,
+    AuthProvider,
     Tokens,
-    Repo
+    Safe
   }
+
+  alias __MODULE__.DB
 
   alias Web.Session.Redirector
 
@@ -117,15 +118,7 @@ defmodule Web.OIDCController do
          account,
          %{"auth_provider_type" => type, "auth_provider_id" => id}
        ) do
-    account_id = account.id
-    schema = AuthProviders.AuthProvider.module!(type)
-
-    import Ecto.Query
-
-    from(p in schema,
-      where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
-    )
-    |> Repo.one()
+    DB.fetch_provider(account.id, type, id)
   end
 
   defp fetch_provider(_account, _params) do
@@ -142,8 +135,9 @@ defmodule Web.OIDCController do
   # Entra
   defp upsert_identity(account, claims, userinfo) do
     email = claims["email"]
-    idp_id = claims["oid"] || claims["sub"]
+    raw_idp_id = claims["oid"] || claims["sub"]
     issuer = claims["iss"]
+    idp_id = prefix_idp_id(issuer, raw_idp_id)
     email_verified = claims["email_verified"] == true
     profile_attrs = extract_profile_attrs(claims, userinfo)
 
@@ -155,9 +149,29 @@ defmodule Web.OIDCController do
       |> Map.put("idp_id", idp_id)
 
     with %{valid?: true} <- validate_upsert_attrs(attrs) do
-      upsert_identity_query(account.id, email, email_verified, issuer, idp_id, profile_attrs)
+      DB.upsert_identity(account.id, email, email_verified, issuer, idp_id, profile_attrs)
     else
       changeset -> {:error, changeset}
+    end
+  end
+
+  defp prefix_idp_id(issuer, idp_id) do
+    cond do
+      # Google issuer
+      issuer == "https://accounts.google.com" ->
+        "google:#{idp_id}"
+
+      # Entra issuer (matches tenant-specific issuer pattern)
+      String.contains?(issuer, "login.microsoftonline.com") ->
+        "entra:#{idp_id}"
+
+      # Okta issuer (matches okta domain pattern)
+      String.contains?(issuer, "okta.com") ->
+        "okta:#{idp_id}"
+
+      # Default: oidc prefix for generic OIDC providers
+      true ->
+        "oidc:#{idp_id}"
     end
   end
 
@@ -177,68 +191,10 @@ defmodule Web.OIDCController do
       picture
     ]a
 
-    %Auth.Identity{}
+    %Domain.ExternalIdentity{}
     |> cast(attrs, idp_fields ++ ~w[account_id actor_id]a)
     |> validate_required(~w[issuer idp_id name account_id]a)
-    |> Auth.Identity.Changeset.changeset()
-  end
-
-  defp upsert_identity_query(account_id, email, email_verified, issuer, idp_id, profile_attrs) do
-    profile_fields =
-      ~w[name given_name family_name middle_name nickname preferred_username profile picture]
-
-    profile_values = Enum.map(profile_fields, &Map.get(profile_attrs, &1))
-    update_set = Enum.map_join(profile_fields, ", ", &"#{&1} = EXCLUDED.#{&1}")
-    insert_fields = Enum.join(profile_fields, ", ")
-    value_placeholders = Enum.map_join(6..(5 + length(profile_fields)), ", ", &"$#{&1}")
-
-    query = """
-    WITH actor_lookup AS (
-      SELECT id FROM actors
-      WHERE account_id = $1 AND email = $2 AND disabled_at IS NULL AND $3 = true
-      LIMIT 1
-    ),
-    existing_identity AS (
-      SELECT ai.actor_id
-      FROM auth_identities ai
-      JOIN actors a ON a.id = ai.actor_id
-      WHERE ai.account_id = $1 AND ai.issuer = $4 AND ai.idp_id = $5
-        AND a.disabled_at IS NULL
-      LIMIT 1
-    )
-    INSERT INTO auth_identities (
-      id, account_id, issuer, idp_id, actor_id,
-      #{insert_fields},
-      inserted_at, created_by, created_by_subject
-    )
-    SELECT uuid_generate_v4(), $1, $4, $5,
-           COALESCE(actor_lookup.id, existing_identity.actor_id),
-           #{value_placeholders}, $14, $15,
-           jsonb_build_object('name', 'System', 'email', null)
-    FROM (SELECT 1) AS dummy
-    LEFT JOIN actor_lookup ON true
-    LEFT JOIN existing_identity ON true
-    WHERE actor_lookup.id IS NOT NULL OR existing_identity.actor_id IS NOT NULL
-    ON CONFLICT (account_id, issuer, idp_id) WHERE issuer IS NOT NULL OR idp_id IS NOT NULL
-    DO UPDATE SET #{update_set}
-    RETURNING *
-    """
-
-    params =
-      [Ecto.UUID.dump!(account_id), email, email_verified, issuer, idp_id] ++
-        profile_values ++ [DateTime.utc_now(), "system"]
-
-    case Repo.query(query, params) do
-      {:ok, %{rows: [row], columns: cols}} ->
-        identity = Repo.load(Auth.Identity, {cols, row})
-        {:ok, Repo.preload(identity, [:actor, :account])}
-
-      {:ok, %{rows: []}} ->
-        {:error, :actor_not_found}
-
-      {:error, _} = error ->
-        error
-    end
+    |> Domain.ExternalIdentity.changeset()
   end
 
   defp extract_profile_attrs(claims, userinfo) do
@@ -265,12 +221,12 @@ defmodule Web.OIDCController do
   end
 
   defp check_admin(
-         %Auth.Identity{actor: %Actors.Actor{type: :account_admin_user}},
+         %Domain.ExternalIdentity{actor: %Actors.Actor{type: :account_admin_user}},
          _context_type
        ),
        do: :ok
 
-  defp check_admin(%Auth.Identity{actor: %Actors.Actor{type: :account_user}}, :client),
+  defp check_admin(%Domain.ExternalIdentity{actor: %Actors.Actor{type: :account_user}}, :client),
     do: :ok
 
   defp check_admin(_identity, _context_type), do: {:error, :not_admin}
@@ -385,4 +341,77 @@ defmodule Web.OIDCController do
   end
 
   defp cookie_key(state), do: @cookie_prefix <> state
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, AuthProvider, ExternalIdentity}
+
+    def fetch_provider(account_id, type, id) do
+      schema = AuthProvider.module!(type)
+
+      from(p in schema,
+        where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def upsert_identity(account_id, email, email_verified, issuer, idp_id, profile_attrs) do
+      profile_fields =
+        ~w[email name given_name family_name middle_name nickname preferred_username profile picture]
+
+      profile_values = Enum.map(profile_fields, &Map.get(profile_attrs, &1))
+      update_set = Enum.map_join(profile_fields, ", ", &"#{&1} = EXCLUDED.#{&1}")
+      insert_fields = Enum.join(profile_fields, ", ")
+      value_placeholders = Enum.map_join(6..(5 + length(profile_fields)), ", ", &"$#{&1}")
+
+      query = """
+      WITH actor_lookup AS (
+        SELECT id FROM actors
+        WHERE account_id = $1 AND email = $2 AND disabled_at IS NULL AND $3 = true
+        LIMIT 1
+      ),
+      existing_identity AS (
+        SELECT ei.actor_id
+        FROM external_identities ei
+        JOIN actors a ON a.id = ei.actor_id
+        WHERE ei.account_id = $1 AND ei.issuer = $4 AND ei.idp_id = $5
+          AND a.disabled_at IS NULL
+        LIMIT 1
+      )
+      INSERT INTO external_identities (
+        id, account_id, issuer, idp_id, actor_id,
+        #{insert_fields},
+        inserted_at, created_by, created_by_subject
+      )
+      SELECT uuid_generate_v4(), $1, $4, $5,
+             COALESCE(actor_lookup.id, existing_identity.actor_id),
+             #{value_placeholders}, $15, $16,
+             jsonb_build_object('name', 'System', 'email', null)
+      FROM (SELECT 1) AS dummy
+      LEFT JOIN actor_lookup ON true
+      LEFT JOIN existing_identity ON true
+      WHERE actor_lookup.id IS NOT NULL OR existing_identity.actor_id IS NOT NULL
+      ON CONFLICT (account_id, idp_id, issuer)
+      DO UPDATE SET #{update_set}
+      RETURNING *
+      """
+
+      params =
+        [Ecto.UUID.dump!(account_id), email, email_verified, issuer, idp_id] ++
+          profile_values ++ [DateTime.utc_now(), "system"]
+
+      case Safe.unscoped() |> Safe.query(query, params) do
+        {:ok, %{rows: [row], columns: cols}} ->
+          identity = Safe.load(ExternalIdentity, {cols, row})
+          {:ok, Safe.preload(identity, [:actor, :account])}
+
+        {:ok, %{rows: []}} ->
+          {:error, :actor_not_found}
+
+        {:error, _} = error ->
+          error
+      end
+    end
+  end
 end

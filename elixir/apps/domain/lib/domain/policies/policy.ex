@@ -26,7 +26,7 @@ defmodule Domain.Policies.Policy do
 
     field :disabled_at, :utc_datetime_usec
 
-    subject_trail(~w[actor identity]a)
+    subject_trail(~w[actor system]a)
     timestamps()
   end
 end

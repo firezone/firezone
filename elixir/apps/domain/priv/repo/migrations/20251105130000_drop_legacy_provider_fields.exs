@@ -2,16 +2,19 @@ defmodule Domain.Repo.Migrations.DropLegacyProviderFields do
   use Domain, :migration
 
   def up do
-    alter table(:auth_identities) do
+    alter table(:external_identities) do
       remove(:provider_identifier)
       remove(:provider_id)
       remove(:provider_state)
-      remove(:email)
     end
 
     alter table(:actor_groups) do
       remove(:provider_id)
       remove(:provider_identifier)
+    end
+
+    alter table(:clients) do
+      remove(:identity_id)
     end
 
     drop(table(:legacy_auth_providers))

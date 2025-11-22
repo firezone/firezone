@@ -29,7 +29,6 @@ defmodule Domain.Actors.Group.Changeset do
     |> cast(attrs, ~w[name last_synced_at]a)
     |> validate_required(~w[name]a)
     |> put_change(:type, :managed)
-    |> put_change(:directory, "firezone")
     |> changeset()
     |> put_change(:account_id, account.id)
     |> cast_membership_assocs(account.id)

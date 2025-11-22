@@ -6,7 +6,7 @@ defmodule Domain.Repo.Seeds do
     Repo,
     Accounts,
     Auth,
-    AuthProviders,
+    AuthProvider,
     Actors,
     Relays,
     Gateways,
@@ -18,7 +18,8 @@ defmodule Domain.Repo.Seeds do
     Userpass,
     OIDC,
     Google,
-    Entra
+    Entra,
+    ExternalIdentity
   }
 
   # Populate these in your .env
@@ -40,7 +41,7 @@ defmodule Domain.Repo.Seeds do
 
     # First create the base auth_provider record using Repo directly
     {:ok, _base_provider} =
-      Repo.insert(%AuthProviders.AuthProvider{
+      Repo.insert(%AuthProvider{
         id: provider_id,
         account_id: subject.account.id
       })
@@ -165,9 +166,9 @@ defmodule Domain.Repo.Seeds do
     system_subject = %Auth.Subject{
       account: account,
       actor: %Actors.Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      identity: nil,
-      token_id: nil,
-      expires_at: nil,
+      token_id: Ecto.UUID.generate(),
+      auth_provider_id: nil,
+      expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"},
       permissions:
         MapSet.new([
@@ -232,9 +233,9 @@ defmodule Domain.Repo.Seeds do
     other_system_subject = %Auth.Subject{
       account: other_account,
       actor: %Actors.Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      identity: nil,
-      token_id: nil,
-      expires_at: nil,
+      token_id: Ecto.UUID.generate(),
+      auth_provider_id: nil,
+      expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"},
       permissions:
         MapSet.new([
@@ -261,7 +262,8 @@ defmodule Domain.Repo.Seeds do
         account_id: account.id,
         type: :account_user,
         name: "Firezone Unprivileged",
-        email: unprivileged_actor_email
+        email: unprivileged_actor_email,
+        created_by: :system
       })
 
     other_actors_with_emails =
@@ -273,7 +275,8 @@ defmodule Domain.Repo.Seeds do
             account_id: account.id,
             type: :account_user,
             name: "Firezone Unprivileged #{i}",
-            email: email
+            email: email,
+            created_by: :system
           })
 
         {actor, email}
@@ -286,92 +289,69 @@ defmodule Domain.Repo.Seeds do
         account_id: account.id,
         type: :account_admin_user,
         name: "Firezone Admin",
-        email: admin_actor_email
+        email: admin_actor_email,
+        created_by: :system
       })
 
     {:ok, service_account_actor} =
       Repo.insert(%Actors.Actor{
         account_id: account.id,
         type: :service_account,
-        name: "Backup Manager"
-      })
-
-    # Create ONE identity for local auth (works with both EmailOTP and Userpass)
-    password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
-
-    {:ok, unprivileged_actor_identity} =
-      Repo.insert(%Auth.Identity{
-        actor_id: unprivileged_actor.id,
-        account_id: account.id,
-        issuer: "firezone",
-        idp_id: unprivileged_actor_email,
-        name: "Firezone Unprivileged",
-        password_hash: password_hash,
+        name: "Backup Manager",
         created_by: :system
       })
 
-    unprivileged_actor_email_identity = unprivileged_actor_identity
-    unprivileged_actor_userpass_identity = unprivileged_actor_identity
-
-    _unprivileged_actor_userpass_identity =
-      maybe_repo_update.(unprivileged_actor_userpass_identity,
-        id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5"
-      )
-
-    # Create ONE identity for local auth (EmailOTP + Userpass)
+    # Set password on actors (no identity needed for userpass/email)
     password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
 
-    {:ok, local_identity} =
-      Repo.insert(%Auth.Identity{
-        actor_id: admin_actor.id,
-        account_id: account.id,
-        issuer: "firezone",
-        idp_id: admin_actor_email,
-        name: "Firezone Admin",
-        password_hash: password_hash,
-        created_by: :system
-      })
+    unprivileged_actor =
+      unprivileged_actor
+      |> Ecto.Changeset.change(password_hash: password_hash)
+      |> Repo.update!()
 
-    admin_actor_email_identity = local_identity
+    admin_actor =
+      admin_actor
+      |> Ecto.Changeset.change(password_hash: password_hash)
+      |> Repo.update!()
 
     # Create separate OIDC identity (different issuer)
     {:ok, _admin_actor_oidc_identity} =
-      Repo.insert(%Auth.Identity{
+      Repo.insert(%ExternalIdentity{
         actor_id: admin_actor.id,
         account_id: account.id,
         issuer: "https://common.auth0.com",
-        idp_id: admin_actor_email,
+        idp_id: "oidc:#{admin_actor_email}",
         name: "Firezone Admin",
         created_by: :system
       })
 
     {:ok, _google_identity} =
-      Repo.insert(%Auth.Identity{
+      Repo.insert(%ExternalIdentity{
         actor_id: admin_actor.id,
         account_id: account.id,
         issuer: "https://accounts.google.com",
-        idp_id: google_idp_id(),
+        idp_id: "google:#{google_idp_id()}",
         name: "Firezone Admin",
         created_by: :system
       })
 
     {:ok, _entra_identity} =
-      Repo.insert(%Auth.Identity{
+      Repo.insert(%ExternalIdentity{
         actor_id: admin_actor.id,
         account_id: account.id,
         issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
-        idp_id: entra_idp_id(),
+        idp_id: "entra:#{entra_idp_id()}",
         name: "Firezone Admin",
         created_by: :system
       })
 
     for {actor, email} <- other_actors_with_emails do
       {:ok, identity} =
-        Repo.insert(%Auth.Identity{
+        Repo.insert(%ExternalIdentity{
           actor_id: actor.id,
           account_id: account.id,
           issuer: "https://common.auth0.com",
-          idp_id: email,
+          idp_id: "oidc:#{email}",
           name: actor.name,
           created_by: :system
         })
@@ -390,14 +370,13 @@ defmodule Domain.Repo.Seeds do
         Repo.insert(%Tokens.Token{
           type: :browser,
           account_id: account.id,
-          identity_id: identity.id,
           actor_id: identity.actor_id,
           expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
           secret_nonce: "n",
           secret_fragment: Domain.Crypto.random_token(32),
           secret_salt: Domain.Crypto.random_token(16),
           secret_hash: "placeholder",
-          created_by: :identity
+          created_by: :actor
         })
 
       {:ok, subject} = Auth.build_subject(token, context)
@@ -440,7 +419,8 @@ defmodule Domain.Repo.Seeds do
         account_id: other_account.id,
         type: :account_user,
         name: "Other Unprivileged",
-        email: other_unprivileged_actor_email
+        email: other_unprivileged_actor_email,
+        created_by: :system
       })
 
     {:ok, other_admin_actor} =
@@ -448,35 +428,24 @@ defmodule Domain.Repo.Seeds do
         account_id: other_account.id,
         type: :account_admin_user,
         name: "Other Admin",
-        email: other_admin_actor_email
+        email: other_admin_actor_email,
+        created_by: :system
       })
 
-    # Create identities for other_account actors
+    # Set password on other_account actors (no identity needed for userpass/email)
     password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
 
-    {:ok, _other_unprivileged_actor_identity} =
-      Repo.insert(%Auth.Identity{
-        actor_id: other_unprivileged_actor.id,
-        account_id: other_account.id,
-        issuer: "firezone",
-        idp_id: other_unprivileged_actor_email,
-        name: "Other Unprivileged",
-        password_hash: password_hash,
-        created_by: :system
-      })
+    _other_unprivileged_actor =
+      other_unprivileged_actor
+      |> Ecto.Changeset.change(password_hash: password_hash)
+      |> Repo.update!()
 
-    {:ok, _other_admin_actor_identity} =
-      Repo.insert(%Auth.Identity{
-        actor_id: other_admin_actor.id,
-        account_id: other_account.id,
-        issuer: "firezone",
-        idp_id: other_admin_actor_email,
-        name: "Other Admin",
-        password_hash: password_hash,
-        created_by: :system
-      })
+    _other_admin_actor =
+      other_admin_actor
+      |> Ecto.Changeset.change(password_hash: password_hash)
+      |> Repo.update!()
 
-    unprivileged_actor_context = %Auth.Context{
+    _unprivileged_actor_context = %Auth.Context{
       type: :browser,
       user_agent: "iOS/18.1.0 connlib/1.3.5",
       remote_ip: {172, 28, 0, 100},
@@ -486,51 +455,50 @@ defmodule Domain.Repo.Seeds do
       remote_ip_location_lon: 30.5167
     }
 
-    nonce = "n"
-
-    {:ok, unprivileged_actor_token} =
+    # Create client token for unprivileged actor so flows can reference it
+    {:ok, unprivileged_client_token} =
       Repo.insert(%Tokens.Token{
-        type: :browser,
+        type: :client,
         account_id: account.id,
-        identity_id: unprivileged_actor_email_identity.id,
-        actor_id: unprivileged_actor_email_identity.actor_id,
-        expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
-        secret_nonce: nonce,
-        secret_fragment: Domain.Crypto.random_token(32),
-        secret_salt: Domain.Crypto.random_token(16),
-        secret_hash: "placeholder",
-        created_by: :identity
+        actor_id: unprivileged_actor.id,
+        secret_nonce: Ecto.UUID.generate(),
+        secret_fragment: Ecto.UUID.generate(),
+        secret_salt: Ecto.UUID.generate(),
+        secret_hash: Ecto.UUID.generate(),
+        expires_at: DateTime.utc_now() |> DateTime.add(7, :day),
+        created_by: :system,
+        created_by_subject: nil
       })
 
-    {:ok, unprivileged_subject} =
-      Auth.build_subject(unprivileged_actor_token, unprivileged_actor_context)
-
-    admin_actor_context = %Auth.Context{
-      type: :browser,
-      user_agent: "Mac OS/14.1.2 connlib/1.2.1",
-      remote_ip: {100, 64, 100, 58},
-      remote_ip_location_region: "UA",
-      remote_ip_location_city: "Kyiv",
-      remote_ip_location_lat: 50.4333,
-      remote_ip_location_lon: 30.5167
+    # For seeds, create a system subject for admin operations
+    # In real usage, subjects are created during sign-in flow
+    admin_subject = %Auth.Subject{
+      account: account,
+      actor: admin_actor,
+      token_id: Ecto.UUID.generate(),
+      auth_provider_id: nil,
+      expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
+      context: %Auth.Context{
+        type: :browser,
+        remote_ip: {127, 0, 0, 1},
+        user_agent: "seeds/1"
+      },
+      permissions: Auth.fetch_type_permissions!(admin_actor.type)
     }
 
-    {:ok, admin_actor_token} =
-      Repo.insert(%Tokens.Token{
+    unprivileged_subject = %Auth.Subject{
+      account: account,
+      actor: unprivileged_actor,
+      token_id: unprivileged_client_token.id,
+      auth_provider_id: nil,
+      expires_at: unprivileged_client_token.expires_at,
+      context: %Auth.Context{
         type: :browser,
-        account_id: account.id,
-        identity_id: admin_actor_email_identity.id,
-        actor_id: admin_actor_email_identity.actor_id,
-        expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
-        secret_nonce: nonce,
-        secret_fragment: Domain.Crypto.random_token(32),
-        secret_salt: Domain.Crypto.random_token(16),
-        secret_hash: "placeholder",
-        created_by: :identity
-      })
-
-    {:ok, admin_subject} =
-      Auth.build_subject(admin_actor_token, admin_actor_context)
+        remote_ip: {127, 0, 0, 1},
+        user_agent: "seeds/1"
+      },
+      permissions: Auth.fetch_type_permissions!(unprivileged_actor.type)
+    }
 
     {:ok, service_account_actor_encoded_token} =
       Auth.create_service_account_token(
@@ -664,10 +632,9 @@ defmodule Domain.Repo.Seeds do
           Enum.map(chunk, fn i ->
             %{
               name: "#{Domain.Accounts.generate_unique_slug()}-#{i}",
-              directory: "firezone",
               type: :static,
-              created_by: :provider,
-              created_by_subject: %{"name" => "Provider", "email" => nil},
+              created_by: :system,
+              created_by_subject: nil,
               account_id: admin_subject.account.id,
               inserted_at: DateTime.utc_now(),
               updated_at: DateTime.utc_now()
@@ -732,7 +699,6 @@ defmodule Domain.Repo.Seeds do
         id: Ecto.UUID.generate(),
         name: "Engineering",
         type: :static,
-        directory: "firezone",
         account_id: account.id,
         inserted_at: now,
         updated_at: now,
@@ -743,7 +709,6 @@ defmodule Domain.Repo.Seeds do
         id: Ecto.UUID.generate(),
         name: "Finance",
         type: :static,
-        directory: "firezone",
         account_id: account.id,
         inserted_at: now,
         updated_at: now,
@@ -754,7 +719,6 @@ defmodule Domain.Repo.Seeds do
         id: Ecto.UUID.generate(),
         name: "Group:Synced Group with long name",
         type: :static,
-        directory: "firezone",
         account_id: account.id,
         inserted_at: now,
         updated_at: now,
@@ -791,17 +755,18 @@ defmodule Domain.Repo.Seeds do
       admin_subject
     )
 
-    synced_group
-    |> Repo.preload(:memberships)
-    |> Actors.update_group(
-      %{
-        memberships: [
-          %{actor_id: admin_subject.actor.id},
-          %{actor_id: unprivileged_subject.actor.id}
-        ]
-      },
-      admin_subject
-    )
+    {:ok, synced_group} =
+      synced_group
+      |> Repo.preload(:memberships)
+      |> Actors.update_group(
+        %{
+          memberships: [
+            %{actor_id: admin_subject.actor.id},
+            %{actor_id: unprivileged_subject.actor.id}
+          ]
+        },
+        admin_subject
+      )
 
     extra_group_names = [
       "Group:gcp-logging-viewers",
@@ -819,7 +784,6 @@ defmodule Domain.Repo.Seeds do
           id: Ecto.UUID.generate(),
           name: name,
           type: :static,
-          directory: "firezone",
           account_id: account.id,
           inserted_at: now,
           updated_at: now,
@@ -1358,36 +1322,6 @@ defmodule Domain.Repo.Seeds do
       )
 
     IO.puts("Policies Created")
-    IO.puts("")
-
-    {:ok, unprivileged_subject_client_token} =
-      Repo.insert(%Tokens.Token{
-        type: :client,
-        account_id: account.id,
-        identity_id: unprivileged_actor_email_identity.id,
-        actor_id: unprivileged_actor_email_identity.actor_id,
-        expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
-        secret_nonce: nonce,
-        secret_fragment: Domain.Crypto.random_token(32),
-        secret_salt: Domain.Crypto.random_token(16),
-        secret_hash: "placeholder",
-        created_by: :identity
-      })
-
-    unprivileged_subject_client_token =
-      maybe_repo_update.(unprivileged_subject_client_token,
-        id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
-        secret_salt: "kKKA7dtf3TJk0-1O2D9N1w",
-        secret_fragment: "AiIy_6pBk-WLeRAPzzkCFXNqIZKWBs2Ddw_2vgIQvFg",
-        secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5"
-      )
-
-    IO.puts("Created client tokens:")
-
-    IO.puts(
-      "  #{unprivileged_actor_email} token: #{nonce <> Domain.Tokens.encode_fragment!(unprivileged_subject_client_token)}"
-    )
-
     IO.puts("")
 
     membership =

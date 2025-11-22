@@ -435,8 +435,7 @@ defmodule Domain.Billing.EventHandler do
     given_name = metadata["account_owner_first_name"]
     family_name = metadata["account_owner_last_name"]
     name = "#{given_name} #{family_name}"
-    {:ok, actor} = DB.create_admin(account, email, name)
-    {:ok, _identity} = DB.create_identity(actor, given_name, family_name)
+    {:ok, _actor} = DB.create_admin(account, email, name)
 
     :ok
   end
@@ -514,8 +513,7 @@ defmodule Domain.Billing.EventHandler do
 
     alias Domain.{
       Actors.Actor,
-      Auth.Identity,
-      AuthProviders,
+      AuthProvider,
       EmailOTP,
       Safe
     }
@@ -523,7 +521,7 @@ defmodule Domain.Billing.EventHandler do
     def create_email_provider(account) do
       id = Ecto.UUID.generate()
       attrs = %{account_id: account.id, id: id}
-      parent_changeset = cast(%AuthProviders.AuthProvider{}, attrs, ~w[id account_id]a)
+      parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id]a)
       attrs = %{id: id, name: "Email (OTP)"}
 
       changeset =
@@ -541,22 +539,6 @@ defmodule Domain.Billing.EventHandler do
 
       cast(%Actor{}, attrs, ~w[account_id email name type]a)
       |> Actor.changeset()
-      |> Safe.unscoped()
-      |> Safe.insert()
-    end
-
-    def create_identity(actor, given_name, family_name) do
-      attrs = %{
-        account_id: actor.account_id,
-        actor_id: actor.id,
-        issuer: "firezone",
-        given_name: given_name,
-        family_name: family_name,
-        name: actor.name
-      }
-
-      cast(%Identity{}, attrs, ~w[account_id actor_id given_name family_name name]a)
-      |> Identity.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
     end

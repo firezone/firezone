@@ -6,12 +6,11 @@ defmodule Domain.Actors.Actor do
       values: [:account_user, :account_admin_user, :service_account, :api_client]
 
     field :email, :string
+    field :password_hash, :string, redact: true
 
-    # TODO: IdP refactor
-    # Move this to auth_identities
     field :name, :string
 
-    has_many :identities, Domain.Auth.Identity
+    has_many :identities, Domain.ExternalIdentity
 
     has_many :clients, Domain.Clients.Client, preload_order: [desc: :last_seen_at]
 
@@ -26,10 +25,9 @@ defmodule Domain.Actors.Actor do
     field :identity_count, :integer, virtual: true
     field :disabled_at, :utc_datetime_usec
 
-    # Intentionally not a foreign key because it can point to different directory tables
-    field :created_by_directory_id, :binary_id
+    belongs_to :directory, Domain.Directory, foreign_key: :created_by_directory_id
 
-    subject_trail(~w[actor identity provider system]a)
+    subject_trail(~w[actor system]a)
     timestamps()
   end
 
@@ -42,5 +40,6 @@ defmodule Domain.Actors.Actor do
     |> validate_email(:email)
     |> assoc_constraint(:account)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
+    |> check_constraint(:type, name: :type_is_valid)
   end
 end

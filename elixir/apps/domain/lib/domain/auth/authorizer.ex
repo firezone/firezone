@@ -4,6 +4,7 @@ defmodule Domain.Auth.Authorizer do
   and expose them to the authorization system by implementing behaviour provided by this module.
   """
   alias Domain.Auth
+  alias Domain.ExternalIdentity
 
   defmacro __using__(_opts) do
     quote do
@@ -32,10 +33,10 @@ defmodule Domain.Auth.Authorizer do
     %Auth.Permission{resource: resource, action: action}
   end
 
-  def manage_identities_permission, do: build(Auth.Identity, :manage)
+  def manage_identities_permission, do: build(ExternalIdentity, :manage)
   def manage_service_accounts_permission, do: build(Auth, :manage_service_accounts)
   def manage_api_clients_permission, do: build(Auth, :manage_api_clients)
-  def manage_own_identities_permission, do: build(Auth.Identity, :manage_own)
+  def manage_own_identities_permission, do: build(ExternalIdentity, :manage_own)
 
   def list_permissions_for_role(:account_admin_user) do
     [
@@ -62,41 +63,5 @@ defmodule Domain.Auth.Authorizer do
 
   def list_permissions_for_role(_role) do
     []
-  end
-
-  def ensure_has_access_to(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
-    cond do
-      # If identity belongs to same actor, check own permission
-      subject.account.id == identity.account_id and owns_identity?(identity, subject) ->
-        Auth.ensure_has_permissions(subject, manage_own_identities_permission())
-
-      # Otherwise, check global manage permission
-      subject.account.id == identity.account_id ->
-        Auth.ensure_has_permissions(subject, manage_identities_permission())
-
-      # Different account
-      true ->
-        {:error, :unauthorized}
-    end
-  end
-
-  def for_subject(queryable, Auth.Identity, %Auth.Subject{} = subject) do
-    cond do
-      Auth.has_permission?(subject, manage_identities_permission()) ->
-        Auth.Identity.Query.by_account_id(queryable, subject.account.id)
-
-      Auth.has_permission?(subject, manage_own_identities_permission()) ->
-        queryable
-        |> Auth.Identity.Query.by_account_id(subject.account.id)
-        |> Auth.Identity.Query.by_actor_id(subject.actor.id)
-    end
-  end
-
-  defp owns_identity?(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
-    cond do
-      is_nil(subject.identity) -> false
-      identity.id == subject.identity.id -> true
-      true -> false
-    end
   end
 end

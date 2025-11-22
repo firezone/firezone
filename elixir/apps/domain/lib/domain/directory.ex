@@ -1,0 +1,25 @@
+defmodule Domain.Directory do
+  use Domain, :schema
+
+  @primary_key false
+  schema "directories" do
+    belongs_to :account, Domain.Accounts.Account, primary_key: true
+    field :id, :binary_id, primary_key: true
+    field :type, Ecto.Enum, values: ~w[google entra okta]a
+
+    has_one :google_directory, Domain.Google.Directory,
+      references: :id,
+      foreign_key: :id,
+      where: [type: :google]
+
+    has_one :entra_directory, Domain.Entra.Directory,
+      references: :id,
+      foreign_key: :id,
+      where: [type: :entra]
+
+    has_one :okta_directory, Domain.Okta.Directory,
+      references: :id,
+      foreign_key: :id,
+      where: [type: :okta]
+  end
+end

@@ -18,7 +18,12 @@ defmodule Domain.Repo.Migrations.CreateEmailOTPAuthProviders do
       timestamps()
     end
 
-    create(index(:email_otp_auth_providers, [:account_id], unique: true))
+    create(
+      index(:email_otp_auth_providers, [:account_id],
+        name: :email_otp_auth_providers_account_id_index,
+        unique: true
+      )
+    )
 
     execute(
       """

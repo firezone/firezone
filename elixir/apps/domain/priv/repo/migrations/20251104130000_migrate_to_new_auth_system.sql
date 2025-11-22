@@ -19,7 +19,7 @@ DECLARE
   v_email TEXT;
   v_issuer TEXT;
   v_idp_id TEXT;
-  v_directory TEXT;
+  v_directory UUID;
   v_duplicate_count INT;
 BEGIN
   -- Loop through each account
@@ -66,7 +66,7 @@ BEGIN
             CASE WHEN a.disabled_at IS NULL THEN 0 ELSE 1 END,
             a.inserted_at DESC
         ) AS rn
-      FROM auth_identities i
+      FROM external_identities i
       JOIN actors a ON i.actor_id = a.id
       WHERE i.account_id = v_account_id
     ),
@@ -92,7 +92,7 @@ BEGIN
     -- Step 1b: Set actor.email from identity.email where actor.email is null
     UPDATE actors a
     SET email = i.email
-    FROM auth_identities i
+    FROM external_identities i
     WHERE a.id = i.actor_id
       AND a.account_id = v_account_id
       AND a.email IS NULL
@@ -101,7 +101,7 @@ BEGIN
     -- Step 1c: Set actor.email from identity.provider_identifier if it contains @
     UPDATE actors a
     SET email = i.provider_identifier
-    FROM auth_identities i
+    FROM external_identities i
     WHERE a.id = i.actor_id
       AND a.account_id = v_account_id
       AND a.email IS NULL
@@ -114,7 +114,7 @@ BEGIN
       i.provider_state->'claims'->>'email',
       i.provider_state->>'email'
     )
-    FROM auth_identities i
+    FROM external_identities i
     WHERE a.id = i.actor_id
       AND a.account_id = v_account_id
       AND a.email IS NULL
@@ -126,92 +126,32 @@ BEGIN
 
 
     -- ============================================================================
-    -- STEP 2: MIGRATE USERPASS AND EMAIL IDENTITIES (issuer="firezone")
+    -- STEP 2: MIGRATE USERPASS (password_hash) TO ACTORS AND DELETE IDENTITIES
     -- ============================================================================
-    RAISE NOTICE 'Step 2: Migrating userpass and email identities for account %', v_account_id;
+    RAISE NOTICE 'Step 2: Migrating userpass password_hash to actors for account %', v_account_id;
 
-    -- Step 2a: Delete duplicate userpass identities (keep oldest)
-    WITH userpass_duplicates AS (
-      SELECT
-        i.id,
-        i.provider_identifier,
-        i.inserted_at,
-        ROW_NUMBER() OVER (
-          PARTITION BY p.id, i.provider_identifier
-          ORDER BY i.inserted_at ASC
-        ) AS rn
-      FROM auth_identities i
-      JOIN legacy_auth_providers p ON i.provider_id = p.id
-      WHERE p.account_id = v_account_id
-        AND p.adapter = 'userpass'
-    )
-    DELETE FROM auth_identities
-    WHERE id IN (
-      SELECT id FROM userpass_duplicates WHERE rn > 1
-    );
-
-    -- Step 2b: Update userpass identities with password_hash and new fields
-    UPDATE auth_identities i
-    SET
-      name = a.name,
-      idp_id = i.provider_identifier,
-      issuer = 'firezone',
-      directory = 'firezone',
-      password_hash = (i.provider_state->>'password_hash'),
-      provider_id = NULL,
-      provider_state = '{}'::jsonb
-    FROM actors a, legacy_auth_providers p
-    WHERE i.actor_id = a.id
-      AND i.provider_id = p.id
+    -- Step 2a: Move password_hash from userpass identities to actors
+    UPDATE actors a
+    SET password_hash = (i.provider_state->>'password_hash')
+    FROM external_identities i
+    JOIN legacy_auth_providers p ON i.provider_id = p.id
+    WHERE a.id = i.actor_id
+      AND a.account_id = v_account_id
       AND p.account_id = v_account_id
-      AND p.adapter = 'userpass';
+      AND p.adapter = 'userpass'
+      AND i.provider_state->>'password_hash' IS NOT NULL;
 
-    -- Step 2c: Delete duplicate email identities (keep oldest)
-    WITH email_duplicates AS (
-      SELECT
-        i.id,
-        i.provider_identifier,
-        i.inserted_at,
-        ROW_NUMBER() OVER (
-          PARTITION BY p.id, i.provider_identifier
-          ORDER BY i.inserted_at ASC
-        ) AS rn
-      FROM auth_identities i
-      JOIN legacy_auth_providers p ON i.provider_id = p.id
-      WHERE p.account_id = v_account_id
-        AND p.adapter = 'email'
-    )
-    DELETE FROM auth_identities
-    WHERE id IN (
-      SELECT id FROM email_duplicates WHERE rn > 1
-    );
-
-    -- Step 2d: Delete email identities if userpass identity with same issuer/idp_id exists
-    DELETE FROM auth_identities i
+    -- Step 2b: Delete all userpass identities (password is now on actor)
+    DELETE FROM external_identities i
     USING legacy_auth_providers p
     WHERE i.provider_id = p.id
       AND p.account_id = v_account_id
-      AND p.adapter = 'email'
-      AND EXISTS (
-        SELECT 1 FROM auth_identities i2
-        WHERE i2.account_id = v_account_id
-          AND i2.issuer = 'firezone'
-          AND i2.idp_id = i.provider_identifier
-          AND i2.id != i.id
-      );
+      AND p.adapter = 'userpass';
 
-    -- Step 2e: Update remaining email identities
-    UPDATE auth_identities i
-    SET
-      name = a.name,
-      idp_id = i.provider_identifier,
-      issuer = 'firezone',
-      directory = 'firezone',
-      provider_id = NULL,
-      provider_state = '{}'::jsonb
-    FROM actors a, legacy_auth_providers p
-    WHERE i.actor_id = a.id
-      AND i.provider_id = p.id
+    -- Step 2c: Delete all email identities (no longer needed)
+    DELETE FROM external_identities i
+    USING legacy_auth_providers p
+    WHERE i.provider_id = p.id
       AND p.account_id = v_account_id
       AND p.adapter = 'email';
 
@@ -221,7 +161,7 @@ BEGIN
     RAISE NOTICE 'Step 3: Migrating OpenID Connect identities for account %', v_account_id;
 
     -- Delete identities that don't have issuer or idp_id (user never signed in)
-    DELETE FROM auth_identities i
+    DELETE FROM external_identities i
     USING legacy_auth_providers p
     WHERE i.provider_id = p.id
       AND p.account_id = v_account_id
@@ -235,14 +175,13 @@ BEGIN
       );
 
     -- Update OpenID Connect identities with issuer/idp_id from provider_state
-    UPDATE auth_identities i
+    UPDATE external_identities i
     SET
       name = a.name,
-      idp_id = COALESCE(
+      idp_id = 'oidc:' || COALESCE(
         i.provider_state->'claims'->>'oid',
         i.provider_state->'claims'->>'sub'
       ),
-      directory = 'firezone',
       issuer = i.provider_state->'claims'->>'iss',
       provider_id = NULL
     FROM actors a, legacy_auth_providers p
@@ -262,12 +201,11 @@ BEGIN
     RAISE NOTICE 'Step 4: Migrating Google Workspace identities for account %', v_account_id;
 
     -- Update Google Workspace identities
-    UPDATE auth_identities i
+    UPDATE external_identities i
     SET
       name = a.name,
-      idp_id = i.provider_identifier,
+      idp_id = 'google:' || i.provider_identifier,
       issuer = 'https://accounts.google.com',
-      directory = 'google:' || (p.adapter_state->'claims'->>'hd'),
       provider_id = NULL
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id
@@ -281,14 +219,13 @@ BEGIN
     RAISE NOTICE 'Step 5: Migrating Microsoft Entra identities for account %', v_account_id;
 
     -- Update Microsoft Entra identities
-    UPDATE auth_identities i
+    UPDATE external_identities i
     SET
       name = a.name,
-      idp_id = COALESCE(
+      idp_id = 'entra:' || COALESCE(
         i.provider_state->'claims'->>'oid',
         i.provider_identifier
       ),
-      directory = 'entra:' || (p.adapter_state->'claims'->>'tid'),
       issuer = p.adapter_state->'claims'->>'iss',
       provider_id = NULL
     FROM actors a, legacy_auth_providers p
@@ -304,12 +241,11 @@ BEGIN
     RAISE NOTICE 'Step 6: Migrating Okta identities for account %', v_account_id;
 
     -- Update Okta identities
-    UPDATE auth_identities i
+    UPDATE external_identities i
     SET
       name = a.name,
-      idp_id = i.provider_identifier,
+      idp_id = 'okta:' || i.provider_identifier,
       issuer = p.adapter_state->'claims'->>'iss',
-  directory = 'okta:' || REGEXP_REPLACE(p.adapter_state->'claims'->>'iss', '^https://', ''),
       provider_id = NULL
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id
@@ -326,8 +262,7 @@ BEGIN
     -- Update groups for Google Workspace
     UPDATE actor_groups g
     SET
-      directory = 'google:' || (p.adapter_state->'claims'->>'hd'),
-      idp_id = g.provider_identifier,
+      idp_id = 'google:' || g.provider_identifier,
       provider_id = NULL,
       provider_identifier = NULL
     FROM legacy_auth_providers p
@@ -339,8 +274,7 @@ BEGIN
     -- Update groups for Okta
     UPDATE actor_groups g
     SET
-      directory = 'okta:' || REGEXP_REPLACE(p.adapter_state->'claims'->>'iss', '^https://', ''),
-      idp_id = g.provider_identifier,
+      idp_id = 'okta:' || g.provider_identifier,
       provider_id = NULL,
       provider_identifier = NULL
     FROM legacy_auth_providers p
@@ -352,8 +286,7 @@ BEGIN
     -- Update groups for Microsoft Entra
     UPDATE actor_groups g
     SET
-      directory = 'entra:' || (p.adapter_state->'claims'->>'tid'),
-      idp_id = g.provider_identifier,
+      idp_id = 'entra:' || g.provider_identifier,
       provider_id = NULL,
       provider_identifier = NULL
     FROM legacy_auth_providers p
@@ -362,10 +295,9 @@ BEGIN
       AND p.adapter = 'microsoft_entra'
       AND p.adapter_state->'claims'->>'tid' IS NOT NULL;
 
-    -- Update groups without provider (set to 'firezone')
+    -- Update groups without provider (clear legacy fields)
     UPDATE actor_groups
     SET
-      directory = 'firezone',
       idp_id = NULL,
       provider_id = NULL,
       provider_identifier = NULL
@@ -444,7 +376,7 @@ BEGIN
         p.adapter_state->'claims'->>'iss',
         (
           SELECT i.provider_state->'claims'->>'iss'
-          FROM auth_identities i
+          FROM external_identities i
           WHERE i.provider_id = p.id
             AND i.provider_state->'claims'->>'iss' IS NOT NULL
           LIMIT 1
@@ -475,7 +407,7 @@ BEGIN
         p.adapter_state->'claims'->>'iss',
         (
           SELECT i.provider_state->'claims'->>'iss'
-          FROM auth_identities i
+          FROM external_identities i
           WHERE i.provider_id = p.id
             AND i.provider_state->'claims'->>'iss' IS NOT NULL
           LIMIT 1

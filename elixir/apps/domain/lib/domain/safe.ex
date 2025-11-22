@@ -164,6 +164,13 @@ defmodule Domain.Safe do
   @spec stream(Domain.Repo, Ecto.Queryable.t(), Keyword.t()) :: Enum.t()
   def stream(repo, queryable, opts) when repo == Repo, do: Repo.stream(queryable, opts)
 
+  @spec load(module(), {list(), list()}) :: Ecto.Schema.t()
+  def load(schema, data) when is_atom(schema), do: Repo.load(schema, data)
+
+  @spec preload(Ecto.Schema.t() | [Ecto.Schema.t()], term()) ::
+          Ecto.Schema.t() | [Ecto.Schema.t()]
+  def preload(struct_or_structs, preloads), do: Repo.preload(struct_or_structs, preloads)
+
   @spec transact((... -> any()), Keyword.t()) :: {:ok, any()} | {:error, any()}
   def transact(fun, opts \\ []) when is_function(fun), do: Repo.transaction(fun, opts)
 
@@ -316,9 +323,10 @@ defmodule Domain.Safe do
 
   def permit(_action, Domain.Actors.Actor, :account_admin_user), do: :ok
   def permit(_action, Domain.Actors.Group, :account_admin_user), do: :ok
-  def permit(_action, Domain.Auth.Identity, :account_admin_user), do: :ok
+  def permit(_action, Domain.ExternalIdentity, :account_admin_user), do: :ok
   def permit(_action, Domain.Tokens.Token, :account_admin_user), do: :ok
-  def permit(_action, Domain.AuthProviders.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.Directory, :account_admin_user), do: :ok
+  def permit(_action, Domain.AuthProvider, :account_admin_user), do: :ok
   def permit(_action, Domain.Entra.AuthProvider, :account_admin_user), do: :ok
   def permit(_action, Domain.Google.AuthProvider, :account_admin_user), do: :ok
   def permit(_action, Domain.Okta.AuthProvider, :account_admin_user), do: :ok

@@ -149,7 +149,7 @@ defmodule Web.Live.Groups.ShowTest do
 
     group
     |> Ecto.Changeset.change(
-      created_by: :provider,
+      created_by: :system,
       provider_id: provider.id,
       provider_identifier: Ecto.UUID.generate()
     )
@@ -234,7 +234,7 @@ defmodule Web.Live.Groups.ShowTest do
 
     group
     |> Ecto.Changeset.change(
-      created_by: :provider,
+      created_by: :system,
       provider_id: provider.id,
       provider_identifier: Ecto.UUID.generate()
     )
@@ -280,7 +280,7 @@ defmodule Web.Live.Groups.ShowTest do
 
     group
     |> Ecto.Changeset.change(
-      created_by: :provider,
+      created_by: :system,
       provider_id: provider.id,
       provider_identifier: Ecto.UUID.generate()
     )

@@ -12,14 +12,10 @@ defmodule Domain.Mailer.AccountDelete do
     default_email()
     |> subject("ACCOUNT DELETE REQUEST - #{account.slug}")
     |> to("support@firezone.dev")
-    |> reply_to(identity_to_reply_to(subject.identity))
+    |> reply_to(subject.actor.email)
     |> render_text_body(__MODULE__, :account_delete_request,
       account: account,
       subject: subject
     )
   end
-
-  defp identity_to_reply_to(nil), do: "notifications@firezone.dev"
-
-  defp identity_to_reply_to(%Domain.Auth.Identity{} = identity), do: identity.actor.email
 end

@@ -393,12 +393,6 @@ defmodule Web.SignUp do
       end
     )
     |> Ecto.Multi.run(
-      :identity,
-      fn _repo, %{actor: actor} ->
-        DB.create_identity(actor)
-      end
-    )
-    |> Ecto.Multi.run(
       :default_site,
       fn _repo, %{account: account} ->
         Domain.Gateways.create_group(account, %{name: "Default Site"})
@@ -440,8 +434,7 @@ defmodule Web.SignUp do
 
     alias Domain.{
       Actors.Actor,
-      Auth.Identity,
-      AuthProviders,
+      AuthProvider,
       EmailOTP,
       Safe
     }
@@ -449,7 +442,7 @@ defmodule Web.SignUp do
     def create_email_provider(account) do
       id = Ecto.UUID.generate()
       attrs = %{account_id: account.id, id: id}
-      parent_changeset = cast(%AuthProviders.AuthProvider{}, attrs, ~w[id account_id]a)
+      parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id]a)
       attrs = %{id: id, name: "Email (OTP)"}
 
       changeset =
@@ -467,24 +460,6 @@ defmodule Web.SignUp do
 
       cast(%Actor{}, attrs, ~w[account_id email name type]a)
       |> Actor.changeset()
-      |> Safe.unscoped()
-      |> Safe.insert()
-    end
-
-    def create_identity(actor) do
-      attrs = %{
-        account_id: actor.account_id,
-        actor_id: actor.id,
-        issuer: "firezone",
-        name: actor.name,
-        # TODO: IDP REFACTOR
-        # Consider accepting given_name and family_name separately during sign-up
-        given_name: actor.name |> String.split(" ", parts: 2) |> List.first(),
-        family_name: actor.name |> String.split(" ", parts: 2) |> List.last()
-      }
-
-      cast(%Identity{}, attrs, ~w[account_id actor_id name given_name family_name]a)
-      |> Identity.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
     end

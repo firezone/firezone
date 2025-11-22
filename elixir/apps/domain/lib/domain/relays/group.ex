@@ -8,7 +8,7 @@ defmodule Domain.Relays.Group do
     has_many :relays, Domain.Relays.Relay, foreign_key: :group_id
     has_many :tokens, Domain.Tokens.Token, foreign_key: :relay_group_id
 
-    subject_trail(~w[system identity]a)
+    subject_trail(~w[system actor]a)
     timestamps()
   end
 end

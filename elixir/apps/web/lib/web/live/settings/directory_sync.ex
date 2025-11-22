@@ -189,7 +189,7 @@ defmodule Web.Settings.DirectorySync do
         {:noreply,
          socket
          |> init()
-         |> put_flash(:info, "Directory deleted successfully.")
+         |> put_flash(:success, "Directory deleted successfully.")
          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/directory_sync")}
 
       {:error, reason} ->
@@ -229,7 +229,7 @@ defmodule Web.Settings.DirectorySync do
           {:noreply,
            socket
            |> init()
-           |> put_flash(:info, "Directory #{action} successfully.")}
+           |> put_flash(:success, "Directory #{action} successfully.")}
 
         {:error, reason} ->
           Logger.error("Failed to toggle directory: #{inspect(reason)}")
@@ -1042,7 +1042,35 @@ defmodule Web.Settings.DirectorySync do
     end
   end
 
+  defp put_directory_assoc(changeset, socket) do
+    schema = changeset.data.__struct__
+    account_id = socket.assigns.subject.account.id
+
+    type =
+      case schema do
+        Google.Directory -> :google
+        Entra.Directory -> :entra
+        Okta.Directory -> :okta
+      end
+
+    directory_id = Ecto.UUID.generate()
+
+    directory_changeset =
+      %Domain.Directory{}
+      |> Ecto.Changeset.change(%{
+        id: directory_id,
+        account_id: account_id,
+        type: type
+      })
+
+    changeset
+    |> put_change(:id, directory_id)
+    |> put_assoc(:directory, directory_changeset)
+  end
+
   defp submit_directory(%{assigns: %{live_action: :new, form: %{source: changeset}}} = socket) do
+    changeset = put_directory_assoc(changeset, socket)
+
     changeset
     |> Safe.scoped(socket.assigns.subject)
     |> Safe.insert()
@@ -1060,7 +1088,7 @@ defmodule Web.Settings.DirectorySync do
     {:noreply,
      socket
      |> init()
-     |> put_flash(:info, "Directory saved successfully.")
+     |> put_flash(:success, "Directory saved successfully.")
      |> push_patch(to: ~p"/#{socket.assigns.account}/settings/directory_sync")}
   end
 

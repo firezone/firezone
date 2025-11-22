@@ -6,7 +6,7 @@ defmodule Web.UserpassController do
 
   alias Domain.{
     Accounts,
-    Auth,
+    Actors,
     Repo,
     Tokens,
     Userpass
@@ -26,18 +26,17 @@ defmodule Web.UserpassController do
           "userpass" => userpass
         } = params
       ) do
-    issuer = "firezone"
-    idp_id = userpass["idp_id"]
+    email = userpass["idp_id"]
     password = userpass["secret"]
     context_type = context_type(params)
 
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
          %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
-         %Auth.Identity{} = identity <- fetch_identity(account, issuer, idp_id),
-         :ok <- check_admin(identity, context_type),
-         {:ok, identity, _expires_at} <- verify_password(identity, password, conn),
-         {:ok, token} <- create_token(conn, identity, provider, params) do
-      signed_in(conn, context_type, account, identity, token, params)
+         %Actors.Actor{} = actor <- fetch_actor(account, email),
+         :ok <- check_admin(actor, context_type),
+         {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
+         {:ok, token} <- create_token(conn, actor, provider, params) do
+      signed_in(conn, context_type, account, actor, token, params)
     else
       error -> handle_error(conn, error, params)
     end
@@ -48,8 +47,8 @@ defmodule Web.UserpassController do
     handle_error(conn, :invalid_params, params)
   end
 
-  defp verify_password(identity, password, _conn) do
-    password_hash = identity.password_hash
+  defp verify_password(actor, password, _conn) do
+    password_hash = actor.password_hash
 
     cond do
       is_nil(password_hash) ->
@@ -59,22 +58,15 @@ defmodule Web.UserpassController do
         {:error, :invalid_secret}
 
       true ->
-        {:ok, identity, nil}
+        {:ok, actor, nil}
     end
   end
 
-  defp check_admin(
-         %Auth.Identity{actor: %Domain.Actors.Actor{type: :account_admin_user}},
-         _context_type
-       ),
-       do: :ok
+  defp check_admin(%Actors.Actor{type: :account_admin_user}, _context_type), do: :ok
+  defp check_admin(%Actors.Actor{type: :account_user}, :client), do: :ok
+  defp check_admin(_actor, _context_type), do: {:error, :not_admin}
 
-  defp check_admin(%Auth.Identity{actor: %Domain.Actors.Actor{type: :account_user}}, :client),
-    do: :ok
-
-  defp check_admin(_identity, _context_type), do: {:error, :not_admin}
-
-  defp create_token(conn, identity, provider, params) do
+  defp create_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
     type = context_type(params)
@@ -98,10 +90,9 @@ defmodule Web.UserpassController do
       type: context.type,
       secret_nonce: params["nonce"],
       secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-      account_id: identity.account_id,
-      actor_id: identity.actor_id,
-      auth_provider_id: params["auth_provider_id"],
-      identity_id: identity.id,
+      account_id: actor.account_id,
+      actor_id: actor.id,
+      auth_provider_id: provider.id,
       expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second),
       created_by_user_agent: context.user_agent,
       created_by_remote_ip: context.remote_ip
@@ -114,7 +105,7 @@ defmodule Web.UserpassController do
 
   # Context: :browser
   # Store session cookie and redirect to portal or redirect_to parameter
-  defp signed_in(conn, :browser, account, _identity, token, params) do
+  defp signed_in(conn, :browser, account, _actor, token, params) do
     conn
     |> Web.Session.Cookie.put_account_cookie(account.id, token)
     |> Redirector.portal_signed_in(account, params)
@@ -122,11 +113,11 @@ defmodule Web.UserpassController do
 
   # Context: :client
   # Store a cookie and redirect to client handler which redirects to the final URL based on platform
-  defp signed_in(conn, :client, _account, identity, token, params) do
+  defp signed_in(conn, :client, _account, actor, token, params) do
     Redirector.client_signed_in(
       conn,
-      identity.actor.name,
-      identity.actor.email,
+      actor.name,
+      actor.email,
       token,
       params["state"]
     )
@@ -142,18 +133,13 @@ defmodule Web.UserpassController do
     |> Repo.one()
   end
 
-  defp fetch_identity(account, issuer, idp_id) do
+  defp fetch_actor(account, email) do
     import Ecto.Query
 
-    account_id = account.id
-
-    # Fetch identity by idp_id, issuer, and account_id, ensuring the associated actor is not disabled
-    from(i in Auth.Identity,
-      where: i.idp_id == ^idp_id and i.issuer == ^issuer and i.account_id == ^account_id
+    # Fetch actor by email and account_id, ensuring the actor is not disabled
+    from(a in Actors.Actor,
+      where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at)
     )
-    |> join(:inner, [i], a in assoc(i, :actor))
-    |> where([_i, a], is_nil(a.disabled_at))
-    |> preload([i, a], actor: a)
     |> Repo.one()
   end
 

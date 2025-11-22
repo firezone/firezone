@@ -124,10 +124,10 @@ defmodule Web.Settings.ApiClients.Index do
     do: handle_live_table_event(event, params, socket)
 
   defp status(actor) do
-    if Actors.actor_active?(actor), do: "Active", else: "Disabled"
+    if is_nil(actor.disabled_at), do: "Active", else: "Disabled"
   end
 
   defp badge_type(actor) do
-    if Actors.actor_active?(actor), do: "success", else: "danger"
+    if is_nil(actor.disabled_at), do: "success", else: "danger"
   end
 end

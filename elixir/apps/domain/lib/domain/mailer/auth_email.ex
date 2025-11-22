@@ -8,7 +8,7 @@ defmodule Domain.Mailer.AuthEmail do
 
   def sign_up_link_email(
         %Domain.Accounts.Account{} = account,
-        %Domain.Auth.Identity{} = identity,
+        %Domain.Actors.Actor{} = actor,
         user_agent,
         remote_ip
       ) do
@@ -16,7 +16,7 @@ defmodule Domain.Mailer.AuthEmail do
 
     default_email()
     |> subject("Welcome to Firezone")
-    |> to(identity.actor.email)
+    |> to(actor.email)
     |> render_body(__MODULE__, :sign_up_link,
       account: account,
       sign_in_form_url: sign_in_form_url,
@@ -26,7 +26,7 @@ defmodule Domain.Mailer.AuthEmail do
   end
 
   def sign_in_link_email(
-        %Domain.Auth.Identity{} = identity,
+        %Domain.Actors.Actor{} = actor,
         token_created_at,
         auth_provider_id,
         secret,
@@ -34,15 +34,11 @@ defmodule Domain.Mailer.AuthEmail do
         remote_ip,
         params \\ %{}
       ) do
-    params =
-      Map.merge(params, %{
-        identity_id: identity.id,
-        secret: secret
-      })
+    params = Map.merge(params, %{secret: secret})
 
     sign_in_url =
       url(
-        "/#{identity.account.slug}/sign_in/email_otp/#{auth_provider_id}/verify",
+        "/#{actor.account.slug}/sign_in/email_otp/#{auth_provider_id}/verify",
         params
       )
 
@@ -51,11 +47,11 @@ defmodule Domain.Mailer.AuthEmail do
 
     default_email()
     |> subject("Firezone sign in token")
-    |> to(identity.actor.email)
+    |> to(actor.email)
     |> render_body(__MODULE__, :sign_in_link,
-      account: identity.account,
+      account: actor.account,
       client_platform: params["client_platform"],
-      token_created_at: token_created_at,
+      sign_in_token_created_at: token_created_at,
       secret: secret,
       sign_in_url: sign_in_url,
       user_agent: user_agent,

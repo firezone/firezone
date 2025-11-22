@@ -16,7 +16,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
 
     test "puts password hash in the provider state", %{provider: provider} do
       changeset =
-        %Auth.Identity{}
+        %ExternalIdentity{}
         |> Ecto.Changeset.change(
           provider_virtual_state: %{
             password: "Firezone1234",
@@ -33,7 +33,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
 
     test "returns error on invalid attrs", %{provider: provider} do
       changeset =
-        %Auth.Identity{}
+        %ExternalIdentity{}
         |> Ecto.Changeset.change(
           provider_virtual_state: %{
             password: "short",
@@ -53,7 +53,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
              }
 
       changeset =
-        %Auth.Identity{}
+        %ExternalIdentity{}
         |> Ecto.Changeset.change(
           provider_virtual_state: %{
             password: "Firezone1234",
@@ -74,7 +74,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
 
     test "trims provider identifier", %{provider: provider} do
       changeset =
-        %Auth.Identity{}
+        %ExternalIdentity{}
         |> Ecto.Changeset.change(
           provider_identifier: " X ",
           provider_virtual_state: %{
