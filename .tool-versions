@@ -4,3 +4,6 @@ shfmt 3.9.0
 
 # Used to lint Bash scripts
 shellcheck 0.9.0
+
+# Formatting
+prettier 3.6.2
