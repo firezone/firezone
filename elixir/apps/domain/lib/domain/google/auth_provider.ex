@@ -36,7 +36,6 @@ defmodule Domain.Google.AuthProvider do
 
     field :name, :string, default: "Google"
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 

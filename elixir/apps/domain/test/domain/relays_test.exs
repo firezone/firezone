@@ -170,13 +170,6 @@ defmodule Domain.RelaysTest do
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
       assert group.name == attrs.name
-
-      assert group.created_by == :identity
-
-      assert group.created_by_subject == %{
-               "name" => subject.actor.name,
-               "email" => subject.identity.email
-             }
     end
 
     test "trims whitespace when creating a group", %{subject: subject} do
@@ -229,9 +222,6 @@ defmodule Domain.RelaysTest do
       assert {:ok, group} = create_global_group(attrs)
       assert group.id
       assert group.name == attrs.name
-
-      assert group.created_by == :system
-      assert group.created_by_subject == %{"name" => "System", "email" => nil}
     end
 
     test "trims whitespace when creating a group" do
@@ -460,15 +450,9 @@ defmodule Domain.RelaysTest do
       assert token.type == :relay_group
       assert token.account_id == account.id
       assert token.relay_group_id == group.id
-      assert token.created_by == :identity
 
-      assert token.created_by_subject == %{
-               "email" => subject.identity.email,
-               "name" => subject.actor.name
-             }
-
-      assert token.created_by_user_agent == subject.context.user_agent
-      assert token.created_by_remote_ip.address == subject.context.remote_ip
+      assert token.updated_by_user_agent == subject.context.user_agent
+      assert token.updated_by_remote_ip.address == subject.context.remote_ip
       refute token.expires_at
     end
 
@@ -482,10 +466,8 @@ defmodule Domain.RelaysTest do
       assert token.type == :relay_group
       refute token.account_id
       assert token.relay_group_id == group.id
-      assert token.created_by == :system
-      assert token.created_by_subject == %{"email" => nil, "name" => "System"}
-      refute token.created_by_user_agent
-      refute token.created_by_remote_ip
+      refute token.updated_by_user_agent
+      refute token.updated_by_remote_ip
       refute token.expires_at
 
       assert {:ok, fetched_group, fetched_token} = authenticate(encoded_token, context)
@@ -532,15 +514,9 @@ defmodule Domain.RelaysTest do
       assert token.type == :relay_group
       assert token.account_id == account.id
       assert token.relay_group_id == group.id
-      assert token.created_by == :identity
 
-      assert token.created_by_subject == %{
-               "email" => subject.identity.email,
-               "name" => subject.actor.name
-             }
-
-      assert token.created_by_user_agent == context.user_agent
-      assert token.created_by_remote_ip.address == context.remote_ip
+      assert token.updated_by_user_agent == context.user_agent
+      assert token.updated_by_remote_ip.address == context.remote_ip
       refute token.expires_at
     end
 

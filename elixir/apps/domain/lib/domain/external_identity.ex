@@ -29,7 +29,6 @@ defmodule Domain.ExternalIdentity do
     belongs_to :account, Domain.Accounts.Account
     belongs_to :directory, Domain.Directory
 
-    subject_trail(~w[system actor]a)
     timestamps(updated_at: false)
   end
 

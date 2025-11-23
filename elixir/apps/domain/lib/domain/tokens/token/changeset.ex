@@ -27,7 +27,6 @@ defmodule Domain.Tokens.Token.Changeset do
     |> validate_required(@required_attrs)
     |> validate_inclusion(:type, [:email, :browser, :client, :relay_group, :api_client])
     |> changeset()
-    |> put_subject_trail(:created_by, :system)
   end
 
   def create(attrs, %Auth.Subject{} = subject) do
@@ -46,7 +45,6 @@ defmodule Domain.Tokens.Token.Changeset do
       :service_account_client
     ])
     |> changeset()
-    |> put_subject_trail(:created_by, subject)
   end
 
   defp changeset(changeset) do

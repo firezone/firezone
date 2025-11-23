@@ -4,17 +4,9 @@ defmodule Domain do
   making sure our code structure is consistent and predictable.
   """
 
-  defmacro subject_trail(values \\ []) do
-    quote do
-      field(:created_by, Ecto.Enum, values: unquote(values))
-      field(:created_by_subject, :map)
-    end
-  end
-
   def schema do
     quote do
       use Ecto.Schema
-      import Domain, only: [subject_trail: 1]
       import Ecto.Changeset
       import Domain.Repo.Changeset
 

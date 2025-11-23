@@ -37,7 +37,6 @@ defmodule Domain.Resources.Resource.Changeset do
       with: &Connection.Changeset.changeset(account.id, &1, &2, subject),
       required: true
     )
-    |> put_subject_trail(:created_by, subject)
   end
 
   def create(%Accounts.Account{} = account, attrs) do
@@ -47,7 +46,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> validate_required(@required_fields)
     |> validate_address(account)
     |> put_change(:account_id, account.id)
-    |> put_subject_trail(:created_by, :system)
     |> cast_assoc(:connections,
       with: &Connection.Changeset.changeset(account.id, &1, &2)
     )

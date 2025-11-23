@@ -129,7 +129,6 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         assert group.inserted_at
         assert group.updated_at
 
-        assert group.created_by == :system
         assert group.provider_id == provider.id
       end
 
@@ -138,7 +137,6 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
 
       for identity <- identities do
         assert identity.inserted_at
-        assert identity.created_by == :system
         assert identity.provider_id == provider.id
         assert identity.provider_identifier in ["USER_JDOE_ID", "USER_JSMITH_ID"]
 

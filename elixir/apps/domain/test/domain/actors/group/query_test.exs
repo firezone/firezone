@@ -56,7 +56,6 @@ defmodule Domain.Actors.Group.QueryTest do
         assert group.provider_id == provider.id
         assert group.account_id == account.id
         assert group.type == :static
-        assert group.created_by == :system
         assert group.last_synced_at == now
         assert group.name in ["Engineering", "Marketing", "Sales"]
         assert group.provider_identifier in ["eng-001", "mkt-001", "sales-001"]

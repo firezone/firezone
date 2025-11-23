@@ -1037,23 +1037,10 @@ defmodule Domain.ResourcesTest do
       assert resource.name == attrs.address
       assert resource.account_id == account.id
 
-      assert resource.created_by == :identity
-
-      assert resource.created_by_subject == %{
-               "name" => subject.actor.name,
-               "email" => subject.identity.email
-             }
-
       assert [%Domain.Resources.Connection{} = connection] = resource.connections
       assert connection.resource_id == resource.id
       assert connection.gateway_group_id == gateway.group_id
       assert connection.account_id == account.id
-      assert connection.created_by == :identity
-
-      assert resource.created_by_subject == %{
-               "name" => subject.actor.name,
-               "email" => subject.identity.email
-             }
 
       assert [
                %Domain.Resources.Resource.Filter{ports: ["80", "433"], protocol: :tcp},

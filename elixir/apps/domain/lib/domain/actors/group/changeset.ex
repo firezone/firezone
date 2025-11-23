@@ -13,7 +13,7 @@ defmodule Domain.Actors.Group.Changeset do
 
   def upsert_on_conflict, do: {:replace, ~w[name updated_at]a}
 
-  def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
+  def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = _subject) do
     %Actors.Group{memberships: []}
     |> cast(attrs, @fields)
     |> validate_required(~w[name type]a)
@@ -21,7 +21,6 @@ defmodule Domain.Actors.Group.Changeset do
     |> changeset()
     |> put_change(:account_id, account.id)
     |> cast_membership_assocs(account.id)
-    |> put_subject_trail(:created_by, subject)
   end
 
   def create(%Accounts.Account{} = account, attrs) do
@@ -32,19 +31,7 @@ defmodule Domain.Actors.Group.Changeset do
     |> changeset()
     |> put_change(:account_id, account.id)
     |> cast_membership_assocs(account.id)
-    |> put_subject_trail(:created_by, :system)
   end
-
-  # def create(%Auth.Provider{} = provider, attrs) do
-  #   %Actors.Group{memberships: []}
-  #   |> cast(attrs, ~w[name provider_identifier last_synced_at]a)
-  #   |> validate_required(~w[name provider_identifier]a)
-  #   |> put_change(:type, :static)
-  #   |> changeset()
-  #   |> put_change(:provider_id, provider.id)
-  #   |> put_change(:account_id, provider.account_id)
-  #   |> put_subject_trail(:created_by, :provider)
-  # end
 
   def update(%Actors.Group{} = group, attrs) do
     group

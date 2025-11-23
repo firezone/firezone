@@ -727,14 +727,13 @@ defmodule Domain.Entra.Sync do
           AND id.idp_id NOT IN (SELECT idp_id FROM existing_actors_by_email)
       ),
       new_actors AS (
-        INSERT INTO actors (id, type, account_id, name, email, created_by, created_by_directory_id, inserted_at, updated_at)
+        INSERT INTO actors (id, type, account_id, name, email, created_by_directory_id, inserted_at, updated_at)
         SELECT
           new_actor_id,
           'account_user',
           $#{account_id},
           name,
           email,
-          'system',
           $#{directory_id},
           $#{last_synced_at},
           $#{last_synced_at}
@@ -756,7 +755,7 @@ defmodule Domain.Entra.Sync do
       )
       INSERT INTO external_identities (
         id, actor_id, issuer, idp_id, directory_id, email, name, given_name, family_name, preferred_username,
-        last_synced_at, account_id, created_by, inserted_at
+        last_synced_at, account_id, inserted_at
       )
       SELECT
         COALESCE(ei.id, uuid_generate_v4()),
@@ -771,7 +770,6 @@ defmodule Domain.Entra.Sync do
         aam.preferred_username,
         $#{last_synced_at},
         $#{account_id},
-        'system',
         $#{last_synced_at}
       FROM all_actor_mappings aam
       LEFT JOIN existing_identities ei ON ei.idp_id = aam.idp_id
@@ -830,7 +828,6 @@ defmodule Domain.Entra.Sync do
             account_id: account_id,
             inserted_at: last_synced_at,
             updated_at: last_synced_at,
-            created_by: :system,
             type: :static,
             last_synced_at: last_synced_at
           }

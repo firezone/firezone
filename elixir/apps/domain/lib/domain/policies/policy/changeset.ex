@@ -14,7 +14,6 @@ defmodule Domain.Policies.Policy.Changeset do
     |> cast_embed(:conditions, with: &Domain.Policies.Condition.Changeset.changeset/3)
     |> changeset()
     |> put_change(:account_id, subject.account.id)
-    |> put_subject_trail(:created_by, subject)
   end
 
   def update(%Policy{} = policy, attrs) do

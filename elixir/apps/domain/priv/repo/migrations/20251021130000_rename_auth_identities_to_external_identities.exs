@@ -1,5 +1,5 @@
 defmodule Domain.Repo.Migrations.RenameAuthIdentitiesToExternalIdentities do
-  use Domain, :migration
+  use Ecto.Migration
 
   def up do
     # Rename the table

@@ -55,12 +55,6 @@ defmodule Domain.Tokens.Token.Query do
     where(queryable, [tokens: tokens], tokens.actor_id == ^actor_id)
   end
 
-  def by_provider_id(queryable, provider_id) do
-    queryable
-    |> with_joined_identity()
-    |> where([identity: identity], identity.provider_id == ^provider_id)
-  end
-
   def by_relay_group_id(queryable, relay_group_id) do
     where(queryable, [tokens: tokens], tokens.relay_group_id == ^relay_group_id)
   end
@@ -72,12 +66,6 @@ defmodule Domain.Tokens.Token.Query do
   def with_joined_account(queryable) do
     with_named_binding(queryable, :account, fn queryable, binding ->
       join(queryable, :inner, [tokens: tokens], account in assoc(tokens, ^binding), as: ^binding)
-    end)
-  end
-
-  def with_joined_identity(queryable) do
-    with_named_binding(queryable, :identity, fn queryable, binding ->
-      join(queryable, :inner, [tokens: tokens], identity in assoc(tokens, ^binding), as: ^binding)
     end)
   end
 

@@ -30,8 +30,6 @@ defmodule Domain.GoogleTest do
 
       assert provider.account_id == account.id
       assert provider.domain == "example.com"
-      assert provider.created_by == :identity
-      assert provider.created_by_subject["email"] == subject.identity.email
     end
 
     test "unprivileged user cannot create OIDC provider", %{unprivileged_subject: subject} do

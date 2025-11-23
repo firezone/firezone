@@ -42,7 +42,6 @@ defmodule Domain.Okta.AuthProvider do
     # Built from the okta_domain
     field :discovery_document_uri, :string, virtual: true
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 

@@ -20,8 +20,6 @@ defmodule API.EntraAuthProviderJSON do
       portal_session_lifetime_secs: provider.portal_session_lifetime_secs,
       is_disabled: provider.is_disabled,
       is_default: provider.is_default,
-      created_by: provider.created_by,
-      created_by_subject: provider.created_by_subject,
       inserted_at: provider.inserted_at,
       updated_at: provider.updated_at
     }

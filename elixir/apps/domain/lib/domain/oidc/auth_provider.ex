@@ -39,7 +39,6 @@ defmodule Domain.OIDC.AuthProvider do
     field :client_secret, :string, redact: true
     field :discovery_document_uri, :string
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 

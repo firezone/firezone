@@ -28,8 +28,6 @@ defmodule API.Schemas.EmailOTPAuthProvider do
           description: "Portal session lifetime in seconds"
         },
         is_disabled: %Schema{type: :boolean, description: "Whether provider is disabled"},
-        created_by: %Schema{type: :string, description: "Created by type"},
-        created_by_subject: %Schema{type: :object, description: "Created by subject details"},
         inserted_at: %Schema{type: :string, format: :datetime, description: "Creation timestamp"},
         updated_at: %Schema{type: :string, format: :datetime, description: "Update timestamp"}
       },

@@ -20,7 +20,6 @@ defmodule Domain.Entra.Directory do
     field :sync_all_groups, :boolean, default: false, read_after_writes: true
     field :is_verified, :boolean, default: false, read_after_writes: true
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 

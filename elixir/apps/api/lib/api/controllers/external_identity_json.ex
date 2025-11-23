@@ -33,8 +33,6 @@ defmodule API.ExternalIdentityJSON do
       picture: external_identity.picture,
       firezone_avatar_url: external_identity.firezone_avatar_url,
       last_synced_at: external_identity.last_synced_at,
-      created_by: external_identity.created_by,
-      created_by_subject: external_identity.created_by_subject,
       inserted_at: external_identity.inserted_at
     }
   end

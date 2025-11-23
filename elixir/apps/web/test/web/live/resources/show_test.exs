@@ -347,7 +347,7 @@ defmodule Web.Live.Resources.ShowTest do
     refute Repo.get(Domain.Resources.Resource, resource.id)
   end
 
-  test "renders created_by info when created by Identity", %{
+  test "renders updated_by info when created by Identity", %{
     account: account,
     actor: actor,
     identity: identity,
@@ -370,7 +370,7 @@ defmodule Web.Live.Resources.ShowTest do
     assert html =~ "by #{actor.name}"
   end
 
-  test "renders created_by info when created by API client", %{
+  test "renders updated_by info when created by API client", %{
     account: account,
     identity: identity,
     conn: conn

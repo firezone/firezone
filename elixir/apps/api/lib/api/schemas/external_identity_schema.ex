@@ -34,8 +34,6 @@ defmodule API.Schemas.ExternalIdentity do
           format: :datetime,
           description: "Last sync timestamp"
         },
-        created_by: %Schema{type: :string, description: "Created by"},
-        created_by_subject: %Schema{type: :object, description: "Created by subject"},
         inserted_at: %Schema{type: :string, format: :datetime, description: "Creation timestamp"}
       },
       required: [:id, :actor_id, :issuer, :idp_id],
@@ -51,7 +49,6 @@ defmodule API.Schemas.ExternalIdentity do
         "family_name" => "Doe",
         "picture" => "https://example.com/avatar.jpg",
         "last_synced_at" => "2025-01-15T12:34:56.789Z",
-        "created_by" => "system",
         "inserted_at" => "2025-01-15T12:34:56.789Z"
       }
     })
@@ -103,7 +100,6 @@ defmodule API.Schemas.ExternalIdentity do
           "family_name" => "Doe",
           "picture" => "https://example.com/avatar.jpg",
           "last_synced_at" => "2025-01-15T12:34:56.789Z",
-          "created_by" => "system",
           "inserted_at" => "2025-01-15T12:34:56.789Z"
         }
       }
@@ -141,7 +137,6 @@ defmodule API.Schemas.ExternalIdentity do
             "family_name" => "Doe",
             "picture" => "https://example.com/avatar1.jpg",
             "last_synced_at" => "2025-01-15T12:34:56.789Z",
-            "created_by" => "system",
             "inserted_at" => "2025-01-15T12:34:56.789Z"
           },
           %{
@@ -156,7 +151,6 @@ defmodule API.Schemas.ExternalIdentity do
             "family_name" => "Smith",
             "picture" => "https://example.com/avatar2.jpg",
             "last_synced_at" => "2025-01-15T11:22:33.456Z",
-            "created_by" => "system",
             "inserted_at" => "2025-01-15T11:22:33.456Z"
           }
         ],

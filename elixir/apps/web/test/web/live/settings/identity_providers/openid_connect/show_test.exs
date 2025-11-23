@@ -84,10 +84,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
     assert around_now?(table["created"])
 
     provider
-    |> Ecto.Changeset.change(
-      created_by: :identity,
-      created_by_subject: %{"name" => actor.name, "email" => identity.email}
-    )
+    |> Ecto.Changeset.change()
     |> Repo.update!()
 
     {:ok, lv, _html} =

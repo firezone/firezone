@@ -75,12 +75,6 @@ defmodule Web.RelayGroups.Show do
               <:label>Instance Group Name</:label>
               <:value>{@group.name}</:value>
             </.vertical_table_row>
-            <.vertical_table_row>
-              <:label>Created</:label>
-              <:value>
-                <.created_by schema={@group} />
-              </:value>
-            </.vertical_table_row>
           </.vertical_table>
         </div>
       </:content>

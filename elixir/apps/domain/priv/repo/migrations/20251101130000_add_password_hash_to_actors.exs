@@ -1,5 +1,5 @@
 defmodule Domain.Repo.Migrations.AddPasswordHashToActors do
-  use Domain, :migration
+  use Ecto.Migration
 
   def change do
     alter table(:actors) do

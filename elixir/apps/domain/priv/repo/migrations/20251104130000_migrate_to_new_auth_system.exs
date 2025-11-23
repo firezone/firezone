@@ -1,5 +1,5 @@
 defmodule Domain.Repo.Migrations.MigrateToNewAuthSystem do
-  use Domain, :migration
+  use Ecto.Migration
 
   def up do
     # This migration converts all accounts from the legacy auth system to the new directory-based system

@@ -168,14 +168,6 @@ defmodule Web.Policies.Show do
               <span class="whitespace-pre" phx-no-format><%= @policy.description %></span>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>
-              Created
-            </:label>
-            <:value>
-              <.created_by schema={@policy} />
-            </:value>
-          </.vertical_table_row>
         </.vertical_table>
       </:content>
     </.section>

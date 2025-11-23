@@ -68,7 +68,6 @@ defmodule Domain.ExternalIdentity.QueryTest do
         assert identity.provider_identifier in ["user-001", "user-002"]
         assert identity.email in ["user1@example.com", "user2@example.com"]
         assert identity.actor.name in ["User 1", "User 2"]
-        assert identity.created_by == :system
       end
 
       # Verify correct counts

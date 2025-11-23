@@ -19,8 +19,6 @@ defmodule API.EmailOTPAuthProviderJSON do
       client_session_lifetime_secs: provider.client_session_lifetime_secs,
       portal_session_lifetime_secs: provider.portal_session_lifetime_secs,
       is_disabled: provider.is_disabled,
-      created_by: provider.created_by,
-      created_by_subject: provider.created_by_subject,
       inserted_at: provider.inserted_at,
       updated_at: provider.updated_at
     }

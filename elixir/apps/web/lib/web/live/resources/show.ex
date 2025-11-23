@@ -193,14 +193,6 @@ defmodule Web.Resources.Show do
               </div>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>
-              Created
-            </:label>
-            <:value>
-              <.created_by schema={@resource} />
-            </:value>
-          </.vertical_table_row>
         </.vertical_table>
       </:content>
     </.section>

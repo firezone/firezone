@@ -1,5 +1,5 @@
 defmodule Domain.Repo.Migrations.DropLegacyProviderFields do
-  use Domain, :migration
+  use Ecto.Migration
 
   def up do
     alter table(:external_identities) do

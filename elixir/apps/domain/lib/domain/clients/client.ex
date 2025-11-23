@@ -27,8 +27,6 @@ defmodule Domain.Clients.Client do
           identifier_for_vendor: String.t() | nil,
           firebase_installation_id: String.t() | nil,
           verified_at: DateTime.t() | nil,
-          verified_by: :system | :actor | :identity | nil,
-          verified_by_subject: map() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -66,8 +64,6 @@ defmodule Domain.Clients.Client do
 
     # Verification
     field :verified_at, :utc_datetime_usec
-    field :verified_by, Ecto.Enum, values: [:system, :actor]
-    field :verified_by_subject, :map
 
     timestamps()
   end

@@ -16,13 +16,10 @@ defmodule Web.Clients.Show do
         :ok = Clients.Presence.Actor.subscribe(client.actor_id)
       end
 
-      current_token = get_current_token_from_presence(client, socket.assigns.subject)
-
       socket =
         assign(
           socket,
           client: client,
-          current_token: current_token,
           page_title: "Client #{client.name}"
         )
         |> assign_live_table("flows",
@@ -113,35 +110,6 @@ defmodule Web.Clients.Show do
               >
                 {@client.actor.name}
               </.link>
-            </:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>Current sign in method</:label>
-            <:value>
-              <div
-                :if={@current_token && @client.actor.type != :service_account}
-                class="flex items-center"
-              >
-                <.identity_identifier account={@account} identity={@current_token.identity} />
-                <.link
-                  navigate={"#{~p"/#{@account}/actors/#{@client.actor_id}"}?return_to=#{@current_path}#tokens-#{@current_token.id}"}
-                  class={[link_style(), "text-xs"]}
-                >
-                  show tokens
-                </.link>
-              </div>
-              <div :if={@current_token && @client.actor.type == :service_account}>
-                token
-                <.link
-                  navigate={"#{~p"/#{@account}/actors/#{@client.actor_id}"}?return_to=#{@current_path}#tokens-#{@current_token.id}"}
-                  class={[link_style()]}
-                >
-                  {@current_token.name}
-                </.link>
-              </div>
-              <div :if={!@current_token} class="text-gray-500">
-                Client is offline - sign in method unavailable
-              </div>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -279,7 +247,7 @@ defmodule Web.Clients.Show do
               </.popover>
             </:label>
             <:value>
-              <.verified_by schema={@client} />
+              <.verified schema={@client} />
             </:value>
           </.vertical_table_row>
 
@@ -480,70 +448,5 @@ defmodule Web.Clients.Show do
       |> push_navigate(to: ~p"/#{socket.assigns.account}/clients")
 
     {:noreply, socket}
-  end
-
-  attr :account, :any, required: true
-  attr :identity, :any, required: true
-
-  defp identity_identifier(assigns) do
-    ~H"""
-    <span class="flex items-center" data-identity-id={@identity.id}>
-      <div class={~w[
-          text-xs
-          rounded-l
-          py-0.5 px-1.5
-          text-neutral-800
-          bg-neutral-100
-          border-neutral-100
-          border
-        ]}>
-        <.provider_icon type={get_type_for_issuer(@identity.issuer)} class="h-3.5 w-3.5" />
-      </div>
-      <span class={~w[
-        text-xs
-        min-w-0
-        rounded-r
-        mr-2 py-0.5 pl-1.5 pr-2.5
-        text-neutral-900
-        bg-neutral-50
-      ]}>
-        <span class="block truncate" title={@identity.actor.email}>
-          {@identity.actor.email}
-        </span>
-      </span>
-    </span>
-    """
-  end
-
-  defp get_current_token_from_presence(client, subject) do
-    case Clients.Presence.Actor.get(client.actor_id, client.id) do
-      [] ->
-        nil
-
-      presence_data ->
-        Map.get(presence_data, :metas)
-        |> fetch_token_by_metas(subject)
-    end
-  end
-
-  defp fetch_token_by_metas([%{token_id: token_id} | _tail], subject),
-    do: fetch_token(token_id, subject)
-
-  defp fetch_token_by_metas(_metas, _subject), do: nil
-
-  defp fetch_token(token_id, subject) do
-    case Domain.Tokens.fetch_token_by_id(token_id, subject, preload: [identity: [:provider]]) do
-      {:ok, token} -> token
-      _ -> nil
-    end
-  end
-
-  defp get_type_for_issuer(issuer) do
-    cond do
-      String.contains?(issuer, "accounts.google.com") -> "google"
-      String.contains?(issuer, "login.microsoftonline.com") -> "entra"
-      String.contains?(issuer, "okta.com") -> "okta"
-      true -> "firezone"
-    end
   end
 end

@@ -62,7 +62,6 @@ defmodule Domain.Fixtures.Auth do
       name: "provider-#{unique_integer()}",
       adapter: :email,
       adapter_config: %{},
-      created_by: :system,
       provisioner: :manual
     })
   end
@@ -453,7 +452,7 @@ defmodule Domain.Fixtures.Auth do
 
     {:ok, identity} = Auth.upsert_identity(actor, provider, attrs)
 
-    attrs = Map.take(attrs, [:provider_state, :created_by])
+    attrs = Map.take(attrs, [:provider_state])
 
     identity
     |> Ecto.Changeset.change(attrs)

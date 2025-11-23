@@ -36,7 +36,6 @@ defmodule Domain.Entra.AuthProvider do
 
     field :name, :string, default: "Entra"
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 

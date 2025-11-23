@@ -21,7 +21,6 @@ defmodule Domain.Actors.Group do
     belongs_to :account, Domain.Accounts.Account
     belongs_to :directory, Domain.Directory
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 

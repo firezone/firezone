@@ -281,8 +281,6 @@
 #               "response_type" => "code",
 #               "scope" => "openid email profile"
 #             },
-#             created_by: :system,
-#             created_by_subject: %{"name" => "System", "email" => nil},
 #             provisioner: :manual,
 #             last_sync_error:
 #               "Connection timeout: Unable to reach identity provider API at https://dev-123456.okta.com",
@@ -335,7 +333,6 @@
 #             name: "Email",
 #             adapter: :email,
 #             adapter_config: %{},
-#             created_by: :system,
 #             provisioner: :manual
 #           })
 #
@@ -390,7 +387,6 @@
 #           account_id: account.id,
 #           name: "Test Gateway Group",
 #           managed_by: :account,
-#           created_by: :system
 #         })
 #
 #       group ->

@@ -1,11 +1,14 @@
 defmodule Domain.Repo.Migrations.CreateEntraDirectories do
-  use Domain, :migration
+  use Ecto.Migration
 
   def change do
     create table(:entra_directories, primary_key: false) do
       add(:id, :binary_id, null: false, primary_key: true)
 
-      account()
+      add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
+        null: false
+      )
+
       add(:tenant_id, :string, null: false)
 
       add(:name, :string, null: false)
@@ -18,7 +21,8 @@ defmodule Domain.Repo.Migrations.CreateEntraDirectories do
       add(:sync_all_groups, :boolean, default: false, null: false)
       add(:is_verified, :boolean, default: false, null: false)
 
-      subject_trail()
+      add(:created_by, :string, null: false)
+      add(:created_by_subject, :map)
       timestamps()
     end
 

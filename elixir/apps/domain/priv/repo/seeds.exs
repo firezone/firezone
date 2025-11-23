@@ -51,7 +51,6 @@ defmodule Domain.Repo.Seeds do
       attrs
       |> Map.put(:id, provider_id)
       |> Map.put(:account_id, subject.account.id)
-      |> Map.put(:created_by, :system)
 
     changeset =
       struct(provider_module, attrs_with_id)
@@ -262,8 +261,7 @@ defmodule Domain.Repo.Seeds do
         account_id: account.id,
         type: :account_user,
         name: "Firezone Unprivileged",
-        email: unprivileged_actor_email,
-        created_by: :system
+        email: unprivileged_actor_email
       })
 
     other_actors_with_emails =
@@ -275,8 +273,7 @@ defmodule Domain.Repo.Seeds do
             account_id: account.id,
             type: :account_user,
             name: "Firezone Unprivileged #{i}",
-            email: email,
-            created_by: :system
+            email: email
           })
 
         {actor, email}
@@ -289,16 +286,14 @@ defmodule Domain.Repo.Seeds do
         account_id: account.id,
         type: :account_admin_user,
         name: "Firezone Admin",
-        email: admin_actor_email,
-        created_by: :system
+        email: admin_actor_email
       })
 
     {:ok, service_account_actor} =
       Repo.insert(%Actors.Actor{
         account_id: account.id,
         type: :service_account,
-        name: "Backup Manager",
-        created_by: :system
+        name: "Backup Manager"
       })
 
     # Set password on actors (no identity needed for userpass/email)
@@ -321,8 +316,7 @@ defmodule Domain.Repo.Seeds do
         account_id: account.id,
         issuer: "https://common.auth0.com",
         idp_id: "oidc:#{admin_actor_email}",
-        name: "Firezone Admin",
-        created_by: :system
+        name: "Firezone Admin"
       })
 
     {:ok, _google_identity} =
@@ -331,8 +325,7 @@ defmodule Domain.Repo.Seeds do
         account_id: account.id,
         issuer: "https://accounts.google.com",
         idp_id: "google:#{google_idp_id()}",
-        name: "Firezone Admin",
-        created_by: :system
+        name: "Firezone Admin"
       })
 
     {:ok, _entra_identity} =
@@ -341,8 +334,7 @@ defmodule Domain.Repo.Seeds do
         account_id: account.id,
         issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
         idp_id: "entra:#{entra_idp_id()}",
-        name: "Firezone Admin",
-        created_by: :system
+        name: "Firezone Admin"
       })
 
     for {actor, email} <- other_actors_with_emails do
@@ -352,8 +344,7 @@ defmodule Domain.Repo.Seeds do
           account_id: account.id,
           issuer: "https://common.auth0.com",
           idp_id: "oidc:#{email}",
-          name: actor.name,
-          created_by: :system
+          name: actor.name
         })
 
       context = %Auth.Context{
@@ -375,8 +366,7 @@ defmodule Domain.Repo.Seeds do
           secret_nonce: "n",
           secret_fragment: Domain.Crypto.random_token(32),
           secret_salt: Domain.Crypto.random_token(16),
-          secret_hash: "placeholder",
-          created_by: :actor
+          secret_hash: "placeholder"
         })
 
       {:ok, subject} = Auth.build_subject(token, context)
@@ -419,8 +409,7 @@ defmodule Domain.Repo.Seeds do
         account_id: other_account.id,
         type: :account_user,
         name: "Other Unprivileged",
-        email: other_unprivileged_actor_email,
-        created_by: :system
+        email: other_unprivileged_actor_email
       })
 
     {:ok, other_admin_actor} =
@@ -428,8 +417,7 @@ defmodule Domain.Repo.Seeds do
         account_id: other_account.id,
         type: :account_admin_user,
         name: "Other Admin",
-        email: other_admin_actor_email,
-        created_by: :system
+        email: other_admin_actor_email
       })
 
     # Set password on other_account actors (no identity needed for userpass/email)
@@ -465,9 +453,7 @@ defmodule Domain.Repo.Seeds do
         secret_fragment: Ecto.UUID.generate(),
         secret_salt: Ecto.UUID.generate(),
         secret_hash: Ecto.UUID.generate(),
-        expires_at: DateTime.utc_now() |> DateTime.add(7, :day),
-        created_by: :system,
-        created_by_subject: nil
+        expires_at: DateTime.utc_now() |> DateTime.add(7, :day)
       })
 
     # For seeds, create a system subject for admin operations
@@ -633,8 +619,6 @@ defmodule Domain.Repo.Seeds do
             %{
               name: "#{Domain.Accounts.generate_unique_slug()}-#{i}",
               type: :static,
-              created_by: :system,
-              created_by_subject: nil,
               account_id: admin_subject.account.id,
               inserted_at: DateTime.utc_now(),
               updated_at: DateTime.utc_now()
@@ -687,13 +671,6 @@ defmodule Domain.Repo.Seeds do
 
     now = DateTime.utc_now()
 
-    admin_subject_data = %{
-      "ip" => to_string(:inet.ntoa(admin_subject.context.remote_ip)),
-      "user_agent" => admin_subject.context.user_agent,
-      "email" => admin_subject.actor.email,
-      "id" => admin_subject.actor.id
-    }
-
     group_values = [
       %{
         id: Ecto.UUID.generate(),
@@ -701,9 +678,7 @@ defmodule Domain.Repo.Seeds do
         type: :static,
         account_id: account.id,
         inserted_at: now,
-        updated_at: now,
-        created_by: :actor,
-        created_by_subject: admin_subject_data
+        updated_at: now
       },
       %{
         id: Ecto.UUID.generate(),
@@ -711,9 +686,7 @@ defmodule Domain.Repo.Seeds do
         type: :static,
         account_id: account.id,
         inserted_at: now,
-        updated_at: now,
-        created_by: :actor,
-        created_by_subject: admin_subject_data
+        updated_at: now
       },
       %{
         id: Ecto.UUID.generate(),
@@ -721,9 +694,7 @@ defmodule Domain.Repo.Seeds do
         type: :static,
         account_id: account.id,
         inserted_at: now,
-        updated_at: now,
-        created_by: :actor,
-        created_by_subject: admin_subject_data
+        updated_at: now
       }
     ]
 
@@ -786,9 +757,7 @@ defmodule Domain.Repo.Seeds do
           type: :static,
           account_id: account.id,
           inserted_at: now,
-          updated_at: now,
-          created_by: :actor,
-          created_by_subject: admin_subject_data
+          updated_at: now
         }
       end)
 

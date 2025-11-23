@@ -140,10 +140,7 @@ defmodule Web.Live.Settings.IdentityProviders.JumpCloud.ShowTest do
     WorkOSDirectory.mock_list_directories_endpoint(bypass)
 
     provider
-    |> Ecto.Changeset.change(
-      created_by: :identity,
-      created_by_subject: %{"name" => actor.name, "email" => identity.email}
-    )
+    |> Ecto.Changeset.change()
     |> Repo.update!()
 
     {:ok, lv, _html} =

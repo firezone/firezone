@@ -132,8 +132,8 @@ defmodule Domain.TokensTest do
         secret_nonce: -1,
         secret_fragment: -1,
         expires_at: DateTime.utc_now(),
-        created_by_user_agent: -1,
-        created_by_remote_ip: -1,
+        updated_by_user_agent: -1,
+        updated_by_remote_ip: -1,
         account_id: Ecto.UUID.generate()
       }
 
@@ -145,8 +145,8 @@ defmodule Domain.TokensTest do
                secret_nonce: ["is invalid"],
                secret_fragment: ["is invalid"],
                secret_hash: ["can't be blank"],
-               created_by_remote_ip: ["is invalid"],
-               created_by_user_agent: ["is invalid"]
+               updated_by_remote_ip: ["is invalid"],
+               updated_by_user_agent: ["is invalid"]
              } = errors_on(changeset)
     end
 
@@ -166,16 +166,16 @@ defmodule Domain.TokensTest do
         secret_nonce: nonce,
         secret_fragment: fragment,
         expires_at: expires_at,
-        created_by_user_agent: user_agent,
-        created_by_remote_ip: remote_ip
+        updated_by_user_agent: user_agent,
+        updated_by_remote_ip: remote_ip
       }
 
       assert {:ok, %Tokens.Token{} = token} = create_token(attrs)
 
       assert token.type == type
       assert token.expires_at == expires_at
-      assert token.created_by_user_agent == user_agent
-      assert token.created_by_remote_ip.address == remote_ip
+      assert token.updated_by_user_agent == user_agent
+      assert token.updated_by_remote_ip.address == remote_ip
 
       refute token.secret_nonce
       assert token.secret_fragment == fragment
@@ -185,7 +185,6 @@ defmodule Domain.TokensTest do
       assert token.account_id == account.id
       assert token.actor_id == actor.id
       assert token.identity_id == identity.id
-      assert token.created_by_subject == %{"name" => "System", "email" => nil}
     end
   end
 
@@ -206,8 +205,8 @@ defmodule Domain.TokensTest do
         secret_nonce: "x.o",
         secret_fragment: -1,
         expires_at: DateTime.utc_now(),
-        created_by_user_agent: -1,
-        created_by_remote_ip: -1
+        updated_by_user_agent: -1,
+        updated_by_remote_ip: -1
       }
 
       assert {:error, changeset} = create_token(attrs, subject)
@@ -218,8 +217,8 @@ defmodule Domain.TokensTest do
                secret_nonce: ["has invalid format"],
                secret_fragment: ["is invalid"],
                secret_hash: ["can't be blank"],
-               created_by_remote_ip: ["is invalid"],
-               created_by_user_agent: ["is invalid"]
+               updated_by_remote_ip: ["is invalid"],
+               updated_by_user_agent: ["is invalid"]
              } = errors_on(changeset)
     end
 
@@ -247,8 +246,8 @@ defmodule Domain.TokensTest do
 
       assert token.type == type
       assert token.expires_at == expires_at
-      assert token.created_by_user_agent == subject.context.user_agent
-      assert token.created_by_remote_ip == subject.context.remote_ip
+      assert token.updated_by_user_agent == subject.context.user_agent
+      assert token.updated_by_remote_ip == subject.context.remote_ip
 
       assert token.secret_fragment == fragment
       refute token.secret_nonce
@@ -264,11 +263,6 @@ defmodule Domain.TokensTest do
       assert token.account_id == account.id
       assert token.actor_id == actor.id
       assert token.identity_id == identity.id
-
-      assert token.created_by_subject == %{
-               "name" => actor.name,
-               "email" => identity.email
-             }
     end
   end
 

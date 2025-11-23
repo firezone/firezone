@@ -1,5 +1,5 @@
 defmodule Domain.Repo.Migrations.AddConstraintsToNewProviderFields do
-  use Domain, :migration
+  use Ecto.Migration
 
   def change do
     # Not all actors have emails, but account users and account admin users must have one

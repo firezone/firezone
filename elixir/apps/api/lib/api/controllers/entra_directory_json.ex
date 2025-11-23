@@ -22,8 +22,6 @@ defmodule API.EntraDirectoryJSON do
       error_message: directory.error_message,
       errored_at: directory.errored_at,
       sync_all_groups: directory.sync_all_groups,
-      created_by: directory.created_by,
-      created_by_subject: directory.created_by_subject,
       inserted_at: directory.inserted_at,
       updated_at: directory.updated_at
     }

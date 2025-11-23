@@ -1,5 +1,5 @@
 defmodule Domain.Repo.Migrations.AddIdpFieldsToExternalIdentities do
-  use Domain, :migration
+  use Ecto.Migration
 
   def change do
     alter table(:external_identities) do

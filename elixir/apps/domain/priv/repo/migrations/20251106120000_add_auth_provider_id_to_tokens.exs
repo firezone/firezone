@@ -1,5 +1,5 @@
 defmodule Domain.Repo.Migrations.AddAuthProviderIdToTokens do
-  use Domain, :migration
+  use Ecto.Migration
 
   def change do
     alter table(:tokens) do

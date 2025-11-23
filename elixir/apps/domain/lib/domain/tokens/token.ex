@@ -52,7 +52,6 @@ defmodule Domain.Tokens.Token do
     field :auth_provider_name, :string, virtual: true
     field :auth_provider_type, :string, virtual: true
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 end

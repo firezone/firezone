@@ -27,7 +27,6 @@ defmodule Domain.Actors.Actor do
 
     belongs_to :directory, Domain.Directory, foreign_key: :created_by_directory_id
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 

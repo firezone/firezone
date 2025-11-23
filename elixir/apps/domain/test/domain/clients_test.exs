@@ -636,12 +636,6 @@ defmodule Domain.ClientsTest do
                subject.context.remote_ip_location_lon
 
       assert updated_client.verified_at == client.verified_at
-      assert updated_client.verified_by == client.verified_by
-
-      assert updated_client.verified_by_subject == %{
-               "email" => previous_subject.identity.email,
-               "name" => previous_subject.actor.name
-             }
 
       assert updated_client.device_serial == client.device_serial
       assert updated_client.device_uuid == client.device_uuid
@@ -713,8 +707,6 @@ defmodule Domain.ClientsTest do
                subject.context.remote_ip_location_lon
 
       refute created_client.verified_at
-      refute created_client.verified_by
-      refute created_client.verified_by_subject
 
       assert created_client.device_serial == attrs.device_serial
       assert created_client.device_uuid == attrs.device_uuid
@@ -770,8 +762,6 @@ defmodule Domain.ClientsTest do
         assert Map.get(updated_client, field) == Map.get(attrs, field)
 
         assert is_nil(updated_client.verified_at)
-        assert is_nil(updated_client.verified_by)
-        assert is_nil(updated_client.verified_by_subject)
       end
     end
 
@@ -822,8 +812,6 @@ defmodule Domain.ClientsTest do
         refute Map.get(updated_client, field)
 
         assert is_nil(updated_client.verified_at)
-        assert is_nil(updated_client.verified_by)
-        assert is_nil(updated_client.verified_by_subject)
       end
     end
 
@@ -871,8 +859,6 @@ defmodule Domain.ClientsTest do
       assert updated_client.firebase_installation_id == attrs.firebase_installation_id
 
       refute is_nil(updated_client.verified_at)
-      refute is_nil(updated_client.verified_by)
-      refute is_nil(updated_client.verified_by_subject)
     end
 
     test "does not reserve additional addresses on update", %{
@@ -1123,12 +1109,6 @@ defmodule Domain.ClientsTest do
 
       assert {:ok, client} = verify_client(client, subject)
       assert client.verified_at
-      assert client.verified_by == :identity
-
-      assert client.verified_by_subject == %{
-               "email" => subject.identity.email,
-               "name" => actor.name
-             }
 
       assert {:ok, double_verified_client} = verify_client(client, subject)
       assert double_verified_client.verified_at == client.verified_at
@@ -1165,8 +1145,6 @@ defmodule Domain.ClientsTest do
       assert {:ok, client} = remove_client_verification(client, subject)
 
       assert is_nil(client.verified_at)
-      assert is_nil(client.verified_by)
-      assert is_nil(client.verified_by_subject)
     end
 
     test "returns error when subject has no permission to verify clients", %{

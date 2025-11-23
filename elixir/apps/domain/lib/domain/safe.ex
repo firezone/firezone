@@ -222,10 +222,14 @@ defmodule Domain.Safe do
     schema = get_schema_module(changeset.data)
 
     with :ok <- permit(:insert, schema, subject) do
-      changeset
-      |> put_change(:account_id, subject.account.id)
-      |> put_subject_trail(subject)
-      |> Repo.insert()
+      Repo.transaction(fn ->
+        # Emit subject info to the replication stream
+        emit_subject_message(subject, :insert, schema)
+
+        changeset
+        |> put_change(:account_id, subject.account.id)
+        |> Repo.insert!()
+      end)
     end
   end
 
@@ -246,7 +250,12 @@ defmodule Domain.Safe do
     schema = get_schema_module(changeset.data)
 
     with :ok <- permit(:update, schema, subject) do
-      Repo.update(changeset)
+      Repo.transaction(fn ->
+        # Emit subject info to the replication stream
+        emit_subject_message(subject, :update, schema)
+
+        Repo.update!(changeset)
+      end)
     end
   end
 
@@ -268,7 +277,12 @@ defmodule Domain.Safe do
 
     case permit(:update_all, schema, subject) do
       :ok ->
-        Repo.update_all(queryable, updates)
+        Repo.transaction(fn ->
+          # Emit subject info to the replication stream
+          emit_subject_message(subject, :update_all, schema)
+
+          Repo.update_all(queryable, updates)
+        end)
 
       {:error, :unauthorized} ->
         {:error, :unauthorized}
@@ -296,7 +310,16 @@ defmodule Domain.Safe do
     schema = get_schema_module(changeset.data)
 
     with :ok <- permit(:delete, schema, subject) do
-      Repo.delete(changeset)
+      Repo.transaction(fn ->
+        # Emit subject info to the replication stream
+        emit_subject_message(subject, :delete, schema)
+
+        Repo.delete(changeset)
+      end)
+      |> case do
+        {:ok, result} -> result
+        {:error, _} = error -> error
+      end
     end
   end
 
@@ -308,7 +331,16 @@ defmodule Domain.Safe do
     schema = get_schema_module(struct)
 
     with :ok <- permit(:delete, schema, subject) do
-      Repo.delete(struct)
+      Repo.transaction(fn ->
+        # Emit subject info to the replication stream
+        emit_subject_message(subject, :delete, schema)
+
+        Repo.delete(struct)
+      end)
+      |> case do
+        {:ok, result} -> result
+        {:error, _} = error -> error
+      end
     end
   end
 
@@ -335,7 +367,17 @@ defmodule Domain.Safe do
 
     case permit(:delete_all, schema, subject) do
       :ok ->
-        Repo.delete_all(queryable, opts)
+        Repo.transaction(fn ->
+          # Emit subject info to the replication stream
+          emit_subject_message(subject, :delete_all, schema)
+
+          {deleted_count, result} = Repo.delete_all(queryable, opts)
+          {deleted_count, result}
+        end)
+        |> case do
+          {:ok, result} -> result
+          {:error, _} = error -> error
+        end
 
       {:error, :unauthorized} ->
         {:error, :unauthorized}
@@ -381,18 +423,23 @@ defmodule Domain.Safe do
 
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 
-  def put_subject_trail(changeset, %Subject{} = subject) do
-    changeset
-    |> put_change(:created_by, :actor)
-    |> put_change(:created_by_subject, %{
+  # Helper function to emit subject information to the replication stream
+  defp emit_subject_message(%Subject{} = subject, _operation, _schema) do
+    subject_info = %{
       "ip" => to_string(:inet.ntoa(subject.context.remote_ip)),
       "ip_region" => subject.context.remote_ip_location_region,
       "ip_city" => subject.context.remote_ip_location_city,
       "ip_lat" => subject.context.remote_ip_location_lat,
       "ip_lon" => subject.context.remote_ip_location_lon,
       "user_agent" => subject.context.user_agent,
+      "actor_name" => subject.actor.name,
+      "actor_type" => to_string(subject.actor.type),
       "actor_email" => subject.actor.email,
-      "actor_id" => subject.actor.id
-    })
+      "actor_id" => subject.actor.id,
+      "auth_provider_id" => subject.auth_provider_id
+    }
+
+    message = JSON.encode!(subject_info)
+    Repo.query!("SELECT pg_logical_emit_message(true, 'subject', $1)", [message])
   end
 end

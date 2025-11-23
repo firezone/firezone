@@ -168,9 +168,6 @@ defmodule Web.Settings.ApiClients.Show do
           <:col :let={token} label="expires at">
             {Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Web.CLDR, [])}
           </:col>
-          <:col :let={token} label="created by">
-            {token.created_by_subject["name"]}
-          </:col>
           <:col :let={token} label="last used">
             <.relative_datetime datetime={token.last_seen_at} />
           </:col>
@@ -296,10 +293,9 @@ defmodule Web.Settings.ApiClients.Show do
     def delete_all_tokens_for_actor(actor, subject) do
       query = from(t in Tokens.Token, where: t.actor_id == ^actor.id)
 
-      case Safe.scoped(query, subject) |> Safe.delete_all(query, []) do
-        {count, _} -> {:ok, count}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-      end
+      {count, _} = query |> Safe.scoped(subject) |> Safe.delete_all(query, [])
+
+      {:ok, count}
     end
 
     def delete_token(token_id, subject) do

@@ -1,5 +1,5 @@
 defmodule Domain.Repo.Migrations.AddIdpFieldsToActorGroups do
-  use Domain, :migration
+  use Ecto.Migration
 
   def change do
     alter table(:actor_groups) do

@@ -1179,57 +1179,22 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders creation timestamp from created_by_subject
+  Renders verification timestamp
   """
   attr :schema, :any, required: true
 
-  def created_by(%{schema: %{created_by: :system}} = assigns) do
-    ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by System
-    """
-  end
-
-  def created_by(%{schema: %{created_by: :actor}} = assigns) do
-    ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by {@schema.created_by_subject["name"]}
-    """
-  end
-
-  @doc """
-  Renders verification timestamp and entity from verified_by_subject.
-  """
-  attr :schema, :any, required: true
-
-  def verified_by(%{schema: %{verified_by: :system}} = assigns) do
-    ~H"""
-    <div class="flex items-center gap-x-1">
-      <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
-      <.relative_datetime datetime={@schema.verified_at} /> by System
-    </div>
-    """
-  end
-
-  def verified_by(%{schema: %{verified_by: :actor}} = assigns) do
-    ~H"""
-    <div class="flex items-center gap-x-1">
-      <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
-      <.relative_datetime datetime={@schema.verified_at} /> by {@schema.verified_by_subject["name"]}
-    </div>
-    """
-  end
-
-  def verified_by(%{schema: %{verified_by: :identity}} = assigns) do
-    ~H"""
-    <div class="flex items-center gap-x-1">
-      <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
-      <.relative_datetime datetime={@schema.verified_at} /> by {@schema.verified_by_subject["name"]}
-    </div>
-    """
-  end
-
-  def verified_by(%{schema: %{verified_at: nil}} = assigns) do
+  def verified(%{schema: %{verified_at: nil}} = assigns) do
     ~H"""
     Not Verified
+    """
+  end
+
+  def verified(%{schema: %{verified_at: _verified_at}} = assigns) do
+    ~H"""
+    <div class="flex items-center gap-x-1">
+      <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
+      <.relative_datetime datetime={@schema.verified_at} />
+    </div>
     """
   end
 

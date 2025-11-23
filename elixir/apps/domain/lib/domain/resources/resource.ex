@@ -15,8 +15,6 @@ defmodule Domain.Resources.Resource do
           ip_stack: :ipv4_only | :ipv6_only | :dual,
           filters: [filter()],
           account_id: Ecto.UUID.t(),
-          created_by: String.t(),
-          created_by_subject: map(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -45,7 +43,6 @@ defmodule Domain.Resources.Resource do
     # because the actual preload query should also use joins and process policy conditions
     has_many :authorized_by_policies, Domain.Policies.Policy, where: [id: {:fragment, "FALSE"}]
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 end

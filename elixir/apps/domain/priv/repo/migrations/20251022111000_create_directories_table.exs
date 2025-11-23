@@ -1,9 +1,13 @@
 defmodule Domain.Repo.Migrations.CreateDirectoriesTable do
-  use Domain, :migration
+  use Ecto.Migration
 
   def change do
     create(table(:directories, primary_key: false)) do
-      account(primary_key: true)
+      add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
+        null: false,
+        primary_key: true
+      )
+
       add(:id, :binary_id, null: false, primary_key: true)
       add(:type, :string, null: false)
     end

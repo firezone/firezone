@@ -6,8 +6,6 @@ defmodule Domain.Gateways.Group do
           name: String.t(),
           managed_by: :account | :system,
           account_id: Ecto.UUID.t(),
-          created_by: :actor | :identity | :system,
-          created_by_subject: map(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -24,7 +22,6 @@ defmodule Domain.Gateways.Group do
 
     has_many :connections, Domain.Resources.Connection, foreign_key: :gateway_group_id
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 end

@@ -382,12 +382,11 @@ defmodule Web.OIDCController do
       INSERT INTO external_identities (
         id, account_id, issuer, idp_id, actor_id,
         #{insert_fields},
-        inserted_at, created_by, created_by_subject
+        inserted_at
       )
       SELECT uuid_generate_v4(), $1, $4, $5,
              COALESCE(actor_lookup.id, existing_identity.actor_id),
-             #{value_placeholders}, $15, $16,
-             jsonb_build_object('name', 'System', 'email', null)
+             #{value_placeholders}, $15
       FROM (SELECT 1) AS dummy
       LEFT JOIN actor_lookup ON true
       LEFT JOIN existing_identity ON true
@@ -399,7 +398,7 @@ defmodule Web.OIDCController do
 
       params =
         [Ecto.UUID.dump!(account_id), email, email_verified, issuer, idp_id] ++
-          profile_values ++ [DateTime.utc_now(), "system"]
+          profile_values ++ [DateTime.utc_now()]
 
       case Safe.unscoped() |> Safe.query(query, params) do
         {:ok, %{rows: [row], columns: cols}} ->

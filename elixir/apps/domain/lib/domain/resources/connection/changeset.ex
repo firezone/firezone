@@ -5,14 +5,12 @@ defmodule Domain.Resources.Connection.Changeset do
   @fields ~w[gateway_group_id]a
   @required_fields @fields
 
-  def changeset(account_id, connection, attrs, %Auth.Subject{} = subject) do
+  def changeset(account_id, connection, attrs, %Auth.Subject{} = _subject) do
     base_changeset(account_id, connection, attrs)
-    |> put_subject_trail(:created_by, subject)
   end
 
   def changeset(account_id, connection, attrs) do
     base_changeset(account_id, connection, attrs)
-    |> put_subject_trail(:created_by, :system)
   end
 
   defp base_changeset(account_id, connection, attrs) do

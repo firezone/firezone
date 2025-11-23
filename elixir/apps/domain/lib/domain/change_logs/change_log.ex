@@ -10,6 +10,7 @@ defmodule Domain.ChangeLogs.ChangeLog do
     field :op, Ecto.Enum, values: [:insert, :update, :delete]
     field :old_data, :map
     field :data, :map
+    field :subject, :map
     field :vsn, :integer
 
     timestamps(type: :utc_datetime_usec, updated_at: false)

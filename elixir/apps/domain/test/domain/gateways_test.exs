@@ -221,13 +221,6 @@ defmodule Domain.GatewaysTest do
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
       assert group.name == "foo"
-
-      assert group.created_by == :identity
-
-      assert group.created_by_subject == %{
-               "name" => subject.actor.name,
-               "email" => subject.identity.email
-             }
     end
 
     test "trims whitespace when creating a group", %{subject: subject} do
@@ -482,14 +475,8 @@ defmodule Domain.GatewaysTest do
       assert token.type == :gateway_group
       assert token.account_id == account.id
       assert token.gateway_group_id == group.id
-      assert token.created_by == :identity
-      assert token.created_by_user_agent == context.user_agent
-      assert token.created_by_remote_ip.address == context.remote_ip
-
-      assert token.created_by_subject == %{
-               "name" => subject.actor.name,
-               "email" => subject.identity.email
-             }
+      assert token.updated_by_user_agent == context.user_agent
+      assert token.updated_by_remote_ip.address == context.remote_ip
 
       refute token.expires_at
     end

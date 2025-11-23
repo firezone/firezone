@@ -22,8 +22,6 @@ defmodule API.OIDCAuthProviderJSON do
       is_default: provider.is_default,
       client_id: provider.client_id,
       discovery_document_uri: provider.discovery_document_uri,
-      created_by: provider.created_by,
-      created_by_subject: provider.created_by_subject,
       inserted_at: provider.inserted_at,
       updated_at: provider.updated_at
     }

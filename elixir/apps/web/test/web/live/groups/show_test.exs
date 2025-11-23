@@ -120,10 +120,7 @@ defmodule Web.Live.Groups.ShowTest do
     conn: conn
   } do
     group
-    |> Ecto.Changeset.change(
-      created_by: :identity,
-      created_by_subject: %{"email" => identity.email, "name" => actor.name}
-    )
+    |> Ecto.Changeset.change()
     |> Repo.update!()
 
     {:ok, lv, _html} =
@@ -149,7 +146,6 @@ defmodule Web.Live.Groups.ShowTest do
 
     group
     |> Ecto.Changeset.change(
-      created_by: :system,
       provider_id: provider.id,
       provider_identifier: Ecto.UUID.generate()
     )
@@ -234,7 +230,6 @@ defmodule Web.Live.Groups.ShowTest do
 
     group
     |> Ecto.Changeset.change(
-      created_by: :system,
       provider_id: provider.id,
       provider_identifier: Ecto.UUID.generate()
     )
@@ -280,7 +275,6 @@ defmodule Web.Live.Groups.ShowTest do
 
     group
     |> Ecto.Changeset.change(
-      created_by: :system,
       provider_id: provider.id,
       provider_identifier: Ecto.UUID.generate()
     )

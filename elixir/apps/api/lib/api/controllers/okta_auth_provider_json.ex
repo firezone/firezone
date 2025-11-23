@@ -22,8 +22,6 @@ defmodule API.OktaAuthProviderJSON do
       is_default: provider.is_default,
       client_id: provider.client_id,
       okta_domain: provider.okta_domain,
-      created_by: provider.created_by,
-      created_by_subject: provider.created_by_subject,
       inserted_at: provider.inserted_at,
       updated_at: provider.updated_at
     }

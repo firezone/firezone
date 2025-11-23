@@ -5,6 +5,20 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
 
+  # Handle LogicalMessage to track subject info
+  def on_logical_message(state, %{prefix: "subject", content: content, transactional: true}) do
+    # Store the subject content for the current transaction
+    Map.put(state, :current_subject, content)
+  end
+
+  def on_logical_message(state, _message), do: state
+
+  # Handle Begin to reset transaction state
+  def on_begin(state, _begin_msg) do
+    # Remove the subject for the new transaction
+    Map.delete(state, :current_subject)
+  end
+
   # Ignore token writes for relay_groups since these are not expected to have an account_id
   def on_write(state, _lsn, _op, "tokens", %{"type" => "relay_group"}, _data), do: state
   def on_write(state, _lsn, _op, "tokens", _old_data, %{"type" => "relay_group"}), do: state
@@ -63,6 +77,19 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   end
 
   defp buffer(state, lsn, op, table, account_id, old_data, data) do
+    # Decode the subject JSON string if present
+    subject =
+      case Map.get(state, :current_subject) do
+        nil ->
+          nil
+
+        json_string ->
+          case JSON.decode(json_string) do
+            {:ok, decoded} -> decoded
+            {:error, _} -> nil
+          end
+      end
+
     flush_buffer =
       state.flush_buffer
       |> Map.put_new(lsn, %{
@@ -72,6 +99,7 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
         account_id: account_id,
         old_data: old_data,
         data: data,
+        subject: subject,
         vsn: @vsn
       })
 

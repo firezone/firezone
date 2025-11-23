@@ -610,9 +610,7 @@ defmodule Domain.AuthTest do
       assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
 
       assert changeset.changes == %{
-               account_id: account.id,
-               created_by: :system,
-               created_by_subject: %{"email" => nil, "name" => "System"}
+               account_id: account.id
              }
 
       provider_attrs =
@@ -749,9 +747,6 @@ defmodule Domain.AuthTest do
       assert provider.adapter_config == attrs.adapter_config
       assert provider.account_id == account.id
 
-      assert provider.created_by == :system
-      assert provider.created_by_subject == %{"email" => nil, "name" => "System"}
-
       assert is_nil(provider.disabled_at)
     end
 
@@ -821,13 +816,6 @@ defmodule Domain.AuthTest do
       subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert {:ok, provider} = create_provider(account, attrs, subject)
-
-      assert provider.created_by == :identity
-
-      assert provider.created_by_subject == %{
-               "email" => subject.identity.email,
-               "name" => subject.actor.name
-             }
     end
   end
 
@@ -1589,11 +1577,9 @@ defmodule Domain.AuthTest do
 
       for identity <- identities do
         assert identity.inserted_at
-        assert identity.created_by == :system
         assert identity.provider_id == provider.id
         assert identity.provider_identifier in provider_identifiers
         assert identity.actor.name in actor_names
-        assert identity.created_by_subject == %{"email" => nil, "name" => "Provider"}
 
         assert Map.get(actor_ids_by_provider_identifier, identity.provider_identifier) ==
                  identity.actor_id
@@ -1994,8 +1980,7 @@ defmodule Domain.AuthTest do
                actor_id: ^actor_id,
                provider_id: ^provider_id,
                provider_state: %{},
-               provider_virtual_state: %{},
-               created_by: :system
+               provider_virtual_state: %{}
              } = changeset.changes
     end
   end
@@ -2054,11 +2039,6 @@ defmodule Domain.AuthTest do
       assert identity.provider_state == %{}
       assert identity.provider_virtual_state == %{}
       assert identity.account_id == provider.account_id
-
-      assert identity.created_by_subject == %{
-               "name" => subject.actor.name,
-               "email" => subject.identity.email
-             }
     end
 
     test "trims whitespace when creating an identity", %{
@@ -2301,8 +2281,7 @@ defmodule Domain.AuthTest do
         Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
-          actor: actor,
-          created_by: :system
+          actor: actor
         )
 
       assert delete_identity(identity, subject) == {:error, :cant_delete_synced_identity}
@@ -2630,9 +2609,8 @@ defmodule Domain.AuthTest do
       assert token.expires_at
       assert token.account_id == account.id
       assert token.identity_id == identity.id
-      assert token.created_by == :system
-      assert token.created_by_user_agent == context.user_agent
-      assert token.created_by_remote_ip.address == context.remote_ip
+      assert token.updated_by_user_agent == context.user_agent
+      assert token.updated_by_remote_ip.address == context.remote_ip
     end
 
     test "provider identifier is not case sensitive", %{
@@ -2956,9 +2934,7 @@ defmodule Domain.AuthTest do
       assert token.type == context.type
       assert token.account_id == account.id
       assert token.identity_id == identity.id
-      assert token.created_by == :system
-      assert token.created_by_user_agent == context.user_agent
-      assert token.created_by_remote_ip.address == context.remote_ip
+      assert token.updated_by_remote_ip.address == context.remote_ip
 
       assert subject.expires_at == token.expires_at
       assert DateTime.truncate(subject.expires_at, :second) == expires_at
@@ -3398,9 +3374,7 @@ defmodule Domain.AuthTest do
       assert token.account_id == account.id
       refute token.identity_id
       assert token.actor_id == actor.id
-      assert token.created_by == :identity
-      assert token.created_by_user_agent == context.user_agent
-      assert token.created_by_remote_ip.address == context.remote_ip
+      assert token.updated_by_remote_ip.address == context.remote_ip
 
       assert sa_subject.expires_at == token.expires_at
       assert DateTime.truncate(sa_subject.expires_at, :second) == one_day
@@ -3511,9 +3485,7 @@ defmodule Domain.AuthTest do
       assert token.account_id == account.id
       refute token.identity_id
       assert token.actor_id == actor.id
-      assert token.created_by == :identity
-      assert token.created_by_user_agent == context.user_agent
-      assert token.created_by_remote_ip.address == context.remote_ip
+      assert token.updated_by_remote_ip.address == context.remote_ip
 
       assert api_subject.expires_at == token.expires_at
       assert DateTime.truncate(api_subject.expires_at, :second) == one_day

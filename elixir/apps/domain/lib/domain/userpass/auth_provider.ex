@@ -32,7 +32,6 @@ defmodule Domain.Userpass.AuthProvider do
 
     field :is_disabled, :boolean, read_after_writes: true, default: false
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 

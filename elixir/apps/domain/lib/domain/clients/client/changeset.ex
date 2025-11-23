@@ -54,48 +54,6 @@ defmodule Domain.Clients.Client.Changeset do
             clients,
             clients,
             clients.verified_at
-          ),
-        verified_by:
-          fragment(
-            """
-            CASE WHEN (EXCLUDED.device_serial = ?.device_serial OR ?.device_serial IS NULL)
-                  AND (EXCLUDED.device_uuid = ?.device_uuid OR ?.device_uuid IS NULL)
-                  AND (EXCLUDED.identifier_for_vendor = ?.identifier_for_vendor OR ?.identifier_for_vendor IS NULL)
-                  AND (EXCLUDED.firebase_installation_id = ?.firebase_installation_id OR ?.firebase_installation_id IS NULL)
-                 THEN ?
-                 ELSE NULL
-            END
-            """,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients.verified_by
-          ),
-        verified_by_subject:
-          fragment(
-            """
-            CASE WHEN (EXCLUDED.device_serial = ?.device_serial OR ?.device_serial IS NULL)
-                  AND (EXCLUDED.device_uuid = ?.device_uuid OR ?.device_uuid IS NULL)
-                  AND (EXCLUDED.identifier_for_vendor = ?.identifier_for_vendor OR ?.identifier_for_vendor IS NULL)
-                  AND (EXCLUDED.firebase_installation_id = ?.firebase_installation_id OR ?.firebase_installation_id IS NULL)
-                 THEN ?
-                 ELSE NULL
-            END
-            """,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients.verified_by_subject
           )
       ]
     )
@@ -137,19 +95,16 @@ defmodule Domain.Clients.Client.Changeset do
     |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
   end
 
-  def verify(%Clients.Client{} = client, %Auth.Subject{} = subject) do
+  def verify(%Clients.Client{} = client, %Auth.Subject{} = _subject) do
     client
     |> change()
     |> put_default_value(:verified_at, DateTime.utc_now())
-    |> put_subject_trail(:verified_by, subject)
   end
 
   def remove_verification(%Clients.Client{} = client) do
     client
     |> change()
     |> put_change(:verified_at, nil)
-    |> put_change(:verified_by, nil)
-    |> put_change(:verified_by_subject, nil)
   end
 
   def update(%Clients.Client{} = client, attrs) do

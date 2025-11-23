@@ -1,11 +1,13 @@
 defmodule Domain.Repo.Migrations.CreateOidcAuthProviders do
-  use Domain, :migration
+  use Ecto.Migration
 
   def change do
     create table(:oidc_auth_providers, primary_key: false) do
       add(:id, :binary_id, null: false, primary_key: true)
 
-      account()
+      add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
+        null: false
+      )
 
       add(:context, :string, null: false)
       add(:client_session_lifetime_secs, :integer)
@@ -19,7 +21,8 @@ defmodule Domain.Repo.Migrations.CreateOidcAuthProviders do
       add(:client_secret, :string, null: false)
       add(:discovery_document_uri, :text, null: false)
 
-      subject_trail()
+      add(:created_by, :string, null: false)
+      add(:created_by_subject, :map)
       timestamps()
     end
 

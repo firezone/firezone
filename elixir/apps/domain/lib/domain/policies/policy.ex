@@ -8,8 +8,6 @@ defmodule Domain.Policies.Policy do
           actor_group_id: Ecto.UUID.t(),
           resource_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
-          created_by: :actor | :identity,
-          created_by_subject: map(),
           disabled_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
@@ -26,7 +24,6 @@ defmodule Domain.Policies.Policy do
 
     field :disabled_at, :utc_datetime_usec
 
-    subject_trail(~w[actor system]a)
     timestamps()
   end
 end

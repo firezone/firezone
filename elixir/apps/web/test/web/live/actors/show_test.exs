@@ -299,15 +299,11 @@ defmodule Web.Live.Actors.ShowTest do
     } do
       invited_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => actor.name}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       synced_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Ecto.Changeset.change(created_by: :system)
         |> Repo.update!()
 
       admin_identity = Repo.preload(admin_identity, :provider)
@@ -361,10 +357,7 @@ defmodule Web.Live.Actors.ShowTest do
     } do
       email_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       {:ok, lv, _html} =
@@ -401,10 +394,7 @@ defmodule Web.Live.Actors.ShowTest do
             "userinfo" => %{"email" => oidc_email}
           }
         )
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       {:ok, lv, _html} =
@@ -434,10 +424,7 @@ defmodule Web.Live.Actors.ShowTest do
     } do
       email_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       {:ok, lv, _html} =
@@ -515,10 +502,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       email_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: email_provider)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       {:ok, lv, _html} =
@@ -561,10 +545,7 @@ defmodule Web.Live.Actors.ShowTest do
     } do
       other_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       {:ok, lv, _html} =
