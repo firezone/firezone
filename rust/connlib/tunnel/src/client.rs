@@ -534,6 +534,10 @@ impl ClientState {
             }
         };
 
+        // Ensure the response we are sending back has the original query ID.
+        // Recursive DoH queries set the ID to 0.
+        let message = message.with_id(qid);
+
         self.dns_cache.insert(domain, &message, now);
 
         match response.transport {
