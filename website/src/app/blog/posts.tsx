@@ -12,6 +12,23 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
+      title: "October 2025 Devlog",
+      date: "October 31, 2025",
+      href: "/blog/devlog/2025-10",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Engineering",
+      description: (
+        <p className="mb-2">
+          October delivered substantial improvements to Gateway observability,
+          Linux networking stack refinements, and new deployment mechanisms.
+          This month&apos;s work focused on implementing comprehensive flow
+          logging, addressing routing conflicts through tiered routing tables,
+          and introducing native Debian packages for easier deployments.
+        </p>
+      ),
+    },
+    {
       title: "September 2025 Devlog",
       date: "September 30, 2025",
       href: "/blog/devlog/2025-09",
