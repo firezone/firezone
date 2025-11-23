@@ -508,49 +508,43 @@ impl ClientState {
 
         let _span = tracing::debug_span!("handle_dns_response", %qid, %server, local = %response.local, %domain).entered();
 
-        match (response.transport, response.message) {
-            (dns::Transport::Udp, Err(e))
-                if e.downcast_ref::<io::Error>()
-                    .is_some_and(|e| e.kind() == io::ErrorKind::TimedOut) =>
-            {
-                tracing::debug!("Recursive UDP DNS query timed out")
+        let message = match response.message {
+            Ok(response) => {
+                tracing::trace!("Received recursive DNS response");
+
+                if response.truncated() {
+                    tracing::debug!("Upstream DNS server had to truncate response");
+                }
+
+                response
             }
-            (dns::Transport::Udp, result) => {
-                let message = result
-                    .inspect(|message| {
-                        tracing::trace!("Received recursive UDP DNS response");
+            Err(e)
+                if response.transport == dns::Transport::Udp
+                    && e.downcast_ref::<io::Error>()
+                        .is_some_and(|e| e.kind() == io::ErrorKind::TimedOut) =>
+            {
+                tracing::debug!("Recursive UDP DNS query timed out");
 
-                        if message.truncated() {
-                            tracing::debug!("Upstream DNS server had to truncate response");
-                        }
+                return; // Our UDP DNS query timeout is likely longer than the one from the OS, so don't bother sending a response.
+            }
+            Err(e) => {
+                tracing::debug!("Recursive DNS query failed: {e:#}");
 
-                        self.dns_cache.insert(domain, message, now);
-                    })
-                    .unwrap_or_else(|e| {
-                        tracing::debug!("Recursive UDP DNS query failed: {e:#}");
+                dns_types::Response::servfail(&response.query)
+            }
+        };
 
-                        dns_types::Response::servfail(&response.query)
-                    });
+        self.dns_cache.insert(domain, &message, now);
 
+        match response.transport {
+            dns::Transport::Udp => {
                 self.buffered_packets.extend(into_udp_dns_packet(
                     response.local,
                     response.remote,
                     message,
                 ));
             }
-            (dns::Transport::Tcp, result) => {
-                let message = result
-                    .inspect(|message| {
-                        tracing::trace!("Received recursive TCP DNS response");
-
-                        self.dns_cache.insert(domain, message, now);
-                    })
-                    .unwrap_or_else(|e| {
-                        tracing::debug!("Recursive TCP DNS query failed: {e:#}");
-
-                        dns_types::Response::servfail(&response.query)
-                    });
-
+            dns::Transport::Tcp => {
                 unwrap_or_warn!(
                     self.tcp_dns_server
                         .send_message(response.local, response.remote, message),
