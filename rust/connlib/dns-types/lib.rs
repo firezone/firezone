@@ -395,7 +395,7 @@ impl DoHUrl {
     pub fn host(&self) -> Cow<'static, str> {
         match &self.0 {
             InnerUrl::KnownProvider(Provider::Cloudflare) => Cow::Borrowed("cloudflare-dns.com"),
-            InnerUrl::KnownProvider(Provider::OpenDNS) => Cow::Borrowed("dns.opendns.com"),
+            InnerUrl::KnownProvider(Provider::OpenDNS) => Cow::Borrowed("doh.opendns.com"),
             InnerUrl::KnownProvider(Provider::Quad9) => Cow::Borrowed("dns.quad9.net"),
             InnerUrl::KnownProvider(Provider::Google) => Cow::Borrowed("dns.google"),
             InnerUrl::Other(url) => {
@@ -561,7 +561,15 @@ mod tests {
         assert_eq!(DoHUrl::google().host(), "dns.google");
         assert_eq!(DoHUrl::cloudflare().host(), "cloudflare-dns.com");
         assert_eq!(DoHUrl::quad9().host(), "dns.quad9.net");
-        assert_eq!(DoHUrl::opendns().host(), "dns.opendns.com");
+        assert_eq!(DoHUrl::opendns().host(), "doh.opendns.com");
+    }
+
+    #[test]
+    fn url_and_host_are_consistent() {
+        assert!(DoHUrl::CLOUDFLARE_URL.contains(DoHUrl::cloudflare().host().as_ref()));
+        assert!(DoHUrl::GOOGLE_URL.contains(DoHUrl::google().host().as_ref()));
+        assert!(DoHUrl::QUAD9_URL.contains(DoHUrl::quad9().host().as_ref()));
+        assert!(DoHUrl::OPEN_DNS_URL.contains(DoHUrl::opendns().host().as_ref()));
     }
 
     #[test]
