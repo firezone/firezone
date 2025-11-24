@@ -139,9 +139,7 @@ jobs:
 
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }}
           mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
-      - name: Install AzureSignTool
-        shell: bash
-        run: dotnet tool install --global AzureSignTool
+      - uses: ./.github/actions/setup-azure-sign-tool
       - name: Sign the binary
         shell: bash
         env:
