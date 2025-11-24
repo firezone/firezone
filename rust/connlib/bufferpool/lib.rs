@@ -350,7 +350,7 @@ mod tests {
         let buffer2 = pool.pull_initialised(b"hello world");
         let buffer3 = pool.pull_initialised(b"hello world");
 
-        tokio::time::sleep(Duration::from_millis(10)).await; // Wait for metrics to be exported.
+        tokio::time::sleep(Duration::from_millis(100)).await; // Wait for metrics to be exported.
 
         assert_eq!(get_num_buffers(&exporter), 3);
 
@@ -359,7 +359,7 @@ mod tests {
         drop(buffer2);
         drop(buffer3);
 
-        tokio::time::sleep(Duration::from_millis(10)).await; // Wait for metrics to be exported.
+        tokio::time::sleep(Duration::from_millis(100)).await; // Wait for metrics to be exported.
 
         assert_eq!(get_num_buffers(&exporter), 0);
     }

@@ -183,7 +183,7 @@ mod tests {
     async fn smoke_ipv4() {
         let mut server = Server::default();
 
-        let socket = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 127), 8080));
+        let socket = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080));
 
         let server_task = tokio::spawn(async move {
             server.rebind(socket).unwrap();

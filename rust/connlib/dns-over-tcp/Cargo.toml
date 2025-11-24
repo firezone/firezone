@@ -15,10 +15,12 @@ rand = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-firezone-bin-shared = { workspace = true }
 futures = { workspace = true }
-ip_network = { workspace = true }
 tokio = { workspace = true, features = ["process", "rt", "macros"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+firezone-bin-shared = { workspace = true }
+ip_network = { workspace = true }
 tun = { workspace = true }
 
 [lints]
