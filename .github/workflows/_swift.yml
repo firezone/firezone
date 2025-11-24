@@ -37,21 +37,18 @@ jobs:
       matrix:
         include:
           - job_name: build-ios
-            rust-targets: aarch64-apple-ios
             build-script: scripts/build/ios-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
             artifact-file: "Firezone.ipa"
             platform: iOS
 
           - job_name: build-macos-appstore
-            rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
             artifact-file: "Firezone.pkg"
             platform: macOS
 
           - job_name: build-macos-standalone
-            rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
@@ -66,8 +63,10 @@ jobs:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-rust
         with:
-          targets: ${{ matrix.rust-targets }}
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: jdx/mise-action@be3be2260bc02bc3fbf94c5e2fed8b7964baf074 # v3.4.0
+        with:
+          working_directory: swift/apple
       - run: ${{ matrix.build-script }}
         env:
           IOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}"
