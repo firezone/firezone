@@ -1,2 +1,4 @@
 # GUI client
-pnpm 10.18.3
+pnpm                 10.18.3
+dotnet               10.0.100
+dotnet:AzureSignTool 7.0.0

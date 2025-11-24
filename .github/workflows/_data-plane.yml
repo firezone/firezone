@@ -126,6 +126,9 @@ jobs:
         with:
           targets: ${{ matrix.target }}
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: jdx/mise-action@d16887ba50704baed7de72bd1e82e04391e4457a # v3.5.0
+        with:
+          working_directory: rust
       - name: Build binaries
         shell: bash
         run: |
@@ -139,9 +142,6 @@ jobs:
 
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }}
           mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
-      - name: Install AzureSignTool
-        shell: bash
-        run: dotnet tool install --global AzureSignTool
       - name: Sign the binary
         shell: bash
         env:
