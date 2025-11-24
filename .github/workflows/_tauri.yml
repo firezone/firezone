@@ -172,14 +172,14 @@ jobs:
         shell: bash
         run: ${{ env.RENAME_SCRIPT }}
       - name: Upload deb / msi package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: ${{ env.ARTIFACT_DST }}-${{ matrix.pkg-extension }}
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
           if-no-files-found: error
       - name: Upload rpm package
         if: "${{ runner.os == 'Linux' }}"
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: ${{ env.ARTIFACT_DST }}-rpm
           path: ${{ env.ARTIFACT_SRC }}.rpm
