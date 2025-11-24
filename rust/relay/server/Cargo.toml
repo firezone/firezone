@@ -17,7 +17,6 @@ bytecodec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 derive_more = { workspace = true, features = ["from"] }
-firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
@@ -38,6 +37,7 @@ smallvec = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
 stun_codec = { workspace = true }
+telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
 tracing = { workspace = true, features = ["log"] }

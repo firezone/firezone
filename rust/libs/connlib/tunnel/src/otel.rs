@@ -1,5 +1,5 @@
 pub mod attr {
-    pub use firezone_telemetry::otel::attr::*;
+    pub use telemetry::otel::attr::*;
 
     use opentelemetry::KeyValue;
 
@@ -10,4 +10,4 @@ pub mod attr {
     }
 }
 
-pub use firezone_telemetry::otel::metrics;
+pub use telemetry::otel::metrics;

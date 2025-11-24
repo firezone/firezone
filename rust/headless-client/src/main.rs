@@ -11,9 +11,6 @@ use bin_shared::{
     signals,
 };
 use clap::Parser;
-use firezone_telemetry::{
-    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, analytics, feature_flags, otel,
-};
 use opentelemetry_otlp::WithExportConfig as _;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::PhoenixChannel;
@@ -24,6 +21,9 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
+};
+use telemetry::{
+    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, analytics, feature_flags, otel,
 };
 use tokio::time::Instant;
 
@@ -255,7 +255,7 @@ fn try_main() -> Result<()> {
         rt.block_on(telemetry.start(
             cli.api_url.as_ref(),
             RELEASE,
-            firezone_telemetry::HEADLESS_DSN,
+            telemetry::HEADLESS_DSN,
             firezone_id.clone(),
         ));
 

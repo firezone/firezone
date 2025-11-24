@@ -29,7 +29,6 @@ clap = { workspace = true, features = ["derive", "env"] }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
-firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 humantime = { workspace = true }
@@ -61,6 +60,7 @@ tauri-plugin-shell = { workspace = true }
 tauri-runtime = { workspace = true }
 tauri-specta = { workspace = true }
 tauri-utils = { workspace = true }
+telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
 tokio-stream = { workspace = true }

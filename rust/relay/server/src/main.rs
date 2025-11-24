@@ -9,7 +9,6 @@ use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
     Sleep, VERSION, control_endpoint, ebpf, sockets,
 };
-use firezone_telemetry::{RELAY_DSN, Telemetry};
 use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
@@ -23,6 +22,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
 use stun_codec::rfc5766::attributes::ChannelNumber;
+use telemetry::{RELAY_DSN, Telemetry};
 use tracing::Subscriber;
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
@@ -111,7 +111,7 @@ struct Args {
     control_endpoint: SocketAddr,
 
     /// Enable sentry.io crash-reporting agent.
-    #[arg(long, env = "FIREZONE_TELEMETRY", default_value_t = false)]
+    #[arg(long, env = "TELEMETRY", default_value_t = false)]
     telemetry: bool,
 }
 

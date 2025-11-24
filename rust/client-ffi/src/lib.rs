@@ -10,12 +10,12 @@ use std::{
 
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
-use firezone_telemetry::{Telemetry, analytics};
 use logging::sentry_layer;
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
 use secrecy::{SecretBox, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use telemetry::{Telemetry, analytics};
 use tokio::sync::Mutex;
 use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 

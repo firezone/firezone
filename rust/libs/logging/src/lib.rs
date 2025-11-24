@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use event_message_contains_filter::EventMessageContains;
-use firezone_telemetry::feature_flags;
 use sentry_tracing::EventFilter;
+use telemetry::feature_flags;
 use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
 use tracing_subscriber::{

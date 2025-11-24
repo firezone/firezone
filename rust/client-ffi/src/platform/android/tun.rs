@@ -1,9 +1,9 @@
-use firezone_telemetry::otel;
 use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf};
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::task::{Context, Poll};
 use std::{io, os::fd::RawFd};
+use telemetry::otel;
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 use tun::ioctl;

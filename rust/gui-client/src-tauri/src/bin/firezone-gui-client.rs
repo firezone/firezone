@@ -10,8 +10,8 @@ use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
-use firezone_telemetry::Telemetry;
 use settings::AdvancedSettingsLegacy;
+use telemetry::Telemetry;
 use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
@@ -85,7 +85,7 @@ fn try_main(
         rt.block_on(telemetry.start(
             &api_url,
             firezone_gui_client::RELEASE,
-            firezone_telemetry::GUI_DSN,
+            telemetry::GUI_DSN,
             id.id,
         ));
     }

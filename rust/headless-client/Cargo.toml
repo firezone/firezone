@@ -15,7 +15,6 @@ clap = { workspace = true, features = ["derive", "env", "string"] }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
-firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
@@ -28,6 +27,7 @@ phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
 socket-factory = { workspace = true }
+telemetry = { workspace = true }
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
 tokio = { workspace = true, features = ["macros", "signal", "process", "time", "fs", "rt"] }

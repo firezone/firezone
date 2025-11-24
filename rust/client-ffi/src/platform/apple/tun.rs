@@ -1,4 +1,3 @@
-use firezone_telemetry::otel;
 use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
 use libc::{AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK, fcntl, iovec, msghdr, recvmsg};
@@ -7,6 +6,7 @@ use std::{
     io,
     os::fd::{AsRawFd as _, RawFd},
 };
+use telemetry::otel;
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 

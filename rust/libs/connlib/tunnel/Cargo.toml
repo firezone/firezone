@@ -21,7 +21,6 @@ derive_more = { workspace = true, features = ["debug", "from", "display"] }
 divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
-firezone-telemetry = { workspace = true }
 flume = { workspace = true, features = ["async"] }
 futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
@@ -51,6 +50,7 @@ serde_with = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
+telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

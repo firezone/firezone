@@ -85,7 +85,6 @@ etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 firezone-headless-client = { path = "headless-client" }
 firezone-relay = { path = "relay/server" }
-firezone-telemetry = { path = "libs/telemetry" }
 firezone-tunnel = { path = "libs/connlib/tunnel" }
 flume = { version = "0.11.1", features = ["async"] }
 futures = { version = "0.3.31" }
@@ -193,6 +192,7 @@ tauri-plugin-shell = "2.3.1"
 tauri-runtime = "2.7.1"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 tauri-utils = "2.2.0"
+telemetry = { path = "libs/telemetry" }
 tempfile = "3.23.0"
 test-case = "3.3.1"
 test-strategy = "0.4.3"

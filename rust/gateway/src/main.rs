@@ -9,9 +9,6 @@ use bin_shared::{
 };
 use clap::Parser;
 
-use firezone_telemetry::{
-    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
-};
 use firezone_tunnel::GatewayTunnel;
 use hickory_resolver::config::ResolveHosts;
 use ip_packet::IpPacket;
@@ -19,6 +16,9 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
+use telemetry::{
+    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
+};
 
 use phoenix_channel::PhoenixChannel;
 use secrecy::{ExposeSecret, SecretBox, SecretString};
@@ -138,7 +138,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
             .start(
                 cli.api_url.as_str(),
                 RELEASE,
-                firezone_telemetry::GATEWAY_DSN,
+                telemetry::GATEWAY_DSN,
                 firezone_id.clone(),
             )
             .await;

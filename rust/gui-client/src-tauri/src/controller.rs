@@ -10,7 +10,6 @@ use crate::{
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
 use connlib_model::ResourceView;
-use firezone_telemetry::Telemetry;
 use futures::{
     SinkExt, StreamExt,
     stream::{self, BoxStream},
@@ -18,6 +17,7 @@ use futures::{
 use logging::FilterReloadHandle;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
+use telemetry::Telemetry;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;

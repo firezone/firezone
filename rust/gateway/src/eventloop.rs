@@ -4,7 +4,7 @@ use boringtun::x25519::PublicKey;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
-use firezone_telemetry::{Telemetry, analytics};
+use telemetry::{Telemetry, analytics};
 
 use firezone_tunnel::messages::gateway::{
     AccessAuthorizationExpiryUpdated, AllowAccess, Authorization, ClientIceCandidates,
@@ -644,7 +644,7 @@ impl Eventloop {
         &self,
         domain: DomainName,
     ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> + use<> {
-        if firezone_telemetry::feature_flags::gateway_userspace_dns_a_aaaa_records() {
+        if telemetry::feature_flags::gateway_userspace_dns_a_aaaa_records() {
             let resolver = self.resolver.clone();
 
             async move {

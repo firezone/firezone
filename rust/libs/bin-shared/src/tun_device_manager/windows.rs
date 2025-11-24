@@ -2,7 +2,6 @@ use crate::TUNNEL_NAME;
 use crate::windows::TUNNEL_UUID;
 use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
 use anyhow::{Context as _, Result};
-use firezone_telemetry::otel;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use logging::err_with_src;
@@ -19,6 +18,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+use telemetry::otel;
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 use windows::Win32::NetworkManagement::IpHelper::{

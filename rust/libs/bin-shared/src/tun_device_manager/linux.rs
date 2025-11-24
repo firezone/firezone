@@ -2,7 +2,6 @@
 
 use crate::FIREZONE_MARK;
 use anyhow::{Context as _, Result};
-use firezone_telemetry::otel;
 use futures::{
     SinkExt, StreamExt, TryStreamExt,
     future::{self, Either},
@@ -39,6 +38,7 @@ use std::{
     os::{fd::RawFd, unix::fs::PermissionsExt},
 };
 use std::{net::IpAddr, time::Duration};
+use telemetry::otel;
 use tokio::{sync::mpsc, time::Instant};
 use tokio_util::sync::PollSender;
 use tun::ioctl;

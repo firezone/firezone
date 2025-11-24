@@ -13,7 +13,6 @@ use bin_shared::{
     signals,
 };
 use connlib_model::ResourceView;
-use firezone_telemetry::{Telemetry, analytics};
 use futures::{
     Future as _, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
@@ -30,6 +29,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use telemetry::{Telemetry, analytics};
 use tokio::time::Instant;
 use url::Url;
 
@@ -607,7 +607,7 @@ impl<'a> Handler<'a> {
                         .start(
                             &environment,
                             &release,
-                            firezone_telemetry::GUI_DSN,
+                            telemetry::GUI_DSN,
                             self.device_id.id.clone(),
                         )
                         .await;

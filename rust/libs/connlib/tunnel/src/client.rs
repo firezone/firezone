@@ -15,9 +15,9 @@ pub(crate) use resource::{CidrResource, InternetResource, Resource};
 
 use dns_resource_nat::DnsResourceNat;
 use dns_types::ResponseCode;
-use firezone_telemetry::{analytics, feature_flags};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use secrecy::ExposeSecret as _;
+use telemetry::{analytics, feature_flags};
 
 use crate::client::dns_cache::DnsCache;
 use crate::dns::{DnsResourceRecord, StubResolver};
@@ -1305,7 +1305,7 @@ impl ClientState {
         match self.stub_resolver.handle(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
                 if response.response_code() == ResponseCode::NXDOMAIN
-                    && firezone_telemetry::feature_flags::drop_llmnr_nxdomain_responses()
+                    && telemetry::feature_flags::drop_llmnr_nxdomain_responses()
                 {
                     return;
                 }
