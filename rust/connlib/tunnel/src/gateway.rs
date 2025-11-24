@@ -343,8 +343,8 @@ impl GatewayState {
                 device_uuid: client.device_uuid,
                 identifier_for_vendor: client.identifier_for_vendor,
                 firebase_installation_id: client.firebase_installation_id,
-                identity_id: subject.identity_id,
-                identity_name: subject.identity_name,
+                auth_provider_id: subject.auth_provider_id,
+                actor_name: subject.actor_name,
                 actor_id: subject.actor_id,
                 actor_email: subject.actor_email,
             },
@@ -498,8 +498,8 @@ impl GatewayState {
                         device_identifier_for_vendor = flow.device_identifier_for_vendor.map(tracing::field::display),
                         device_firebase_installation_id = flow.device_firebase_installation_id.map(tracing::field::display),
 
-                        identity_id = flow.identity_id.map(tracing::field::display),
-                        identity_name = flow.identity_name.map(tracing::field::display),
+                        auth_provider_id = flow.auth_provider_id.map(tracing::field::display),
+                        actor_name = flow.actor_name.map(tracing::field::display),
                         actor_id = flow.actor_id.map(tracing::field::display),
                         actor_email = flow.actor_email.map(tracing::field::display),
 
@@ -542,8 +542,8 @@ impl GatewayState {
                         device_identifier_for_vendor = flow.device_identifier_for_vendor.map(tracing::field::display),
                         device_firebase_installation_id = flow.device_firebase_installation_id.map(tracing::field::display),
 
-                        identity_id = flow.identity_id.map(tracing::field::display),
-                        identity_name = flow.identity_name.map(tracing::field::display),
+                        auth_provider_id = flow.auth_provider_id.map(tracing::field::display),
+                        actor_name = flow.actor_name.map(tracing::field::display),
                         actor_id = flow.actor_id.map(tracing::field::display),
                         actor_email = flow.actor_email.map(tracing::field::display),
 

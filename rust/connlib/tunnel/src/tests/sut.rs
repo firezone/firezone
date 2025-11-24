@@ -874,9 +874,9 @@ impl TunnelTest {
                                 device_os_version: None,
                             },
                             Subject {
-                                identity_name: None,
+                                actor_name: None,
                                 actor_email: None,
-                                identity_id: None,
+                                auth_provider_id: None,
                                 actor_id: None,
                             },
                             client_ice.clone(),
