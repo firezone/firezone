@@ -4,12 +4,17 @@ use anyhow::Result;
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
+use crate::dns;
+
 pub async fn send(
     factory: Arc<dyn SocketFactory<TcpSocket>>,
     server: SocketAddr,
     query: dns_types::Query,
 ) -> Result<dns_types::Response> {
-    tracing::trace!(target: "wire::dns::recursive::tcp", %server, domain = %query.domain());
+    let domain = query.domain();
+    let qtype = query.qtype();
+
+    tracing::trace!(target: "wire::dns::recursive::qry", %server, transport = %dns::Transport::Tcp, "{qtype} {domain}");
 
     let tcp_socket = factory.bind(server)?; // TODO: Optimise this to reuse a TCP socket to the same resolver.
     let mut tcp_stream = tcp_socket.connect(server).await?;
@@ -28,7 +33,9 @@ pub async fn send(
     let mut response = vec![0u8; response_length];
     tcp_stream.read_exact(&mut response).await?;
 
-    let message = dns_types::Response::parse(&response)?;
+    let response = dns_types::Response::parse(&response)?;
 
-    Ok(message)
+    tracing::trace!(target: "wire::dns::recursive::res", %server, transport = %dns::Transport::Tcp, "{qtype} {domain} => {}", response.response_code());
+
+    Ok(response)
 }
