@@ -231,7 +231,7 @@ pub struct Subject {
     #[serde(default)]
     pub identity_id: Option<String>,
     #[serde(default)]
-    pub identity_name: Option<String>,
+    pub actor_name: Option<String>,
     #[serde(default)]
     pub actor_id: Option<String>,
     #[serde(default)]

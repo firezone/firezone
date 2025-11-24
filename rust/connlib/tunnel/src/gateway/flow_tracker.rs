@@ -44,7 +44,7 @@ pub struct ClientProperties {
     pub identifier_for_vendor: Option<String>,
     pub firebase_installation_id: Option<String>,
     pub identity_id: Option<String>,
-    pub identity_name: Option<String>,
+    pub actor_name: Option<String>,
     pub actor_id: Option<String>,
     pub actor_email: Option<String>,
 }
@@ -235,7 +235,7 @@ impl FlowTracker {
                             actor_id: client.actor_id,
                             actor_email: client.actor_email,
                             identity_id: client.identity_id,
-                            identity_name: client.identity_name,
+                            actor_name: client.actor_name,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
@@ -274,7 +274,7 @@ impl FlowTracker {
                                 actor_id: client.actor_id,
                                 actor_email: client.actor_email,
                                 identity_id: client.identity_id,
-                                identity_name: client.identity_name,
+                                actor_name: client.actor_name,
                             },
                         );
                     }
@@ -309,7 +309,7 @@ impl FlowTracker {
                                 actor_id: client.actor_id,
                                 actor_email: client.actor_email,
                                 identity_id: client.identity_id,
-                                identity_name: client.identity_name,
+                                actor_name: client.actor_name,
                             },
                         );
                     }
@@ -365,7 +365,7 @@ impl FlowTracker {
                             actor_id: client.actor_id,
                             actor_email: client.actor_email,
                             identity_id: client.identity_id,
-                            identity_name: client.identity_name,
+                            actor_name: client.actor_name,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
@@ -402,7 +402,7 @@ impl FlowTracker {
                                 actor_id: client.actor_id,
                                 actor_email: client.actor_email,
                                 identity_id: client.identity_id,
-                                identity_name: client.identity_name,
+                                actor_name: client.actor_name,
                             },
                         );
                     }
@@ -539,7 +539,7 @@ pub struct CompletedTcpFlow {
     pub device_firebase_installation_id: Option<String>,
 
     pub identity_id: Option<String>,
-    pub identity_name: Option<String>,
+    pub actor_name: Option<String>,
     pub actor_id: Option<String>,
     pub actor_email: Option<String>,
 
@@ -581,7 +581,7 @@ pub struct CompletedUdpFlow {
     pub device_firebase_installation_id: Option<String>,
 
     pub identity_id: Option<String>,
-    pub identity_name: Option<String>,
+    pub actor_name: Option<String>,
     pub actor_id: Option<String>,
     pub actor_email: Option<String>,
 
@@ -624,7 +624,7 @@ impl CompletedTcpFlow {
             actor_id: value.actor_id,
             actor_email: value.actor_email,
             identity_id: value.identity_id,
-            identity_name: value.identity_name,
+            actor_name: value.actor_name,
             resource_id: key.resource,
             resource_name: value.resource_name,
             resource_address: value.resource_address,
@@ -662,7 +662,7 @@ impl CompletedUdpFlow {
             actor_id: value.actor_id,
             actor_email: value.actor_email,
             identity_id: value.identity_id,
-            identity_name: value.identity_name,
+            actor_name: value.actor_name,
             resource_id: key.resource,
             resource_name: value.resource_name,
             resource_address: value.resource_address,
@@ -727,7 +727,7 @@ struct TcpFlowValue {
     firebase_installation_id: Option<String>,
 
     identity_id: Option<String>,
-    identity_name: Option<String>,
+    actor_name: Option<String>,
     actor_id: Option<String>,
     actor_email: Option<String>,
 
@@ -756,7 +756,7 @@ struct UdpFlowValue {
     firebase_installation_id: Option<String>,
 
     identity_id: Option<String>,
-    identity_name: Option<String>,
+    actor_name: Option<String>,
     actor_id: Option<String>,
     actor_email: Option<String>,
 }
@@ -864,7 +864,7 @@ pub mod inbound_wg {
                 actor_id: props.actor_id,
                 actor_email: props.actor_email,
                 identity_id: props.identity_id,
-                identity_name: props.identity_name,
+                actor_name: props.actor_name,
                 device_uuid: props.device_uuid,
                 identifier_for_vendor: props.identifier_for_vendor,
                 firebase_installation_id: props.firebase_installation_id,
@@ -1022,7 +1022,7 @@ struct Client {
     firebase_installation_id: Option<String>,
 
     identity_id: Option<String>,
-    identity_name: Option<String>,
+    actor_name: Option<String>,
     actor_id: Option<String>,
     actor_email: Option<String>,
 }
