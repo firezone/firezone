@@ -7,14 +7,13 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
-      with:
-        path: kotlin/android/.tool-versions
-
     - uses: ./.github/actions/setup-rust
       with:
-        targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
         sccache_azure_connection_string: ${{ inputs.sccache_azure_connection_string }}
+
+    - uses: jdx/mise-action@be3be2260bc02bc3fbf94c5e2fed8b7964baf074 # v3.4.0
+      with:
+        working_directory: kotlin/android
 
     - uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
 

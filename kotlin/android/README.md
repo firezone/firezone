@@ -51,7 +51,7 @@ locally.
 
    Ensure you've activated the correct toolchain version for your local
    environment with `rustup default <toolchain>` (find this from the root
-   `/rust/rust-toolchain.toml` file), then run:
+   `/rust/mise.toml` file), then run:
 
    ```
    rustup target add aarch64-linux-android arm-linux-androideabi armv7-linux-androideabi i686-linux-android x86_64-linux-android

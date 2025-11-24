@@ -1,0 +1,4 @@
+[tools]
+"rust" = [
+    { version = "1.91.0", profile = "minimal", targets = "aarch64-linux-android,arm-linux-androideabi,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android" },
+]

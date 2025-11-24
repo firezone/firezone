@@ -1,0 +1,34 @@
+[env]
+RUSTUP_TOOLCHAIN="1.91.0"
+
+[tools]
+"rust" = [
+    { version = "1.91.0", components = "rustfmt,clippy,rust-analyzer", targets = "x86_64-unknown-linux-musl,aarch64-unknown-linux-musl" },
+    { version = "nightly-2025-05-30", components = "rust-src" }, # For eBPF kernel
+    { version = "nightly-2025-09-30" }, # For cargo-udeps and fuzzing.
+]
+cargo-binstall = "1.16.2"
+pnpm = "10.18.3"
+ripgrep = "15.1.0"
+"cargo:cargo-fuzz" = "0.13.1"
+"cargo:cargo-udeps" = "0.1.60"
+"cargo:bpf-linker" = { version = "0.9.15", os = ["linux"] }
+"cargo:cargo-deb" = "3.6.2"
+"cargo:dump_syms" = "2.3.5"
+"cargo:cargo-deny" = "0.18.5"
+
+[tasks.fuzz]
+usage = '''
+arg "<crate>" help="The crate to fuzz"
+'''
+run = '''
+rustup run nightly-2025-09-30 cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz ${usage_crate?} -- -max_total_time=120
+'''
+
+[tasks.udeps]
+usage = '''
+arg "[crates]" var=#true default=""
+'''
+run = '''
+rustup run nightly-2025-09-30 cargo udeps --all-targets --all-features ${usage_crates?}
+'''

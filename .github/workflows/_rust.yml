@@ -31,18 +31,6 @@ jobs:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
-      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: cargo-udeps,cargo-deny
-      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
-        if: ${{ runner.os == 'Linux' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: bpf-linker
-
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.compile-packages }}
         name: cargo clippy
         shell: bash
@@ -50,7 +38,7 @@ jobs:
         name: cargo doc
         shell: bash
       - run: cargo fmt -- --check
-      - run: cargo +${{ steps.setup-rust.outputs.nightly_version }} udeps --all-targets --all-features ${{ steps.setup-rust.outputs.compile-packages }}
+      - run: mise run udeps ${{ steps.setup-rust.outputs.compile-packages }}
         name: cargo udeps
       - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
         shell: bash
@@ -79,17 +67,6 @@ jobs:
         with:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
-      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: ripgrep
-      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
-        if: ${{ runner.os == 'Linux' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: bpf-linker
       - name: "cargo test"
         shell: bash
         run: |
@@ -157,12 +134,7 @@ jobs:
         id: setup-rust
         with:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: cargo-fuzz
-      - run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz ${{ matrix.fuzz-target }} -- -max_total_time=120
+      - run: mise run fuzz ${{ matrix.fuzz-target }}
         env:
           CARGO_PROFILE_RELEASE_LTO: false
 
