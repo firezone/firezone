@@ -92,7 +92,7 @@ if config_env() == :prod do
 
   config :domain, Domain.Entra.APIClient,
     client_id: env_var_to_config!(:entra_sync_client_id),
-    client_secret: env_var_to_config!(:entra__client_secret),
+    client_secret: env_var_to_config!(:entra_sync_client_secret),
     token_base_url: "https://login.microsoftonline.com",
     endpoint: "https://graph.microsoft.com"
 
