@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used)]
-#![cfg(not(target_os = "macos"))]
+#![cfg(not(any(target_os = "macos", target_os = "windows")))]
 
 use std::{
     collections::BTreeSet,
