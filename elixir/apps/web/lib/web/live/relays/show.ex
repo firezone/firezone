@@ -4,8 +4,14 @@ defmodule Web.Relays.Show do
 
   def mount(%{"id" => id}, _session, socket) do
     with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account),
-         {:ok, relay} <-
-           Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: [:group, :online?]) do
+         {:ok, relay} <- Relays.fetch_relay_by_id(id, socket.assigns.subject) do
+      relay =
+        relay
+        |> Domain.Repo.preload(:group)
+        |> List.wrap()
+        |> Relays.preload_relays_presence()
+        |> List.first()
+
       if connected?(socket) do
         :ok = Relays.subscribe_to_relays_presence_in_group(relay.group)
       end
@@ -161,8 +167,8 @@ defmodule Web.Relays.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, relay.id) ->
-          {:ok, relay} =
-            Relays.fetch_relay_by_id(relay.id, socket.assigns.subject, preload: [:group])
+          {:ok, relay} = Relays.fetch_relay_by_id(relay.id, socket.assigns.subject)
+          relay = Domain.Repo.preload(relay, :group)
 
           assign(socket, relay: %{relay | online?: true})
 

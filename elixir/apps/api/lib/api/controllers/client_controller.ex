@@ -54,8 +54,8 @@ defmodule API.ClientController do
 
   # Show a specific Client
   def show(conn, %{"id" => id}) do
-    with {:ok, client} <-
-           Clients.fetch_client_by_id(id, conn.assigns.subject, preload: :online?) do
+    with {:ok, client} <- Clients.fetch_client_by_id(id, conn.assigns.subject) do
+      client = Clients.preload_clients_presence([client]) |> List.first()
       render(conn, :show, client: client)
     end
   end
@@ -81,7 +81,7 @@ defmodule API.ClientController do
   def update(conn, %{"id" => id, "client" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
+    with {:ok, client} <- Clients.fetch_client_by_id(id, subject),
          {:ok, client} <- Clients.update_client(client, params, subject) do
       render(conn, :show, client: client)
     end
@@ -110,7 +110,7 @@ defmodule API.ClientController do
   def verify(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
+    with {:ok, client} <- Clients.fetch_client_by_id(id, subject),
          {:ok, client} <- Clients.verify_client(client, subject) do
       render(conn, :show, client: client)
     end
@@ -135,7 +135,7 @@ defmodule API.ClientController do
   def unverify(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
+    with {:ok, client} <- Clients.fetch_client_by_id(id, subject),
          {:ok, client} <- Clients.remove_client_verification(client, subject) do
       render(conn, :show, client: client)
     end
@@ -160,7 +160,7 @@ defmodule API.ClientController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
+    with {:ok, client} <- Clients.fetch_client_by_id(id, subject),
          {:ok, client} <- Clients.delete_client(client, subject) do
       render(conn, :show, client: client)
     end

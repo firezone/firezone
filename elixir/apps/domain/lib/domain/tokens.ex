@@ -1,7 +1,7 @@
 defmodule Domain.Tokens do
   alias Domain.Repo
-  alias Domain.{Auth, Actors, Relays, Gateways}
-  alias Domain.Tokens.{Token, Authorizer}
+  alias Domain.{Auth, Actors, Relays, Gateways, Safe}
+  alias Domain.Tokens.Token
   require Ecto.Query
   require Logger
 
@@ -12,47 +12,47 @@ defmodule Domain.Tokens do
     |> Repo.fetch(Token.Query, [])
   end
 
-  def fetch_token_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_tokens_permission(),
-         Authorizer.manage_own_tokens_permission()
-       ]}
+  def fetch_token_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Token.Query.all()
+        |> Token.Query.by_id(id)
+        |> scope_tokens_for_subject(subject)
+        |> Safe.one()
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Repo.valid_uuid?(id) do
-      Token.Query.all()
-      |> Token.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Token.Query, opts)
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        token -> {:ok, token}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
   def list_subject_tokens(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_tokens_permission()) do
-      Token.Query.all()
-      |> Token.Query.by_actor_id(subject.actor.id)
-      |> list_tokens(subject, opts)
-    end
+    Token.Query.all()
+    |> Token.Query.by_actor_id(subject.actor.id)
+    |> list_tokens(subject, opts)
   end
 
   def list_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.all()
-      |> Token.Query.by_actor_id(actor.id)
-      |> list_tokens(subject, opts)
+    case subject.actor.type do
+      :account_admin_user ->
+        Token.Query.all()
+        |> Token.Query.by_actor_id(actor.id)
+        |> list_tokens(subject, opts)
+
+      _ ->
+        {:error, :unauthorized}
     end
   end
 
   defp list_tokens(queryable, subject, opts) do
     queryable
-    |> Authorizer.for_subject(subject)
+    |> scope_tokens_for_subject(subject)
     |> Ecto.Query.order_by([tokens: tokens], desc: tokens.inserted_at, desc: tokens.id)
-    |> Repo.list(Token.Query, opts)
+    |> Safe.list(Token.Query, opts)
   end
 
   def create_token(attrs) do
@@ -161,42 +161,70 @@ defmodule Domain.Tokens do
   end
 
   def delete_token(%Token{} = token, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(token, subject) do
-      Repo.delete(token)
+    cond do
+      # Admin can delete any token in their account
+      subject.actor.type == :account_admin_user and subject.account.id == token.account_id ->
+        Safe.scoped(token, subject)
+        |> Safe.delete()
+
+      # Users can delete their own tokens
+      subject.actor.id == token.actor_id and subject.account.id == token.account_id ->
+        Safe.scoped(token, subject)
+        |> Safe.delete()
+
+      true ->
+        {:error, :unauthorized}
     end
   end
 
   def delete_token_for(%Auth.Subject{} = subject) do
-    {num_deleted, _} =
+    queryable =
       Token.Query.all()
       |> Token.Query.by_id(subject.token_id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.delete_all()
 
-    {:ok, num_deleted}
+    result = Safe.scoped(subject) |> Safe.delete_all(queryable)
+
+    case result do
+      {num_deleted, _} -> {:ok, num_deleted}
+      error -> error
+    end
   end
 
   def delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      {num_deleted, _} =
-        Token.Query.all()
-        |> Token.Query.by_relay_group_id(group.id)
-        |> Authorizer.for_subject(subject)
-        |> Repo.delete_all()
+    case subject.actor.type do
+      :account_admin_user ->
+        queryable =
+          Token.Query.all()
+          |> Token.Query.by_relay_group_id(group.id)
 
-      {:ok, num_deleted}
+        result = Safe.scoped(subject) |> Safe.delete_all(queryable)
+
+        case result do
+          {num_deleted, _} -> {:ok, num_deleted}
+          error -> error
+        end
+
+      _ ->
+        {:error, :unauthorized}
     end
   end
 
   def delete_tokens_for(%Gateways.Group{} = group, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      {num_deleted, _} =
-        Token.Query.all()
-        |> Token.Query.by_gateway_group_id(group.id)
-        |> Authorizer.for_subject(subject)
-        |> Repo.delete_all()
+    case subject.actor.type do
+      :account_admin_user ->
+        queryable =
+          Token.Query.all()
+          |> Token.Query.by_gateway_group_id(group.id)
 
-      {:ok, num_deleted}
+        result = Safe.scoped(subject) |> Safe.delete_all(queryable)
+
+        case result do
+          {num_deleted, _} -> {:ok, num_deleted}
+          error -> error
+        end
+
+      _ ->
+        {:error, :unauthorized}
     end
   end
 
@@ -215,4 +243,22 @@ defmodule Domain.Tokens do
 
   def socket_id(%Token{} = token), do: socket_id(token.id)
   def socket_id(token_id), do: "sessions:#{token_id}"
+
+  # Helper to scope tokens based on subject permissions
+  defp scope_tokens_for_subject(queryable, %Auth.Subject{} = subject) do
+    # For tokens, we need to apply additional filters based on actor type
+    # Admin users can see all tokens, regular users only see their own
+    filtered_query =
+      case subject.actor.type do
+        :account_admin_user ->
+          # Admins can see all tokens in their account
+          queryable
+
+        _ ->
+          # Regular users can only see their own tokens
+          Token.Query.by_actor_id(queryable, subject.actor.id)
+      end
+
+    Safe.scoped(filtered_query, subject)
+  end
 end

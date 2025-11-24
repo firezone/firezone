@@ -1,9 +1,9 @@
 defmodule Domain.Gateways do
   use Supervisor
   alias Domain.Accounts.Account
-  alias Domain.{Repo, Auth, Geo}
+  alias Domain.{Repo, Auth, Geo, Safe}
   alias Domain.{Accounts, Cache, Clients, Resources, Tokens, Billing}
-  alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
+  alias Domain.Gateways.{Gateway, Group, Presence}
   require Logger
 
   require Logger
@@ -33,23 +33,21 @@ defmodule Domain.Gateways do
     |> Repo.fetch(Gateway.Query, [])
   end
 
-  def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_gateways_permission(),
-         Authorizer.connect_gateways_permission()
-       ]}
+  def fetch_group_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Group.Query.all()
+        |> Group.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Repo.valid_uuid?(id) do
-      Group.Query.all()
-      |> Group.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Group.Query, opts)
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        group -> {:ok, group}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
@@ -62,18 +60,20 @@ defmodule Domain.Gateways do
   end
 
   def list_groups(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Group.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Group.Query, opts)
-    end
+    Group.Query.all()
+    |> Safe.scoped(subject)
+    |> Safe.list(Group.Query, opts)
   end
 
   def all_groups!(%Auth.Subject{} = subject) do
     Group.Query.all()
     |> Group.Query.by_managed_by(:account)
-    |> Authorizer.for_subject(subject)
-    |> Repo.all()
+    |> Safe.scoped(subject)
+    |> Safe.all()
+    |> case do
+      {:error, :unauthorized} -> []
+      groups -> groups
+    end
   end
 
   def all_groups_for_account!(%Accounts.Account{} = account) do
@@ -88,14 +88,15 @@ defmodule Domain.Gateways do
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
-         true <- Billing.can_create_gateway_groups?(subject.account) do
-      subject.account
-      |> Group.Changeset.create(attrs, subject)
-      |> Repo.insert()
+    with true <- Billing.can_create_gateway_groups?(subject.account) do
+      changeset =
+        subject.account
+        |> Group.Changeset.create(attrs, subject)
+
+      Safe.scoped(changeset, subject)
+      |> Safe.insert()
     else
       false -> {:error, :gateway_groups_limit_reached}
-      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -123,25 +124,18 @@ defmodule Domain.Gateways do
   end
 
   def update_group(%Group{managed_by: :account} = group, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Group.Query.all()
-      |> Group.Query.by_id(group.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(
-        Group.Query,
-        with: fn group ->
-          group
-          |> Repo.preload(:account)
-          |> Group.Changeset.update(attrs, subject)
-        end
-      )
-    end
+    changeset =
+      group
+      |> Repo.preload(:account)
+      |> Group.Changeset.update(attrs, subject)
+
+    Safe.scoped(changeset, subject)
+    |> Safe.update()
   end
 
   def delete_group(%Group{managed_by: :account} = group, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(group, subject) do
-      Repo.delete(group)
-    end
+    Safe.scoped(group, subject)
+    |> Safe.delete()
   end
 
   def create_token(
@@ -159,8 +153,7 @@ defmodule Domain.Gateways do
         "created_by_remote_ip" => subject.context.remote_ip
       })
 
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
-         {:ok, token} <- Tokens.create_token(attrs, subject) do
+    with {:ok, token} <- Tokens.create_token(attrs, subject) do
       {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Tokens.encode_fragment!(token)}
     end
   end
@@ -176,23 +169,21 @@ defmodule Domain.Gateways do
     end
   end
 
-  def fetch_gateway_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_gateways_permission(),
-         Authorizer.connect_gateways_permission()
-       ]}
+  def fetch_gateway_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Gateway.Query.all()
+        |> Gateway.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Repo.valid_uuid?(id) do
-      Gateway.Query.all()
-      |> Gateway.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Gateway.Query, opts)
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        gateway -> {:ok, gateway}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
@@ -203,11 +194,9 @@ defmodule Domain.Gateways do
   end
 
   def list_gateways(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Gateway.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Gateway.Query, opts)
-    end
+    Gateway.Query.all()
+    |> Safe.scoped(subject)
+    |> Safe.list(Gateway.Query, opts)
   end
 
   def all_gateways_for_account!(%Account{} = account, opts \\ []) do
@@ -257,23 +246,24 @@ defmodule Domain.Gateways do
         %Cache.Cacheable.Resource{} = resource,
         %Auth.Subject{} = subject
       ) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.connect_gateways_permission()) do
-      resource_id = Ecto.UUID.load!(resource.id)
+    resource_id = Ecto.UUID.load!(resource.id)
 
-      connected_gateway_ids =
-        Presence.Account.list(subject.account.id)
-        |> Map.keys()
+    connected_gateway_ids =
+      Presence.Account.list(subject.account.id)
+      |> Map.keys()
 
-      gateways =
-        Gateway.Query.all()
-        |> Gateway.Query.by_ids(connected_gateway_ids)
-        |> Gateway.Query.by_account_id(subject.account.id)
-        |> Gateway.Query.by_resource_id(resource_id)
-        |> Repo.all()
-        |> filter_compatible_gateways(resource, client.last_seen_version)
+    gateways =
+      Gateway.Query.all()
+      |> Gateway.Query.by_ids(connected_gateway_ids)
+      |> Gateway.Query.by_resource_id(resource_id)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, :unauthorized} -> []
+        gateways -> filter_compatible_gateways(gateways, resource, client.last_seen_version)
+      end
 
-      {:ok, gateways}
-    end
+    {:ok, gateways}
   end
 
   def change_gateway(%Gateway{} = gateway, attrs \\ %{}) do
@@ -313,20 +303,24 @@ defmodule Domain.Gateways do
   end
 
   def update_gateway(%Gateway{} = gateway, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Gateway.Query.all()
-      |> Gateway.Query.by_id(gateway.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Gateway.Query,
-        with: &Gateway.Changeset.update(&1, attrs),
-        preload: [:online?]
-      )
+    changeset = Gateway.Changeset.update(gateway, attrs)
+
+    case Safe.scoped(changeset, subject) |> Safe.update() do
+      {:ok, updated_gateway} ->
+        {:ok, preload_gateways_presence([updated_gateway]) |> List.first()}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   def delete_gateway(%Gateway{} = gateway, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(gateway, subject) do
-      Repo.delete(gateway)
+    case Safe.scoped(gateway, subject) |> Safe.delete() do
+      {:ok, deleted_gateway} ->
+        {:ok, preload_gateways_presence([deleted_gateway]) |> List.first()}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

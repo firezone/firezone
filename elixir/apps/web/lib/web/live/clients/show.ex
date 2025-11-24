@@ -5,13 +5,12 @@ defmodule Web.Clients.Show do
   alias Domain.{Clients, ComponentVersions, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, client} <-
-           Clients.fetch_client_by_id(id, socket.assigns.subject,
-             preload: [
-               :online?,
-               :actor
-             ]
-           ) do
+    with {:ok, client} <- Clients.fetch_client_by_id(id, socket.assigns.subject) do
+      client =
+        client
+        |> Domain.Repo.preload(:actor)
+        |> then(fn c -> Clients.preload_clients_presence([c]) |> List.first() end)
+
       if connected?(socket) do
         :ok = Clients.Presence.Actor.subscribe(client.actor_id)
       end
@@ -393,11 +392,8 @@ defmodule Web.Clients.Show do
       cond do
         Map.has_key?(payload.joins, client.id) ->
           {:ok, client} =
-            Clients.fetch_client_by_id(client.id, socket.assigns.subject,
-              preload: [
-                :actor
-              ]
-            )
+            Clients.fetch_client_by_id(client.id, socket.assigns.subject)
+            |> then(fn {:ok, c} -> {:ok, Domain.Repo.preload(c, :actor)} end)
 
           assign(socket, client: %{client | online?: true})
 

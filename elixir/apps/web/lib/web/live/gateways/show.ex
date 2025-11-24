@@ -3,8 +3,12 @@ defmodule Web.Gateways.Show do
   alias Domain.Gateways
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: [:group, :online?]) do
+    with {:ok, gateway} <- Gateways.fetch_gateway_by_id(id, socket.assigns.subject) do
+      gateway =
+        gateway
+        |> Domain.Repo.preload(:group)
+        |> then(fn gw -> Gateways.preload_gateways_presence([gw]) |> List.first() end)
+
       if connected?(socket) do
         :ok = Gateways.Presence.Group.subscribe(gateway.group_id)
       end
@@ -151,7 +155,8 @@ defmodule Web.Gateways.Show do
       cond do
         Map.has_key?(payload.joins, gateway.id) ->
           {:ok, gateway} =
-            Gateways.fetch_gateway_by_id(gateway.id, socket.assigns.subject, preload: [:group])
+            Gateways.fetch_gateway_by_id(gateway.id, socket.assigns.subject)
+            |> then(fn {:ok, gw} -> {:ok, Domain.Repo.preload(gw, :group)} end)
 
           assign(socket, gateway: %{gateway | online?: true})
 

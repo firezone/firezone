@@ -64,13 +64,15 @@ defmodule API.ActorGroupMembershipController do
         %{"actor_group_id" => actor_group_id, "memberships" => attrs}
       ) do
     subject = conn.assigns.subject
-    preload = [:memberships]
-    filter = [editable?: true]
 
-    with {:ok, group} <-
-           Actors.fetch_group_by_id(actor_group_id, subject, preload: preload, filter: filter),
+    with {:ok, group} <- Actors.fetch_group_by_id(actor_group_id, subject),
+         true <- is_nil(group.directory_id) and group.type == :static,
+         group <- Domain.Repo.preload(group, [:memberships]),
          {:ok, group} <- Actors.update_group(group, %{memberships: attrs}, subject) do
       render(conn, :memberships, memberships: group.memberships)
+    else
+      false -> {:error, :not_editable}
+      error -> error
     end
   end
 
@@ -104,14 +106,16 @@ defmodule API.ActorGroupMembershipController do
     add = Map.get(params, "add", [])
     remove = Map.get(params, "remove", [])
     subject = conn.assigns.subject
-    preload = [:memberships]
-    filter = [editable?: true]
 
-    with {:ok, group} <-
-           Actors.fetch_group_by_id(actor_group_id, subject, preload: preload, filter: filter),
+    with {:ok, group} <- Actors.fetch_group_by_id(actor_group_id, subject),
+         true <- is_nil(group.directory_id) and group.type == :static,
+         group <- Domain.Repo.preload(group, [:memberships]),
          membership_attrs <- prepare_membership_attrs(group, add, remove),
          {:ok, group} <- Actors.update_group(group, %{memberships: membership_attrs}, subject) do
       render(conn, :memberships, memberships: group.memberships)
+    else
+      false -> {:error, :not_editable}
+      error -> error
     end
   end
 

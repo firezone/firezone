@@ -66,8 +66,8 @@ defmodule API.GatewayController do
 
   # Show a specific Gateway
   def show(conn, %{"id" => id}) do
-    with {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(id, conn.assigns.subject, preload: :online?) do
+    with {:ok, gateway} <- Gateways.fetch_gateway_by_id(id, conn.assigns.subject) do
+      gateway = Gateways.preload_gateways_presence([gateway]) |> List.first()
       render(conn, :show, gateway: gateway)
     end
   end
@@ -96,7 +96,7 @@ defmodule API.GatewayController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, gateway} <- Gateways.fetch_gateway_by_id(id, subject, preload: :online?),
+    with {:ok, gateway} <- Gateways.fetch_gateway_by_id(id, subject),
          {:ok, gateway} <- Gateways.delete_gateway(gateway, subject) do
       render(conn, :show, gateway: gateway)
     end

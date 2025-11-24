@@ -494,7 +494,11 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject, preload: :online?),
+           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
+           |> then(fn
+             {:ok, gw} -> {:ok, Gateways.preload_gateways_presence([gw]) |> List.first()}
+             error -> error
+           end),
          %Cache.Cacheable.GatewayGroup{} <-
            Enum.find(resource.gateway_groups, {:error, :not_found}, fn g ->
              g.id == Ecto.UUID.dump!(gateway.group_id)
@@ -561,7 +565,11 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject, preload: :online?),
+           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
+           |> then(fn
+             {:ok, gw} -> {:ok, Gateways.preload_gateways_presence([gw]) |> List.first()}
+             error -> error
+           end),
          %Cache.Cacheable.GatewayGroup{} <-
            Enum.find(resource.gateway_groups, {:error, :not_found}, fn g ->
              g.id == Ecto.UUID.dump!(gateway.group_id)

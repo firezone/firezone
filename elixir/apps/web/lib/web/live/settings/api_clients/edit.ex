@@ -91,7 +91,7 @@ defmodule Web.Settings.ApiClients.Edit do
     alias Domain.{Safe, Actors}
 
     def fetch_api_client(id, subject) do
-      Actors.fetch_actor_by_id(id, subject, preload: [])
+      Actors.fetch_actor_by_id(id, subject)
     end
 
     def update_api_client(changeset, subject) do

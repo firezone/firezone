@@ -20,9 +20,9 @@ defmodule Web.Sites.Index do
 
     {internet_resource, existing_group_name} =
       with {:ok, internet_resource} <-
-             Domain.Resources.fetch_internet_resource(socket.assigns.subject,
-               preload: [connections: :gateway_group]
-             ),
+             Domain.Resources.fetch_internet_resource(socket.assigns.subject),
+           internet_resource =
+             Domain.Repo.preload(internet_resource, connections: :gateway_group),
            connection when not is_nil(connection) <-
              Enum.find(internet_resource.connections, fn connection ->
                connection.gateway_group.name != "Internet" &&
@@ -262,8 +262,8 @@ defmodule Web.Sites.Index do
       )
 
     internet_resource =
-      case Domain.Resources.fetch_internet_resource(socket.assigns.subject, preload: :connections) do
-        {:ok, internet_resource} -> internet_resource
+      case Domain.Resources.fetch_internet_resource(socket.assigns.subject) do
+        {:ok, internet_resource} -> Domain.Repo.preload(internet_resource, :connections)
         _ -> nil
       end
 

@@ -1,13 +1,11 @@
 defmodule Domain.Auth.Subject do
   alias Domain.Actors
-  alias Domain.Auth.{Permission, Context}
+  alias Domain.Auth.Context
 
   @type actor :: %Actors.Actor{}
-  @type permission :: Permission.t()
 
   @type t :: %__MODULE__{
           actor: actor(),
-          permissions: MapSet.t(permission),
           account: %Domain.Accounts.Account{},
           token_id: Ecto.UUID.t(),
           auth_provider_id: Ecto.UUID.t() | nil,
@@ -15,9 +13,8 @@ defmodule Domain.Auth.Subject do
           context: Context.t()
         }
 
-  @enforce_keys [:actor, :permissions, :account, :token_id, :expires_at, :context]
+  @enforce_keys [:actor, :account, :token_id, :expires_at, :context]
   defstruct actor: nil,
-            permissions: MapSet.new(),
             account: nil,
             token_id: nil,
             auth_provider_id: nil,

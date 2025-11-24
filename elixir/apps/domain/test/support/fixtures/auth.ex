@@ -34,7 +34,6 @@ defmodule Domain.Fixtures.Auth do
   -----END PRIVATE KEY-----
   """
 
-  def user_password, do: "Hello w0rld!"
   def remote_ip, do: {100, 64, 100, 58}
   def user_agent, do: "iOS/12.5 connlib/1.3.0"
   def email(domain \\ "example.com"), do: "user-#{unique_integer()}@#{domain}"
@@ -697,21 +696,5 @@ defmodule Domain.Fixtures.Auth do
 
     {:ok, token} = Auth.create_token(identity, context, nonce, expires_at)
     {token, nonce <> Domain.Tokens.encode_fragment!(token)}
-  end
-
-  def remove_permission(%Auth.Subject{} = subject, permission) do
-    %{subject | permissions: MapSet.delete(subject.permissions, permission)}
-  end
-
-  def remove_permissions(%Auth.Subject{} = subject) do
-    %{subject | permissions: MapSet.new()}
-  end
-
-  def set_permissions(%Auth.Subject{} = subject, permissions) do
-    %{subject | permissions: MapSet.new(permissions)}
-  end
-
-  def add_permission(%Auth.Subject{} = subject, permission) do
-    %{subject | permissions: MapSet.put(subject.permissions, permission)}
   end
 end

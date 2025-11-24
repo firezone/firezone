@@ -23,10 +23,9 @@ defmodule Web.Sites.Show do
   end
 
   defp mount_page(socket, %{managed_by: :system, name: "Internet"} = group) do
-    with {:ok, resource} <-
-           Resources.fetch_internet_resource(socket.assigns.subject,
-             preload: [:gateway_groups]
-           ) do
+    with {:ok, resource} <- Resources.fetch_internet_resource(socket.assigns.subject) do
+      resource = Domain.Repo.preload(resource, :gateway_groups)
+
       socket =
         socket
         |> assign(resource: resource)

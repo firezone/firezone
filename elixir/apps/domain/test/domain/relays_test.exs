@@ -1303,7 +1303,7 @@ defmodule Domain.RelaysTest do
 
       assert connect_relay(relay, "foo", relay_token.id) == :ok
 
-      relay = fetch_relay_by_id!(relay.id, preload: [:online?])
+      [relay] = preload_relays_presence([relay])
       assert relay.online? == true
     end
 

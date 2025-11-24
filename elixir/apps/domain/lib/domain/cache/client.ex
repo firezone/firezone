@@ -318,8 +318,8 @@ defmodule Domain.Cache.Client do
           cache
         else
           # Need to fetch the resource from the DB
-          opts = [preload: :gateway_groups]
-          {:ok, resource} = Resources.fetch_resource_by_id(resource_id, subject, opts)
+          {:ok, resource} = Resources.fetch_resource_by_id(resource_id, subject)
+          resource = Domain.Repo.preload(resource, :gateway_groups)
 
           resource = Domain.Cache.Cacheable.to_cache(resource)
 

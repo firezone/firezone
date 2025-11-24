@@ -1,8 +1,8 @@
 defmodule Domain.Accounts do
   alias Web.Settings.Account
-  alias Domain.{Repo, Config}
+  alias Domain.{Repo, Config, Safe}
   alias Domain.{Auth, Billing}
-  alias Domain.Accounts.{Account, Features, Authorizer}
+  alias Domain.Accounts.{Account, Features}
 
   def all_active_accounts! do
     Account.Query.not_disabled()
@@ -40,16 +40,21 @@ defmodule Domain.Accounts do
     |> Repo.all()
   end
 
-  def fetch_account_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()),
-         true <- Repo.valid_uuid?(id) do
-      Account.Query.all()
-      |> Account.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Account.Query, opts)
+  def fetch_account_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Account.Query.all()
+        |> Account.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        account -> {:ok, account}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
@@ -79,14 +84,15 @@ defmodule Domain.Accounts do
   end
 
   def update_account(%Account{} = account, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()) do
-      Account.Query.all()
-      |> Account.Query.by_id(account.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Account.Query,
-        with: &Account.Changeset.update_profile_and_config(&1, attrs),
-        after_commit: &on_account_update/2
-      )
+    changeset = Account.Changeset.update_profile_and_config(account, attrs)
+
+    case Safe.scoped(changeset, subject) |> Safe.update() do
+      {:ok, updated_account} ->
+        on_account_update(updated_account, changeset)
+        {:ok, updated_account}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

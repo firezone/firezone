@@ -1,7 +1,7 @@
 defmodule Domain.Flows do
-  alias Domain.Repo
+  alias Domain.{Repo, Safe}
   alias Domain.{Auth, Actors, Clients, Gateways, Resources, Policies}
-  alias Domain.Flows.{Authorizer, Flow}
+  alias Domain.Flows.Flow
   require Ecto.Query
   require Logger
 
@@ -33,30 +33,28 @@ defmodule Domain.Flows do
         } = subject,
         expires_at
       ) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()) do
-      # Set the expiration time for the authorization. For normal user clients, this is 7 days, defined in Domain.Auth.
-      # For service accounts using a headless client, it's configurable. This will always be set.
-      # We always cap this by the subject's expires_at so that we synchronize removal of the flow on the gateway
-      # with the websocket connection expiration on the client.
+    # Set the expiration time for the authorization. For normal user clients, this is 7 days, defined in Domain.Auth.
+    # For service accounts using a headless client, it's configurable. This will always be set.
+    # We always cap this by the subject's expires_at so that we synchronize removal of the flow on the gateway
+    # with the websocket connection expiration on the client.
 
-      flow =
-        Flow.Changeset.create(%{
-          token_id: token_id,
-          policy_id: policy_id,
-          client_id: client_id,
-          gateway_id: gateway_id,
-          resource_id: resource_id,
-          actor_group_membership_id: membership_id,
-          account_id: account_id,
-          client_remote_ip: client_remote_ip,
-          client_user_agent: client_user_agent,
-          gateway_remote_ip: gateway_remote_ip,
-          expires_at: expires_at
-        })
-        |> Repo.insert!()
+    changeset =
+      Flow.Changeset.create(%{
+        token_id: token_id,
+        policy_id: policy_id,
+        client_id: client_id,
+        gateway_id: gateway_id,
+        resource_id: resource_id,
+        actor_group_membership_id: membership_id,
+        account_id: account_id,
+        client_remote_ip: client_remote_ip,
+        client_user_agent: client_user_agent,
+        gateway_remote_ip: gateway_remote_ip,
+        expires_at: expires_at
+      })
 
-      {:ok, flow}
-    end
+    Safe.scoped(changeset, subject)
+    |> Safe.insert()
   end
 
   # When the last flow in a Gateway's cache is deleted, we need to see if there are
@@ -125,16 +123,21 @@ defmodule Domain.Flows do
     end
   end
 
-  def fetch_flow_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()),
-         true <- Repo.valid_uuid?(id) do
-      Flow.Query.all()
-      |> Flow.Query.by_id(id)
-      |> Authorizer.for_subject(Flow, subject)
-      |> Repo.fetch(Flow.Query, opts)
+  def fetch_flow_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Flow.Query.all()
+        |> Flow.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        flow -> {:ok, flow}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
@@ -180,11 +183,9 @@ defmodule Domain.Flows do
   end
 
   defp list_flows(queryable, subject, opts) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()) do
-      queryable
-      |> Authorizer.for_subject(Flow, subject)
-      |> Repo.list(Flow.Query, opts)
-    end
+    queryable
+    |> Safe.scoped(subject)
+    |> Safe.list(Flow.Query, opts)
   end
 
   def delete_expired_flows do

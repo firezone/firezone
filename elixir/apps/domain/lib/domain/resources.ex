@@ -1,26 +1,25 @@
 defmodule Domain.Resources do
-  alias Domain.{Repo, Auth}
+  alias Domain.{Repo, Auth, Safe}
   alias Domain.{Accounts, Gateways}
-  alias Domain.Resources.{Authorizer, Resource, Connection}
+  alias Domain.Resources.Resource
   require Logger
+  import Ecto.Query, only: [where: 2]
 
-  def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_resources_permission(),
-         Authorizer.view_available_resources_permission()
-       ]}
+  def fetch_resource_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Resource.Query.all()
+        |> Resource.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Repo.valid_uuid?(id) do
-      Resource.Query.all()
-      |> Resource.Query.by_id(id)
-      |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch(Resource.Query, opts)
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        resource -> {:ok, resource}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
@@ -41,13 +40,17 @@ defmodule Domain.Resources do
     |> Repo.fetch(Resource.Query)
   end
 
-  def fetch_internet_resource(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
+  def fetch_internet_resource(%Auth.Subject{} = subject) do
+    result =
       Resource.Query.all()
-      |> Resource.Query.by_account_id(subject.account.id)
       |> Resource.Query.by_type(:internet)
-      |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch(Resource.Query, opts)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+
+    case result do
+      nil -> {:error, :not_found}
+      {:error, :unauthorized} -> {:error, :unauthorized}
+      resource -> {:ok, resource}
     end
   end
 
@@ -59,28 +62,31 @@ defmodule Domain.Resources do
   end
 
   def all_authorized_resources(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <-
-           Auth.ensure_has_permissions(subject, Authorizer.view_available_resources_permission()) do
-      {preload, opts} = Keyword.pop(opts, :preload, [])
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      resources =
-        Resource.Query.all()
-        |> Resource.Query.by_account_id(subject.account.id)
-        |> Resource.Query.by_authorized_actor_id(subject.actor.id)
-        |> Resource.Query.with_at_least_one_gateway_group()
-        |> Repo.all(opts)
-        |> Repo.preload(preload)
+    resources =
+      Resource.Query.all()
+      |> Resource.Query.by_authorized_actor_id(subject.actor.id)
+      |> Resource.Query.with_at_least_one_gateway_group()
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, :unauthorized} -> []
+        resources -> Repo.preload(resources, preload)
+      end
 
-      {:ok, resources}
-    end
+    {:ok, resources}
   end
 
   def all_resources!(%Auth.Subject{} = subject) do
     Resource.Query.all()
-    |> Resource.Query.by_account_id(subject.account.id)
     |> Resource.Query.filter_features(subject.account)
-    |> Authorizer.for_subject(Resource, subject)
-    |> Repo.all()
+    |> Safe.scoped(subject)
+    |> Safe.all()
+    |> case do
+      {:error, :unauthorized} -> []
+      resources -> resources
+    end
   end
 
   def all_resources!(%Auth.Subject{} = subject, opts \\ []) do
@@ -88,81 +94,66 @@ defmodule Domain.Resources do
 
     Resource.Query.all()
     |> Resource.Query.filter_features(subject.account)
-    |> Authorizer.for_subject(Resource, subject)
-    |> Repo.all()
-    |> Repo.preload(preload)
+    |> Safe.scoped(subject)
+    |> Safe.all()
+    |> case do
+      {:error, :unauthorized} -> []
+      resources -> Repo.preload(resources, preload)
+    end
   end
 
   def list_resources(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      Resource.Query.all()
-      |> Resource.Query.filter_features(subject.account)
-      |> Authorizer.for_subject(Resource, subject)
-      |> Repo.list(Resource.Query, opts)
-    end
+    Resource.Query.all()
+    |> Resource.Query.filter_features(subject.account)
+    |> Safe.scoped(subject)
+    |> Safe.list(Resource.Query, opts)
   end
 
   def count_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_resources_permission(),
-         Authorizer.view_available_resources_permission()
-       ]}
+    count =
+      Resource.Query.all()
+      |> Resource.Query.by_gateway_group_id(gateway.group_id)
+      |> where(account_id: ^subject.account.id)
+      |> Repo.aggregate(:count)
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      count =
-        Resource.Query.all()
-        |> Authorizer.for_subject(Resource, subject)
-        |> Resource.Query.by_gateway_group_id(gateway.group_id)
-        |> Repo.aggregate(:count)
-
-      {:ok, count}
-    end
+    {:ok, count}
   end
 
   def list_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_resources_permission(),
-         Authorizer.view_available_resources_permission()
-       ]}
+    resources =
+      Resource.Query.all()
+      |> Resource.Query.by_gateway_group_id(gateway.group_id)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, :unauthorized} -> []
+        resources -> resources
+      end
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      resources =
-        Resource.Query.all()
-        |> Resource.Query.by_account_id(subject.account.id)
-        |> Resource.Query.by_gateway_group_id(gateway.group_id)
-        |> Repo.all()
-
-      {:ok, resources}
-    end
+    {:ok, resources}
   end
 
   def peek_resource_actor_groups(resources, limit, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
+    ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
-      {:ok, peek} =
-        Resource.Query.all()
-        |> Resource.Query.by_id({:in, ids})
-        |> Authorizer.for_subject(Resource, subject)
-        |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
-        |> Repo.peek(resources)
+    {:ok, peek} =
+      Resource.Query.all()
+      |> Resource.Query.by_id({:in, ids})
+      |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
+      |> where(account_id: ^subject.account.id)
+      |> Repo.peek(resources)
 
-      group_by_ids =
-        Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
-        |> Enum.map(&{&1.id, &1})
-        |> Enum.into(%{})
+    group_by_ids =
+      Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
+      |> Enum.map(&{&1.id, &1})
+      |> Enum.into(%{})
 
-      peek =
-        for {id, %{items: items} = map} <- peek, into: %{} do
-          {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
-        end
+    peek =
+      for {id, %{items: items} = map} <- peek, into: %{} do
+        {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
+      end
 
-      {:ok, peek}
-    end
+    {:ok, peek}
   end
 
   def new_resource(%Accounts.Account{} = account, attrs \\ %{}) do
@@ -170,10 +161,10 @@ defmodule Domain.Resources do
   end
 
   def create_resource(attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      Resource.Changeset.create(subject.account, attrs, subject)
-      |> Repo.insert()
-    end
+    changeset = Resource.Changeset.create(subject.account, attrs, subject)
+
+    Safe.scoped(changeset, subject)
+    |> Safe.insert()
   end
 
   def create_internet_resource(%Accounts.Account{} = account, %Gateways.Group{} = group) do
@@ -197,18 +188,13 @@ defmodule Domain.Resources do
   end
 
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      Resource.Query.all()
-      |> Resource.Query.by_id(resource.id)
-      |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch_and_update(Resource.Query,
-        with: fn resource ->
-          resource
-          |> Repo.preload(:connections)
-          |> Resource.Changeset.update(attrs, subject)
-        end
-      )
-    end
+    changeset =
+      resource
+      |> Repo.preload(:connections)
+      |> Resource.Changeset.update(attrs, subject)
+
+    Safe.scoped(changeset, subject)
+    |> Safe.update()
   end
 
   def delete_resource(%Resource{type: :internet}, %Auth.Subject{}) do
@@ -216,18 +202,8 @@ defmodule Domain.Resources do
   end
 
   def delete_resource(%Resource{} = resource, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(resource, subject) do
-      Repo.delete(resource)
-    end
-  end
-
-  def connected?(
-        resource_id,
-        %Gateways.Gateway{} = gateway
-      ) do
-    Connection.Query.by_resource_id(resource_id)
-    |> Connection.Query.by_gateway_group_id(gateway.group_id)
-    |> Repo.exists?()
+    Safe.scoped(resource, subject)
+    |> Safe.delete()
   end
 
   @doc """

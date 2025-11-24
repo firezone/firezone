@@ -1,8 +1,8 @@
 defmodule Domain.Relays do
   use Supervisor
-  alias Domain.{Repo, Auth, Geo, PubSub}
+  alias Domain.{Repo, Auth, Geo, PubSub, Safe}
   alias Domain.{Accounts, Tokens}
-  alias Domain.Relays.{Authorizer, Relay, Group, Presence}
+  alias Domain.Relays.{Relay, Group, Presence}
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -24,25 +24,28 @@ defmodule Domain.Relays do
     })
   end
 
-  def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
-         true <- Repo.valid_uuid?(id) do
-      Group.Query.all()
-      |> Group.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Group.Query, opts)
+  def fetch_group_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Group.Query.all()
+        |> Group.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        group -> {:ok, group}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
   def list_groups(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      Group.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Group.Query, opts)
-    end
+    Group.Query.all()
+    |> Safe.scoped(subject)
+    |> Safe.list(Group.Query, opts)
   end
 
   def new_group(attrs \\ %{}) do
@@ -50,11 +53,12 @@ defmodule Domain.Relays do
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
+    changeset =
       subject.account
       |> Group.Changeset.create(attrs, subject)
-      |> Repo.insert()
-    end
+
+    Safe.scoped(changeset, subject)
+    |> Safe.insert()
   end
 
   def create_global_group(attrs) do
@@ -75,12 +79,13 @@ defmodule Domain.Relays do
   end
 
   def update_group(%Group{} = group, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
+    changeset =
       group
       |> Repo.preload(:account)
       |> Group.Changeset.update(attrs, subject)
-      |> Repo.update()
-    end
+
+    Safe.scoped(changeset, subject)
+    |> Safe.update()
   end
 
   def delete_group(%Group{account_id: nil}, %Auth.Subject{}) do
@@ -88,9 +93,8 @@ defmodule Domain.Relays do
   end
 
   def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(group, subject) do
-      Repo.delete(group)
-    end
+    Safe.scoped(group, subject)
+    |> Safe.delete()
   end
 
   def create_token(%Group{account_id: nil} = group, attrs) do
@@ -121,8 +125,7 @@ defmodule Domain.Relays do
         "created_by_remote_ip" => subject.context.remote_ip
       })
 
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
-         {:ok, token} <- Tokens.create_token(attrs, subject) do
+    with {:ok, token} <- Tokens.create_token(attrs, subject) do
       {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Tokens.encode_fragment!(token)}
     end
   end
@@ -138,31 +141,28 @@ defmodule Domain.Relays do
     end
   end
 
-  def fetch_relay_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
-         true <- Repo.valid_uuid?(id) do
-      Relay.Query.all()
-      |> Relay.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Relay.Query, opts)
+  def fetch_relay_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Relay.Query.all()
+        |> Relay.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        relay -> {:ok, relay}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
-  end
-
-  def fetch_relay_by_id!(id, opts \\ []) do
-    Relay.Query.all()
-    |> Relay.Query.by_id(id)
-    |> Repo.fetch!(Relay.Query, opts)
   end
 
   def list_relays(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      Relay.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Relay.Query, opts)
-    end
+    Relay.Query.all()
+    |> Safe.scoped(subject)
+    |> Safe.list(Relay.Query, opts)
   end
 
   @doc false
@@ -286,9 +286,8 @@ defmodule Domain.Relays do
   end
 
   def delete_relay(%Relay{} = relay, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(relay, subject) do
-      Repo.delete(relay)
-    end
+    Safe.scoped(relay, subject)
+    |> Safe.delete()
   end
 
   @doc """

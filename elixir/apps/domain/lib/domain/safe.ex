@@ -421,6 +421,46 @@ defmodule Domain.Safe do
   def permit(_action, Domain.Google.Directory, :account_admin_user), do: :ok
   def permit(_action, Domain.Okta.Directory, :account_admin_user), do: :ok
 
+  # Client permissions
+  def permit(_action, Domain.Clients.Client, :account_admin_user), do: :ok
+  def permit(:read, Domain.Clients.Client, :account_user), do: :ok
+  def permit(:update, Domain.Clients.Client, :account_user), do: :ok
+  def permit(:read, Domain.Clients.Client, :service_account), do: :ok
+  def permit(:update, Domain.Clients.Client, :service_account), do: :ok
+
+  # Flow permissions - all actor types can read and create flows
+  def permit(:read, Domain.Flows.Flow, _), do: :ok
+  def permit(:insert, Domain.Flows.Flow, _), do: :ok
+  # Only admin can manage/delete flows
+  def permit(_action, Domain.Flows.Flow, :account_admin_user), do: :ok
+
+  # Gateway permissions
+  def permit(_action, Domain.Gateways.Gateway, :account_admin_user), do: :ok
+  def permit(:read, Domain.Gateways.Gateway, _), do: :ok
+
+  # Gateway Group permissions
+  def permit(_action, Domain.Gateways.Group, :account_admin_user), do: :ok
+  def permit(:read, Domain.Gateways.Group, _), do: :ok
+
+  # Resource permissions
+  def permit(_action, Domain.Resources.Resource, :account_admin_user), do: :ok
+  def permit(:read, Domain.Resources.Resource, _), do: :ok
+
+  # Resource Connection permissions
+  def permit(_action, Domain.Resources.Connection, :account_admin_user), do: :ok
+
+  # Policy permissions
+  def permit(_action, Domain.Policies.Policy, :account_admin_user), do: :ok
+  def permit(:read, Domain.Policies.Policy, _), do: :ok
+
+  # Relay permissions
+  def permit(_action, Domain.Relays.Relay, :account_admin_user), do: :ok
+  def permit(:read, Domain.Relays.Relay, _), do: :ok
+
+  # Relay Group permissions
+  def permit(_action, Domain.Relays.Group, :account_admin_user), do: :ok
+  def permit(:read, Domain.Relays.Group, _), do: :ok
+
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 
   # Helper function to emit subject information to the replication stream

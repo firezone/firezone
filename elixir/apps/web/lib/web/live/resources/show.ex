@@ -348,12 +348,9 @@ defmodule Web.Resources.Show do
       )
       when resource_id == id do
     {:ok, resource} =
-      Resources.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject,
-        preload: [
-          :gateway_groups,
-          :policies
-        ]
-      )
+      Resources.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject)
+
+    resource = Domain.Repo.preload(resource, [:gateway_groups, :policies])
 
     {:noreply, assign(socket, resource: resource)}
   end
@@ -391,11 +388,19 @@ defmodule Web.Resources.Show do
   end
 
   defp fetch_resource("internet", subject) do
-    Resources.fetch_internet_resource(subject, preload: [:gateway_groups])
+    Resources.fetch_internet_resource(subject)
+    |> case do
+      {:ok, resource} -> {:ok, Domain.Repo.preload(resource, :gateway_groups)}
+      error -> error
+    end
   end
 
   defp fetch_resource(id, subject) do
-    Resources.fetch_resource_by_id(id, subject, preload: [:gateway_groups])
+    Resources.fetch_resource_by_id(id, subject)
+    |> case do
+      {:ok, resource} -> {:ok, Domain.Repo.preload(resource, :gateway_groups)}
+      error -> error
+    end
   end
 
   defp format_ip_stack(:dual), do: "Dual-stack (IPv4 and IPv6)"

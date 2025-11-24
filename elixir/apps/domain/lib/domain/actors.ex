@@ -1,23 +1,28 @@
 defmodule Domain.Actors do
   alias Domain.Actors.Membership
-  alias Domain.Repo
+  alias Domain.{Repo, Safe}
   alias Domain.{Accounts, Auth, Billing}
-  alias Domain.Actors.{Authorizer, Actor, Group}
+  alias Domain.Actors.{Actor, Group}
   require Ecto.Query
   require Logger
 
   # Groups
 
-  def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         true <- Repo.valid_uuid?(id) do
-      Group.Query.all()
-      |> Group.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Group.Query, opts)
+  def fetch_group_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Group.Query.all()
+        |> Group.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        group -> {:ok, group}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
@@ -32,9 +37,12 @@ defmodule Domain.Actors do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
     Group.Query.all()
-    |> Authorizer.for_subject(subject)
-    |> Repo.all()
-    |> Repo.preload(preload)
+    |> Safe.scoped(subject)
+    |> Safe.all()
+    |> case do
+      {:error, :unauthorized} -> []
+      groups -> Repo.preload(groups, preload)
+    end
   end
 
   def all_editable_groups!(%Auth.Subject{} = subject, opts \\ []) do
@@ -42,9 +50,12 @@ defmodule Domain.Actors do
 
     Group.Query.all()
     |> Group.Query.editable()
-    |> Authorizer.for_subject(subject)
-    |> Repo.all()
-    |> Repo.preload(preload)
+    |> Safe.scoped(subject)
+    |> Safe.all()
+    |> case do
+      {:error, :unauthorized} -> []
+      groups -> Repo.preload(groups, preload)
+    end
   end
 
   def all_memberships_for_actor_id!(actor_id) do
@@ -63,10 +74,9 @@ defmodule Domain.Actors do
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Changeset.create(subject.account, attrs, subject)
-      |> Repo.insert()
-    end
+    Group.Changeset.create(subject.account, attrs, subject)
+    |> Safe.scoped(subject)
+    |> Safe.insert()
   end
 
   def change_group(group, attrs \\ %{})
@@ -88,18 +98,11 @@ defmodule Domain.Actors do
   end
 
   def update_group(%Group{directory_id: nil} = group, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.all()
-      |> Group.Query.by_id(group.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Group.Query,
-        with: fn group ->
-          group
-          |> Repo.preload(:memberships)
-          |> Group.Changeset.update(attrs)
-        end
-      )
-    end
+    group
+    |> Repo.preload(:memberships)
+    |> Group.Changeset.update(attrs)
+    |> Safe.scoped(subject)
+    |> Safe.update()
   end
 
   def update_group(%Group{}, _attrs, %Auth.Subject{}) do
@@ -107,23 +110,13 @@ defmodule Domain.Actors do
   end
 
   def delete_group(%Group{directory: "firezone"} = group, %Auth.Subject{} = subject) do
-    with :ok <- Group.Authorizer.ensure_has_access_to(group, subject) do
-      Repo.delete(group)
-    end
+    Safe.scoped(group, subject)
+    |> Safe.delete()
   end
 
   def delete_group(%Group{}, %Auth.Subject{}) do
     {:error, :synced_group}
   end
-
-  def group_synced?(%Group{directory: "firezone"}), do: false
-  def group_synced?(%Group{}), do: true
-
-  def group_managed?(%Group{type: :managed}), do: true
-  def group_managed?(%Group{}), do: false
-
-  def group_editable?(%Group{} = group),
-    do: not group_synced?(group) and not group_managed?(group)
 
   # Actors
 
@@ -155,16 +148,21 @@ defmodule Domain.Actors do
     |> Repo.fetch(Actor.Query)
   end
 
-  def fetch_actor_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         true <- Repo.valid_uuid?(id) do
-      Actor.Query.all()
-      |> Actor.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Actor.Query, opts)
+  def fetch_actor_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Actor.Query.all()
+        |> Actor.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        actor -> {:ok, actor}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
@@ -195,11 +193,9 @@ defmodule Domain.Actors do
   end
 
   def list_actors(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Actor.Query, opts)
-    end
+    Actor.Query.all()
+    |> Safe.scoped(subject)
+    |> Safe.list(Actor.Query, opts)
   end
 
   def new_actor(attrs \\ %{memberships: []}) do
@@ -212,11 +208,10 @@ defmodule Domain.Actors do
   end
 
   def create_actor(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         :ok <- Accounts.ensure_has_access_to(subject, account),
-         changeset = Actor.Changeset.create(account.id, attrs, subject),
+    with changeset = Actor.Changeset.create(account.id, attrs, subject),
          :ok <- ensure_billing_limits_not_exceeded(account, changeset) do
-      Repo.insert(changeset)
+      Safe.scoped(changeset, subject)
+      |> Safe.insert()
     end
   end
 

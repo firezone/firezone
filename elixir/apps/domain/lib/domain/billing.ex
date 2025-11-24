@@ -1,7 +1,7 @@
 defmodule Domain.Billing do
   use Supervisor
   alias Domain.{Auth, Accounts, Actors, Clients, Gateways}
-  alias Domain.Billing.{Authorizer, EventHandler}
+  alias Domain.Billing.EventHandler
   alias Domain.Billing.Stripe.APIClient
   require Logger
 
@@ -322,16 +322,21 @@ defmodule Domain.Billing do
 
   def billing_portal_url(%Accounts.Account{} = account, return_url, %Auth.Subject{} = subject) do
     secret_key = fetch_config!(:secret_key)
-    required_permissions = [Authorizer.manage_own_account_billing_permission()]
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         {:ok, %{"url" => url}} <-
-           APIClient.create_billing_portal_session(
-             secret_key,
-             account.metadata.stripe.customer_id,
-             return_url
-           ) do
-      {:ok, url}
+    # Only account admins can manage billing
+    case subject.actor.type do
+      :account_admin_user when subject.account.id == account.id ->
+        with {:ok, %{"url" => url}} <-
+               APIClient.create_billing_portal_session(
+                 secret_key,
+                 account.metadata.stripe.customer_id,
+                 return_url
+               ) do
+          {:ok, url}
+        end
+
+      _ ->
+        {:error, :unauthorized}
     end
   end
 

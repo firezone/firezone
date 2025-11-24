@@ -5,13 +5,9 @@ defmodule Web.Policies.Show do
   alias Web.Policies.Components.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, policy} <-
-           Policies.fetch_policy_by_id(id, socket.assigns.subject,
-             preload: [
-               actor_group: [],
-               resource: []
-             ]
-           ) do
+    with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
+      policy = Domain.Repo.preload(policy, actor_group: [], resource: [])
+
       providers =
         DB.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
 
@@ -252,12 +248,10 @@ defmodule Web.Policies.Show do
     {:ok, policy} =
       Policies.fetch_policy_by_id(
         socket.assigns.policy.id,
-        socket.assigns.subject,
-        preload: [
-          actor_group: [],
-          resource: []
-        ]
+        socket.assigns.subject
       )
+
+    policy = Domain.Repo.preload(policy, actor_group: [], resource: [])
 
     {:noreply, assign(socket, policy: policy)}
   end

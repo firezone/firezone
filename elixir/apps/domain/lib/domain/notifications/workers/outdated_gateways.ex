@@ -71,17 +71,4 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
     )
     |> Mailer.deliver_with_rate_limit()
   end
-
-  def notified_in_last_24h?(%Accounts.Account{} = account) do
-    last_notification = last_notified(account.config.notifications)
-
-    if is_nil(last_notification) do
-      false
-    else
-      DateTime.diff(DateTime.utc_now(), last_notification, :hour) < 24
-    end
-  end
-
-  defp last_notified(%{outdated_gateway: %{last_notified: datetime}}), do: datetime
-  defp last_notified(_), do: nil
 end

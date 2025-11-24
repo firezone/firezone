@@ -84,8 +84,9 @@ defmodule Domain.Actors.Actor.Changeset do
   end
 
   defp validate_granted_permissions(changeset, subject) do
-    validate_change(changeset, :type, fn :type, granted_actor_type ->
-      if Auth.can_grant_role?(subject, granted_actor_type) do
+    validate_change(changeset, :type, fn :type, _granted_actor_type ->
+      # Only account admins can create actors with specific types
+      if subject.actor.type == :account_admin_user do
         []
       else
         [{:type, "does not have permissions to grant this actor type"}]

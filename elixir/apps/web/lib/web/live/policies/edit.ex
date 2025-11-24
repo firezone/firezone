@@ -4,10 +4,9 @@ defmodule Web.Policies.Edit do
   alias Domain.Policies
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, policy} <-
-           Policies.fetch_policy_by_id(id, socket.assigns.subject,
-             preload: [:actor_group, :resource]
-           ) do
+    with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
+      policy = Domain.Repo.preload(policy, [:actor_group, :resource])
+
       providers =
         Web.Policies.Components.DB.all_active_providers_for_account(
           socket.assigns.account,

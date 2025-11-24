@@ -1,7 +1,7 @@
 defmodule Domain.Auth do
   require Ecto.Query
   alias Domain.{Accounts, Actors, Tokens}
-  alias Domain.Auth.{Authorizer, Subject, Context, Permission, Roles, Role}
+  alias Domain.Auth.{Subject, Context}
   require Logger
 
   # Tokens
@@ -21,9 +21,13 @@ defmodule Domain.Auth do
         "created_by_remote_ip" => subject.context.remote_ip
       })
 
-    with :ok <- ensure_has_permissions(subject, Authorizer.manage_service_accounts_permission()),
-         {:ok, token} <- Tokens.create_token(attrs, subject) do
-      {:ok, Tokens.encode_fragment!(token)}
+    # Only account admins can create service account tokens
+    if subject.actor.type == :account_admin_user do
+      with {:ok, token} <- Tokens.create_token(attrs, subject) do
+        {:ok, Tokens.encode_fragment!(token)}
+      end
+    else
+      {:error, :unauthorized}
     end
   end
 
@@ -42,9 +46,13 @@ defmodule Domain.Auth do
         "created_by_remote_ip" => subject.context.remote_ip
       })
 
-    with :ok <- ensure_has_permissions(subject, Authorizer.manage_api_clients_permission()),
-         {:ok, token} <- Tokens.create_token(attrs, subject) do
-      {:ok, Tokens.encode_fragment!(token)}
+    # Only account admins can create API client tokens
+    if subject.actor.type == :account_admin_user do
+      with {:ok, token} <- Tokens.create_token(attrs, subject) do
+        {:ok, Tokens.encode_fragment!(token)}
+      end
+    else
+      {:error, :unauthorized}
     end
   end
 
@@ -91,12 +99,9 @@ defmodule Domain.Auth do
     account = Accounts.fetch_account_by_id!(token.account_id)
 
     with {:ok, actor} <- Actors.fetch_active_actor_by_id(token.actor_id) do
-      permissions = fetch_type_permissions!(actor.type)
-
       {:ok,
        %Subject{
          actor: actor,
-         permissions: permissions,
          account: account,
          expires_at: token.expires_at,
          context: context,
@@ -106,67 +111,10 @@ defmodule Domain.Auth do
     end
   end
 
-  # Permissions
-
-  def has_permission?(
-        %Subject{permissions: granted_permissions},
-        %Permission{} = required_permission
-      ) do
-    Enum.member?(granted_permissions, required_permission)
-  end
-
-  def has_permission?(%Subject{} = subject, {:one_of, required_permissions}) do
-    Enum.any?(required_permissions, fn required_permission ->
-      has_permission?(subject, required_permission)
-    end)
-  end
-
-  def fetch_type_permissions!(%Role{} = type),
-    do: type.permissions
-
-  def fetch_type_permissions!(type_name) when is_atom(type_name),
-    do: type_name |> Roles.build() |> fetch_type_permissions!()
-
   # Authorization
 
   def ensure_type(%Subject{actor: %{type: type}}, type), do: :ok
   def ensure_type(%Subject{actor: %{}}, _type), do: {:error, :unauthorized}
-
-  def ensure_has_permissions(%Subject{} = subject, required_permissions) do
-    with :ok <- ensure_permissions_are_not_expired(subject) do
-      required_permissions
-      |> List.wrap()
-      |> Enum.reject(fn required_permission ->
-        has_permission?(subject, required_permission)
-      end)
-      |> Enum.uniq()
-      |> case do
-        [] ->
-          :ok
-
-        missing_permissions ->
-          {:error,
-           {:unauthorized, reason: :missing_permissions, missing_permissions: missing_permissions}}
-      end
-    end
-  end
-
-  defp ensure_permissions_are_not_expired(%Subject{expires_at: nil}) do
-    :ok
-  end
-
-  defp ensure_permissions_are_not_expired(%Subject{expires_at: expires_at}) do
-    if DateTime.after?(expires_at, DateTime.utc_now()) do
-      :ok
-    else
-      {:error, {:unauthorized, reason: :subject_expired}}
-    end
-  end
-
-  def can_grant_role?(%Subject{} = subject, granted_role) do
-    granted_permissions = fetch_type_permissions!(granted_role)
-    MapSet.subset?(granted_permissions, subject.permissions)
-  end
 
   def email_regex do
     ~r/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/

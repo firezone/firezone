@@ -168,15 +168,7 @@ defmodule Domain.Repo.Seeds do
       token_id: Ecto.UUID.generate(),
       auth_provider_id: nil,
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
-      context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"},
-      permissions:
-        MapSet.new([
-          %Domain.Auth.Permission{resource: Domain.EmailOTP.AuthProvider, action: :manage},
-          %Domain.Auth.Permission{resource: Domain.Userpass.AuthProvider, action: :manage},
-          %Domain.Auth.Permission{resource: Domain.OIDC.AuthProvider, action: :manage},
-          %Domain.Auth.Permission{resource: Domain.Google.AuthProvider, action: :manage},
-          %Domain.Auth.Permission{resource: Domain.Entra.AuthProvider, action: :manage}
-        ])
+      context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
     }
 
     {:ok, _email_provider} =
@@ -235,12 +227,7 @@ defmodule Domain.Repo.Seeds do
       token_id: Ecto.UUID.generate(),
       auth_provider_id: nil,
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
-      context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"},
-      permissions:
-        MapSet.new([
-          %Domain.Auth.Permission{resource: Domain.EmailOTP.AuthProvider, action: :manage},
-          %Domain.Auth.Permission{resource: Domain.Userpass.AuthProvider, action: :manage}
-        ])
+      context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
     }
 
     {:ok, _other_email_provider} =
@@ -468,8 +455,7 @@ defmodule Domain.Repo.Seeds do
         type: :browser,
         remote_ip: {127, 0, 0, 1},
         user_agent: "seeds/1"
-      },
-      permissions: Auth.fetch_type_permissions!(admin_actor.type)
+      }
     }
 
     unprivileged_subject = %Auth.Subject{
@@ -482,8 +468,7 @@ defmodule Domain.Repo.Seeds do
         type: :browser,
         remote_ip: {127, 0, 0, 1},
         user_agent: "seeds/1"
-      },
-      permissions: Auth.fetch_type_permissions!(unprivileged_actor.type)
+      }
     }
 
     {:ok, service_account_actor_encoded_token} =

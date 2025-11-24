@@ -1,8 +1,8 @@
 defmodule Domain.Clients do
   use Supervisor
-  alias Domain.{Repo, Auth}
+  alias Domain.{Repo, Auth, Safe}
   alias Domain.{Accounts, Actors}
-  alias Domain.Clients.{Client, Authorizer, Presence}
+  alias Domain.Clients.{Client, Presence}
   require Ecto.Query
 
   def start_link(opts) do
@@ -48,23 +48,21 @@ defmodule Domain.Clients do
     |> Repo.aggregate(:count)
   end
 
-  def fetch_client_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_clients_permission(),
-         Authorizer.manage_own_clients_permission()
-       ]}
+  def fetch_client_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Client.Query.all()
+        |> Client.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Repo.valid_uuid?(id) do
-      Client.Query.all()
-      |> Client.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Client.Query, opts)
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        client -> {:ok, client}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
@@ -75,18 +73,9 @@ defmodule Domain.Clients do
   end
 
   def list_clients(%Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_clients_permission(),
-         Authorizer.manage_own_clients_permission()
-       ]}
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      Client.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Client.Query, opts)
-    end
+    Client.Query.all()
+    |> Safe.scoped(subject)
+    |> Safe.list(Client.Query, opts)
   end
 
   def list_clients_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts) do
@@ -94,22 +83,13 @@ defmodule Domain.Clients do
   end
 
   def list_clients_by_actor_id(actor_id, %Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_clients_permission(),
-         Authorizer.manage_own_clients_permission()
-       ]}
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Repo.valid_uuid?(actor_id) do
+    with true <- Repo.valid_uuid?(actor_id) do
       Client.Query.all()
       |> Client.Query.by_actor_id(actor_id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Client.Query, opts)
+      |> Safe.scoped(subject)
+      |> Safe.list(Client.Query, opts)
     else
       false -> {:ok, [], Repo.Paginator.empty_metadata()}
-      other -> other
     end
   end
 
@@ -151,26 +131,24 @@ defmodule Domain.Clients do
   end
 
   def upsert_client(attrs \\ %{}, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission()) do
-      changeset = Client.Changeset.upsert(subject.actor, subject, attrs)
+    changeset = Client.Changeset.upsert(subject.actor, subject, attrs)
 
-      Ecto.Multi.new()
-      |> Ecto.Multi.insert(:client, changeset,
-        conflict_target: Client.Changeset.upsert_conflict_target(),
-        on_conflict: Client.Changeset.upsert_on_conflict(),
-        returning: true
-      )
-      |> resolve_address_multi(:ipv4)
-      |> resolve_address_multi(:ipv6)
-      |> Ecto.Multi.update(:client_with_address, fn
-        %{client: %Client{} = client, ipv4: ipv4, ipv6: ipv6} ->
-          Client.Changeset.finalize_upsert(client, ipv4, ipv6)
-      end)
-      |> Repo.transaction()
-      |> case do
-        {:ok, %{client_with_address: client}} -> {:ok, client}
-        {:error, :client, changeset, _effects_so_far} -> {:error, changeset}
-      end
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:client, changeset,
+      conflict_target: Client.Changeset.upsert_conflict_target(),
+      on_conflict: Client.Changeset.upsert_on_conflict(),
+      returning: true
+    )
+    |> resolve_address_multi(:ipv4)
+    |> resolve_address_multi(:ipv6)
+    |> Ecto.Multi.update(:client_with_address, fn
+      %{client: %Client{} = client, ipv4: ipv4, ipv6: ipv6} ->
+        Client.Changeset.finalize_upsert(client, ipv4, ipv6)
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{client_with_address: client}} -> {:ok, client}
+      {:error, :client, changeset, _effects_so_far} -> {:error, changeset}
     end
   end
 
@@ -185,60 +163,72 @@ defmodule Domain.Clients do
   end
 
   def update_client(%Client{} = client, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(client, subject) do
-      Client.Query.all()
-      |> Client.Query.by_id(client.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Client.Query,
-        with: &Client.Changeset.update(&1, attrs),
-        preload: [:online?]
-      )
+    changeset = Client.Changeset.update(client, attrs)
+
+    case Safe.scoped(changeset, subject) |> Safe.update() do
+      {:ok, updated_client} ->
+        {:ok, preload_clients_presence([updated_client]) |> List.first()}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   def verify_client(%Client{} = client, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(client, subject),
-         :ok <- Auth.ensure_has_permissions(subject, Authorizer.verify_clients_permission()) do
-      Client.Query.all()
-      |> Client.Query.by_id(client.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Client.Query,
-        with: &Client.Changeset.verify(&1, subject),
-        preload: [:online?]
-      )
+    # Only account_admin_user can verify clients
+    if subject.actor.type == :account_admin_user do
+      changeset = Client.Changeset.verify(client, subject)
+
+      case Safe.scoped(changeset, subject) |> Safe.update() do
+        {:ok, updated_client} ->
+          {:ok, preload_clients_presence([updated_client]) |> List.first()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      {:error, :unauthorized}
     end
   end
 
   def remove_client_verification(%Client{} = client, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(client, subject),
-         :ok <- Auth.ensure_has_permissions(subject, Authorizer.verify_clients_permission()) do
-      Client.Query.all()
-      |> Client.Query.by_id(client.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Client.Query,
-        with: &Client.Changeset.remove_verification(&1),
-        preload: [:online?]
-      )
+    # Only account_admin_user can remove client verification
+    if subject.actor.type == :account_admin_user do
+      changeset = Client.Changeset.remove_verification(client)
+
+      case Safe.scoped(changeset, subject) |> Safe.update() do
+        {:ok, updated_client} ->
+          {:ok, preload_clients_presence([updated_client]) |> List.first()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      {:error, :unauthorized}
     end
   end
 
   def delete_client(%Client{} = client, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(client, subject) do
-      Repo.delete(client)
+    case Safe.scoped(client, subject) |> Safe.delete() do
+      {:ok, deleted_client} ->
+        {:ok, preload_clients_presence([deleted_client]) |> List.first()}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   def delete_clients_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
-    queryable =
-      Client.Query.all()
-      |> Client.Query.by_actor_id(actor.id)
-      |> Client.Query.by_account_id(actor.account_id)
+    # Only account_admin_user can delete clients
+    if subject.actor.type == :account_admin_user do
+      queryable =
+        Client.Query.all()
+        |> Client.Query.by_actor_id(actor.id)
+        |> Client.Query.by_account_id(actor.account_id)
 
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission()),
-         :ok <- delete_clients(queryable, subject) do
-      :ok
+      delete_clients(queryable, subject)
     else
-      {:error, reason} -> {:error, reason}
+      {:error, :unauthorized}
     end
   end
 
@@ -248,8 +238,8 @@ defmodule Domain.Clients do
   defp delete_clients(queryable, subject) do
     {_count, nil} =
       queryable
-      |> Authorizer.for_subject(subject)
-      |> Repo.delete_all()
+      |> Safe.scoped(subject)
+      |> Safe.delete_all(queryable)
 
     :ok
   end

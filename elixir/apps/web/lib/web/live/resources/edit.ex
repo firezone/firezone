@@ -4,13 +4,8 @@ defmodule Web.Resources.Edit do
   alias Domain.{Accounts, Gateways, Resources}
 
   def mount(%{"id" => id} = params, _session, socket) do
-    with {:ok, resource} <-
-           Resources.fetch_resource_by_id(id, socket.assigns.subject,
-             preload: :gateway_groups,
-             filter: [
-               type: ["cidr", "dns", "ip"]
-             ]
-           ) do
+    with {:ok, resource} <- Resources.fetch_resource_by_id(id, socket.assigns.subject) do
+      resource = Domain.Repo.preload(resource, :gateway_groups)
       gateway_groups = Gateways.all_groups!(socket.assigns.subject)
       form = Resources.change_resource(resource, socket.assigns.subject) |> to_form()
 

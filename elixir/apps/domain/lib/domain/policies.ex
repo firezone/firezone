@@ -1,42 +1,31 @@
 defmodule Domain.Policies do
-  alias Domain.Repo
+  alias Domain.{Repo, Safe}
   alias Domain.{Auth, Cache.Cacheable, Clients}
-  alias Domain.Policies.{Authorizer, Policy, Condition}
+  alias Domain.Policies.{Policy, Condition}
   require Logger
 
-  def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_policies_permission(),
-         Authorizer.view_available_policies_permission()
-       ]}
+  def fetch_policy_by_id(id, %Auth.Subject{} = subject) do
+    with true <- Repo.valid_uuid?(id) do
+      result =
+        Policy.Query.all()
+        |> Policy.Query.by_id(id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Repo.valid_uuid?(id) do
-      Policy.Query.all()
-      |> Policy.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Policy.Query, opts)
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        policy -> {:ok, policy}
+      end
     else
       false -> {:error, :not_found}
-      other -> other
     end
   end
 
   def list_policies(%Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_policies_permission(),
-         Authorizer.view_available_policies_permission()
-       ]}
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      Policy.Query.all()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Policy.Query, opts)
-    end
+    Policy.Query.all()
+    |> Safe.scoped(subject)
+    |> Safe.list(Policy.Query, opts)
   end
 
   def all_policies_for_actor_id!(actor_id) do
@@ -73,12 +62,10 @@ defmodule Domain.Policies do
   end
 
   def create_policy(attrs, %Auth.Subject{} = subject) do
-    required_permissions = {:one_of, [Authorizer.manage_policies_permission()]}
+    changeset = Policy.Changeset.create(attrs, subject)
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      Policy.Changeset.create(attrs, subject)
-      |> Repo.insert()
-    end
+    Safe.scoped(changeset, subject)
+    |> Safe.insert()
   end
 
   def change_policy(%Policy{} = policy, attrs) do
@@ -86,43 +73,29 @@ defmodule Domain.Policies do
   end
 
   def update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()),
-         :ok <- ensure_has_access_to(subject, policy) do
-      Policy.Query.all()
-      |> Policy.Query.by_id(policy.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Policy.Query,
-        with: &Policy.Changeset.update(&1, attrs)
-      )
-    end
+    changeset = Policy.Changeset.update(policy, attrs)
+
+    Safe.scoped(changeset, subject)
+    |> Safe.update()
   end
 
   def disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      Policy.Query.all()
-      |> Policy.Query.by_id(policy.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Policy.Query,
-        with: &Policy.Changeset.disable(&1, subject)
-      )
-    end
+    changeset = Policy.Changeset.disable(policy, subject)
+
+    Safe.scoped(changeset, subject)
+    |> Safe.update()
   end
 
   def enable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      Policy.Query.all()
-      |> Policy.Query.by_id(policy.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Policy.Query,
-        with: &Policy.Changeset.enable/1
-      )
-    end
+    changeset = Policy.Changeset.enable(policy)
+
+    Safe.scoped(changeset, subject)
+    |> Safe.update()
   end
 
   def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
-    with :ok <- Authorizer.ensure_has_access_to(policy, subject) do
-      Repo.delete(policy)
-    end
+    Safe.scoped(policy, subject)
+    |> Safe.delete()
   end
 
   def filter_by_conforming_policies_for_client(
@@ -170,7 +143,7 @@ defmodule Domain.Policies do
          %Clients.Client{} = client,
          auth_provider_id
        ) do
-    ensure_client_conforms_policy_conditions(client, Cacheable.to_cache(policy), auth_provider_id)
+    ensure_client_conforms_policy_conditions(Cacheable.to_cache(policy), client, auth_provider_id)
   end
 
   defp ensure_client_conforms_policy_conditions(
@@ -197,14 +170,6 @@ defmodule Domain.Policies do
       policy_expires_at
     else
       token_expires_at
-    end
-  end
-
-  defp ensure_has_access_to(%Auth.Subject{} = subject, %Policy{} = policy) do
-    if subject.account.id == policy.account_id do
-      :ok
-    else
-      {:error, :unauthorized}
     end
   end
 end

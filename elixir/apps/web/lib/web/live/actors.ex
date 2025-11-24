@@ -1452,15 +1452,12 @@ defmodule Web.Actors do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Actors, Safe, Auth, Tokens, Repo}
+    alias Domain.{Actors, Safe, Tokens, Repo}
 
     def list_actors(subject, opts \\ []) do
-      with :ok <-
-             Auth.ensure_has_permissions(subject, Actors.Authorizer.manage_actors_permission()) do
-        all()
-        |> Actors.Authorizer.for_subject(subject)
-        |> Repo.list(__MODULE__, opts)
-      end
+      all()
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
     end
 
     def all do
