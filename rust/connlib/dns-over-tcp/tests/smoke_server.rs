@@ -1,4 +1,5 @@
 #![allow(clippy::unwrap_used)]
+#![cfg(not(any(target_os = "macos", target_os = "windows")))] // The DNS-over-TCP server is sans-IO so it doesn't matter where the IP packets come from. Testing it only on Linux is therefore fine.
 
 use std::{
     collections::BTreeSet,
