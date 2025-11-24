@@ -1,14 +1,6 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::{PublicKey, ResourceView};
-use firezone_tunnel::messages::RelaysPresence;
-use firezone_tunnel::messages::client::{
-    EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
-    GatewaysIceCandidates, IngressMessages, InitClient,
-};
-use firezone_tunnel::{
-    ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError,
-};
 use l4_udp_dns_client::UdpDnsClient;
 use parking_lot::Mutex;
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
@@ -26,6 +18,12 @@ use std::{
 use std::{future, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
+use tunnel::messages::RelaysPresence;
+use tunnel::messages::client::{
+    EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
+    GatewaysIceCandidates, IngressMessages, InitClient,
+};
+use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
 ///
@@ -335,7 +333,7 @@ impl Eventloop {
                 continue;
             }
 
-            if e.any_is::<firezone_tunnel::UdpSocketThreadStopped>() {
+            if e.any_is::<tunnel::UdpSocketThreadStopped>() {
                 return Err(e);
             }
 
@@ -373,11 +371,7 @@ impl Eventloop {
 
                 state.update_interface_config(interface);
                 state.set_resources(resources, Instant::now());
-                state.update_relays(
-                    BTreeSet::default(),
-                    firezone_tunnel::turn(&relays),
-                    Instant::now(),
-                );
+                state.update_relays(BTreeSet::default(), tunnel::turn(&relays), Instant::now());
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 tunnel.state_mut().add_resource(resource, Instant::now());
@@ -390,7 +384,7 @@ impl Eventloop {
                 connected,
             }) => tunnel.state_mut().update_relays(
                 BTreeSet::from_iter(disconnected_ids),
-                firezone_tunnel::turn(&connected),
+                tunnel::turn(&connected),
                 Instant::now(),
             ),
             IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {

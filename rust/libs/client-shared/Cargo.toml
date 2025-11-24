@@ -10,7 +10,6 @@ backoff = { workspace = true }
 bimap = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
-firezone-tunnel = { workspace = true }
 futures = { workspace = true }
 ip_network = { workspace = true }
 l4-udp-dns-client = { workspace = true }
@@ -28,6 +27,7 @@ tokio = { workspace = true, features = ["rt", "sync"] }
 tokio-stream = { workspace = true, features = ["sync"] }
 tracing = { workspace = true, features = ["std", "attributes"] }
 tun = { workspace = true }
+tunnel = { workspace = true }
 url = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]

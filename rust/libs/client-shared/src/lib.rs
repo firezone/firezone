@@ -3,8 +3,8 @@
 //! Main connlib library for clients.
 pub use connlib_model::StaticSecret;
 pub use eventloop::DisconnectError;
-pub use firezone_tunnel::TunConfig;
-pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription};
+pub use tunnel::TunConfig;
+pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
 
 use anyhow::Result;
 use connlib_model::ResourceView;

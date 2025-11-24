@@ -9,7 +9,6 @@ use bin_shared::{
 };
 use clap::Parser;
 
-use firezone_tunnel::GatewayTunnel;
 use hickory_resolver::config::ResolveHosts;
 use ip_packet::IpPacket;
 use opentelemetry_otlp::WithExportConfig;
@@ -19,6 +18,7 @@ use phoenix_channel::get_user_agent;
 use telemetry::{
     MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
 };
+use tunnel::GatewayTunnel;
 
 use phoenix_channel::PhoenixChannel;
 use secrecy::{ExposeSecret, SecretBox, SecretString};

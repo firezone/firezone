@@ -33,7 +33,6 @@ clap = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 either = { workspace = true }
-firezone-tunnel = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true }
@@ -60,6 +59,7 @@ tokio = { workspace = true, features = ["sync", "macros", "fs", "signal", "rt"] 
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tun = { workspace = true }
+tunnel = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 

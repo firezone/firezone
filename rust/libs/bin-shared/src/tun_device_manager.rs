@@ -1,4 +1,4 @@
-//! DNS and route control  for the virtual network interface in `firezone-tunnel`
+//! DNS and route control  for the virtual network interface in `tunnel`
 
 #[cfg(target_os = "linux")]
 pub mod linux;
