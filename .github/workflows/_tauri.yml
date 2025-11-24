@@ -151,6 +151,10 @@ jobs:
           organization: firezone-inc
       - name: Install pnpm deps
         run: pnpm install
+      - uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
+        if: ${{ runner.os == 'Windows' }}
+        with:
+          dotnet-version: "10.0.x"
       - name: Install AzureSignTool
         if: ${{ runner.os == 'Windows' }}
         shell: bash
