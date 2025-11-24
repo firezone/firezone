@@ -84,7 +84,6 @@ either = "1"
 etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 firezone-headless-client = { path = "headless-client" }
-firezone-logging = { path = "libs/logging" }
 firezone-relay = { path = "relay/server" }
 firezone-telemetry = { path = "libs/telemetry" }
 firezone-tunnel = { path = "libs/connlib/tunnel" }
@@ -119,6 +118,7 @@ l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
 libc = "0.2.176"
 libfuzzer-sys = "0.4"
 log = "0.4"
+logging = { path = "libs/logging" }
 lru = "0.16.1"
 mio = "1.1.0"
 moka = "0.12.11"

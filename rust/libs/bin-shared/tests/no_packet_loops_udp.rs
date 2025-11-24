@@ -17,7 +17,7 @@ use std::{
 #[tokio::test]
 #[ignore = "Needs admin / sudo and Internet"]
 async fn no_packet_loops_udp() {
-    firezone_logging::test_global("debug"); // `Tun` uses threads and we want to see the logs of all threads.
+    logging::test_global("debug"); // `Tun` uses threads and we want to see the logs of all threads.
 
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
     let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);

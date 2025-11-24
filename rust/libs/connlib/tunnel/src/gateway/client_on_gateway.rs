@@ -965,7 +965,7 @@ mod tests {
 
     #[test]
     fn dns_resource_packet_is_dropped_after_nat_session_expires() {
-        let _guard = firezone_logging::test("trace");
+        let _guard = logging::test("trace");
 
         let mut peer = ClientOnGateway::new(
             client_id(),
@@ -1036,7 +1036,7 @@ mod tests {
 
     #[test]
     fn setting_up_dns_resource_nat_does_not_clear_existing_nat_session() {
-        let _guard = firezone_logging::test("trace");
+        let _guard = logging::test("trace");
 
         let now = Instant::now();
 
@@ -1130,7 +1130,7 @@ mod tests {
 
     #[test]
     fn setting_up_dns_resource_nat_with_new_proxy_ips_resets_state() {
-        let _guard = firezone_logging::test("trace");
+        let _guard = logging::test("trace");
 
         let now = Instant::now();
 

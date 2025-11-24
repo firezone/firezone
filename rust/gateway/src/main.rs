@@ -90,7 +90,7 @@ fn has_necessary_permissions() -> bool {
 }
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
-    firezone_logging::setup_global_subscriber(
+    logging::setup_global_subscriber(
         layer::Identity::default(),
         match cli.log_format {
             LogFormat::Json => true,

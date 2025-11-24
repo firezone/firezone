@@ -21,7 +21,7 @@ const CLIENT_CONCURRENCY: usize = 3;
 #[tokio::test]
 #[ignore = "Requires root & IP forwarding"]
 async fn smoke() {
-    let _guard = firezone_logging::test("netlink_proto=off,wire::dns=trace,debug");
+    let _guard = logging::test("netlink_proto=off,wire::dns=trace,debug");
 
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
     let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);

@@ -134,7 +134,7 @@ impl Tray {
             tracing::debug!("Skipping redundant menu update");
         } else {
             self.run_on_main_thread(move || {
-                firezone_logging::unwrap_or_debug!(
+                logging::unwrap_or_debug!(
                     update(handle, &app, &menu),
                     "Error while updating tray menu: {}"
                 );
@@ -162,7 +162,7 @@ impl Tray {
                 .set_icon(Some(icon_to_tauri_icon(&icon)))
                 .context("Failed to set tray icon");
 
-            firezone_logging::unwrap_or_debug!(result, "{}");
+            logging::unwrap_or_debug!(result, "{}");
         });
     }
 
@@ -172,7 +172,7 @@ impl Tray {
             .run_on_main_thread(f)
             .context("Failed to run closure on main thread");
 
-        firezone_logging::unwrap_or_debug!(result, "{}");
+        logging::unwrap_or_debug!(result, "{}");
     }
 }
 

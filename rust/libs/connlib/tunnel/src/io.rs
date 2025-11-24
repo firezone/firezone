@@ -671,7 +671,7 @@ mod tests {
 
     #[tokio::test]
     async fn bootstrap_doh() {
-        let _guard = firezone_logging::test("debug");
+        let _guard = logging::test("debug");
 
         let mut io = Io::for_test();
         io.update_system_resolvers(vec![IpAddr::from([1, 1, 1, 1])]);

@@ -12,12 +12,12 @@ bufferpool = { workspace = true }
 bytecodec = { workspace = true }
 bytes = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
-firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
 ip-packet = { workspace = true }
 itertools = { workspace = true }
+logging = { workspace = true }
 once_cell = { workspace = true }
 rand = { workspace = true }
 ringbuffer = { workspace = true }

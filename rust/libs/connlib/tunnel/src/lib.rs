@@ -9,11 +9,11 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use chrono::Utc;
 use connlib_model::{ClientId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
-use firezone_logging::DisplayBTreeSet;
 use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
+use logging::DisplayBTreeSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,

@@ -7,7 +7,7 @@ use bin_shared::TunDeviceManager;
 #[tokio::test] // Needs a runtime.
 #[ignore = "Needs admin / sudo and Internet"]
 async fn tunnel_drop() {
-    firezone_logging::test_global("debug"); // `Tun` uses threads and we want to see the logs of all threads.
+    logging::test_global("debug"); // `Tun` uses threads and we want to see the logs of all threads.
 
     let mut tun_device_manager = TunDeviceManager::new(1280).unwrap();
 

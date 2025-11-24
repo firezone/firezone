@@ -5,8 +5,8 @@ use dns_types::{
     DoHUrl, DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response,
     ResponseBuilder, ResponseCode,
 };
-use firezone_logging::err_with_src;
 use itertools::Itertools;
+use logging::err_with_src;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};

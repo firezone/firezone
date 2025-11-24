@@ -1,7 +1,7 @@
 use crate::TUNNEL_NAME;
 use anyhow::Result;
 use dashmap::DashMap;
-use firezone_logging::err_with_src;
+use logging::err_with_src;
 use socket_factory::SocketFactory;
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{

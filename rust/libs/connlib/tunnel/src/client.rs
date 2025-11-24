@@ -31,11 +31,11 @@ use connlib_model::{
     GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
 use connlib_model::{Site, SiteId};
-use firezone_logging::{unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
+use logging::{unwrap_or_debug, unwrap_or_warn};
 
 use crate::ClientEvent;
 use lru::LruCache;

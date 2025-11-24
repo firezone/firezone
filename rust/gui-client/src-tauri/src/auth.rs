@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use bin_shared::known_dirs;
-use firezone_logging::err_with_src;
+use logging::err_with_src;
 use rand::{RngCore, thread_rng};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};

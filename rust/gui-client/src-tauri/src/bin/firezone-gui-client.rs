@@ -18,7 +18,7 @@ use tracing_subscriber::EnvFilter;
 
 fn main() -> ExitCode {
     let mut bootstrap_log_guard =
-        Some(firezone_logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
+        Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
 
     let cli = Cli::parse();
 

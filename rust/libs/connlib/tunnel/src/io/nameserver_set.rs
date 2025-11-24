@@ -158,7 +158,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "Needs Internet"]
     async fn can_evaluate_fastest_nameserver() {
-        let _guard = firezone_logging::test("debug");
+        let _guard = logging::test("debug");
 
         let mut set = NameserverSet::new(
             BTreeSet::from([
@@ -180,7 +180,7 @@ mod tests {
 
     #[tokio::test]
     async fn can_handle_no_servers() {
-        let _guard = firezone_logging::test("debug");
+        let _guard = logging::test("debug");
 
         let mut set = NameserverSet::new(
             BTreeSet::default(),

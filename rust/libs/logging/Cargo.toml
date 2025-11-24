@@ -1,5 +1,5 @@
 [package]
-name = "firezone-logging"
+name = "logging"
 version = "0.1.0"
 edition = { workspace = true }
 authors = ["Firezone, Inc."]

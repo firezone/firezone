@@ -15,11 +15,11 @@ clap = { workspace = true, features = ["derive", "env", "string"] }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
-firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
+logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }

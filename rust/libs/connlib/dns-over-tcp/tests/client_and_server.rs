@@ -12,7 +12,7 @@ use dns_types::{Query, RecordType, ResponseBuilder, ResponseCode};
 
 #[test]
 fn smoke() {
-    let _guard = firezone_logging::test(
+    let _guard = logging::test(
         "netlink_proto=off,wire::dns::res=trace,dns_over_tcp=trace,smoltcp=trace,debug",
     );
 
@@ -49,7 +49,7 @@ fn smoke() {
 
 #[test]
 fn no_panic_after_set_listen_address() {
-    let _guard = firezone_logging::test(
+    let _guard = logging::test(
         "netlink_proto=off,wire::dns::res=trace,dns_over_tcp=trace,smoltcp=trace,debug",
     );
 

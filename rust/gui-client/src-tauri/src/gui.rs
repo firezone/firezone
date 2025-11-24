@@ -19,8 +19,8 @@ use crate::{
     },
 };
 use anyhow::{Context, Result, bail};
-use firezone_logging::err_with_src;
 use futures::SinkExt as _;
+use logging::err_with_src;
 use std::time::Duration;
 use tauri::Manager;
 use tauri_specta::Event;
@@ -240,7 +240,7 @@ pub fn run(
     config: RunConfig,
     mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettingsLegacy,
-    reloader: firezone_logging::FilterReloadHandle,
+    reloader: logging::FilterReloadHandle,
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 

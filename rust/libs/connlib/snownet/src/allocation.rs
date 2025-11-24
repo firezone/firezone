@@ -5,9 +5,9 @@ use crate::{
 };
 use bufferpool::BufferPool;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
-use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt as _;
 use ip_packet::Ecn;
+use logging::err_with_src;
 use rand::random;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use std::{
@@ -2403,7 +2403,7 @@ mod tests {
 
     #[test]
     fn allocation_mismatch_in_channel_binding_clears_and_reallocates() {
-        let _guard = firezone_logging::test("debug");
+        let _guard = logging::test("debug");
 
         let mut allocation = Allocation::for_test_ip4(Instant::now())
             .with_binding_response(PEER1, Instant::now())
@@ -2524,7 +2524,7 @@ mod tests {
 
     #[test]
     fn timed_out_binding_requests_invalid_candidates() {
-        let _guard = firezone_logging::test("trace");
+        let _guard = logging::test("trace");
 
         let mut now = Instant::now();
         let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
@@ -2711,7 +2711,7 @@ mod tests {
 
     #[test]
     fn second_stun_request_gives_up_eventually() {
-        let _guard = firezone_logging::test("trace");
+        let _guard = logging::test("trace");
 
         let start = Instant::now();
         let mut allocation = Allocation::for_test_dual(start);

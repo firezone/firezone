@@ -10,12 +10,12 @@ use crate::{
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
 use connlib_model::ResourceView;
-use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::{
     SinkExt, StreamExt,
     stream::{self, BoxStream},
 };
+use logging::FilterReloadHandle;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
 use tokio::sync::{mpsc, oneshot};

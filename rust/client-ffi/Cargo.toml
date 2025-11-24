@@ -15,7 +15,6 @@ backoff = { workspace = true }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
-firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 flume = { workspace = true }
 futures = { workspace = true }
@@ -23,6 +22,7 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
+logging = { workspace = true }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }

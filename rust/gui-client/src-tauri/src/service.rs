@@ -13,7 +13,6 @@ use bin_shared::{
     signals,
 };
 use connlib_model::ResourceView;
-use firezone_logging::{FilterReloadHandle, err_with_src};
 use firezone_telemetry::{Telemetry, analytics};
 use futures::{
     Future as _, SinkExt as _, Stream, StreamExt,
@@ -21,6 +20,7 @@ use futures::{
     stream::{self, BoxStream},
     task::{Context, Poll},
 };
+use logging::{FilterReloadHandle, err_with_src};
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::{

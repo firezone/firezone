@@ -2,7 +2,6 @@
 
 use crate::FIREZONE_MARK;
 use anyhow::{Context as _, Result};
-use firezone_logging::{DisplayBTreeSet, err_with_src};
 use firezone_telemetry::otel;
 use futures::{
     SinkExt, StreamExt, TryStreamExt,
@@ -14,6 +13,7 @@ use libc::{
     EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR, fcntl, makedev, mknod,
     open,
 };
+use logging::{DisplayBTreeSet, err_with_src};
 use netlink_packet_route::link::{LinkAttribute, State};
 use netlink_packet_route::route::{
     RouteAddress, RouteAttribute, RouteMessage, RouteProtocol, RouteScope,
@@ -697,7 +697,7 @@ impl Tun {
                 let fd = fd.clone();
 
                 move || {
-                    firezone_logging::unwrap_or_warn!(
+                    logging::unwrap_or_warn!(
                         tun::unix::tun_send(fd, outbound_rx, write),
                         "Failed to send to TUN device: {}"
                     )
@@ -707,7 +707,7 @@ impl Tun {
         std::thread::Builder::new()
             .name("TUN recv".to_owned())
             .spawn(move || {
-                firezone_logging::unwrap_or_warn!(
+                logging::unwrap_or_warn!(
                     tun::unix::tun_recv(fd, inbound_tx, read),
                     "Failed to recv from TUN device: {}"
                 )

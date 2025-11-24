@@ -245,7 +245,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn compute_device_id_hardware_id() {
-        let _guard = firezone_logging::test("debug");
+        let _guard = logging::test("debug");
 
         let id = compute_from_hardware_id(CLIENT_APP_ID).unwrap();
 

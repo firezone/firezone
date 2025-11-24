@@ -8,9 +8,9 @@ license = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 dns-types = { workspace = true }
-firezone-logging = { workspace = true }
 ip-packet = { workspace = true }
 l3-tcp = { workspace = true }
+logging = { workspace = true }
 rand = { workspace = true }
 tracing = { workspace = true }
 

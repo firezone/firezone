@@ -15,7 +15,7 @@ async fn client_does_not_pipeline_messages() {
     use tokio_tungstenite::tungstenite::Message;
     use url::Url;
 
-    let _guard = firezone_logging::test("debug,wire::api=trace");
+    let _guard = logging::test("debug,wire::api=trace");
 
     let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
     let server_addr = listener.local_addr().unwrap();

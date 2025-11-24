@@ -8,7 +8,7 @@ use std::{collections::BTreeSet, net::IpAddr};
 #[ignore = "Needs admin, changes system state"]
 #[tokio::test]
 async fn dns_control() {
-    let _guard = firezone_logging::test("debug");
+    let _guard = logging::test("debug");
 
     let mut tun_dev_manager = bin_shared::TunDeviceManager::new(1280).unwrap();
     let _tun = tun_dev_manager.make_tun().unwrap();

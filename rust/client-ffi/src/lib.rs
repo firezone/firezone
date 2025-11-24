@@ -10,8 +10,8 @@ use std::{
 
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
-use firezone_logging::sentry_layer;
 use firezone_telemetry::{Telemetry, analytics};
+use logging::sentry_layer;
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
 use secrecy::{SecretBox, SecretString};
@@ -526,10 +526,8 @@ fn connect(
     })
 }
 
-static LOGGER_STATE: OnceLock<(
-    firezone_logging::file::Handle,
-    firezone_logging::FilterReloadHandle,
-)> = OnceLock::new();
+static LOGGER_STATE: OnceLock<(logging::file::Handle, logging::FilterReloadHandle)> =
+    OnceLock::new();
 
 fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     if let Some((_, reload_handle)) = LOGGER_STATE.get() {
@@ -539,20 +537,16 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
         return Ok(());
     }
 
-    let (file_log_filter, file_reload_handle) = firezone_logging::try_filter(&log_filter)?;
-    let (platform_log_filter, platform_reload_handle) = firezone_logging::try_filter(&log_filter)?;
-    let (file_layer, handle) = firezone_logging::file::layer(log_dir, "connlib");
+    let (file_log_filter, file_reload_handle) = logging::try_filter(&log_filter)?;
+    let (platform_log_filter, platform_reload_handle) = logging::try_filter(&log_filter)?;
+    let (file_layer, handle) = logging::file::layer(log_dir, "connlib");
 
     let subscriber = tracing_subscriber::registry()
         .with(file_layer.with_filter(file_log_filter))
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
-                .event_format(
-                    firezone_logging::Format::new()
-                        .without_timestamp()
-                        .without_level(),
-                )
+                .event_format(logging::Format::new().without_timestamp().without_level())
                 .with_writer(platform::MakeWriter::default())
                 .with_filter(platform_log_filter),
         )
@@ -560,7 +554,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
 
     let reload_handle = file_reload_handle.merge(platform_reload_handle);
 
-    firezone_logging::init(subscriber)?;
+    logging::init(subscriber)?;
 
     LOGGER_STATE
         .set((handle, reload_handle))

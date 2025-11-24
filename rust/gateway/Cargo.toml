@@ -33,7 +33,6 @@ clap = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 either = { workspace = true }
-firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 firezone-tunnel = { workspace = true }
 futures = { workspace = true }
@@ -42,6 +41,7 @@ hickory-resolver = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 libc = { workspace = true, features = ["std", "const-extern-fn", "extra_traits"] }
+logging = { workspace = true }
 moka = { workspace = true, features = ["future"] }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }

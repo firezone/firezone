@@ -455,7 +455,7 @@ mod tests {
         #[strategy(tcp_packet(Just(TcpFlags { rst: true })))] mut rst: IpPacket,
         #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
     ) {
-        let _guard = firezone_logging::test("trace");
+        let _guard = logging::test("trace");
 
         proptest::prop_assume!(req.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
         proptest::prop_assume!(rst.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.

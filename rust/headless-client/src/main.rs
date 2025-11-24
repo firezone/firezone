@@ -213,9 +213,9 @@ fn try_main() -> Result<()> {
     let (layer, _handle) = cli
         .log_dir
         .as_deref()
-        .map(|dir| firezone_logging::file::layer(dir, "firezone-headless-client"))
+        .map(|dir| logging::file::layer(dir, "firezone-headless-client"))
         .unzip();
-    firezone_logging::setup_global_subscriber(layer, false).context("Failed to set up logging")?;
+    logging::setup_global_subscriber(layer, false).context("Failed to set up logging")?;
 
     // Deactivate DNS control before starting telemetry or connecting to the portal,
     // in case a previous run of Firezone left DNS control on and messed anything up.

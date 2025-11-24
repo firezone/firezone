@@ -29,13 +29,13 @@ clap = { workspace = true, features = ["derive", "env"] }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
-firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 keyring = { workspace = true, features = ["crypto-rust", "sync-secret-service", "windows-native"] }
+logging = { workspace = true }
 native-dialog = { workspace = true }
 output_vt100 = { workspace = true }
 phoenix-channel = { workspace = true }
