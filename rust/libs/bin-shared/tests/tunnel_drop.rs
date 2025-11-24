@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
-use firezone_bin_shared::TunDeviceManager;
+use bin_shared::TunDeviceManager;
 
 /// Checks for regressions in issue #4765, un-initializing Wintun
 /// Redundant but harmless on Linux.

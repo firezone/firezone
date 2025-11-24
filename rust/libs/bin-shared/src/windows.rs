@@ -60,21 +60,21 @@ pub mod error {
     /// Win32 error code objects that don't exist (like network adapters).
     ///
     /// ```
-    /// assert_eq!(firezone_bin_shared::windows::error::NOT_FOUND.0 as u32, 0x80070490)
+    /// assert_eq!(bin_shared::windows::error::NOT_FOUND.0 as u32, 0x80070490)
     /// ```
     pub const NOT_FOUND: HRESULT = HRESULT::from_win32(0x0490);
 
     /// Win32 error code for objects that already exist (like routing table entries).
     ///
     /// ```
-    /// assert_eq!(firezone_bin_shared::windows::error::OBJECT_EXISTS.0 as u32, 0x80071392)
+    /// assert_eq!(bin_shared::windows::error::OBJECT_EXISTS.0 as u32, 0x80071392)
     /// ```
     pub const OBJECT_EXISTS: HRESULT = HRESULT::from_win32(0x1392);
 
     /// Win32 error code for unsupported operations (like setting an IPv6 address without an IPv6 stack).
     ///
     /// ```
-    /// assert_eq!(firezone_bin_shared::windows::error::NOT_SUPPORTED.0 as u32, 0x80070032)
+    /// assert_eq!(bin_shared::windows::error::NOT_SUPPORTED.0 as u32, 0x80070032)
     /// ```
     pub const NOT_SUPPORTED: HRESULT = HRESULT::from_win32(0x0032);
 
@@ -85,7 +85,7 @@ pub mod error {
     /// > There are no more endpoints available from the endpoint mapper.
     ///
     /// ```
-    /// assert_eq!(firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED.0 as u32, 0x800706D9)
+    /// assert_eq!(bin_shared::windows::error::EPT_S_NOT_REGISTERED.0 as u32, 0x800706D9)
     /// ```
     pub const EPT_S_NOT_REGISTERED: HRESULT = HRESULT::from_win32(0x06D9);
 }

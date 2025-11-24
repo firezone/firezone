@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::DnsControlMethod;
+use bin_shared::DnsControlMethod;
 use futures::channel::mpsc;
 use std::path::PathBuf;
 use std::{
@@ -277,7 +277,7 @@ fn run_service(arguments: Vec<OsString>) {
         process_id: None,
     });
 
-    let mut signals = firezone_bin_shared::signals::Terminate::from_channel(shutdown_rx);
+    let mut signals = bin_shared::signals::Terminate::from_channel(shutdown_rx);
 
     let result = rt
         .block_on(super::ipc_listen(

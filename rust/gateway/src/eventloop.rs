@@ -1,9 +1,9 @@
-use anyhow::{Context as _, ErrorExt, Result};
+use anyhow::{Context as _, ErrorExt as _, Result};
+use bin_shared::{TunDeviceManager, signals};
 use boringtun::x25519::PublicKey;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
-use firezone_bin_shared::{TunDeviceManager, signals};
 use firezone_telemetry::{Telemetry, analytics};
 
 use firezone_tunnel::messages::gateway::{

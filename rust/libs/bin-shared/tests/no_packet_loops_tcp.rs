@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
-use firezone_bin_shared::{TunDeviceManager, platform::tcp_socket_factory};
+use bin_shared::{TunDeviceManager, platform::tcp_socket_factory};
 use ip_network::Ipv4Network;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};

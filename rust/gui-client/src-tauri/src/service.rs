@@ -5,14 +5,14 @@ use crate::{
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
-use connlib_model::ResourceView;
-use firezone_bin_shared::{
+use bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
     device_id::{self, DeviceId},
     device_info, known_dirs,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
+use connlib_model::ResourceView;
 use firezone_logging::{FilterReloadHandle, err_with_src};
 use firezone_telemetry::{Telemetry, analytics};
 use futures::{
@@ -705,7 +705,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
     tracing::info!(
         arch = std::env::consts::ARCH,
         version = env!("CARGO_PKG_VERSION"),
-        system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
+        system_uptime_seconds = bin_shared::uptime::get().map(|dur| dur.as_secs()),
     );
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
@@ -726,7 +726,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
 pub fn run_smoke_test() -> Result<()> {
     use crate::ipc::{self, SocketId};
     use anyhow::{Context as _, bail};
-    use firezone_bin_shared::{DnsController, device_id};
+    use bin_shared::{DnsController, device_id};
 
     let log_filter_reloader = logging::setup_stdout()?;
     if !elevation_check()? {
@@ -768,7 +768,7 @@ pub fn run_smoke_test() -> Result<()> {
 }
 
 async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = firezone_bin_shared::new_dns_notifier(
+    let worker = bin_shared::new_dns_notifier(
         tokio::runtime::Handle::current(),
         DnsControlMethod::default(),
     )
@@ -782,7 +782,7 @@ async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
 }
 
 async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = firezone_bin_shared::new_network_notifier(
+    let worker = bin_shared::new_network_notifier(
         tokio::runtime::Handle::current(),
         DnsControlMethod::default(),
     )

@@ -10,8 +10,8 @@ use std::{
 };
 
 use anyhow::{Context as _, Result};
+use bin_shared::TunDeviceManager;
 use dns_types::{ResponseBuilder, ResponseCode};
-use firezone_bin_shared::TunDeviceManager;
 use ip_network::Ipv4Network;
 use tokio::task::JoinSet;
 use tun::Tun;

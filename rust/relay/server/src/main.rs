@@ -2,8 +2,8 @@
 
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
+use bin_shared::{http_health_check, signals};
 use clap::Parser;
-use firezone_bin_shared::{http_health_check, signals};
 use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{

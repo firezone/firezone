@@ -1,7 +1,7 @@
 #![cfg(target_os = "windows")]
 #![allow(clippy::unwrap_used)]
 
-use firezone_bin_shared::{DnsControlMethod, DnsController};
+use bin_shared::{DnsControlMethod, DnsController};
 use std::{collections::BTreeSet, net::IpAddr};
 
 // Passes in CI but not locally. Maybe ReactorScram's dev system has IPv6 misconfigured. There it fails to pick up the IPv6 DNS servers.
@@ -10,7 +10,7 @@ use std::{collections::BTreeSet, net::IpAddr};
 async fn dns_control() {
     let _guard = firezone_logging::test("debug");
 
-    let mut tun_dev_manager = firezone_bin_shared::TunDeviceManager::new(1280).unwrap();
+    let mut tun_dev_manager = bin_shared::TunDeviceManager::new(1280).unwrap();
     let _tun = tun_dev_manager.make_tun().unwrap();
 
     tun_dev_manager

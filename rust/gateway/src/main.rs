@@ -3,11 +3,11 @@
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
-use clap::Parser;
-use firezone_bin_shared::{
+use bin_shared::{
     TunDeviceManager, device_id, http_health_check,
     platform::{UdpSocketFactory, tcp_socket_factory},
 };
+use clap::Parser;
 
 use firezone_telemetry::{
     MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
@@ -103,7 +103,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
-        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         "`gateway` started logging"
     );
 

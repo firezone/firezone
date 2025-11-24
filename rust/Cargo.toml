@@ -59,6 +59,7 @@ aya-log-ebpf = { git = "https://github.com/aya-rs/aya" }
 backoff = { version = "0.4", features = ["tokio"] }
 base64 = { version = "0.22.1", default-features = false }
 bimap = "0.6"
+bin-shared = { path = "libs/bin-shared" }
 bnum = "0.13.0"
 boringtun = { version = "0.6", default-features = false }
 bufferpool = { path = "libs/connlib/bufferpool" }
@@ -82,7 +83,6 @@ ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1"
 etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
-firezone-bin-shared = { path = "libs/bin-shared" }
 firezone-headless-client = { path = "headless-client" }
 firezone-logging = { path = "libs/logging" }
 firezone-relay = { path = "relay/server" }

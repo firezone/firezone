@@ -23,12 +23,12 @@ anyhow = { workspace = true }
 arboard = { workspace = true }
 atomicwrites = { workspace = true }
 backoff = { workspace = true }
+bin-shared = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
-firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 futures = { workspace = true }

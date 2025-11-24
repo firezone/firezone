@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_used)]
 
+use bin_shared::{TunDeviceManager, platform::UdpSocketFactory};
 use bufferpool::BufferPool;
 use bytes::BytesMut;
-use firezone_bin_shared::{TunDeviceManager, platform::UdpSocketFactory};
 use gat_lending_iterator::LendingIterator as _;
 use ip_network::Ipv4Network;
 use ip_packet::Ecn;

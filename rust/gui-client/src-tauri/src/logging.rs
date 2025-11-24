@@ -1,7 +1,7 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
 use anyhow::{Context as _, Result, bail};
-use firezone_bin_shared::known_dirs;
+use bin_shared::known_dirs;
 use firezone_logging::FilterReloadHandle;
 use serde::Serialize;
 use std::{
@@ -85,7 +85,7 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
         %directives,
-        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         log_path = %log_path.display(),
         syslog_identifier = syslog_identifier.map(tracing::field::display),
         "`gui-client` started logging"
@@ -140,7 +140,7 @@ pub fn setup_tunnel(
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
         ?directives,
-        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         log_path = %log_path.display(),
         "`tunnel service` started logging"
     );
@@ -181,9 +181,8 @@ pub(crate) fn get_log_filter() -> Result<String> {
         return Ok(filter);
     }
 
-    if let Ok(filter) =
-        std::fs::read_to_string(firezone_bin_shared::known_dirs::tunnel_log_filter()?)
-            .map(|s| s.trim().to_string())
+    if let Ok(filter) = std::fs::read_to_string(bin_shared::known_dirs::tunnel_log_filter()?)
+        .map(|s| s.trim().to_string())
     {
         return Ok(filter);
     }

@@ -1,8 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::anyhow;
+use bin_shared::{DnsControlMethod, TOKEN_ENV_KEY};
 use clap::Parser as _;
-use firezone_bin_shared::{DnsControlMethod, TOKEN_ENV_KEY};
 use firezone_gui_client::service;
 use std::path::PathBuf;
 

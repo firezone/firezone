@@ -4,13 +4,13 @@
 
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
-use clap::Parser;
-use firezone_bin_shared::{
+use bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
     new_dns_notifier, new_network_notifier,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
+use clap::Parser;
 use firezone_telemetry::{
     MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, analytics, feature_flags, otel,
 };

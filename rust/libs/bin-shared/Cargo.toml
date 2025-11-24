@@ -1,5 +1,5 @@
 [package]
-name = "firezone-bin-shared"
+name = "bin-shared"
 version = "0.1.0"
 edition = { workspace = true }
 description = "Firezone-specific modules shared between binaries."
