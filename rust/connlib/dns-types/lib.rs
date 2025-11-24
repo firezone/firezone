@@ -225,6 +225,12 @@ impl Response {
         Self::parse(response.body())
     }
 
+    pub fn with_id(mut self, id: u16) -> Self {
+        self.inner.header_mut().set_id(id);
+
+        self
+    }
+
     pub fn id(&self) -> u16 {
         self.inner.header().id()
     }

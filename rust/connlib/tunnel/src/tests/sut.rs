@@ -554,8 +554,13 @@ impl TunnelTest {
                 let server = query.server;
                 let transport = query.transport;
 
+                // DoH queries are always sent with an ID of 0, simulate that in the tests.
+                let message = matches!(server, dns::Upstream::DoH { .. })
+                    .then_some(query.message.clone().with_id(0))
+                    .unwrap_or(query.message.clone());
+
                 let response =
-                    self.on_recursive_dns_query(&query.message, &ref_state.global_dns_records, now);
+                    self.on_recursive_dns_query(&message, &ref_state.global_dns_records, now);
                 self.client.exec_mut(|c| {
                     c.sut.handle_dns_response(
                         dns::RecursiveResponse {
