@@ -77,20 +77,11 @@ for DISTRIBUTION in "stable" "preview"; do
 
                 # Construct the proper filename
                 NORMALIZED_NAME="${PACKAGE}_${VERSION}_${ARCH}.deb"
-                NORMALIZED_PATH="${IMPORT_DIR}/${NORMALIZED_NAME}"
 
-                # Rename if needed
-                if [ "$(basename "$deb")" == "$NORMALIZED_NAME" ]; then
-                    continue
-                fi
-
-                echo "Renaming $(basename "$deb") → $NORMALIZED_NAME"
-                mv "$deb" "$NORMALIZED_PATH"
+                echo "Importing $(basename "$deb") as ${NORMALIZED_NAME}"
+                mv --force "$deb" "${POOL_DIR}/${NORMALIZED_NAME}"
             fi
         done
-
-        echo "Importing new packages..."
-        mv --force --target-directory="${POOL_DIR}/" "${IMPORT_DIR}"/**/*.deb
     fi
 
     if [ -z "$(ls -A "${POOL_DIR}")" ]; then
