@@ -535,12 +535,18 @@ impl TunnelTest {
             if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
                 match self.on_client_event(self.client.inner().id, event, &ref_state.portal) {
                     Ok(()) => {}
-                    Err(AuthorizeFlowError::Client(_)) => {
+                    Err(AuthorizeFlowError::Client(e)) => {
+                        tracing::debug!("Failed to handle ClientEvent: {e}");
+
+                        // Simulate WebSocket reconnect ...
                         self.client.exec_mut(|c| {
                             c.update_relays(iter::empty(), self.relays.iter(), now);
                         });
                     }
-                    Err(AuthorizeFlowError::Gateway(_)) => {
+                    Err(AuthorizeFlowError::Gateway(e)) => {
+                        tracing::debug!("Failed to handle GatewayEvent: {e}");
+
+                        // Simulate WebSocket reconnect ...
                         for gateway in self.gateways.values_mut() {
                             gateway.exec_mut(|g| {
                                 g.update_relays(iter::empty(), self.relays.iter(), now)
