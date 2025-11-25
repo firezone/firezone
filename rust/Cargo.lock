@@ -7103,7 +7103,6 @@ dependencies = [
  "bufferpool",
  "bytes",
  "derive_more 2.0.1",
- "firezone-telemetry",
  "gat-lending-iterator",
  "ip-packet",
  "libc",
