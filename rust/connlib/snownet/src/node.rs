@@ -305,6 +305,8 @@ where
             return Ok(());
         }
 
+        let selected_relay = self.sample_relay()?;
+
         let existing = self.connections.remove_established(&cid, now);
         let index = self.index.next();
 
@@ -314,8 +316,6 @@ where
         } else {
             tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
-
-        let selected_relay = self.sample_relay()?;
 
         let mut agent = match self.role.kind() {
             RoleKind::Client => new_client_agent(),
