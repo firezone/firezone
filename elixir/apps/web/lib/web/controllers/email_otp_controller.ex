@@ -230,7 +230,7 @@ defmodule Web.EmailOTPController do
         where: t.type == :email and t.account_id == ^actor.account_id and t.actor_id == ^actor.id
       )
 
-    {num_deleted, _} = Safe.delete_all(Safe.unscoped(), query)
+    {num_deleted, _} = query |> Safe.unscoped() |> Safe.delete_all()
 
     {:ok, num_deleted}
   end
@@ -337,7 +337,7 @@ defmodule Web.EmailOTPController do
   end
 
   defp maybe_put_resent_flash(%Plug.Conn{state: :unset} = conn, %{"resend" => "true"}),
-    do: put_flash(conn, :info, "Email was resent.")
+    do: put_flash(conn, :success_inline, "Email was resent.")
 
   defp maybe_put_resent_flash(conn, _params),
     do: conn

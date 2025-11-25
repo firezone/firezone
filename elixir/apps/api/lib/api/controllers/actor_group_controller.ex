@@ -168,14 +168,10 @@ defmodule API.ActorGroupController do
       {:error, :synced_group}
     end
 
-    def delete_group(%Actors.Group{directory: "firezone"} = group, subject) do
+    def delete_group(%Actors.Group{} = group, subject) do
       group
       |> Safe.scoped(subject)
       |> Safe.delete()
-    end
-
-    def delete_group(%Actors.Group{}, _subject) do
-      {:error, :synced_group}
     end
 
     defp changeset(group, attrs) do

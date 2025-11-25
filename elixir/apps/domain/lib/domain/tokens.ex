@@ -50,19 +50,21 @@ defmodule Domain.Tokens do
 
   defp list_tokens(queryable, subject, opts) do
     queryable
-    |> scope_tokens_for_subject(subject)
     |> Ecto.Query.order_by([tokens: tokens], desc: tokens.inserted_at, desc: tokens.id)
+    |> scope_tokens_for_subject(subject)
     |> Safe.list(Token.Query, opts)
   end
 
   def create_token(attrs) do
     Token.Changeset.create(attrs)
-    |> Repo.insert()
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   def create_token(attrs, %Auth.Subject{} = subject) do
     Token.Changeset.create(attrs, subject)
-    |> Repo.insert()
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   @doc """
@@ -103,7 +105,8 @@ defmodule Domain.Tokens do
              token.secret_hash
            ) do
       Token.Changeset.use(token, context)
-      |> Repo.update()
+      |> Safe.unscoped()
+      |> Safe.update()
     else
       {:error, :invalid} -> {:error, :invalid_or_expired_token}
       {:ok, _token_payload} -> {:error, :invalid_or_expired_token}
@@ -137,7 +140,8 @@ defmodule Domain.Tokens do
       ]
     )
     |> Ecto.Query.select([tokens: tokens], tokens)
-    |> Repo.update_all([])
+    |> Safe.unscoped()
+    |> Safe.update_all([])
     |> case do
       {1, [token]} -> {:ok, token}
       {0, []} -> {:error, :not_found}
@@ -182,11 +186,9 @@ defmodule Domain.Tokens do
       Token.Query.all()
       |> Token.Query.by_id(subject.token_id)
 
-    result = Safe.scoped(subject) |> Safe.delete_all(queryable)
-
-    case result do
+    case queryable |> Safe.scoped(subject) |> Safe.delete_all() do
+      {:error, :unauthorized} -> {:error, :unauthorized}
       {num_deleted, _} -> {:ok, num_deleted}
-      error -> error
     end
   end
 
@@ -197,11 +199,9 @@ defmodule Domain.Tokens do
           Token.Query.all()
           |> Token.Query.by_relay_group_id(group.id)
 
-        result = Safe.scoped(subject) |> Safe.delete_all(queryable)
-
-        case result do
+        case queryable |> Safe.scoped(subject) |> Safe.delete_all() do
+          {:error, :unauthorized} -> {:error, :unauthorized}
           {num_deleted, _} -> {:ok, num_deleted}
-          error -> error
         end
 
       _ ->
@@ -216,11 +216,9 @@ defmodule Domain.Tokens do
           Token.Query.all()
           |> Token.Query.by_gateway_group_id(group.id)
 
-        result = Safe.scoped(subject) |> Safe.delete_all(queryable)
-
-        case result do
+        case queryable |> Safe.scoped(subject) |> Safe.delete_all() do
+          {:error, :unauthorized} -> {:error, :unauthorized}
           {num_deleted, _} -> {:ok, num_deleted}
-          error -> error
         end
 
       _ ->
@@ -232,7 +230,8 @@ defmodule Domain.Tokens do
     {num_deleted, _} =
       Token.Query.all()
       |> Token.Query.expired()
-      |> Repo.delete_all()
+      |> Safe.unscoped()
+      |> Safe.delete_all()
 
     {:ok, num_deleted}
   end

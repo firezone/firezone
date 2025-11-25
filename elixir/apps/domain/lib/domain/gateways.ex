@@ -24,7 +24,8 @@ defmodule Domain.Gateways do
     Group.Query.all()
     |> Group.Query.by_account_id(account.id)
     |> Group.Query.by_managed_by(:account)
-    |> Repo.aggregate(:count)
+    |> Safe.unscoped()
+    |> Safe.aggregate(:count)
   end
 
   def fetch_gateway_by_id(id) do
@@ -80,7 +81,8 @@ defmodule Domain.Gateways do
     Group.Query.all()
     |> Group.Query.by_managed_by(:account)
     |> Group.Query.by_account_id(account.id)
-    |> Repo.all()
+    |> Safe.unscoped()
+    |> Safe.all()
   end
 
   def new_group(attrs \\ %{}) do
@@ -103,7 +105,8 @@ defmodule Domain.Gateways do
   def create_group(%Accounts.Account{} = account, attrs) do
     account
     |> Group.Changeset.create(attrs)
-    |> Repo.insert()
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   def create_internet_group(%Accounts.Account{} = account) do
@@ -114,19 +117,20 @@ defmodule Domain.Gateways do
 
     account
     |> Group.Changeset.create(attrs)
-    |> Repo.insert()
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   def change_group(%Group{} = group, attrs \\ %{}) do
     group
-    |> Repo.preload(:account)
+    |> Safe.preload(:account)
     |> Group.Changeset.update(attrs)
   end
 
   def update_group(%Group{managed_by: :account} = group, attrs, %Auth.Subject{} = subject) do
     changeset =
       group
-      |> Repo.preload(:account)
+      |> Safe.preload(:account)
       |> Group.Changeset.update(attrs, subject)
 
     Safe.scoped(changeset, subject)
@@ -204,8 +208,9 @@ defmodule Domain.Gateways do
 
     Gateway.Query.all()
     |> Gateway.Query.by_account_id(account.id)
-    |> Repo.all()
-    |> Repo.preload(preload)
+    |> Safe.unscoped()
+    |> Safe.all()
+    |> Safe.preload(preload)
   end
 
   @doc false
@@ -285,7 +290,7 @@ defmodule Domain.Gateways do
       %{gateway: %Gateway{} = gateway, ipv4: ipv4, ipv6: ipv6} ->
         Gateway.Changeset.finalize_upsert(gateway, ipv4, ipv6)
     end)
-    |> Repo.transaction()
+    |> Safe.transact()
     |> case do
       {:ok, %{gateway_with_address: gateway}} -> {:ok, gateway}
       {:error, :gateway, changeset, _effects_so_far} -> {:error, changeset}

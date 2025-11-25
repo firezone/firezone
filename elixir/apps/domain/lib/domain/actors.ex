@@ -41,7 +41,7 @@ defmodule Domain.Actors do
     |> Safe.all()
     |> case do
       {:error, :unauthorized} -> []
-      groups -> Repo.preload(groups, preload)
+      groups -> Safe.preload(groups, preload)
     end
   end
 
@@ -54,23 +54,25 @@ defmodule Domain.Actors do
     |> Safe.all()
     |> case do
       {:error, :unauthorized} -> []
-      groups -> Repo.preload(groups, preload)
+      groups -> Safe.preload(groups, preload)
     end
   end
 
   def all_memberships_for_actor_id!(actor_id) do
     Membership.Query.all()
     |> Membership.Query.by_actor_id(actor_id)
-    |> Repo.all()
+    |> Safe.unscoped()
+    |> Safe.all()
   end
 
   def new_group(attrs \\ %{}) do
-    change_group(%Group{}, attrs)
+    change_group(%Group{directory_id: nil}, attrs)
   end
 
   def create_managed_group(%Accounts.Account{} = account, attrs) do
     Group.Changeset.create(account, attrs)
-    |> Repo.insert()
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do
@@ -85,7 +87,7 @@ defmodule Domain.Actors do
     raise ArgumentError, "can't change managed groups"
   end
 
-  def change_group(%Group{directory: "firezone"} = group, attrs) do
+  def change_group(%Group{directory_id: nil} = group, attrs) do
     Group.Changeset.update(group, attrs)
   end
 
@@ -99,7 +101,7 @@ defmodule Domain.Actors do
 
   def update_group(%Group{directory_id: nil} = group, attrs, %Auth.Subject{} = subject) do
     group
-    |> Repo.preload(:memberships)
+    |> Safe.preload(:memberships)
     |> Group.Changeset.update(attrs)
     |> Safe.scoped(subject)
     |> Safe.update()
@@ -109,13 +111,9 @@ defmodule Domain.Actors do
     {:error, :synced_group}
   end
 
-  def delete_group(%Group{directory: "firezone"} = group, %Auth.Subject{} = subject) do
+  def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
     Safe.scoped(group, subject)
     |> Safe.delete()
-  end
-
-  def delete_group(%Group{}, %Auth.Subject{}) do
-    {:error, :synced_group}
   end
 
   # Actors
@@ -124,21 +122,24 @@ defmodule Domain.Actors do
     Actor.Query.not_disabled()
     |> Actor.Query.by_account_id(account.id)
     |> Actor.Query.by_type({:in, [:account_admin_user, :account_user]})
-    |> Repo.aggregate(:count)
+    |> Safe.unscoped()
+    |> Safe.aggregate(:count)
   end
 
   def count_account_admin_users_for_account(%Accounts.Account{} = account) do
     Actor.Query.not_disabled()
     |> Actor.Query.by_account_id(account.id)
     |> Actor.Query.by_type(:account_admin_user)
-    |> Repo.aggregate(:count)
+    |> Safe.unscoped()
+    |> Safe.aggregate(:count)
   end
 
   def count_service_accounts_for_account(%Accounts.Account{} = account) do
     Actor.Query.not_disabled()
     |> Actor.Query.by_account_id(account.id)
     |> Actor.Query.by_type(:service_account)
-    |> Repo.aggregate(:count)
+    |> Safe.unscoped()
+    |> Safe.aggregate(:count)
   end
 
   def fetch_actor_by_account_and_email(%Accounts.Account{} = account, email) do
@@ -179,7 +180,8 @@ defmodule Domain.Actors do
   def all_actor_group_ids!(%Actor{} = actor) do
     Membership.Query.by_actor_id(actor.id)
     |> Membership.Query.select_distinct_group_ids()
-    |> Repo.all()
+    |> Safe.unscoped()
+    |> Safe.all()
   end
 
   def all_admins_for_account!(%Accounts.Account{} = account, opts \\ []) do
@@ -188,8 +190,9 @@ defmodule Domain.Actors do
     Actor.Query.not_disabled()
     |> Actor.Query.by_account_id(account.id)
     |> Actor.Query.by_type(:account_admin_user)
-    |> Repo.all(opts)
-    |> Repo.preload(preload)
+    |> Safe.unscoped()
+    |> Safe.all()
+    |> Safe.preload(preload)
   end
 
   def list_actors(%Auth.Subject{} = subject, opts \\ []) do
@@ -204,7 +207,8 @@ defmodule Domain.Actors do
 
   def create_actor(%Accounts.Account{} = account, attrs) do
     Actor.Changeset.create(account.id, attrs)
-    |> Repo.insert()
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   def create_actor(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do

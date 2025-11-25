@@ -164,7 +164,7 @@ defmodule Web.Groups do
   def handle_event("delete", %{"id" => id}, socket) do
     group = DB.get_group!(id, socket.assigns.subject)
 
-    if is_editable_group?(group) do
+    if is_deletable_group?(group) do
       case delete_group(group, socket.assigns.subject) do
         {:ok, _group} ->
           {:noreply, handle_success(socket, "Group deleted successfully")}
@@ -380,7 +380,7 @@ defmodule Web.Groups do
           <div>
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-sm font-semibold text-neutral-900">Details</h3>
-              <.popover :if={is_editable_group?(@group)} placement="bottom-end" trigger="click">
+              <.popover :if={is_deletable_group?(@group)} placement="bottom-end" trigger="click">
                 <:target>
                   <button
                     type="button"
@@ -392,11 +392,19 @@ defmodule Web.Groups do
                 <:content>
                   <div class="py-1">
                     <.link
+                      :if={is_editable_group?(@group)}
                       navigate={~p"/#{@account}/groups/#{@group.id}/edit?#{query_params(@uri)}"}
                       class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
                     >
                       <.icon name="hero-pencil" class="w-4 h-4" /> Edit
                     </.link>
+                    <div
+                      :if={not is_editable_group?(@group)}
+                      class="px-3 py-2 text-sm text-neutral-400 rounded-lg flex items-center gap-2 whitespace-nowrap cursor-not-allowed"
+                      title="Synced groups cannot be edited"
+                    >
+                      <.icon name="hero-pencil" class="w-4 h-4" /> Edit
+                    </div>
                     <button
                       type="button"
                       phx-click="delete"
@@ -697,18 +705,19 @@ defmodule Web.Groups do
     """
   end
 
-  defp is_firezone_directory?(nil), do: true
-  defp is_firezone_directory?(_), do: false
-
   defp is_editable_group?(%{name: "Everyone"}), do: false
-  defp is_editable_group?(group), do: is_firezone_directory?(group.idp_id)
+  defp is_editable_group?(%{directory_id: nil}), do: true
+  defp is_editable_group?(_group), do: false
+
+  defp is_deletable_group?(%{name: "Everyone"}), do: false
+  defp is_deletable_group?(_group), do: true
 
   defp get_idp_id(nil), do: nil
 
-  defp get_idp_id(directory) do
-    case String.split(directory, ":", parts: 2) do
-      [_provider, idp_id] -> idp_id
-      _ -> directory
+  defp get_idp_id(idp_id) do
+    case String.split(idp_id, ":", parts: 2) do
+      [_provider, actual_id] -> actual_id
+      _ -> idp_id
     end
   end
 
@@ -881,6 +890,12 @@ defmodule Web.Groups do
   defmodule DB do
     import Ecto.Query
     alias Domain.{Actors, Safe}
+    alias Domain.Directory
+    alias Domain.Repo.Filter
+
+    def all do
+      from(groups in Actors.Group, as: :groups)
+    end
 
     # Inlined from Domain.Actors.list_groups
     def list_groups(subject, opts \\ []) do
@@ -945,6 +960,79 @@ defmodule Web.Groups do
         {:groups, :asc, :inserted_at},
         {:groups, :asc, :id}
       ]
+    end
+
+    def filters do
+      [
+        %Filter{
+          name: :directory_id,
+          title: "Directory",
+          type: {:string, :select},
+          values: &directory_values/1,
+          fun: &filter_by_directory/2
+        },
+        %Filter{
+          name: :name,
+          title: "Name",
+          type: {:string, :websearch},
+          fun: &filter_by_name/2
+        }
+      ]
+    end
+
+    # Define a simple struct-like module for directory options
+    defmodule DirectoryOption do
+      defstruct [:id, :name]
+    end
+
+    defp directory_values(subject) do
+      directories =
+        from(d in Directory,
+          where: d.account_id == ^subject.account.id,
+          left_join: google in Domain.Google.Directory,
+          on: google.id == d.id and d.type == :google,
+          left_join: entra in Domain.Entra.Directory,
+          on: entra.id == d.id and d.type == :entra,
+          left_join: okta in Domain.Okta.Directory,
+          on: okta.id == d.id and d.type == :okta,
+          select: %{
+            id: d.id,
+            name: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name),
+            type: d.type
+          },
+          order_by: [asc: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name)]
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> case do
+          {:error, _} ->
+            []
+
+          directories ->
+            directories
+            |> Enum.map(fn %{id: id, name: name} ->
+              %DirectoryOption{id: id, name: name}
+            end)
+        end
+
+      # Add Firezone option at the beginning
+      [%DirectoryOption{id: "firezone", name: "Firezone"} | directories]
+    end
+
+    def filter_by_directory(queryable, "firezone") do
+      # Firezone directory - groups created without a directory
+      {queryable, dynamic([groups: groups], is_nil(groups.directory_id))}
+    end
+
+    def filter_by_directory(queryable, directory_id) do
+      # Filter for groups created by a specific directory
+      {queryable, dynamic([groups: groups], groups.directory_id == ^directory_id)}
+    end
+
+    def filter_by_name(queryable, search_term) do
+      search_pattern = "%#{search_term}%"
+
+      {queryable, dynamic([groups: groups], ilike(groups.name, ^search_pattern))}
     end
 
     def get_group!(id, subject) do

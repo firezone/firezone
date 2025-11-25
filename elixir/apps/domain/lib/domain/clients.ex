@@ -239,7 +239,7 @@ defmodule Domain.Clients do
     {_count, nil} =
       queryable
       |> Safe.scoped(subject)
-      |> Safe.delete_all(queryable)
+      |> Safe.delete_all()
 
     :ok
   end

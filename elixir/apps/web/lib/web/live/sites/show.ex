@@ -477,7 +477,7 @@ defmodule Web.Sites.Show do
 
     socket =
       socket
-      |> put_flash(:info, "#{deleted_token_count} token(s) were revoked.")
+      |> put_flash(:success, "#{deleted_token_count} token(s) were revoked.")
 
     {:noreply, socket}
   end

@@ -33,13 +33,16 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_tokens_update!(socket, list_opts) do
-    with {:ok, tokens, metadata} <-
-           Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
-      {:ok,
-       assign(socket,
-         tokens: tokens,
-         tokens_metadata: metadata
-       )}
+    case Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+      {:ok, tokens, metadata} ->
+        {:ok,
+         assign(socket,
+           tokens: tokens,
+           tokens_metadata: metadata
+         )}
+
+      {:error, :unauthorized} ->
+        {:ok, assign(socket, tokens: [], tokens_metadata: %{})}
     end
   end
 
@@ -293,7 +296,7 @@ defmodule Web.Settings.ApiClients.Show do
     def delete_all_tokens_for_actor(actor, subject) do
       query = from(t in Tokens.Token, where: t.actor_id == ^actor.id)
 
-      {count, _} = query |> Safe.scoped(subject) |> Safe.delete_all(query, [])
+      {count, _} = query |> Safe.scoped(subject) |> Safe.delete_all()
 
       {:ok, count}
     end

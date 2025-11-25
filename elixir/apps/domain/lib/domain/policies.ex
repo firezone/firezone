@@ -32,7 +32,8 @@ defmodule Domain.Policies do
     Policy.Query.not_disabled()
     |> Policy.Query.by_actor_id(actor_id)
     |> Policy.Query.with_preloaded_resource_gateway_groups()
-    |> Repo.all()
+    |> Safe.unscoped()
+    |> Safe.all()
   end
 
   def all_policies_for_actor_group_id!(account_id, actor_group_id) do
@@ -40,7 +41,8 @@ defmodule Domain.Policies do
     |> Policy.Query.by_account_id(account_id)
     |> Policy.Query.by_actor_group_id(actor_group_id)
     |> Policy.Query.with_preloaded_resource_gateway_groups()
-    |> Repo.all()
+    |> Safe.unscoped()
+    |> Safe.all()
   end
 
   def all_policies_in_gateway_group_for_resource_id_and_actor_id!(
@@ -54,7 +56,8 @@ defmodule Domain.Policies do
     |> Policy.Query.by_resource_id(resource_id)
     |> Policy.Query.by_gateway_group_id(gateway_group_id)
     |> Policy.Query.by_actor_id(actor_id)
-    |> Repo.all()
+    |> Safe.unscoped()
+    |> Safe.all()
   end
 
   def new_policy(attrs, %Auth.Subject{} = subject) do

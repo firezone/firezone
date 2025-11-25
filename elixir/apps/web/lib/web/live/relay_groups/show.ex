@@ -183,7 +183,7 @@ defmodule Web.RelayGroups.Show do
 
     socket =
       socket
-      |> put_flash(:info, "#{deleted_tokens_count} token(s) were revoked.")
+      |> put_flash(:success, "#{deleted_tokens_count} token(s) were revoked.")
 
     {:noreply, socket}
   end

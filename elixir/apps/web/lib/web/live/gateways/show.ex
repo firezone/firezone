@@ -175,7 +175,7 @@ defmodule Web.Gateways.Show do
 
     socket =
       socket
-      |> put_flash(:info, "Gateway was deleted.")
+      |> put_flash(:success, "Gateway was deleted.")
       |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.group}")
 
     {:noreply, socket}

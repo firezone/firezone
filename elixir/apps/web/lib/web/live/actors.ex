@@ -115,7 +115,10 @@ defmodule Web.Actors do
     actor = DB.get_actor!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
     changeset = actor_changeset(actor, %{})
-    is_last_admin = actor.type == :account_admin_user and not other_enabled_admins_exist?(actor)
+
+    is_last_admin =
+      actor.type == :account_admin_user and
+        not other_enabled_admins_exist?(actor, socket.assigns.subject)
 
     {:noreply,
      assign(socket,
@@ -243,7 +246,7 @@ defmodule Web.Actors do
     new_type = get_change(changeset, :type)
 
     if actor.type == :account_admin_user and new_type == :account_user and
-         not other_enabled_admins_exist?(actor) do
+         not other_enabled_admins_exist?(actor, socket.assigns.subject) do
       changeset =
         add_error(
           changeset,
@@ -310,7 +313,7 @@ defmodule Web.Actors do
               socket
             end
 
-          {:noreply, put_flash(socket, :info, "Actor disabled successfully")}
+          {:noreply, put_flash(socket, :success_inline, "Actor disabled successfully")}
 
         {:error, :unauthorized} ->
           {:noreply, put_flash(socket, :error, "You are not authorized to disable this actor")}
@@ -336,7 +339,7 @@ defmodule Web.Actors do
             socket
           end
 
-        {:noreply, put_flash(socket, :info, "Actor enabled successfully")}
+        {:noreply, put_flash(socket, :success_inline, "Actor enabled successfully")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to enable actor")}
@@ -381,7 +384,7 @@ defmodule Web.Actors do
             # Reload tokens for the actor
             tokens = DB.get_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
             socket = assign(socket, tokens: tokens)
-            {:noreply, put_flash(socket, :info, "Token deleted successfully")}
+            {:noreply, put_flash(socket, :success_inline, "Token deleted successfully")}
 
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to delete token")}
@@ -405,7 +408,7 @@ defmodule Web.Actors do
               DB.get_identities_for_actor(socket.assigns.actor.id, socket.assigns.subject)
 
             socket = assign(socket, identities: identities)
-            {:noreply, put_flash(socket, :info, "Identity deleted successfully")}
+            {:noreply, put_flash(socket, :success_inline, "Identity deleted successfully")}
 
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to delete identity")}
@@ -431,7 +434,7 @@ defmodule Web.Actors do
         {:ok, _} ->
           socket =
             socket
-            |> put_flash(:info, "Welcome email sent to #{actor.email}")
+            |> put_flash(:success_inline, "Welcome email sent to #{actor.email}")
 
           {:noreply, socket}
 
@@ -1076,10 +1079,6 @@ defmodule Web.Actors do
     >
       <:title>Edit {@actor.name}</:title>
       <:body>
-        <.flash :if={@actor.created_by_directory_id} kind={:warning} style="wide">
-          This actor was created by directory sync. Manual changes may be overwritten during the next sync.
-        </.flash>
-
         <.form id="actor-form" for={@form} phx-change="validate" phx-submit="save">
           <div class="space-y-6">
             <.input
@@ -1433,10 +1432,10 @@ defmodule Web.Actors do
     |> Safe.update()
   end
 
-  defp other_enabled_admins_exist?(actor) do
+  defp other_enabled_admins_exist?(actor, subject) do
     case actor do
       %{type: :account_admin_user, account_id: account_id, id: id} ->
-        DB.other_enabled_admins_exist?(account_id, id)
+        DB.other_enabled_admins_exist?(account_id, id, subject)
 
       _ ->
         false
@@ -1452,13 +1451,9 @@ defmodule Web.Actors do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Actors, Safe, Tokens, Repo}
-
-    def list_actors(subject, opts \\ []) do
-      all()
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
-    end
+    alias Domain.{Actors, Safe, Tokens}
+    alias Domain.Directory
+    alias Domain.Repo.Filter
 
     def all do
       from(actors in Actors.Actor, as: :actors)
@@ -1482,6 +1477,117 @@ defmodule Web.Actors do
         {:actors, :asc, :inserted_at},
         {:actors, :asc, :id}
       ]
+    end
+
+    def filters do
+      [
+        %Filter{
+          name: :status,
+          title: "Status",
+          type: :string,
+          values: [
+            {"Active", "active"},
+            {"Disabled", "disabled"}
+          ],
+          fun: &filter_by_status/2
+        },
+        %Filter{
+          name: :directory_id,
+          title: "Directory",
+          type: {:string, :select},
+          values: &directory_values/1,
+          fun: &filter_by_directory/2
+        },
+        %Filter{
+          name: :name_or_email,
+          title: "Name or Email",
+          type: {:string, :websearch},
+          fun: &filter_by_name_or_email/2
+        }
+      ]
+    end
+
+    # Define a simple struct-like module for directory options
+    defmodule DirectoryOption do
+      defstruct [:id, :name]
+    end
+
+    defp directory_values(subject) do
+      directories =
+        from(d in Directory,
+          where: d.account_id == ^subject.account.id,
+          left_join: google in Domain.Google.Directory,
+          on: google.id == d.id and d.type == :google,
+          left_join: entra in Domain.Entra.Directory,
+          on: entra.id == d.id and d.type == :entra,
+          left_join: okta in Domain.Okta.Directory,
+          on: okta.id == d.id and d.type == :okta,
+          select: %{
+            id: d.id,
+            name: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name),
+            type: d.type
+          },
+          order_by: [asc: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name)]
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> case do
+          {:error, _} ->
+            []
+
+          directories ->
+            directories
+            |> Enum.map(fn %{id: id, name: name} ->
+              %DirectoryOption{id: id, name: name}
+            end)
+        end
+
+      # Add Firezone option at the beginning
+      [%DirectoryOption{id: "firezone", name: "Firezone"} | directories]
+    end
+
+    def filter_by_status(queryable, "active") do
+      {queryable, dynamic([actors: actors], is_nil(actors.disabled_at))}
+    end
+
+    def filter_by_status(queryable, "disabled") do
+      {queryable, dynamic([actors: actors], not is_nil(actors.disabled_at))}
+    end
+
+    def filter_by_directory(queryable, "firezone") do
+      # Firezone directory - actors created without a directory
+      {queryable, dynamic([actors: actors], is_nil(actors.created_by_directory_id))}
+    end
+
+    def filter_by_directory(queryable, directory_id) do
+      # Filter for actors created by a specific directory
+      {queryable, dynamic([actors: actors], actors.created_by_directory_id == ^directory_id)}
+    end
+
+    def filter_by_name_or_email(queryable, search_term) do
+      search_pattern = "%#{search_term}%"
+
+      # Use a subquery to find actors by external identity email
+      identity_subquery =
+        from(i in ExternalIdentity,
+          where: ilike(i.email, ^search_pattern),
+          select: i.actor_id,
+          distinct: true
+        )
+
+      {queryable,
+       dynamic(
+         [actors: actors],
+         ilike(actors.name, ^search_pattern) or
+           ilike(actors.email, ^search_pattern) or
+           actors.id in subquery(identity_subquery)
+       )}
+    end
+
+    def list_actors(subject, opts \\ []) do
+      all()
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
     end
 
     def get_actor!(id, subject) do
@@ -1524,14 +1630,15 @@ defmodule Web.Actors do
       |> Safe.all()
     end
 
-    def other_enabled_admins_exist?(account_id, actor_id) do
+    def other_enabled_admins_exist?(account_id, actor_id, subject) do
       from(a in Actors.Actor,
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
         where: a.id != ^actor_id,
         where: is_nil(a.disabled_at)
       )
-      |> Repo.exists?()
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
     end
 
     def get_tokens_for_actor(actor_id, subject) do

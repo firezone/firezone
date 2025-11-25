@@ -922,7 +922,7 @@ defmodule Domain.Entra.Sync do
           where: g.last_synced_at != ^synced_at or is_nil(g.last_synced_at)
         )
 
-      Safe.delete_all(Safe.unscoped(), query)
+      query |> Safe.unscoped() |> Safe.delete_all()
     end
 
     def delete_unsynced_identities(account_id, directory_id, synced_at) do
@@ -933,7 +933,7 @@ defmodule Domain.Entra.Sync do
           where: i.last_synced_at != ^synced_at or is_nil(i.last_synced_at)
         )
 
-      Safe.delete_all(Safe.unscoped(), query)
+      query |> Safe.unscoped() |> Safe.delete_all()
     end
 
     def delete_unsynced_memberships(account_id, directory_id, synced_at) do
@@ -947,7 +947,7 @@ defmodule Domain.Entra.Sync do
           where: m.last_synced_at != ^synced_at or is_nil(m.last_synced_at)
         )
 
-      Safe.delete_all(Safe.unscoped(), query)
+      query |> Safe.unscoped() |> Safe.delete_all()
     end
 
     def delete_actors_without_identities(account_id, directory_id) do
@@ -965,7 +965,7 @@ defmodule Domain.Entra.Sync do
             )
         )
 
-      Safe.delete_all(Safe.unscoped(), query)
+      query |> Safe.unscoped() |> Safe.delete_all()
     end
   end
 

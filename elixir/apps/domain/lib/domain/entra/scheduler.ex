@@ -4,47 +4,45 @@ defmodule Domain.Entra.Scheduler do
   """
 
   use Oban.Worker, queue: :entra_scheduler, max_attempts: 1
-  alias Domain.Safe
   alias __MODULE__.DB
   require Logger
-
-  @sync_job_opts [
-    unique: [
-      # Allow 10 minutes for jobs to complete before allowing another to be scheduled
-      period: 60 * 10,
-      states: [:available, :scheduled, :executing],
-      keys: [:directory_id]
-    ]
-  ]
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
     Logger.debug("Scheduling Entra directory sync jobs")
 
-    Safe.transact(fn ->
-      DB.directories_to_sync()
-      |> Safe.unscoped()
-      |> Safe.stream()
-      |> Stream.each(&queue_sync_job/1)
-      |> Stream.run()
-    end)
-
-    :ok
-  end
-
-  defp queue_sync_job(directory) do
-    args = %{directory_id: directory.id}
-    {:ok, _job} = Domain.Entra.Sync.new(args, @sync_job_opts) |> Oban.insert()
+    DB.queue_sync_jobs()
   end
 
   defmodule DB do
+    alias Domain.Safe
     import Ecto.Query
 
-    def directories_to_sync do
-      from(d in Domain.Entra.Directory,
-        as: :directories,
-        where: d.is_disabled == false
-      )
+    @sync_job_opts [
+      unique: [
+        # Allow 10 minutes for jobs to complete before allowing another to be scheduled
+        period: 60 * 10,
+        states: [:available, :scheduled, :executing],
+        keys: [:directory_id]
+      ]
+    ]
+
+    def queue_sync_jobs do
+      Safe.transact(fn ->
+        from(d in Domain.Entra.Directory,
+          as: :directories,
+          where: d.is_disabled == false
+        )
+        |> Safe.unscoped()
+        |> Safe.stream()
+        |> Stream.each(fn directory ->
+          args = %{directory_id: directory.id}
+          {:ok, _job} = Domain.Entra.Sync.new(args, @sync_job_opts) |> Oban.insert()
+        end)
+        |> Stream.run()
+
+        {:ok, :scheduled}
+      end)
     end
   end
 end

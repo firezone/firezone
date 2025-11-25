@@ -350,7 +350,7 @@ defmodule Web.Resources.Show do
     {:ok, resource} =
       Resources.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject)
 
-    resource = Domain.Repo.preload(resource, [:gateway_groups, :policies])
+    resource = Domain.Safe.preload(resource, [:gateway_groups, :policies])
 
     {:noreply, assign(socket, resource: resource)}
   end
@@ -366,7 +366,7 @@ defmodule Web.Resources.Show do
     {:ok, _deleted_resource} =
       Resources.delete_resource(socket.assigns.resource, socket.assigns.subject)
 
-    socket = put_flash(socket, :info, "Resource was deleted.")
+    socket = put_flash(socket, :success, "Resource was deleted.")
 
     if site_id = socket.assigns.params["site_id"] do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}")}
@@ -390,7 +390,7 @@ defmodule Web.Resources.Show do
   defp fetch_resource("internet", subject) do
     Resources.fetch_internet_resource(subject)
     |> case do
-      {:ok, resource} -> {:ok, Domain.Repo.preload(resource, :gateway_groups)}
+      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :gateway_groups)}
       error -> error
     end
   end
@@ -398,7 +398,7 @@ defmodule Web.Resources.Show do
   defp fetch_resource(id, subject) do
     Resources.fetch_resource_by_id(id, subject)
     |> case do
-      {:ok, resource} -> {:ok, Domain.Repo.preload(resource, :gateway_groups)}
+      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :gateway_groups)}
       error -> error
     end
   end

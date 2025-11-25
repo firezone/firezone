@@ -65,9 +65,7 @@ defmodule Domain.Auth do
          {:ok, subject} <- build_subject(token, context) do
       {:ok, subject}
     else
-      {:error, :actor_not_active} -> {:error, :unauthorized}
       {:error, :invalid_or_expired_token} -> {:error, :unauthorized}
-      {:error, :invalid_remote_ip} -> {:error, :unauthorized}
       {:error, :invalid_user_agent} -> {:error, :unauthorized}
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, changeset} -> {:error, changeset}

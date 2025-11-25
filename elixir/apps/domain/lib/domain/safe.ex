@@ -77,7 +77,7 @@ defmodule Domain.Safe do
 
     with :ok <- permit(:read, schema, subject) do
       queryable
-      |> where(account_id: ^account_id)
+      |> apply_account_filter(schema, account_id)
       |> Repo.one()
     end
   end
@@ -94,7 +94,7 @@ defmodule Domain.Safe do
 
     with :ok <- permit(:read, schema, subject) do
       queryable
-      |> where(account_id: ^account_id)
+      |> apply_account_filter(schema, account_id)
       |> Repo.one!()
     end
   end
@@ -111,7 +111,7 @@ defmodule Domain.Safe do
 
     with :ok <- permit(:read, schema, subject) do
       queryable
-      |> where(account_id: ^account_id)
+      |> apply_account_filter(schema, account_id)
       |> Repo.all()
     end
   end
@@ -131,7 +131,7 @@ defmodule Domain.Safe do
 
     with :ok <- permit(:read, schema, subject) do
       queryable
-      |> where(account_id: ^account_id)
+      |> apply_account_filter(schema, account_id)
       |> Repo.exists?()
     end
   end
@@ -142,6 +142,15 @@ defmodule Domain.Safe do
   @spec exists?(Domain.Repo, Ecto.Queryable.t()) :: boolean()
   def exists?(repo, queryable) when repo == Repo, do: Repo.exists?(queryable)
 
+  @doc """
+  Lists records with pagination support.
+  Requires a query_module that implements pagination callbacks.
+
+  ## Examples
+      Actor.Query.all()
+      |> Safe.scoped(subject)
+      |> Safe.list(Actor.Query, limit: 10)
+  """
   @spec list(Scoped.t(), module(), Keyword.t()) ::
           {:ok, [Ecto.Schema.t()], map()} | {:error, :unauthorized}
   def list(
@@ -153,7 +162,7 @@ defmodule Domain.Safe do
 
     with :ok <- permit(:read, schema, subject) do
       queryable
-      |> where(account_id: ^account_id)
+      |> apply_account_filter(schema, account_id)
       |> Repo.list(query_module, opts)
     end
   end
@@ -164,6 +173,14 @@ defmodule Domain.Safe do
   @spec stream(Domain.Repo, Ecto.Queryable.t(), Keyword.t()) :: Enum.t()
   def stream(repo, queryable, opts) when repo == Repo, do: Repo.stream(queryable, opts)
 
+  @spec aggregate(Unscoped.t(), atom()) :: term()
+  def aggregate(%Unscoped{queryable: queryable}, aggregate),
+    do: Repo.aggregate(queryable, aggregate)
+
+  @spec aggregate(Unscoped.t(), atom(), atom()) :: term()
+  def aggregate(%Unscoped{queryable: queryable}, aggregate, field),
+    do: Repo.aggregate(queryable, aggregate, field)
+
   @spec load(module(), {list(), list()}) :: Ecto.Schema.t()
   def load(schema, data) when is_atom(schema), do: Repo.load(schema, data)
 
@@ -171,9 +188,31 @@ defmodule Domain.Safe do
           Ecto.Schema.t() | [Ecto.Schema.t()]
   def preload(struct_or_structs, preloads), do: Repo.preload(struct_or_structs, preloads)
 
-  @spec transact((... -> any()), Keyword.t()) :: {:ok, any()} | {:error, any()}
-  def transact(fun, opts \\ []) when is_function(fun), do: Repo.transaction(fun, opts)
+  @doc """
+  Executes a transaction using either a function or an Ecto.Multi struct.
 
+  ## Examples
+      Safe.transact(fn -> ... end)
+      
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:user, changeset)
+      |> Safe.transact()
+  """
+  def transact(fun_or_multi, opts \\ [])
+
+  @spec transact((... -> any()), Keyword.t()) :: {:ok, any()} | {:error, any()}
+  def transact(fun, opts) when is_function(fun), do: Repo.transact(fun, opts)
+
+  @spec transact(Ecto.Multi.t(), Keyword.t()) :: {:ok, map()} | {:error, atom(), any(), map()}
+  def transact(%Ecto.Multi{} = multi, opts), do: Repo.transact(multi, opts)
+
+  @doc """
+  Executes raw SQL query without authorization checks.
+  The queryable field in Unscoped is ignored for this operation.
+
+  ## Examples
+      Safe.unscoped() |> Safe.query("SELECT * FROM actors WHERE id = $1", [actor_id])
+  """
   @spec query(Unscoped.t(), String.t(), list()) ::
           {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
   def query(%Unscoped{}, sql, params) when is_binary(sql) and is_list(params) do
@@ -186,6 +225,14 @@ defmodule Domain.Safe do
     Repo.query(sql, params)
   end
 
+  @doc """
+  Inserts multiple entries for the given schema.
+  The queryable field in Scoped/Unscoped is ignored for this operation.
+
+  ## Examples
+      Safe.unscoped() |> Safe.insert_all(Actor, entries, on_conflict: :nothing)
+      Safe.scoped(subject) |> Safe.insert_all(Actor, entries)
+  """
   def insert_all(first_arg, schema_or_source, entries, opts \\ [])
 
   @spec insert_all(Scoped.t(), atom() | Ecto.Schema.t(), [map() | Keyword.t()], Keyword.t()) ::
@@ -358,11 +405,12 @@ defmodule Domain.Safe do
   def delete(repo, struct_or_changeset, opts \\ []) when repo == Repo,
     do: Repo.delete(struct_or_changeset, opts)
 
-  def delete_all(first_arg, queryable, opts \\ [])
+  # Header with defaults
+  def delete_all(scoped_or_unscoped, opts \\ [])
 
-  @spec delete_all(Scoped.t(), Ecto.Queryable.t(), Keyword.t()) ::
+  @spec delete_all(Scoped.t(), Keyword.t()) ::
           {integer(), nil | [term()]} | {:error, :unauthorized}
-  def delete_all(%Scoped{subject: subject, queryable: queryable}, _queryable_arg, opts) do
+  def delete_all(%Scoped{subject: subject, queryable: queryable}, opts) do
     schema = get_schema_module(queryable)
 
     case permit(:delete_all, schema, subject) do
@@ -384,17 +432,28 @@ defmodule Domain.Safe do
     end
   end
 
-  @spec delete_all(Unscoped.t(), Ecto.Queryable.t(), Keyword.t()) ::
+  @spec delete_all(Unscoped.t(), Keyword.t()) ::
           {integer(), nil | [term()]}
+  def delete_all(%Unscoped{queryable: queryable}, opts) when not is_nil(queryable) do
+    Repo.delete_all(queryable, opts)
+  end
+
+  # Overloaded version for when Unscoped has nil queryable
   def delete_all(%Unscoped{queryable: nil}, queryable, opts) do
     Repo.delete_all(queryable, opts)
   end
 
-  @spec delete_all(Domain.Repo, Ecto.Queryable.t(), Keyword.t()) :: {integer(), nil | [term()]}
-  def delete_all(repo, queryable, opts) when repo == Repo,
-    do: Repo.delete_all(queryable, opts)
-
   # Helper functions
+  defp apply_account_filter(queryable, Domain.Accounts.Account, account_id) do
+    # For Account schema, filter by id instead of account_id
+    where(queryable, id: ^account_id)
+  end
+
+  defp apply_account_filter(queryable, _schema, account_id) do
+    # For all other schemas, filter by account_id
+    where(queryable, account_id: ^account_id)
+  end
+
   def get_schema_module(%Ecto.Query{from: %{source: {_table, schema}}}), do: schema
   def get_schema_module(%Ecto.Changeset{data: data}), do: get_schema_module(data)
   def get_schema_module(struct) when is_struct(struct), do: struct.__struct__
@@ -405,6 +464,10 @@ defmodule Domain.Safe do
     permit(action, schema, subject.actor.type)
   end
 
+  def permit(_action, Domain.Accounts.Account, :account_admin_user), do: :ok
+  def permit(:read, Domain.Accounts.Account, :account_user), do: :ok
+  def permit(:read, Domain.Accounts.Account, :service_account), do: :ok
+  def permit(:read, Domain.Accounts.Account, :api_client), do: :ok
   def permit(_action, Domain.Actors.Actor, :account_admin_user), do: :ok
   def permit(_action, Domain.Actors.Group, :account_admin_user), do: :ok
   def permit(_action, Domain.ExternalIdentity, :account_admin_user), do: :ok

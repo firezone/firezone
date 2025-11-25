@@ -440,7 +440,7 @@ defmodule Web.Clients.Show do
 
     socket =
       socket
-      |> put_flash(:info, "Client was deleted.")
+      |> put_flash(:success, "Client was deleted.")
       |> push_navigate(to: ~p"/#{socket.assigns.account}/clients")
 
     {:noreply, socket}

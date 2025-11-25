@@ -6,14 +6,16 @@ defmodule Domain.Accounts do
 
   def all_active_accounts! do
     Account.Query.not_disabled()
-    |> Repo.all()
+    |> Safe.unscoped()
+    |> Safe.all()
   end
 
   def all_accounts_by_ids!(ids) do
     if Enum.all?(ids, &Repo.valid_uuid?/1) do
       Account.Query.all()
       |> Account.Query.by_id({:in, ids})
-      |> Repo.all()
+      |> Safe.unscoped()
+      |> Safe.all()
     else
       []
     end
@@ -29,7 +31,8 @@ defmodule Domain.Accounts do
     |> Account.Query.by_stripe_product_name(subscription_name)
     |> Account.Query.by_notification_enabled("outdated_gateway")
     |> Account.Query.by_notification_last_notified("outdated_gateway", 24)
-    |> Repo.all()
+    |> Safe.unscoped()
+    |> Safe.all()
   end
 
   # TODO: This will need to be updated once more notifications are available
@@ -37,7 +40,8 @@ defmodule Domain.Accounts do
     Account.Query.not_disabled()
     |> Account.Query.by_notification_enabled("outdated_gateway")
     |> Account.Query.by_notification_last_notified("outdated_gateway", 24)
-    |> Repo.all()
+    |> Safe.unscoped()
+    |> Safe.all()
   end
 
   def fetch_account_by_id(id, %Auth.Subject{} = subject) do
@@ -71,12 +75,14 @@ defmodule Domain.Accounts do
   def fetch_account_by_id!(id) do
     Account.Query.all()
     |> Account.Query.by_id(id)
-    |> Repo.one!()
+    |> Safe.unscoped()
+    |> Safe.one!()
   end
 
   def create_account(attrs) do
     Account.Changeset.create(attrs)
-    |> Repo.insert()
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   def change_account(%Account{} = account, attrs \\ %{}) do
@@ -142,7 +148,7 @@ defmodule Domain.Accounts do
       Account.Query.all()
       |> Account.Query.by_slug(slug_candidate)
 
-    if Repo.exists?(queryable) do
+    if queryable |> Safe.unscoped() |> Safe.exists?() do
       generate_unique_slug()
     else
       slug_candidate

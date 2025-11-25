@@ -63,12 +63,13 @@ defmodule Domain.Relays do
 
   def create_global_group(attrs) do
     Group.Changeset.create(attrs)
-    |> Repo.insert()
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   def change_group(%Group{} = group, attrs \\ %{}) do
     group
-    |> Repo.preload(:account)
+    |> Safe.preload(:account)
     |> Group.Changeset.update(attrs)
   end
 
@@ -81,7 +82,7 @@ defmodule Domain.Relays do
   def update_group(%Group{} = group, attrs, %Auth.Subject{} = subject) do
     changeset =
       group
-      |> Repo.preload(:account)
+      |> Safe.preload(:account)
       |> Group.Changeset.update(attrs, subject)
 
     Safe.scoped(changeset, subject)
@@ -238,7 +239,8 @@ defmodule Domain.Relays do
       |> Relay.Query.global_or_by_account_id(account_id)
       # |> Relay.Query.by_last_seen_at_greater_than(5, "second", :ago)
       |> Relay.Query.prefer_global()
-      |> Repo.all()
+      |> Safe.unscoped()
+      |> Safe.all()
       |> Enum.map(fn relay ->
         %{metas: metas} = Map.get(connected_relays, relay.id)
 
@@ -278,7 +280,7 @@ defmodule Domain.Relays do
       on_conflict: Relay.Changeset.upsert_on_conflict(),
       returning: true
     )
-    |> Repo.transaction()
+    |> Safe.transact()
     |> case do
       {:ok, %{relay: relay}} -> {:ok, relay}
       {:error, :relay, changeset, _effects_so_far} -> {:error, changeset}
