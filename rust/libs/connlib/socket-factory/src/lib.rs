@@ -27,8 +27,8 @@ pub const SEND_BUFFER_SIZE: usize = 16 * ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
 
-#[cfg(any(target_os = "macos", test))]
 /// How many times we at most try to re-send a packet if we encounter ENOBUFS.
+#[cfg(any(target_os = "macos", test))]
 const MAX_ENOBUFS_RETRIES: u32 = 24;
 
 impl<F, S> SocketFactory<S> for F
