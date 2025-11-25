@@ -1,4 +1,4 @@
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, ErrorExt, Result};
 use bufferpool::{Buffer, BufferPool};
 use bytes::{Buf as _, BytesMut};
 use gat_lending_iterator::LendingIterator;
@@ -505,11 +505,13 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
 }
 
 fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
+    let raw_os_error = e.any_downcast_ref::<io::Error>()?.raw_os_error()?;
+
     // On Linux and Android, we retry sending once for os error 5.
     //
     // quinn-udp disables GSO for those but cannot automatically re-send them because we need to split the datagram differently.
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    if is_os_error_5(e) && attempts < 1 {
+    if raw_os_error == libc::EIO && attempts < 1 {
         return Some(Duration::ZERO);
     }
 
@@ -518,7 +520,7 @@ fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
     // Ideally, we would be able to suspend here but MacOS doesn't support that.
     // Thus, we do the next best thing and retry.
     #[cfg(target_os = "macos")]
-    if is_os_error_enobufs(e) && attempts < MAX_ENOBUFS_RETRIES {
+    if raw_os_error == libc::ENOBUFS && attempts < MAX_ENOBUFS_RETRIES {
         return Some(exp_delay(attempts));
     }
 
@@ -528,24 +530,6 @@ fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
 #[cfg(any(target_os = "macos", test))]
 fn exp_delay(attempts: u32) -> Duration {
     Duration::from_nanos(2_u64.pow(attempts))
-}
-
-#[cfg(any(target_os = "linux", target_os = "android"))]
-fn is_os_error_5(e: &anyhow::Error) -> bool {
-    use anyhow::ErrorExt;
-
-    e.any_downcast_ref::<io::Error>()
-        .and_then(|e| e.raw_os_error())
-        .is_some_and(|c| c == libc::EIO)
-}
-
-#[cfg(target_os = "macos")]
-fn is_os_error_enobufs(e: &anyhow::Error) -> bool {
-    use anyhow::ErrorExt;
-
-    e.any_downcast_ref::<io::Error>()
-        .and_then(|e| e.raw_os_error())
-        .is_some_and(|c| c == libc::ENOBUFS)
 }
 
 /// An iterator that segments an array of buffers into individual datagrams.
