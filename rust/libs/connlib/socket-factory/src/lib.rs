@@ -8,6 +8,7 @@ use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
 use std::io;
 use std::io::IoSliceMut;
 use std::ops::Deref;
+use std::time::Duration;
 use std::{
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
@@ -25,6 +26,10 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
 pub const SEND_BUFFER_SIZE: usize = 16 * ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
+
+#[cfg(any(target_os = "macos", test))]
+/// How many times we at most try to re-send a packet if we encounter ENOBUFS.
+const MAX_ENOBUFS_RETRIES: u32 = 24;
 
 impl<F, S> SocketFactory<S> for F
 where
@@ -306,35 +311,21 @@ impl UdpSocket {
             datagram.ecn,
         )?;
 
-        let mut attempts = 0;
+        let mut attempt = 0;
 
         loop {
             match self.send_transmit(&transmit).await {
                 Ok(()) => return Ok(()),
+                Err(e) => {
+                    let backoff = backoff(&e, attempt).ok_or(e)?; // Attempt to get a backoff value or otherwise bail with error.
 
-                // On Linux and Android, we retry sending once for os error 5.
-                //
-                // quinn-udp disables GSO for those but cannot automatically re-send them because we need to split the datagram differently.
-                #[cfg(any(target_os = "linux", target_os = "android"))]
-                Err(e) if is_os_error_5(&e) && attempts < 1 => {}
+                    tracing::debug!("Re");
 
-                // On MacOS, the kernel may return ENOBUFS if the buffer fills up.
-                //
-                // Ideally, we would be able to suspend here but MacOS doesn't support that.
-                // Thus, we do the next best thing and sleep for a tiny amount and retry.
-                #[cfg(target_os = "macos")]
-                Err(e) if is_os_error_enobufs(&e) && attempts < 10 => {
-                    use std::time::Duration;
-
-                    tracing::debug!(%attempts, "Encountered ENOBUFS, retrying");
-                    tokio::time::sleep(Duration::from_millis(1)).await;
+                    tokio::time::sleep(backoff).await;
                 }
-
-                // Any other error or other OS returns the error directly.
-                Err(e) => return Err(e),
             }
 
-            attempts += 1;
+            attempt += 1;
         }
     }
 
@@ -511,6 +502,32 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
         (SocketAddr::V6(expected), SocketAddr::V6(actual)) => expected == actual,
         (SocketAddr::V6(_), SocketAddr::V4(_)) | (SocketAddr::V4(_), SocketAddr::V6(_)) => false,
     }
+}
+
+fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
+    // On Linux and Android, we retry sending once for os error 5.
+    //
+    // quinn-udp disables GSO for those but cannot automatically re-send them because we need to split the datagram differently.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    if is_os_error_5(e) && attempts < 1 {
+        return Some(Duration::ZERO);
+    }
+
+    // On MacOS, the kernel may return ENOBUFS if the buffer fills up.
+    //
+    // Ideally, we would be able to suspend here but MacOS doesn't support that.
+    // Thus, we do the next best thing and retry.
+    #[cfg(target_os = "macos")]
+    if is_os_error_enobufs(e) && attempts < MAX_ENOBUFS_RETRIES {
+        return Some(exp_delay(attempts));
+    }
+
+    None
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn exp_delay(attempts: u32) -> Duration {
+    Duration::from_nanos(2_u64.pow(attempts))
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -734,5 +751,13 @@ mod tests {
         ));
 
         assert!(is_equal_modulo_scope_for_ipv6_link_local(left, right))
+    }
+
+    #[test]
+    fn max_enobufs_delay() {
+        assert_eq!(
+            exp_delay(MAX_ENOBUFS_RETRIES),
+            Duration::from_nanos(16_777_216) // ~16ms
+        )
     }
 }

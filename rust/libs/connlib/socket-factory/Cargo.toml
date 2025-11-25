@@ -14,7 +14,7 @@ ip-packet = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 quinn-udp = { workspace = true }
 socket2 = { workspace = true }
-tokio = { workspace = true, features = ["net"] }
+tokio = { workspace = true, features = ["net", "time"] }
 tracing = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
