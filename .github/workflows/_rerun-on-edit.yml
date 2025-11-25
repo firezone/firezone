@@ -1,0 +1,44 @@
+name: Re-run PR Lint on Edit
+on:
+  pull_request:
+    types: [edited]
+
+jobs:
+  rerun-pr-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-run static-analysis jobs in CI run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          # Find the latest CI workflow run for this PR's head SHA
+          run_id=$(gh run list \
+            --repo "${{ github.repository }}" \
+            --workflow "Continuous Integration" \
+            --branch "$HEAD_REF" \
+            --json databaseId,headSha \
+            --jq ".[] | select(.headSha == \"${{ github.event.pull_request.head.sha }}\") | .databaseId" \
+            | head -1)
+
+          if [ -z "$run_id" ]; then
+            echo "No CI run found for this commit"
+            exit 0
+          fi
+
+          echo "Found CI run: $run_id"
+
+          # Get static-analysis job IDs (pr-lint, global-linter, etc.)
+          job_ids=$(gh api "repos/${{ github.repository }}/actions/runs/$run_id/jobs" \
+            --jq '.jobs[] | select(.name | contains("static-analysis")) | .id')
+
+          if [ -z "$job_ids" ]; then
+            echo "No static-analysis jobs found"
+            exit 0
+          fi
+
+          # Re-run each static-analysis job
+          for job_id in $job_ids; do
+            echo "Re-running job $job_id"
+            gh api --method POST "repos/${{ github.repository }}/actions/jobs/$job_id/rerun"
+          done

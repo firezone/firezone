@@ -2,8 +2,6 @@ name: Continuous Integration
 run-name: Triggered by ${{ github.actor }} on ${{ github.event_name }}
 on:
   pull_request:
-    # Default types + edited (for static analysis, with early exit)
-    types: [opened, synchronize, reopened, edited]
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
@@ -34,13 +32,6 @@ jobs:
           set -e
 
           jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,data-plane-perf";
-
-          # For PR edits (title/description changes), only run static-analysis
-          if [ "${{ github.event.action }}" = "edited" ]; then
-            echo "jobs_to_run=static-analysis" >> "$GITHUB_OUTPUT"
-
-            exit 0;
-          fi
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
