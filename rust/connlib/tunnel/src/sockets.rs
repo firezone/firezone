@@ -1,5 +1,5 @@
 use crate::otel;
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, ErrorExt as _, Result};
 use futures::{SinkExt, ready};
 use gat_lending_iterator::LendingIterator;
 use socket_factory::DatagramOut;
@@ -271,7 +271,7 @@ impl ThreadedUdpSocket {
                             tokio::task::yield_now().await;
 
                             if let Err(e) = socket.send(datagram).await {
-                                if let Some(io) = e.downcast_ref::<io::Error>() {
+                                if let Some(io) = e.any_downcast_ref::<io::Error>() {
                                     io_error_counter.add(
                                         1,
                                         &[
@@ -307,7 +307,7 @@ impl ThreadedUdpSocket {
                         if let Some(io) = result
                             .as_ref()
                             .err()
-                            .and_then(|e| e.downcast_ref::<io::Error>())
+                            .and_then(|e| e.any_downcast_ref::<io::Error>())
                         {
                             io_error_counter.add(
                                 1,

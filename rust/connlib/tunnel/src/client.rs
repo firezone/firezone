@@ -26,7 +26,7 @@ use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
-use anyhow::Context;
+use anyhow::{Context, ErrorExt};
 use connlib_model::{
     GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
@@ -520,7 +520,7 @@ impl ClientState {
             }
             Err(e)
                 if response.transport == dns::Transport::Udp
-                    && e.downcast_ref::<io::Error>()
+                    && e.any_downcast_ref::<io::Error>()
                         .is_some_and(|e| e.kind() == io::ErrorKind::TimedOut) =>
             {
                 tracing::debug!("Recursive UDP DNS query timed out");

@@ -55,7 +55,7 @@ aya-log = { workspace = true }
 ebpf-shared = { workspace = true, features = ["std"] }
 
 [target.'cfg(target_os = "linux")'.build-dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 aya-build = { workspace = true }
 
 [dev-dependencies]

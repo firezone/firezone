@@ -5,7 +5,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, ErrorExt as _, Result};
 use chrono::Utc;
 use connlib_model::{ClientId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
@@ -448,7 +448,7 @@ impl GatewayTunnel {
                             }
                             Err(e) => {
                                 let routing_error = e
-                                    .downcast_ref::<gateway::UnroutablePacket>()
+                                    .any_downcast_ref::<gateway::UnroutablePacket>()
                                     .map(|e| e.reason())
                                     .unwrap_or(gateway::RoutingError::Other);
 

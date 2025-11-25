@@ -15,7 +15,7 @@ use crate::messages::gateway::{Client, ResourceDescription, Subject};
 use crate::messages::{Answer, IceCredentials, ResolveRequest};
 use crate::peer_store::PeerStore;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
-use anyhow::{Context, Result};
+use anyhow::{Context, ErrorExt, Result};
 use boringtun::x25519::{self, PublicKey};
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
@@ -133,7 +133,7 @@ impl GatewayState {
         let encrypted_packet = match self.node.encapsulate(cid, &packet, now) {
             Ok(Some(encrypted_packet)) => encrypted_packet,
             Ok(None) => return Ok(None),
-            Err(e) if e.is::<snownet::UnknownConnection>() => {
+            Err(e) if e.any_is::<snownet::UnknownConnection>() => {
                 return Err(e.context(UnroutablePacket::not_connected(&packet)));
             }
             Err(e) => return Err(e),

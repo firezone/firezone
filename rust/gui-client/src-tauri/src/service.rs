@@ -2,7 +2,7 @@ use crate::{
     ipc::{self, SocketId},
     logging,
 };
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
 use connlib_model::ResourceView;
@@ -399,7 +399,7 @@ impl<'a> Handler<'a> {
                         if let Some(e) = result
                             .as_ref()
                             .err()
-                            .and_then(|e| e.root_cause().downcast_ref::<io::Error>())
+                            .and_then(|e| e.any_downcast_ref::<io::Error>())
                         {
                             tracing::debug!("Still cannot connect to Firezone: {e}");
 
@@ -534,7 +534,7 @@ impl<'a> Handler<'a> {
                 if let Some(e) = result
                     .as_ref()
                     .err()
-                    .and_then(|e| e.root_cause().downcast_ref::<io::Error>())
+                    .and_then(|e| e.any_downcast_ref::<io::Error>())
                 {
                     tracing::debug!(
                         "Encountered IO error when connecting to portal, most likely we don't have Internet: {e}"

@@ -1,5 +1,5 @@
 use crate::PHOENIX_TOPIC;
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::{PublicKey, ResourceView};
 use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::messages::client::{
@@ -88,7 +88,7 @@ impl From<anyhow::Error> for DisconnectError {
 
 impl DisconnectError {
     pub fn is_authentication_error(&self) -> bool {
-        let Some(e) = self.0.downcast_ref::<phoenix_channel::Error>() else {
+        let Some(e) = self.0.any_downcast_ref::<phoenix_channel::Error>() else {
             return false;
         };
 
@@ -308,8 +308,7 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(is_unreachable)
             {
                 tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
@@ -317,16 +316,14 @@ impl Eventloop {
             }
 
             // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
             {
                 tracing::debug!("{e:#}");
                 continue;
             }
 
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
             {
                 if !mem::replace(&mut self.logged_permission_denied, true) {
@@ -338,9 +335,7 @@ impl Eventloop {
                 continue;
             }
 
-            if e.root_cause()
-                .is::<firezone_tunnel::UdpSocketThreadStopped>()
-            {
+            if e.any_is::<firezone_tunnel::UdpSocketThreadStopped>() {
                 return Err(e);
             }
 
