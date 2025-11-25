@@ -28,7 +28,7 @@ pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
 
 /// How many times we at most try to re-send a packet if we encounter ENOBUFS.
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "ios", test))]
 const MAX_ENOBUFS_RETRIES: u32 = 24;
 
 impl<F, S> SocketFactory<S> for F
@@ -505,7 +505,12 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
 }
 
 #[cfg_attr(
-    not(any(target_os = "linux", target_os = "android", target_os = "macos")),
+    not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "ios"
+    )),
     expect(unused_variables, reason = "No backoff strategy for other platforms")
 )]
 fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
@@ -523,7 +528,7 @@ fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
     //
     // Ideally, we would be able to suspend here but MacOS doesn't support that.
     // Thus, we do the next best thing and retry.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     if raw_os_error == libc::ENOBUFS && attempts < MAX_ENOBUFS_RETRIES {
         return Some(exp_delay(attempts));
     }
@@ -531,7 +536,7 @@ fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
     None
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "ios", test))]
 fn exp_delay(attempts: u32) -> Duration {
     Duration::from_nanos(2_u64.pow(attempts))
 }
@@ -770,7 +775,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn at_most_24_retries_of_enobufs() {
         let err = anyhow::Error::new(io::Error::from_raw_os_error(libc::ENOBUFS));
 
