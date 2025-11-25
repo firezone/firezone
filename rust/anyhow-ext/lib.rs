@@ -10,6 +10,10 @@ pub trait ErrorExt {
 }
 
 impl ErrorExt for anyhow::Error {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "We are implementing the alternative."
+    )]
     fn any_is<T>(&self) -> bool
     where
         T: std::error::Error + Send + Sync + 'static,
@@ -17,6 +21,10 @@ impl ErrorExt for anyhow::Error {
         self.is::<T>() || self.chain().any(|e| e.is::<T>())
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "We are implementing the alternative."
+    )]
     fn any_downcast_ref<T>(&self) -> Option<&T>
     where
         T: std::error::Error + Send + Sync + 'static,
