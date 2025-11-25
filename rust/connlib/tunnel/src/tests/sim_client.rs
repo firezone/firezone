@@ -716,24 +716,8 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn expected_resource_status(
-        &self,
-        has_failed_tcp_connection: impl Fn((SPort, DPort)) -> bool,
-    ) -> (BTreeMap<ResourceId, ResourceStatus>, BTreeSet<ResourceId>) {
-        let resources_with_failed_tcp_connections = self
-            .expected_tcp_connections
-            .iter()
-            .filter(|((_, _, sport, dport), _)| has_failed_tcp_connection((*sport, *dport)))
-            .filter_map(|(_, resource)| self.site_for_resource(*resource))
-            .flat_map(|site| {
-                self.resources
-                    .iter()
-                    .filter_map(move |r| r.sites().contains(&site).then_some(r.id()))
-            })
-            .collect();
-
-        let resource_status = self
-            .resources
+    pub(crate) fn expected_resource_status(&self) -> BTreeMap<ResourceId, ResourceStatus> {
+        self.resources
             .iter()
             .filter_map(|r| {
                 let status = self
@@ -744,9 +728,32 @@ impl RefClient {
 
                 Some((r.id(), status))
             })
-            .collect();
+            .collect()
+    }
 
-        (resource_status, resources_with_failed_tcp_connections)
+    /// Returns the list of resources where we are not "sure" whether they are online or unknown.
+    ///
+    /// Resources with TCP connections have an automatic retry and therefore, modelling their exact online/unknown state is difficult.
+    pub(crate) fn maybe_online_resources(&self) -> BTreeSet<ResourceId> {
+        let resources_with_tcp_connections = self
+            .expected_tcp_connections
+            .values()
+            .copied()
+            .collect::<BTreeSet<_>>();
+
+        let maybe_online_sites = resources_with_tcp_connections
+            .into_iter()
+            .flat_map(|r| self.site_for_resource(r))
+            .collect::<BTreeSet<_>>();
+
+        self.resources
+            .iter()
+            .filter_map(move |r| {
+                maybe_online_sites
+                    .contains(r.site().unwrap())
+                    .then_some(r.id())
+            })
+            .collect()
     }
 
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {
