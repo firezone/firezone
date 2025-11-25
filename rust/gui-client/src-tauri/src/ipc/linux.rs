@@ -1,6 +1,6 @@
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::BUNDLE_ID;
+use bin_shared::BUNDLE_ID;
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
@@ -100,11 +100,11 @@ impl Server {
 fn ipc_path(id: SocketId) -> PathBuf {
     match id {
         SocketId::Tunnel => PathBuf::from("/run").join(BUNDLE_ID).join("tunnel.sock"),
-        SocketId::Gui => firezone_bin_shared::known_dirs::runtime()
+        SocketId::Gui => bin_shared::known_dirs::runtime()
             .expect("`known_dirs::runtime()` should always work")
             .join("gui.sock"),
         #[cfg(test)]
-        SocketId::Test(id) => firezone_bin_shared::known_dirs::runtime()
+        SocketId::Test(id) => bin_shared::known_dirs::runtime()
             .expect("`known_dirs::runtime()` should always work")
             .join(format!("ipc_test_{id}.sock")),
     }

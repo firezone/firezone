@@ -3,22 +3,22 @@
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
-use clap::Parser;
-use firezone_bin_shared::{
+use bin_shared::{
     TunDeviceManager, device_id, http_health_check,
     platform::{UdpSocketFactory, tcp_socket_factory},
 };
+use clap::Parser;
 
-use firezone_telemetry::{
-    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
-};
-use firezone_tunnel::GatewayTunnel;
 use hickory_resolver::config::ResolveHosts;
 use ip_packet::IpPacket;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
+use telemetry::{
+    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
+};
+use tunnel::GatewayTunnel;
 
 use phoenix_channel::PhoenixChannel;
 use secrecy::{ExposeSecret, SecretBox, SecretString};
@@ -90,7 +90,7 @@ fn has_necessary_permissions() -> bool {
 }
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
-    firezone_logging::setup_global_subscriber(
+    logging::setup_global_subscriber(
         layer::Identity::default(),
         match cli.log_format {
             LogFormat::Json => true,
@@ -103,7 +103,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
-        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         "`gateway` started logging"
     );
 
@@ -138,7 +138,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
             .start(
                 cli.api_url.as_str(),
                 RELEASE,
-                firezone_telemetry::GATEWAY_DSN,
+                telemetry::GATEWAY_DSN,
                 firezone_id.clone(),
             )
             .await;
