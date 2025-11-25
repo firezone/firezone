@@ -1301,7 +1301,7 @@ name = "client-ffi"
 version = "0.1.0"
 dependencies = [
  "android_log-sys",
- "anyhow",
+ "anyhow-ext",
  "backoff",
  "client-shared",
  "connlib-model",
@@ -1335,7 +1335,7 @@ dependencies = [
 name = "client-shared"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "backoff",
  "bimap",
  "chrono",
@@ -2051,7 +2051,7 @@ dependencies = [
 name = "dns-over-tcp"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "dns-types",
  "firezone-bin-shared",
  "firezone-logging",
@@ -2360,7 +2360,7 @@ dependencies = [
 name = "firezone-bin-shared"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "atomicwrites",
  "axum",
  "bufferpool",
@@ -2413,7 +2413,7 @@ dependencies = [
 name = "firezone-cli"
 version = "1.0.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "clap",
  "nix 0.30.1",
  "rpassword",
@@ -2426,7 +2426,7 @@ dependencies = [
 name = "firezone-gateway"
 version = "1.4.19"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "backoff",
  "boringtun",
  "caps",
@@ -2476,7 +2476,7 @@ name = "firezone-gui-client"
 version = "1.5.9"
 dependencies = [
  "admx-macro",
- "anyhow",
+ "anyhow-ext",
  "arboard",
  "atomicwrites",
  "backoff",
@@ -2544,7 +2544,7 @@ dependencies = [
 name = "firezone-headless-client"
 version = "1.5.5"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "backoff",
  "clap",
  "client-shared",
@@ -2579,7 +2579,7 @@ dependencies = [
 name = "firezone-logging"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "firezone-telemetry",
  "nu-ansi-term",
  "output_vt100",
@@ -2599,7 +2599,7 @@ dependencies = [
 name = "firezone-relay"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "axum",
  "aya",
  "aya-build",
@@ -2651,7 +2651,7 @@ dependencies = [
 name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "flume",
  "futures",
  "hex",
@@ -2676,7 +2676,7 @@ dependencies = [
 name = "firezone-tunnel"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "base64 0.22.1",
  "bimap",
  "boringtun",
@@ -3301,7 +3301,7 @@ dependencies = [
 name = "gui-smoke-test"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "clap",
  "subprocess",
  "tracing",
@@ -3562,7 +3562,7 @@ dependencies = [
 name = "http-client"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "bytes",
  "futures",
  "http 1.3.1",
@@ -3584,7 +3584,7 @@ dependencies = [
 name = "http-test-server"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "axum",
  "futures",
  "serde",
@@ -3916,7 +3916,7 @@ dependencies = [
 name = "ip-packet"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "arbitrary",
  "bufferpool",
  "etherparse",
@@ -4172,7 +4172,7 @@ dependencies = [
 name = "l3-tcp"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "ip-packet",
  "smoltcp",
  "tracing",
@@ -4182,7 +4182,7 @@ dependencies = [
 name = "l3-udp-dns-client"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "dns-types",
  "ip-packet",
  "rand 0.8.5",
@@ -4193,7 +4193,7 @@ dependencies = [
 name = "l4-tcp-dns-server"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "dns-types",
  "futures",
  "tokio",
@@ -4204,7 +4204,7 @@ dependencies = [
 name = "l4-udp-dns-client"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "dns-types",
  "futures",
  "socket-factory",
@@ -4216,7 +4216,7 @@ dependencies = [
 name = "l4-udp-dns-server"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "dns-types",
  "futures",
  "tokio",
@@ -5500,7 +5500,7 @@ dependencies = [
 name = "phoenix-channel"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "backoff",
  "base64 0.22.1",
  "firezone-logging",
@@ -7080,7 +7080,7 @@ dependencies = [
 name = "snownet"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "bnum",
  "boringtun",
  "bufferpool",
@@ -7107,7 +7107,7 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "bufferpool",
  "bytes",
  "derive_more 2.0.1",
@@ -8541,7 +8541,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 name = "tun"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "ip-packet",
  "libc",
  "tokio",
