@@ -8,7 +8,7 @@ use crate::{
     updates, uptime,
     view::{GeneralSettingsForm, SessionViewModel},
 };
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
 use connlib_model::ResourceView;
 use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
@@ -669,8 +669,7 @@ impl<I: GuiIntegration> Controller<I> {
                 Ok(()) => {}
                 Err(error)
                     if error
-                        .root_cause()
-                        .downcast_ref::<auth::Error>()
+                        .any_downcast_ref::<auth::Error>()
                         .is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) =>
                 {
                     tracing::debug!("Ignoring deep-link; no local state");
