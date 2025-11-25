@@ -760,4 +760,33 @@ mod tests {
             Duration::from_nanos(16_777_216) // ~16ms
         )
     }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn immediate_retry_of_os_error_5() {
+        let err = anyhow::Error::new(io::Error::from_raw_os_error(libc::EIO));
+
+        let backoff = backoff(&err, 0);
+
+        assert_eq!(backoff.unwrap(), Duration::ZERO);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn only_one_retry_of_os_error_5() {
+        let err = anyhow::Error::new(io::Error::from_raw_os_error(libc::EIO));
+
+        let backoff = backoff(&err, 1);
+
+        assert!(backoff.is_none());
+    }
+
+    #[test]
+    // #[cfg(target_os = "macos")]
+    fn at_most_24_retries_of_enobufs() {
+        let err = anyhow::Error::new(io::Error::from_raw_os_error(libc::ENOBUFS));
+
+        assert!(backoff(&err, 23).is_some());
+        assert!(backoff(&err, 24).is_none());
+    }
 }
