@@ -504,6 +504,10 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
     }
 }
 
+#[cfg_attr(
+    not(any(target_os = "linux", target_os = "android", target_os = "macos")),
+    expect(unused_variables, reason = "No backoff strategy for other platforms")
+)]
 fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
     let raw_os_error = e.any_downcast_ref::<io::Error>()?.raw_os_error()?;
 
