@@ -1,12 +1,12 @@
 [workspace]
 members = [
-    "libs/anyhow-ext",
     "cli",
     "client-ffi",
     "gateway",
     "gui-client/src-admx-macro",
     "gui-client/src-tauri",
     "headless-client",
+    "libs/anyhow-ext",
     "libs/bin-shared",
     "libs/client-shared",
     "libs/connlib/bufferpool",
