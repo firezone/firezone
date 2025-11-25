@@ -319,7 +319,7 @@ impl UdpSocket {
                 Err(e) => {
                     let backoff = backoff(&e, attempt).ok_or(e)?; // Attempt to get a backoff value or otherwise bail with error.
 
-                    tracing::debug!("Re");
+                    tracing::debug!(?backoff, dst = %datagram.dst, len = %datagram.packet.len(), "Retrying packet");
 
                     tokio::time::sleep(backoff).await;
                 }
