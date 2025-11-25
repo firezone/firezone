@@ -318,6 +318,18 @@ impl UdpSocket {
                 #[cfg(any(target_os = "linux", target_os = "android"))]
                 Err(e) if is_os_error_5(&e) && attempts < 1 => {}
 
+                // On MacOS, the kernel may return ENOBUFS if the buffer fills up.
+                //
+                // Ideally, we would be able to suspend here but MacOS doesn't support that.
+                // Thus, we do the next best thing and sleep for a tiny amount and retry.
+                #[cfg(target_os = "macos")]
+                Err(e) if is_os_error_enobufs(&e) && attempts < 10 => {
+                    use std::time::Duration;
+
+                    tracing::debug!(%attempts, "Encountered ENOBUFS, retrying");
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+
                 // Any other error or other OS returns the error directly.
                 Err(e) => return Err(e),
             }
@@ -508,6 +520,15 @@ fn is_os_error_5(e: &anyhow::Error) -> bool {
     e.any_downcast_ref::<io::Error>()
         .and_then(|e| e.raw_os_error())
         .is_some_and(|c| c == libc::EIO)
+}
+
+#[cfg(target_os = "macos")]
+fn is_os_error_enobufs(e: &anyhow::Error) -> bool {
+    use anyhow::ErrorExt;
+
+    e.any_downcast_ref::<io::Error>()
+        .and_then(|e| e.raw_os_error())
+        .is_some_and(|c| c == libc::ENOBUFS)
 }
 
 /// An iterator that segments an array of buffers into individual datagrams.
