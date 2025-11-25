@@ -306,21 +306,23 @@ impl UdpSocket {
             datagram.ecn,
         )?;
 
-        match self.send_transmit(&transmit).await {
-            Ok(()) => Ok(()),
+        let mut attempts = 0;
 
-            // On Linux and Android, we retry sending once for os error 5.
-            //
-            // quinn-udp disables GSO for those but cannot automatically re-send them because we need to split the datagram differently.
-            #[cfg(any(target_os = "linux", target_os = "android"))]
-            Err(e) if is_os_error_5(&e) => {
-                self.send_transmit(&transmit).await?;
+        loop {
+            match self.send_transmit(&transmit).await {
+                Ok(()) => return Ok(()),
 
-                Ok(())
+                // On Linux and Android, we retry sending once for os error 5.
+                //
+                // quinn-udp disables GSO for those but cannot automatically re-send them because we need to split the datagram differently.
+                #[cfg(any(target_os = "linux", target_os = "android"))]
+                Err(e) if is_os_error_5(&e) && attempts < 1 => {}
+
+                // Any other error or other OS returns the error directly.
+                Err(e) => return Err(e),
             }
 
-            // Any other error or other OS returns the error directly.
-            Err(e) => Err(e),
+            attempts += 1;
         }
     }
 
