@@ -366,24 +366,7 @@ impl UdpSocket {
             );
 
             self.inner
-                .async_io(Interest::WRITABLE, || {
-                    match self.state.try_send((&self.inner).into(), &chunk) {
-                        Ok(()) => Ok(()),
-                        #[cfg(target_os = "macos")]
-                        Err(e)
-                            if e.raw_os_error().is_some_and(|e| e == libc::ENOBUFS)
-                                && telemetry::feature_flags::map_enobufs_to_would_block() =>
-                        {
-                            telemetry::analytics::feature_flag_called(
-                                "map-enobufs-to-wouldblock",
-                            );
-                            tracing::debug!("Encountered ENOBUFS, treating as WouldBlock");
-
-                            Err(io::Error::from(io::ErrorKind::WouldBlock))
-                        }
-                        Err(e) => Err(e),
-                    }
-                })
+                .async_io(Interest::WRITABLE, || self.state.try_send((&self.inner).into(), &chunk))
                 .await
                 .with_context(|| format!("Failed to send datagram-batch {batch_num}/{num_batches} with segment_size {segment_size} and total length {num_bytes} to {dst}"))?;
         }
