@@ -1,4 +1,4 @@
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, ErrorExt, Result};
 use boringtun::x25519::PublicKey;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
@@ -288,8 +288,7 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(is_unreachable)
             {
                 tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
@@ -297,16 +296,14 @@ impl Eventloop {
             }
 
             // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
             {
                 tracing::debug!("{e:#}");
                 continue;
             }
 
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
             {
                 if !mem::replace(&mut self.logged_permission_denied, true) {
@@ -318,20 +315,18 @@ impl Eventloop {
                 continue;
             }
 
-            if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
+            if e.any_is::<ip_packet::ImpossibleTranslation>() {
                 // Some IP packets cannot be translated and should be dropped "silently".
                 // Do so by ignoring the error here.
                 continue;
             }
 
-            if let Some(e) = e.downcast_ref::<firezone_tunnel::UnroutablePacket>() {
+            if let Some(e) = e.any_downcast_ref::<firezone_tunnel::UnroutablePacket>() {
                 tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
                 continue;
             }
 
-            if e.root_cause()
-                .is::<firezone_tunnel::UdpSocketThreadStopped>()
-            {
+            if e.any_is::<firezone_tunnel::UdpSocketThreadStopped>() {
                 return Err(e);
             }
 

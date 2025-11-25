@@ -5,7 +5,7 @@ mod tcp_dns;
 mod udp_dns;
 
 use crate::{TunnelError, device_channel::Device, dns, otel, sockets::Sockets};
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, ErrorExt, Result};
 use chrono::{DateTime, Utc};
 use dns_types::DoHUrl;
 use futures::FutureExt as _;
@@ -361,7 +361,7 @@ impl Io {
         if let Poll::Ready(response) = &dns_response
             && let dns::Upstream::DoH { server } = &response.server
             && let Err(e) = &response.message
-            && e.is::<http_client::Closed>()
+            && e.any_is::<http_client::Closed>()
         {
             tracing::debug!(%server, "Connection of DoH client failed");
 

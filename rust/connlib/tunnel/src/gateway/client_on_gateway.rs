@@ -1024,6 +1024,7 @@ mod tests {
         now += nat_table::UDP_TTL;
         peer.handle_timeout(now);
 
+        #[expect(clippy::disallowed_methods, reason = "This is a test.")]
         let err = peer
             .translate_inbound(response, now)
             .unwrap_err()

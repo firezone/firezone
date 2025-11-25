@@ -1,4 +1,4 @@
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, ErrorExt, Result, bail};
 use ip_packet::{IpPacket, IpPacketBuf};
 use std::io;
 use std::os::fd::AsRawFd;
@@ -80,7 +80,7 @@ where
                             break;
                         };
                     }
-                    Err(e) if e.root_cause().is::<ip_packet::Fragmented>() => {
+                    Err(e) if e.any_is::<ip_packet::Fragmented>() => {
                         tracing::debug!("{e:#}"); // Log on debug to be less noisy.
                         continue;
                     }
@@ -109,6 +109,6 @@ mod tests {
 
         let final_error = anyhow::Error::new(io_error).context("Failed to read from TUN fd");
 
-        assert!(final_error.root_cause().is::<ip_packet::Fragmented>())
+        assert!(final_error.any_is::<ip_packet::Fragmented>())
     }
 }

@@ -484,6 +484,7 @@ mod tests {
         (id, idx, key)
     }
 
+    #[expect(clippy::disallowed_methods, reason = "This is a test.")]
     fn assert_disconnected(
         connections: &mut Connections<u32, u32>,
         id: u32,
