@@ -48,7 +48,7 @@ export default function Apple() {
           dropped.
         </ChangeItem>
         <ChangeItem pull="10965">
-          Fixes an issue where some packets would get dropped on high-througput.
+          Fixes an issue where some packets would get dropped under high throughput scenarios.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.9" date={new Date("2025-10-20")}>
