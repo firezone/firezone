@@ -766,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    // #[cfg(target_os = "macos")]
+    #[cfg(target_os = "macos")]
     fn at_most_24_retries_of_enobufs() {
         let err = anyhow::Error::new(io::Error::from_raw_os_error(libc::ENOBUFS));
 
