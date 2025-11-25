@@ -2,16 +2,15 @@
 
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
+use bin_shared::{http_health_check, signals};
 use clap::Parser;
-use firezone_bin_shared::{http_health_check, signals};
-use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
     Sleep, VERSION, control_endpoint, ebpf, sockets,
 };
-use firezone_telemetry::{RELAY_DSN, Telemetry};
 use futures::{FutureExt, future};
+use logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -23,6 +22,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
 use stun_codec::rfc5766::attributes::ChannelNumber;
+use telemetry::{RELAY_DSN, Telemetry};
 use tracing::Subscriber;
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
@@ -111,7 +111,7 @@ struct Args {
     control_endpoint: SocketAddr,
 
     /// Enable sentry.io crash-reporting agent.
-    #[arg(long, env = "FIREZONE_TELEMETRY", default_value_t = false)]
+    #[arg(long, env = "TELEMETRY", default_value_t = false)]
     telemetry: bool,
 }
 
@@ -288,7 +288,7 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
     let (dispatch, reload_handle) = match args.otlp_grpc_endpoint.clone() {
         None => {
-            let (filter, reload_handle) = firezone_logging::try_filter(&directives)?;
+            let (filter, reload_handle) = logging::try_filter(&directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
                 .with(log_layer(args).with_filter(filter))
@@ -333,8 +333,8 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
             tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
 
-            let (log_filter, log_reload_handle) = firezone_logging::try_filter(&directives)?;
-            let (otel_filter, otel_reload_handle) = firezone_logging::try_filter(&directives)?;
+            let (log_filter, log_reload_handle) = logging::try_filter(&directives)?;
+            let (otel_filter, otel_reload_handle) = logging::try_filter(&directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
                 .with(log_layer(args).with_filter(log_filter))
@@ -372,7 +372,7 @@ where
 {
     match (args.log_format, args.google_cloud_project_id.clone()) {
         (LogFormat::Human, _) => tracing_subscriber::fmt::layer()
-            .with_ansi(firezone_logging::stdout_supports_ansi())
+            .with_ansi(logging::stdout_supports_ansi())
             .boxed(),
         (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
         (LogFormat::GoogleCloud, None) => {

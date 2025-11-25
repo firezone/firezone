@@ -1,0 +1,27 @@
+[package]
+name = "dns-over-tcp"
+version = "0.1.0"
+edition = { workspace = true }
+description = "User-space implementation of DNS over TCP."
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+dns-types = { workspace = true }
+ip-packet = { workspace = true }
+l3-tcp = { workspace = true }
+logging = { workspace = true }
+rand = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+futures = { workspace = true }
+tokio = { workspace = true, features = ["process", "rt", "macros"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+bin-shared = { workspace = true }
+ip_network = { workspace = true }
+tun = { workspace = true }
+
+[lints]
+workspace = true

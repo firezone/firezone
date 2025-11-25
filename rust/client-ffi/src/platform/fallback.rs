@@ -1,12 +1,12 @@
 use std::{io, os::fd::RawFd, time::Duration};
 
-use firezone_telemetry::Dsn;
+use telemetry::Dsn;
 
 pub const RELEASE: &str = "";
 pub const VERSION: &str = "";
 pub const COMPONENT: &str = "";
 
-pub const DSN: Dsn = firezone_telemetry::TESTING;
+pub const DSN: Dsn = telemetry::TESTING;
 
 pub const MAX_PARTITION_TIME: Duration = Duration::ZERO;
 

@@ -26,22 +26,20 @@ depends = 'iptables,systemd'
 [dependencies]
 anyhow = { workspace = true }
 backoff = { workspace = true }
+bin-shared = { workspace = true }
 boringtun = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 either = { workspace = true }
-firezone-bin-shared = { workspace = true }
-firezone-logging = { workspace = true }
-firezone-telemetry = { workspace = true }
-firezone-tunnel = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 libc = { workspace = true, features = ["std", "const-extern-fn", "extra_traits"] }
+logging = { workspace = true }
 moka = { workspace = true, features = ["future"] }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
@@ -55,11 +53,13 @@ serde = { workspace = true, features = ["std", "derive"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 static_assertions = { workspace = true }
+telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros", "fs", "signal", "rt"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tun = { workspace = true }
+tunnel = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 

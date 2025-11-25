@@ -2,8 +2,8 @@
 //! advanced settings and code for manipulating diagnostic logs.
 
 use anyhow::{Context as _, Result};
+use bin_shared::known_dirs;
 use connlib_model::ResourceId;
-use firezone_bin_shared::known_dirs;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, path::PathBuf};

@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use firezone_bin_shared::DnsControlMethod;
+use bin_shared::DnsControlMethod;
 use std::path::PathBuf;
 
 pub fn run(log_dir: Option<PathBuf>, _dns_control: DnsControlMethod) -> Result<()> {

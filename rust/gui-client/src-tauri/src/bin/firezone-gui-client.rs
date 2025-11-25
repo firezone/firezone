@@ -10,15 +10,15 @@ use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
-use firezone_telemetry::Telemetry;
 use settings::AdvancedSettingsLegacy;
+use telemetry::Telemetry;
 use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
 
 fn main() -> ExitCode {
     let mut bootstrap_log_guard =
-        Some(firezone_logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
+        Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
 
     let cli = Cli::parse();
 
@@ -79,13 +79,13 @@ fn try_main(
 
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
     // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
-    let id = firezone_bin_shared::device_id::get_client().context("Failed to get device ID")?;
+    let id = bin_shared::device_id::get_client().context("Failed to get device ID")?;
 
     if cli.is_telemetry_allowed() {
         rt.block_on(telemetry.start(
             &api_url,
             firezone_gui_client::RELEASE,
-            firezone_telemetry::GUI_DSN,
+            telemetry::GUI_DSN,
             id.id,
         ));
     }

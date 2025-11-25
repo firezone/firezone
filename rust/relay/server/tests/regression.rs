@@ -28,7 +28,7 @@ fn can_answer_stun_request_from_ip4_address(
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
 ) {
-    let _guard = firezone_logging::test("debug");
+    let _guard = logging::test("debug");
     let mut server = TestServer::new(public_relay_addr);
 
     let transaction_id = request.transaction_id();
@@ -319,7 +319,7 @@ fn freeing_allocation_clears_all_channels(
 ) {
     let now = Instant::now();
 
-    let _guard = firezone_logging::test("debug");
+    let _guard = logging::test("debug");
 
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret().to_owned();
@@ -391,7 +391,7 @@ fn ping_pong_relay(
 ) {
     let now = Instant::now();
 
-    let _guard = firezone_logging::test("debug");
+    let _guard = logging::test("debug");
 
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret().to_owned();
@@ -502,7 +502,7 @@ fn allows_rebind_channel_after_expiry(
 ) {
     let now = Instant::now();
 
-    let _guard = firezone_logging::test("debug");
+    let _guard = logging::test("debug");
 
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret().to_owned();
@@ -625,7 +625,7 @@ fn ping_pong_ip6_relay(
 ) {
     let now = Instant::now();
 
-    let _guard = firezone_logging::test("debug");
+    let _guard = logging::test("debug");
 
     let mut server =
         TestServer::new((public_relay_ip4_addr, public_relay_ip6_addr)).with_nonce(nonce);

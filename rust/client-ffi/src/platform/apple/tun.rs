@@ -1,4 +1,3 @@
-use firezone_telemetry::otel;
 use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
 use libc::{AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK, fcntl, iovec, msghdr, recvmsg};
@@ -7,6 +6,7 @@ use std::{
     io,
     os::fd::{AsRawFd as _, RawFd},
 };
+use telemetry::otel;
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 
@@ -62,7 +62,7 @@ impl Tun {
         std::thread::Builder::new()
             .name("TUN send".to_owned())
             .spawn(move || {
-                firezone_logging::unwrap_or_warn!(
+                logging::unwrap_or_warn!(
                     tun::unix::tun_send(fd, outbound_rx, write),
                     "Failed to send to TUN device: {}"
                 )
@@ -71,7 +71,7 @@ impl Tun {
         std::thread::Builder::new()
             .name("TUN recv".to_owned())
             .spawn(move || {
-                firezone_logging::unwrap_or_warn!(
+                logging::unwrap_or_warn!(
                     tun::unix::tun_recv(fd, inbound_tx, read),
                     "Failed to recv from TUN device: {}"
                 )

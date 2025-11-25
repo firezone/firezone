@@ -205,7 +205,7 @@ impl Checker {
 }
 
 fn version_file_path() -> Result<PathBuf> {
-    Ok(firezone_bin_shared::known_dirs::session()
+    Ok(bin_shared::known_dirs::session()
         .context("Couldn't find session dir")?
         .join("latest_version_seen.txt"))
 }

@@ -1,8 +1,8 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
 use anyhow::{Context, Result};
-use firezone_bin_shared::known_dirs;
-use firezone_logging::err_with_src;
+use bin_shared::known_dirs;
+use logging::err_with_src;
 use rand::{RngCore, thread_rng};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
