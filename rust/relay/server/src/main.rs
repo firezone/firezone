@@ -769,10 +769,10 @@ fn fmt_human_throughput(mut throughput: f64) -> String {
 fn make_is_healthy(
     last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
 ) -> impl Fn() -> bool + Clone + Send + Sync + 'static {
-    move || is_healthy(last_heartbeat_sent.clone())
+    move || is_healthy(Instant::now(), last_heartbeat_sent.clone())
 }
 
-fn is_healthy(last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
+fn is_healthy(now: Instant, last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
     let guard = last_heartbeat_sent
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -781,7 +781,7 @@ fn is_healthy(last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
         return true; // If we are not connected to the portal, we are always healthy.
     };
 
-    last_hearbeat_sent.elapsed() < MAX_PARTITION_TIME
+    now.duration_since(last_hearbeat_sent) < MAX_PARTITION_TIME
 }
 
 fn make_otel_metadata() -> opentelemetry_sdk::Resource {
@@ -814,25 +814,31 @@ mod tests {
     // If we are running in standalone mode, we are always healthy.
     #[test]
     fn given_no_heartbeat_is_healthy() {
-        let is_healthy = is_healthy(Arc::new(Mutex::new(None)));
+        let is_healthy = is_healthy(Instant::now(), Arc::new(Mutex::new(None)));
 
         assert!(is_healthy)
     }
 
     #[test]
     fn given_heartbeat_in_last_15_min_is_healthy() {
-        let is_healthy = is_healthy(Arc::new(Mutex::new(Some(
-            Instant::now() - Duration::from_secs(10),
-        ))));
+        let now = Instant::now() + Duration::from_hours(1);
+
+        let is_healthy = is_healthy(
+            now,
+            Arc::new(Mutex::new(Some(now - Duration::from_secs(10)))),
+        );
 
         assert!(is_healthy)
     }
 
     #[test]
     fn given_last_heartbeat_older_than_15_min_is_not_healthy() {
-        let is_healthy = is_healthy(Arc::new(Mutex::new(Some(
-            Instant::now() - Duration::from_secs(60 * 15),
-        ))));
+        let now = Instant::now() + Duration::from_hours(1); // Advance to the future to avoid underflow.
+
+        let is_healthy = is_healthy(
+            now,
+            Arc::new(Mutex::new(Some(now - Duration::from_secs(60 * 15)))),
+        );
 
         assert!(!is_healthy)
     }
