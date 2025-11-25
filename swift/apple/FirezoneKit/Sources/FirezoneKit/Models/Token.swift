@@ -15,14 +15,14 @@ public struct Token: CustomStringConvertible {
     private static let label = "Firezone token"
   #endif
 
-  /// Thread-safe: Immutable dictionary initialised at compile time.
-  /// CFString keys and constant string values are both Sendable.
-  private nonisolated(unsafe) static let query: [CFString: Any] = [
-    kSecAttrLabel: "Firezone token",
-    kSecAttrAccount: "1",
-    kSecAttrService: BundleHelper.appGroupId,
-    kSecAttrDescription: "Firezone access token",
-  ]
+  private static var query: [CFString: Any] {
+    [
+      kSecAttrLabel: label,
+      kSecAttrAccount: "1",
+      kSecAttrService: BundleHelper.appGroupId,
+      kSecAttrDescription: "Firezone access token",
+    ]
+  }
 
   private var data: Data
 
