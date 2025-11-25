@@ -340,59 +340,129 @@ defmodule Web.OIDCController do
     end
 
     def upsert_identity(account_id, email, email_verified, issuer, idp_id, profile_attrs) do
-      profile_fields =
-        ~w[email name given_name family_name middle_name nickname preferred_username profile picture]
+      now = DateTime.utc_now()
 
-      profile_values = Enum.map(profile_fields, &Map.get(profile_attrs, &1))
-      update_set = Enum.map_join(profile_fields, ", ", &"#{&1} = EXCLUDED.#{&1}")
-      insert_fields = Enum.join(profile_fields, ", ")
-      value_placeholders = Enum.map_join(6..(5 + length(profile_fields)), ", ", &"$#{&1}")
+      profile_fields = [
+        :email,
+        :name,
+        :given_name,
+        :family_name,
+        :middle_name,
+        :nickname,
+        :preferred_username,
+        :profile,
+        :picture
+      ]
 
-      query = """
-      WITH actor_lookup AS (
-        SELECT id FROM actors
-        WHERE account_id = $1 AND email = $2 AND disabled_at IS NULL AND $3 = true
-        LIMIT 1
-      ),
-      existing_identity AS (
-        SELECT ei.actor_id
-        FROM external_identities ei
-        JOIN actors a ON a.id = ei.actor_id
-        WHERE ei.account_id = $1 AND ei.issuer = $4 AND ei.idp_id = $5
-          AND a.disabled_at IS NULL
-        LIMIT 1
-      )
-      INSERT INTO external_identities (
-        id, account_id, issuer, idp_id, actor_id,
-        #{insert_fields},
-        inserted_at
-      )
-      SELECT uuid_generate_v4(), $1, $4, $5,
-             COALESCE(actor_lookup.id, existing_identity.actor_id),
-             #{value_placeholders}, $15
-      FROM (SELECT 1) AS dummy
-      LEFT JOIN actor_lookup ON true
-      LEFT JOIN existing_identity ON true
-      WHERE actor_lookup.id IS NOT NULL OR existing_identity.actor_id IS NOT NULL
-      ON CONFLICT (account_id, idp_id, issuer)
-      DO UPDATE SET #{update_set}
-      RETURNING *
-      """
+      # Convert account_id to the DB (binary) format expected by uuid/binary_id columns
+      account_id_db =
+        case account_id do
+          # already a 16-byte binary
+          <<_::128>> -> account_id
+          # string UUID -> dump to binary
+          _ -> Ecto.UUID.dump!(account_id)
+        end
 
-      params =
-        [Ecto.UUID.dump!(account_id), email, email_verified, issuer, idp_id] ++
-          profile_values ++ [DateTime.utc_now()]
+      # Ensure profile_attrs is at least an empty map
+      profile_attrs = profile_attrs || %{}
 
-      case Safe.unscoped() |> Safe.query(query, params) do
-        {:ok, %{rows: [row], columns: cols}} ->
-          identity = Safe.load(ExternalIdentity, {cols, row})
-          {:ok, Safe.preload(identity, [:actor, :account])}
+      # Precompute profile values outside the query
+      profile_values = %{
+        email: Map.get(profile_attrs, "email"),
+        name: Map.get(profile_attrs, "name"),
+        given_name: Map.get(profile_attrs, "given_name"),
+        family_name: Map.get(profile_attrs, "family_name"),
+        middle_name: Map.get(profile_attrs, "middle_name"),
+        nickname: Map.get(profile_attrs, "nickname"),
+        preferred_username: Map.get(profile_attrs, "preferred_username"),
+        profile: Map.get(profile_attrs, "profile"),
+        picture: Map.get(profile_attrs, "picture")
+      }
 
-        {:ok, %{rows: []}} ->
+      actor_lookup_cte =
+        from(a in "actors",
+          where:
+            a.account_id == ^account_id_db and
+              a.email == ^email and
+              is_nil(a.disabled_at) and
+              ^email_verified == true,
+          select: %{id: a.id},
+          limit: 1
+        )
+
+      existing_identity_cte =
+        from(ei in "external_identities",
+          join: a in "actors",
+          on: a.id == ei.actor_id,
+          where:
+            ei.account_id == ^account_id_db and
+              ei.issuer == ^issuer and
+              ei.idp_id == ^idp_id and
+              is_nil(a.disabled_at),
+          select: %{actor_id: ei.actor_id},
+          limit: 1
+        )
+
+      base_query =
+        from(d in fragment("SELECT 1"),
+          left_join: al in "actor_lookup",
+          on: true,
+          left_join: ei in "existing_identity",
+          on: true,
+          where: not is_nil(al.id) or not is_nil(ei.actor_id),
+          select: %{
+            id: fragment("uuid_generate_v4()"),
+            account_id: ^account_id_db,
+            issuer: ^issuer,
+            idp_id: ^idp_id,
+            actor_id: fragment("COALESCE(?.id, ?.actor_id)", al, ei),
+            email: ^profile_values.email,
+            name: ^profile_values.name,
+            given_name: ^profile_values.given_name,
+            family_name: ^profile_values.family_name,
+            middle_name: ^profile_values.middle_name,
+            nickname: ^profile_values.nickname,
+            preferred_username: ^profile_values.preferred_username,
+            profile: ^profile_values.profile,
+            picture: ^profile_values.picture,
+            inserted_at: ^now
+          }
+        )
+
+      query_with_ctes =
+        base_query
+        |> with_cte("actor_lookup", as: ^actor_lookup_cte)
+        |> with_cte("existing_identity", as: ^existing_identity_cte)
+
+      {count, rows} =
+        Safe.insert_all(
+          Safe.unscoped(),
+          ExternalIdentity,
+          query_with_ctes,
+          on_conflict: {:replace, profile_fields},
+          conflict_target: [:account_id, :idp_id, :issuer],
+          returning: true
+        )
+
+      case {count, rows} do
+        {0, _} ->
+          # Neither actor_lookup nor existing_identity matched → no identity
           {:error, :actor_not_found}
 
-        {:error, _} = error ->
-          error
+        {_, [%ExternalIdentity{} = identity]} ->
+          {:ok, Safe.preload(identity, [:actor, :account])}
+
+        # Fallback for environments where insert_all returns maps
+        {_, [row]} when is_map(row) ->
+          identity =
+            struct(ExternalIdentity, row)
+            |> Safe.preload([:actor, :account])
+
+          {:ok, identity}
+
+        # Defensive fallback; shouldn't happen with returning: true when count > 0
+        {_, []} ->
+          {:error, :actor_not_found}
       end
     end
   end
