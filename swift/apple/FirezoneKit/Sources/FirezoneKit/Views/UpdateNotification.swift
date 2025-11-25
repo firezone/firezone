@@ -23,11 +23,7 @@
       }
     }
 
-    // nonisolated(unsafe) is required because:
-    // 1. Timer.invalidate() is thread-safe and can be called from any thread
-    // 2. Only accessed from MainActor-isolated methods (init, start/stop) and nonisolated deinit
-    // 3. deinit is nonisolated and needs access to invalidate the timer
-    private nonisolated(unsafe) var timer: Timer?
+    private var timerCancellable: AnyCancellable?
     private let notificationAdapter: NotificationAdapter = NotificationAdapter()
     private let versionCheckUrl: URL
     private let marketingVersion: SemanticVersion
@@ -53,29 +49,20 @@
     }
 
     private func startCheckingForUpdates() {
-      guard timer == nil else { return }
+      guard timerCancellable == nil else { return }
 
-      self.timer = Timer.scheduledTimer(
-        timeInterval: 6 * 60 * 60,
-        target: self,
-        selector: #selector(checkForUpdates),
-        userInfo: nil,
-        repeats: true
-      )
-
+      // Check immediately
       checkForUpdates()
+
+      // Then check every 6 hours
+      timerCancellable = Timer.publish(every: 6 * 60 * 60, on: .main, in: .default)
+        .autoconnect()
+        .sink { [weak self] _ in
+          self?.checkForUpdates()
+        }
     }
 
-    private func stopCheckingForUpdates() {
-      timer?.invalidate()
-      self.timer = nil
-    }
-
-    deinit {
-      timer?.invalidate()
-    }
-
-    @objc private func checkForUpdates() {
+    private func checkForUpdates() {
       if configuration.disableUpdateCheck {
         return
       }
