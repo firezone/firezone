@@ -6,7 +6,7 @@
 
 use std::process::ExitCode;
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
@@ -169,28 +169,25 @@ fn try_main(
                 return Err(anyhow);
             }
 
-            if anyhow.root_cause().is::<gui::AlreadyRunning>() {
+            if anyhow.any_is::<gui::AlreadyRunning>() {
                 return Ok(());
             }
 
-            if anyhow.root_cause().is::<gui::NewInstanceHandshakeFailed>() {
+            if anyhow.any_is::<gui::NewInstanceHandshakeFailed>() {
                 show_error_dialog(
                     "Firezone is already running but not responding. Please force-stop it first.",
                 )?;
                 return Err(anyhow);
             }
 
-            if anyhow
-                .root_cause()
-                .is::<firezone_gui_client::ipc::NotFound>()
-            {
+            if anyhow.any_is::<firezone_gui_client::ipc::NotFound>() {
                 show_error_dialog(
                     "Couldn't find Firezone Tunnel service. Is the service running?",
                 )?;
                 return Err(anyhow);
             }
 
-            if anyhow.root_cause().is::<controller::FailedToReceiveHello>() {
+            if anyhow.any_is::<controller::FailedToReceiveHello>() {
                 show_error_dialog(
                     "The Firezone Tunnel service is not responding. If the issue persists, contact your administrator.",
                 )?;

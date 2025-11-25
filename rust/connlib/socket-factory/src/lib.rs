@@ -518,8 +518,9 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn is_os_error_5(e: &anyhow::Error) -> bool {
-    e.root_cause()
-        .downcast_ref::<io::Error>()
+    use anyhow::ErrorExt;
+
+    e.any_downcast_ref::<io::Error>()
         .and_then(|e| e.raw_os_error())
         .is_some_and(|c| c == libc::EIO)
 }
