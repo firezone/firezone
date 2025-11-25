@@ -138,23 +138,21 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
 pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimClient) {
     use connlib_model::ResourceStatus::*;
 
-    let (expected_status_map, tcp_resources) = &ref_client
-        .expected_resource_status(|tuple| sim_client.failed_tcp_packets.contains_key(&tuple));
+    let expected_status_map = &ref_client.expected_resource_status();
     let actual_status_map = &sim_client.resource_status;
+    let maybe_online_resources = ref_client.maybe_online_resources();
 
     if expected_status_map != actual_status_map {
         for (resource, expected_status) in expected_status_map {
             match actual_status_map.get(resource) {
-                // For resources with TCP connections, the expected status might be wrong.
-                // We generally expect them to always be online because the TCP client sends its own keep-alive's.
-                // However, if we have sent an ICMP error back, the client may have given up and therefore it is okay for the site to be in `Unknown` then.
                 Some(&Online)
-                    if expected_status == &Unknown && tcp_resources.contains(resource) => {}
+                    if expected_status == &Unknown && maybe_online_resources.contains(resource) => {
+                }
                 Some(&Unknown)
-                    if expected_status == &Online && tcp_resources.contains(resource) => {}
+                    if expected_status == &Online && maybe_online_resources.contains(resource) => {}
 
                 Some(actual_status) if actual_status != expected_status => {
-                    tracing::error!(target: "assertions", %expected_status, %actual_status, %resource, "Resource status doesn't match");
+                    tracing::error!(target: "assertions", %expected_status, %actual_status, %resource, ?maybe_online_resources, "Resource status doesn't match");
                 }
                 Some(_) => {}
                 None => {

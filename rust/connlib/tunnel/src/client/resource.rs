@@ -1,6 +1,6 @@
 //! Internal model of resources as used by connlib's client code.
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, fmt};
 
 use connlib_model::{
     CidrResourceView, DnsResourceView, InternetResourceView, IpStack, ResourceId, ResourceStatus,
@@ -139,7 +139,9 @@ impl Resource {
     }
 
     /// Returns the [`Site`] of a [`Resource`] if there is exactly one site.
-    pub fn site(&self) -> Result<&Site, itertools::ExactlyOneError<impl Iterator<Item = &Site>>> {
+    pub fn site(
+        &self,
+    ) -> Result<&Site, itertools::ExactlyOneError<impl Iterator<Item = &Site> + fmt::Debug>> {
         self.sites().into_iter().exactly_one()
     }
 
