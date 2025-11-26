@@ -3,6 +3,7 @@ use assertions::PanicOnErrorEvents;
 use chrono::Utc;
 use core::fmt;
 use proptest::{
+    prelude::*,
     sample::SizeRange,
     strategy::{Strategy, ValueTree as _},
     test_runner::{Config, RngAlgorithm, TestError, TestRng, TestRunner},
@@ -137,37 +138,36 @@ fn tunnel_test() {
     }
 }
 
-#[test]
-fn transitions_and_state_are_deterministic() {
+#[test_strategy::proptest]
+fn transitions_and_state_are_deterministic(
+    #[strategy(any::<u64>())] seed: u64,
+    #[strategy(5..=15)] num_transitions: i32,
+) {
+    println!("Checking seed {seed} and {num_transitions} transitions");
+
     let now = Instant::now();
 
-    for n in 0..1000 {
-        println!("Checking seed {n}");
+    let mut state1 = sample_from_strategy(seed, ReferenceState::initial_state(now));
+    let mut state2 = sample_from_strategy(seed, ReferenceState::initial_state(now));
 
-        let mut state1 = sample_from_strategy(n, ReferenceState::initial_state(now));
-        let mut state2 = sample_from_strategy(n, ReferenceState::initial_state(now));
+    assert_eq!(format!("{state1:?}"), format!("{state2:?}"));
+
+    for _ in 0..num_transitions {
+        let transition1 = sample_from_strategy(seed, ReferenceState::transitions(&state1, now));
+        let transition2 = sample_from_strategy(seed, ReferenceState::transitions(&state2, now));
+
+        assert_eq!(format!("{transition1:?}"), format!("{transition2:?}"));
+
+        if !ReferenceState::is_valid_transition(&state1, &transition1)
+            || !ReferenceState::is_valid_transition(&state2, &transition2)
+        {
+            continue;
+        }
+
+        state1 = ReferenceState::apply(state1, &transition1, now);
+        state2 = ReferenceState::apply(state2, &transition2, now);
 
         assert_eq!(format!("{state1:?}"), format!("{state2:?}"));
-
-        let num_transitions = sample_from_strategy(n, 5..=15);
-
-        for _ in 0..num_transitions {
-            let transition1 = sample_from_strategy(n, ReferenceState::transitions(&state1, now));
-            let transition2 = sample_from_strategy(n, ReferenceState::transitions(&state2, now));
-
-            assert_eq!(format!("{transition1:?}"), format!("{transition2:?}"));
-
-            if !ReferenceState::is_valid_transition(&state1, &transition1)
-                || !ReferenceState::is_valid_transition(&state2, &transition2)
-            {
-                continue;
-            }
-
-            state1 = ReferenceState::apply(state1, &transition1, now);
-            state2 = ReferenceState::apply(state2, &transition2, now);
-
-            assert_eq!(format!("{state1:?}"), format!("{state2:?}"));
-        }
     }
 }
 
