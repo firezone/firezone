@@ -138,27 +138,36 @@ fn tunnel_test() {
 }
 
 #[test]
-fn reference_state_is_deterministic() {
+fn transitions_and_state_are_deterministic() {
     let now = Instant::now();
 
     for n in 0..1000 {
-        let state1 = sample_from_strategy(n, ReferenceState::initial_state(now));
-        let state2 = sample_from_strategy(n, ReferenceState::initial_state(now));
+        println!("Checking seed {n}");
+
+        let mut state1 = sample_from_strategy(n, ReferenceState::initial_state(now));
+        let mut state2 = sample_from_strategy(n, ReferenceState::initial_state(now));
 
         assert_eq!(format!("{state1:?}"), format!("{state2:?}"));
-    }
-}
 
-#[test]
-fn transitions_are_deterministic() {
-    let now = Instant::now();
+        let num_transitions = sample_from_strategy(n, 5..=15);
 
-    for n in 0..1000 {
-        let state = sample_from_strategy(n, ReferenceState::initial_state(now));
-        let transitions1 = sample_from_strategy(n, ReferenceState::transitions(&state, now));
-        let transitions2 = sample_from_strategy(n, ReferenceState::transitions(&state, now));
+        for _ in 0..num_transitions {
+            let transition1 = sample_from_strategy(n, ReferenceState::transitions(&state1, now));
+            let transition2 = sample_from_strategy(n, ReferenceState::transitions(&state2, now));
 
-        assert_eq!(format!("{transitions1:?}"), format!("{transitions2:?}"));
+            assert_eq!(format!("{transition1:?}"), format!("{transition2:?}"));
+
+            if !ReferenceState::is_valid_transition(&state1, &transition1)
+                || !ReferenceState::is_valid_transition(&state2, &transition2)
+            {
+                continue;
+            }
+
+            state1 = ReferenceState::apply(state1, &transition1, now);
+            state2 = ReferenceState::apply(state2, &transition2, now);
+
+            assert_eq!(format!("{state1:?}"), format!("{state2:?}"));
+        }
     }
 }
 
