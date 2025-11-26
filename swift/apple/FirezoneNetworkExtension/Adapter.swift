@@ -122,15 +122,6 @@ actor Adapter {
     self.callbacks = callbacks
   }
 
-  // Could happen abruptly if the process is killed.
-  deinit {
-    Log.log("Adapter.deinit")
-    // All cleanup handled automatically via RAII:
-    // - CancellableTask.deinit cancels tasks
-    // - NetworkPathUpdates' onTermination cancels the monitor
-    // - Sender.deinit finishes the continuation
-  }
-
   func start() async throws {
     Log.log("Adapter.start: Starting session for account: \(accountSlug)")
 
@@ -462,7 +453,9 @@ actor Adapter {
   /// - https://github.com/firezone/firezone/issues/3175
   private func handlePathUpdate(_ path: Network.NWPath) async {
     if path.status == .unsatisfied {
+      // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
       if !callbacks.getReassserting() {
+        // Tell the UI we're not connected
         callbacks.setReassserting(true)
       }
     } else {
@@ -470,6 +463,11 @@ actor Adapter {
         callbacks.setReassserting(false)
       }
 
+      // Tell connlib to reset network state and DNS resolvers, but only do so if our connectivity has
+      // meaningfully changed. On darwin, this is needed to send packets
+      // out of a different interface even when 0.0.0.0 is used as the source.
+      // If our primary interface changes, we can be certain the old socket shouldn't be
+      // used anymore.
       if path.connectivityDifferentFrom(path: lastPath) {
         sendCommand(.reset("primary network path changed"))
       }
@@ -560,14 +558,14 @@ actor Adapter {
       // Set tunnel's matchDomains to a dummy string that will never match any name
       networkSettings.setDummyMatchDomain()
 
-      // Apply to populate /etc/resolv.conf with the system's default resolvers
+      // Call apply to populate /etc/resolv.conf with the system's default resolvers
       await withCheckedContinuation { continuation in
         networkSettings.apply {
           continuation.resume()
         }
       }
 
-      // Now we can get the system resolvers
+      // Only now can we get the system resolvers
       let resolvers = BindResolvers.getServers()
 
       // Restore connlib's DNS resolvers
