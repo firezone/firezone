@@ -1252,7 +1252,7 @@ defmodule Web.CoreComponents do
           border-r
           border-neutral-200
         ]}>
-        <.provider_icon type={provider_type_from_idp_id(@group.idp_id)} class="h-3.5 w-3.5" />
+        <.provider_icon type={provider_type_from_group(@group)} class="h-3.5 w-3.5" />
       </span>
       <.link
         title={"View Group \"#{@group.name}\""}
@@ -1294,7 +1294,7 @@ defmodule Web.CoreComponents do
           border-neutral-100
           border
         ]}>
-        <.provider_icon type={provider_type_from_idp_id(@group.idp_id)} class="h-2.5 w-2.5" />
+        <.provider_icon type={provider_type_from_group(@group)} class="h-2.5 w-2.5" />
       </span>
       <.link
         title={"View Group \"#{@group.name}\""}
@@ -1496,13 +1496,18 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Helper function to get provider type from idp_id
+  Helper function to get provider type from group
+  Groups now have directory_type field that indicates the provider
   """
-  def provider_type_from_idp_id("google:" <> _rest), do: "google"
-  def provider_type_from_idp_id("entra:" <> _rest), do: "entra"
-  def provider_type_from_idp_id("okta:" <> _rest), do: "okta"
-  def provider_type_from_idp_id("oidc:" <> _rest), do: "oidc"
-  def provider_type_from_idp_id(_), do: "firezone"
+  def provider_type_from_group(%{directory_type: type}) when not is_nil(type), do: to_string(type)
+  def provider_type_from_group(_), do: "firezone"
+  
+  @doc """
+  Helper function to get provider type from identity
+  Identities now have directory_type field that indicates the provider
+  """
+  def provider_type_from_identity(%{directory_type: type}) when not is_nil(type), do: to_string(type)
+  def provider_type_from_identity(_), do: "firezone"
 
   @doc """
   Renders a logo appropriate for the given provider.

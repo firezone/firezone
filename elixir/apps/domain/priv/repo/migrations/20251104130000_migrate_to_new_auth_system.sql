@@ -204,7 +204,7 @@ BEGIN
     UPDATE external_identities i
     SET
       name = a.name,
-      idp_id = 'google:' || i.provider_identifier,
+      idp_id = i.provider_identifier,
       issuer = 'https://accounts.google.com',
       provider_id = NULL
     FROM actors a, legacy_auth_providers p
@@ -222,7 +222,7 @@ BEGIN
     UPDATE external_identities i
     SET
       name = a.name,
-      idp_id = 'entra:' || COALESCE(
+      idp_id = COALESCE(
         i.provider_state->'claims'->>'oid',
         i.provider_identifier
       ),
@@ -244,7 +244,7 @@ BEGIN
     UPDATE external_identities i
     SET
       name = a.name,
-      idp_id = 'okta:' || i.provider_identifier,
+      idp_id = i.provider_identifier,
       issuer = p.adapter_state->'claims'->>'iss',
       provider_id = NULL
     FROM actors a, legacy_auth_providers p
@@ -262,7 +262,7 @@ BEGIN
     -- Update groups for Google Workspace
     UPDATE actor_groups g
     SET
-      idp_id = 'google:' || g.provider_identifier,
+      idp_id = g.provider_identifier,
       provider_id = NULL,
       provider_identifier = NULL
     FROM legacy_auth_providers p
@@ -274,7 +274,7 @@ BEGIN
     -- Update groups for Okta
     UPDATE actor_groups g
     SET
-      idp_id = 'okta:' || g.provider_identifier,
+      idp_id = g.provider_identifier,
       provider_id = NULL,
       provider_identifier = NULL
     FROM legacy_auth_providers p
@@ -284,9 +284,19 @@ BEGIN
       AND p.adapter_state->'claims'->>'iss' IS NOT NULL;
 
     -- Update groups for Microsoft Entra
+    -- Handle entity_type and strip prefixes (OU: = org_unit, G: = group)
     UPDATE actor_groups g
     SET
-      idp_id = 'entra:' || g.provider_identifier,
+      idp_id = CASE
+        WHEN g.provider_identifier LIKE 'OU:%' THEN SUBSTRING(g.provider_identifier FROM 4)
+        WHEN g.provider_identifier LIKE 'G:%' THEN SUBSTRING(g.provider_identifier FROM 3)
+        ELSE g.provider_identifier
+      END,
+      entity_type = CASE
+        WHEN g.provider_identifier LIKE 'OU:%' THEN 'org_unit'
+        WHEN g.provider_identifier LIKE 'G:%' THEN 'group'
+        ELSE NULL
+      END,
       provider_id = NULL,
       provider_identifier = NULL
     FROM legacy_auth_providers p

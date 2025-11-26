@@ -275,6 +275,7 @@ defmodule Domain.Safe do
 
         changeset
         |> put_change(:account_id, subject.account.id)
+        |> apply_schema_changeset(schema)
         |> Repo.insert!()
       end)
     end
@@ -282,13 +283,27 @@ defmodule Domain.Safe do
 
   @spec insert(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def insert(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
-    Repo.insert(changeset)
+    schema = get_schema_module(changeset.data)
+    
+    changeset
+    |> apply_schema_changeset(schema)
+    |> Repo.insert()
   end
 
   @spec insert(Domain.Repo, Ecto.Schema.t() | Ecto.Changeset.t(), Keyword.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
-  def insert(repo, changeset_or_struct, opts \\ []) when repo == Repo,
-    do: Repo.insert(changeset_or_struct, opts)
+  def insert(repo, changeset_or_struct, opts \\ []) when repo == Repo do
+    case changeset_or_struct do
+      %Ecto.Changeset{} = changeset ->
+        schema = get_schema_module(changeset.data)
+        changeset
+        |> apply_schema_changeset(schema)
+        |> Repo.insert(opts)
+      
+      struct ->
+        Repo.insert(struct, opts)
+    end
+  end
 
   @spec update(Scoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
@@ -301,21 +316,32 @@ defmodule Domain.Safe do
         # Emit subject info to the replication stream
         emit_subject_message(subject, :update, schema)
 
-        Repo.update!(changeset)
+        changeset
+        |> apply_schema_changeset(schema)
+        |> Repo.update!()
       end)
     end
   end
 
   @spec update(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def update(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
-    Repo.update(changeset)
+    schema = get_schema_module(changeset.data)
+    
+    changeset
+    |> apply_schema_changeset(schema)
+    |> Repo.update()
   end
 
   @spec update(Domain.Repo, Ecto.Changeset.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   @spec update(Domain.Repo, Ecto.Changeset.t(), Keyword.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
-  def update(repo, changeset, opts \\ []) when repo == Repo, do: Repo.update(changeset, opts)
+  def update(repo, changeset, opts \\ []) when repo == Repo do
+    schema = get_schema_module(changeset.data)
+    changeset
+    |> apply_schema_changeset(schema)
+    |> Repo.update(opts)
+  end
 
   @spec update_all(Scoped.t(), Keyword.t()) ::
           {non_neg_integer(), nil | [term()]} | {:error, :unauthorized}
@@ -361,7 +387,9 @@ defmodule Domain.Safe do
         # Emit subject info to the replication stream
         emit_subject_message(subject, :delete, schema)
 
-        Repo.delete(changeset)
+        changeset
+        |> apply_schema_changeset(schema)
+        |> Repo.delete()
       end)
       |> case do
         {:ok, result} -> result
@@ -393,7 +421,11 @@ defmodule Domain.Safe do
 
   @spec delete(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def delete(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
-    Repo.delete(changeset)
+    schema = get_schema_module(changeset.data)
+    
+    changeset
+    |> apply_schema_changeset(schema)
+    |> Repo.delete()
   end
 
   def delete(%Unscoped{queryable: struct}) when is_struct(struct) do
@@ -402,8 +434,18 @@ defmodule Domain.Safe do
 
   @spec delete(Domain.Repo, Ecto.Schema.t() | Ecto.Changeset.t(), Keyword.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
-  def delete(repo, struct_or_changeset, opts \\ []) when repo == Repo,
-    do: Repo.delete(struct_or_changeset, opts)
+  def delete(repo, struct_or_changeset, opts \\ []) when repo == Repo do
+    case struct_or_changeset do
+      %Ecto.Changeset{} = changeset ->
+        schema = get_schema_module(changeset.data)
+        changeset
+        |> apply_schema_changeset(schema)
+        |> Repo.delete(opts)
+      
+      struct ->
+        Repo.delete(struct, opts)
+    end
+  end
 
   # Header with defaults
   def delete_all(scoped_or_unscoped, opts \\ [])
@@ -452,6 +494,14 @@ defmodule Domain.Safe do
   defp apply_account_filter(queryable, _schema, account_id) do
     # For all other schemas, filter by account_id
     where(queryable, account_id: ^account_id)
+  end
+
+  defp apply_schema_changeset(changeset, schema) do
+    if function_exported?(schema, :changeset, 1) do
+      schema.changeset(changeset)
+    else
+      changeset
+    end
   end
 
   def get_schema_module(%Ecto.Query{from: %{source: {_table, schema}}}), do: schema

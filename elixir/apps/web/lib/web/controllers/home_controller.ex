@@ -3,30 +3,16 @@ defmodule Web.HomeController do
   alias Domain.Accounts
 
   def home(conn, params) do
-    signed_in_account_ids = conn |> get_session("sessions", []) |> Enum.map(&elem(&1, 0))
-
-    {accounts, conn} =
-      with {:ok, recent_account_ids, conn} <- Web.Auth.all_recent_account_ids(conn) do
-        accounts = Accounts.all_accounts_by_ids!(recent_account_ids)
-
-        # we remove all ids that are not returned by the query anymore
-        conn =
-          Web.Auth.update_recent_account_ids(conn, fn _recent_account_ids ->
-            Enum.map(accounts, & &1.id)
-          end)
-
-        {accounts, conn}
-      else
-        _other -> {[], conn}
-      end
-
+    recent_account_ids = Web.Auth.recent_account_ids(conn) || []
+    recent_accounts = DB.get_accounts_by_ids(recent_account_ids)
+    ids_to_remove = recent_account_ids -- Enum.map(recent_accounts, & &1.id)
+    conn = Web.Auth.remove_recent_account_ids(conn, ids_to_remove)
     params = Web.Auth.take_sign_in_params(params)
 
     conn
     |> put_layout(html: {Web.Layouts, :public})
     |> render("home.html",
-      accounts: accounts,
-      signed_in_account_ids: signed_in_account_ids,
+      accounts: recent_accounts,
       params: params
     )
   end
@@ -42,6 +28,17 @@ defmodule Web.HomeController do
         conn
         |> put_flash(:error, reason)
         |> redirect(to: ~p"/?#{params}")
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Accounts, Safe}
+
+    def get_accounts_by_ids(account_ids) do
+      from(a in Accounts.Account, where: a.id in ^account_ids)
+      |> Safe.unscoped()
+      |> Safe.all()
     end
   end
 end

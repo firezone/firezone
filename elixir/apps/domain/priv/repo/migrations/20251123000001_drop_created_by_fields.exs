@@ -37,5 +37,11 @@ defmodule Domain.Repo.Migrations.DropCreatedByFields do
       remove(:verified_by)
       remove(:verified_by_subject)
     end
+
+    # Drop created_by fields from tokens table
+    alter table(:tokens) do
+      remove(:created_by_user_agent)
+      remove(:created_by_remote_ip)
+    end
   end
 end

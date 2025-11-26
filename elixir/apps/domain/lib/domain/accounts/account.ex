@@ -71,4 +71,15 @@ defmodule Domain.Accounts.Account do
 
     timestamps()
   end
+
+  def changeset(changeset) do
+    changeset
+    |> validate_length(:name, min: 3, max: 64)
+    |> validate_length(:slug, min: 3, max: 100)
+    |> validate_length(:legal_name, min: 1, max: 255)
+    |> unique_constraint(:slug, name: :accounts_slug_index)
+  end
+
+  def active?(%__MODULE__{disabled_at: nil}), do: true
+  def active?(%__MODULE__{}), do: false
 end

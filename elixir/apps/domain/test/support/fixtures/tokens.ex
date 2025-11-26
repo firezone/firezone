@@ -16,9 +16,7 @@ defmodule Domain.Fixtures.Tokens do
       type: type,
       secret_nonce: nonce,
       secret_fragment: fragment,
-      expires_at: expires_at,
-      created_by_user_agent: user_agent,
-      created_by_remote_ip: remote_ip
+      expires_at: expires_at
     })
   end
 
@@ -187,8 +185,6 @@ defmodule Domain.Fixtures.Tokens do
         secret_fragment: secret_fragment,
         account_id: actor.account_id,
         actor_id: actor.id,
-        created_by_user_agent: subject.context.user_agent,
-        created_by_remote_ip: subject.context.remote_ip,
         expires_at: expires_at
       })
 

@@ -129,7 +129,7 @@
     </span>
   </.flash>
 
-  <.flash :if={not Domain.Accounts.account_active?(@account)} kind={:error} class="m-1">
+  <.flash :if={not Domain.Accounts.Account.active?(@account)} kind={:error} class="m-1">
     This account has been disabled.
     <span>
       Please

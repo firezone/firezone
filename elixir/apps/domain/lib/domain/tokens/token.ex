@@ -43,15 +43,33 @@ defmodule Domain.Tokens.Token do
     field :last_seen_remote_ip_location_lon, :float
     field :last_seen_at, :utc_datetime_usec
 
-    # Maybe this is not needed and they should be in the join tables (eg. relay_group_tokens)
-    field :created_by_user_agent, :string
-    field :created_by_remote_ip, Domain.Types.IP
-
     field :expires_at, :utc_datetime_usec
 
     field :auth_provider_name, :string, virtual: true
     field :auth_provider_type, :string, virtual: true
 
     timestamps()
+  end
+
+  def changeset(changeset) do
+    changeset
+    |> validate_length(:name, max: 255)
+    |> trim_change(:name)
+    |> put_change(:secret_salt, Domain.Crypto.random_token(16))
+    |> validate_format(:secret_nonce, ~r/^[^\.]{0,128}$/)
+    |> validate_required(:secret_fragment)
+    |> put_hash(:secret_fragment, :sha3_256,
+      with_nonce: :secret_nonce,
+      with_salt: :secret_salt,
+      to: :secret_hash
+    )
+    |> delete_change(:secret_nonce)
+    |> validate_required(~w[secret_salt secret_hash]a)
+    |> assoc_constraint(:account)
+    |> assoc_constraint(:actor)
+    |> assoc_constraint(:auth_provider)
+    |> assoc_constraint(:relay_group)
+    |> assoc_constraint(:gateway_group)
+    |> unique_constraint(:secret_hash)
   end
 end

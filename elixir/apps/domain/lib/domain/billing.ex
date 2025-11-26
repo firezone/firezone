@@ -50,7 +50,7 @@ defmodule Domain.Billing do
     active_users_count = Clients.count_1m_active_users_for_account(account)
 
     cond do
-      not Accounts.account_active?(account) ->
+      not Accounts.Account.active?(account) ->
         false
 
       not is_nil(account.limits.monthly_active_users_count) ->
@@ -72,7 +72,7 @@ defmodule Domain.Billing do
   def can_create_service_accounts?(%Accounts.Account{} = account) do
     service_accounts_count = Actors.count_service_accounts_for_account(account)
 
-    Accounts.account_active?(account) and
+    Accounts.Account.active?(account) and
       (is_nil(account.limits.service_accounts_count) or
          service_accounts_count < account.limits.service_accounts_count)
   end
@@ -85,7 +85,7 @@ defmodule Domain.Billing do
   def can_create_gateway_groups?(%Accounts.Account{} = account) do
     gateway_groups_count = Gateways.count_groups_for_account(account)
 
-    Accounts.account_active?(account) and
+    Accounts.Account.active?(account) and
       (is_nil(account.limits.gateway_groups_count) or
          gateway_groups_count < account.limits.gateway_groups_count)
   end
@@ -98,7 +98,7 @@ defmodule Domain.Billing do
   def can_create_admin_users?(%Accounts.Account{} = account) do
     account_admins_count = Actors.count_account_admin_users_for_account(account)
 
-    Accounts.account_active?(account) and
+    Accounts.Account.active?(account) and
       (is_nil(account.limits.account_admin_users_count) or
          account_admins_count < account.limits.account_admin_users_count)
   end

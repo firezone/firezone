@@ -890,7 +890,8 @@ defmodule Web.Policies.Components do
                 gd.name,
                 ed.name,
                 od.name
-              )
+              ),
+            directory_type: d.type
           }
         )
         |> Safe.scoped(subject)
@@ -924,7 +925,8 @@ defmodule Web.Policies.Components do
                 gd.name,
                 ed.name,
                 od.name
-              )
+              ),
+            directory_type: d.type
           }
         )
         |> order_by([groups: g], asc: g.name)

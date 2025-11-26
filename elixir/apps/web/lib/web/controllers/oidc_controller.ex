@@ -132,13 +132,11 @@ defmodule Web.OIDCController do
     end
   end
 
-  # Entra
   defp upsert_identity(account, claims, userinfo) do
     email = claims["email"]
-    raw_idp_id = claims["oid"] || claims["sub"]
+    idp_id = claims["oid"] || claims["sub"]
     issuer = claims["iss"]
-    idp_id = prefix_idp_id(issuer, raw_idp_id)
-    email_verified = claims["email_verified"] == true
+    email_verified = (claims["email_verified"] || userinfo["email_verified"]) == true
     profile_attrs = extract_profile_attrs(claims, userinfo)
 
     # Validate attributes first
@@ -152,26 +150,6 @@ defmodule Web.OIDCController do
       DB.upsert_identity(account.id, email, email_verified, issuer, idp_id, profile_attrs)
     else
       changeset -> {:error, changeset}
-    end
-  end
-
-  defp prefix_idp_id(issuer, idp_id) do
-    cond do
-      # Google issuer
-      issuer == "https://accounts.google.com" ->
-        "google:#{idp_id}"
-
-      # Entra issuer (matches tenant-specific issuer pattern)
-      String.contains?(issuer, "login.microsoftonline.com") ->
-        "entra:#{idp_id}"
-
-      # Okta issuer (matches okta domain pattern)
-      String.contains?(issuer, "okta.com") ->
-        "okta:#{idp_id}"
-
-      # Default: oidc prefix for generic OIDC providers
-      true ->
-        "oidc:#{idp_id}"
     end
   end
 
@@ -194,7 +172,6 @@ defmodule Web.OIDCController do
     %Domain.ExternalIdentity{}
     |> cast(attrs, idp_fields ++ ~w[account_id actor_id]a)
     |> validate_required(~w[issuer idp_id name account_id]a)
-    |> Domain.ExternalIdentity.changeset()
   end
 
   defp extract_profile_attrs(claims, userinfo) do
@@ -271,13 +248,11 @@ defmodule Web.OIDCController do
       actor_id: identity.actor_id,
       auth_provider_id: provider.id,
       identity_id: identity.id,
-      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second),
-      created_by_user_agent: context.user_agent,
-      created_by_remote_ip: context.remote_ip
+      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
     }
 
     with {:ok, token} <- Tokens.create_token(attrs) do
-      {:ok, Tokens.encode_fragment!(token)}
+      {:ok, Domain.Crypto.encode_token_fragment!(token)}
     end
   end
 

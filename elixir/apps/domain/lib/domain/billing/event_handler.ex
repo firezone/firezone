@@ -520,13 +520,11 @@ defmodule Domain.Billing.EventHandler do
 
     def create_email_provider(account) do
       id = Ecto.UUID.generate()
-      attrs = %{account_id: account.id, id: id}
-      parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id]a)
+      attrs = %{account_id: account.id, id: id, type: :email_otp}
+      parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id type]a)
       attrs = %{id: id, name: "Email (OTP)"}
 
-      changeset =
-        cast(%EmailOTP.AuthProvider{}, attrs, ~w[id name]a)
-        |> EmailOTP.AuthProvider.changeset()
+      changeset = cast(%EmailOTP.AuthProvider{}, attrs, ~w[id name]a)
 
       with {:ok, _auth_provider} <- Safe.unscoped(parent_changeset) |> Safe.insert(),
            {:ok, email_provider} <- Safe.unscoped(changeset) |> Safe.insert() do
@@ -538,7 +536,6 @@ defmodule Domain.Billing.EventHandler do
       attrs = %{account_id: account.id, email: email, name: name, type: :account_admin_user}
 
       cast(%Actor{}, attrs, ~w[account_id email name type]a)
-      |> Actor.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
     end

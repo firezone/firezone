@@ -991,10 +991,12 @@ defmodule Web.Settings.Authentication do
   defp maybe_initialize_with_parent(changeset, account_id) do
     if is_nil(get_field(changeset, :id)) do
       id = Ecto.UUID.generate()
+      # Get the type based on the schema module
+      type = AuthProvider.type!(changeset.data.__struct__)
 
       changeset
       |> put_change(:id, id)
-      |> put_assoc(:auth_provider, %AuthProvider{id: id, account_id: account_id})
+      |> put_assoc(:auth_provider, %AuthProvider{id: id, account_id: account_id, type: type})
     else
       changeset
     end

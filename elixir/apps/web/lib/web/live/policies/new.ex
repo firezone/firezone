@@ -65,7 +65,7 @@ defmodule Web.Policies.New do
                   <:option :let={group}>
                     <div class="flex items-center gap-3">
                       <.provider_icon
-                        type={provider_type_from_idp_id(group.idp_id)}
+                        type={provider_type_from_group(group)}
                         class="w-5 h-5 flex-shrink-0"
                       />
                       <span>{group.name}</span>

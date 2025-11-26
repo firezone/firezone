@@ -425,7 +425,7 @@ defmodule Domain.Fixtures.Auth do
 
     {email, attrs} =
       Map.pop_lazy(attrs, :email, fn ->
-        if to_string(provider_identifier) =~ Domain.Auth.email_regex() do
+        if String.contains?(provider_identifier, "@") do
           provider_identifier
         else
           email()
@@ -695,6 +695,6 @@ defmodule Domain.Fixtures.Auth do
       end)
 
     {:ok, token} = Auth.create_token(identity, context, nonce, expires_at)
-    {token, nonce <> Domain.Tokens.encode_fragment!(token)}
+    {token, nonce <> Domain.Crypto.encode_token_fragment!(token)}
   end
 end

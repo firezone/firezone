@@ -6,8 +6,7 @@ defmodule Web.Actors do
   alias Domain.{
     Actors,
     ExternalIdentity,
-    Tokens,
-    Safe
+    Tokens.Token
   }
 
   import Ecto.Changeset
@@ -38,7 +37,7 @@ defmodule Web.Actors do
 
   # Add User Modal
   def handle_params(params, uri, %{assigns: %{live_action: :add_user}} = socket) do
-    changeset = actor_changeset(%Actors.Actor{}, %{type: :account_user})
+    changeset = changeset(%Actors.Actor{}, %{type: :account_user})
     socket = handle_live_tables_params(socket, params, uri)
 
     {:noreply,
@@ -52,7 +51,7 @@ defmodule Web.Actors do
   def handle_params(params, uri, %{assigns: %{live_action: :add_service_account}} = socket) do
     # Create an actor struct with type already set
     actor = %Actors.Actor{type: :service_account}
-    changeset = actor_changeset(actor, %{})
+    changeset = changeset(actor, %{})
     socket = handle_live_tables_params(socket, params, uri)
 
     # Default token expiration to 1 year from now
@@ -114,7 +113,7 @@ defmodule Web.Actors do
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
     actor = DB.get_actor!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
-    changeset = actor_changeset(actor, %{})
+    changeset = changeset(actor, %{})
 
     is_last_admin =
       actor.type == :account_admin_user and
@@ -164,7 +163,7 @@ defmodule Web.Actors do
 
     changeset =
       actor
-      |> actor_changeset(attrs)
+      |> changeset(attrs)
       |> Map.put(:action, :validate)
 
     # Preserve token_expiration for service account form
@@ -176,9 +175,9 @@ defmodule Web.Actors do
 
   def handle_event("create_user", %{"actor" => attrs}, socket) do
     attrs = Map.put(attrs, "type", "account_user")
-    changeset = actor_changeset(%Actors.Actor{}, attrs)
+    changeset = changeset(%Actors.Actor{}, attrs)
 
-    case create_actor(changeset, socket.assigns.subject) do
+    case DB.create(changeset, socket.assigns.subject) do
       {:ok, actor} ->
         params = query_params(socket.assigns.uri)
 
@@ -197,20 +196,19 @@ defmodule Web.Actors do
 
   def handle_event("create_service_account", %{"actor" => attrs} = params, socket) do
     attrs = Map.put(attrs, "type", "service_account")
-    changeset = actor_changeset(%Actors.Actor{type: :service_account}, attrs)
+    changeset = changeset(%Actors.Actor{type: :service_account}, attrs)
     token_expiration = Map.get(params, "token_expiration")
 
     result =
       Domain.Repo.transact(fn ->
-        with {:ok, actor} <- create_actor(changeset, socket.assigns.subject),
-             {:ok, token_result} <-
-               maybe_create_token(actor, token_expiration, socket.assigns.subject) do
+        with {:ok, actor} <- DB.create(changeset, socket.assigns.subject),
+             token_result <- create_actor_token(actor, token_expiration, socket.assigns.subject) do
           {:ok, {actor, token_result}}
         end
       end)
 
     case result do
-      {:ok, {actor, nil}} ->
+      {:ok, {actor, {:ok, nil}}} ->
         params = query_params(socket.assigns.uri)
 
         socket =
@@ -221,7 +219,7 @@ defmodule Web.Actors do
 
         {:noreply, socket}
 
-      {:ok, {actor, {_token, encoded_token}}} ->
+      {:ok, {actor, {:ok, {_token, encoded_token}}}} ->
         params = query_params(socket.assigns.uri)
 
         socket =
@@ -240,7 +238,7 @@ defmodule Web.Actors do
 
   def handle_event("save", %{"actor" => attrs}, socket) do
     actor = socket.assigns.actor
-    changeset = actor_changeset(actor, attrs)
+    changeset = changeset(actor, attrs)
 
     # Prevent changing the last admin to account_user
     new_type = get_change(changeset, :type)
@@ -256,15 +254,16 @@ defmodule Web.Actors do
 
       {:noreply, assign(socket, form: to_form(changeset))}
     else
-      case update_actor(changeset, socket.assigns.subject) do
+      case DB.update(changeset, socket.assigns.subject) do
         {:ok, actor} ->
-          params = query_params(socket.assigns.uri)
-
           socket =
             socket
             |> put_flash(:success_inline, "Actor updated successfully")
             |> reload_live_table!("actors")
-            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+            |> push_patch(
+              to:
+                ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{query_params(socket.assigns.uri)}"
+            )
 
           {:noreply, socket}
 
@@ -281,7 +280,7 @@ defmodule Web.Actors do
     if actor.id == socket.assigns.subject.actor.id do
       {:noreply, put_flash(socket, :error, "You cannot delete yourself")}
     else
-      case delete_actor(actor, socket.assigns.subject) do
+      case DB.delete(actor, socket.assigns.subject) do
         {:ok, _actor} ->
           {:noreply, handle_success(socket, "Actor deleted successfully")}
 
@@ -301,7 +300,10 @@ defmodule Web.Actors do
     if actor.id == socket.assigns.subject.actor.id do
       {:noreply, put_flash(socket, :error, "You cannot disable yourself")}
     else
-      case disable_actor(actor, socket.assigns.subject) do
+      case actor
+           |> change()
+           |> put_change(:disabled_at, DateTime.utc_now())
+           |> DB.update(socket.assigns.subject) do
         {:ok, updated_actor} ->
           socket = reload_live_table!(socket, "actors")
 
@@ -327,7 +329,10 @@ defmodule Web.Actors do
   def handle_event("enable", %{"id" => id}, socket) do
     actor = DB.get_actor!(id, socket.assigns.subject)
 
-    case enable_actor(actor, socket.assigns.subject) do
+    case actor
+         |> change()
+         |> put_change(:disabled_at, nil)
+         |> DB.update(socket.assigns.subject) do
       {:ok, updated_actor} ->
         socket = reload_live_table!(socket, "actors")
 
@@ -360,14 +365,15 @@ defmodule Web.Actors do
     actor = socket.assigns.actor
     token_expiration = Map.get(params, "token_expiration")
 
-    case create_token_for_actor(actor, token_expiration, socket.assigns.subject) do
-      {:ok, encoded_token} ->
-        params = query_params(socket.assigns.uri)
-
+    case create_actor_token(actor, token_expiration, socket.assigns.subject) do
+      {:ok, {_token, encoded_token}} ->
         socket =
           socket
           |> assign(created_token: encoded_token)
-          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+          |> push_patch(
+            to:
+              ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{query_params(socket.assigns.uri)}"
+          )
 
         {:noreply, socket}
 
@@ -377,21 +383,21 @@ defmodule Web.Actors do
   end
 
   def handle_event("delete_token", %{"id" => token_id}, socket) do
-    case Tokens.fetch_token_by_id(token_id, socket.assigns.subject) do
-      {:ok, token} ->
-        case Tokens.delete_token(token, socket.assigns.subject) do
-          {:ok, _} ->
-            # Reload tokens for the actor
-            tokens = DB.get_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
-            socket = assign(socket, tokens: tokens)
-            {:noreply, put_flash(socket, :success_inline, "Token deleted successfully")}
+    token = DB.get_token_by_id(token_id, socket.assigns.subject)
 
-          {:error, _} ->
-            {:noreply, put_flash(socket, :error, "Failed to delete token")}
-        end
+    if token do
+      case DB.delete(token, socket.assigns.subject) do
+        {:ok, _} ->
+          # Reload tokens for the actor
+          tokens = DB.get_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+          socket = assign(socket, tokens: tokens)
+          {:noreply, put_flash(socket, :success_inline, "Token deleted successfully")}
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Token not found")}
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to delete token")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Token not found")}
     end
   end
 
@@ -401,7 +407,7 @@ defmodule Web.Actors do
         {:noreply, put_flash(socket, :error, "Identity not found")}
 
       identity ->
-        case DB.delete_identity(identity, socket.assigns.subject) do
+        case DB.delete(identity, socket.assigns.subject) do
           {:ok, _} ->
             # Reload identities for the actor
             identities =
@@ -874,7 +880,7 @@ defmodule Web.Actors do
                       <div class="flex-1 space-y-3">
                         <div class="flex items-center gap-2">
                           <.provider_icon
-                            type={provider_type_from_idp_id(identity.idp_id)}
+                            type={provider_type_from_identity(identity)}
                             class="w-5 h-5"
                           />
                           <div class="font-medium text-sm text-neutral-900">
@@ -1265,10 +1271,9 @@ defmodule Web.Actors do
   end
 
   # Changesets
-  defp actor_changeset(actor, attrs) do
+  defp changeset(actor, attrs) do
     actor
     |> cast(attrs, [:name, :email, :type])
-    |> Actors.Actor.changeset()
   end
 
   # Helper functions
@@ -1282,49 +1287,43 @@ defmodule Web.Actors do
     end
   end
 
-  defp create_token_for_actor(actor, token_expiration, subject) do
+  # Consolidated token creation function
+  defp create_actor_token(_actor, nil, _subject), do: {:ok, nil}
+  defp create_actor_token(_actor, "", _subject), do: {:ok, nil}
+
+  defp create_actor_token(actor, token_expiration, subject) do
     case parse_date_to_datetime(token_expiration) do
       nil ->
         {:error, :invalid_date}
 
       expires_at ->
-        token_attrs = %{
-          "type" => "client",
-          "actor_id" => actor.id,
-          "expires_at" => expires_at,
-          "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32)
-        }
+        # Generate a random token fragment
+        secret_fragment = Domain.Crypto.random_token(32, encoder: :hex32)
 
-        case Tokens.create_token(token_attrs, subject) do
+        # Build the token changeset with view-specific validations
+        changeset =
+          %Token{}
+          |> cast(
+            %{
+              type: :client,
+              actor_id: actor.id,
+              account_id: subject.account.id,
+              expires_at: expires_at,
+              secret_fragment: secret_fragment
+            },
+            [
+              :type,
+              :actor_id,
+              :account_id,
+              :expires_at,
+              :secret_fragment
+            ]
+          )
+          |> validate_required([:type, :actor_id, :expires_at, :secret_fragment])
+
+        case DB.create(changeset, subject) do
           {:ok, token} ->
-            encoded_token = Tokens.encode_fragment!(token)
-            {:ok, encoded_token}
-
-          error ->
-            error
-        end
-    end
-  end
-
-  defp maybe_create_token(_actor, nil, _subject), do: {:ok, nil}
-  defp maybe_create_token(_actor, "", _subject), do: {:ok, nil}
-
-  defp maybe_create_token(actor, token_expiration, subject) do
-    case parse_date_to_datetime(token_expiration) do
-      nil ->
-        {:error, :invalid_date}
-
-      expires_at ->
-        token_attrs = %{
-          "type" => "client",
-          "actor_id" => actor.id,
-          "expires_at" => expires_at,
-          "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32)
-        }
-
-        case Tokens.create_token(token_attrs, subject) do
-          {:ok, token} ->
-            encoded_token = Tokens.encode_fragment!(token)
+            encoded_token = Domain.Crypto.encode_token_fragment!(token)
             {:ok, {token, encoded_token}}
 
           error ->
@@ -1406,32 +1405,6 @@ defmodule Web.Actors do
     end
   end
 
-  # Database operations using Safe
-  defp create_actor(changeset, subject) do
-    changeset
-    |> Safe.scoped(subject)
-    |> Safe.insert()
-  end
-
-  defp update_actor(changeset, subject) do
-    changeset
-    |> Safe.scoped(subject)
-    |> Safe.update()
-  end
-
-  defp delete_actor(actor, subject) do
-    actor
-    |> Safe.scoped(subject)
-    |> Safe.delete()
-  end
-
-  defp disable_actor(actor, subject) do
-    actor
-    |> Actors.Actor.Changeset.disable_actor()
-    |> Safe.scoped(subject)
-    |> Safe.update()
-  end
-
   defp other_enabled_admins_exist?(actor, subject) do
     case actor do
       %{type: :account_admin_user, account_id: account_id, id: id} ->
@@ -1442,16 +1415,9 @@ defmodule Web.Actors do
     end
   end
 
-  defp enable_actor(actor, subject) do
-    actor
-    |> Actors.Actor.Changeset.enable_actor()
-    |> Safe.scoped(subject)
-    |> Safe.update()
-  end
-
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Actors, Safe, Tokens}
+    alias Domain.{Actors, Safe, Tokens.Token}
     alias Domain.Directory
     alias Domain.Repo.Filter
 
@@ -1622,7 +1588,8 @@ defmodule Web.Actors do
               gd.name,
               ed.name,
               od.name
-            )
+            ),
+          directory_type: d.type
         }
       )
       |> order_by([identities: i], desc: i.inserted_at)
@@ -1642,7 +1609,7 @@ defmodule Web.Actors do
     end
 
     def get_tokens_for_actor(actor_id, subject) do
-      from(t in Tokens.Token, as: :tokens)
+      from(t in Token, as: :tokens)
       |> where([tokens: t], t.actor_id == ^actor_id)
       |> join(:left, [tokens: t], ap in assoc(t, :auth_provider), as: :auth_provider)
       |> join(:left, [auth_provider: ap], gap in Domain.Google.AuthProvider,
@@ -1723,8 +1690,27 @@ defmodule Web.Actors do
       |> Safe.one()
     end
 
-    def delete_identity(identity, subject) do
-      identity
+    def get_token_by_id(token_id, subject) do
+      from(t in Token, as: :tokens)
+      |> where([tokens: t], t.id == ^token_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    def create(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+    end
+
+    def update(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def delete(actor, subject) do
+      actor
       |> Safe.scoped(subject)
       |> Safe.delete()
     end

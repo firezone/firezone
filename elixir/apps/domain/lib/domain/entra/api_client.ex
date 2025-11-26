@@ -102,7 +102,7 @@ defmodule Domain.Entra.APIClient do
     query =
       URI.encode_query(%{
         "$top" => "999",
-        "$select" => "id,displayName,mail,userPrincipalName,givenName,surname"
+        "$select" => "id,displayName,mail,userPrincipalName,givenName,surname,aboutMe"
       })
 
     path = "/v1.0/groups/#{group_id}/transitiveMembers"
@@ -123,7 +123,7 @@ defmodule Domain.Entra.APIClient do
         %{
           id: Integer.to_string(index),
           method: "GET",
-          url: "/users/#{user_id}?$select=id,displayName,mail,userPrincipalName,givenName,surname"
+          url: "/users/#{user_id}?$select=id,displayName,mail,userPrincipalName,givenName,surname,aboutMe"
         }
       end)
 

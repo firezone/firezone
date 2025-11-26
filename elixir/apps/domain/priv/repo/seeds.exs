@@ -38,12 +38,14 @@ defmodule Domain.Repo.Seeds do
   # Helper function to create auth providers with the new structure
   defp create_auth_provider(provider_module, attrs, subject) do
     provider_id = Ecto.UUID.generate()
+    type = AuthProvider.type!(provider_module)
 
     # First create the base auth_provider record using Repo directly
     {:ok, _base_provider} =
       Repo.insert(%AuthProvider{
         id: provider_id,
-        account_id: subject.account.id
+        account_id: subject.account.id,
+        type: type
       })
 
     # Then create the provider-specific record using Repo directly (seeds don't need authorization)
@@ -52,10 +54,7 @@ defmodule Domain.Repo.Seeds do
       |> Map.put(:id, provider_id)
       |> Map.put(:account_id, subject.account.id)
 
-    changeset =
-      struct(provider_module, attrs_with_id)
-      |> Ecto.Changeset.change()
-      |> provider_module.changeset()
+    changeset = struct(provider_module, attrs_with_id) |> Ecto.Changeset.change()
 
     Repo.insert(changeset)
   end
@@ -311,7 +310,7 @@ defmodule Domain.Repo.Seeds do
         actor_id: admin_actor.id,
         account_id: account.id,
         issuer: "https://accounts.google.com",
-        idp_id: "google:#{google_idp_id()}",
+        idp_id: google_idp_id(),
         name: "Firezone Admin"
       })
 
@@ -320,7 +319,7 @@ defmodule Domain.Repo.Seeds do
         actor_id: admin_actor.id,
         account_id: account.id,
         issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
-        idp_id: "entra:#{entra_idp_id()}",
+        idp_id: entra_idp_id(),
         name: "Firezone Admin"
       })
 
@@ -781,7 +780,8 @@ defmodule Domain.Repo.Seeds do
         secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
       )
 
-    global_relay_group_encoded_token = Tokens.encode_fragment!(global_relay_group_token)
+    global_relay_group_encoded_token =
+      Domain.Crypto.encode_token_fragment!(global_relay_group_token)
 
     IO.puts("Created global relay groups:")
     IO.puts("  #{global_relay_group.name} token: #{global_relay_group_encoded_token}")
@@ -843,7 +843,7 @@ defmodule Domain.Repo.Seeds do
         secret_hash: "af133f7efe751ca978ec3e5fadf081ce9ab50138ff52862395858c3d2c11c0c5"
       )
 
-    relay_group_encoded_token = Tokens.encode_fragment!(relay_group_token)
+    relay_group_encoded_token = Domain.Crypto.encode_token_fragment!(relay_group_token)
 
     IO.puts("Created relay groups:")
     IO.puts("  #{relay_group.name} token: #{relay_group_encoded_token}")
@@ -912,7 +912,7 @@ defmodule Domain.Repo.Seeds do
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
       )
 
-    gateway_group_encoded_token = Tokens.encode_fragment!(gateway_group_token)
+    gateway_group_encoded_token = Domain.Crypto.encode_token_fragment!(gateway_group_token)
 
     IO.puts("Created gateway groups:")
     IO.puts("  #{gateway_group.name} token: #{gateway_group_encoded_token}")

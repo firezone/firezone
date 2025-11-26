@@ -119,16 +119,14 @@ defmodule Web.EmailOTPController do
             {:error, :rate_limited} ->
               # Generate fake fragment but track the error
               fake_fragment =
-                Domain.Tokens.encode_fragment!(%Domain.Tokens.Token{
+                Domain.Crypto.encode_token_fragment!(%Domain.Tokens.Token{
                   type: :email,
                   secret_nonce: Domain.Crypto.random_token(5, encoder: :user_friendly),
                   secret_fragment: Domain.Crypto.random_token(27, encoder: :hex32),
                   account_id: Ecto.UUID.generate(),
                   actor_id: Ecto.UUID.generate(),
                   id: Ecto.UUID.generate(),
-                  expires_at: DateTime.utc_now(),
-                  created_by_user_agent: context.user_agent,
-                  created_by_remote_ip: context.remote_ip
+                  expires_at: DateTime.utc_now()
                 })
 
               {fake_fragment, :rate_limited}
@@ -136,16 +134,14 @@ defmodule Web.EmailOTPController do
             _ ->
               # We generate a fake fragment to prevent information leakage
               fake_fragment =
-                Domain.Tokens.encode_fragment!(%Domain.Tokens.Token{
+                Domain.Crypto.encode_token_fragment!(%Domain.Tokens.Token{
                   type: :email,
                   secret_nonce: Domain.Crypto.random_token(5, encoder: :user_friendly),
                   secret_fragment: Domain.Crypto.random_token(27, encoder: :hex32),
                   account_id: Ecto.UUID.generate(),
                   actor_id: Ecto.UUID.generate(),
                   id: Ecto.UUID.generate(),
-                  expires_at: DateTime.utc_now(),
-                  created_by_user_agent: context.user_agent,
-                  created_by_remote_ip: context.remote_ip
+                  expires_at: DateTime.utc_now()
                 })
 
               {fake_fragment, nil}
@@ -212,12 +208,10 @@ defmodule Web.EmailOTPController do
         account_id: actor.account_id,
         actor_id: actor.id,
         remaining_attempts: sign_in_token_max_attempts,
-        expires_at: expires_at,
-        created_by_user_agent: context.user_agent,
-        created_by_remote_ip: context.remote_ip
+        expires_at: expires_at
       })
 
-    fragment = Tokens.encode_fragment!(token)
+    fragment = Domain.Crypto.encode_token_fragment!(token)
 
     {:ok, actor, fragment, nonce}
   end
@@ -300,13 +294,11 @@ defmodule Web.EmailOTPController do
       account_id: actor.account_id,
       actor_id: actor.id,
       auth_provider_id: provider.id,
-      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second),
-      created_by_user_agent: context.user_agent,
-      created_by_remote_ip: context.remote_ip
+      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
     }
 
     with {:ok, token} <- Tokens.create_token(attrs) do
-      {:ok, Tokens.encode_fragment!(token)}
+      {:ok, Domain.Crypto.encode_token_fragment!(token)}
     end
   end
 

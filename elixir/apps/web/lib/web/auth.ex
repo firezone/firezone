@@ -18,7 +18,7 @@ defmodule Web.Auth do
   @recent_accounts_cookie_options [
     sign: true,
     max_age: 365 * 24 * 60 * 60,
-    same_site: "Lax",
+    same_site: "Strict",
     secure: true,
     http_only: true
   ]
@@ -28,35 +28,31 @@ defmodule Web.Auth do
   ## Controller Helpers
   ###########################
 
-  def all_recent_account_ids(conn) do
+  def recent_account_ids(conn) do
     conn = Plug.Conn.fetch_cookies(conn, signed: [@recent_accounts_cookie_name])
-
-    if recent_account_ids = Map.get(conn.cookies, @recent_accounts_cookie_name) do
-      {:ok, Plug.Crypto.non_executable_binary_to_term(recent_account_ids, [:safe]), conn}
-    else
-      {:ok, [], conn}
-    end
+    Map.get(conn.cookies, @recent_accounts_cookie_name)
   end
 
-  def prepend_recent_account_ids(conn, account_id) do
-    update_recent_account_ids(conn, fn recent_account_ids ->
-      [account_id | recent_account_ids]
-    end)
-  end
-
-  def update_recent_account_ids(conn, callback) when is_function(callback, 1) do
-    {:ok, recent_account_ids, conn} = all_recent_account_ids(conn)
-
-    recent_account_ids =
-      recent_account_ids
-      |> callback.()
-      |> Enum.take(@remember_last_account_ids)
-      |> :erlang.term_to_binary()
+  def prepend_recent_account_id(conn, id_to_prepend) do
+    recent = recent_account_ids(conn) || []
+    ids = [id_to_prepend | recent] |> Enum.uniq() |> Enum.take(@remember_last_account_ids)
 
     Plug.Conn.put_resp_cookie(
       conn,
       @recent_accounts_cookie_name,
-      recent_account_ids,
+      ids,
+      @recent_accounts_cookie_options
+    )
+  end
+
+  def remove_recent_account_ids(conn, ids_to_remove) do
+    recent = recent_account_ids(conn) || []
+    ids = Enum.reject(recent, fn id -> id in ids_to_remove end)
+
+    Plug.Conn.put_resp_cookie(
+      conn,
+      @recent_accounts_cookie_name,
+      ids,
       @recent_accounts_cookie_options
     )
   end

@@ -20,7 +20,7 @@ defmodule Web.AuthTest do
     admin_identity = %{admin_identity | actor: admin_actor}
 
     {:ok, admin_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
-    admin_encoded_fragment = Domain.Tokens.encode_fragment!(admin_token)
+    admin_encoded_fragment = Domain.Crypto.encode_token_fragment!(admin_token)
 
     admin_subject =
       Fixtures.Auth.create_subject(
@@ -39,7 +39,7 @@ defmodule Web.AuthTest do
     user_identity = %{user_identity | actor: user_actor}
 
     {:ok, user_token} = Domain.Auth.create_token(user_identity, context, nonce, nil)
-    user_encoded_fragment = Domain.Tokens.encode_fragment!(user_token)
+    user_encoded_fragment = Domain.Crypto.encode_token_fragment!(user_token)
 
     user_subject =
       Fixtures.Auth.create_subject(
@@ -603,7 +603,7 @@ defmodule Web.AuthTest do
     } do
       context = %{context | type: :client}
       {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
-      encoded_fragment = Domain.Tokens.encode_fragment!(client_token)
+      encoded_fragment = Domain.Crypto.encode_token_fragment!(client_token)
 
       conn =
         %{
@@ -632,7 +632,7 @@ defmodule Web.AuthTest do
     } do
       context = %{context | type: :client}
       {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
-      encoded_fragment = Domain.Tokens.encode_fragment!(client_token)
+      encoded_fragment = Domain.Crypto.encode_token_fragment!(client_token)
 
       conn =
         %{
@@ -773,7 +773,7 @@ defmodule Web.AuthTest do
       context = %{context | type: :client}
 
       {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
-      encoded_fragment = Domain.Tokens.encode_fragment!(client_token)
+      encoded_fragment = Domain.Crypto.encode_token_fragment!(client_token)
       {:ok, client_subject} = Domain.Auth.authenticate(nonce <> encoded_fragment, context)
 
       redirect_params = %{"as" => "client", "state" => "STATE", "nonce" => nonce}
@@ -918,7 +918,7 @@ defmodule Web.AuthTest do
     } do
       context = %{context | type: :client}
       {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
-      encoded_fragment = Domain.Tokens.encode_fragment!(client_token)
+      encoded_fragment = Domain.Crypto.encode_token_fragment!(client_token)
 
       session =
         conn

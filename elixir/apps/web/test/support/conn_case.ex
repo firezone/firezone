@@ -66,7 +66,7 @@ defmodule Web.ConnCase do
 
     nonce = "nonce"
     {:ok, token} = Domain.Auth.create_token(identity, context, nonce, expires_in)
-    encoded_fragment = Domain.Tokens.encode_fragment!(token)
+    encoded_fragment = Domain.Crypto.encode_token_fragment!(token)
     {:ok, subject} = Domain.Auth.build_subject(token, context)
 
     conn

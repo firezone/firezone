@@ -24,7 +24,7 @@ defmodule API.Gateway.SocketTest do
 
     test "creates a new gateway" do
       token = Fixtures.Gateways.create_token()
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -44,7 +44,7 @@ defmodule API.Gateway.SocketTest do
 
     test "uses region code to put default coordinates" do
       token = Fixtures.Gateways.create_token()
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -60,7 +60,7 @@ defmodule API.Gateway.SocketTest do
 
     test "propagates trace context" do
       token = Fixtures.Gateways.create_token()
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
       attrs = connect_attrs(token: encrypted_secret)
 
       span_ctx = OpenTelemetry.Tracer.start_span("test")
@@ -81,7 +81,7 @@ defmodule API.Gateway.SocketTest do
       group = Fixtures.Gateways.create_group(account: account)
       gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
       token = Fixtures.Gateways.create_token(account: account, group: group)
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret, external_id: gateway.external_id)
 

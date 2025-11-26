@@ -36,13 +36,6 @@ defmodule Domain do
     end
   end
 
-  def migration do
-    quote do
-      use Ecto.Migration
-      import Domain.Repo.Migration
-    end
-  end
-
   @doc """
   When used, dispatch to the appropriate schema/context/changeset/query/etc.
   """

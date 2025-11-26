@@ -93,13 +93,11 @@ defmodule Web.UserpassController do
       account_id: actor.account_id,
       actor_id: actor.id,
       auth_provider_id: provider.id,
-      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second),
-      created_by_user_agent: context.user_agent,
-      created_by_remote_ip: context.remote_ip
+      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
     }
 
     with {:ok, token} <- Tokens.create_token(attrs) do
-      {:ok, Tokens.encode_fragment!(token)}
+      {:ok, Domain.Crypto.encode_token_fragment!(token)}
     end
   end
 

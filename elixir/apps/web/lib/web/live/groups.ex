@@ -4,8 +4,7 @@ defmodule Web.Groups do
   alias __MODULE__.DB
 
   alias Domain.{
-    Actors,
-    Safe
+    Actors
   }
 
   import Ecto.Changeset
@@ -165,7 +164,7 @@ defmodule Web.Groups do
     group = DB.get_group!(id, socket.assigns.subject)
 
     if is_deletable_group?(group) do
-      case delete_group(group, socket.assigns.subject) do
+      case DB.delete(group, socket.assigns.subject) do
         {:ok, _group} ->
           {:noreply, handle_success(socket, "Group deleted successfully")}
 
@@ -182,7 +181,7 @@ defmodule Web.Groups do
     group = %Actors.Group{account_id: socket.assigns.subject.account.id}
     changeset = changeset(group, attrs)
 
-    case create_group(changeset, socket.assigns.subject) do
+    case DB.create(changeset, socket.assigns.subject) do
       {:ok, _group} ->
         socket =
           socket
@@ -202,7 +201,7 @@ defmodule Web.Groups do
       attrs = build_attrs_with_memberships(attrs, socket)
       changeset = changeset(socket.assigns.group, attrs)
 
-      case update_group(changeset, socket.assigns.subject) do
+      case DB.update(changeset, socket.assigns.subject) do
         {:ok, group} ->
           params = query_params(socket.assigns.uri)
 
@@ -272,7 +271,7 @@ defmodule Web.Groups do
           metadata={@groups_metadata}
         >
           <:col :let={group} class="w-12">
-            <.provider_icon type={provider_type_from_idp_id(group.idp_id)} class="w-8 h-8" />
+            <.provider_icon type={provider_type_from_group(group)} class="w-8 h-8" />
           </:col>
           <:col :let={group} field={{:groups, :name}} label="group" class="w-3/12">
             {group.name}
@@ -368,7 +367,7 @@ defmodule Web.Groups do
       <:title>
         <div class="flex items-center gap-3">
           <.provider_icon
-            type={provider_type_from_idp_id(@group.idp_id)}
+            type={provider_type_from_group(@group)}
             class="w-8 h-8 flex-shrink-0"
           />
           <span>{@group.name}</span>
@@ -498,7 +497,7 @@ defmodule Web.Groups do
       <:title>
         <div class="flex items-center gap-3">
           <.provider_icon
-            type={provider_type_from_idp_id(@group.idp_id)}
+            type={provider_type_from_group(@group)}
             class="w-8 h-8 flex-shrink-0"
           />
           <span>Edit {@group.name}</span>
@@ -705,7 +704,7 @@ defmodule Web.Groups do
     """
   end
 
-  defp is_editable_group?(%{name: "Everyone"}), do: false
+  defp is_editable_group?(%{type: :managed, name: "Everyone"}), do: false
   defp is_editable_group?(%{directory_id: nil}), do: true
   defp is_editable_group?(_group), do: false
 
@@ -865,27 +864,8 @@ defmodule Web.Groups do
         |> put_change(:account_id, group.account_id)
       end
     )
-    |> Actors.Group.changeset()
   end
 
-  # Database operations
-  defp create_group(changeset, subject) do
-    changeset
-    |> Safe.scoped(subject)
-    |> Safe.insert()
-  end
-
-  defp update_group(changeset, subject) do
-    changeset
-    |> Safe.scoped(subject)
-    |> Safe.update()
-  end
-
-  defp delete_group(group, subject) do
-    group
-    |> Safe.scoped(subject)
-    |> Safe.delete()
-  end
 
   defmodule DB do
     import Ecto.Query
@@ -917,13 +897,18 @@ defmodule Web.Groups do
           on: mc.group_id == g.id,
           as: :member_counts
         )
+        |> join(:left, [groups: g], d in Directory,
+          on: d.id == g.directory_id,
+          as: :directory
+        )
         |> where(
           [groups: g],
           not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
         )
-        |> select_merge([groups: g, member_counts: mc], %{
+        |> select_merge([groups: g, member_counts: mc, directory: d], %{
           count: coalesce(mc.count, 0),
-          member_count: coalesce(mc.count, 0)
+          member_count: coalesce(mc.count, 0),
+          directory_type: d.type
         })
 
       # Apply manual ordering with NULLS LAST for count field
@@ -1037,7 +1022,14 @@ defmodule Web.Groups do
 
     def get_group!(id, subject) do
       from(g in Actors.Group, as: :groups)
+      |> join(:left, [groups: g], d in Directory,
+        on: d.id == g.directory_id,
+        as: :directory
+      )
       |> where([groups: groups], groups.id == ^id)
+      |> select_merge([groups: g, directory: d], %{
+        directory_type: d.type
+      })
       |> Safe.scoped(subject)
       |> Safe.one!()
     end
@@ -1072,6 +1064,9 @@ defmodule Web.Groups do
         from(g in Actors.Group, as: :groups)
         |> where([groups: groups], groups.id == ^id)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> select_merge([groups: g, directory: d], %{
+          directory_type: d.type
+        })
         |> join(:left, [directory: d], gd in Domain.Google.Directory,
           on: gd.id == d.id and d.type == :google,
           as: :google_directory
@@ -1105,6 +1100,24 @@ defmodule Web.Groups do
 
     def preloads do
       []
+    end
+
+    def create(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+    end
+
+    def update(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def delete(group, subject) do
+      group
+      |> Safe.scoped(subject)
+      |> Safe.delete()
     end
   end
 end

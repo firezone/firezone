@@ -4,6 +4,7 @@ defmodule Domain.Actors.Group do
   schema "actor_groups" do
     field :name, :string
     field :type, Ecto.Enum, values: ~w[managed static]a, default: :static
+    field :entity_type, Ecto.Enum, values: ~w[group org_unit]a, default: :group
 
     field :idp_id, :string
 
@@ -34,6 +35,10 @@ defmodule Domain.Actors.Group do
     |> unique_constraint(:name,
       name: :actor_groups_account_id_name_index,
       message: "A group with this name already exists."
+    )
+    |> check_constraint(:entity_type,
+      name: :actor_groups_entity_type_must_be_valid,
+      message: "is not valid"
     )
   end
 end

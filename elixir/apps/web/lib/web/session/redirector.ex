@@ -12,13 +12,6 @@ defmodule Web.Session.Redirector do
   alias Domain.{Accounts.Account, Tokens}
 
   @doc """
-  Returns the default portal path for an account after sign-in.
-  """
-  def default_portal_path(%Account{} = account) do
-    ~p"/#{account.id}/sites"
-  end
-
-  @doc """
   Sanitizes and validates a redirect_to parameter.
 
   Returns the redirect_to if it's valid (starts with account ID or slug),
@@ -51,7 +44,7 @@ defmodule Web.Session.Redirector do
     redirect_to = sanitize_redirect_to(account, params["redirect_to"])
 
     conn
-    |> Web.Auth.prepend_recent_account_ids(account.id)
+    |> Web.Auth.prepend_recent_account_id(account.id)
     |> Phoenix.Controller.redirect(to: redirect_to)
   end
 
@@ -73,6 +66,7 @@ defmodule Web.Session.Redirector do
 
     conn
     |> Web.Auth.put_client_auth_data_to_cookie(client_auth_data)
+    |> Web.Auth.prepend_recent_account_id(conn.assigns.account.id)
     |> Phoenix.Controller.put_root_layout(false)
     |> Phoenix.Controller.put_view(Web.SignInHTML)
     |> Phoenix.Controller.render("client_redirect.html",
@@ -86,9 +80,6 @@ defmodule Web.Session.Redirector do
 
   For unauthenticated users, redirects to the account home page.
   """
-
-  # TODO: IDP REFACTOR
-  # This should be a POST request to avoid CSRF issues
 
   def signed_out(
         %Plug.Conn{assigns: %{subject: %Domain.Auth.Subject{} = subject, account: account}} =
@@ -113,5 +104,9 @@ defmodule Web.Session.Redirector do
     |> Web.Session.Cookie.delete_account_cookie(account_id)
     |> Plug.Conn.configure_session(drop: true)
     |> Plug.Conn.clear_session()
+  end
+
+  defp default_portal_path(%Account{} = account) do
+    ~p"/#{account.id}/sites"
   end
 end

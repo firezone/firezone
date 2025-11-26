@@ -3564,7 +3564,7 @@ defmodule Domain.AuthTest do
 
       {:ok, browser_token} = create_token(identity, browser_context, nonce, nil)
 
-      browser_fragment = Tokens.encode_fragment!(browser_token)
+      browser_fragment = Domain.Crypto.encode_token_fragment!(browser_token)
 
       client_context =
         Fixtures.Auth.build_context(
@@ -3581,7 +3581,7 @@ defmodule Domain.AuthTest do
         )
 
       {:ok, client_token} = create_token(identity, client_context, nonce, nil)
-      client_fragment = Tokens.encode_fragment!(client_token)
+      client_fragment = Domain.Crypto.encode_token_fragment!(client_token)
 
       %{
         account: account,

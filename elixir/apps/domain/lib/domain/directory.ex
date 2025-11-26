@@ -22,4 +22,11 @@ defmodule Domain.Directory do
       foreign_key: :id,
       where: [type: :okta]
   end
+
+  def changeset(changeset) do
+    changeset
+    |> validate_required(~w[type]a)
+    |> assoc_constraint(:account)
+    |> check_constraint(:type, name: :type_must_be_valid, message: "is not valid")
+  end
 end

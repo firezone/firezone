@@ -441,8 +441,8 @@ defmodule Web.SignUp do
 
     def create_email_provider(account) do
       id = Ecto.UUID.generate()
-      attrs = %{account_id: account.id, id: id}
-      parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id]a)
+      attrs = %{account_id: account.id, id: id, type: :email_otp}
+      parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id type]a)
       attrs = %{id: id, name: "Email (OTP)"}
 
       changeset =

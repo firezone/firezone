@@ -14,19 +14,37 @@ defmodule Domain.AuthProvider do
   schema "auth_providers" do
     belongs_to :account, Domain.Accounts.Account, primary_key: true
     field :id, :binary_id, primary_key: true
+    field :type, Ecto.Enum, values: ~w[google okta entra oidc email_otp userpass]a
 
     has_one :email_otp_auth_provider, Domain.EmailOTP.AuthProvider,
       references: :id,
-      foreign_key: :id
+      foreign_key: :id,
+      where: [type: :email_otp]
 
     has_one :userpass_auth_provider, Domain.Userpass.AuthProvider,
       references: :id,
-      foreign_key: :id
+      foreign_key: :id,
+      where: [type: :userpass]
 
-    has_one :google_auth_provider, Domain.Google.AuthProvider, references: :id, foreign_key: :id
-    has_one :okta_auth_provider, Domain.Okta.AuthProvider, references: :id, foreign_key: :id
-    has_one :entra_auth_provider, Domain.Entra.AuthProvider, references: :id, foreign_key: :id
-    has_one :oidc_auth_provider, Domain.OIDC.AuthProvider, references: :id, foreign_key: :id
+    has_one :google_auth_provider, Domain.Google.AuthProvider,
+      references: :id,
+      foreign_key: :id,
+      where: [type: :google]
+
+    has_one :okta_auth_provider, Domain.Okta.AuthProvider,
+      references: :id,
+      foreign_key: :id,
+      where: [type: :okta]
+
+    has_one :entra_auth_provider, Domain.Entra.AuthProvider,
+      references: :id,
+      foreign_key: :id,
+      where: [type: :entra]
+
+    has_one :oidc_auth_provider, Domain.OIDC.AuthProvider,
+      references: :id,
+      foreign_key: :id,
+      where: [type: :oidc]
   end
 
   def module!(type) do
@@ -40,5 +58,13 @@ defmodule Domain.AuthProvider do
       {type, _mod} -> type
       nil -> raise ArgumentError, "unknown auth provider module #{inspect(module)}"
     end
+  end
+
+  def changeset(changeset) do
+    changeset
+    |> validate_required(~w[type]a)
+    |> assoc_constraint(:account)
+    |> unique_constraint(:id, name: :auth_providers_pkey)
+    |> check_constraint(:type, name: :type_must_be_valid, message: "is not valid")
   end
 end

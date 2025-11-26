@@ -152,13 +152,11 @@ defmodule Domain.Gateways do
         "type" => :gateway_group,
         "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
         "account_id" => group.account_id,
-        "gateway_group_id" => group.id,
-        "created_by_user_agent" => subject.context.user_agent,
-        "created_by_remote_ip" => subject.context.remote_ip
+        "gateway_group_id" => group.id
       })
 
     with {:ok, token} <- Tokens.create_token(attrs, subject) do
-      {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Tokens.encode_fragment!(token)}
+      {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Domain.Crypto.encode_token_fragment!(token)}
     end
   end
 

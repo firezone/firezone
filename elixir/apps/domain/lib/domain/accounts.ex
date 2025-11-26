@@ -4,45 +4,22 @@ defmodule Domain.Accounts do
   alias Domain.{Auth, Billing}
   alias Domain.Accounts.{Account, Features}
 
-  def all_active_accounts! do
-    Account.Query.not_disabled()
-    |> Safe.unscoped()
-    |> Safe.all()
-  end
+  # def all_active_accounts! do
+  #   Account.Query.not_disabled()
+  #   |> Safe.unscoped()
+  #   |> Safe.all()
+  # end
 
-  def all_accounts_by_ids!(ids) do
-    if Enum.all?(ids, &Repo.valid_uuid?/1) do
-      Account.Query.all()
-      |> Account.Query.by_id({:in, ids})
-      |> Safe.unscoped()
-      |> Safe.all()
-    else
-      []
-    end
-  end
-
-  def all_active_paid_accounts_pending_notification! do
-    ["Team", "Enterprise"]
-    |> Enum.flat_map(&all_active_accounts_by_subscription_name_pending_notification!/1)
-  end
-
-  def all_active_accounts_by_subscription_name_pending_notification!(subscription_name) do
-    Account.Query.not_disabled()
-    |> Account.Query.by_stripe_product_name(subscription_name)
-    |> Account.Query.by_notification_enabled("outdated_gateway")
-    |> Account.Query.by_notification_last_notified("outdated_gateway", 24)
-    |> Safe.unscoped()
-    |> Safe.all()
-  end
-
-  # TODO: This will need to be updated once more notifications are available
-  def all_accounts_pending_notification! do
-    Account.Query.not_disabled()
-    |> Account.Query.by_notification_enabled("outdated_gateway")
-    |> Account.Query.by_notification_last_notified("outdated_gateway", 24)
-    |> Safe.unscoped()
-    |> Safe.all()
-  end
+  # def all_accounts_by_ids!(ids) do
+  #   if Enum.all?(ids, &Repo.valid_uuid?/1) do
+  #     Account.Query.all()
+  #     |> Account.Query.by_id({:in, ids})
+  #     |> Safe.unscoped()
+  #     |> Safe.all()
+  #   else
+  #     []
+  #   end
+  # end
 
   def fetch_account_by_id(id, %Auth.Subject{} = subject) do
     with true <- Repo.valid_uuid?(id) do
@@ -127,18 +104,7 @@ defmodule Domain.Accounts do
   end
 
   defp account_feature_enabled?(account, feature) do
-    Map.fetch!(account.features || %Features{}, feature) || false
-  end
-
-  def account_active?(%{disabled_at: nil}), do: true
-  def account_active?(_account), do: false
-
-  def ensure_has_access_to(%Auth.Subject{} = subject, %Account{} = account) do
-    if subject.account.id == account.id do
-      :ok
-    else
-      {:error, :unauthorized}
-    end
+    Map.fetch!(account.features || %Features{}, feature)
   end
 
   def generate_unique_slug do

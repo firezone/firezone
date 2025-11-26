@@ -280,7 +280,7 @@ defmodule Domain.Entra.Sync do
         groups =
           Enum.map(group_assignments, fn assignment ->
             %{
-              idp_id: "entra:#{assignment["principalId"]}",
+              idp_id: assignment["principalId"],
               name: assignment["principalDisplayName"]
             }
           end)
@@ -347,7 +347,7 @@ defmodule Domain.Entra.Sync do
               # Build memberships (group_idp_id, user_idp_id)
               memberships =
                 Enum.map(user_members, fn member ->
-                  {"entra:#{group_id}", "entra:#{member["id"]}"}
+                  {group_id, member["id"]}
                 end)
 
               unless Enum.empty?(identities) do
@@ -413,7 +413,7 @@ defmodule Domain.Entra.Sync do
         group_attrs =
           Enum.map(groups, fn group ->
             %{
-              idp_id: "entra:#{group["id"]}",
+              idp_id: group["id"],
               name: group["displayName"]
             }
           end)
@@ -480,7 +480,7 @@ defmodule Domain.Entra.Sync do
               # Build memberships (group_idp_id, user_idp_id)
               memberships =
                 Enum.map(user_members, fn member ->
-                  {"entra:#{group_id}", "entra:#{member["id"]}"}
+                  {group_id, member["id"]}
                 end)
 
               unless Enum.empty?(identities) do
@@ -630,12 +630,13 @@ defmodule Domain.Entra.Sync do
     #   2. Uploads binary data to Entra blob storage
     #   3. Updates identity.firezone_avatar_url with the blob URL
     %{
-      idp_id: "entra:#{user["id"]}",
+      idp_id: user["id"],
       email: primary_email,
       name: user["displayName"],
       given_name: user["givenName"],
       family_name: user["surname"],
-      preferred_username: user["userPrincipalName"]
+      preferred_username: user["userPrincipalName"],
+      profile: user["aboutMe"]
     }
   end
 
@@ -677,20 +678,23 @@ defmodule Domain.Entra.Sync do
         )
 
       case Safe.unscoped() |> Safe.query(query, params) do
-        {:ok, %Postgrex.Result{rows: rows}} -> {:ok, %{upserted_identities: length(rows)}}
-        {:error, reason} -> {:error, reason}
+        {:ok, %Postgrex.Result{rows: rows}} -> 
+          {:ok, %{upserted_identities: length(rows)}}
+          
+        {:error, reason} -> 
+          {:error, reason}
       end
     end
 
     defp build_identity_upsert_query(count) do
-      # Each identity has 6 fields: idp_id, email, name, given_name, family_name, preferred_username
+      # Each identity has 7 fields: idp_id, email, name, given_name, family_name, preferred_username, profile
       values_clause =
-        for i <- 1..count, base = (i - 1) * 6 do
-          "($#{base + 1}, $#{base + 2}, $#{base + 3}, $#{base + 4}, $#{base + 5}, $#{base + 6})"
+        for i <- 1..count, base = (i - 1) * 7 do
+          "($#{base + 1}, $#{base + 2}, $#{base + 3}, $#{base + 4}, $#{base + 5}, $#{base + 6}, $#{base + 7})"
         end
         |> Enum.join(", ")
 
-      offset = count * 6
+      offset = count * 7
       account_id = offset + 1
       issuer = offset + 2
       directory_id = offset + 3
@@ -699,7 +703,7 @@ defmodule Domain.Entra.Sync do
       """
       WITH input_data AS (
         SELECT * FROM (VALUES #{values_clause})
-        AS t(idp_id, email, name, given_name, family_name, preferred_username)
+        AS t(idp_id, email, name, given_name, family_name, preferred_username, profile)
       ),
       existing_identities AS (
         SELECT ei.id, ei.actor_id, ei.idp_id
@@ -741,20 +745,20 @@ defmodule Domain.Entra.Sync do
         RETURNING id, name
       ),
       all_actor_mappings AS (
-        SELECT atc.new_actor_id AS actor_id, atc.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username
+        SELECT atc.new_actor_id AS actor_id, atc.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username, id.profile
         FROM actors_to_create atc
         JOIN input_data id ON id.idp_id = atc.idp_id
         UNION ALL
-        SELECT ei.actor_id, ei.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username
+        SELECT ei.actor_id, ei.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username, id.profile
         FROM existing_identities ei
         JOIN input_data id ON id.idp_id = ei.idp_id
         UNION ALL
-        SELECT eabe.actor_id, eabe.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username
+        SELECT eabe.actor_id, eabe.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username, id.profile
         FROM existing_actors_by_email eabe
         JOIN input_data id ON id.idp_id = eabe.idp_id
       )
       INSERT INTO external_identities (
-        id, actor_id, issuer, idp_id, directory_id, email, name, given_name, family_name, preferred_username,
+        id, actor_id, issuer, idp_id, directory_id, email, name, given_name, family_name, preferred_username, profile,
         last_synced_at, account_id, inserted_at
       )
       SELECT
@@ -768,6 +772,7 @@ defmodule Domain.Entra.Sync do
         aam.given_name,
         aam.family_name,
         aam.preferred_username,
+        aam.profile,
         $#{last_synced_at},
         $#{account_id},
         $#{last_synced_at}
@@ -781,7 +786,10 @@ defmodule Domain.Entra.Sync do
         given_name = EXCLUDED.given_name,
         family_name = EXCLUDED.family_name,
         preferred_username = EXCLUDED.preferred_username,
+        profile = EXCLUDED.profile,
         last_synced_at = EXCLUDED.last_synced_at
+      WHERE external_identities.last_synced_at IS NULL 
+        OR external_identities.last_synced_at < EXCLUDED.last_synced_at
       RETURNING 1
       """
     end
@@ -801,7 +809,8 @@ defmodule Domain.Entra.Sync do
             a.name,
             Map.get(a, :given_name),
             Map.get(a, :family_name),
-            Map.get(a, :preferred_username)
+            Map.get(a, :preferred_username),
+            Map.get(a, :profile)
           ]
         end)
 
@@ -836,7 +845,14 @@ defmodule Domain.Entra.Sync do
       {count, _} =
         Safe.unscoped()
         |> Safe.insert_all(Domain.Actors.Group, values,
-          on_conflict: {:replace, [:name, :directory_id, :last_synced_at, :updated_at]},
+          on_conflict: [
+            set: [
+              name: {:fragment, "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.name ELSE actor_groups.name END"},
+              directory_id: {:fragment, "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.directory_id ELSE actor_groups.directory_id END"},
+              last_synced_at: {:fragment, "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.last_synced_at ELSE actor_groups.last_synced_at END"},
+              updated_at: {:fragment, "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.updated_at ELSE actor_groups.updated_at END"}
+            ]
+          ],
           conflict_target: {:unsafe_fragment, ~s[(account_id, idp_id) WHERE idp_id IS NOT NULL]},
           returning: false
         )
@@ -901,6 +917,8 @@ defmodule Domain.Entra.Sync do
       FROM resolved_memberships rm
       ON CONFLICT (actor_id, group_id) DO UPDATE SET
         last_synced_at = EXCLUDED.last_synced_at
+      WHERE actor_group_memberships.last_synced_at IS NULL 
+        OR actor_group_memberships.last_synced_at < EXCLUDED.last_synced_at
       RETURNING 1
       """
     end
@@ -919,7 +937,7 @@ defmodule Domain.Entra.Sync do
         from(g in Domain.Actors.Group,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,
-          where: g.last_synced_at != ^synced_at or is_nil(g.last_synced_at)
+          where: g.last_synced_at < ^synced_at or is_nil(g.last_synced_at)
         )
 
       query |> Safe.unscoped() |> Safe.delete_all()
@@ -930,7 +948,7 @@ defmodule Domain.Entra.Sync do
         from(i in Domain.ExternalIdentity,
           where: i.account_id == ^account_id,
           where: i.directory_id == ^directory_id,
-          where: i.last_synced_at != ^synced_at or is_nil(i.last_synced_at)
+          where: i.last_synced_at < ^synced_at or is_nil(i.last_synced_at)
         )
 
       query |> Safe.unscoped() |> Safe.delete_all()
@@ -944,7 +962,7 @@ defmodule Domain.Entra.Sync do
           on: m.group_id == g.id,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,
-          where: m.last_synced_at != ^synced_at or is_nil(m.last_synced_at)
+          where: m.last_synced_at < ^synced_at or is_nil(m.last_synced_at)
         )
 
       query |> Safe.unscoped() |> Safe.delete_all()

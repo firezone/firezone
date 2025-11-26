@@ -1,5 +1,8 @@
 defmodule Domain.Actors.Actor do
-  use Domain, :schema
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @email_regex ~r/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
 
   schema "actors" do
     field :type, Ecto.Enum,
@@ -40,5 +43,43 @@ defmodule Domain.Actors.Actor do
     |> assoc_constraint(:account)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
     |> check_constraint(:type, name: :type_is_valid)
+  end
+
+  defp validate_email(changeset, field) do
+    changeset
+    |> validate_format(field, @email_regex, message: "is an invalid email address")
+    |> validate_length(field, max: 160)
+  end
+
+  defp normalize_email(changeset, field) do
+    update_change(changeset, field, fn
+      nil ->
+        nil
+
+      email when is_binary(email) ->
+        case String.split(email, "@", parts: 2) do
+          [local, domain] ->
+            # 1. Trim and downcase domain
+            local = String.trim(local)
+            domain = String.trim(domain) |> String.downcase()
+
+            # 2. Convert internationalized domains to punycode
+            case try_encode_domain(domain) do
+              {:ok, punycode_domain} ->
+                local <> "@" <> to_string(punycode_domain)
+
+              _error ->
+                add_error(changeset, field, "has an invalid domain")
+                email
+            end
+
+          # No @ sign, return as-is (will be caught by validate_email)
+          _ ->
+            email
+        end
+
+      other ->
+        other
+    end)
   end
 end

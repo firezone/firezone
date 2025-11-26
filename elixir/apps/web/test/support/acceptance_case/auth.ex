@@ -58,7 +58,7 @@ defmodule Web.AcceptanceCase.Auth do
     signing_salt = Keyword.fetch!(options, :signing_salt)
     secret_key_base = Web.Endpoint.config(:secret_key_base)
 
-    encoded_token = Domain.Tokens.encode_fragment!(token)
+    encoded_token = Domain.Crypto.encode_token_fragment!(token)
     encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
     signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
 
