@@ -12,24 +12,6 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-/// Thread-safe wrapper for mutable state using NSLock.
-/// Provides similar API to OSAllocatedUnfairLock but compatible with iOS 15+.
-/// We can't use OSAllocatedUnfairLock as it requires iOS 16+.
-final class LockedState<Value>: @unchecked Sendable {
-  private let lock = NSLock()
-  private var _value: Value
-
-  init(initialState: Value) {
-    _value = initialState
-  }
-
-  func withLock<Result>(_ body: (inout Value) -> Result) -> Result {
-    lock.lock()
-    defer { lock.unlock() }
-    return body(&_value)
-  }
-}
-
 enum AdapterError: Error {
   /// Failure to perform an operation in such state.
   case invalidSession(Session?)
@@ -49,14 +31,14 @@ enum AdapterError: Error {
 }
 
 // Loosely inspired from WireGuardAdapter from WireGuardKit
-class Adapter: @unchecked Sendable {
+actor Adapter {
 
   /// Command sender for sending commands to the session
-  private var commandSender: Sender<SessionCommand>?
+  private nonisolated(unsafe) var commandSender: Sender<SessionCommand>?
 
   /// Task handles for explicit cancellation during cleanup
-  private var eventLoopTask: Task<Void, Never>?
-  private var eventConsumerTask: Task<Void, Never>?
+  private nonisolated(unsafe) var eventLoopTask: Task<Void, Never>?
+  private nonisolated(unsafe) var eventConsumerTask: Task<Void, Never>?
 
   // Our local copy of the accountSlug
   private let accountSlug: String
@@ -67,11 +49,11 @@ class Adapter: @unchecked Sendable {
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: PacketTunnelProvider?
 
-  /// Start completion handler, used to signal to the system the interface is ready to use.
-  private var startCompletionHandler: (Error?) -> Void
+  /// Continuation to signal tunnel is ready after receiving first tunInterfaceUpdated event.
+  private var startContinuation: CheckedContinuation<Void, Error>?
 
   /// Network routes monitor.
-  private var networkMonitor: NWPathMonitor?
+  private nonisolated(unsafe) var networkMonitor: NWPathMonitor?
 
   #if os(macOS)
     /// Used for finding system DNS resolvers on macOS when network conditions have changed.
@@ -82,80 +64,6 @@ class Adapter: @unchecked Sendable {
   /// A path update is considered relevant if certain properties change that require us to reset connlib's
   /// network state.
   private var lastPath: Network.NWPath?
-
-  /// Private queue used to ensure consistent ordering among path update and connlib callbacks
-  /// This is the primary async primitive used in this class.
-  private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
-
-  /// Primary callback we receive whenever:
-  /// - Network connectivity changes
-  /// - System DNS servers change, including when we set them
-  /// - Routes change, including when we set them
-  ///
-  /// Apple doesn't give us very much info in this callback, so we don't know which of the
-  /// events above triggered the callback.
-  ///
-  /// On iOS this creates a problem:
-  ///
-  /// We have no good way to get the System's default resolvers. We use a workaround which
-  /// involves reading the resolvers from Bind (i.e. /etc/resolv.conf) but this will be set to connlib's
-  /// DNS sentinel while the tunnel is active, which isn't helpful to us. To get around this, we can
-  /// very briefly update the Tunnel's matchDomains config to *not* be the catch-all [""], which
-  /// causes iOS to write the actual system resolvers into /etc/resolv.conf, which we can then read.
-  /// The issue is that this in itself causes a path update callback, which makes it hard to
-  /// differentiate between us changing the DNS configuration and the system actually receiving new
-  /// default resolvers.
-  ///
-  /// So we solve this problem by only doing this DNS dance if the gateways available to the path have
-  /// changed. This means we only call setDns when the physical network has changed, and therefore
-  /// we're blind to path updates where only the DNS resolvers have changed. That will happen in two
-  /// cases most commonly:
-  /// - New DNS servers were set by DHCP
-  /// - The user manually changed the DNS servers in the system settings
-  ///
-  /// For now, this will break DNS if the old servers connlib is using are no longer valid, and
-  /// can only be fixed with a sign out and sign back in which restarts the NetworkExtension.
-  ///
-  /// On macOS, Apple has exposed the SystemConfiguration framework which makes this easy and
-  /// doesn't suffer from this issue.
-  ///
-  /// See the following issues for discussion around the above issue:
-  /// - https://github.com/firezone/firezone/issues/3302
-  /// - https://github.com/firezone/firezone/issues/3343
-  /// - https://github.com/firezone/firezone/issues/3235
-  /// - https://github.com/firezone/firezone/issues/3175
-  private lazy var pathUpdateHandler: @Sendable (Network.NWPath) -> Void = { [weak self] path in
-    guard let self else { return }
-
-    workQueue.async { [weak self] in
-      guard let self else { return }
-
-      if path.status == .unsatisfied {
-        // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
-        if self.packetTunnelProvider?.reasserting == false {
-          // Tell the UI we're not connected
-          self.packetTunnelProvider?.reasserting = true
-        }
-      } else {
-        if self.packetTunnelProvider?.reasserting == true {
-          self.packetTunnelProvider?.reasserting = false
-        }
-
-        if path.connectivityDifferentFrom(path: lastPath) {
-          // Tell connlib to reset network state and DNS resolvers, but only do so if our connectivity has
-          // meaningfully changed. On darwin, this is needed to send packets
-          // out of a different interface even when 0.0.0.0 is used as the source.
-          // If our primary interface changes, we can be certain the old socket shouldn't be
-          // used anymore.
-          self.sendCommand(.reset("primary network path changed"))
-        }
-
-        setSystemDefaultResolvers(path)
-
-        lastPath = path
-      }
-    }
-  }
 
   /// Internet resource enabled state
   private var internetResourceEnabled: Bool
@@ -176,8 +84,7 @@ class Adapter: @unchecked Sendable {
     logFilter: String,
     accountSlug: String,
     internetResourceEnabled: Bool,
-    packetTunnelProvider: PacketTunnelProvider,
-    startCompletionHandler: @escaping (Error?) -> Void
+    packetTunnelProvider: PacketTunnelProvider
   ) {
     self.apiURL = apiURL
     self.token = token
@@ -186,7 +93,6 @@ class Adapter: @unchecked Sendable {
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
     self.packetTunnelProvider = packetTunnelProvider
-    self.startCompletionHandler = startCompletionHandler
   }
 
   // Could happen abruptly if the process is killed.
@@ -204,34 +110,14 @@ class Adapter: @unchecked Sendable {
     eventConsumerTask?.cancel()
   }
 
-  func start() throws {
+  func start() async throws {
     Log.log("Adapter.start: Starting session for account: \(accountSlug)")
 
-    // Get device metadata - synchronously get values from MainActor
+    // Get device metadata from MainActor
     #if os(iOS)
-      let deviceMetadata = LockedState<(String, String?)>(initialState: ("", nil))
-    #else
-      let deviceMetadata = LockedState<String>(initialState: "")
-    #endif
-    let semaphore = DispatchSemaphore(value: 0)
-
-    Task { @MainActor in
-      let name = DeviceMetadata.getDeviceName()
-      #if os(iOS)
-        let identifier = DeviceMetadata.getIdentifierForVendor()
-        deviceMetadata.withLock { $0 = (name, identifier) }
-      #else
-        deviceMetadata.withLock { $0 = name }
-      #endif
-      semaphore.signal()
-    }
-    semaphore.wait()
-
-    let osVersion = DeviceMetadata.getOSVersion()
-    let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
-
-    #if os(iOS)
-      let (deviceName, identifierForVendor) = deviceMetadata.withLock { $0 }
+      let (deviceName, identifierForVendor) = await MainActor.run {
+        (DeviceMetadata.getDeviceName(), DeviceMetadata.getIdentifierForVendor())
+      }
       let deviceInfo = DeviceInfo(
         firebaseInstallationId: nil,
         deviceUuid: nil,
@@ -239,7 +125,9 @@ class Adapter: @unchecked Sendable {
         identifierForVendor: identifierForVendor
       )
     #else
-      let deviceName = deviceMetadata.withLock { $0 }
+      let deviceName = await MainActor.run {
+        DeviceMetadata.getDeviceName()
+      }
       let deviceInfo = DeviceInfo(
         firebaseInstallationId: nil,
         deviceUuid: getDeviceUuid(),
@@ -247,6 +135,9 @@ class Adapter: @unchecked Sendable {
         identifierForVendor: nil
       )
     #endif
+
+    let osVersion = DeviceMetadata.getOSVersion()
+    let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
 
     // Create the session
     let session: Session
@@ -307,6 +198,11 @@ class Adapter: @unchecked Sendable {
     // Configure DNS and path monitoring
     startNetworkPathMonitoring()
 
+    // Wait for tunnel to be ready (first tunInterfaceUpdated event)
+    try await withCheckedThrowingContinuation { continuation in
+      self.startContinuation = continuation
+    }
+
     Log.log("Adapter.start: Session started successfully")
   }
 
@@ -319,7 +215,7 @@ class Adapter: @unchecked Sendable {
   ///
   ///  This can happen before the tunnel is in the tunnelReady state, such as if the portal
   ///  is slow to send the init.
-  func stop() {
+  func stop() async {
     Log.log("Adapter.stop")
 
     sendCommand(.disconnect)
@@ -336,58 +232,46 @@ class Adapter: @unchecked Sendable {
   func getResourcesIfVersionDifferentFrom(
     hash: Data, completionHandler: @escaping @Sendable (Data?) -> Void
   ) {
-    Task { [weak self] in
-      guard let self = self else {
-        completionHandler(nil)
-        return
-      }
+    // Convert uniffi resources to FirezoneKit resources and encode with PropertyList
+    guard let uniffiResources = resources else {
+      completionHandler(nil)
+      return
+    }
 
-      // Convert uniffi resources to FirezoneKit resources and encode with PropertyList
-      guard let uniffiResources = self.resources
-      else {
-        completionHandler(nil)
-        return
-      }
+    let firezoneResources = uniffiResources.map { convertResource($0) }
 
-      let firezoneResources = uniffiResources.map { self.convertResource($0) }
+    guard let encoded = try? PropertyListEncoder().encode(firezoneResources) else {
+      Log.log("Failed to encode resources as PropertyList")
+      completionHandler(nil)
+      return
+    }
 
-      guard let encoded = try? PropertyListEncoder().encode(firezoneResources)
-      else {
-        Log.log("Failed to encode resources as PropertyList")
-        completionHandler(nil)
-        return
-      }
-
-      if hash == Data(SHA256.hash(data: encoded)) {
-        // nothing changed
-        completionHandler(nil)
-      } else {
-        completionHandler(encoded)
-      }
+    if hash == Data(SHA256.hash(data: encoded)) {
+      completionHandler(nil)
+    } else {
+      completionHandler(encoded)
     }
   }
 
-  func reset(reason: String, path: Network.NWPath? = nil) {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-      self.sendCommand(.reset(reason))
+  func reset(reason: String, path: Network.NWPath? = nil) async {
+    sendCommand(.reset(reason))
 
-      if let path = (path ?? self.lastPath) {
-        self.setSystemDefaultResolvers(path)
-      }
+    if let path = (path ?? lastPath) {
+      await setSystemDefaultResolvers(path)
     }
   }
 
-  func setInternetResourceEnabled(_ enabled: Bool) {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-
-      self.internetResourceEnabled = enabled
-      self.sendCommand(.setInternetResourceState(enabled))
-    }
+  func setInternetResourceEnabled(_ enabled: Bool) async {
+    internetResourceEnabled = enabled
+    sendCommand(.setInternetResourceState(enabled))
   }
 
   // MARK: - Event handling
+
+  private func resumeStartContinuation() {
+    startContinuation?.resume()
+    startContinuation = nil
+  }
 
   private func handleEvent(_ event: Event) async {
     switch event {
@@ -422,20 +306,20 @@ class Adapter: @unchecked Sendable {
       networkSettings.setSearchDomain(domain: searchDomain)
       self.networkSettings = networkSettings
 
-      networkSettings.apply {
+      networkSettings.apply { [weak self] in
+        guard let self else { return }
         if firstStart {
-          self.startCompletionHandler(nil)
+          Task {
+            await self.resumeStartContinuation()
+          }
         }
       }
 
     case .resourcesUpdated(let resourceList):
       Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")
 
-      // Store resource list
-      workQueue.async { [weak self] in
-        guard let self = self else { return }
-        self.resources = resourceList
-      }
+      // Store resource list (actor-isolated, no dispatch needed)
+      resources = resourceList
 
       // Apply network settings to flush DNS cache when resources change
       // This ensures new DNS resources are immediately resolvable
@@ -470,11 +354,15 @@ class Adapter: @unchecked Sendable {
 
   private func startNetworkPathMonitoring() {
     networkMonitor = NWPathMonitor()
-    networkMonitor?.pathUpdateHandler = self.pathUpdateHandler
-    networkMonitor?.start(queue: workQueue)
+    networkMonitor?.pathUpdateHandler = { [weak self] path in
+      Task { [weak self] in
+        await self?.handlePathUpdate(path)
+      }
+    }
+    networkMonitor?.start(queue: .global())
   }
 
-  private func setSystemDefaultResolvers(_ path: Network.NWPath) {
+  private func setSystemDefaultResolvers(_ path: Network.NWPath) async {
     // Step 1: Get system default resolvers
     #if os(macOS)
       let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
@@ -491,7 +379,7 @@ class Adapter: @unchecked Sendable {
       if !path.connectivityDifferentFrom(path: lastPath) {
         return
       }
-      let resolvers = resetToSystemDNSGettingBindResolvers()
+      let resolvers = await resetToSystemDNSGettingBindResolvers()
     #endif
 
     // Step 2: Validate and strip scope suffixes
@@ -526,6 +414,26 @@ class Adapter: @unchecked Sendable {
     // Step 3: Send to connlib
     Log.log("Sending resolvers to connlib: \(parsedResolvers)")
     sendCommand(.setDns(parsedResolvers))
+  }
+
+  private func handlePathUpdate(_ path: Network.NWPath) async {
+    if path.status == .unsatisfied {
+      if packetTunnelProvider?.reasserting == false {
+        packetTunnelProvider?.reasserting = true
+      }
+    } else {
+      if packetTunnelProvider?.reasserting == true {
+        packetTunnelProvider?.reasserting = false
+      }
+
+      if path.connectivityDifferentFrom(path: lastPath) {
+        sendCommand(.reset("primary network path changed"))
+      }
+
+      await setSystemDefaultResolvers(path)
+
+      lastPath = path
+    }
   }
 
   private func sendCommand(_ command: SessionCommand) {
@@ -592,46 +500,40 @@ class Adapter: @unchecked Sendable {
 // MARK: Getting System Resolvers on iOS
 #if os(iOS)
   extension Adapter {
-    // When the tunnel is up, we can only get the system's default resolvers
-    // by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
-    // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
-    // sentinel, which isn't helpful to us.
-    private func resetToSystemDNSGettingBindResolvers() -> [String] {
-      guard let networkSettings = networkSettings
-      else {
+    /// When the tunnel is up, we can only get the system's default resolvers
+    /// by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
+    /// If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
+    /// sentinel, which isn't helpful to us.
+    private func resetToSystemDNSGettingBindResolvers() async -> [String] {
+      guard let networkSettings else {
         // Network Settings hasn't been applied yet, so our sentinel isn't
         // the system's resolver and we can grab the system resolvers directly.
-        // If we try to continue below without valid tunnel addresses assigned
-        // to the interface, we'll crash.
         return BindResolvers.getServers()
       }
-
-      // Use a class box to safely capture result across @Sendable closure boundary
-      final class ResolversBox: @unchecked Sendable {
-        var value: [String] = []
-      }
-      let resolversBox = ResolversBox()
-
-      // The caller is in an async context, so it's ok to block this thread here.
-      let semaphore = DispatchSemaphore(value: 0)
 
       // Set tunnel's matchDomains to a dummy string that will never match any name
       networkSettings.setDummyMatchDomain()
 
-      // Call apply to populate /etc/resolv.conf with the system's default resolvers
-      networkSettings.apply {
-        guard let networkSettings = self.networkSettings else { return }
-
-        // Only now can we get the system resolvers
-        resolversBox.value = BindResolvers.getServers()
-
-        // Restore connlib's DNS resolvers
-        networkSettings.clearDummyMatchDomain()
-        networkSettings.apply { semaphore.signal() }
+      // Apply to populate /etc/resolv.conf with the system's default resolvers
+      await withCheckedContinuation { continuation in
+        networkSettings.apply {
+          continuation.resume()
+        }
       }
 
-      semaphore.wait()
-      return resolversBox.value
+      // Now we can get the system resolvers
+      let resolvers = BindResolvers.getServers()
+
+      // Restore connlib's DNS resolvers
+      networkSettings.clearDummyMatchDomain()
+
+      await withCheckedContinuation { continuation in
+        networkSettings.apply {
+          continuation.resume()
+        }
+      }
+
+      return resolvers
     }
   }
 #endif
