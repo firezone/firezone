@@ -14,8 +14,12 @@ class NetworkSettings {
   // so just use the minimum.
   let mtu: NSNumber = 1280
 
-  // These will only be initialized once and then don't change
-  private weak var packetTunnelProvider: NEPacketTunnelProvider?
+  // Closure to apply network settings to the tunnel.
+  private let applySettings:
+    (
+      NEPacketTunnelNetworkSettings,
+      @escaping @Sendable (Error?) -> Void
+    ) -> Void
 
   // Modifiable values
   public var tunnelAddressIPv4: String?
@@ -28,8 +32,14 @@ class NetworkSettings {
   private var matchDomains: [String] = [""]
   private var searchDomains: [String] = [""]
 
-  init(packetTunnelProvider: PacketTunnelProvider?) {
-    self.packetTunnelProvider = packetTunnelProvider
+  init(
+    applySettings:
+      @escaping (
+        NEPacketTunnelNetworkSettings,
+        @escaping @Sendable (Error?) -> Void
+      ) -> Void
+  ) {
+    self.applySettings = applySettings
   }
 
   func setSearchDomain(domain: String?) {
@@ -78,7 +88,7 @@ class NetworkSettings {
     tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.mtu = mtu
 
-    packetTunnelProvider?.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
+    applySettings(tunnelNetworkSettings) { error in
       if let error = error {
         Log.error(error)
       }

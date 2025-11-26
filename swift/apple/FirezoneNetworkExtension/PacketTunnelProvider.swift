@@ -15,12 +15,7 @@ enum PacketTunnelProviderError: Error {
   case tokenNotFoundInKeychain
 }
 
-// NEPacketTunnelProvider is not Sendable, but we need to pass `self` to the Adapter actor
-// and access properties from async contexts. This is safe because:
-// - The provider lifecycle is managed by NetworkExtension framework (single instance)
-// - All mutable state access is serialised through the Adapter actor or local to callbacks
-// - The weak reference in Adapter prevents retain cycles and dangling references
-class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
+class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
 
   enum LogExportState {
@@ -110,6 +105,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
       let internetResourceEnabled =
         enabled != nil ? enabled == "true" : (tunnelConfiguration?.internetResourceEnabled ?? false)
 
+      // Create callbacks for the adapter to interact with this provider.
+      // Closures capture [weak self] to avoid retain cycles.
+      let callbacks = TunnelCallbacks(
+        cancelWithError: { [weak self] error in
+          self?.cancelTunnelWithError(error)
+        },
+        setReassserting: { [weak self] value in
+          self?.reasserting = value
+        },
+        getReassserting: { [weak self] in
+          self?.reasserting ?? false
+        },
+        applyNetworkSettings: { [weak self] settings, completionHandler in
+          self?.setTunnelNetworkSettings(settings, completionHandler: completionHandler)
+        }
+      )
+
       // Create the adapter with all configuration
       let adapter = Adapter(
         apiURL: apiURL,
@@ -118,7 +130,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         logFilter: logFilter,
         accountSlug: accountSlug,
         internetResourceEnabled: internetResourceEnabled,
-        packetTunnelProvider: self
+        callbacks: callbacks
       )
 
       self.adapter = adapter
@@ -155,6 +167,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
   ) {
     Log.log("stopTunnel: Reason: \(reason)")
 
+    // handles both connlib-initiated and user-initiated stops
     let adapter = self.adapter
     Task { @Sendable in
       await adapter?.stop()

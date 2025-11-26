@@ -30,6 +30,35 @@ enum AdapterError: Error {
   }
 }
 
+/// Sendable callbacks for tunnel operations.
+///
+/// This struct captures closures from PacketTunnelProvider, allowing the Adapter actor
+/// to interact with the provider. The closures capture `[weak self]` to avoid retain cycles.
+///
+/// Thread-safety: This type is marked `@unchecked Sendable` because the captured closures
+/// reference PacketTunnelProvider, which cannot be made Sendable (NEPacketTunnelProvider
+/// predates Swift concurrency and its methods are nonisolated). This is safe because:
+/// - The closures capture weak references, preventing retain cycles
+/// - PacketTunnelProvider lifecycle is managed by NetworkExtension framework (single instance)
+/// - The closures only call system-provided methods that handle their own synchronisation
+struct TunnelCallbacks: @unchecked Sendable {
+  /// Cancel the tunnel with an optional error.
+  let cancelWithError: (Error?) -> Void
+
+  /// Set the reasserting state (indicates network transition).
+  let setReassserting: (Bool) -> Void
+
+  /// Get the current reasserting state.
+  let getReassserting: () -> Bool
+
+  /// Apply network settings to the tunnel.
+  let applyNetworkSettings:
+    (
+      NEPacketTunnelNetworkSettings,
+      @escaping @Sendable (Error?) -> Void
+    ) -> Void
+}
+
 // Loosely inspired from WireGuardAdapter from WireGuardKit
 actor Adapter {
 
@@ -47,8 +76,8 @@ actor Adapter {
   /// Network settings for tunnel configuration.
   private var networkSettings: NetworkSettings?
 
-  /// Packet tunnel provider.
-  private weak var packetTunnelProvider: PacketTunnelProvider?
+  /// Callbacks for interacting with the PacketTunnelProvider.
+  private let callbacks: TunnelCallbacks
 
   /// Continuation to signal tunnel is ready after receiving first tunInterfaceUpdated event.
   private var startContinuation: CheckedContinuation<Void, Error>?
@@ -82,7 +111,7 @@ actor Adapter {
     logFilter: String,
     accountSlug: String,
     internetResourceEnabled: Bool,
-    packetTunnelProvider: PacketTunnelProvider
+    callbacks: TunnelCallbacks
   ) {
     self.apiURL = apiURL
     self.token = token
@@ -90,7 +119,7 @@ actor Adapter {
     self.logFilter = logFilter
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
-    self.packetTunnelProvider = packetTunnelProvider
+    self.callbacks = callbacks
   }
 
   // Could happen abruptly if the process is killed.
@@ -284,15 +313,9 @@ actor Adapter {
         NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv6Route
       }
 
-      // All decoding succeeded - now apply settings atomically
-      guard let provider = packetTunnelProvider else {
-        Log.error(AdapterError.invalidSession(nil))
-        return
-      }
-
       Log.log("Setting interface config")
 
-      let networkSettings = NetworkSettings(packetTunnelProvider: provider)
+      let networkSettings = NetworkSettings(applySettings: callbacks.applyNetworkSettings)
       networkSettings.tunnelAddressIPv4 = ipv4
       networkSettings.tunnelAddressIPv6 = ipv6
       networkSettings.dnsAddresses = dns
@@ -329,11 +352,6 @@ actor Adapter {
       let errorMessage = error.message()
       Log.info("Received Disconnected event: \(errorMessage)")
 
-      guard let provider = packetTunnelProvider else {
-        Log.error(AdapterError.invalidSession(nil))
-        return
-      }
-
       if error.isAuthenticationError() {
         #if os(iOS)
           // iOS notifications should be shown from the tunnel process
@@ -342,9 +360,9 @@ actor Adapter {
 
         let error = FirezoneKit.ConnlibError.sessionExpired(errorMessage)
 
-        provider.cancelTunnelWithError(error)
+        callbacks.cancelWithError(error)
       } else {
-        provider.cancelTunnelWithError(nil)
+        callbacks.cancelWithError(nil)
       }
     }
   }
@@ -444,12 +462,12 @@ actor Adapter {
   /// - https://github.com/firezone/firezone/issues/3175
   private func handlePathUpdate(_ path: Network.NWPath) async {
     if path.status == .unsatisfied {
-      if packetTunnelProvider?.reasserting == false {
-        packetTunnelProvider?.reasserting = true
+      if !callbacks.getReassserting() {
+        callbacks.setReassserting(true)
       }
     } else {
-      if packetTunnelProvider?.reasserting == true {
-        packetTunnelProvider?.reasserting = false
+      if callbacks.getReassserting() {
+        callbacks.setReassserting(false)
       }
 
       if path.connectivityDifferentFrom(path: lastPath) {
