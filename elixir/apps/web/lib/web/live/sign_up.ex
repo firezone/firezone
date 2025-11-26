@@ -364,15 +364,26 @@ defmodule Web.SignUp do
     end
   end
 
+  defp create_account_changeset(attrs) do
+    import Ecto.Changeset
+    
+    %Accounts.Account{}
+    |> cast(attrs, [:name])
+    |> cast_embed(:metadata)
+    |> validate_required([:name])
+  end
+
   defp register_account(socket, registration) do
     Ecto.Multi.new()
     |> Ecto.Multi.run(
       :account,
       fn _repo, _changes ->
-        Accounts.create_account(%{
+        %{
           name: registration.account.name,
           metadata: %{stripe: %{billing_email: registration.email}}
-        })
+        }
+        |> create_account_changeset()
+        |> DB.insert()
       end
     )
     |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
@@ -461,6 +472,11 @@ defmodule Web.SignUp do
       cast(%Actor{}, attrs, ~w[account_id email name type]a)
       |> Actor.changeset()
       |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def insert(changeset) do
+      Safe.unscoped(changeset)
       |> Safe.insert()
     end
   end

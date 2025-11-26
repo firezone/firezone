@@ -134,7 +134,7 @@ defmodule Web.Live.Sites.NewTest do
     Fixtures.Gateways.create_group(account: account)
 
     {:ok, account} =
-      Domain.Accounts.update_account(account, %{
+      Fixtures.Accounts.update_account(account, %{
         limits: %{
           gateway_groups_count: 1
         }

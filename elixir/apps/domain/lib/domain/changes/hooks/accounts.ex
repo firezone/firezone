@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Accounts do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Accounts, Changes.Change, Flows, PubSub}
+  alias Domain.{Accounts, Billing, Changes.Change, Flows, PubSub}
   import Domain.SchemaHelpers
   require Logger
 
@@ -30,6 +30,13 @@ defmodule Domain.Changes.Hooks.Accounts do
     old_account = struct_from_params(Accounts.Account, old_data)
     account = struct_from_params(Accounts.Account, data)
     change = %Change{lsn: lsn, op: :update, old_struct: old_account, struct: account}
+
+    # Start async task for billing update if name or slug changed
+    if old_data["name"] != data["name"] or old_data["slug"] != data["slug"] do
+      Task.start(fn ->
+        :ok = Billing.on_account_name_or_slug_changed(account)
+      end)
+    end
 
     PubSub.Account.broadcast(account.id, change)
   end

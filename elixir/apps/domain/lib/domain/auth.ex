@@ -2,6 +2,7 @@ defmodule Domain.Auth do
   require Ecto.Query
   alias Domain.{Accounts, Actors, Tokens}
   alias Domain.Auth.{Subject, Context}
+  alias __MODULE__.DB
   require Logger
 
   # Tokens
@@ -69,7 +70,7 @@ defmodule Domain.Auth do
 
   def build_subject(%Tokens.Token{type: type} = token, %Context{} = context)
       when type in [:browser, :client, :api_client] do
-    account = Accounts.fetch_account_by_id!(token.account_id)
+    account = DB.get_account_by_id!(token.account_id)
 
     with {:ok, actor} <- Actors.fetch_active_actor_by_id(token.actor_id) do
       {:ok,
@@ -81,6 +82,18 @@ defmodule Domain.Auth do
          token_id: token.id,
          auth_provider_id: token.auth_provider_id
        }}
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Accounts.Account
+
+    def get_account_by_id!(id) do
+      from(a in Account, where: a.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.one!()
     end
   end
 end

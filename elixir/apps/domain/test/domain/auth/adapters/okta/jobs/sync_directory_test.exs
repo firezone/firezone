@@ -39,7 +39,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
     end
 
     test "returns error when IdP sync is not enabled", %{account: account, provider: provider} do
-      {:ok, _account} = Domain.Accounts.update_account(account, %{features: %{idp_sync: false}})
+      {:ok, _account} = Fixtures.Accounts.update_account(account, %{features: %{idp_sync: false}})
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok

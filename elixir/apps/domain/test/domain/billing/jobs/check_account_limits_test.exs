@@ -45,7 +45,7 @@ defmodule Domain.Billing.Jobs.CheckAccountLimitsTest do
       Fixtures.Gateways.create_group(account: account)
       Fixtures.Gateways.create_group(account: account)
 
-      Domain.Accounts.update_account(account, %{
+      Fixtures.Accounts.update_account(account, %{
         limits: %{
           users_count: 1,
           monthly_active_users_count: 1,

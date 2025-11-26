@@ -12,13 +12,11 @@ defmodule Web.SignIn do
     Userpass
   }
 
+  alias __MODULE__.DB
+
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
-    with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug) do
-      mount_account(account, params, socket)
-    else
-      _other ->
-        raise Web.LiveErrors.NotFoundError, skip_sentry: true
-    end
+    account = DB.get_account_by_id_or_slug!(account_id_or_slug)
+    mount_account(account, params, socket)
   end
 
   defp mount_account(account, params, socket) do
@@ -49,7 +47,7 @@ defmodule Web.SignIn do
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
 
-            <.flash :if={not Accounts.account_active?(@account)} kind={:error} style="wide">
+            <.flash :if={not Accounts.Account.active?(@account)} kind={:error} style="wide">
               This account has been disabled. Please contact your administrator to re-enable it.
             </.flash>
 
@@ -186,7 +184,7 @@ defmodule Web.SignIn do
   end
 
   # We allow signing in to Web UI even for disabled accounts
-  def disabled?(account, %{"as" => "client"}), do: not Accounts.account_active?(account)
+  def disabled?(account, %{"as" => "client"}), do: not Accounts.Account.active?(account)
   def disabled?(_account, _params), do: false
 
   def separator(assigns) do
@@ -302,6 +300,18 @@ defmodule Web.SignIn do
       queryable |> Safe.unscoped() |> Safe.one()
     else
       queryable |> Safe.unscoped() |> Safe.all()
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Accounts.Account
+
+    def get_account_by_id_or_slug!(id_or_slug) do
+      from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)
+      |> Safe.unscoped()
+      |> Safe.one!()
     end
   end
 end

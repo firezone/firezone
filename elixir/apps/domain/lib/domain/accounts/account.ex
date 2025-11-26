@@ -82,4 +82,15 @@ defmodule Domain.Accounts.Account do
 
   def active?(%__MODULE__{disabled_at: nil}), do: true
   def active?(%__MODULE__{}), do: false
+
+  for feature <- Features.__schema__(:fields) do
+    def unquote(:"#{feature}_enabled?")(account) do
+      Config.global_feature_enabled?(unquote(feature)) and
+        account_feature_enabled?(account, unquote(feature))
+    end
+  end
+
+  defp account_feature_enabled?(account, feature) do
+    Map.fetch!(account.features || %Features{}, feature)
+  end
 end

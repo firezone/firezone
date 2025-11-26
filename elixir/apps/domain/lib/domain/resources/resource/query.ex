@@ -6,7 +6,7 @@ defmodule Domain.Resources.Resource.Query do
   end
 
   def filter_features(queryable, %Domain.Accounts.Account{} = account) do
-    if Domain.Accounts.internet_resource_enabled?(account) do
+    if Domain.Accounts.Account.internet_resource_enabled?(account) do
       queryable
     else
       where(queryable, [resources: resources], resources.type != ^:internet)

@@ -2,6 +2,8 @@ defmodule Domain.Repo.Seeds do
   @moduledoc """
   Seeds the database with initial data.
   """
+  import Ecto.Changeset
+  
   alias Domain.{
     Repo,
     Accounts,
@@ -78,14 +80,17 @@ defmodule Domain.Repo.Seeds do
       end
     end
 
-    {:ok, account} =
-      Accounts.create_account(%{
+    account =
+      %Accounts.Account{}
+      |> cast(%{
         name: "Firezone Account",
         slug: "firezone",
         config: %{
           search_domain: "httpbin.search.test"
         }
-      })
+      }, [:name, :slug])
+      |> cast_embed(:config)
+      |> Repo.insert!()
 
     account =
       account
@@ -123,11 +128,13 @@ defmodule Domain.Repo.Seeds do
         }
       )
 
-    {:ok, other_account} =
-      Accounts.create_account(%{
+    other_account =
+      %Accounts.Account{}
+      |> cast(%{
         name: "Other Corp Account",
         slug: "not_firezone"
-      })
+      }, [:name, :slug])
+      |> Repo.insert!()
 
     other_account = maybe_repo_update.(other_account, id: "9b9290bf-e1bc-4dd3-b401-511908262690")
 
@@ -601,7 +608,7 @@ defmodule Domain.Repo.Seeds do
         group_attrs =
           Enum.map(chunk, fn i ->
             %{
-              name: "#{Domain.Accounts.generate_unique_slug()}-#{i}",
+              name: "#{Domain.NameGenerator.generate_slug()}-#{i}",
               type: :static,
               account_id: admin_subject.account.id,
               inserted_at: DateTime.utc_now(),

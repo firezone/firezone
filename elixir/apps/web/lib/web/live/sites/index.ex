@@ -212,13 +212,13 @@ defmodule Web.Sites.Index do
           <% online? = Enum.any?(@internet_gateway_group.gateways, & &1.online?) %>
 
           <.ping_icon
-            :if={Domain.Accounts.internet_resource_enabled?(@account)}
+            :if={Domain.Accounts.Account.internet_resource_enabled?(@account)}
             color={if online?, do: "success", else: "danger"}
             title={if online?, do: "Online", else: "Offline"}
           />
 
           <.link
-            :if={not Domain.Accounts.internet_resource_enabled?(@account)}
+            :if={not Domain.Accounts.Account.internet_resource_enabled?(@account)}
             navigate={~p"/#{@account}/settings/billing"}
             class="text-sm text-primary-500"
           >
@@ -233,7 +233,7 @@ defmodule Web.Sites.Index do
         <.docs_action path="/deploy/resources" fragment="the-internet-resource" />
       </:action>
 
-      <:action :if={Domain.Accounts.internet_resource_enabled?(@account)}>
+      <:action :if={Domain.Accounts.Account.internet_resource_enabled?(@account)}>
         <.edit_button navigate={~p"/#{@account}/sites/#{@internet_gateway_group}"}>
           Manage Internet Site
         </.edit_button>

@@ -12,6 +12,7 @@ defmodule Web.UserpassController do
     Userpass
   }
 
+  alias __MODULE__.DB
   alias Web.Session.Redirector
 
   require Logger
@@ -30,7 +31,7 @@ defmodule Web.UserpassController do
     password = userpass["secret"]
     context_type = context_type(params)
 
-    with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
+    with %Accounts.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
          %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
          %Actors.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
@@ -181,4 +182,16 @@ defmodule Web.UserpassController do
 
   defp context_type(%{"as" => "client"}), do: :client
   defp context_type(_), do: :browser
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Accounts.Account
+
+    def get_account_by_id_or_slug(id_or_slug) do
+      from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+  end
 end

@@ -1,6 +1,6 @@
 defmodule Web.SignIn.Email do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-  alias Domain.Accounts
+  alias __MODULE__.DB
 
   def mount(
         %{
@@ -14,7 +14,9 @@ defmodule Web.SignIn.Email do
     redirect_params = Web.Auth.take_sign_in_params(params)
     secret_key_base = socket.endpoint.config(:secret_key_base)
 
-    with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
+    account = DB.get_account_by_id_or_slug(account_id_or_slug)
+
+    with %Domain.Accounts.Account{} = account <- account,
          {:ok, email} <-
            Plug.Crypto.verify(
              secret_key_base,
@@ -43,6 +45,14 @@ defmodule Web.SignIn.Email do
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
+      nil ->
+        socket =
+          socket
+          |> put_flash(:error, "Account not found.")
+          |> push_navigate(to: ~p"/")
+
+        {:ok, socket}
+      
       _ ->
         socket =
           socket
@@ -189,5 +199,17 @@ defmodule Web.SignIn.Email do
       Open {@name}
     </a>
     """
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Accounts.Account
+
+    def get_account_by_id_or_slug(id_or_slug) do
+      from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
   end
 end

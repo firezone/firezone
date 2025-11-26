@@ -380,7 +380,7 @@ defmodule Domain.Billing.EventHandler do
         extract_slug_from_uri(company_website)
 
       true ->
-        Accounts.generate_unique_slug()
+        generate_unique_slug()
     end
   end
 
@@ -403,14 +403,25 @@ defmodule Domain.Billing.EventHandler do
         |> String.replace("-", "_")
 
       true ->
-        Accounts.generate_unique_slug()
+        generate_unique_slug()
+    end
+  end
+
+  defp generate_unique_slug do
+    slug_candidate = Domain.NameGenerator.generate_slug()
+    queryable = DB.slug_query(slug_candidate)
+
+    if queryable |> Safe.unscoped() |> Safe.exists?() do
+      generate_unique_slug()
+    else
+      slug_candidate
     end
   end
 
   # TODO: BILLING OVERHAUL
   # The DB operations should be wrapped in a transaction to ensure atomicity
   defp create_account_with_defaults(attrs, metadata, account_email) do
-    with {:ok, account} <- Domain.Accounts.create_account(attrs),
+    with {:ok, account} <- attrs |> create_account_changeset() |> DB.insert(),
          {:ok, account} <- Billing.update_stripe_customer(account),
          {:ok, account} <- Domain.Billing.create_subscription(account),
          :ok <- setup_account_defaults(account, metadata, account_email) do
@@ -443,7 +454,7 @@ defmodule Domain.Billing.EventHandler do
   # Account Updates
   defp update_account_by_stripe_customer_id(customer_id, attrs) do
     with {:ok, account_id} <- Billing.fetch_customer_account_id(customer_id) do
-      Accounts.update_account_by_id(account_id, attrs)
+      DB.update_account_by_id(account_id, attrs)
     end
   end
 
@@ -508,15 +519,30 @@ defmodule Domain.Billing.EventHandler do
   defp put_if_not_nil(map, _key, nil), do: map
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
 
+  defp create_account_changeset(attrs) do
+    import Ecto.Changeset
+    
+    %Accounts.Account{}
+    |> cast(attrs, [:name])
+    |> cast_embed(:metadata)
+    |> validate_required([:name])
+  end
+
   defmodule DB do
+    import Ecto.Query
     import Ecto.Changeset
 
     alias Domain.{
+      Accounts.Account,
       Actors.Actor,
       AuthProvider,
       EmailOTP,
       Safe
     }
+
+    def slug_query(slug) do
+      from(a in Domain.Accounts.Account, where: a.slug == ^slug)
+    end
 
     def create_email_provider(account) do
       id = Ecto.UUID.generate()
@@ -538,6 +564,27 @@ defmodule Domain.Billing.EventHandler do
       cast(%Actor{}, attrs, ~w[account_id email name type]a)
       |> Safe.unscoped()
       |> Safe.insert()
+    end
+
+    def insert(changeset) do
+      Safe.unscoped(changeset)
+      |> Safe.insert()
+    end
+
+    def update_account_by_id(id, attrs) do
+      from(a in Account, where: a.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.one!()
+      |> case do
+        %Account{} = account ->
+          account
+          |> cast(attrs, [])
+          |> cast_embed(:limits)
+          |> cast_embed(:features)
+          |> cast_embed(:metadata)
+          |> Safe.unscoped()
+          |> Safe.update()
+      end
     end
   end
 end

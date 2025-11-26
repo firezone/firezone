@@ -1,31 +1,35 @@
 defmodule Web.Settings.DNS do
   use Web, :live_view
-  alias Domain.Accounts
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
-    with {:ok, account} <-
-           Accounts.fetch_account_by_id(socket.assigns.account.id, socket.assigns.subject) do
-      # Ensure config has proper defaults
-      account = %{account | config: Domain.Accounts.Config.ensure_defaults(account.config)}
+    account = DB.get_account_by_id!(socket.assigns.account.id, socket.assigns.subject)
+    # Ensure config has proper defaults
+    account = %{account | config: Domain.Accounts.Config.ensure_defaults(account.config)}
 
-      doh_disabled = System.get_env("DISABLE_DOH_RESOLVERS") == "true"
+    doh_disabled = System.get_env("DISABLE_DOH_RESOLVERS") == "true"
 
-      socket =
-        socket
-        |> assign(page_title: "DNS")
-        |> assign(doh_disabled: doh_disabled)
-        |> init(account)
+    socket =
+      socket
+      |> assign(page_title: "DNS")
+      |> assign(doh_disabled: doh_disabled)
+      |> init(account)
 
-      {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket}
   end
 
   defp init(socket, account) do
-    changeset = Accounts.change_account(account)
+    changeset = change_account_config(account)
 
     assign(socket, form: to_form(changeset))
+  end
+
+  defp change_account_config(account, attrs \\ %{}) do
+    import Ecto.Changeset
+
+    account
+    |> cast(attrs, [])
+    |> cast_embed(:config)
   end
 
   def render(assigns) do
@@ -285,14 +289,14 @@ defmodule Web.Settings.DNS do
   def handle_event("change", %{"account" => params}, socket) do
     form =
       socket.assigns.form.data
-      |> Accounts.change_account(params)
+      |> change_account_config(params)
       |> to_form(action: :validate)
 
     {:noreply, assign(socket, form: form)}
   end
 
   def handle_event("submit", %{"account" => params}, socket) do
-    case Accounts.update_account(socket.assigns.form.data, params, socket.assigns.subject) do
+    case update_account_config(socket.assigns.form.data, params, socket.assigns.subject) do
       {:ok, account} ->
         socket =
           socket
@@ -303,6 +307,30 @@ defmodule Web.Settings.DNS do
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  defp update_account_config(account, attrs, subject) do
+    account
+    |> change_account_config(attrs)
+    |> DB.update(subject)
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Accounts.Account
+
+    def get_account_by_id!(id, subject) do
+      from(a in Account, where: a.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def update(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
     end
   end
 end

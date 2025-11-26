@@ -12,6 +12,7 @@ defmodule Web.EmailOTPController do
     Tokens
   }
 
+  alias __MODULE__.DB
   alias Web.Session.Redirector
 
   require Logger
@@ -40,7 +41,7 @@ defmodule Web.EmailOTPController do
       ) do
     email = email_params["email"]
 
-    with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
+    with %Accounts.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
          %EmailOTP.AuthProvider{} <- fetch_provider(account, auth_provider_id) do
       conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id)
 
@@ -83,7 +84,7 @@ defmodule Web.EmailOTPController do
     with {:ok, cookie_binary} <- Map.fetch(conn.cookies, cookie_key),
          {fragment, email, _stored_params} <- :erlang.binary_to_term(cookie_binary),
          conn = delete_resp_cookie(conn, cookie_key),
-         {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
+         %Accounts.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
          %EmailOTP.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
          %Actors.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
@@ -420,5 +421,17 @@ defmodule Web.EmailOTPController do
     headers = conn.req_headers
 
     Domain.Auth.Context.build(remote_ip, user_agent, headers, context_type)
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Accounts.Account
+
+    def get_account_by_id_or_slug(id_or_slug) do
+      from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
   end
 end

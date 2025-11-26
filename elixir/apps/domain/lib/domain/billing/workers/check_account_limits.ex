@@ -10,10 +10,11 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
     unique: [period: 300]
 
   alias Domain.{Accounts, Billing, Actors, Clients, Gateways}
+  alias __MODULE__.DB
 
   @impl Oban.Worker
   def perform(_job) do
-    Accounts.all_active_accounts!()
+    DB.all_active_accounts()
     |> Enum.each(fn account ->
       # TODO: Slow DB queries
       # These can be slow if an index-only scan is not possible.
@@ -29,7 +30,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
         |> case do
           [] ->
             {:ok, _account} =
-              Accounts.update_account(account, %{
+              update_account_warning(account, %{
                 warning: nil,
                 warning_delivery_attempts: 0,
                 warning_last_sent_at: nil
@@ -42,7 +43,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
               "You have exceeded the following limits: #{Enum.join(limits_exceeded, ", ")}"
 
             {:ok, _account} =
-              Accounts.update_account(account, %{
+              update_account_warning(account, %{
                 warning: warning,
                 warning_delivery_attempts: 0,
                 warning_last_sent_at: DateTime.utc_now()
@@ -103,6 +104,32 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
       limits_exceeded ++ ["account admins"]
     else
       limits_exceeded
+    end
+  end
+
+  defp update_account_warning(account, attrs) do
+    import Ecto.Changeset
+    
+    account
+    |> cast(attrs, [:warning, :warning_delivery_attempts, :warning_last_sent_at])
+    |> DB.update()
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Accounts.Account
+
+    def all_active_accounts do
+      from(a in Account, where: is_nil(a.disabled_at))
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def update(changeset) do
+      changeset
+      |> Safe.unscoped()
+      |> Safe.update()
     end
   end
 end

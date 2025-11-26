@@ -83,7 +83,7 @@ defmodule Web.Live.Settings.IdentityProviders.NewTest do
     Domain.Config.feature_flag_override(:idp_sync, true)
 
     {:ok, account} =
-      Domain.Accounts.update_account(account, %{
+      Fixtures.Accounts.update_account(account, %{
         features: %{
           idp_sync: true
         }

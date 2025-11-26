@@ -111,7 +111,7 @@ defmodule Web.Live.Actors.User.NewTest do
     conn: conn
   } do
     {:ok, account} =
-      Domain.Accounts.update_account(account, %{
+      Fixtures.Accounts.update_account(account, %{
         limits: %{
           monthly_active_users_count: 1
         }

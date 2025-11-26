@@ -1,5 +1,6 @@
 defmodule Domain.Fixtures.Accounts do
   use Domain.Fixture
+  import Ecto.Changeset
   alias Domain.Repo
   alias Domain.Accounts
 
@@ -39,8 +40,14 @@ defmodule Domain.Fixtures.Accounts do
 
   def create_account(attrs \\ %{}) do
     attrs = account_attrs(attrs)
-    {:ok, account} = Accounts.create_account(attrs)
-    account
+    
+    %Accounts.Account{}
+    |> cast(attrs, [:name, :legal_name, :slug])
+    |> cast_embed(:config)
+    |> cast_embed(:features)
+    |> cast_embed(:limits)
+    |> cast_embed(:metadata)
+    |> Repo.insert!()
   end
 
   def delete_account(%Accounts.Account{} = account) do
@@ -65,7 +72,11 @@ defmodule Domain.Fixtures.Accounts do
 
   def update_account(account, attrs \\ %{}) do
     account
-    |> Ecto.Changeset.change(attrs)
+    |> cast(attrs, [:name, :legal_name, :slug, :warning, :warning_delivery_attempts, :warning_last_sent_at, :disabled_at, :disabled_reason])
+    |> cast_embed(:config)
+    |> cast_embed(:features)
+    |> cast_embed(:limits)
+    |> cast_embed(:metadata)
     |> Repo.update!()
   end
 end

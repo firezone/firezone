@@ -2391,7 +2391,7 @@ defmodule Domain.ActorsTest do
       subject: subject
     } do
       {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+        Fixtures.Accounts.update_account(account, %{
           limits: %{
             monthly_active_users_count: 1
           }
@@ -2409,7 +2409,7 @@ defmodule Domain.ActorsTest do
       subject: subject
     } do
       {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+        Fixtures.Accounts.update_account(account, %{
           limits: %{
             account_admin_users_count: 1
           }
@@ -2427,7 +2427,7 @@ defmodule Domain.ActorsTest do
       subject: subject
     } do
       {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+        Fixtures.Accounts.update_account(account, %{
           limits: %{
             monthly_active_users_count: 1
           }
@@ -2445,7 +2445,7 @@ defmodule Domain.ActorsTest do
       subject: subject
     } do
       {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+        Fixtures.Accounts.update_account(account, %{
           limits: %{
             service_accounts_count: 1
           }

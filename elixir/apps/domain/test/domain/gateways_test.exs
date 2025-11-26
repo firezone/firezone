@@ -196,7 +196,7 @@ defmodule Domain.GatewaysTest do
 
     test "returns error when billing limit is reached", %{account: account, subject: subject} do
       {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+        Fixtures.Accounts.update_account(account, %{
           limits: %{
             gateway_groups_count: 1
           }

@@ -715,7 +715,7 @@ defmodule Domain.AuthTest do
     test "returns error if provider is disabled by account feature flag", %{
       account: account
     } do
-      {:ok, account} = Domain.Accounts.update_account(account, %{features: %{idp_sync: false}})
+      account = Fixtures.Accounts.update_account(account, %{features: %{idp_sync: false}})
 
       attrs =
         Fixtures.Auth.provider_attrs(

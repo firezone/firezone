@@ -7,7 +7,7 @@ defmodule Web.Settings.Account do
       assign(socket,
         page_title: "Account",
         delete_requested: false,
-        account_type: Accounts.type(socket.assigns.account)
+        account_type: account_type(socket.assigns.account)
       )
 
     {:ok, socket}
@@ -158,4 +158,10 @@ defmodule Web.Settings.Account do
     </.badge>
     """
   end
+
+  defp account_type(%Accounts.Account{metadata: %{string: %{product_name: type}}} = account) do
+    type || "Starter"
+  end
+
+  defp account_type(%Accounts.Account{}), do: "Starter"
 end

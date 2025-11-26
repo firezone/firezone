@@ -6,7 +6,7 @@ defmodule Web.Settings.ApiClients.New do
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
-    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+    if Domain.Accounts.Account.rest_api_enabled?(socket.assigns.account) do
       changeset = changeset(%{})
 
       socket =

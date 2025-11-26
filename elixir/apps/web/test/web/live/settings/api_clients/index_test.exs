@@ -35,7 +35,7 @@ defmodule Web.Live.Settings.ApiClients.IndexTest do
     features = Map.from_struct(account.features)
     attrs = %{features: %{features | rest_api: false}}
 
-    {:ok, account} = Domain.Accounts.update_account(account, attrs)
+    account = Fixtures.Accounts.update_account(account, attrs)
 
     assert {:error, {:live_redirect, %{to: path, flash: _}}} =
              conn

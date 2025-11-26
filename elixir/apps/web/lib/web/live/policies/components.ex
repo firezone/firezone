@@ -38,7 +38,7 @@ defmodule Web.Policies.Components do
   end
 
   def maybe_drop_unsupported_conditions(attrs, socket) do
-    if Domain.Accounts.policy_conditions_enabled?(socket.assigns.account) do
+    if Domain.Accounts.Account.policy_conditions_enabled?(socket.assigns.account) do
       attrs
     else
       Map.delete(attrs, "conditions")
@@ -276,7 +276,7 @@ defmodule Web.Policies.Components do
     assigns =
       assigns
       |> assign_new(:policy_conditions_enabled?, fn ->
-        Domain.Accounts.policy_conditions_enabled?(assigns.account)
+        Domain.Accounts.Account.policy_conditions_enabled?(assigns.account)
       end)
       |> assign_new(:enabled_conditions, fn ->
         Map.fetch!(@conditions_by_resource_type, assigns.selected_resource.type)

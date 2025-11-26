@@ -110,7 +110,7 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     conn: conn
   } do
     {:ok, account} =
-      Domain.Accounts.update_account(account, %{
+      Fixtures.Accounts.update_account(account, %{
         limits: %{
           service_accounts_count: 1
         }

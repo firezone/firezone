@@ -1,6 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
+  alias __MODULE__.DB
 
   alias Domain.{
     Accounts,
@@ -51,7 +52,7 @@ defmodule API.Gateway.Channel do
     :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
     :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
-    account = Domain.Accounts.fetch_account_by_id!(socket.assigns.gateway.account_id)
+    account = DB.get_account_by_id!(socket.assigns.gateway.account_id)
 
     init(socket, account, relays)
 
@@ -690,4 +691,16 @@ defmodule API.Gateway.Channel do
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Accounts.Account
+
+    def get_account_by_id!(id) do
+      from(a in Account, where: a.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.one!()
+    end
+  end
 end

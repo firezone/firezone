@@ -147,7 +147,7 @@ defmodule Web.Resources.Index do
       </:content>
     </.section>
 
-    <.section :if={Domain.Accounts.internet_resource_enabled?(@account)}>
+    <.section :if={Domain.Accounts.Account.internet_resource_enabled?(@account)}>
       <:title>
         Internet
       </:title>

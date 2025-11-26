@@ -32,8 +32,8 @@ defmodule Domain.BillingTest do
 
   describe "account_provisioned?/1" do
     test "returns true when account is provisioned", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           metadata: %{stripe: %{customer_id: "cus_" <> Stripe.random_id()}}
         })
 
@@ -47,8 +47,8 @@ defmodule Domain.BillingTest do
 
   describe "users_limit_exceeded?/2" do
     test "returns false when seats limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{monthly_active_users_count: 10}
         })
 
@@ -56,8 +56,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns true when seats limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{users_count: 10}
         })
 
@@ -71,8 +71,8 @@ defmodule Domain.BillingTest do
 
   describe "seats_limit_exceeded?/2" do
     test "returns false when seats limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{monthly_active_users_count: 10}
         })
 
@@ -80,8 +80,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns true when seats limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{monthly_active_users_count: 10}
         })
 
@@ -95,8 +95,8 @@ defmodule Domain.BillingTest do
 
   describe "can_create_users?/1" do
     test "returns true when seats limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{monthly_active_users_count: 3}
         })
 
@@ -111,8 +111,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when seats limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{monthly_active_users_count: 1}
         })
 
@@ -127,8 +127,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when users limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{users_count: 1}
         })
 
@@ -139,8 +139,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when account is disabled", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           disabled_at: DateTime.utc_now(),
           disabled_reason: "Stripe subscription deleted"
         })
@@ -155,8 +155,8 @@ defmodule Domain.BillingTest do
 
   describe "service_accounts_limit_exceeded?/2" do
     test "returns false when service accounts limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{service_accounts_count: 10}
         })
 
@@ -164,8 +164,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns true when service accounts limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{service_accounts_count: 10}
         })
 
@@ -179,8 +179,8 @@ defmodule Domain.BillingTest do
 
   describe "can_create_service_accounts?/1" do
     test "returns true when service accounts limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{service_accounts_count: 3}
         })
 
@@ -195,8 +195,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when service accounts limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{service_accounts_count: 1}
         })
 
@@ -211,8 +211,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when account is disabled", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           disabled_at: DateTime.utc_now(),
           disabled_reason: "Stripe subscription deleted"
         })
@@ -227,8 +227,8 @@ defmodule Domain.BillingTest do
 
   describe "gateway_groups_limit_exceeded?/2" do
     test "returns false when gateway groups limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{gateway_groups_count: 10}
         })
 
@@ -236,8 +236,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns true when gateway groups limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{gateway_groups_count: 10}
         })
 
@@ -251,8 +251,8 @@ defmodule Domain.BillingTest do
 
   describe "can_create_gateway_groups?/1" do
     test "returns true when gateway groups limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{gateway_groups_count: 3}
         })
 
@@ -264,8 +264,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when gateway groups limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{gateway_groups_count: 1}
         })
 
@@ -275,8 +275,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when account is disabled", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           disabled_at: DateTime.utc_now(),
           disabled_reason: "Stripe subscription deleted"
         })
@@ -291,8 +291,8 @@ defmodule Domain.BillingTest do
 
   describe "admins_limit_exceeded?/2" do
     test "returns false when admins limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{account_admin_users_count: 10}
         })
 
@@ -300,8 +300,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns true when admins limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{account_admin_users_count: 10}
         })
 
@@ -315,8 +315,8 @@ defmodule Domain.BillingTest do
 
   describe "can_create_admin_users?/1" do
     test "returns true when admins limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{account_admin_users_count: 5}
         })
 
@@ -327,8 +327,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when admins limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{account_admin_users_count: 1}
         })
 
@@ -338,8 +338,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when account is disabled", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           disabled_at: DateTime.utc_now(),
           disabled_reason: "Stripe subscription deleted"
         })
@@ -386,8 +386,8 @@ defmodule Domain.BillingTest do
     end
 
     test "does nothing when account is already provisioned", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           metadata: %{stripe: %{customer_id: "cus_" <> Stripe.random_id()}}
         })
 
@@ -442,8 +442,8 @@ defmodule Domain.BillingTest do
     setup %{account: account} do
       customer_id = "cus_" <> Stripe.random_id()
 
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           metadata: %{stripe: %{customer_id: customer_id}},
           features: %{
             multi_site_resources: nil,

@@ -115,7 +115,7 @@ defmodule Web.Policies.New do
                   <:option :let={resource}>
                     <%= if resource.type == :internet do %>
                       Internet
-                      <span :if={not Domain.Accounts.internet_resource_enabled?(@account)}>
+                      <span :if={not Domain.Accounts.Account.internet_resource_enabled?(@account)}>
                         - <span class="text-red-800">upgrade to unlock</span>
                       </span>
                     <% else %>

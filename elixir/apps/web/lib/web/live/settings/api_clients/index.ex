@@ -22,7 +22,7 @@ defmodule Web.Settings.ApiClients.Index do
   end
 
   def mount(_params, _session, socket) do
-    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+    if Domain.Accounts.Account.rest_api_enabled?(socket.assigns.account) do
       socket =
         socket
         |> assign(page_title: "API Clients")

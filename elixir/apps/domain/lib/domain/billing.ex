@@ -3,6 +3,7 @@ defmodule Domain.Billing do
   alias Domain.{Auth, Accounts, Actors, Clients, Gateways}
   alias Domain.Billing.EventHandler
   alias Domain.Billing.Stripe.APIClient
+  alias __MODULE__.DB
   require Logger
 
   # Supervisor
@@ -115,11 +116,11 @@ defmodule Domain.Billing do
              account_name: account.name,
              account_slug: account.slug
            }) do
-      Accounts.update_account(account, %{
-        metadata: %{
-          stripe: %{customer_id: customer_id, billing_email: customer_email}
-        }
+      account
+      |> update_account_metadata_changeset(%{
+        stripe: %{customer_id: customer_id, billing_email: customer_email}
       })
+      |> DB.update()
     else
       {:ok, {status, body}} ->
         :ok =
@@ -226,9 +227,11 @@ defmodule Domain.Billing do
 
     with {:ok, %{"id" => subscription_id}} <-
            APIClient.create_subscription(secret_key, customer_id, default_price_id) do
-      Accounts.update_account(account, %{
-        metadata: %{stripe: %{subscription_id: subscription_id}}
+      account
+      |> update_account_metadata_changeset(%{
+        stripe: %{subscription_id: subscription_id}
       })
+      |> DB.update()
     else
       {:ok, {status, body}} ->
         :ok =
@@ -300,18 +303,12 @@ defmodule Domain.Billing do
     end
   end
 
-  def on_account_update(%Accounts.Account{} = account, %Ecto.Changeset{} = changeset) do
-    name_changed? = Ecto.Changeset.changed?(changeset, :name)
-    slug_changed? = Ecto.Changeset.changed?(changeset, :slug)
-
+  def on_account_name_or_slug_changed(%Accounts.Account{} = account) do
     cond do
       not account_provisioned?(account) ->
         :ok
 
       not enabled?() ->
-        :ok
-
-      not name_changed? and not slug_changed? ->
         :ok
 
       true ->
@@ -347,5 +344,27 @@ defmodule Domain.Billing do
   defp fetch_config!(key) do
     Domain.Config.fetch_env!(:domain, __MODULE__)
     |> Keyword.fetch!(key)
+  end
+
+  defp update_account_metadata_changeset(account, stripe_metadata) do
+    import Ecto.Changeset
+    
+    account
+    |> cast(%{metadata: %{stripe: stripe_metadata}}, [])
+    |> cast_embed(:metadata, with: fn metadata, _params ->
+      metadata
+      |> cast(%{stripe: stripe_metadata}, [])
+      |> cast_embed(:stripe)
+    end)
+  end
+
+  defmodule DB do
+    alias Domain.Safe
+
+    def update(changeset) do
+      changeset
+      |> Safe.unscoped()
+      |> Safe.update()
+    end
   end
 end

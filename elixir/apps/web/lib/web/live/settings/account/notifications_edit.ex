@@ -1,12 +1,12 @@
 defmodule Web.Settings.Account.Notifications.Edit do
   use Web, :live_view
-  alias Domain.Accounts
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     socket =
       assign(socket,
         page_title: "Edit Notifications",
-        form: to_form(Accounts.change_account(socket.assigns.account))
+        form: to_form(change_account_notifications(socket.assigns.account))
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -90,11 +90,19 @@ defmodule Web.Settings.Account.Notifications.Edit do
     """
   end
 
+  defp change_account_notifications(account, attrs \\ %{}) do
+    import Ecto.Changeset
+
+    account
+    |> cast(attrs, [])
+    |> cast_embed(:config)
+  end
+
   def handle_event("change", %{"account" => attrs}, socket) do
     account = socket.assigns.account
 
     changeset =
-      Accounts.change_account(account, attrs)
+      change_account_notifications(account, attrs)
       |> Map.put(:action, :validate)
 
     socket = assign(socket, form: to_form(changeset))
@@ -104,7 +112,7 @@ defmodule Web.Settings.Account.Notifications.Edit do
 
   def handle_event("submit", %{"account" => attrs}, socket) do
     with {:ok, account} <-
-           Accounts.update_account(socket.assigns.account, attrs, socket.assigns.subject) do
+           update_account_notifications(socket.assigns.account, attrs, socket.assigns.subject) do
       socket =
         socket
         |> put_flash(:success, "Notification settings updated successfully")
@@ -115,6 +123,22 @@ defmodule Web.Settings.Account.Notifications.Edit do
       {:error, changeset} ->
         changeset = changeset |> Map.put(:action, :validate)
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  defp update_account_notifications(account, attrs, subject) do
+    account
+    |> change_account_notifications(attrs)
+    |> DB.update(subject)
+  end
+
+  defmodule DB do
+    alias Domain.Safe
+
+    def update(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
     end
   end
 end

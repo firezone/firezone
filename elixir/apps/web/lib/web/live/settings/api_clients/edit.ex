@@ -6,7 +6,7 @@ defmodule Web.Settings.ApiClients.Edit do
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+    if Domain.Accounts.Account.rest_api_enabled?(socket.assigns.account) do
       with {:ok, actor} <- DB.fetch_api_client(id, socket.assigns.subject) do
         changeset = changeset(actor, %{})
 

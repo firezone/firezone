@@ -54,7 +54,7 @@ defmodule Web.Resources.Components do
 
   def map_filters_form_attrs(attrs, account) do
     attrs =
-      if Domain.Accounts.traffic_filters_enabled?(account) do
+      if Domain.Accounts.Account.traffic_filters_enabled?(account) do
         attrs
       else
         Map.put(attrs, "filters", %{})
@@ -110,7 +110,7 @@ defmodule Web.Resources.Components do
       |> Map.put(:forms_by_protocol, forms_by_protocol)
       |> Map.put(
         :traffic_filters_enabled?,
-        Domain.Accounts.traffic_filters_enabled?(assigns.account)
+        Domain.Accounts.Account.traffic_filters_enabled?(assigns.account)
       )
 
     ~H"""

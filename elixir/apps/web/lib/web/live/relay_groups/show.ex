@@ -3,7 +3,7 @@ defmodule Web.RelayGroups.Show do
   alias Domain.{Accounts, Relays, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
-    with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account),
+    with true <- Accounts.Account.self_hosted_relays_enabled?(socket.assigns.account),
          {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject) do
       if connected?(socket) do
         :ok = Relays.subscribe_to_relays_presence_in_group(group)

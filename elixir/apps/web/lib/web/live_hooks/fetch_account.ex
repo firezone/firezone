@@ -1,15 +1,26 @@
 defmodule Web.LiveHooks.FetchAccount do
-  alias Domain.Accounts
-
+  alias __MODULE__.DB
   def on_mount(:default, %{"account_id_or_slug" => account_id_or_slug}, _session, socket)
       when is_binary(account_id_or_slug) do
-    case Accounts.fetch_account_by_id_or_slug(account_id_or_slug) do
-      {:ok, account} -> {:cont, Phoenix.Component.assign(socket, :account, account)}
-      _ -> {:cont, socket}
+    case DB.get_account_by_id_or_slug(account_id_or_slug) do
+      nil -> {:cont, socket}
+      %Domain.Accounts.Account{} = account -> {:cont, Phoenix.Component.assign(socket, :account, account)}
     end
   end
 
   def on_mount(:default, _params, _session, socket) do
     {:cont, socket}
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Accounts.Account
+
+    def get_account_by_id_or_slug(id_or_slug) do
+      from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
   end
 end
