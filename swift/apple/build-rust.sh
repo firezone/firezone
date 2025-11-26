@@ -161,7 +161,7 @@ done
 echo ""
 echo "Generating UniFFI bindings..."
 cd "$SCRIPT_DIR"
-make uniffi-bindings
+./generate-bindings.sh
 
 echo ""
 echo "✅ Rust library build completed successfully!"

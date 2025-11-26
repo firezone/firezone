@@ -453,7 +453,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "make format\n";
+			shellScript = "./mise-tasks/format.sh";
 		};
 		8D8555822D0A796100A1EA09 /* Build Connlib */ = {
 			isa = PBXShellScriptBuildPhase;

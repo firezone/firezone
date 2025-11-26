@@ -1,3 +1,5 @@
+experimental_monorepo_root = true
+
 [tasks.lint-setup]
 description = "Install linting tools from version-pinned files (managed by Dependabot)"
 run = """
