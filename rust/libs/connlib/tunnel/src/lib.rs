@@ -146,8 +146,8 @@ impl ClientTunnel {
     }
 
     pub fn suspend(&mut self) {
-        self.role_state.reset(Instant::now(), "suspend");
-        self.io.reset();
+        self.role_state.shut_down("suspending", Instant::now());
+        self.io.suspend();
     }
 
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
@@ -160,7 +160,7 @@ impl ClientTunnel {
     /// Shut down the Client tunnel.
     pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
-        self.role_state.shut_down(Instant::now());
+        self.role_state.shut_down("exiting", Instant::now());
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
