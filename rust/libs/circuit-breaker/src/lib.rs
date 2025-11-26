@@ -2,6 +2,7 @@
 
 use std::time::{Duration, Instant};
 
+/// A sans-IO circuit-breaker.
 pub struct CircuitBreaker {
     name: String,
     state: State,
@@ -10,11 +11,13 @@ pub struct CircuitBreaker {
     timeout: Duration,
 }
 
+/// A token for a given IO operation.
 pub struct Token<'a> {
     cb: &'a mut CircuitBreaker,
 }
 
 impl<'a> Token<'a> {
+    /// Consume the token and report success or failure to the circuit breaker.
     pub fn result<T, E>(self, result: Result<T, E>, now: Instant) -> Result<T, E> {
         match &result {
             Ok(_) => self.success(now),
@@ -24,10 +27,12 @@ impl<'a> Token<'a> {
         result
     }
 
+    /// Consme the token and report success of the IO operation.
     pub fn success(self, now: Instant) {
         self.cb.handle_success(now);
     }
 
+    /// Consme the token and report failure of the IO operation.
     pub fn failure(self, now: Instant) {
         self.cb.handle_failure(now);
     }
@@ -49,6 +54,12 @@ impl CircuitBreaker {
         }
     }
 
+    /// Request a new token for an IO operation from the circuit breaker.
+    ///
+    /// If the circuit is currently open, this may get rejected.
+    ///
+    /// The token captures a mutable borrow from the circuit breaker and thus
+    /// only one IO operation at a time is allowed.
     pub fn request_token(&mut self, now: Instant) -> Result<Token<'_>, Rejected> {
         self.update_state(now);
 
