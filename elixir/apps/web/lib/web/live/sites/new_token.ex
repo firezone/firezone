@@ -98,18 +98,7 @@ defmodule Web.Sites.NewToken do
               ><%= debian_command_install() %></.code_block>
 
               <p class="p-6">
-                Step 3: Copy the token:
-              </p>
-
-              <.code_block
-                id="code-sample-debian3"
-                class="w-full text-xs whitespace-pre-line"
-                phx-no-format
-                phx-update="ignore"
-              ><%= token(@env) %></.code_block>
-
-              <p class="p-6">
-                Step 4: Configure the token:
+                Step 3: Configure a token:
               </p>
 
               <.code_block
@@ -118,6 +107,17 @@ defmodule Web.Sites.NewToken do
                 phx-no-format
                 phx-update="ignore"
               ><%= debian_command_authenticate() %></.code_block>
+
+              <p class="p-6">
+                Step 4: Use the below token when prompted:
+              </p>
+
+              <.code_block
+                id="code-sample-debian3"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+                phx-update="ignore"
+              ><%= token(@env) %></.code_block>
 
               <p class="p-6">
                 Step 5: You are now ready to manage the Gateway using the <code>firezone</code> CLI.
