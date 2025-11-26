@@ -4,7 +4,7 @@ import Alert from "@/components/DocsAlert";
 At Firezone, we use Rust[^1] to build secure remote access that scales, be it
 from your Android phone, MacOS computer or Linux server. At the core of each app
 sits a connectivity library &mdash; aptly named
-[`connlib`](https://www.github.com/firezone/firezone/tree/main/rust/connlib)
+[`connlib`](https://www.github.com/firezone/firezone/tree/main/rust/libs/connlib)
 &mdash; that manages network connections and WireGuard tunnels to secure your
 traffic. After several iterations, we’ve landed on a design that we are
 extremely happy with. It gives us fast and exhaustive tests, deep customisation
@@ -455,7 +455,7 @@ servers for your public IP? No problem. Just make 5 `StunBinding`s and call them
 in order[^4].
 
 In the case of Firezone, you can see this in the example of
-[`snownet`](https://github.com/firezone/firezone/tree/main/rust/connlib/snownet),
+[`snownet`](https://github.com/firezone/firezone/tree/main/rust/libs/connlib/snownet),
 a library that combines ICE and WireGuard and thereby exposes "magic" IP tunnels
 that work in any network setup to the rest of the application.
 
