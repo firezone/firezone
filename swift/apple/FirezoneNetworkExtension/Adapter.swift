@@ -34,11 +34,12 @@ enum AdapterError: Error {
 actor Adapter {
 
   /// Command sender for sending commands to the session
-  private nonisolated(unsafe) var commandSender: Sender<SessionCommand>?
+  private var commandSender: Sender<SessionCommand>?
 
-  /// Task handles for explicit cancellation during cleanup
-  private nonisolated(unsafe) var eventLoopTask: Task<Void, Never>?
-  private nonisolated(unsafe) var eventConsumerTask: Task<Void, Never>?
+  /// Task handles wrapped in CancellableTask for automatic cleanup via RAII.
+  private var eventLoopTask: CancellableTask?
+  private var eventConsumerTask: CancellableTask?
+  private var pathMonitorTask: CancellableTask?
 
   // Our local copy of the accountSlug
   private let accountSlug: String
@@ -51,9 +52,6 @@ actor Adapter {
 
   /// Continuation to signal tunnel is ready after receiving first tunInterfaceUpdated event.
   private var startContinuation: CheckedContinuation<Void, Error>?
-
-  /// Network routes monitor.
-  private nonisolated(unsafe) var networkMonitor: NWPathMonitor?
 
   #if os(macOS)
     /// Used for finding system DNS resolvers on macOS when network conditions have changed.
@@ -98,16 +96,10 @@ actor Adapter {
   // Could happen abruptly if the process is killed.
   deinit {
     Log.log("Adapter.deinit")
-
-    // Cancel network monitor
-    networkMonitor?.cancel()
-    networkMonitor = nil
-
-    // Cancel all Tasks - this triggers cooperative cancellation
-    // Event loop checks Task.isCancelled in its polling loop
-    // Event consumer will exit when eventSender.deinit closes the stream
-    eventLoopTask?.cancel()
-    eventConsumerTask?.cancel()
+    // All cleanup handled automatically via RAII:
+    // - CancellableTask.deinit cancels tasks
+    // - NetworkPathUpdates' onTermination cancels the monitor
+    // - Sender.deinit finishes the continuation
   }
 
   func start() async throws {
@@ -166,37 +158,43 @@ actor Adapter {
     let (eventSender, eventReceiver): (Sender<Event>, Receiver<Event>) = Channel.create()
 
     // Start event loop - owns session, receives commands, sends events
-    eventLoopTask = Task { [weak self] in
-      defer {
-        // ALWAYS cleanup, even if event loop crashes
-        self?.commandSender = nil
-        Log.log("Adapter: Event loop finished, session dropped")
-      }
-
-      await runSessionEventLoop(
-        session: session,
-        commandReceiver: commandReceiver,
-        eventSender: eventSender
-      )
-    }
-
-    // Start event consumer - consumes events from receiver (Rust pattern: receiver outside)
-    eventConsumerTask = Task { [weak self] in
-      for await event in eventReceiver.stream {
-        // Check self on each iteration - if Adapter is deallocated, stop processing events
-        guard let self = self else {
-          Log.log("Adapter: Event consumer stopping - Adapter deallocated")
-          break
+    eventLoopTask = CancellableTask(
+      Task {
+        defer {
+          Log.log("Adapter: Event loop finished, session dropped")
         }
 
-        await self.handleEvent(event)
-      }
+        await runSessionEventLoop(
+          session: session,
+          commandReceiver: commandReceiver,
+          eventSender: eventSender
+        )
+      })
 
-      Log.log("Adapter: Event consumer finished")
-    }
+    // Start event consumer - consumes events from receiver (Rust pattern: receiver outside)
+    eventConsumerTask = CancellableTask(
+      Task { [weak self] in
+        for await event in eventReceiver.stream {
+          // Check self on each iteration - if Adapter is deallocated, stop processing events
+          guard let self = self else {
+            Log.log("Adapter: Event consumer stopping - Adapter deallocated")
+            break
+          }
 
-    // Configure DNS and path monitoring
-    startNetworkPathMonitoring()
+          await self.handleEvent(event)
+        }
+
+        Log.log("Adapter: Event consumer finished")
+      })
+
+    // Start path monitoring - uses AsyncStream with RAII cleanup via onTermination
+    pathMonitorTask = CancellableTask(
+      Task { [weak self] in
+        for await path in networkPathUpdates() {
+          guard let self else { break }
+          await self.handlePathUpdate(path)
+        }
+      })
 
     // Wait for tunnel to be ready (first tunInterfaceUpdated event)
     try await withCheckedThrowingContinuation { continuation in
@@ -220,36 +218,33 @@ actor Adapter {
 
     sendCommand(.disconnect)
 
-    networkMonitor?.cancel()
-    networkMonitor = nil
+    // Cancel path monitoring - triggers CancellableTask.deinit -> Task cancellation
+    // -> onTermination -> monitor.cancel()
+    pathMonitorTask = nil
 
     // Tasks will finish naturally after disconnect command is processed
     // No need to cancel them here - they'll clean up via their defer blocks
   }
 
-  /// Get the current set of resources in the completionHandler, only returning
-  /// them if the resource list has changed.
-  func getResourcesIfVersionDifferentFrom(
-    hash: Data, completionHandler: @escaping @Sendable (Data?) -> Void
-  ) {
+  /// Get the current set of resources, only returning them if the resource list has changed.
+  /// Returns `nil` if resources haven't changed (hash matches) or if encoding fails.
+  func getResourcesIfVersionDifferentFrom(hash: Data) -> Data? {
     // Convert uniffi resources to FirezoneKit resources and encode with PropertyList
     guard let uniffiResources = resources else {
-      completionHandler(nil)
-      return
+      return nil
     }
 
     let firezoneResources = uniffiResources.map { convertResource($0) }
 
     guard let encoded = try? PropertyListEncoder().encode(firezoneResources) else {
       Log.log("Failed to encode resources as PropertyList")
-      completionHandler(nil)
-      return
+      return nil
     }
 
     if hash == Data(SHA256.hash(data: encoded)) {
-      completionHandler(nil)
+      return nil
     } else {
-      completionHandler(encoded)
+      return encoded
     }
   }
 
@@ -306,6 +301,8 @@ actor Adapter {
       networkSettings.setSearchDomain(domain: searchDomain)
       self.networkSettings = networkSettings
 
+      // The apply completion handler runs on an arbitrary queue, not actor-isolated.
+      // We use Task to bridge back to actor isolation for resumeStartContinuation().
       networkSettings.apply { [weak self] in
         guard let self else { return }
         if firstStart {
@@ -350,16 +347,6 @@ actor Adapter {
         provider.cancelTunnelWithError(nil)
       }
     }
-  }
-
-  private func startNetworkPathMonitoring() {
-    networkMonitor = NWPathMonitor()
-    networkMonitor?.pathUpdateHandler = { [weak self] path in
-      Task { [weak self] in
-        await self?.handlePathUpdate(path)
-      }
-    }
-    networkMonitor?.start(queue: .global())
   }
 
   private func setSystemDefaultResolvers(_ path: Network.NWPath) async {
@@ -416,6 +403,45 @@ actor Adapter {
     sendCommand(.setDns(parsedResolvers))
   }
 
+  /// Handles network path updates from NWPathMonitor.
+  ///
+  /// This callback is invoked whenever:
+  /// - Network connectivity changes
+  /// - System DNS servers change, including when we set them
+  /// - Routes change, including when we set them
+  ///
+  /// Apple doesn't give us very much info in this callback, so we don't know which of the
+  /// events above triggered the callback.
+  ///
+  /// On iOS this creates a problem:
+  ///
+  /// We have no good way to get the System's default resolvers. We use a workaround which
+  /// involves reading the resolvers from Bind (i.e. /etc/resolv.conf) but this will be set to connlib's
+  /// DNS sentinel while the tunnel is active, which isn't helpful to us. To get around this, we can
+  /// very briefly update the Tunnel's matchDomains config to *not* be the catch-all [""], which
+  /// causes iOS to write the actual system resolvers into /etc/resolv.conf, which we can then read.
+  /// The issue is that this in itself causes a path update callback, which makes it hard to
+  /// differentiate between us changing the DNS configuration and the system actually receiving new
+  /// default resolvers.
+  ///
+  /// So we solve this problem by only doing this DNS dance if the gateways available to the path have
+  /// changed. This means we only call setDns when the physical network has changed, and therefore
+  /// we're blind to path updates where only the DNS resolvers have changed. That will happen in two
+  /// cases most commonly:
+  /// - New DNS servers were set by DHCP
+  /// - The user manually changed the DNS servers in the system settings
+  ///
+  /// For now, this will break DNS if the old servers connlib is using are no longer valid, and
+  /// can only be fixed with a sign out and sign back in which restarts the NetworkExtension.
+  ///
+  /// On macOS, Apple has exposed the SystemConfiguration framework which makes this easy and
+  /// doesn't suffer from this issue.
+  ///
+  /// See the following issues for discussion around the above issue:
+  /// - https://github.com/firezone/firezone/issues/3302
+  /// - https://github.com/firezone/firezone/issues/3343
+  /// - https://github.com/firezone/firezone/issues/3235
+  /// - https://github.com/firezone/firezone/issues/3175
   private func handlePathUpdate(_ path: Network.NWPath) async {
     if path.status == .unsatisfied {
       if packetTunnelProvider?.reasserting == false {
@@ -508,6 +534,8 @@ actor Adapter {
       guard let networkSettings else {
         // Network Settings hasn't been applied yet, so our sentinel isn't
         // the system's resolver and we can grab the system resolvers directly.
+        // If we try to continue below without valid tunnel addresses assigned
+        // to the interface, we'll crash.
         return BindResolvers.getServers()
       }
 

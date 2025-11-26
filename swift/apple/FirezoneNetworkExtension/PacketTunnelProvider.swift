@@ -15,6 +15,11 @@ enum PacketTunnelProviderError: Error {
   case tokenNotFoundInKeychain
 }
 
+// NEPacketTunnelProvider is not Sendable, but we need to pass `self` to the Adapter actor
+// and access properties from async contexts. This is safe because:
+// - The provider lifecycle is managed by NetworkExtension framework (single instance)
+// - All mutable state access is serialised through the Adapter actor or local to callbacks
+// - The weak reference in Adapter prevents retain cycles and dangling references
 class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
   private var adapter: Adapter?
 
@@ -188,10 +193,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
           return
         }
 
+        // Use hash comparison to only return resources if they've changed
         Task { @Sendable in
-          await adapter.getResourcesIfVersionDifferentFrom(hash: hash) { resourceData in
-            completionHandler?(resourceData)
-          }
+          let resourceData = await adapter.getResourcesIfVersionDifferentFrom(hash: hash)
+          completionHandler?(resourceData)
         }
       case .clearLogs:
         clearLogs(completionHandler)
