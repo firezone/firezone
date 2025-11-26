@@ -20,13 +20,12 @@ use windows::{
 };
 use windows_service::{
     service::{
-        ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode,
-        ServiceInfo, ServiceStartType, ServiceState, ServiceStatus, ServiceType,
+        PowerEventParam, ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl,
+        ServiceExitCode, ServiceInfo, ServiceStartType, ServiceState, ServiceStatus, ServiceType,
     },
     service_control_handler::{self, ServiceControlHandlerResult},
     service_manager::{ServiceManager, ServiceManagerAccess},
 };
-
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
@@ -218,14 +217,36 @@ fn run_service(arguments: Vec<OsString>) {
         .expect("Failed to create tokio runtime");
 
     let (mut shutdown_tx, shutdown_rx) = mpsc::channel(1);
+    let (power_sender, mut power_receiver) = crate::power_events::channel();
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         tracing::debug!(?control_event);
         match control_event {
             // TODO
             ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+            ServiceControl::PowerEvent(PowerEventParam::Suspend) => {
+                tracing::debug!("System is suspending");
+
+                let _ = power_sender.try_send(crate::power_events::PowerEvent::Suspend);
+
+                ServiceControlHandlerResult::NoError
+            }
+            // Quoting from <https://stackoverflow.com/a/33137857> for details:
+            //
+            // If you need to know that the system has resumed, but don't care whether a user's there or not,
+            // you need to listen for both ResumeAutomatic and ResumeSuspend and treat them as the same thing.
+            ServiceControl::PowerEvent(
+                PowerEventParam::ResumeSuspend | PowerEventParam::ResumeAutomatic,
+            ) => {
+                tracing::debug!("System is resuming");
+
+                let _ = power_sender.try_send(crate::power_events::PowerEvent::Resume);
+
+                ServiceControlHandlerResult::NoError
+            }
             ServiceControl::PowerEvent(event) => {
-                tracing::info!(?event, "Power event");
+                tracing::debug!(?event, "Power event");
+
                 ServiceControlHandlerResult::NoError
             }
             ServiceControl::Shutdown | ServiceControl::Stop => {
@@ -284,6 +305,7 @@ fn run_service(arguments: Vec<OsString>) {
             DnsControlMethod::Nrpt,
             &log_filter_reloader,
             &mut signals,
+            &mut power_receiver,
         ))
         .inspect_err(|e| tracing::error!("Tunnel service failed: {e:#}"));
 

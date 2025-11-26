@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod power_events;
 mod updates;
 mod uptime;
 mod view;

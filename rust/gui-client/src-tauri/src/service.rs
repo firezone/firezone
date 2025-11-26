@@ -1,6 +1,7 @@
 use crate::{
     ipc::{self, SocketId},
     logging,
+    power_events::{self, PowerEvent},
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
@@ -110,6 +111,7 @@ async fn ipc_listen(
     dns_control_method: DnsControlMethod,
     log_filter_reloader: &FilterReloadHandle,
     signals: &mut signals::Terminate,
+    power_events: &mut power_events::Receiver,
 ) -> Result<()> {
     // Create the device ID and Tunnel service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
@@ -165,7 +167,7 @@ async fn ipc_listen(
                 continue;
             }
         };
-        if let HandlerOk::ServiceTerminating = handler.run(signals).await {
+        if let HandlerOk::ServiceTerminating = handler.run(signals, power_events).await {
             break;
         }
     }
@@ -272,6 +274,7 @@ enum Event {
     Terminate,
     NetworkChanged(Result<()>),
     DnsChanged(Result<()>),
+    PowerEvent(PowerEvent),
 }
 
 // Open to better names
@@ -331,9 +334,13 @@ impl<'a> Handler<'a> {
     /// the client a hint to shut itself down gracefully.
     ///
     /// The return type is infallible so that we only give up on an IPC client explicitly
-    async fn run(&mut self, signals: &mut signals::Terminate) -> HandlerOk {
+    async fn run(
+        &mut self,
+        signals: &mut signals::Terminate,
+        power_events: &mut power_events::Receiver,
+    ) -> HandlerOk {
         let ret = loop {
-            match poll_fn(|cx| self.next_event(cx, signals)).await {
+            match poll_fn(|cx| self.next_event(cx, signals, power_events)).await {
                 Event::Connlib(x) => {
                     if let Err(error) = self.handle_connlib_event(x).await {
                         tracing::error!("Error while handling connlib callback: {error:#}");
@@ -432,6 +439,20 @@ impl<'a> Handler<'a> {
 
                     connlib.set_dns(resolvers);
                 }
+                Event::PowerEvent(PowerEvent::Suspend) => {
+                    let Session::Connected { connlib, .. } = &self.session else {
+                        continue;
+                    };
+
+                    connlib.suspend();
+                }
+                Event::PowerEvent(PowerEvent::Resume) => {
+                    let Session::Connected { connlib, .. } = &self.session else {
+                        continue;
+                    };
+
+                    connlib.reset("awoke from sleep".to_owned());
+                }
             }
         };
 
@@ -444,10 +465,15 @@ impl<'a> Handler<'a> {
         &mut self,
         cx: &mut Context<'_>,
         signals: &mut signals::Terminate,
+        power_events: &mut power_events::Receiver,
     ) -> Poll<Event> {
         // `recv` on signals is cancel-safe.
         if let Poll::Ready(()) = signals.poll_recv(cx) {
             return Poll::Ready(Event::Terminate);
+        }
+
+        if let Poll::Ready(Some(power_event)) = power_events.poll_recv(cx) {
+            return Poll::Ready(Event::PowerEvent(power_event));
         }
 
         if let Poll::Ready(Some(result)) = self.network_notifier.poll_next_unpin(cx) {
@@ -715,8 +741,14 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
         .build()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
+    let (_sender, mut receiver) = crate::power_events::channel();
 
-    rt.block_on(ipc_listen(dns_control, &log_filter_reloader, &mut signals))
+    rt.block_on(ipc_listen(
+        dns_control,
+        &log_filter_reloader,
+        &mut signals,
+        &mut receiver,
+    ))
 }
 
 /// Listen for exactly one connection from a GUI, then exit
@@ -743,6 +775,7 @@ pub fn run_smoke_test() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;
+    let (_sender, mut receiver) = crate::power_events::channel();
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
@@ -756,7 +789,7 @@ pub fn run_smoke_test() -> Result<()> {
             &log_filter_reloader,
         )
         .await?
-        .run(&mut signals)
+        .run(&mut signals, &mut receiver)
         .await;
         Ok::<_, anyhow::Error>(())
     })
