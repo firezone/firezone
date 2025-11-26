@@ -832,7 +832,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1().into()]),
+            BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
 
@@ -903,7 +903,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1().into()]),
+            BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
 
@@ -934,7 +934,7 @@ mod tests {
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            "1.1.1.1".parse().unwrap(),
+            "1.1.1.1".parse::<Ipv4Addr>().unwrap(),
             1,
             600,
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -959,7 +959,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1().into()]),
+            BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
 
@@ -1032,7 +1032,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1().into(), proxy_ip4_2().into()]),
+            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
 
@@ -1054,7 +1054,7 @@ mod tests {
                 foo_name().parse().unwrap(),
                 foo_resource_id(),
                 BTreeSet::from([foo_real_ip2().into()]), // Setting up with a new IP!
-                BTreeSet::from([proxy_ip4_1().into(), proxy_ip4_2().into()]),
+                BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
             )
             .unwrap();
 
@@ -1127,7 +1127,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1().into(), proxy_ip4_2().into()]),
+            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
 
@@ -1154,7 +1154,7 @@ mod tests {
             baz_name().parse().unwrap(),
             baz_resource_id(),
             BTreeSet::from([baz_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1().into(), proxy_ip4_2().into()]),
+            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
 
@@ -1183,12 +1183,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([
-                proxy_ip4_1().into(),
-                proxy_ip4_2().into(),
-                proxy_ip6_1().into(),
-                proxy_ip6_2().into(),
-            ]),
+            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2(), proxy_ip6_1(), proxy_ip6_2()]),
         )
         .unwrap();
 
@@ -1208,6 +1203,11 @@ mod tests {
         };
 
         assert_eq!(packet.destination(), client_tun_ipv6());
+
+        assert!(peer.permanent_translations.contains_key(&proxy_ip4_1()));
+        assert!(peer.permanent_translations.contains_key(&proxy_ip4_2()));
+        assert!(peer.permanent_translations.contains_key(&proxy_ip6_1()));
+        assert!(peer.permanent_translations.contains_key(&proxy_ip6_2()));
     }
 
     fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
@@ -1281,19 +1281,19 @@ mod tests {
         "10.0.0.1".parse().unwrap()
     }
 
-    fn proxy_ip4_1() -> Ipv4Addr {
+    fn proxy_ip4_1() -> IpAddr {
         "100.96.0.1".parse().unwrap()
     }
 
-    fn proxy_ip4_2() -> Ipv4Addr {
+    fn proxy_ip4_2() -> IpAddr {
         "100.96.0.2".parse().unwrap()
     }
 
-    fn proxy_ip6_1() -> Ipv6Addr {
+    fn proxy_ip6_1() -> IpAddr {
         "fd00:2021:1111:8000::".parse().unwrap()
     }
 
-    fn proxy_ip6_2() -> Ipv6Addr {
+    fn proxy_ip6_2() -> IpAddr {
         "fd00:2021:1111:8000::1".parse().unwrap()
     }
 
