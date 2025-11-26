@@ -52,6 +52,8 @@ public struct AppView: View {
 
       public var identifier: String { "firezone-\(rawValue)" }
       public var externalEventMatchString: String { rawValue }
+      // Simple custom scheme URL with known rawValue is guaranteed valid
+      // swiftlint:disable:next force_unwrapping
       public var externalEventOpenURL: URL { URL(string: "firezone://\(rawValue)")! }
 
       @MainActor public func openWindow() {

@@ -107,9 +107,9 @@ import System
 
       // Move the `latest` symlink out of the way before creating the archive.
       // Apple's implementation of zip appears to not be able to handle symlinks well
-      let _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
+      _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
       defer {
-        let _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
+        _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
       }
 
       // Write final log archive
@@ -136,7 +136,7 @@ import System
 extension LogExporter {
   /// Thread-safe: FileManager.default is documented as thread-safe by Apple.
   /// Reference: https://developer.apple.com/documentation/foundation/filemanager
-  private nonisolated(unsafe) static let fileManager = FileManager.default
+  nonisolated(unsafe) private static let fileManager = FileManager.default
 
   static func now() -> String {
     let dateFormatter = ISO8601DateFormatter()

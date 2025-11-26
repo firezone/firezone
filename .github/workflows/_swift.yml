@@ -49,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
-      - name: Check Swift formatting
+      - name: Check Swift formatting and linting
         run: ./mise-tasks/check.sh
         working-directory: swift/apple
 
