@@ -685,7 +685,7 @@ impl Drop for TunnelError {
 
 #[derive(Debug, thiserror::Error)]
 #[error("Not a client IP: {0}")]
-pub(crate) struct NotClientIp(IpAddr);
+pub struct NotClientIp(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Traffic to/from this resource IP is not allowed: {0}")]
