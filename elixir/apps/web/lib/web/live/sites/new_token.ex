@@ -312,22 +312,22 @@ defmodule Web.Sites.NewToken do
 
   defp debian_command_apt_repository do
     """
-    mkdir --parents /etc/apt/keyrings
-    wget -qO- https://artifacts.firezone.dev/apt/key.gpg | gpg --dearmor -o /etc/apt/keyrings/firezone.gpg
-    echo "deb [signed-by=/etc/apt/keyrings/firezone.gpg] https://artifacts.firezone.dev/apt/ stable main" > /etc/apt/sources.list.d/firezone.list
+    sudo mkdir --parents /etc/apt/keyrings
+    wget -qO- https://artifacts.firezone.dev/apt/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/firezone.gpg
+    sudo echo "deb [signed-by=/etc/apt/keyrings/firezone.gpg] https://artifacts.firezone.dev/apt/ stable main" > /etc/apt/sources.list.d/firezone.list
     """
   end
 
   defp debian_command_install do
     """
-    apt update
-    apt install firezone-gateway
+    sudo apt update
+    sudo apt install firezone-gateway
     """
   end
 
   defp debian_command_authenticate do
     """
-    firezone gateway authenticate
+    sudo firezone gateway authenticate
     """
   end
 
