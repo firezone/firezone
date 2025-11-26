@@ -314,7 +314,7 @@ defmodule Web.Sites.NewToken do
     """
     sudo mkdir --parents /etc/apt/keyrings
     wget -qO- https://artifacts.firezone.dev/apt/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/firezone.gpg
-    sudo echo "deb [signed-by=/etc/apt/keyrings/firezone.gpg] https://artifacts.firezone.dev/apt/ stable main" > /etc/apt/sources.list.d/firezone.list
+    echo "deb [signed-by=/etc/apt/keyrings/firezone.gpg] https://artifacts.firezone.dev/apt/ stable main" | sudo tee /etc/apt/sources.list.d/firezone.list > /dev/null
     """
   end
 
