@@ -38,7 +38,6 @@ mod transition;
 type QueryId = u16;
 
 #[test]
-#[expect(clippy::print_stdout, clippy::print_stderr)]
 fn tunnel_test() {
     let config = Config {
         source_file: Some(file!()),
