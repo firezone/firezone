@@ -21,10 +21,10 @@ enum VPNConfigurationManagerError: Error {
   }
 }
 
-/// Thread-safe: Immutable wrapper around NETunnelProviderManager.
-/// Only contains a 'let' property. NETunnelProviderManager handles its own synchronisation.
-public class VPNConfigurationManager: @unchecked Sendable {
-  // Persists our tunnel settings
+// NEVPNManager callbacks are documented to arrive on main thread;
+// we isolate to @MainActor to align with this design.
+@MainActor
+public final class VPNConfigurationManager {
   let manager: NETunnelProviderManager
 
   public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
@@ -51,7 +51,10 @@ public class VPNConfigurationManager: @unchecked Sendable {
     self.manager = manager
   }
 
-  public static func legacyConfiguration(protocolConfiguration: NETunnelProviderProtocol?)
+  // Pure function - doesn't access actor-isolated state.
+  nonisolated public static func legacyConfiguration(
+    protocolConfiguration: NETunnelProviderProtocol?
+  )
     -> [String: String]?
   {
     guard let protocolConfiguration = protocolConfiguration,
@@ -89,7 +92,6 @@ public class VPNConfigurationManager: @unchecked Sendable {
 
   // Firezone 1.4.14 and below stored some app configuration in the VPN provider configuration fields. This has since
   // been moved to a dedicated UserDefaults-backed persistent store.
-  @MainActor
   func maybeMigrateConfiguration() async throws {
     guard
       let legacyConfiguration = Self.legacyConfiguration(

@@ -27,6 +27,7 @@ import System
       case invalidFileHandle
     }
 
+    @MainActor
     static func export(
       to archiveURL: URL,
       session: NETunnelProviderSession
