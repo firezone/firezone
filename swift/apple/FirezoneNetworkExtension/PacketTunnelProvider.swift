@@ -99,11 +99,28 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       // Configure telemetry
       Telemetry.setEnvironmentOrClose(apiURL)
-      Task { await Telemetry.setAccountSlug(accountSlug) }
+      Task { @Sendable in await Telemetry.setAccountSlug(accountSlug) }
 
       let enabled = legacyConfiguration?["internetResourceEnabled"]
       let internetResourceEnabled =
         enabled != nil ? enabled == "true" : (tunnelConfiguration?.internetResourceEnabled ?? false)
+
+      // Create callbacks for the adapter to interact with this provider.
+      // Closures capture [weak self] to avoid retain cycles.
+      let callbacks = TunnelCallbacks(
+        cancelWithError: { [weak self] error in
+          self?.cancelTunnelWithError(error)
+        },
+        setReassserting: { [weak self] value in
+          self?.reasserting = value
+        },
+        getReassserting: { [weak self] in
+          self?.reasserting ?? false
+        },
+        applyNetworkSettings: { [weak self] settings, completionHandler in
+          self?.setTunnelNetworkSettings(settings, completionHandler: completionHandler)
+        }
+      )
 
       // Create the adapter with all configuration
       let adapter = Adapter(
@@ -113,14 +130,21 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         logFilter: logFilter,
         accountSlug: accountSlug,
         internetResourceEnabled: internetResourceEnabled,
-        packetTunnelProvider: self,
-        startCompletionHandler: completionHandler
+        callbacks: callbacks
       )
 
-      // Start the adapter
-      try adapter.start()
-
       self.adapter = adapter
+
+      // Start the adapter asynchronously
+      Task { @Sendable in
+        do {
+          try await adapter.start()
+          completionHandler(nil)
+        } catch {
+          Log.error(error)
+          completionHandler(error)
+        }
+      }
 
     } catch {
       Log.error(error)
@@ -129,7 +153,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   override func wake() {
-    adapter?.reset(reason: "awoke from sleep")
+    let adapter = self.adapter
+    Task { @Sendable in
+      await adapter?.reset(reason: "awoke from sleep")
+    }
   }
 
   // This can be called by the system, or initiated by connlib.
@@ -141,8 +168,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Log.log("stopTunnel: Reason: \(reason)")
 
     // handles both connlib-initiated and user-initiated stops
-    adapter?.stop()
-    completionHandler()
+    let adapter = self.adapter
+    Task { @Sendable in
+      await adapter?.stop()
+      completionHandler()
+    }
   }
 
   // It would be helpful to be able to encapsulate Errors here. To do that
@@ -160,23 +190,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         tunnelConfiguration.save()
         self.tunnelConfiguration = tunnelConfiguration
 
-        self.adapter?.setInternetResourceEnabled(tunnelConfiguration.internetResourceEnabled)
+        let adapter = self.adapter
+        Task { @Sendable in
+          await adapter?.setInternetResourceEnabled(tunnelConfiguration.internetResourceEnabled)
+        }
         completionHandler?(nil)
 
       case .signOut:
         do { try Token.delete() } catch { Log.error(error) }
         completionHandler?(nil)
       case .getResourceList(let hash):
-        guard let adapter = adapter
-        else {
+        guard let adapter else {
           Log.warning("Adapter is nil")
           completionHandler?(nil)
-
           return
         }
 
         // Use hash comparison to only return resources if they've changed
-        adapter.getResourcesIfVersionDifferentFrom(hash: hash) { resourceData in
+        Task { @Sendable in
+          let resourceData = await adapter.getResourcesIfVersionDifferentFrom(hash: hash)
           completionHandler?(resourceData)
         }
       case .clearLogs:
@@ -224,7 +256,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return
     }
 
-    let task = Task {
+    let task = Task { @Sendable in
       let size = await Log.size(of: logFolderURL)
       let data = withUnsafeBytes(of: size) { Data($0) }
 

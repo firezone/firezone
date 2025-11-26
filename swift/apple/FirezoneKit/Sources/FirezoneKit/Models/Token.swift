@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct Token: CustomStringConvertible {
+public struct Token: CustomStringConvertible, Sendable {
   // Debug builds can't write to release build Keychain items, so keep them separate
   #if DEBUG
     private static let label = "Firezone token (debug)"
