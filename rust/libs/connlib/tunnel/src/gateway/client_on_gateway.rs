@@ -10,7 +10,6 @@ use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
-use itertools::{EitherOrBoth, Itertools};
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::gateway::filter_engine::FilterEngine;
@@ -112,42 +111,24 @@ impl ClientOnGateway {
             tracing::debug!(domain = %name, %resource_id, "No A / AAAA records for domain")
         }
 
-        let ipv4_maps = proxy_ips.iter().filter(|ip| ip.is_ipv4()).zip_longest(
-            resolved_ips
-                .iter()
-                .filter(|ip| ip.is_ipv4())
-                .copied()
-                .cycle(),
-        );
-        let ipv6_maps = proxy_ips.iter().filter(|ip| ip.is_ipv6()).zip_longest(
-            resolved_ips
-                .iter()
-                .filter(|ip| ip.is_ipv6())
-                .copied()
-                .cycle(),
-        );
+        let mut resolved_ipv4 = resolved_ips.iter().filter(|ip| ip.is_ipv4()).cycle();
+        let mut resolved_ipv6 = resolved_ips.iter().filter(|ip| ip.is_ipv6()).cycle();
 
-        // Clear out all current translations for these proxy IPs.
-        for proxy_ip in proxy_ips.iter() {
-            self.permanent_translations.remove(proxy_ip);
-        }
+        tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Setting up DNS resource NAT");
 
-        for either_or_both in ipv4_maps.chain(ipv6_maps) {
-            let (proxy_ip, maybe_real_ip) = match either_or_both {
-                EitherOrBoth::Both(proxy_ip, real_ip) => (proxy_ip, Some(real_ip)),
-                EitherOrBoth::Left(proxy_ip) => (proxy_ip, None),
-                EitherOrBoth::Right(_) => break,
+        for proxy_ip in proxy_ips {
+            let maybe_real_ip = match proxy_ip {
+                IpAddr::V4(_) => resolved_ipv4.next(),
+                IpAddr::V6(_) => resolved_ipv6.next(),
             };
 
             tracing::debug!(%name, %proxy_ip, real_ip = ?maybe_real_ip);
 
             self.permanent_translations.insert(
-                *proxy_ip,
-                TranslationState::new(resource_id, maybe_real_ip, name.clone()),
+                proxy_ip,
+                TranslationState::new(resource_id, maybe_real_ip.copied(), name.clone()),
             );
         }
-
-        tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Set up DNS resource NAT");
 
         domains.insert(name, resolved_ips);
         self.recalculate_filters();
@@ -851,7 +832,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip1().into()]),
+            BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
 
@@ -884,7 +865,7 @@ mod tests {
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            proxy_ip1(),
+            proxy_ip4_1(),
             1,
             bar_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -898,7 +879,7 @@ mod tests {
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            proxy_ip1(),
+            proxy_ip4_1(),
             1,
             foo_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -922,13 +903,13 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip1().into()]),
+            BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            proxy_ip1(),
+            proxy_ip4_1(),
             1,
             foo_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -939,7 +920,7 @@ mod tests {
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            proxy_ip1(),
+            proxy_ip4_1(),
             1,
             600,
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -953,7 +934,7 @@ mod tests {
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            "1.1.1.1".parse().unwrap(),
+            "1.1.1.1".parse::<Ipv4Addr>().unwrap(),
             1,
             600,
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -978,13 +959,13 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip1().into()]),
+            BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
 
         let request = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            proxy_ip1(),
+            proxy_ip4_1(),
             1,
             foo_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -1051,14 +1032,14 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip1().into(), proxy_ip2().into()]),
+            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
 
         {
             let request = ip_packet::make::udp_packet(
                 client_tun_ipv4(),
-                proxy_ip1(),
+                proxy_ip4_1(),
                 1,
                 foo_allowed_port(),
                 vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -1073,7 +1054,7 @@ mod tests {
                 foo_name().parse().unwrap(),
                 foo_resource_id(),
                 BTreeSet::from([foo_real_ip2().into()]), // Setting up with a new IP!
-                BTreeSet::from([proxy_ip1().into(), proxy_ip2().into()]),
+                BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
             )
             .unwrap();
 
@@ -1096,7 +1077,7 @@ mod tests {
         {
             let request = ip_packet::make::udp_packet(
                 client_tun_ipv4(),
-                proxy_ip1(),
+                proxy_ip4_1(),
                 2, // Using a new source port
                 foo_allowed_port(),
                 vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -1146,13 +1127,13 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip1().into(), proxy_ip2().into()]),
+            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
 
         let request = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            proxy_ip1(),
+            proxy_ip4_1(),
             1,
             foo_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -1173,7 +1154,7 @@ mod tests {
             baz_name().parse().unwrap(),
             baz_resource_id(),
             BTreeSet::from([baz_real_ip1().into()]),
-            BTreeSet::from([proxy_ip1().into(), proxy_ip2().into()]),
+            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
 
@@ -1183,6 +1164,50 @@ mod tests {
         };
 
         assert_eq!(packet.destination(), baz_real_ip1());
+    }
+
+    #[test]
+    fn setup_dns_resource_nat_ipv4_only_adds_ipv6_translation_state_entries() {
+        let _guard = logging::test("trace");
+
+        let now = Instant::now();
+
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_tun(),
+            gateway_tun(),
+            flow_tracker::ClientProperties::default(),
+        );
+        peer.add_resource(foo_dns_resource(), None);
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2(), proxy_ip6_1(), proxy_ip6_2()]),
+        )
+        .unwrap();
+
+        let request = ip_packet::make::udp_packet(
+            client_tun_ipv6(),
+            proxy_ip6_1(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        let TranslateOutboundResult::DestinationUnreachable(packet) =
+            peer.translate_outbound(request, now).unwrap()
+        else {
+            panic!("Bad translation result")
+        };
+
+        assert_eq!(packet.destination(), client_tun_ipv6());
+
+        assert!(peer.permanent_translations.contains_key(&proxy_ip4_1()));
+        assert!(peer.permanent_translations.contains_key(&proxy_ip4_2()));
+        assert!(peer.permanent_translations.contains_key(&proxy_ip6_1()));
+        assert!(peer.permanent_translations.contains_key(&proxy_ip6_2()));
     }
 
     fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
@@ -1256,12 +1281,20 @@ mod tests {
         "10.0.0.1".parse().unwrap()
     }
 
-    fn proxy_ip1() -> Ipv4Addr {
+    fn proxy_ip4_1() -> IpAddr {
         "100.96.0.1".parse().unwrap()
     }
 
-    fn proxy_ip2() -> Ipv4Addr {
+    fn proxy_ip4_2() -> IpAddr {
         "100.96.0.2".parse().unwrap()
+    }
+
+    fn proxy_ip6_1() -> IpAddr {
+        "fd00:2021:1111:8000::".parse().unwrap()
+    }
+
+    fn proxy_ip6_2() -> IpAddr {
+        "fd00:2021:1111:8000::1".parse().unwrap()
     }
 
     fn foo_name() -> String {
@@ -1336,6 +1369,7 @@ mod proptests {
     };
     use crate::proptest::*;
     use ip_packet::make::{TcpFlags, icmp_request_packet, tcp_packet, udp_packet};
+    use itertools::Itertools as _;
     use proptest::{
         arbitrary::any,
         collection, prop_oneof,
