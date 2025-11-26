@@ -300,13 +300,31 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
-        // Filtering a packet is not an error.
-        if let Err(e) = self.ensure_allowed_outbound(&packet) {
-            tracing::debug!(filtered_packet = ?packet, "{e:#}");
-            return Ok(TranslateOutboundResult::Filtered(
-                ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
-            ));
+        // Traffic to our own IP is allowed.
+        if self.gateway_tun.is_ip(packet.destination()) {
+            return Ok(TranslateOutboundResult::Send(packet));
         }
+
+        self.ensure_client_ip(packet.source())?;
+
+        match self.classify_resource(packet.destination(), packet.destination_protocol()) {
+            Ok(rid) => match self.resources.get(&rid) {
+                Some(resource) => flow_tracker::inbound_wg::record_resource(
+                    rid,
+                    resource.name(),
+                    resource.address(packet.destination()),
+                ),
+                None => tracing::warn!(%rid, "Internal state mismatch: No resource for ID"),
+            },
+            Err(e) => {
+                // Filtering a packet is not an error.
+
+                tracing::debug!(filtered_packet = ?packet, "{e:#}");
+                return Ok(TranslateOutboundResult::Filtered(
+                    ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+                ));
+            }
+        };
 
         // Failing to transform is an error we want to know about further up.
         let result = self.transform_network_to_tun(packet, now)?;
@@ -437,30 +455,6 @@ impl ClientOnGateway {
 
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
         self.resources.contains_key(&resource)
-    }
-
-    fn ensure_allowed_outbound(&self, packet: &IpPacket) -> anyhow::Result<()> {
-        self.ensure_client_ip(packet.source())?;
-
-        // Traffic to our own IP is allowed.
-        if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(());
-        }
-
-        let rid = self.classify_resource(packet.destination(), packet.destination_protocol())?;
-
-        let Some(resource) = self.resources.get(&rid) else {
-            tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
-            return Ok(());
-        };
-
-        flow_tracker::inbound_wg::record_resource(
-            rid,
-            resource.name(),
-            resource.address(packet.destination()),
-        );
-
-        Ok(())
     }
 
     fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {
