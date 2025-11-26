@@ -147,15 +147,16 @@ pub struct TcpFlags {
     pub rst: bool,
 }
 
-pub fn udp_packet<IP>(
-    saddr: IP,
-    daddr: IP,
+pub fn udp_packet<SIP, DIP>(
+    saddr: SIP,
+    daddr: DIP,
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
 ) -> Result<IpPacket>
 where
-    IP: Into<IpAddr>,
+    SIP: Into<IpAddr>,
+    DIP: Into<IpAddr>,
 {
     match (saddr.into(), daddr.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {

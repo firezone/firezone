@@ -22,7 +22,11 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10972">
+          Fixes an issue where IPv6-only DNS resources could not be reached.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.18" date={new Date("2025-11-10")}>
         <ChangeItem pull="10620">
           Adds a `--log-format` CLI option to output logs as JSON.
