@@ -98,6 +98,14 @@ impl Session {
         let _ = self.channel.send(Command::Reset(reason));
     }
 
+    /// Suspend the [`Session`].
+    ///
+    /// Suspending the session will close all connections.
+    /// To "wake-up" the [`Session`], new packets need to be sent to the TUN device.
+    pub fn suspend(&self) {
+        let _ = self.channel.send(Command::Suspend);
+    }
+
     /// Sets a new set of upstream DNS servers for this [`Session`].
     ///
     /// Changing the DNS servers clears all cached DNS requests which may be disruptive to the UX.
