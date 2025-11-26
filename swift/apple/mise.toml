@@ -1,0 +1,377 @@
+# Firezone Apple Client - mise configuration
+# Usage: mise run <task> (from this directory) or mise //swift/apple:<task> (from repo root)
+#
+# Requires: MISE_EXPERIMENTAL=1 for monorepo task discovery
+
+[env]
+PLATFORM = "macOS"
+CONFIGURATION = "Debug"
+# Set consistent environment to prevent Rust rebuilds (must match Xcode project setting)
+MACOSX_DEPLOYMENT_TARGET = "13.0"
+
+# =============================================================================
+# Build Tasks
+# =============================================================================
+
+[tasks.setup]
+description = "Install required Rust targets for Apple development"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Installing required Rust targets..."
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+rustup target add aarch64-apple-ios x86_64-apple-ios
+echo "Setup complete!"
+"""
+
+[tasks.uniffi-bindings]
+description = "Generate UniFFI bindings from Rust source"
+run = "./generate-bindings.sh"
+
+[tasks.lsp]
+description = "Configure xcode-build-server for LSP support in non-Xcode editors"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v xcode-build-server >/dev/null 2>&1; then
+    xcode-build-server config \\
+        -project Firezone.xcodeproj \\
+        -scheme Firezone
+else
+    echo "xcode-build-server not installed, skipping LSP configuration"
+    echo "   Install with: brew install xcode-build-server"
+fi
+"""
+
+[tasks.build]
+description = "Build Xcode project for macOS"
+depends = ["uniffi-bindings"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUST_DIR="$(cd ../../rust && pwd)"
+RUST_TARGET_DIR="${RUST_DIR}/target"
+ARCH="$(uname -m)"
+GIT_SHA="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+
+PLATFORM="${PLATFORM:-macOS}"
+CONFIGURATION="${CONFIGURATION:-Debug}"
+
+if [ ! -f buildServer.json ]; then
+    echo "buildServer.json not found, generating LSP configuration..."
+    mise run lsp
+fi
+
+# Ensure dynamic_build_number.xcconfig exists before Xcode parses the project
+# This must exist BEFORE xcodebuild runs because Xcode parses xcconfig files
+# at project load time, not during build phases
+if [ ! -f Firezone/xcconfig/dynamic_build_number.xcconfig ]; then
+    echo "Creating dynamic_build_number.xcconfig..."
+    echo "CURRENT_PROJECT_VERSION = $(date +%s)" > Firezone/xcconfig/dynamic_build_number.xcconfig
+fi
+
+echo "Building Xcode project for ${PLATFORM}, ${ARCH}"
+echo "Git SHA: ${GIT_SHA}"
+
+xcodebuild build \\
+    -project Firezone.xcodeproj \\
+    -scheme Firezone \\
+    -configuration "${CONFIGURATION}" \\
+    -sdk macosx \\
+    -destination "platform=${PLATFORM},arch=${ARCH}" \\
+    CONNLIB_TARGET_DIR="${RUST_TARGET_DIR}" \\
+    GIT_SHA="${GIT_SHA}" \\
+    ONLY_ACTIVE_ARCH=YES
+"""
+
+[tasks.install]
+description = "Stop running Firezone, copy to /Applications, and launch"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIGURATION="${CONFIGURATION:-Debug}"
+
+echo "Stopping any running Firezone instances..."
+osascript -e 'tell application "Firezone" to quit' 2>/dev/null || true
+pkill -x Firezone 2>/dev/null || true
+
+echo "Stopping and removing Firezone network extension..."
+sudo pkill -f "Firezone.NetworkExtension" 2>/dev/null || true
+# systemextensionsctl may fail if extension not installed - log but continue
+sudo systemextensionsctl uninstall 47R2M6779T dev.firezone.firezone.network-extension 2>&1 || echo "Note: network-extension not installed or already removed"
+sudo systemextensionsctl uninstall 47R2M6779T dev.firezone.firezone.network-extension-systemextension 2>&1 || echo "Note: network-extension-systemextension not installed or already removed"
+
+sleep 2
+
+echo "Finding build location..."
+xcodebuild_output=$(xcodebuild -project Firezone.xcodeproj -scheme Firezone -configuration "${CONFIGURATION}" -showBuildSettings 2>&1) || {
+    echo "Error: xcodebuild failed:"
+    echo "$xcodebuild_output" >&2
+    exit 1
+}
+PRODUCTS_DIR=$(echo "$xcodebuild_output" | grep ' BUILT_PRODUCTS_DIR = ' | sed 's/.*= //')
+if [ -z "$PRODUCTS_DIR" ]; then
+    echo "Error: Could not determine build products directory"
+    exit 1
+fi
+if [ ! -d "$PRODUCTS_DIR/Firezone.app" ]; then
+    echo "Error: Firezone.app not found at $PRODUCTS_DIR"
+    echo "Run 'mise run build' first"
+    exit 1
+fi
+
+echo "Copying app from $PRODUCTS_DIR to /Applications..."
+sudo cp -R "$PRODUCTS_DIR/Firezone.app" /Applications/
+
+echo "Launching Firezone..."
+open /Applications/Firezone.app
+"""
+
+[tasks.all]
+description = "Build and install (uniffi-bindings + build + install)"
+depends = ["build", "install"]
+run = "echo 'All tasks completed!'"
+
+[tasks.clean]
+description = "Clean Xcode build, Rust artifacts, and generated bindings"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIGURATION="${CONFIGURATION:-Debug}"
+
+echo "Cleaning Xcode build"
+xcodebuild clean \\
+    -project Firezone.xcodeproj \\
+    -scheme Firezone \\
+    -configuration "${CONFIGURATION}" \\
+    -sdk macosx
+
+echo "Cleaning Rust build artifacts"
+cd ../../rust/client-ffi && cargo clean
+
+echo "Removing generated bindings"
+rm -rf FirezoneNetworkExtension/Connlib/Generated
+"""
+
+[tasks.format]
+description = "Format and lint Swift code"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Formatting Swift code..."
+find . -name "*.swift" \\
+    -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" \\
+    -not -path "./FirezoneKit/.build/*" \\
+    | xargs swift format format --in-place --parallel
+"""
+
+[tasks.check]
+description = "Check Swift code"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Checking Swift code..."
+find . -name "*.swift" \\
+    -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" \\
+    -not -path "./FirezoneKit/.build/*" \\
+    | xargs swift format lint --parallel --strict
+"""
+
+[tasks.test]
+description = "Run FirezoneKit tests"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Running FirezoneKit tests..."
+cd FirezoneKit && swift test
+"""
+
+# =============================================================================
+# Log Tasks - Client
+# =============================================================================
+
+[tasks."log:client:show"]
+description = "View latest client log"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Opening latest Firezone client log..."
+latest_log=$(find ~/Library/Group\\ Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/app -name "*.jsonl" -print0 2>/dev/null | xargs -0 ls -t | head -1)
+if [ -n "$latest_log" ]; then
+    less "$latest_log"
+else
+    echo "No log files found"
+fi
+"""
+
+[tasks."log:client:tail"]
+description = "Follow latest client log"
+raw = true
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Tailing latest Firezone client log..."
+latest_log=$(find ~/Library/Group\\ Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/app -name "*.jsonl" -print0 2>/dev/null | xargs -0 ls -t | head -1)
+if [ -n "$latest_log" ]; then
+    exec tail -f "$latest_log"
+else
+    echo "No log files found"
+fi
+"""
+
+[tasks."log:client:pretty"]
+description = "View latest client log (formatted with jq)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Opening latest Firezone client log (formatted)..."
+latest_log=$(find ~/Library/Group\\ Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/app -name "*.jsonl" -print0 2>/dev/null | xargs -0 ls -t | head -1)
+if [ -n "$latest_log" ]; then
+    jq -r '[.timestamp, .level, .message] | @tsv' "$latest_log" | less
+else
+    echo "No log files found"
+fi
+"""
+
+# =============================================================================
+# Log Tasks - Network Extension
+# =============================================================================
+
+[tasks."log:ext:show"]
+description = "View network extension logs (last 30 min)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Showing Firezone Network Extension logs from system console (last 30 minutes)..."
+log show --predicate 'process CONTAINS "dev.firezone.firezone.network-extension" OR (subsystem CONTAINS "dev.firezone" AND process != "Firezone")' --last 30m | less
+"""
+
+[tasks."log:ext:tail"]
+description = "Follow network extension logs"
+raw = true
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Following Firezone Network Extension logs..."
+exec log stream --predicate 'process CONTAINS "dev.firezone.firezone.network-extension" OR (subsystem CONTAINS "dev.firezone" AND process != "Firezone")'
+"""
+
+# =============================================================================
+# Log Tasks - Connlib
+# =============================================================================
+
+[tasks."log:connlib:show"]
+description = "View connlib log (requires sudo)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Viewing connlib log (requires sudo)..."
+if [ -r "/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib/latest" ]; then
+    less "/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib/latest"
+else
+    sudo less "/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib/latest"
+fi
+"""
+
+[tasks."log:connlib:tail"]
+description = "Follow connlib log (requires sudo)"
+raw = true
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Following connlib log (requires sudo)..."
+if [ -r "/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib/latest" ]; then
+    exec tail -f "/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib/latest"
+else
+    exec sudo tail -f "/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib/latest"
+fi
+"""
+
+# =============================================================================
+# Log Tasks - Tunnel
+# =============================================================================
+
+[tasks."log:tunnel:show"]
+description = "View latest tunnel log (requires sudo)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Viewing latest tunnel log (requires sudo)..."
+latest_log=$(sudo find "/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/tunnel" -name "*.jsonl" -print0 2>/dev/null | xargs -0 ls -t | head -1)
+if [ -n "$latest_log" ]; then
+    sudo less "$latest_log"
+else
+    echo "No tunnel log files found"
+fi
+"""
+
+[tasks."log:tunnel:tail"]
+description = "Follow latest tunnel log (requires sudo)"
+raw = true
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Following latest tunnel log (requires sudo)..."
+latest_log=$(sudo find "/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/tunnel" -name "*.jsonl" -print0 2>/dev/null | xargs -0 ls -t | head -1)
+if [ -n "$latest_log" ]; then
+    exec sudo tail -f "$latest_log"
+else
+    echo "No tunnel log files found"
+fi
+"""
+
+# =============================================================================
+# Log Tasks - All
+# =============================================================================
+
+[tasks."log:all:show"]
+description = "View all Firezone logs (last 30 min)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Showing all Firezone logs from system console (last 30 minutes)..."
+log show --predicate '(process CONTAINS "Firezone" OR subsystem CONTAINS "dev.firezone") AND process != "codebook-lsp"' --last 30m | less
+"""
+
+[tasks."log:all:tail"]
+description = "Follow all Firezone logs"
+raw = true
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Following all Firezone logs (including connlib from file)..."
+
+# Trap to kill all children on exit
+trap 'kill 0' INT TERM EXIT
+
+# Stream console logs in background
+log stream --predicate '(process CONTAINS "Firezone" OR subsystem CONTAINS "dev.firezone" OR category == "connlib") AND process != "codebook-lsp"' &
+
+# Also tail connlib log file if accessible
+if [ -r "/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib/latest" ]; then
+    tail -f "/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib/latest" &
+else
+    echo "Note: connlib file logs require sudo access. Run 'mise run log:connlib:tail' with sudo for file logs."
+fi
+
+wait
+"""
