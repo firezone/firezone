@@ -22,7 +22,7 @@
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "@vercel/edge-config": "^1.4.0",
+    "@vercel/edge-config": "^1.4.3",
     "asciinema-player": "^3.12.1",
     "autoprefixer": "10.4.21",
     "fast-xml-parser": "^5.3.0",
