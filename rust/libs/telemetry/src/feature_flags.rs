@@ -43,10 +43,6 @@ pub fn stream_logs(metadata: &Metadata<'_>) -> bool {
     FEATURE_FLAGS.stream_logs(metadata)
 }
 
-pub fn map_enobufs_to_would_block() -> bool {
-    FEATURE_FLAGS.map_enobufs_to_wouldblock()
-}
-
 pub fn gateway_userspace_dns_a_aaaa_records() -> bool {
     FEATURE_FLAGS.gateway_userspace_dns_a_aaaa_records()
 }
@@ -176,8 +172,6 @@ struct FeatureFlagsResponse {
     #[serde(default)]
     stream_logs: bool,
     #[serde(default)]
-    map_enobufs_to_wouldblock: bool,
-    #[serde(default)]
     gateway_userspace_dns_a_aaaa_records: bool,
     #[serde(default)]
     icmp_error_unreachable_prohibited_create_new_flow: bool,
@@ -195,7 +189,6 @@ struct FeatureFlags {
     icmp_unreachable_instead_of_nat64: AtomicBool,
     drop_llmnr_nxdomain_responses: AtomicBool,
     stream_logs: RwLock<LogFilter>,
-    map_enobufs_to_wouldblock: AtomicBool,
     gateway_userspace_dns_a_aaaa_records: AtomicBool,
     icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
 }
@@ -213,7 +206,6 @@ impl FeatureFlags {
             icmp_unreachable_instead_of_nat64,
             drop_llmnr_nxdomain_responses,
             stream_logs,
-            map_enobufs_to_wouldblock,
             gateway_userspace_dns_a_aaaa_records,
             icmp_error_unreachable_prohibited_create_new_flow,
         }: FeatureFlagsResponse,
@@ -223,8 +215,6 @@ impl FeatureFlags {
             .store(icmp_unreachable_instead_of_nat64, Ordering::Relaxed);
         self.drop_llmnr_nxdomain_responses
             .store(drop_llmnr_nxdomain_responses, Ordering::Relaxed);
-        self.map_enobufs_to_wouldblock
-            .store(map_enobufs_to_wouldblock, Ordering::Relaxed);
         self.gateway_userspace_dns_a_aaaa_records
             .store(gateway_userspace_dns_a_aaaa_records, Ordering::Relaxed);
         self.icmp_error_unreachable_prohibited_create_new_flow
@@ -255,10 +245,6 @@ impl FeatureFlags {
         self.stream_logs.read().enabled(metadata)
     }
 
-    fn map_enobufs_to_wouldblock(&self) -> bool {
-        self.map_enobufs_to_wouldblock.load(Ordering::Relaxed)
-    }
-
     fn gateway_userspace_dns_a_aaaa_records(&self) -> bool {
         self.gateway_userspace_dns_a_aaaa_records
             .load(Ordering::Relaxed)
@@ -281,10 +267,6 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.drop_llmnr_nxdomain_responses,
         ),
         stream_logs: env_or("FZFF_stream_logs", flags.stream_logs),
-        map_enobufs_to_wouldblock: env_or(
-            "FZFF_MAP_ENOBUFS_TO_WOULDBLOCK",
-            flags.map_enobufs_to_wouldblock,
-        ),
         gateway_userspace_dns_a_aaaa_records: env_or(
             "FZFF_GATEWAY_USERSPACE_DNS_A_AAAA_RECORDS",
             flags.gateway_userspace_dns_a_aaaa_records,
@@ -310,7 +292,6 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         IcmpUnreachableInsteadOfNat64 { result: bool },
         DropLlmnrNxdomainResponses { result: bool },
         StreamLogs { result: bool },
-        MapENOBUFSToWouldBlock { result: bool },
         GatewayUserspaceDnsAAaaaRecords { result: bool },
         IcmpErrorUnreachableProhibitedCreateNewFlow { result: bool },
     }
@@ -320,7 +301,6 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         icmp_unreachable_instead_of_nat64,
         drop_llmnr_nxdomain_responses,
         stream_logs,
-        map_enobufs_to_wouldblock,
         gateway_userspace_dns_a_aaaa_records,
         icmp_error_unreachable_prohibited_create_new_flow,
     } = flags;
@@ -332,7 +312,6 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
             },
             SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses },
             SentryFlag::StreamLogs { result: stream_logs },
-            SentryFlag::MapENOBUFSToWouldBlock { result: map_enobufs_to_wouldblock },
             SentryFlag::GatewayUserspaceDnsAAaaaRecords { result: gateway_userspace_dns_a_aaaa_records },
             SentryFlag::IcmpErrorUnreachableProhibitedCreateNewFlow { result: icmp_error_unreachable_prohibited_create_new_flow },
         ]
