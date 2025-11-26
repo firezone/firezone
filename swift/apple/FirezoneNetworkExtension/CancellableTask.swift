@@ -10,8 +10,8 @@ import Foundation
 final class CancellableTask: Sendable {
   private let task: Task<Void, Never>
 
-  init(_ task: Task<Void, Never>) {
-    self.task = task
+  init(_ operation: @escaping @isolated(any) @Sendable () async -> Void) {
+    self.task = Task(operation: operation)
   }
 
   deinit {

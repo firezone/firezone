@@ -30,35 +30,6 @@ enum AdapterError: Error {
   }
 }
 
-/// Sendable callbacks for tunnel operations.
-///
-/// This struct captures closures from PacketTunnelProvider, allowing the Adapter actor
-/// to interact with the provider. The closures capture `[weak self]` to avoid retain cycles.
-///
-/// Thread-safety: This type is marked `@unchecked Sendable` because the captured closures
-/// reference PacketTunnelProvider, which cannot be made Sendable (NEPacketTunnelProvider
-/// predates Swift concurrency and its methods are nonisolated). This is safe because:
-/// - The closures capture weak references, preventing retain cycles
-/// - PacketTunnelProvider lifecycle is managed by NetworkExtension framework (single instance)
-/// - The closures only call system-provided methods that handle their own synchronisation
-struct TunnelCallbacks: @unchecked Sendable {
-  /// Cancel the tunnel with an optional error.
-  let cancelWithError: (Error?) -> Void
-
-  /// Set the reasserting state (indicates network transition).
-  let setReassserting: (Bool) -> Void
-
-  /// Get the current reasserting state.
-  let getReassserting: () -> Bool
-
-  /// Apply network settings to the tunnel.
-  let applyNetworkSettings:
-    (
-      NEPacketTunnelNetworkSettings,
-      @escaping @Sendable (Error?) -> Void
-    ) -> Void
-}
-
 // Loosely inspired from WireGuardAdapter from WireGuardKit
 actor Adapter {
 
@@ -73,11 +44,11 @@ actor Adapter {
   // Our local copy of the accountSlug
   private let accountSlug: String
 
-  /// Network settings for tunnel configuration.
+  /// Current network settings for tunnel configuration.
   private var networkSettings: NetworkSettings?
 
-  /// Callbacks for interacting with the PacketTunnelProvider.
-  private let callbacks: TunnelCallbacks
+  /// Command sender for communicating with PacketTunnelProvider.
+  private let providerCommandSender: Sender<ProviderCommand>
 
   /// Continuation to signal tunnel is ready after receiving first tunInterfaceUpdated event.
   private var startContinuation: CheckedContinuation<Void, Error>?
@@ -111,7 +82,7 @@ actor Adapter {
     logFilter: String,
     accountSlug: String,
     internetResourceEnabled: Bool,
-    callbacks: TunnelCallbacks
+    providerCommandSender: Sender<ProviderCommand>
   ) {
     self.apiURL = apiURL
     self.token = token
@@ -119,7 +90,7 @@ actor Adapter {
     self.logFilter = logFilter
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
-    self.callbacks = callbacks
+    self.providerCommandSender = providerCommandSender
   }
 
   func start() async throws {
@@ -178,43 +149,40 @@ actor Adapter {
     let (eventSender, eventReceiver): (Sender<Event>, Receiver<Event>) = Channel.create()
 
     // Start event loop - owns session, receives commands, sends events
-    eventLoopTask = CancellableTask(
-      Task {
-        defer {
-          Log.log("Adapter: Event loop finished, session dropped")
-        }
+    eventLoopTask = CancellableTask {
+      defer {
+        Log.log("Adapter: Event loop finished, session dropped")
+      }
 
-        await runSessionEventLoop(
-          session: session,
-          commandReceiver: commandReceiver,
-          eventSender: eventSender
-        )
-      })
+      await runSessionEventLoop(
+        session: session,
+        commandReceiver: commandReceiver,
+        eventSender: eventSender
+      )
+    }
 
     // Start event consumer - consumes events from receiver (Rust pattern: receiver outside)
-    eventConsumerTask = CancellableTask(
-      Task { [weak self] in
-        for await event in eventReceiver.stream {
-          // Check self on each iteration - if Adapter is deallocated, stop processing events
-          guard let self = self else {
-            Log.log("Adapter: Event consumer stopping - Adapter deallocated")
-            break
-          }
-
-          await self.handleEvent(event)
+    eventConsumerTask = CancellableTask { [weak self] in
+      for await event in eventReceiver.stream {
+        // Check self on each iteration - if Adapter is deallocated, stop processing events
+        guard let self = self else {
+          Log.log("Adapter: Event consumer stopping - Adapter deallocated")
+          break
         }
 
-        Log.log("Adapter: Event consumer finished")
-      })
+        await self.handleEvent(event)
+      }
+
+      Log.log("Adapter: Event consumer finished")
+    }
 
     // Start path monitoring - uses AsyncStream with RAII cleanup via onTermination
-    pathMonitorTask = CancellableTask(
-      Task { [weak self] in
-        for await path in networkPathUpdates() {
-          guard let self else { break }
-          await self.handlePathUpdate(path)
-        }
-      })
+    pathMonitorTask = CancellableTask { [weak self] in
+      for await path in networkPathUpdates() {
+        guard let self else { break }
+        await self.handlePathUpdate(path)
+      }
+    }
 
     // Wait for tunnel to be ready (first tunInterfaceUpdated event)
     try await withCheckedThrowingContinuation { continuation in
@@ -296,34 +264,27 @@ actor Adapter {
 
       let firstStart = self.networkSettings == nil
 
-      // Convert UniFFI types to NetworkExtension types
-      let routes4 = ipv4Routes.compactMap { cidr in
-        NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv4Route
-      }
-      let routes6 = ipv6Routes.compactMap { cidr in
-        NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv6Route
-      }
-
-      Log.log("Setting interface config")
-
-      let networkSettings = NetworkSettings(applySettings: callbacks.applyNetworkSettings)
-      networkSettings.tunnelAddressIPv4 = ipv4
-      networkSettings.tunnelAddressIPv6 = ipv6
-      networkSettings.dnsAddresses = dns
-      networkSettings.routes4 = routes4
-      networkSettings.routes6 = routes6
-      networkSettings.setSearchDomain(domain: searchDomain)
-      self.networkSettings = networkSettings
-
-      // The apply completion handler runs on an arbitrary queue, not actor-isolated.
-      // We use Task to bridge back to actor isolation for resumeStartContinuation().
-      networkSettings.apply { [weak self] in
-        guard let self else { return }
-        if firstStart {
-          Task {
-            await self.resumeStartContinuation()
-          }
+      // Build Sendable network settings from event data
+      let settings = NetworkSettings.from(
+        ipv4: ipv4,
+        ipv6: ipv6,
+        dns: dns,
+        searchDomain: searchDomain,
+        routes4: ipv4Routes.map {
+          NetworkSettings.Cidr(address: $0.address, prefix: Int($0.prefix))
+        },
+        routes6: ipv6Routes.map {
+          NetworkSettings.Cidr(address: $0.address, prefix: Int($0.prefix))
         }
+      )
+      self.networkSettings = settings
+
+      Log.log("Applying interface config")
+
+      await applyNetworkSettings(settings)
+
+      if firstStart {
+        resumeStartContinuation()
       }
 
     case .resourcesUpdated(let resourceList):
@@ -334,9 +295,9 @@ actor Adapter {
 
       // Apply network settings to flush DNS cache when resources change
       // This ensures new DNS resources are immediately resolvable
-      if let networkSettings = networkSettings {
+      if let settings = networkSettings {
         Log.log("Reapplying network settings to flush DNS cache after resource update")
-        networkSettings.apply()
+        await applyNetworkSettings(settings)
       }
 
     case .disconnected(let error):
@@ -349,11 +310,10 @@ actor Adapter {
           SessionNotification.showSignedOutNotificationiOS()
         #endif
 
-        let error = FirezoneKit.ConnlibError.sessionExpired(errorMessage)
-
-        callbacks.cancelWithError(error)
+        let sendableError = SendableError(errorMessage, isAuthenticationError: true)
+        providerCommandSender.send(.cancelWithError(sendableError))
       } else {
-        callbacks.cancelWithError(nil)
+        providerCommandSender.send(.cancelWithError(nil))
       }
     }
   }
@@ -452,15 +412,17 @@ actor Adapter {
   /// - https://github.com/firezone/firezone/issues/3235
   /// - https://github.com/firezone/firezone/issues/3175
   private func handlePathUpdate(_ path: Network.NWPath) async {
+    let isReassserting = await getReassserting()
+
     if path.status == .unsatisfied {
       // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
-      if !callbacks.getReassserting() {
+      if !isReassserting {
         // Tell the UI we're not connected
-        callbacks.setReassserting(true)
+        providerCommandSender.send(.setReassserting(true))
       }
     } else {
-      if callbacks.getReassserting() {
-        callbacks.setReassserting(false)
+      if isReassserting {
+        providerCommandSender.send(.setReassserting(false))
       }
 
       // Tell connlib to reset network state and DNS resolvers, but only do so if our connectivity has
@@ -480,6 +442,34 @@ actor Adapter {
 
   private func sendCommand(_ command: SessionCommand) {
     commandSender?.send(command)
+  }
+
+  // MARK: - Provider command helpers
+
+  /// Apply network settings via channel and wait for completion.
+  private func applyNetworkSettings(_ settings: NetworkSettings) async {
+    let (responseSender, responseReceiver): (Sender<String?>, Receiver<String?>) = Channel.create()
+    providerCommandSender.send(.applyNetworkSettings(settings, responseSender))
+
+    // Wait for single response
+    for await errorMessage in responseReceiver.stream {
+      if let errorMessage {
+        Log.warning("Failed to apply network settings: \(errorMessage)")
+      }
+      return
+    }
+  }
+
+  /// Query reasserting state from PacketTunnelProvider via channel.
+  private func getReassserting() async -> Bool {
+    let (responseSender, responseReceiver): (Sender<Bool>, Receiver<Bool>) = Channel.create()
+    providerCommandSender.send(.getReassserting(responseSender))
+
+    // Wait for single response
+    for await value in responseReceiver.stream {
+      return value
+    }
+    return false
   }
 
   // MARK: - Resource conversion (uniffi → FirezoneKit)
@@ -547,7 +537,7 @@ actor Adapter {
     /// If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
     /// sentinel, which isn't helpful to us.
     private func resetToSystemDNSGettingBindResolvers() async -> [String] {
-      guard let networkSettings else {
+      guard let settings = networkSettings else {
         // Network Settings hasn't been applied yet, so our sentinel isn't
         // the system's resolver and we can grab the system resolvers directly.
         // If we try to continue below without valid tunnel addresses assigned
@@ -555,27 +545,16 @@ actor Adapter {
         return BindResolvers.getServers()
       }
 
-      // Set tunnel's matchDomains to a dummy string that will never match any name
-      networkSettings.setDummyMatchDomain()
-
-      // Call apply to populate /etc/resolv.conf with the system's default resolvers
-      await withCheckedContinuation { continuation in
-        networkSettings.apply {
-          continuation.resume()
-        }
-      }
+      // Apply settings with dummy matchDomain to populate /etc/resolv.conf
+      // with the system's default resolvers
+      let dummySettings = settings.withDummyMatchDomain()
+      await applyNetworkSettings(dummySettings)
 
       // Only now can we get the system resolvers
       let resolvers = BindResolvers.getServers()
 
-      // Restore connlib's DNS resolvers
-      networkSettings.clearDummyMatchDomain()
-
-      await withCheckedContinuation { continuation in
-        networkSettings.apply {
-          continuation.resume()
-        }
-      }
+      // Restore original settings
+      await applyNetworkSettings(settings)
 
       return resolvers
     }

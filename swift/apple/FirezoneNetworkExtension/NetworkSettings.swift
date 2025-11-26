@@ -1,104 +1,105 @@
-//
-//  NetworkSettings.swift
-//  (c) 2024 Firezone, Inc.
-//  LICENSE: Apache-2.0
-
-import FirezoneKit
 import Foundation
 import NetworkExtension
-import os.log
 
-class NetworkSettings {
-  // WireGuard has an 80-byte overhead. We could try setting tunnelOverheadBytes
-  // but that's not a reliable way to calculate how big our packets should be,
-  // so just use the minimum.
-  let mtu: NSNumber = 1280
+/// Sendable network settings data.
+///
+/// This struct holds the data needed to configure tunnel network settings.
+/// The actual NEPacketTunnelNetworkSettings construction happens in PacketTunnelProvider.
+struct NetworkSettings: Sendable {
+  let tunnelAddressIPv4: String
+  let tunnelAddressIPv6: String
+  let dnsAddresses: [String]
+  let routes4: [Cidr]
+  let routes6: [Cidr]
+  let matchDomains: [String]
+  let searchDomains: [String]
+  let mtu: Int
 
-  // Closure to apply network settings to the tunnel.
-  private let applySettings:
-    (
-      NEPacketTunnelNetworkSettings,
-      @escaping @Sendable (Error?) -> Void
-    ) -> Void
-
-  // Modifiable values
-  public var tunnelAddressIPv4: String?
-  public var tunnelAddressIPv6: String?
-  public var dnsAddresses: [String] = []
-  public var routes4: [NEIPv4Route] = []
-  public var routes6: [NEIPv6Route] = []
-
-  // Private to ensure we append the search domain if we set it.
-  private var matchDomains: [String] = [""]
-  private var searchDomains: [String] = [""]
-
-  init(
-    applySettings:
-      @escaping (
-        NEPacketTunnelNetworkSettings,
-        @escaping @Sendable (Error?) -> Void
-      ) -> Void
-  ) {
-    self.applySettings = applySettings
+  struct Cidr: Sendable {
+    let address: String
+    let prefix: Int
   }
 
-  func setSearchDomain(domain: String?) {
-    guard let domain = domain else {
-      self.matchDomains = [""]
-      self.searchDomains = [""]
-      return
-    }
-
-    self.matchDomains = ["", domain]
-    self.searchDomains = [domain]
+  /// Create network settings from tunnel interface update event.
+  static func from(
+    ipv4: String,
+    ipv6: String,
+    dns: [String],
+    searchDomain: String?,
+    routes4: [Cidr],
+    routes6: [Cidr]
+  ) -> NetworkSettings {
+    NetworkSettings(
+      tunnelAddressIPv4: ipv4,
+      tunnelAddressIPv6: ipv6,
+      dnsAddresses: dns,
+      routes4: routes4,
+      routes6: routes6,
+      matchDomains: searchDomain.map { ["", $0] } ?? [""],
+      searchDomains: searchDomain.map { [$0] } ?? [],
+      mtu: 1280
+    )
   }
 
-  func setDummyMatchDomain() {
-    self.matchDomains = ["firezone-fd0020211111"]
+  /// Create a copy with dummy match domain (for iOS DNS resolver workaround).
+  func withDummyMatchDomain() -> NetworkSettings {
+    NetworkSettings(
+      tunnelAddressIPv4: tunnelAddressIPv4,
+      tunnelAddressIPv6: tunnelAddressIPv6,
+      dnsAddresses: dnsAddresses,
+      routes4: routes4,
+      routes6: routes6,
+      matchDomains: ["firezone-fd0020211111"],
+      searchDomains: searchDomains,
+      mtu: mtu
+    )
   }
 
-  func clearDummyMatchDomain() {
-    self.matchDomains = [""]
+  /// Build NEPacketTunnelNetworkSettings from this data.
+  func buildNESettings() -> NEPacketTunnelNetworkSettings {
+    let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
 
-    self.matchDomains.append(contentsOf: self.searchDomains)
-  }
-
-  func apply(completionHandler: (@Sendable () -> Void)? = nil) {
-    // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
-    // because the OS doesn't really need this IP address.
-    // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
-    // NEPacketTunnelNetworkSettings inheriting from NETunnelNetworkSettings.
-    let tunnelNetworkSettings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
-
-    // Set tunnel addresses and routes
     let ipv4Settings = NEIPv4Settings(
-      addresses: [tunnelAddressIPv4!], subnetMasks: ["255.255.255.255"])
-    // This is a hack since macos routing table ignores, for full route, any prefix smaller than 120.
-    // Without this, adding a full route, remove the previous default route and leaves the system with none,
-    // completely breaking IPv6 on the user's system.
-    let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6!], networkPrefixLengths: [120])
+      addresses: [tunnelAddressIPv4],
+      subnetMasks: ["255.255.255.255"]
+    )
+    let ipv6Settings = NEIPv6Settings(
+      addresses: [tunnelAddressIPv6],
+      networkPrefixLengths: [120]
+    )
     let dnsSettings = NEDNSSettings(servers: dnsAddresses)
-    ipv4Settings.includedRoutes = routes4
-    ipv6Settings.includedRoutes = routes6
+
+    ipv4Settings.includedRoutes = routes4.compactMap { $0.asNEIPv4Route }
+    ipv6Settings.includedRoutes = routes6.compactMap { $0.asNEIPv6Route }
     dnsSettings.matchDomains = matchDomains
     dnsSettings.searchDomains = searchDomains
     dnsSettings.matchDomainsNoSearch = false
-    tunnelNetworkSettings.ipv4Settings = ipv4Settings
-    tunnelNetworkSettings.ipv6Settings = ipv6Settings
-    tunnelNetworkSettings.dnsSettings = dnsSettings
-    tunnelNetworkSettings.mtu = mtu
 
-    applySettings(tunnelNetworkSettings) { error in
-      if let error = error {
-        Log.error(error)
-      }
+    settings.ipv4Settings = ipv4Settings
+    settings.ipv6Settings = ipv6Settings
+    settings.dnsSettings = dnsSettings
+    settings.mtu = NSNumber(value: mtu)
 
-      completionHandler?()
-    }
+    return settings
   }
 }
 
-// For creating IPv4 routes
+extension NetworkSettings.Cidr {
+  var asNEIPv4Route: NEIPv4Route? {
+    guard let subnetMask = IPv4SubnetMaskLookup.table[prefix] else {
+      return nil
+    }
+    return NEIPv4Route(destinationAddress: address, subnetMask: subnetMask)
+  }
+
+  var asNEIPv6Route: NEIPv6Route? {
+    guard prefix >= 0 && prefix <= 128 else {
+      return nil
+    }
+    return NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(value: prefix))
+  }
+}
+
 enum IPv4SubnetMaskLookup {
   static let table: [Int: String] = [
     0: "0.0.0.0",
@@ -135,28 +136,4 @@ enum IPv4SubnetMaskLookup {
     31: "255.255.255.254",
     32: "255.255.255.255",
   ]
-}
-
-// Route convenience helpers.
-extension NetworkSettings {
-  struct Cidr {
-    let address: String
-    let prefix: Int
-
-    var asNEIPv4Route: NEIPv4Route? {
-      guard let subnetMask = IPv4SubnetMaskLookup.table[prefix] else {
-        Log.warning("Invalid IPv4 prefix: \(prefix) for address: \(address)")
-        return nil
-      }
-      return NEIPv4Route(destinationAddress: address, subnetMask: subnetMask)
-    }
-
-    var asNEIPv6Route: NEIPv6Route? {
-      guard prefix >= 0 && prefix <= 128 else {
-        Log.warning("Invalid IPv6 prefix: \(prefix) for address: \(address)")
-        return nil
-      }
-      return NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(value: prefix))
-    }
-  }
 }
