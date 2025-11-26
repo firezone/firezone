@@ -145,6 +145,11 @@ impl ClientTunnel {
         self.io.reset();
     }
 
+    pub fn suspend(&mut self) {
+        self.role_state.reset(Instant::now(), "suspend");
+        self.io.reset();
+    }
+
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
         let resolvers = self.role_state.update_system_resolvers(resolvers);
         self.io.update_system_resolvers(resolvers.clone()); // IO needs the system resolvers to bootstrap DoH upstream.
