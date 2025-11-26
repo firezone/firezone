@@ -7030,7 +7030,6 @@ dependencies = [
  "opentelemetry",
  "quinn-udp",
  "socket2 0.6.1",
- "telemetry",
  "tokio",
  "tracing",
 ]
