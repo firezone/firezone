@@ -305,8 +305,11 @@ impl ClientOnGateway {
             return Ok(TranslateOutboundResult::Send(packet));
         }
 
+        // Only traffic originating from the Client's TUN device is routed.
         self.ensure_client_ip(packet.source())?;
 
+        // Classify the resource based on its destination IP / protocol.
+        // This needs to happen _before_ we apply the DNS resource NAT.
         match self.classify_resource(packet.destination(), packet.destination_protocol()) {
             Ok(rid) => match self.resources.get(&rid) {
                 Some(resource) => flow_tracker::inbound_wg::record_resource(
