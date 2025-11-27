@@ -312,6 +312,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
 
 [[package]]
+name = "anyhow-ext"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -364,7 +372,7 @@ dependencies = [
  "serde_repr",
  "tokio",
  "url",
- "zbus 5.11.0",
+ "zbus 5.12.0",
 ]
 
 [[package]]
@@ -822,6 +830,59 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230c5f1ca6a325a32553f8640d31ac9b49f2411e901e427570154868b46da4f7"
 
 [[package]]
+name = "bin-shared"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "atomicwrites",
+ "axum",
+ "bufferpool",
+ "bytes",
+ "clap",
+ "dashmap",
+ "dirs",
+ "dns-types",
+ "futures",
+ "gat-lending-iterator",
+ "hex",
+ "hex-literal",
+ "hmac",
+ "ip-packet",
+ "ip_network",
+ "ipconfig",
+ "itertools 0.14.0",
+ "known-folders",
+ "libc",
+ "logging",
+ "mutants",
+ "netlink-packet-core",
+ "netlink-packet-route",
+ "nix 0.30.1",
+ "resolv-conf",
+ "ring",
+ "rtnetlink",
+ "serde",
+ "serde_json",
+ "sha2",
+ "smbios-lib",
+ "socket-factory",
+ "telemetry",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tun",
+ "uuid",
+ "windows",
+ "windows-core",
+ "windows-implement",
+ "winreg 0.55.0",
+ "wintun",
+ "zbus 5.12.0",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1077,12 +1138,11 @@ dependencies = [
 
 [[package]]
 name = "caps"
-version = "0.5.5"
+version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "190baaad529bcfbde9e1a19022c42781bdb6ff9de25721abdb8fd98c0807730b"
+checksum = "fd1ddba47aba30b6a889298ad0109c3b8dcb0e8fc993b459daa7067d46f865e0"
 dependencies = [
  "libc",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1250,9 +1310,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.47"
+version = "4.5.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7eac00902d9d136acd712710d71823fb8ac8004ca445a89e73a41d45aa712931"
+checksum = "c9e340e012a1bf4935f5282ed1436d1489548e8f72308207ea5df0e23d2d03f8"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -1260,9 +1320,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.47"
+version = "4.5.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ad9bbf750e73b5884fb8a211a9424a1906c1e156724260fdae972f31d70e1d6"
+checksum = "d76b5d13eaa18c901fd2f7fca939fefe3a0727a953561fefdf3b2922b8569d00"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1273,9 +1333,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.5.47"
+version = "4.5.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbfd7eae0b0f1a6e63d4b13c9c478de77c2eb546fba158ad50b4203dc24b9f9c"
+checksum = "2a0b5487afeab2deb2ff4e03a807ad1a03ac532ff5a2cee5d86884440c7f7671"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -1294,25 +1354,25 @@ name = "client-ffi"
 version = "0.1.0"
 dependencies = [
  "android_log-sys",
- "anyhow",
+ "anyhow-ext",
  "backoff",
  "client-shared",
  "connlib-model",
  "dns-types",
- "firezone-logging",
- "firezone-telemetry",
  "flume",
  "futures",
  "ip-packet",
  "ip_network",
  "libc",
  "log",
+ "logging",
  "oslog",
  "phoenix-channel",
  "rustls",
  "secrecy",
  "serde_json",
  "socket-factory",
+ "telemetry",
  "thiserror 2.0.17",
  "tokio",
  "tokio-util",
@@ -1328,18 +1388,17 @@ dependencies = [
 name = "client-shared"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "backoff",
  "bimap",
  "chrono",
  "connlib-model",
  "dns-types",
- "firezone-logging",
- "firezone-tunnel",
  "futures",
  "ip_network",
  "l4-udp-dns-client",
  "libc",
+ "logging",
  "parking_lot",
  "phoenix-channel",
  "secrecy",
@@ -1353,6 +1412,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "tun",
+ "tunnel",
  "url",
 ]
 
@@ -1927,7 +1987,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.0",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2044,14 +2104,14 @@ dependencies = [
 name = "dns-over-tcp"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
+ "bin-shared",
  "dns-types",
- "firezone-bin-shared",
- "firezone-logging",
  "futures",
  "ip-packet",
  "ip_network",
  "l3-tcp",
+ "logging",
  "rand 0.8.5",
  "tokio",
  "tracing",
@@ -2075,9 +2135,9 @@ dependencies = [
 
 [[package]]
 name = "domain"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a11dd7f04a6a6d2aea0153c6e31f5ea7af8b2efdf52cdaeea7a9a592c7fefef9"
+checksum = "7f7ff15f82df7d5086fb15dfc1c1e96598a6ded9829840a9bcfa1fa3ccd8d01d"
 dependencies = [
  "bumpalo",
  "bytes",
@@ -2091,9 +2151,9 @@ dependencies = [
 
 [[package]]
 name = "domain-macros"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e197fdfd2cdb5fdeb7f8ddcf3aed5d5d04ecde2890d448b14ffb716f7376b70"
+checksum = "8d1a6796ad411f6812d691955066ad27450196bfb181bb91b66a643cc3e8f5b7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2254,7 +2314,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cea14ef9355e3beab063703aa9dab15afd25f0667c341310c1e5274bb1d0da18"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2350,63 +2410,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-bin-shared"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "atomicwrites",
- "axum",
- "bufferpool",
- "bytes",
- "clap",
- "dashmap",
- "dirs",
- "dns-types",
- "firezone-logging",
- "firezone-telemetry",
- "futures",
- "gat-lending-iterator",
- "hex",
- "hex-literal",
- "hmac",
- "ip-packet",
- "ip_network",
- "ipconfig",
- "itertools 0.14.0",
- "known-folders",
- "libc",
- "mutants",
- "netlink-packet-core",
- "netlink-packet-route",
- "nix 0.30.1",
- "resolv-conf",
- "ring",
- "rtnetlink",
- "serde",
- "serde_json",
- "sha2",
- "smbios-lib",
- "socket-factory",
- "tempfile",
- "thiserror 2.0.17",
- "tokio",
- "tokio-util",
- "tracing",
- "tun",
- "uuid",
- "windows",
- "windows-core",
- "windows-implement",
- "winreg 0.55.0",
- "wintun",
- "zbus 5.11.0",
-]
-
-[[package]]
 name = "firezone-cli"
 version = "1.0.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "clap",
  "nix 0.30.1",
  "rpassword",
@@ -2419,8 +2426,9 @@ dependencies = [
 name = "firezone-gateway"
 version = "1.4.19"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "backoff",
+ "bin-shared",
  "boringtun",
  "caps",
  "chrono",
@@ -2429,16 +2437,13 @@ dependencies = [
  "dns-lookup",
  "dns-types",
  "either",
- "firezone-bin-shared",
- "firezone-logging",
- "firezone-telemetry",
- "firezone-tunnel",
  "futures",
  "futures-bounded",
  "hickory-resolver",
  "ip-packet",
  "ip_network",
  "libc",
+ "logging",
  "moka",
  "nix 0.30.1",
  "opentelemetry",
@@ -2454,12 +2459,14 @@ dependencies = [
  "snownet",
  "socket-factory",
  "static_assertions",
+ "telemetry",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "tun",
+ "tunnel",
  "url",
  "uuid",
 ]
@@ -2469,24 +2476,23 @@ name = "firezone-gui-client"
 version = "1.5.9"
 dependencies = [
  "admx-macro",
- "anyhow",
+ "anyhow-ext",
  "arboard",
  "atomicwrites",
  "backoff",
+ "bin-shared",
  "chrono",
  "clap",
  "client-shared",
  "connlib-model",
  "derive_more 2.0.1",
  "dirs",
- "firezone-bin-shared",
- "firezone-logging",
- "firezone-telemetry",
  "futures",
  "hex",
  "humantime",
  "ip-packet",
  "keyring",
+ "logging",
  "native-dialog",
  "nix 0.30.1",
  "output_vt100",
@@ -2516,6 +2522,7 @@ dependencies = [
  "tauri-specta",
  "tauri-utils",
  "tauri-winrt-notification",
+ "telemetry",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
@@ -2537,20 +2544,19 @@ dependencies = [
 name = "firezone-headless-client"
 version = "1.5.5"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "backoff",
+ "bin-shared",
  "clap",
  "client-shared",
  "connlib-model",
  "dns-types",
- "firezone-bin-shared",
- "firezone-logging",
- "firezone-telemetry",
  "futures",
  "humantime",
  "ip-packet",
  "known-folders",
  "libc",
+ "logging",
  "nix 0.30.1",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2561,6 +2567,7 @@ dependencies = [
  "sd-notify",
  "secrecy",
  "socket-factory",
+ "telemetry",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -2569,48 +2576,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-logging"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "firezone-telemetry",
- "nu-ansi-term",
- "output_vt100",
- "parking_lot",
- "sentry-tracing",
- "supports-color",
- "tempfile",
- "thiserror 2.0.17",
- "time",
- "tracing",
- "tracing-appender",
- "tracing-log",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "firezone-relay"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "axum",
  "aya",
  "aya-build",
  "aya-log",
  "backoff",
  "base64 0.22.1",
+ "bin-shared",
  "bytecodec",
  "bytes",
  "clap",
  "derive_more 2.0.1",
  "difference",
  "ebpf-shared",
- "firezone-bin-shared",
- "firezone-logging",
- "firezone-telemetry",
  "futures",
  "hex",
  "hex-display",
+ "logging",
  "mio",
  "once_cell",
  "opentelemetry",
@@ -2627,6 +2613,7 @@ dependencies = [
  "socket-factory",
  "socket2 0.6.1",
  "stun_codec",
+ "telemetry",
  "test-strategy",
  "thiserror 2.0.17",
  "tokio",
@@ -2636,93 +2623,6 @@ dependencies = [
  "tracing-stackdriver",
  "tracing-subscriber",
  "trackable",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "firezone-telemetry"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "flume",
- "futures",
- "hex",
- "ip-packet",
- "moka",
- "opentelemetry",
- "opentelemetry_sdk",
- "parking_lot",
- "reqwest",
- "sentry",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "firezone-tunnel"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "bimap",
- "boringtun",
- "bufferpool",
- "bytes",
- "chrono",
- "connlib-model",
- "derive_more 2.0.1",
- "divan",
- "dns-over-tcp",
- "dns-types",
- "firezone-logging",
- "firezone-relay",
- "firezone-telemetry",
- "flume",
- "futures",
- "futures-bounded",
- "gat-lending-iterator",
- "glob",
- "hex",
- "http-client",
- "ip-packet",
- "ip_network",
- "ip_network_table",
- "itertools 0.14.0",
- "l3-tcp",
- "l3-udp-dns-client",
- "l4-tcp-dns-server",
- "l4-udp-dns-client",
- "l4-udp-dns-server",
- "lru",
- "opentelemetry",
- "proptest",
- "proptest-state-machine",
- "rand 0.8.5",
- "rangemap",
- "ringbuffer",
- "secrecy",
- "serde",
- "serde_json",
- "serde_with",
- "sha2",
- "snownet",
- "socket-factory",
- "socket2 0.6.1",
- "test-case",
- "test-strategy",
- "thiserror 2.0.17",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "tun",
  "url",
  "uuid",
 ]
@@ -3294,7 +3194,7 @@ dependencies = [
 name = "gui-smoke-test"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "clap",
  "subprocess",
  "tracing",
@@ -3555,7 +3455,7 @@ dependencies = [
 name = "http-client"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "bytes",
  "futures",
  "http 1.3.1",
@@ -3577,7 +3477,7 @@ dependencies = [
 name = "http-test-server"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "axum",
  "futures",
  "serde",
@@ -3674,7 +3574,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "tokio",
  "tower-service",
  "tracing",
@@ -3909,7 +3809,7 @@ dependencies = [
 name = "ip-packet"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "arbitrary",
  "bufferpool",
  "etherparse",
@@ -4146,7 +4046,7 @@ version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d463f34ca3c400fde3a054da0e0b8c6ffa21e4590922f3e18281bb5eeef4cbdc"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4165,7 +4065,7 @@ dependencies = [
 name = "l3-tcp"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "ip-packet",
  "smoltcp",
  "tracing",
@@ -4175,7 +4075,7 @@ dependencies = [
 name = "l3-udp-dns-client"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "dns-types",
  "ip-packet",
  "rand 0.8.5",
@@ -4186,7 +4086,7 @@ dependencies = [
 name = "l4-tcp-dns-server"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "dns-types",
  "futures",
  "tokio",
@@ -4197,7 +4097,7 @@ dependencies = [
 name = "l4-udp-dns-client"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "dns-types",
  "futures",
  "socket-factory",
@@ -4209,7 +4109,7 @@ dependencies = [
 name = "l4-udp-dns-server"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "dns-types",
  "futures",
  "tokio",
@@ -4365,6 +4265,26 @@ name = "log"
 version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
+
+[[package]]
+name = "logging"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "nu-ansi-term",
+ "output_vt100",
+ "parking_lot",
+ "sentry-tracing",
+ "supports-color",
+ "telemetry",
+ "tempfile",
+ "thiserror 2.0.17",
+ "time",
+ "tracing",
+ "tracing-appender",
+ "tracing-log",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "lru"
@@ -4749,7 +4669,7 @@ dependencies = [
  "mac-notification-sys",
  "serde",
  "tauri-winrt-notification",
- "zbus 5.11.0",
+ "zbus 5.12.0",
 ]
 
 [[package]]
@@ -4758,7 +4678,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5493,15 +5413,15 @@ dependencies = [
 name = "phoenix-channel"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "backoff",
  "base64 0.22.1",
- "firezone-logging",
  "futures",
  "hex",
  "hostname",
  "itertools 0.14.0",
  "libc",
+ "logging",
  "os_info",
  "rand_core 0.6.4",
  "secrecy",
@@ -5742,9 +5662,9 @@ checksum = "dc375e1527247fe1a97d8b7156678dfe7c1af2fc075c9a4db3690ecd2a148068"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.101"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
+checksum = "5ee95bc4ef87b8d5ba32e8b7714ccc834865276eab0aed5c9958d00ec45f49e8"
 dependencies = [
  "unicode-ident",
 ]
@@ -5885,7 +5805,7 @@ dependencies = [
  "once_cell",
  "socket2 0.5.10",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6128,9 +6048,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "reqwest"
-version = "0.12.23"
+version = "0.12.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d429f34c8092b2d42c7c93cec323bb4adeb7c67698f70839adec842ec10c7ceb"
+checksum = "9d0946410b9f7b082a427e4ef5c8ff541a88b357bc6c637c40db3a68ac70a36f"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -6298,7 +6218,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6311,14 +6231,14 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.9.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
 name = "rustls"
-version = "0.23.31"
+version = "0.23.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0ebcbd2f03de0fc1122ad9bb24b127a5a6cd51d72604a3f3c50ac459762b6cc"
+checksum = "533f54bc6a7d4f647e46ad909549eda97bf5afc1585190ef692b4286b198bd8f"
 dependencies = [
  "log",
  "once_cell",
@@ -6362,9 +6282,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.4"
+version = "0.103.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a17884ae0c1b773f1ccd2bd4a8c72f16da897310a98b0e84bf349ad5ead92fc"
+checksum = "2ffdfa2f5286e2247234e03f680868ac2815974dc39e00ea15adc445d0aafe52"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -7073,25 +6993,25 @@ dependencies = [
 name = "snownet"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "bnum",
  "boringtun",
  "bufferpool",
  "bytecodec",
  "bytes",
  "derive_more 2.0.1",
- "firezone-logging",
- "firezone-telemetry",
  "hex",
  "hex-display",
  "ip-packet",
  "itertools 0.14.0",
+ "logging",
  "once_cell",
  "rand 0.8.5",
  "ringbuffer",
  "sha2",
  "str0m",
  "stun_codec",
+ "telemetry",
  "thiserror 2.0.17",
  "tracing",
 ]
@@ -7100,11 +7020,10 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "bufferpool",
  "bytes",
  "derive_more 2.0.1",
- "firezone-telemetry",
  "gat-lending-iterator",
  "ip-packet",
  "libc",
@@ -7647,9 +7566,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-dialog"
-version = "2.4.0"
+version = "2.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0beee42a4002bc695550599b011728d9dfabf82f767f134754ed6655e434824e"
+checksum = "313f8138692ddc4a2127c4c9607d616a46f5c042e77b3722450866da0aad2f19"
 dependencies = [
  "log",
  "raw-window-handle 0.6.2",
@@ -7665,9 +7584,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-fs"
-version = "2.4.2"
+version = "2.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "315784ec4be45e90a987687bae7235e6be3d6e9e350d2b75c16b8a4bf22c1db7"
+checksum = "47df422695255ecbe7bac7012440eddaeefd026656171eac9559f5243d3230d9"
 dependencies = [
  "anyhow",
  "dunce",
@@ -7687,9 +7606,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-notification"
-version = "2.3.1"
+version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2fbc86b929b5376ab84b25c060f966d146b2fbd59b6af8264027b343c82c219"
+checksum = "01fc2c5ff41105bd1f7242d8201fdf3efd70749b82fa013a17f2126357d194cc"
 dependencies = [
  "log",
  "notify-rust",
@@ -7706,9 +7625,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-opener"
-version = "2.5.0"
+version = "2.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "786156aa8e89e03d271fbd3fe642207da8e65f3c961baa9e2930f332bf80a1f5"
+checksum = "c26b72571d25dee25667940027114e60f569fc3974f8cefbe50c2cbc5fd65e3b"
 dependencies = [
  "dunce",
  "glob",
@@ -7723,14 +7642,14 @@ dependencies = [
  "thiserror 2.0.17",
  "url",
  "windows",
- "zbus 5.11.0",
+ "zbus 5.12.0",
 ]
 
 [[package]]
 name = "tauri-plugin-shell"
-version = "2.3.1"
+version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54777d0c0d8add34eea3ced84378619ef5b97996bd967d3038c668feefd21071"
+checksum = "c374b6db45f2a8a304f0273a15080d98c70cde86178855fc24653ba657a1144c"
 dependencies = [
  "encoding_rs",
  "log",
@@ -7829,9 +7748,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-utils"
-version = "2.7.0"
+version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41a3852fdf9a4f8fbeaa63dc3e9a85284dd6ef7200751f0bd66ceee30c93f212"
+checksum = "f6b8bbe426abdbf52d050e52ed693130dbd68375b9ad82a3fb17efb4c8d85673"
 dependencies = [
  "anyhow",
  "brotli",
@@ -7889,6 +7808,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "telemetry"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "flume",
+ "futures",
+ "hex",
+ "ip-packet",
+ "moka",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "parking_lot",
+ "reqwest",
+ "sentry",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7898,7 +7842,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix 1.0.7",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8534,7 +8478,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 name = "tun"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "anyhow-ext",
  "ip-packet",
  "libc",
  "tokio",
@@ -8558,6 +8502,68 @@ dependencies = [
  "sha1",
  "thiserror 2.0.17",
  "utf-8",
+]
+
+[[package]]
+name = "tunnel"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "base64 0.22.1",
+ "bimap",
+ "boringtun",
+ "bufferpool",
+ "bytes",
+ "chrono",
+ "connlib-model",
+ "derive_more 2.0.1",
+ "divan",
+ "dns-over-tcp",
+ "dns-types",
+ "firezone-relay",
+ "flume",
+ "futures",
+ "futures-bounded",
+ "gat-lending-iterator",
+ "glob",
+ "hex",
+ "http-client",
+ "ip-packet",
+ "ip_network",
+ "ip_network_table",
+ "itertools 0.14.0",
+ "l3-tcp",
+ "l3-udp-dns-client",
+ "l4-tcp-dns-server",
+ "l4-udp-dns-client",
+ "l4-udp-dns-server",
+ "logging",
+ "lru",
+ "opentelemetry",
+ "proptest",
+ "proptest-state-machine",
+ "rand 0.8.5",
+ "rangemap",
+ "ringbuffer",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sha2",
+ "snownet",
+ "socket-factory",
+ "socket2 0.6.1",
+ "telemetry",
+ "test-case",
+ "test-strategy",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "tun",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -9248,7 +9254,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -9945,9 +9951,9 @@ dependencies = [
 
 [[package]]
 name = "zbus"
-version = "5.11.0"
+version = "5.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d07e46d035fb8e375b2ce63ba4e4ff90a7f73cf2ffb0138b29e1158d2eaadf7"
+checksum = "b622b18155f7a93d1cd2dc8c01d2d6a44e08fb9ebb7b3f9e6ed101488bad6c91"
 dependencies = [
  "async-broadcast",
  "async-executor",
@@ -9970,9 +9976,10 @@ dependencies = [
  "tokio",
  "tracing",
  "uds_windows",
- "windows-sys 0.60.2",
+ "uuid",
+ "windows-sys 0.61.2",
  "winnow 0.7.10",
- "zbus_macros 5.11.0",
+ "zbus_macros 5.12.0",
  "zbus_names 4.2.0",
  "zvariant 5.5.3",
 ]
@@ -9992,9 +9999,9 @@ dependencies = [
 
 [[package]]
 name = "zbus_macros"
-version = "5.11.0"
+version = "5.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57e797a9c847ed3ccc5b6254e8bcce056494b375b511b3d6edcec0aeb4defaca"
+checksum = "1cdb94821ca8a87ca9c298b5d1cbd80e2a8b67115d99f6e4551ac49e42b6a314"
 dependencies = [
  "proc-macro-crate 3.3.0",
  "proc-macro2",

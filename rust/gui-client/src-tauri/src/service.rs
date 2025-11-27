@@ -2,25 +2,24 @@ use crate::{
     ipc::{self, SocketId},
     logging,
 };
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
-use connlib_model::ResourceView;
-use firezone_bin_shared::{
+use bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
     device_id::{self, DeviceId},
     device_info, known_dirs,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
-use firezone_logging::{FilterReloadHandle, err_with_src};
-use firezone_telemetry::{Telemetry, analytics};
+use connlib_model::ResourceView;
 use futures::{
     Future as _, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
     stream::{self, BoxStream},
     task::{Context, Poll},
 };
+use logging::{FilterReloadHandle, err_with_src};
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::{
@@ -30,6 +29,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use telemetry::{Telemetry, analytics};
 use tokio::time::Instant;
 use url::Url;
 
@@ -399,7 +399,7 @@ impl<'a> Handler<'a> {
                         if let Some(e) = result
                             .as_ref()
                             .err()
-                            .and_then(|e| e.root_cause().downcast_ref::<io::Error>())
+                            .and_then(|e| e.any_downcast_ref::<io::Error>())
                         {
                             tracing::debug!("Still cannot connect to Firezone: {e}");
 
@@ -534,7 +534,7 @@ impl<'a> Handler<'a> {
                 if let Some(e) = result
                     .as_ref()
                     .err()
-                    .and_then(|e| e.root_cause().downcast_ref::<io::Error>())
+                    .and_then(|e| e.any_downcast_ref::<io::Error>())
                 {
                     tracing::debug!(
                         "Encountered IO error when connecting to portal, most likely we don't have Internet: {e}"
@@ -607,7 +607,7 @@ impl<'a> Handler<'a> {
                         .start(
                             &environment,
                             &release,
-                            firezone_telemetry::GUI_DSN,
+                            telemetry::GUI_DSN,
                             self.device_id.id.clone(),
                         )
                         .await;
@@ -705,7 +705,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
     tracing::info!(
         arch = std::env::consts::ARCH,
         version = env!("CARGO_PKG_VERSION"),
-        system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
+        system_uptime_seconds = bin_shared::uptime::get().map(|dur| dur.as_secs()),
     );
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
@@ -726,7 +726,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
 pub fn run_smoke_test() -> Result<()> {
     use crate::ipc::{self, SocketId};
     use anyhow::{Context as _, bail};
-    use firezone_bin_shared::{DnsController, device_id};
+    use bin_shared::{DnsController, device_id};
 
     let log_filter_reloader = logging::setup_stdout()?;
     if !elevation_check()? {
@@ -768,7 +768,7 @@ pub fn run_smoke_test() -> Result<()> {
 }
 
 async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = firezone_bin_shared::new_dns_notifier(
+    let worker = bin_shared::new_dns_notifier(
         tokio::runtime::Handle::current(),
         DnsControlMethod::default(),
     )
@@ -782,7 +782,7 @@ async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
 }
 
 async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = firezone_bin_shared::new_network_notifier(
+    let worker = bin_shared::new_network_notifier(
         tokio::runtime::Handle::current(),
         DnsControlMethod::default(),
     )

@@ -139,9 +139,7 @@ jobs:
 
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }}
           mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
-      - name: Install AzureSignTool
-        shell: bash
-        run: dotnet tool install --global AzureSignTool
+      - uses: ./.github/actions/setup-azure-sign-tool
       - name: Sign the binary
         shell: bash
         env:
@@ -357,7 +355,7 @@ jobs:
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
       - name: Upload `.deb` artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
           path: rust/${{ env.BINARY_DEST_PATH }}.deb
@@ -422,7 +420,7 @@ jobs:
           digest="${{ github.ref == 'refs/heads/main' && steps.build_rw.outputs.digest || steps.build_ro.outputs.digest }}"
           touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           overwrite: true
           name: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ inputs.sha }}-digest-${{ matrix.arch.shortname }}
@@ -467,7 +465,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download digests
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           pattern: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}-${{ inputs.sha }}-digest-*
           merge-multiple: true

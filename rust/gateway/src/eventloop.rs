@@ -1,21 +1,11 @@
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, ErrorExt as _, Result};
+use bin_shared::{TunDeviceManager, signals};
 use boringtun::x25519::PublicKey;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
-use firezone_bin_shared::{TunDeviceManager, signals};
-use firezone_telemetry::{Telemetry, analytics};
+use telemetry::{Telemetry, analytics};
 
-use firezone_tunnel::messages::gateway::{
-    AccessAuthorizationExpiryUpdated, AllowAccess, Authorization, ClientIceCandidates,
-    ClientsIceCandidates, ConnectionReady, EgressMessages, IngressMessages, InitGateway,
-    RejectAccess, RequestConnection,
-};
-use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
-use firezone_tunnel::{
-    DnsResourceNatEntry, GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig,
-    ResolveDnsRequest, TunnelError,
-};
 use futures::{FutureExt as _, TryFutureExt};
 use hickory_resolver::TokioResolver;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
@@ -29,6 +19,16 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, iter, mem};
 use tokio::sync::mpsc;
+use tunnel::messages::gateway::{
+    AccessAuthorizationExpiryUpdated, AllowAccess, Authorization, ClientIceCandidates,
+    ClientsIceCandidates, ConnectionReady, EgressMessages, IngressMessages, InitGateway,
+    RejectAccess, RequestConnection,
+};
+use tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
+use tunnel::{
+    DnsResourceNatEntry, GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig,
+    ResolveDnsRequest, TunnelError,
+};
 
 use crate::RELEASE;
 
@@ -240,9 +240,9 @@ impl Eventloop {
         Ok(())
     }
 
-    async fn handle_tunnel_event(&mut self, event: firezone_tunnel::GatewayEvent) -> Result<()> {
+    async fn handle_tunnel_event(&mut self, event: tunnel::GatewayEvent) -> Result<()> {
         match event {
-            firezone_tunnel::GatewayEvent::AddedIceCandidates {
+            tunnel::GatewayEvent::AddedIceCandidates {
                 conn_id: client,
                 candidates,
             } => {
@@ -255,7 +255,7 @@ impl Eventloop {
                     )))
                     .await?;
             }
-            firezone_tunnel::GatewayEvent::RemovedIceCandidates {
+            tunnel::GatewayEvent::RemovedIceCandidates {
                 conn_id: client,
                 candidates,
             } => {
@@ -268,7 +268,7 @@ impl Eventloop {
                     ))
                     .await?;
             }
-            firezone_tunnel::GatewayEvent::ResolveDns(setup_nat) => {
+            tunnel::GatewayEvent::ResolveDns(setup_nat) => {
                 if self
                     .resolve_tasks
                     .try_push(
@@ -288,8 +288,7 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(is_unreachable)
             {
                 tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
@@ -297,16 +296,14 @@ impl Eventloop {
             }
 
             // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
             {
                 tracing::debug!("{e:#}");
                 continue;
             }
 
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
             {
                 if !mem::replace(&mut self.logged_permission_denied, true) {
@@ -318,20 +315,18 @@ impl Eventloop {
                 continue;
             }
 
-            if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
+            if e.any_is::<ip_packet::ImpossibleTranslation>() {
                 // Some IP packets cannot be translated and should be dropped "silently".
                 // Do so by ignoring the error here.
                 continue;
             }
 
-            if let Some(e) = e.downcast_ref::<firezone_tunnel::UnroutablePacket>() {
+            if let Some(e) = e.any_downcast_ref::<tunnel::UnroutablePacket>() {
                 tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
                 continue;
             }
 
-            if e.root_cause()
-                .is::<firezone_tunnel::UdpSocketThreadStopped>()
-            {
+            if e.any_is::<tunnel::UdpSocketThreadStopped>() {
                 return Err(e);
             }
 
@@ -439,7 +434,7 @@ impl Eventloop {
                 connected,
             }) => tunnel.state_mut().update_relays(
                 BTreeSet::from_iter(disconnected_ids),
-                firezone_tunnel::turn(&connected),
+                tunnel::turn(&connected),
                 Instant::now(),
             ),
             IngressMessages::Init(InitGateway {
@@ -457,7 +452,7 @@ impl Eventloop {
 
                 tunnel.state_mut().update_relays(
                     BTreeSet::default(),
-                    firezone_tunnel::turn(&relays),
+                    tunnel::turn(&relays),
                     Instant::now(),
                 );
                 tunnel.state_mut().update_tun_device(IpConfig {
@@ -649,7 +644,7 @@ impl Eventloop {
         &self,
         domain: DomainName,
     ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> + use<> {
-        if firezone_telemetry::feature_flags::gateway_userspace_dns_a_aaaa_records() {
+        if telemetry::feature_flags::gateway_userspace_dns_a_aaaa_records() {
             let resolver = self.resolver.clone();
 
             async move {

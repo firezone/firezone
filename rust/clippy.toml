@@ -6,4 +6,9 @@ disallowed-methods = [
   { path = "std::collections::HashSet::iter", reason = "HashSet has non-deterministic iteration order, use BTreeSet instead" },
   { path = "std::collections::HashMap::iter_mut", reason = "HashMap has non-deterministic iteration order, use BTreeMap instead" },
   { path = "tracing::subscriber::set_global_default", reason = "Does not init `LogTracer`, use `firezone_logging::init` instead." },
+  { path = "anyhow::Error::is", reason = "Does not check entire source chain, use `any_is` instead" },
+  { path = "anyhow::Error::downcast_ref", reason = "Does not check entire source chain, use `any_downcast_ref` instead" },
+  { path = "anyhow::Error::downcast_mut", reason = "Does not check entire source chain, use `any_downcast_ref` instead" },
+  { path = "anyhow::Error::downcast", reason = "Does not check entire source chain, use `any_downcast_ref` instead" },
+  { path = "anyhow::Error::root_cause", reason = "Does not check entire source chain, use `any_downcast_ref` instead" },
 ]

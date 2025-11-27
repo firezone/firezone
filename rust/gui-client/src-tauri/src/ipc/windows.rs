@@ -1,6 +1,6 @@
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result, bail};
-use firezone_bin_shared::BUNDLE_ID;
+use bin_shared::BUNDLE_ID;
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
@@ -192,7 +192,7 @@ mod tests {
 
     #[tokio::test]
     async fn single_instance() -> anyhow::Result<()> {
-        let _guard = firezone_logging::test("trace");
+        let _guard = logging::test("trace");
         const ID: SocketId = SocketId::Test("2GOCMPBG");
         let mut server_1 = Server::new(ID)?;
         let pipe_path = server_1.pipe_path.clone();

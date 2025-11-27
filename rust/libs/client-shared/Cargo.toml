@@ -1,0 +1,39 @@
+[package]
+name = "client-shared"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+backoff = { workspace = true }
+bimap = { workspace = true }
+connlib-model = { workspace = true }
+dns-types = { workspace = true }
+futures = { workspace = true }
+ip_network = { workspace = true }
+l4-udp-dns-client = { workspace = true }
+libc = { workspace = true }
+logging = { workspace = true }
+parking_lot = { workspace = true }
+phoenix-channel = { workspace = true }
+secrecy = { workspace = true }
+serde = { workspace = true, features = ["std", "derive"] }
+snownet = { workspace = true }
+socket-factory = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true, features = ["formatting"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
+tokio-stream = { workspace = true, features = ["sync"] }
+tracing = { workspace = true, features = ["std", "attributes"] }
+tun = { workspace = true }
+tunnel = { workspace = true }
+url = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+chrono = { workspace = true }
+serde_json = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["macros"] }
+
+[lints]
+workspace = true

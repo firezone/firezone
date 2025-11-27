@@ -1,8 +1,9 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
+pub use ::logging::*;
+
 use anyhow::{Context as _, Result, bail};
-use firezone_bin_shared::known_dirs;
-use firezone_logging::FilterReloadHandle;
+use bin_shared::known_dirs;
 use serde::Serialize;
 use std::{
     fs,
@@ -16,8 +17,8 @@ use tracing_subscriber::{EnvFilter, Layer, Registry, layer::SubscriberExt};
 /// resulting in empty log files.
 #[must_use]
 pub struct Handles {
-    pub logger: firezone_logging::file::Handle,
-    pub reloader: firezone_logging::FilterReloadHandle,
+    pub logger: logging::file::Handle,
+    pub reloader: FilterReloadHandle,
 }
 
 struct LogPath {
@@ -58,34 +59,34 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
 
     // Logfilter for stdout cannot be reloaded. This is okay because we are using it only for local dev and debugging anyway.
     // Having multiple reload handles makes their type-signature quite complex so we don't bother with that.
-    let (stdout_filter, stdout_reloader) = firezone_logging::try_filter(directives)?;
+    let (stdout_filter, stdout_reloader) = logging::try_filter(directives)?;
     let stdout_layer = tracing_subscriber::fmt::layer()
-        .with_ansi(firezone_logging::stdout_supports_ansi())
-        .event_format(firezone_logging::Format::new());
+        .with_ansi(logging::stdout_supports_ansi())
+        .event_format(logging::Format::new());
 
-    let (system_filter, system_reloader) = firezone_logging::try_filter(directives)?;
+    let (system_filter, system_reloader) = logging::try_filter(directives)?;
     let system_layer = system_layer().context("Failed to init system logger")?;
     #[cfg(target_os = "linux")]
     let syslog_identifier = Some(system_layer.syslog_identifier().to_owned());
     #[cfg(not(target_os = "linux"))]
     let syslog_identifier = Option::<String>::None;
 
-    let (file_layer, logger) = firezone_logging::file::layer(&log_path, "gui-client");
-    let (file_filter, file_reloader) = firezone_logging::try_filter(directives)?;
+    let (file_layer, logger) = logging::file::layer(&log_path, "gui-client");
+    let (file_filter, file_reloader) = logging::try_filter(directives)?;
 
     let subscriber = Registry::default()
         .with(file_layer.with_filter(file_filter))
         .with(stdout_layer.with_filter(stdout_filter))
         .with(system_layer.with_filter(system_filter))
-        .with(firezone_logging::sentry_layer());
-    firezone_logging::init(subscriber)?;
+        .with(logging::sentry_layer());
+    logging::init(subscriber)?;
 
     tracing::info!(
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
         %directives,
-        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         log_path = %log_path.display(),
         syslog_identifier = syslog_identifier.map(tracing::field::display),
         "`gui-client` started logging"
@@ -103,10 +104,7 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
 /// and flushes the log file.
 pub fn setup_tunnel(
     log_path: Option<PathBuf>,
-) -> Result<(
-    firezone_logging::file::Handle,
-    firezone_logging::FilterReloadHandle,
-)> {
+) -> Result<(logging::file::Handle, logging::FilterReloadHandle)> {
     // If `log_dir` is Some, use that. Else call `tunnel_service_logs`
     let log_path = log_path.map_or_else(
         || {
@@ -120,27 +118,27 @@ pub fn setup_tunnel(
 
     let directives = get_log_filter().context("Couldn't read log filter")?;
 
-    let (file_filter, file_reloader) = firezone_logging::try_filter(&directives)?;
-    let (stdout_filter, stdout_reloader) = firezone_logging::try_filter(&directives)?;
+    let (file_filter, file_reloader) = logging::try_filter(&directives)?;
+    let (stdout_filter, stdout_reloader) = logging::try_filter(&directives)?;
 
-    let (file_layer, file_handle) = firezone_logging::file::layer(&log_path, "tunnel-service");
+    let (file_layer, file_handle) = logging::file::layer(&log_path, "tunnel-service");
 
     let stdout_layer = tracing_subscriber::fmt::layer()
-        .with_ansi(firezone_logging::stdout_supports_ansi())
-        .event_format(firezone_logging::Format::new().without_timestamp());
+        .with_ansi(logging::stdout_supports_ansi())
+        .event_format(logging::Format::new().without_timestamp());
 
     let subscriber = Registry::default()
         .with(file_layer.with_filter(file_filter))
         .with(stdout_layer.with_filter(stdout_filter))
-        .with(firezone_logging::sentry_layer());
-    firezone_logging::init(subscriber)?;
+        .with(logging::sentry_layer());
+    logging::init(subscriber)?;
 
     tracing::info!(
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
         ?directives,
-        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         log_path = %log_path.display(),
         "`tunnel service` started logging"
     );
@@ -151,12 +149,12 @@ pub fn setup_tunnel(
 /// Sets up logging for stdout only, with INFO level by default
 pub fn setup_stdout() -> Result<FilterReloadHandle> {
     let directives = get_log_filter().context("Can't read log filter")?;
-    let (filter, reloader) = firezone_logging::try_filter(&directives)?;
+    let (filter, reloader) = logging::try_filter(&directives)?;
     let layer = tracing_subscriber::fmt::layer()
-        .event_format(firezone_logging::Format::new())
+        .event_format(logging::Format::new())
         .with_filter(filter);
     let subscriber = Registry::default().with(layer);
-    firezone_logging::init(subscriber)?;
+    logging::init(subscriber)?;
 
     Ok(reloader)
 }
@@ -181,9 +179,8 @@ pub(crate) fn get_log_filter() -> Result<String> {
         return Ok(filter);
     }
 
-    if let Ok(filter) =
-        std::fs::read_to_string(firezone_bin_shared::known_dirs::tunnel_log_filter()?)
-            .map(|s| s.trim().to_string())
+    if let Ok(filter) = std::fs::read_to_string(bin_shared::known_dirs::tunnel_log_filter()?)
+        .map(|s| s.trim().to_string())
     {
         return Ok(filter);
     }
