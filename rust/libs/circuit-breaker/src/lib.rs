@@ -27,12 +27,12 @@ impl<'a> Token<'a> {
         result
     }
 
-    /// Consme the token and report success of the IO operation.
+    /// Consume the token and report success of the IO operation.
     pub fn success(self, now: Instant) {
         self.cb.handle_success(now);
     }
 
-    /// Consme the token and report failure of the IO operation.
+    /// Consume the token and report failure of the IO operation.
     pub fn failure(self, now: Instant) {
         self.cb.handle_failure(now);
     }

@@ -64,7 +64,7 @@ impl TransportThread {
                             }
                         };
 
-                        if let Some(time_left) =  rl.is_disabled(RateLimitingCategory::Any) {
+                        if let Some(time_left) = rl.is_disabled(RateLimitingCategory::Any) {
                             sentry_debug!(
                                 "Skipping event send because we're disabled due to rate limits for {}s",
                                 time_left.as_secs()
