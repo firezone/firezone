@@ -67,7 +67,7 @@ impl AllowRules {
         match protocol {
             Ok(Protocol::Tcp(port)) if self.tcp.contains(&port) => Ok(()),
             Ok(Protocol::Udp(port)) if self.udp.contains(&port) => Ok(()),
-            Ok(Protocol::Icmp(_)) if self.icmp => Ok(()),
+            Ok(Protocol::IcmpEcho(_)) if self.icmp => Ok(()),
 
             // If ICMP is allowed, we don't care about the specific ICMP type.
             // i.e. it doesn't have to be an echo request / reply.
@@ -78,7 +78,7 @@ impl AllowRules {
 
             Ok(Protocol::Tcp(_)) => Err(Filtered::Tcp),
             Ok(Protocol::Udp(_)) => Err(Filtered::Udp),
-            Ok(Protocol::Icmp(_)) => Err(Filtered::Icmp),
+            Ok(Protocol::IcmpEcho(_)) => Err(Filtered::Icmp),
 
             Err(e) => Err(Filtered::UnsupportedProtocol(e)),
         }

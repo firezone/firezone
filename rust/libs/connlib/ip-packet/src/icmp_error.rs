@@ -84,7 +84,7 @@ impl FailedPacket {
         match self.l4_proto {
             Layer4Protocol::Udp { src, .. } => Protocol::Udp(src),
             Layer4Protocol::Tcp { src, .. } => Protocol::Tcp(src),
-            Layer4Protocol::Icmp { id, .. } => Protocol::Icmp(id),
+            Layer4Protocol::Icmp { id, .. } => Protocol::IcmpEcho(id),
         }
     }
 
@@ -181,9 +181,9 @@ fn translate_original_packet_protocol(
     inside_proto: Protocol,
 ) {
     let proto_offset = match inside_proto {
-        Protocol::Tcp(_) => 0,  // source port is the first thing in a TCP packet.
-        Protocol::Udp(_) => 0,  // source port is the first thing in a UDP packet.
-        Protocol::Icmp(_) => 4, // icmp identifier comes after type, code and checksum.
+        Protocol::Tcp(_) => 0,      // source port is the first thing in a TCP packet.
+        Protocol::Udp(_) => 0,      // source port is the first thing in a UDP packet.
+        Protocol::IcmpEcho(_) => 4, // icmp identifier comes after type, code and checksum.
     };
     let proto_index = payload_start + proto_offset;
 

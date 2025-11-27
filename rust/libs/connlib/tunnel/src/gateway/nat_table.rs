@@ -218,7 +218,7 @@ impl EntryState {
         let ttl = match protocol {
             Protocol::Tcp(_) => TCP_TTL,
             Protocol::Udp(_) => UDP_TTL,
-            Protocol::Icmp(_) => ICMP_TTL,
+            Protocol::IcmpEcho(_) => ICMP_TTL,
         };
 
         self.last_packet() + ttl
@@ -381,7 +381,7 @@ mod tests {
         let ttl = match src {
             Protocol::Tcp(_) => 7200,
             Protocol::Udp(_) => 120,
-            Protocol::Icmp(_) => 120,
+            Protocol::IcmpEcho(_) => 120,
         };
 
         // Assert
