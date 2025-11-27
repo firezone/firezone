@@ -35,7 +35,7 @@ pub struct ClientOnGateway {
     internet_resource_enabled: Option<ResourceId>,
     filters: IpNetworkTable<(FilterEngine, ResourceId)>,
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
-    nat_table: NatTable,
+    dns_resource_nat: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
 }
 
@@ -61,7 +61,7 @@ impl ClientOnGateway {
             resources: BTreeMap::new(),
             filters: IpNetworkTable::new(),
             permanent_translations: Default::default(),
-            nat_table: Default::default(),
+            dns_resource_nat: Default::default(),
             buffered_events: Default::default(),
             internet_resource_enabled: None,
         }
@@ -89,7 +89,7 @@ impl ClientOnGateway {
         if self.have_proxy_ips_been_reassigned(resource_id, &name, &proxy_ips) {
             tracing::info!("Client has re-assigned proxy IPs, resetting DNS resource NAT");
 
-            self.nat_table = Default::default();
+            self.dns_resource_nat = Default::default();
             self.permanent_translations = Default::default();
         }
 
@@ -159,7 +159,7 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        self.nat_table.handle_timeout(now);
+        self.dns_resource_nat.handle_timeout(now);
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
@@ -405,7 +405,7 @@ impl ClientOnGateway {
         flow_tracker::inbound_wg::record_domain(state.domain.clone());
 
         let (source_protocol, real_ip) =
-            self.nat_table
+            self.dns_resource_nat
                 .translate_outbound(&packet, resolved_ip, now)?;
 
         packet
@@ -421,7 +421,7 @@ impl ClientOnGateway {
         mut packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<IpPacket> {
-        let (proto, src) = match self.nat_table.translate_inbound(&packet, now)? {
+        let (proto, src) = match self.dns_resource_nat.translate_inbound(&packet, now)? {
             nat_table::TranslateInboundResult::Ok { proto, src } => (proto, src),
             nat_table::TranslateInboundResult::IcmpError(prototype) => {
                 tracing::debug!(error = ?prototype.error(), dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), "ICMP Error");
