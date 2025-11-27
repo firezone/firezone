@@ -48,6 +48,13 @@ impl UnroutablePacket {
         }
     }
 
+    pub fn outbound_icmp_error(packet: &IpPacket) -> Self {
+        Self {
+            five_tuple: FiveTuple::for_packet(packet),
+            error: RoutingError::OutboundIcmpError,
+        }
+    }
+
     pub fn reason(&self) -> RoutingError {
         self.error
     }
@@ -138,6 +145,8 @@ pub enum RoutingError {
     NoPeerState,
     #[display("No connection")]
     NotConnected,
+    #[display("OutboundIcmpError")]
+    OutboundIcmpError,
     #[display("Other")]
     Other,
 }
@@ -150,6 +159,7 @@ impl From<RoutingError> for opentelemetry::Value {
             RoutingError::NotAPeer => opentelemetry::Value::from("NotAPeer"),
             RoutingError::NoPeerState => opentelemetry::Value::from("NoPeerState"),
             RoutingError::NotConnected => opentelemetry::Value::from("NotConnected"),
+            RoutingError::OutboundIcmpError => opentelemetry::Value::from("OutboundIcmpError"),
             RoutingError::Other => opentelemetry::Value::from("Other"),
         }
     }
