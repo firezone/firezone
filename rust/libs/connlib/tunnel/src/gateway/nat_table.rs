@@ -90,11 +90,7 @@ impl NatTable {
 
         let inside = Inside(src, dst);
 
-        if let Some(outside) = self.table.get_by_left(&inside).copied()
-            && let Some(state) = self.state_by_inside.get_mut(&inside)
-        {
-            tracing::trace!(?inside, ?outside, ?state, "Translating outbound packet");
-
+        if let Some((inside, state)) = self.translate_outbound_inner(&inside, now) {
             if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
                 state.outbound_rst = true;
             }
@@ -103,9 +99,7 @@ impl NatTable {
                 state.outbound_fin = true;
             }
 
-            state.last_outbound = now;
-
-            return Ok(outside.into_inner());
+            return Ok(inside.into_inner());
         }
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.
@@ -133,7 +127,7 @@ impl NatTable {
         if let Some((failed_packet, icmp_error)) = packet.icmp_error()? {
             let outside = Outside(failed_packet.src_proto(), failed_packet.dst());
 
-            if let Some(Inside(inside_proto, inside_dst)) =
+            if let Some((Inside(inside_proto, inside_dst), _)) =
                 self.translate_inbound_inner(&outside, now)
             {
                 return Ok(TranslateInboundResult::IcmpError(IcmpErrorPrototype {
@@ -153,9 +147,7 @@ impl NatTable {
 
         let outside = Outside(packet.destination_protocol()?, packet.source());
 
-        if let Some(inside) = self.translate_inbound_inner(&outside, now)
-            && let Some(state) = self.state_by_inside.get_mut(&inside)
-        {
+        if let Some((inside, state)) = self.translate_inbound_inner(&outside, now) {
             if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
                 state.inbound_rst = true;
             }
@@ -176,7 +168,26 @@ impl NatTable {
         Ok(TranslateInboundResult::NoNatSession)
     }
 
-    fn translate_inbound_inner(&mut self, outside: &Outside, now: Instant) -> Option<Inside> {
+    fn translate_outbound_inner(
+        &mut self,
+        inside: &Inside,
+        now: Instant,
+    ) -> Option<(Outside, &mut EntryState)> {
+        let outside = self.table.get_by_left(inside)?;
+        let state = self.state_by_inside.get_mut(inside)?;
+
+        tracing::trace!(?inside, ?outside, ?state, "Translating outbound packet");
+
+        state.last_outbound = now;
+
+        Some((*outside, state))
+    }
+
+    fn translate_inbound_inner(
+        &mut self,
+        outside: &Outside,
+        now: Instant,
+    ) -> Option<(Inside, &mut EntryState)> {
         let inside = self.table.get_by_right(outside)?;
         let state = self.state_by_inside.get_mut(inside)?;
 
@@ -187,7 +198,7 @@ impl NatTable {
             tracing::debug!(?inside, ?outside, "NAT session confirmed");
         }
 
-        Some(*inside)
+        Some((*inside, state))
     }
 }
 
