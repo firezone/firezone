@@ -61,8 +61,8 @@ pub enum Protocol {
     Tcp(u16),
     /// Contains either the source or destination port.
     Udp(u16),
-    /// Contains the `identifier` of the ICMP packet.
-    Icmp(u16),
+    /// Contains the `identifier` of the ICMP echo packet.
+    IcmpEcho(u16),
 }
 
 impl Protocol {
@@ -71,7 +71,7 @@ impl Protocol {
             (self, other),
             (Protocol::Tcp(_), Protocol::Tcp(_))
                 | (Protocol::Udp(_), Protocol::Udp(_))
-                | (Protocol::Icmp(_), Protocol::Icmp(_))
+                | (Protocol::IcmpEcho(_), Protocol::IcmpEcho(_))
         )
     }
 
@@ -79,7 +79,7 @@ impl Protocol {
         match self {
             Protocol::Tcp(v) => *v,
             Protocol::Udp(v) => *v,
-            Protocol::Icmp(v) => *v,
+            Protocol::IcmpEcho(v) => *v,
         }
     }
 
@@ -87,7 +87,7 @@ impl Protocol {
         match self {
             Protocol::Tcp(_) => Protocol::Tcp(value),
             Protocol::Udp(_) => Protocol::Udp(value),
-            Protocol::Icmp(_) => Protocol::Icmp(value),
+            Protocol::IcmpEcho(_) => Protocol::IcmpEcho(value),
         }
     }
 }
@@ -305,7 +305,7 @@ impl IpPacket {
                 .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv4Type(p.icmp_type()))?
                 .id;
 
-            return Ok(Protocol::Icmp(id));
+            return Ok(Protocol::IcmpEcho(id));
         }
 
         if let Some(p) = self.as_icmpv6() {
@@ -314,7 +314,7 @@ impl IpPacket {
                 .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv6Type(p.icmp_type()))?
                 .id;
 
-            return Ok(Protocol::Icmp(id));
+            return Ok(Protocol::IcmpEcho(id));
         }
 
         Err(UnsupportedProtocol::UnsupportedIpPayload(
@@ -337,7 +337,7 @@ impl IpPacket {
                 .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv4Type(p.icmp_type()))?
                 .id;
 
-            return Ok(Protocol::Icmp(id));
+            return Ok(Protocol::IcmpEcho(id));
         }
 
         if let Some(p) = self.as_icmpv6() {
@@ -346,7 +346,7 @@ impl IpPacket {
                 .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv6Type(p.icmp_type()))?
                 .id;
 
-            return Ok(Protocol::Icmp(id));
+            return Ok(Protocol::IcmpEcho(id));
         }
 
         Err(UnsupportedProtocol::UnsupportedIpPayload(
