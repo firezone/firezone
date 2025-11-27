@@ -3,7 +3,7 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
-use ip_packet::{IpPacket, Protocol};
+use ip_packet::{IpNumber, IpPacket, Protocol};
 
 #[derive(Debug, thiserror::Error)]
 #[error("Unroutable packet: {error}")]
@@ -90,8 +90,8 @@ enum MaybeProto {
     Udp,
     #[display("ICMP")]
     Icmp,
-    #[display("unknown")]
-    Unknown,
+    #[display("{_0:?}")]
+    Other(IpNumber),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -127,7 +127,7 @@ impl FiveTuple {
             _ => Self {
                 src: MaybeIpOrSocket::Unknown,
                 dst: MaybeIpOrSocket::Unknown,
-                proto: MaybeProto::Unknown,
+                proto: MaybeProto::Other(p.next_header()),
             },
         }
     }
