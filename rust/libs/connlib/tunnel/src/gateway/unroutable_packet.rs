@@ -3,7 +3,7 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
-use ip_packet::{IpPacket, Protocol};
+use ip_packet::{IpNumber, IpPacket, Protocol};
 
 #[derive(Debug, thiserror::Error)]
 #[error("Unroutable packet: {error}")]
@@ -68,37 +68,23 @@ impl UnroutablePacket {
     }
 
     pub fn proto(&self) -> impl Display {
-        self.five_tuple.proto
+        self.five_tuple.proto.keyword_str().unwrap_or("unknown")
     }
 }
 
 #[derive(Debug, derive_more::Display, Clone, Copy)]
-enum MaybeIpOrSocket {
+enum IpOrSocket {
     #[display("{_0}")]
     Ip(IpAddr),
     #[display("{_0}")]
     Socket(SocketAddr),
-    #[display("unknown")]
-    Unknown,
-}
-
-#[derive(Debug, derive_more::Display, Clone, Copy)]
-enum MaybeProto {
-    #[display("TCP")]
-    Tcp,
-    #[display("UDP")]
-    Udp,
-    #[display("ICMP")]
-    Icmp,
-    #[display("unknown")]
-    Unknown,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct FiveTuple {
-    src: MaybeIpOrSocket,
-    dst: MaybeIpOrSocket,
-    proto: MaybeProto,
+    src: IpOrSocket,
+    dst: IpOrSocket,
+    proto: IpNumber,
 }
 
 impl FiveTuple {
@@ -110,24 +96,24 @@ impl FiveTuple {
 
         match (src_proto, dst_proto) {
             (Ok(Protocol::Tcp(src_port)), Ok(Protocol::Tcp(dst_port))) => Self {
-                src: MaybeIpOrSocket::Socket(SocketAddr::new(src_ip, src_port)),
-                dst: MaybeIpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
-                proto: MaybeProto::Tcp,
+                src: IpOrSocket::Socket(SocketAddr::new(src_ip, src_port)),
+                dst: IpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
+                proto: p.next_header(),
             },
             (Ok(Protocol::Udp(src_port)), Ok(Protocol::Udp(dst_port))) => Self {
-                src: MaybeIpOrSocket::Socket(SocketAddr::new(src_ip, src_port)),
-                dst: MaybeIpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
-                proto: MaybeProto::Udp,
+                src: IpOrSocket::Socket(SocketAddr::new(src_ip, src_port)),
+                dst: IpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
+                proto: p.next_header(),
             },
             (Ok(Protocol::IcmpEcho(_)), Ok(Protocol::IcmpEcho(_))) => Self {
-                src: MaybeIpOrSocket::Ip(src_ip),
-                dst: MaybeIpOrSocket::Ip(dst_ip),
-                proto: MaybeProto::Icmp,
+                src: IpOrSocket::Ip(src_ip),
+                dst: IpOrSocket::Ip(dst_ip),
+                proto: p.next_header(),
             },
             _ => Self {
-                src: MaybeIpOrSocket::Unknown,
-                dst: MaybeIpOrSocket::Unknown,
-                proto: MaybeProto::Unknown,
+                src: IpOrSocket::Ip(src_ip),
+                dst: IpOrSocket::Ip(dst_ip),
+                proto: p.next_header(),
             },
         }
     }
