@@ -9,7 +9,7 @@ defmodule Domain.Resources.Connection do
 
   @primary_key false
   schema "resource_connections" do
-    belongs_to :resource, Domain.Resources.Resource, primary_key: true
+    belongs_to :resource, Domain.Resource, primary_key: true
     belongs_to :gateway_group, Domain.Gateways.Group, primary_key: true
 
     belongs_to :account, Domain.Accounts.Account

@@ -1,6 +1,6 @@
 defmodule Domain.Billing do
   use Supervisor
-  alias Domain.{Auth, Accounts, Actors, Clients, Gateways}
+  alias Domain.{Auth, Accounts, Actors, Gateways}
   alias Domain.Billing.EventHandler
   alias Domain.Billing.Stripe.APIClient
   alias __MODULE__.DB
@@ -47,8 +47,8 @@ defmodule Domain.Billing do
   end
 
   def can_create_users?(%Accounts.Account{} = account) do
-    users_count = Actors.count_users_for_account(account)
-    active_users_count = Clients.count_1m_active_users_for_account(account)
+    users_count = DB.count_users_for_account(account)
+    active_users_count = DB.count_1m_active_users_for_account(account)
 
     cond do
       not Accounts.Account.active?(account) ->
@@ -71,7 +71,7 @@ defmodule Domain.Billing do
   end
 
   def can_create_service_accounts?(%Accounts.Account{} = account) do
-    service_accounts_count = Actors.count_service_accounts_for_account(account)
+    service_accounts_count = DB.count_service_accounts_for_account(account)
 
     Accounts.Account.active?(account) and
       (is_nil(account.limits.service_accounts_count) or
@@ -84,7 +84,7 @@ defmodule Domain.Billing do
   end
 
   def can_create_gateway_groups?(%Accounts.Account{} = account) do
-    gateway_groups_count = Gateways.count_groups_for_account(account)
+    gateway_groups_count = DB.count_groups_for_account(account)
 
     Accounts.Account.active?(account) and
       (is_nil(account.limits.gateway_groups_count) or
@@ -97,7 +97,7 @@ defmodule Domain.Billing do
   end
 
   def can_create_admin_users?(%Accounts.Account{} = account) do
-    account_admins_count = Actors.count_account_admin_users_for_account(account)
+    account_admins_count = DB.count_account_admin_users_for_account(account)
 
     Accounts.Account.active?(account) and
       (is_nil(account.limits.account_admin_users_count) or
@@ -359,12 +359,67 @@ defmodule Domain.Billing do
   end
 
   defmodule DB do
-    alias Domain.Safe
+    import Ecto.Query
+    alias Domain.{Safe, Repo}
+    alias Domain.Accounts.Account
+    alias Domain.Actors.Actor
+    alias Domain.Client
 
     def update(changeset) do
       changeset
       |> Safe.unscoped()
       |> Safe.update()
+    end
+
+    def count_users_for_account(%Account{} = account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: is_nil(a.disabled_at),
+        where: a.type in [:account_admin_user, :account_user]
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_service_accounts_for_account(%Account{} = account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: is_nil(a.disabled_at),
+        where: a.type == :service_account
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_account_admin_users_for_account(%Account{} = account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: is_nil(a.disabled_at),
+        where: a.type == :account_admin_user
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_1m_active_users_for_account(%Account{} = account) do
+      from(c in Client, as: :clients)
+      |> where([clients: c], c.account_id == ^account.id)
+      |> where([clients: c], c.last_seen_at > ago(1, "month"))
+      |> join(:inner, [clients: c], a in Actor, on: c.actor_id == a.id, as: :actor)
+      |> where([actor: a], is_nil(a.disabled_at))
+      |> where([actor: a], a.type in [:account_user, :account_admin_user])
+      |> select([clients: c], c.actor_id)
+      |> distinct(true)
+      |> Repo.aggregate(:count)
+    end
+    
+    def count_groups_for_account(account) do
+      from(g in Domain.Gateways.Group,
+        where: g.account_id == ^account.id,
+        where: g.managed_by == :account
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
     end
   end
 end

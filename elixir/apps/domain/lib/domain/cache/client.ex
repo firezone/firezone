@@ -1,4 +1,5 @@
 defmodule Domain.Cache.Client do
+  alias __MODULE__.DB
   @moduledoc """
     This cache is used in the client channel to maintain a materialized view of the client access state.
     The cache is updated via WAL messages streamed from the Domain.Changes.ReplicationConnection module.
@@ -51,7 +52,7 @@ defmodule Domain.Cache.Client do
 
   """
 
-  alias Domain.{Actors, Auth, Clients, Cache, Gateways, Resources, Policies, Version}
+  alias Domain.{Actors, Auth, Clients, Cache, Gateways, Resource, Policies, Version}
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.UUID, only: [dump!: 1, load!: 1]
@@ -523,7 +524,7 @@ defmodule Domain.Cache.Client do
         end)
 
       memberships =
-        for memberships <- Actors.all_memberships_for_actor_id!(client.actor_id),
+        for memberships <- DB.all_memberships_for_actor_id!(client.actor_id),
             do: {dump!(memberships.group_id), dump!(memberships.id)},
             into: %{}
 
@@ -543,7 +544,7 @@ defmodule Domain.Cache.Client do
   end
 
   defp adapt(resource, client) do
-    Resources.adapt_resource_for_version(resource, client.last_seen_version)
+    Resource.adapt_resource_for_version(resource, client.last_seen_version)
   end
 
   defp conforming_resource_ids(policies, client, auth_provider_id) when is_map(policies) do
@@ -557,5 +558,17 @@ defmodule Domain.Cache.Client do
     |> Policies.filter_by_conforming_policies_for_client(client, auth_provider_id)
     |> Enum.map(& &1.resource_id)
     |> Enum.uniq()
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Actors.Membership
+
+    def all_memberships_for_actor_id!(actor_id) do
+      from(m in Membership, where: m.actor_id == ^actor_id)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
   end
 end

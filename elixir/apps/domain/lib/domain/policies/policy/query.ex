@@ -158,7 +158,7 @@ defmodule Domain.Policies.Policy.Query do
         name: :resource_id,
         title: "Resource",
         type: {:string, :uuid},
-        values: &Domain.Resources.all_resources!/1,
+        values: &all_resources!/1,
         fun: &filter_by_resource_id/2
       },
       %Domain.Repo.Filter{
@@ -248,5 +248,27 @@ defmodule Domain.Policies.Policy.Query do
 
   def filter_by_status(queryable, "disabled") do
     {queryable, dynamic([policies: policies], not is_nil(policies.disabled_at))}
+  end
+  
+  defp all_resources!(subject) do
+    import Ecto.Query
+    alias Domain.{Resource, Safe}
+    
+    from(resources in Resource, as: :resources)
+    |> filter_features(subject.account)
+    |> Safe.scoped(subject)
+    |> Safe.all()
+    |> case do
+      {:error, :unauthorized} -> []
+      resources -> resources
+    end
+  end
+  
+  defp filter_features(queryable, %Domain.Accounts.Account{} = account) do
+    if Domain.Accounts.Account.internet_resource_enabled?(account) do
+      queryable
+    else
+      where(queryable, [resources: resources], resources.type != ^:internet)
+    end
   end
 end

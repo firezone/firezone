@@ -15,7 +15,7 @@ defmodule Domain.Actors.Actor do
 
     has_many :identities, Domain.ExternalIdentity
 
-    has_many :clients, Domain.Clients.Client, preload_order: [desc: :last_seen_at]
+    has_many :clients, Domain.Client, preload_order: [desc: :last_seen_at]
 
     has_many :tokens, Domain.Tokens.Token
 

@@ -1,9 +1,10 @@
 defmodule Web.Sites.New do
   use Web, :live_view
-  alias Domain.Gateways
+  alias Domain.{Gateways, Billing}
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
-    changeset = Gateways.new_group()
+    changeset = new_group()
     socket = assign(socket, form: to_form(changeset), page_title: "New Site")
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
@@ -43,7 +44,7 @@ defmodule Web.Sites.New do
 
   def handle_event("change", %{"group" => attrs}, socket) do
     changeset =
-      Gateways.new_group(attrs)
+      new_group(attrs)
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -52,7 +53,9 @@ defmodule Web.Sites.New do
   def handle_event("submit", %{"group" => attrs}, socket) do
     attrs = Map.put(attrs, "tokens", [%{}])
 
-    with {:ok, group} <- Gateways.create_group(attrs, socket.assigns.subject) do
+    with true <- Billing.can_create_gateway_groups?(socket.assigns.subject.account),
+         changeset = create_changeset(socket.assigns.subject.account, attrs, socket.assigns.subject),
+         {:ok, group} <- DB.create_group(changeset, socket.assigns.subject) do
       socket =
         socket
         |> put_flash(:success, "Site #{group.name} created successfully")
@@ -60,9 +63,9 @@ defmodule Web.Sites.New do
 
       {:noreply, socket}
     else
-      {:error, :gateway_groups_limit_reached} ->
+      false ->
         changeset =
-          Gateways.new_group(attrs)
+          new_group(attrs)
           |> Map.put(:action, :insert)
 
         socket =
@@ -77,6 +80,45 @@ defmodule Web.Sites.New do
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+  
+  defp new_group(attrs \\ %{}) do
+    change_group(%Domain.Gateways.Group{}, attrs)
+  end
+  
+  defp change_group(group, attrs \\ %{}) do
+    import Ecto.Changeset
+    
+    group
+    |> Domain.Repo.preload(:account)
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> Domain.Gateways.Group.changeset()
+  end
+  
+  defp create_changeset(account, attrs, subject) do
+    import Ecto.Changeset
+    
+    %Domain.Gateways.Group{}
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> Domain.Gateways.Group.changeset()
+    |> put_change(:account_id, account.id)
+    |> put_change(:managed_by, :account)
+    |> put_change(:created_by_identity_id, subject.identity && subject.identity.id)
+    |> cast_assoc(:tokens,
+      required: false,
+      with: &Domain.Tokens.Token.Changeset.create_gateway_group_token(&1, &2, subject)
+    )
+  end
+  
+  defmodule DB do
+    alias Domain.{Safe}
+    
+    def create_group(changeset, subject) do
+      Safe.scoped(changeset, subject)
+      |> Safe.insert()
     end
   end
 end

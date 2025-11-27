@@ -1,6 +1,6 @@
 defmodule Domain.ChangeLogs.ReplicationConnection do
   use Domain.Replication.Connection
-  alias Domain.ChangeLogs
+  alias __MODULE__.DB
 
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
@@ -61,7 +61,7 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
     to_insert = Map.values(state.flush_buffer)
     attempted_count = Enum.count(state.flush_buffer)
 
-    {successful_count, _change_logs} = ChangeLogs.bulk_insert(to_insert)
+    {successful_count, _change_logs} = DB.bulk_insert(to_insert)
 
     Logger.info("Flushed #{successful_count}/#{attempted_count} change logs")
 
@@ -104,5 +104,17 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
       })
 
     %{state | flush_buffer: flush_buffer}
+  end
+
+  defmodule DB do
+    alias Domain.{Repo, ChangeLog}
+
+    def bulk_insert(list_of_attrs) do
+      ChangeLog
+      |> Repo.insert_all(list_of_attrs,
+        on_conflict: :nothing,
+        conflict_target: [:lsn]
+      )
+    end
   end
 end

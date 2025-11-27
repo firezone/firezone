@@ -5,7 +5,7 @@ defmodule Domain.Crypto do
   Generates a WireGuard pre-shared key for a client-gateway pair.
   """
   def psk(
-        %Clients.Client{
+        %Client{
           id: client_id,
           public_key: client_pubkey,
           psk_base: client_psk_base

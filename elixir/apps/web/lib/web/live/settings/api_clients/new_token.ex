@@ -2,13 +2,14 @@ defmodule Web.Settings.ApiClients.NewToken do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
   alias Domain.{Auth, Actors, Tokens}
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
     unless Domain.Config.global_feature_enabled?(:rest_api),
       do: raise(Web.LiveErrors.NotFoundError)
 
     with {:ok, %{type: :api_client} = actor} <-
-           Actors.fetch_actor_by_id(id, socket.assigns.subject) do
+           DB.fetch_api_client(id, socket.assigns.subject) do
       changeset = Tokens.Token.Changeset.create(%{})
 
       socket =
@@ -95,5 +96,20 @@ defmodule Web.Settings.ApiClients.NewToken do
       "" -> ""
       value -> "#{value}T00:00:00.000000Z"
     end)
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Actors}
+
+    def fetch_api_client(id, subject) do
+      from(a in Actors.Actor, where: a.id == ^id, where: a.type == :api_client)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        actor -> {:ok, actor}
+      end
+    end
   end
 end

@@ -19,7 +19,7 @@ defmodule API.ClientJSON do
     %{data: data(client)}
   end
 
-  defp data(%Clients.Client{} = client) do
+  defp data(%Client{} = client) do
     %{
       id: client.id,
       external_id: client.external_id,

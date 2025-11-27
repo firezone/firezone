@@ -78,7 +78,7 @@ defmodule Web.Sites.Show do
         callback: &handle_gateways_update!/2
       )
       |> assign_live_table("resources",
-        query_module: Resources.Resource.Query,
+        query_module: DB.ResourceQuery,
         enforce_filters: [
           {:gateway_group_id, group.id}
         ],
@@ -483,7 +483,7 @@ defmodule Web.Sites.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _deleted_group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
+    {:ok, _deleted_group} = DB.delete_group(socket.assigns.group, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
   end
 
@@ -504,5 +504,153 @@ defmodule Web.Sites.Show do
       title="New version available"
     />
     """
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Repo}
+    alias Domain.Gateways.Group
+    alias Domain.Gateway
+
+    def fetch_group_by_id(id, subject) do
+      result =
+        from(g in Group, as: :groups)
+        |> where([groups: g], g.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        group -> {:ok, group}
+      end
+    end
+
+    def list_gateways(subject, opts \\ []) do
+      from(g in Gateway, as: :gateways)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+    
+    def cursor_fields do
+      [
+        {:gateways, :asc, :last_seen_at},
+        {:gateways, :asc, :id}
+      ]
+    end
+    
+    def preloads do
+      [
+        online?: &Domain.Gateways.Presence.preload_gateways_presence/1
+      ]
+    end
+    
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :gateway_group_id,
+          title: "Site",
+          type: {:string, :uuid},
+          values: [],
+          fun: &filter_by_group_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :ids,
+          type: {:list, {:string, :uuid}},
+          fun: &filter_by_ids/2
+        }
+      ]
+    end
+    
+    def filter_by_group_id(queryable, group_id) do
+      {queryable, dynamic([gateways: gateways], gateways.group_id == ^group_id)}
+    end
+    
+    def filter_by_ids(queryable, ids) do
+      {queryable, dynamic([gateways: gateways], gateways.id in ^ids)}
+    end
+
+    def delete_group(group, subject) do
+      Safe.scoped(group, subject)
+      |> Safe.delete()
+    end
+  end
+  
+  defmodule DB.ResourceQuery do
+    import Ecto.Query
+    alias Domain.Resource
+    
+    def cursor_fields do
+      [
+        {:resources, :asc, :name},
+        {:resources, :asc, :inserted_at},
+        {:resources, :asc, :id}
+      ]
+    end
+    
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :name_or_address,
+          title: "Name or Address",
+          type: {:string, :websearch},
+          fun: &filter_by_name_fts_or_address/2
+        },
+        %Domain.Repo.Filter{
+          name: :gateway_group_id,
+          type: {:string, :uuid},
+          values: [],
+          fun: &filter_by_gateway_group_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :type,
+          type: {:list, :string},
+          fun: &filter_by_type/2
+        }
+      ]
+    end
+    
+    def filter_by_name_fts_or_address(queryable, name_or_address) do
+      {queryable,
+       dynamic(
+         [resources: resources],
+         fulltext_search(resources.name, ^name_or_address) or
+           ilike(resources.address, ^"%#{name_or_address}%")
+       )}
+    end
+    
+    def filter_by_gateway_group_id(queryable, gateway_group_id) do
+      {with_joined_connections(queryable),
+       dynamic([connections: connections], connections.gateway_group_id == ^gateway_group_id)}
+    end
+    
+    def filter_by_type(queryable, {:not_in, types}) do
+      {queryable, dynamic([resources: resources], resources.type not in ^types)}
+    end
+    
+    def filter_by_type(queryable, types) do
+      {queryable, dynamic([resources: resources], resources.type in ^types)}
+    end
+    
+    def with_joined_connections(queryable) do
+      with_named_binding(queryable, :connections, fn queryable, binding ->
+        queryable
+        |> join(
+          :inner,
+          [resources: resources],
+          connections in ^Domain.Resources.Connection.Query.all(),
+          on: connections.resource_id == resources.id,
+          as: ^binding
+        )
+      end)
+    end
+    
+    def with_named_binding(queryable, binding, fun) do
+      if has_named_binding?(queryable, binding) do
+        queryable
+      else
+        fun.(queryable, binding)
+      end
+    end
   end
 end

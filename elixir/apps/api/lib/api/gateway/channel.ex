@@ -12,7 +12,7 @@ defmodule API.Gateway.Channel do
     Auth,
     PubSub,
     Relays,
-    Resources
+    Resource
   }
 
   alias Domain.Relays.Presence.Debouncer
@@ -276,7 +276,7 @@ defmodule API.Gateway.Channel do
       client_payload: payload
     } = attrs
 
-    case Resources.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
         {:noreply, socket}
 
@@ -324,7 +324,7 @@ defmodule API.Gateway.Channel do
       client_preshared_key: preshared_key
     } = attrs
 
-    case Resources.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
         {:noreply, socket}
 
@@ -680,7 +680,7 @@ defmodule API.Gateway.Channel do
     # it will simply ignore the message.
     resource = Cache.Cacheable.to_cache(resource)
 
-    case Resources.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
         {:noreply, socket}
 

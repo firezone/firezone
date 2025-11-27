@@ -2,10 +2,11 @@ defmodule Web.Settings.ApiClients.Show do
   use Web, :live_view
   alias Domain.{Actors, Tokens}
   alias __MODULE__.DB
+  import Ecto.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
     if Domain.Accounts.Account.rest_api_enabled?(socket.assigns.account) do
-      with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject) do
+      with {:ok, actor} <- DB.fetch_api_client(id, socket.assigns.subject) do
         socket =
           socket
           |> assign(
@@ -236,7 +237,8 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_event("disable", _params, socket) do
-    with {:ok, actor} <- DB.disable_actor(socket.assigns.actor, socket.assigns.subject) do
+    changeset = disable_actor_changeset(socket.assigns.actor)
+    with {:ok, actor} <- DB.update_actor(changeset, socket.assigns.subject) do
       socket =
         socket
         |> put_flash(:success, "API Client was disabled.")
@@ -247,8 +249,21 @@ defmodule Web.Settings.ApiClients.Show do
     end
   end
 
+  defp disable_actor_changeset(actor) do
+    actor
+    |> change()
+    |> put_change(:disabled_at, DateTime.utc_now())
+  end
+
+  defp enable_actor_changeset(actor) do
+    actor
+    |> change()
+    |> put_change(:disabled_at, nil)
+  end
+
   def handle_event("enable", _params, socket) do
-    {:ok, actor} = DB.enable_actor(socket.assigns.actor, socket.assigns.subject)
+    changeset = enable_actor_changeset(socket.assigns.actor)
+    {:ok, actor} = DB.update_actor(changeset, socket.assigns.subject)
 
     socket =
       socket
@@ -290,14 +305,27 @@ defmodule Web.Settings.ApiClients.Show do
 
   defmodule DB do
     import Ecto.Query
-    import Ecto.Changeset
-    alias Domain.{Safe, Tokens}
+    alias Domain.{Safe, Actors, Tokens}
+
+    def fetch_api_client(id, subject) do
+      from(a in Actors.Actor, where: a.id == ^id, where: a.type == :api_client)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        actor -> {:ok, actor}
+      end
+    end
+
+    def update_actor(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
 
     def delete_all_tokens_for_actor(actor, subject) do
       query = from(t in Tokens.Token, where: t.actor_id == ^actor.id)
-
       {count, _} = query |> Safe.scoped(subject) |> Safe.delete_all()
-
       {:ok, count}
     end
 
@@ -309,22 +337,6 @@ defmodule Web.Settings.ApiClients.Show do
 
     def delete_actor(actor, subject) do
       Safe.scoped(actor, subject) |> Safe.delete()
-    end
-
-    def disable_actor(actor, subject) do
-      actor
-      |> change()
-      |> put_change(:disabled_at, DateTime.utc_now())
-      |> Safe.scoped(subject)
-      |> Safe.update()
-    end
-
-    def enable_actor(actor, subject) do
-      actor
-      |> change()
-      |> put_change(:disabled_at, nil)
-      |> Safe.scoped(subject)
-      |> Safe.update()
     end
   end
 end

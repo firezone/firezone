@@ -66,8 +66,8 @@ defmodule API.GatewayController do
 
   # Show a specific Gateway
   def show(conn, %{"id" => id}) do
-    with {:ok, gateway} <- Gateways.fetch_gateway_by_id(id, conn.assigns.subject) do
-      gateway = Gateways.preload_gateways_presence([gateway]) |> List.first()
+    with {:ok, gateway} <- DB.fetch_gateway_by_id(id, conn.assigns.subject) do
+      gateway = DB.preload_gateways_presence([gateway]) |> List.first()
       render(conn, :show, gateway: gateway)
     end
   end
@@ -96,8 +96,8 @@ defmodule API.GatewayController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, gateway} <- Gateways.fetch_gateway_by_id(id, subject),
-         {:ok, gateway} <- Gateways.delete_gateway(gateway, subject) do
+    with {:ok, gateway} <- DB.fetch_gateway_by_id(id, subject),
+         {:ok, gateway} <- DB.delete_gateway(gateway, subject) do
       render(conn, :show, gateway: gateway)
     end
   end
@@ -105,9 +105,10 @@ defmodule API.GatewayController do
   defmodule DB do
     import Ecto.Query
     alias Domain.{Gateways, Safe}
+    alias Domain.Gateway
 
     def list_gateways(subject, opts \\ []) do
-      from(g in Gateways.Gateway, as: :gateways)
+      from(g in Gateway, as: :gateways)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -117,6 +118,34 @@ defmodule API.GatewayController do
         {:gateways, :asc, :inserted_at},
         {:gateways, :asc, :id}
       ]
+    end
+
+    def fetch_gateway_by_id(id, subject) do
+      result =
+        from(g in Gateway, as: :gateways)
+        |> where([gateways: g], g.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        gateway -> {:ok, gateway}
+      end
+    end
+
+    def delete_gateway(gateway, subject) do
+      case Safe.scoped(gateway, subject) |> Safe.delete() do
+        {:ok, deleted_gateway} ->
+          {:ok, preload_gateways_presence([deleted_gateway]) |> List.first()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+
+    def preload_gateways_presence(gateways) do
+      Domain.Gateways.Presence.preload_gateways_presence(gateways)
     end
   end
 end

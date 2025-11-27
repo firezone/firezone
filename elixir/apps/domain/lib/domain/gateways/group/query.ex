@@ -33,7 +33,9 @@ defmodule Domain.Gateways.Group.Query do
   @impl Domain.Repo.Query
   def preloads,
     do: [
-      gateways: Domain.Gateways.Gateway.Query.preloads()
+      gateways: [
+        online?: &Domain.Gateways.Presence.preload_gateways_presence/1
+      ]
     ]
 
   @impl Domain.Repo.Query

@@ -1,6 +1,7 @@
 defmodule Web.Sites.Index do
   use Web, :live_view
   alias Domain.Gateways
+  alias __MODULE__.DB
   require Logger
 
   def mount(_params, _session, socket) do
@@ -9,7 +10,7 @@ defmodule Web.Sites.Index do
     end
 
     {:ok, managed_groups, _metadata} =
-      Gateways.list_groups(socket.assigns.subject,
+      DB.list_groups(socket.assigns.subject,
         preload: [
           gateways: [:online?]
         ],
@@ -20,7 +21,7 @@ defmodule Web.Sites.Index do
 
     {internet_resource, existing_group_name} =
       with {:ok, internet_resource} <-
-             Domain.Resources.fetch_internet_resource(socket.assigns.subject),
+             DB.fetch_internet_resource(socket.assigns.subject),
            internet_resource =
              Domain.Repo.preload(internet_resource, connections: :gateway_group),
            connection when not is_nil(connection) <-
@@ -64,7 +65,7 @@ defmodule Web.Sites.Index do
     list_opts = Keyword.put(list_opts, :preload, gateways: [:online?], connections: [:resource])
 
     with {:ok, groups, metadata} <-
-           Gateways.list_groups(socket.assigns.subject, list_opts) do
+           DB.list_groups(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          groups: groups,
@@ -252,7 +253,7 @@ defmodule Web.Sites.Index do
         socket
       ) do
     {:ok, managed_groups, _metadata} =
-      Gateways.list_groups(socket.assigns.subject,
+      DB.list_groups(socket.assigns.subject,
         preload: [
           gateways: [:online?]
         ],
@@ -262,7 +263,7 @@ defmodule Web.Sites.Index do
       )
 
     internet_resource =
-      case Domain.Resources.fetch_internet_resource(socket.assigns.subject) do
+      case DB.fetch_internet_resource(socket.assigns.subject) do
         {:ok, internet_resource} -> Domain.Repo.preload(internet_resource, :connections)
         _ -> nil
       end
@@ -280,4 +281,31 @@ defmodule Web.Sites.Index do
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
     do: handle_live_table_event(event, params, socket)
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Gateways}
+    alias Domain.Gateways.Group
+    alias Domain.Resource
+
+    def list_groups(subject, opts \\ []) do
+      from(g in Group, as: :groups)
+      |> Safe.scoped(subject)
+      |> Safe.list(Gateways.Group.Query, opts)
+    end
+    
+    def fetch_internet_resource(subject) do
+      result =
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.type == :internet)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+      
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        resource -> {:ok, resource}
+      end
+    end
+  end
 end

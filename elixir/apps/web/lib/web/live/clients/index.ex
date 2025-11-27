@@ -2,6 +2,7 @@ defmodule Web.Clients.Index do
   use Web, :live_view
   import Web.Clients.Components
   alias Domain.{Clients, ComponentVersions}
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -37,7 +38,7 @@ defmodule Web.Clients.Index do
   def handle_clients_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
 
-    with {:ok, clients, metadata} <- Clients.list_clients(socket.assigns.subject, list_opts) do
+    with {:ok, clients, metadata} <- DB.list_clients(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          clients: clients,
@@ -137,6 +138,18 @@ defmodule Web.Clients.Index do
       {:noreply, socket}
     else
       {:noreply, socket}
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Clients, Safe}
+    alias Domain.Client
+
+    def list_clients(subject, opts \\ []) do
+      from(c in Client, as: :clients)
+      |> Safe.scoped(subject)
+      |> Safe.list(Clients.Client.Query, opts)
     end
   end
 end

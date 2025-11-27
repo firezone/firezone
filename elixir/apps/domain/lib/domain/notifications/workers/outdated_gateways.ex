@@ -13,7 +13,7 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
   require OpenTelemetry.Tracer
 
   alias __MODULE__.DB
-  alias Domain.{Clients, Gateways, Mailer}
+  alias Domain.{Gateways, Mailer}
 
   @impl Oban.Worker
   def perform(_job) do
@@ -26,7 +26,7 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
 
     DB.all_accounts_pending_notification!()
     |> Enum.each(fn account ->
-      incompatible_client_count = Clients.count_incompatible_for(account, latest_version)
+      incompatible_client_count = DB.count_incompatible_for(account, latest_version)
 
       all_online_gateways_for_account(account)
       |> Enum.filter(&Gateways.gateway_outdated?/1)
@@ -96,7 +96,8 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Accounts, Actors, Safe}
+    alias Domain.{Repo, Accounts, Actors, Safe}
+    alias Domain.Client
 
     def all_accounts_pending_notification! do
       Domain.Repo.all(
@@ -128,6 +129,23 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
       changeset
       |> Safe.unscoped()
       |> Safe.update()
+    end
+
+    def count_incompatible_for(account, gateway_version) do
+      %{major: g_major, minor: g_minor} = Version.parse!(gateway_version)
+      
+      from(c in Client, as: :clients)
+      |> where([clients: c], c.account_id == ^account.id)
+      |> where([clients: c], c.last_seen_at > ago(1, "week"))
+      |> where(
+        [clients: c],
+        fragment("split_part(?, '.', 1)::int", c.last_seen_version) < ^g_major or
+          (fragment("split_part(?, '.', 1)::int", c.last_seen_version) == ^g_major and
+             fragment("split_part(?, '.', 2)::int", c.last_seen_version) <= ^(g_minor - 2))
+      )
+      |> join(:inner, [clients: c], a in Actor, on: c.actor_id == a.id, as: :actor)
+      |> where([actor: a], is_nil(a.disabled_at))
+      |> Repo.aggregate(:count)
     end
   end
 end

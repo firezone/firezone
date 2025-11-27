@@ -65,12 +65,30 @@ defmodule API.GatewayGroupController do
 
   # Create a new Gateway Group / Site
   def create(conn, %{"gateway_group" => params}) do
-    with {:ok, gateway_group} <- Gateways.create_group(params, conn.assigns.subject) do
+    changeset = create_changeset(conn.assigns.subject.account, params, conn.assigns.subject)
+    
+    with {:ok, gateway_group} <- DB.create_group(changeset, conn.assigns.subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/gateway_groups/#{gateway_group}")
       |> render(:show, gateway_group: gateway_group)
     end
+  end
+  
+  defp create_changeset(account, attrs, subject) do
+    import Ecto.Changeset
+    
+    %Domain.Gateways.Group{}
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> Domain.Gateways.Group.changeset()
+    |> put_change(:account_id, account.id)
+    |> put_change(:managed_by, :account)
+    |> put_change(:created_by_identity_id, subject.identity && subject.identity.id)
+    |> cast_assoc(:tokens,
+      required: false,
+      with: &Domain.Tokens.Token.Changeset.create_gateway_group_token(&1, &2, subject)
+    )
   end
 
   def create(_conn, _params) do
@@ -151,9 +169,9 @@ defmodule API.GatewayGroupController do
   def create_token(conn, %{"gateway_group_id" => gateway_group_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, gateway_group} <- Gateways.fetch_group_by_id(gateway_group_id, subject),
+    with {:ok, gateway_group} <- DB.fetch_group_by_id(gateway_group_id, subject),
          {:ok, gateway_token, encoded_token} <-
-           Gateways.create_token(gateway_group, %{}, subject) do
+           DB.create_token(gateway_group, %{}, subject) do
       conn
       |> put_status(:created)
       |> render(:token, gateway_token: gateway_token, encoded_token: encoded_token)
@@ -211,7 +229,7 @@ defmodule API.GatewayGroupController do
   def delete_all_tokens(conn, %{"gateway_group_id" => gateway_group_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, gateway_group} <- Gateways.fetch_group_by_id(gateway_group_id, subject),
+    with {:ok, gateway_group} <- DB.fetch_group_by_id(gateway_group_id, subject),
          {:ok, deleted_count} <- Tokens.delete_tokens_for(gateway_group, subject) do
       render(conn, :deleted_tokens, %{count: deleted_count})
     end
@@ -219,18 +237,42 @@ defmodule API.GatewayGroupController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Gateways, Safe, Repo}
+    alias Domain.{Gateways, Safe, Repo, Tokens, Billing}
+    alias Domain.Gateways.Group
 
     def list_groups(subject, opts \\ []) do
-      from(g in Gateways.Group, as: :groups)
+      from(g in Group, as: :groups)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_group(subject, id) do
-      from(g in Gateways.Group, where: g.id == ^id)
+      from(g in Group, where: g.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one!()
+    end
+    
+    def fetch_group_by_id(id, subject) do
+      result =
+        from(g in Group, as: :groups)
+        |> where([groups: g], g.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        group -> {:ok, group}
+      end
+    end
+
+    def create_group(changeset, subject) do
+      with true <- Billing.can_create_gateway_groups?(subject.account) do
+        Safe.scoped(changeset, subject)
+        |> Safe.insert()
+      else
+        false -> {:error, :gateway_groups_limit_reached}
+      end
     end
 
     def update_group(group, attrs, subject) do
@@ -246,9 +288,29 @@ defmodule API.GatewayGroupController do
       |> Safe.scoped(subject)
       |> Safe.delete()
     end
+    
+    def create_token(group, attrs, subject) do
+      attrs =
+        Map.merge(attrs, %{
+          "type" => :gateway_group,
+          "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
+          "account_id" => group.account_id,
+          "gateway_group_id" => group.id
+        })
+
+      with {:ok, token} <- Tokens.create_token(attrs, subject) do
+        {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Domain.Crypto.encode_token_fragment!(token)}
+      end
+    end
 
     defp changeset(group, attrs, subject) do
-      Gateways.Group.Changeset.update(group, attrs, subject)
+      import Ecto.Changeset
+      
+      group
+      |> cast(attrs, [:name])
+      |> validate_required([:name])
+      |> Domain.Gateways.Group.changeset()
+      |> put_change(:updated_by_identity_id, subject.identity.id)
     end
 
     def cursor_fields do

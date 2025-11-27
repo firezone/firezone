@@ -2,7 +2,7 @@ defmodule Domain.Resources.Resource.Query do
   use Domain, :query
 
   def all do
-    from(resources in Domain.Resources.Resource, as: :resources)
+    from(resources in Domain.Resource, as: :resources)
   end
 
   def filter_features(queryable, %Domain.Accounts.Account{} = account) do

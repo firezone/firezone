@@ -1,4 +1,4 @@
-defmodule Domain.ChangeLogs.ChangeLog do
+defmodule Domain.ChangeLog do
   use Domain, :schema
 
   @primary_key false

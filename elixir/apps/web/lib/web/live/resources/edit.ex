@@ -2,12 +2,13 @@ defmodule Web.Resources.Edit do
   use Web, :live_view
   import Web.Resources.Components
   alias Domain.{Accounts, Gateways, Resources}
+  alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
-    with {:ok, resource} <- Resources.fetch_resource_by_id(id, socket.assigns.subject) do
+    with {:ok, resource} <- DB.fetch_resource_by_id(id, socket.assigns.subject) do
       resource = Domain.Repo.preload(resource, :gateway_groups)
       gateway_groups = Gateways.all_groups!(socket.assigns.subject)
-      form = Resources.change_resource(resource, socket.assigns.subject) |> to_form()
+      form = change_resource(resource, socket.assigns.subject) |> to_form()
 
       socket =
         assign(
@@ -233,7 +234,7 @@ defmodule Web.Resources.Edit do
       |> maybe_delete_connections(socket.assigns.params)
 
     changeset =
-      Resources.change_resource(socket.assigns.resource, attrs, socket.assigns.subject)
+      change_resource(socket.assigns.resource, attrs, socket.assigns.subject)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -246,11 +247,9 @@ defmodule Web.Resources.Edit do
       |> map_connections_form_attrs()
       |> maybe_delete_connections(socket.assigns.params)
 
-    case Resources.update_resource(
-           socket.assigns.resource,
-           attrs,
-           socket.assigns.subject
-         ) do
+    changeset = update_changeset(socket.assigns.resource, attrs, socket.assigns.subject)
+    
+    case DB.update_resource(changeset, socket.assigns.subject) do
       {:ok, resource} ->
         socket = put_flash(socket, :success, "Resource #{resource.name} updated successfully")
 
@@ -274,6 +273,40 @@ defmodule Web.Resources.Edit do
       Map.delete(attrs, "connections")
     else
       attrs
+    end
+  end
+  
+  defp change_resource(resource, attrs \\ %{}, subject) do
+    Resources.Resource.Changeset.update(resource, attrs, subject)
+  end
+  
+  defp update_changeset(resource, attrs, subject) do
+    resource
+    |> Domain.Repo.preload(:connections)
+    |> Resources.Resource.Changeset.update(attrs, subject)
+  end
+  
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Resource}
+    
+    def fetch_resource_by_id(id, subject) do
+      result =
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+      
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        resource -> {:ok, resource}
+      end
+    end
+    
+    def update_resource(changeset, subject) do
+      Safe.scoped(changeset, subject)
+      |> Safe.update()
     end
   end
 end

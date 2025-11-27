@@ -88,10 +88,17 @@ defmodule Web.Settings.ApiClients.Edit do
   end
 
   defmodule DB do
+    import Ecto.Query
     alias Domain.{Safe, Actors}
 
     def fetch_api_client(id, subject) do
-      Actors.fetch_actor_by_id(id, subject)
+      from(a in Actors.Actor, where: a.id == ^id, where: a.type == :api_client)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        actor -> {:ok, actor}
+      end
     end
 
     def update_api_client(changeset, subject) do

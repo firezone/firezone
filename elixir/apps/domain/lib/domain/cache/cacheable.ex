@@ -14,8 +14,8 @@ defimpl Domain.Cache.Cacheable, for: Domain.Gateways.Group do
   end
 end
 
-defimpl Domain.Cache.Cacheable, for: Domain.Resources.Resource do
-  def to_cache(%Domain.Resources.Resource{} = resource) do
+defimpl Domain.Cache.Cacheable, for: Domain.Resource do
+  def to_cache(%Domain.Resource{} = resource) do
     %Domain.Cache.Cacheable.Resource{
       id: Ecto.UUID.dump!(resource.id),
       type: resource.type,

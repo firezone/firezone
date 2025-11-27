@@ -1,6 +1,7 @@
 defmodule Web.Resources.Index do
   use Web, :live_view
-  alias Domain.{Changes.Change, PubSub, Resources}
+  alias Domain.{Changes.Change, PubSub, Resources, Resource}
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -12,7 +13,7 @@ defmodule Web.Resources.Index do
       |> assign(stale: false)
       |> assign(page_title: "Resources")
       |> assign_live_table("resources",
-        query_module: Resources.Resource.Query,
+        query_module: DB,
         sortable_fields: [
           {:resources, :name},
           {:resources, :address}
@@ -36,9 +37,9 @@ defmodule Web.Resources.Index do
     list_opts = Keyword.put(list_opts, :preload, [:gateway_groups])
 
     with {:ok, resources, metadata} <-
-           Resources.list_resources(socket.assigns.subject, list_opts),
+           DB.list_resources(socket.assigns.subject, list_opts),
          {:ok, resource_actor_groups_peek} <-
-           Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
+           DB.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
       {:ok,
        assign(socket,
          resources: resources,
@@ -168,15 +169,184 @@ defmodule Web.Resources.Index do
       when event in ["paginate", "order_by", "filter", "reload"],
       do: handle_live_table_event(event, params, socket)
 
-  def handle_info(%Change{old_struct: %Resources.Resource{}}, socket) do
+  def handle_info(%Change{old_struct: %Resource{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
-  def handle_info(%Change{struct: %Resources.Resource{}}, socket) do
+  def handle_info(%Change{struct: %Resource{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
   def handle_info(_, socket) do
     {:noreply, socket}
+  end
+  
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Resource, Repo}
+    
+    def list_resources(subject, opts \\ []) do
+      all()
+      |> filter_features(subject.account)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+    
+    def all do
+      from(resources in Resource, as: :resources)
+    end
+    
+    def filter_features(queryable, %Domain.Accounts.Account{} = account) do
+      if Domain.Accounts.Account.internet_resource_enabled?(account) do
+        queryable
+      else
+        where(queryable, [resources: resources], resources.type != ^:internet)
+      end
+    end
+    
+    def peek_resource_actor_groups(resources, limit, subject) do
+      ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
+      
+      {:ok, peek} =
+        all()
+        |> by_id({:in, ids})
+        |> preload_few_actor_groups_for_each_resource(limit)
+        |> where(account_id: ^subject.account.id)
+        |> Repo.peek(resources)
+      
+      group_by_ids =
+        Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
+        |> Enum.map(&{&1.id, &1})
+        |> Enum.into(%{})
+      
+      peek =
+        for {id, %{items: items} = map} <- peek, into: %{} do
+          {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
+        end
+      
+      {:ok, peek}
+    end
+    
+    def by_id(queryable, {:in, ids}) do
+      where(queryable, [resources: resources], resources.id in ^ids)
+    end
+    
+    def preload_few_actor_groups_for_each_resource(queryable, limit) do
+      queryable
+      |> with_joined_actor_groups(limit)
+      |> with_joined_policies_counts()
+      |> select(
+        [resources: resources, actor_groups: actor_groups, policies_counts: policies_counts],
+        %{
+          id: resources.id,
+          count: policies_counts.count,
+          item: actor_groups
+        }
+      )
+    end
+    
+    def with_joined_actor_groups(queryable, limit) do
+      policies_subquery =
+        Domain.Policies.Policy.Query.not_disabled()
+        |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
+        |> select([policies: policies], policies.actor_group_id)
+        |> limit(^limit)
+      
+      actor_groups_subquery =
+        Domain.Actors.Group.Query.all()
+        |> where([groups: groups], groups.id in subquery(policies_subquery))
+      
+      join(
+        queryable,
+        :cross_lateral,
+        [resources: resources],
+        actor_groups in subquery(actor_groups_subquery),
+        as: :actor_groups
+      )
+    end
+    
+    def with_joined_policies_counts(queryable) do
+      subquery =
+        Domain.Policies.Policy.Query.not_disabled()
+        |> Domain.Policies.Policy.Query.count_by_resource_id()
+        |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
+      
+      join(queryable, :cross_lateral, [resources: resources], policies_counts in subquery(subquery),
+        as: :policies_counts
+      )
+    end
+    
+    def cursor_fields do
+      [
+        {:resources, :asc, :name},
+        {:resources, :asc, :inserted_at},
+        {:resources, :asc, :id}
+      ]
+    end
+    
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :name_or_address,
+          title: "Name or Address",
+          type: {:string, :websearch},
+          fun: &filter_by_name_fts_or_address/2
+        },
+        %Domain.Repo.Filter{
+          name: :gateway_group_id,
+          type: {:string, :uuid},
+          values: [],
+          fun: &filter_by_gateway_group_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :type,
+          type: {:list, :string},
+          fun: &filter_by_type/2
+        }
+      ]
+    end
+    
+    def filter_by_name_fts_or_address(queryable, name_or_address) do
+      {queryable,
+       dynamic(
+         [resources: resources],
+         fulltext_search(resources.name, ^name_or_address) or
+           ilike(resources.address, ^"%#{name_or_address}%")
+       )}
+    end
+    
+    def filter_by_gateway_group_id(queryable, gateway_group_id) do
+      {with_joined_connections(queryable),
+       dynamic([connections: connections], connections.gateway_group_id == ^gateway_group_id)}
+    end
+    
+    def filter_by_type(queryable, {:not_in, types}) do
+      {queryable, dynamic([resources: resources], resources.type not in ^types)}
+    end
+    
+    def filter_by_type(queryable, types) do
+      {queryable, dynamic([resources: resources], resources.type in ^types)}
+    end
+    
+    def with_joined_connections(queryable) do
+      with_named_binding(queryable, :connections, fn queryable, binding ->
+        queryable
+        |> join(
+          :inner,
+          [resources: resources],
+          connections in ^Domain.Resources.Connection.Query.all(),
+          on: connections.resource_id == resources.id,
+          as: ^binding
+        )
+      end)
+    end
+    
+    def with_named_binding(queryable, binding, fun) do
+      if has_named_binding?(queryable, binding) do
+        queryable
+      else
+        fun.(queryable, binding)
+      end
+    end
   end
 end

@@ -73,7 +73,7 @@ defmodule Domain.Actors.Membership.Query do
   end
 
   def with_joined_actors(queryable \\ all()) do
-    join(queryable, :inner, [memberships: memberships], actors in ^Actor.Query.all(),
+    join(queryable, :inner, [memberships: memberships], actors in Actor,
       on: actors.id == memberships.actor_id,
       as: :actors
     )

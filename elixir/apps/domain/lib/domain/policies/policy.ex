@@ -19,7 +19,7 @@ defmodule Domain.Policies.Policy do
     embeds_many :conditions, Domain.Policies.Condition, on_replace: :delete
 
     belongs_to :actor_group, Domain.Actors.Group
-    belongs_to :resource, Domain.Resources.Resource
+    belongs_to :resource, Domain.Resource
     belongs_to :account, Domain.Accounts.Account
 
     field :disabled_at, :utc_datetime_usec

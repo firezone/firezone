@@ -3,6 +3,8 @@ defmodule API.ActorGroupMembershipController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Actors
+  alias __MODULE__.DB
+  import Ecto.Changeset
 
   action_fallback API.FallbackController
 
@@ -36,7 +38,7 @@ defmodule API.ActorGroupMembershipController do
       Pagination.params_to_list_opts(params)
       |> Keyword.put(:filter, group_id: actor_group_id)
 
-    with {:ok, actors, metadata} <- Actors.list_actors(conn.assigns.subject, list_opts) do
+    with {:ok, actors, metadata} <- DB.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
     end
   end
@@ -65,10 +67,10 @@ defmodule API.ActorGroupMembershipController do
       ) do
     subject = conn.assigns.subject
 
-    with {:ok, group} <- Actors.fetch_group_by_id(actor_group_id, subject),
+    with {:ok, group} <- DB.fetch_group_by_id(actor_group_id, subject),
          true <- is_nil(group.directory_id) and group.type == :static,
-         group <- Domain.Repo.preload(group, [:memberships]),
-         {:ok, group} <- Actors.update_group(group, %{memberships: attrs}, subject) do
+         changeset <- update_group_memberships_changeset(group, attrs),
+         {:ok, group} <- DB.update_group(changeset, subject) do
       render(conn, :memberships, memberships: group.memberships)
     else
       false -> {:error, :not_editable}
@@ -107,11 +109,11 @@ defmodule API.ActorGroupMembershipController do
     remove = Map.get(params, "remove", [])
     subject = conn.assigns.subject
 
-    with {:ok, group} <- Actors.fetch_group_by_id(actor_group_id, subject),
+    with {:ok, group} <- DB.fetch_group_by_id(actor_group_id, subject),
          true <- is_nil(group.directory_id) and group.type == :static,
-         group <- Domain.Repo.preload(group, [:memberships]),
          membership_attrs <- prepare_membership_attrs(group, add, remove),
-         {:ok, group} <- Actors.update_group(group, %{memberships: membership_attrs}, subject) do
+         changeset <- update_group_memberships_changeset(group, membership_attrs),
+         {:ok, group} <- DB.update_group(changeset, subject) do
       render(conn, :memberships, memberships: group.memberships)
     else
       false -> {:error, :not_editable}
@@ -121,6 +123,12 @@ defmodule API.ActorGroupMembershipController do
 
   def update_patch(_conn, _params) do
     {:error, :bad_request}
+  end
+
+  defp update_group_memberships_changeset(group, attrs) do
+    group
+    |> cast(%{memberships: attrs}, [])
+    |> cast_assoc(:memberships)
   end
 
   defp prepare_membership_attrs(group, add, remove) do
@@ -135,5 +143,33 @@ defmodule API.ActorGroupMembershipController do
     if MapSet.size(membership_ids) == 0,
       do: [],
       else: Enum.map(membership_ids, &%{actor_id: &1})
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Actors, Safe}
+
+    def list_actors(subject, opts) do
+      from(a in Actors.Actor, as: :actors)
+      |> Safe.scoped(subject)
+      |> Safe.list(Actors.Actor.Query, opts)
+    end
+
+    def fetch_group_by_id(id, subject) do
+      from(g in Actors.Group, where: g.id == ^id)
+      |> preload(:memberships)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        group -> {:ok, group}
+      end
+    end
+
+    def update_group(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
   end
 end

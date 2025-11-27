@@ -4,6 +4,7 @@ defmodule API.ActorGroupController do
   alias API.Pagination
   alias Domain.Actors
   alias __MODULE__.DB
+  import Ecto.Changeset
 
   action_fallback API.FallbackController
 
@@ -62,12 +63,19 @@ defmodule API.ActorGroupController do
   def create(conn, %{"actor_group" => params}) do
     params = Map.put(params, "type", "static")
 
-    with {:ok, actor_group} <- Actors.create_group(params, conn.assigns.subject) do
+    with changeset <- create_group_changeset(conn.assigns.subject.account, params),
+         {:ok, actor_group} <- DB.insert_group(changeset, conn.assigns.subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/actor_groups/#{actor_group}")
       |> render(:show, actor_group: actor_group)
     end
+  end
+
+  defp create_group_changeset(account, attrs) do
+    %Actors.Group{account_id: account.id}
+    |> cast(attrs, [:name, :type, :description])
+    |> validate_required([:name, :type])
   end
 
   def create(_conn, _params) do
@@ -96,9 +104,27 @@ defmodule API.ActorGroupController do
     subject = conn.assigns.subject
     actor_group = DB.fetch_group(subject, id)
 
-    with {:ok, actor_group} <- DB.update_group(actor_group, params, subject) do
+    with {:changeset, changeset} <- update_group_changeset(actor_group, params),
+         {:ok, actor_group} <- DB.update_group(changeset, subject) do
       render(conn, :show, actor_group: actor_group)
     end
+  end
+
+  defp update_group_changeset(%Actors.Group{type: :managed}, _attrs) do
+    {:error, :managed_group}
+  end
+
+  defp update_group_changeset(%Actors.Group{directory: "firezone"} = group, attrs) do
+    changeset =
+      group
+      |> cast(attrs, [:name, :description])
+      |> validate_required([:name])
+    
+    {:changeset, changeset}
+  end
+
+  defp update_group_changeset(%Actors.Group{}, _attrs) do
+    {:error, :synced_group}
   end
 
   def update(_conn, _params) do
@@ -152,30 +178,22 @@ defmodule API.ActorGroupController do
       |> Safe.one!()
     end
 
-    def update_group(%Actors.Group{type: :managed}, _attrs, _subject) do
-      {:error, :managed_group}
+    def insert_group(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.insert()
     end
 
-    def update_group(%Actors.Group{directory: "firezone"} = group, attrs, subject) do
-      group
-      |> Repo.preload(:memberships)
-      |> changeset(attrs)
+    def update_group(changeset, subject) do
+      changeset
       |> Safe.scoped(subject)
       |> Safe.update()
-    end
-
-    def update_group(%Actors.Group{}, _attrs, _subject) do
-      {:error, :synced_group}
     end
 
     def delete_group(%Actors.Group{} = group, subject) do
       group
       |> Safe.scoped(subject)
       |> Safe.delete()
-    end
-
-    defp changeset(group, attrs) do
-      Actors.Group.Changeset.update(group, attrs)
     end
 
     def cursor_fields do

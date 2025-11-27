@@ -4,7 +4,7 @@ defmodule Domain.Clients.Presence do
     pubsub_server: Domain.PubSub
 
   alias Domain.PubSub
-  alias Domain.Clients.Client
+  alias Domain.Client
 
   def connect(%Client{} = client, token_id) do
     with {:ok, _} <- __MODULE__.Account.track(client.account_id, client.id),

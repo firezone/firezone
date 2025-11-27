@@ -1,7 +1,7 @@
 defmodule API.Gateway.Views.Client do
   alias Domain.Clients
 
-  def render(%Clients.Client{} = client, preshared_key) do
+  def render(%Client{} = client, preshared_key) do
     # The OS name can have spaces, hence split the user-agent step by step.
     [os_name, rest] = String.split(client.last_seen_user_agent, "/", parts: 2)
     [os_version, rest] = String.split(rest, " ", parts: 2)
@@ -32,7 +32,7 @@ defmodule API.Gateway.Views.Client do
   end
 
   # DEPRECATED IN 1.4
-  def render(%Clients.Client{} = client, client_payload, preshared_key) do
+  def render(%Client{} = client, client_payload, preshared_key) do
     %{
       id: client.id,
       payload: client_payload,

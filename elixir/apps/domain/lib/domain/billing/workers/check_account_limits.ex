@@ -9,7 +9,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
     max_attempts: 3,
     unique: [period: 300]
 
-  alias Domain.{Accounts, Billing, Actors, Clients, Gateways}
+  alias Domain.{Accounts, Billing, Gateways}
   alias __MODULE__.DB
 
   @impl Oban.Worker
@@ -58,7 +58,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
   end
 
   defp check_users_limit(limits_exceeded, account) do
-    users_count = Actors.count_users_for_account(account)
+    users_count = DB.count_users_for_account(account)
 
     if Billing.users_limit_exceeded?(account, users_count) do
       limits_exceeded ++ ["users"]
@@ -68,7 +68,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
   end
 
   defp check_seats_limit(limits_exceeded, account) do
-    active_users_count = Clients.count_1m_active_users_for_account(account)
+    active_users_count = DB.count_1m_active_users_for_account(account)
 
     if Billing.seats_limit_exceeded?(account, active_users_count) do
       limits_exceeded ++ ["monthly active users"]
@@ -78,7 +78,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
   end
 
   defp check_service_accounts_limit(limits_exceeded, account) do
-    service_accounts_count = Actors.count_service_accounts_for_account(account)
+    service_accounts_count = DB.count_service_accounts_for_account(account)
 
     if Billing.service_accounts_limit_exceeded?(account, service_accounts_count) do
       limits_exceeded ++ ["service accounts"]
@@ -88,7 +88,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
   end
 
   defp check_gateway_groups_limit(limits_exceeded, account) do
-    gateway_groups_count = Gateways.count_groups_for_account(account)
+    gateway_groups_count = DB.count_groups_for_account(account)
 
     if Billing.gateway_groups_limit_exceeded?(account, gateway_groups_count) do
       limits_exceeded ++ ["sites"]
@@ -98,7 +98,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
   end
 
   defp check_admin_limit(limits_exceeded, account) do
-    account_admins_count = Actors.count_account_admin_users_for_account(account)
+    account_admins_count = DB.count_account_admin_users_for_account(account)
 
     if Billing.admins_limit_exceeded?(account, account_admins_count) do
       limits_exceeded ++ ["account admins"]
@@ -117,8 +117,10 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
+    alias Domain.{Safe, Repo}
     alias Domain.Accounts.Account
+    alias Domain.Actors.Actor
+    alias Domain.Client
 
     def all_active_accounts do
       from(a in Account, where: is_nil(a.disabled_at))
@@ -130,6 +132,57 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
       changeset
       |> Safe.unscoped()
       |> Safe.update()
+    end
+
+    def count_users_for_account(%Account{} = account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: is_nil(a.disabled_at),
+        where: a.type in [:account_admin_user, :account_user]
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_service_accounts_for_account(%Account{} = account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: is_nil(a.disabled_at),
+        where: a.type == :service_account
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_account_admin_users_for_account(%Account{} = account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: is_nil(a.disabled_at),
+        where: a.type == :account_admin_user
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_1m_active_users_for_account(%Account{} = account) do
+      from(c in Client, as: :clients)
+      |> where([clients: c], c.account_id == ^account.id)
+      |> where([clients: c], c.last_seen_at > ago(1, "month"))
+      |> join(:inner, [clients: c], a in Actor, on: c.actor_id == a.id, as: :actor)
+      |> where([actor: a], is_nil(a.disabled_at))
+      |> where([actor: a], a.type in [:account_user, :account_admin_user])
+      |> select([clients: c], c.actor_id)
+      |> distinct(true)
+      |> Repo.aggregate(:count)
+    end
+    
+    def count_groups_for_account(account) do
+      from(g in Domain.Gateways.Group,
+        where: g.account_id == ^account.id,
+        where: g.managed_by == :account
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
     end
   end
 end

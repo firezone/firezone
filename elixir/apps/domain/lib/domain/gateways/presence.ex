@@ -3,7 +3,7 @@ defmodule Domain.Gateways.Presence do
     otp_app: :domain,
     pubsub_server: Domain.PubSub
 
-  alias Domain.Gateways.Gateway
+  alias Domain.Gateway
   alias Domain.PubSub
 
   def connect(%Gateway{} = gateway, token_id) do
@@ -11,6 +11,33 @@ defmodule Domain.Gateways.Presence do
          {:ok, _} <- __MODULE__.Account.track(gateway.account_id, gateway.id) do
       :ok
     end
+  end
+  
+  @doc false
+  def preload_gateways_presence([gateway]) do
+    __MODULE__.Account.get(gateway.account_id, gateway.id)
+    |> case do
+      [] -> %{gateway | online?: false}
+      %{metas: [_ | _]} -> %{gateway | online?: true}
+    end
+    |> List.wrap()
+  end
+
+  def preload_gateways_presence(gateways) do
+    # we fetch list of account gateways for every account_id present in the gateways list
+    connected_gateways =
+      gateways
+      |> Enum.map(& &1.account_id)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.reduce(%{}, fn account_id, acc ->
+        connected_gateways = __MODULE__.Account.list(account_id)
+        Map.merge(acc, connected_gateways)
+      end)
+
+    Enum.map(gateways, fn gateway ->
+      %{gateway | online?: Map.has_key?(connected_gateways, gateway.id)}
+    end)
   end
 
   defmodule Account do

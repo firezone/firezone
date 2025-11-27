@@ -1,5 +1,6 @@
-defmodule Domain.Gateways.Gateway do
+defmodule Domain.Client do
   use Domain, :schema
+  import Domain.Repo.Changeset
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
@@ -9,6 +10,8 @@ defmodule Domain.Gateways.Gateway do
           psk_base: binary(),
           ipv4: Domain.Types.IP.t(),
           ipv6: Domain.Types.IP.t(),
+
+          # TODO: Remove fields redundant with Subject.Context
           last_seen_user_agent: String.t(),
           last_seen_remote_ip: Domain.Types.IP.t(),
           last_seen_remote_ip_location_region: String.t(),
@@ -19,12 +22,17 @@ defmodule Domain.Gateways.Gateway do
           last_seen_at: DateTime.t(),
           online?: boolean(),
           account_id: Ecto.UUID.t(),
-          group_id: Ecto.UUID.t(),
+          actor_id: Ecto.UUID.t(),
+          device_serial: String.t() | nil,
+          device_uuid: String.t() | nil,
+          identifier_for_vendor: String.t() | nil,
+          firebase_installation_id: String.t() | nil,
+          verified_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
 
-  schema "gateways" do
+  schema "clients" do
     field :external_id, :string
 
     field :name, :string
@@ -47,8 +55,28 @@ defmodule Domain.Gateways.Gateway do
     field :online?, :boolean, virtual: true
 
     belongs_to :account, Domain.Accounts.Account
-    belongs_to :group, Domain.Gateways.Group
+    belongs_to :actor, Domain.Actors.Actor
+
+    # Hardware Identifiers
+    field :device_serial, :string
+    field :device_uuid, :string
+    field :identifier_for_vendor, :string
+    field :firebase_installation_id, :string
+
+    # Verification
+    field :verified_at, :utc_datetime_usec
 
     timestamps()
+  end
+
+  def changeset(changeset) do
+    changeset
+    |> trim_change(~w[name external_id]a)
+    |> validate_length(:name, min: 1, max: 255)
+    |> assoc_constraint(:actor)
+    |> unique_constraint([:actor_id, :public_key])
+    |> unique_constraint(:external_id)
+    |> unique_constraint(:ipv4, name: :clients_account_id_ipv4_index)
+    |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
   end
 end

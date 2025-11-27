@@ -1,15 +1,16 @@
 defmodule Web.Settings.Billing do
   use Web, :live_view
-  alias Domain.{Accounts, Actors, Clients, Gateways, Billing}
+  alias Domain.{Accounts, Clients, Gateways, Billing}
+  alias __MODULE__.DB
   require Logger
 
   def mount(_params, _session, socket) do
     if Billing.account_provisioned?(socket.assigns.account) do
-      admins_count = Actors.count_account_admin_users_for_account(socket.assigns.account)
-      service_accounts_count = Actors.count_service_accounts_for_account(socket.assigns.account)
-      users_count = Actors.count_users_for_account(socket.assigns.account)
-      active_users_count = Clients.count_1m_active_users_for_account(socket.assigns.account)
-      gateway_groups_count = Gateways.count_groups_for_account(socket.assigns.account)
+      admins_count = DB.count_account_admin_users_for_account(socket.assigns.account)
+      service_accounts_count = DB.count_service_accounts_for_account(socket.assigns.account)
+      users_count = DB.count_users_for_account(socket.assigns.account)
+      active_users_count = DB.count_1m_active_users_for_account(socket.assigns.account)
+      gateway_groups_count = DB.count_groups_for_account(socket.assigns.account)
 
       socket =
         assign(socket,
@@ -284,6 +285,65 @@ defmodule Web.Settings.Billing do
           )
 
         {:noreply, socket}
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Repo}
+    alias Domain.Accounts.Account
+    alias Domain.Actors.Actor
+    alias Domain.Client
+
+    def count_account_admin_users_for_account(%Account{} = account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: is_nil(a.disabled_at),
+        where: a.type == :account_admin_user
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_service_accounts_for_account(%Account{} = account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: is_nil(a.disabled_at),
+        where: a.type == :service_account
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_users_for_account(%Account{} = account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: is_nil(a.disabled_at),
+        where: a.type in [:account_admin_user, :account_user]
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_1m_active_users_for_account(%Account{} = account) do
+      from(c in Client, as: :clients)
+      |> where([clients: c], c.account_id == ^account.id)
+      |> where([clients: c], c.last_seen_at > ago(1, "month"))
+      |> join(:inner, [clients: c], a in Actor, on: c.actor_id == a.id, as: :actor)
+      |> where([actor: a], is_nil(a.disabled_at))
+      |> where([actor: a], a.type in [:account_user, :account_admin_user])
+      |> select([clients: c], c.actor_id)
+      |> distinct(true)
+      |> Repo.aggregate(:count)
+    end
+    
+    def count_groups_for_account(account) do
+      from(g in Domain.Gateways.Group,
+        where: g.account_id == ^account.id,
+        where: g.managed_by == :account
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
     end
   end
 end

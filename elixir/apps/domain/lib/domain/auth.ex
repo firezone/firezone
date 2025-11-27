@@ -72,7 +72,7 @@ defmodule Domain.Auth do
       when type in [:browser, :client, :api_client] do
     account = DB.get_account_by_id!(token.account_id)
 
-    with {:ok, actor} <- Actors.fetch_active_actor_by_id(token.actor_id) do
+    with {:ok, actor} <- DB.fetch_active_actor_by_id(token.actor_id) do
       {:ok,
        %Subject{
          actor: actor,
@@ -89,11 +89,22 @@ defmodule Domain.Auth do
     import Ecto.Query
     alias Domain.Safe
     alias Domain.Accounts.Account
+    alias Domain.Actors.Actor
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
       |> Safe.unscoped()
       |> Safe.one!()
+    end
+
+    def fetch_active_actor_by_id(id) do
+      from(a in Actor, where: a.id == ^id, where: is_nil(a.disabled_at))
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        actor -> {:ok, actor}
+      end
     end
   end
 end

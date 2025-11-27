@@ -29,7 +29,7 @@ defmodule Domain.Application do
 
       # Application
       Domain.Relays,
-      Domain.Gateways,
+      Domain.Gateways.Presence,
       Domain.Clients,
       Domain.Billing,
       Domain.Mailer,

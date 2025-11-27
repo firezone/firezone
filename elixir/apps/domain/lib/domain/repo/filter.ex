@@ -239,7 +239,7 @@ defmodule Domain.Repo.Filter do
   defp value_type_valid?({:string, :phone_number}, value), do: is_binary(value)
   defp value_type_valid?({:string, :websearch}, value), do: is_binary(value)
   defp value_type_valid?({:string, :select}, value), do: is_binary(value)
-  defp value_type_valid?({:string, :uuid}, value), do: Domain.Repo.valid_uuid?(value)
+  defp value_type_valid?({:string, :uuid}, value), do: is_binary(value)
   defp value_type_valid?(:string, value), do: is_binary(value)
   defp value_type_valid?(:boolean, value), do: is_boolean(value)
   defp value_type_valid?(:integer, value), do: is_integer(value)

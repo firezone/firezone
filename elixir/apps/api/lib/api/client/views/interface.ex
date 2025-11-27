@@ -8,7 +8,7 @@ defmodule API.Client.Views.Interface do
     opendns: [%{url: "https://doh.opendns.com/dns-query"}]
   }
 
-  def render(%Clients.Client{} = client) do
+  def render(%Client{} = client) do
     dns_config = Map.get(client.account.config, :clients_upstream_dns)
 
     {upstream_do53, upstream_doh, upstream_dns} =

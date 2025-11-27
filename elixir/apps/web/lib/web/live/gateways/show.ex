@@ -1,13 +1,14 @@
 defmodule Web.Gateways.Show do
   use Web, :live_view
   alias Domain.Gateways
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, gateway} <- Gateways.fetch_gateway_by_id(id, socket.assigns.subject) do
+    with {:ok, gateway} <- DB.fetch_gateway_by_id(id, socket.assigns.subject) do
       gateway =
         gateway
         |> Domain.Repo.preload(:group)
-        |> then(fn gw -> Gateways.preload_gateways_presence([gw]) |> List.first() end)
+        |> then(fn gw -> DB.preload_gateways_presence([gw]) |> List.first() end)
 
       if connected?(socket) do
         :ok = Gateways.Presence.Group.subscribe(gateway.group_id)
@@ -155,7 +156,7 @@ defmodule Web.Gateways.Show do
       cond do
         Map.has_key?(payload.joins, gateway.id) ->
           {:ok, gateway} =
-            Gateways.fetch_gateway_by_id(gateway.id, socket.assigns.subject)
+            DB.fetch_gateway_by_id(gateway.id, socket.assigns.subject)
             |> then(fn {:ok, gw} -> {:ok, Domain.Repo.preload(gw, :group)} end)
 
           assign(socket, gateway: %{gateway | online?: true})
@@ -171,7 +172,7 @@ defmodule Web.Gateways.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _gateway} = Gateways.delete_gateway(socket.assigns.gateway, socket.assigns.subject)
+    {:ok, _gateway} = DB.delete_gateway(socket.assigns.gateway, socket.assigns.subject)
 
     socket =
       socket
@@ -179,5 +180,34 @@ defmodule Web.Gateways.Show do
       |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.group}")
 
     {:noreply, socket}
+  end
+  
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Gateways}
+    alias Domain.Gateway
+    
+    def fetch_gateway_by_id(id, subject) do
+      result =
+        from(g in Gateway, as: :gateways)
+        |> where([gateways: g], g.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        gateway -> {:ok, gateway}
+      end
+    end
+    
+    def delete_gateway(gateway, subject) do
+      Safe.scoped(gateway, subject)
+      |> Safe.delete()
+    end
+    
+    def preload_gateways_presence(gateways) do
+      Domain.Gateways.Presence.preload_gateways_presence(gateways)
+    end
   end
 end

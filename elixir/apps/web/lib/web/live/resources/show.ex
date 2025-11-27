@@ -3,11 +3,12 @@ defmodule Web.Resources.Show do
   import Web.Policies.Components
   import Web.Resources.Components
   alias Domain.{PubSub, Resources, Policies, Flows}
+  alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <- fetch_resource(id, socket.assigns.subject),
          {:ok, actor_groups_peek} <-
-           Resources.peek_resource_actor_groups([resource], 3, socket.assigns.subject) do
+           DB.peek_resource_actor_groups([resource], 3, socket.assigns.subject) do
       if connected?(socket) do
         :ok = PubSub.Account.subscribe(resource.account_id)
       end
@@ -348,7 +349,7 @@ defmodule Web.Resources.Show do
       )
       when resource_id == id do
     {:ok, resource} =
-      Resources.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject)
+      DB.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject)
 
     resource = Domain.Safe.preload(resource, [:gateway_groups, :policies])
 
@@ -388,7 +389,7 @@ defmodule Web.Resources.Show do
   end
 
   defp fetch_resource("internet", subject) do
-    Resources.fetch_internet_resource(subject)
+    DB.fetch_internet_resource(subject)
     |> case do
       {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :gateway_groups)}
       error -> error
@@ -396,7 +397,7 @@ defmodule Web.Resources.Show do
   end
 
   defp fetch_resource(id, subject) do
-    Resources.fetch_resource_by_id(id, subject)
+    DB.fetch_resource_by_id(id, subject)
     |> case do
       {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :gateway_groups)}
       error -> error
@@ -406,4 +407,113 @@ defmodule Web.Resources.Show do
   defp format_ip_stack(:dual), do: "Dual-stack (IPv4 and IPv6)"
   defp format_ip_stack(:ipv4_only), do: "IPv4 only"
   defp format_ip_stack(:ipv6_only), do: "IPv6 only"
+  
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Resource, Repo}
+    
+    def fetch_resource_by_id(id, subject) do
+      result =
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+      
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        resource -> {:ok, resource}
+      end
+    end
+    
+    def fetch_internet_resource(subject) do
+      result =
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.type == :internet)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+      
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        resource -> {:ok, resource}
+      end
+    end
+    
+    def peek_resource_actor_groups(resources, limit, subject) do
+      ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
+      
+      {:ok, peek} =
+        all()
+        |> by_id({:in, ids})
+        |> preload_few_actor_groups_for_each_resource(limit)
+        |> where(account_id: ^subject.account.id)
+        |> Repo.peek(resources)
+      
+      group_by_ids =
+        Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
+        |> Enum.map(&{&1.id, &1})
+        |> Enum.into(%{})
+      
+      peek =
+        for {id, %{items: items} = map} <- peek, into: %{} do
+          {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
+        end
+      
+      {:ok, peek}
+    end
+    
+    def all do
+      from(resources in Resource, as: :resources)
+    end
+    
+    def by_id(queryable, {:in, ids}) do
+      where(queryable, [resources: resources], resources.id in ^ids)
+    end
+    
+    def preload_few_actor_groups_for_each_resource(queryable, limit) do
+      queryable
+      |> with_joined_actor_groups(limit)
+      |> with_joined_policies_counts()
+      |> select(
+        [resources: resources, actor_groups: actor_groups, policies_counts: policies_counts],
+        %{
+          id: resources.id,
+          count: policies_counts.count,
+          item: actor_groups
+        }
+      )
+    end
+    
+    def with_joined_actor_groups(queryable, limit) do
+      policies_subquery =
+        Domain.Policies.Policy.Query.not_disabled()
+        |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
+        |> select([policies: policies], policies.actor_group_id)
+        |> limit(^limit)
+      
+      actor_groups_subquery =
+        Domain.Actors.Group.Query.all()
+        |> where([groups: groups], groups.id in subquery(policies_subquery))
+      
+      join(
+        queryable,
+        :cross_lateral,
+        [resources: resources],
+        actor_groups in subquery(actor_groups_subquery),
+        as: :actor_groups
+      )
+    end
+    
+    def with_joined_policies_counts(queryable) do
+      subquery =
+        Domain.Policies.Policy.Query.not_disabled()
+        |> Domain.Policies.Policy.Query.count_by_resource_id()
+        |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
+      
+      join(queryable, :cross_lateral, [resources: resources], policies_counts in subquery(subquery),
+        as: :policies_counts
+      )
+    end
+  end
 end

@@ -11,11 +11,12 @@ defmodule API.Client.Channel do
     PubSub,
     Resources,
     Flows,
-    Gateways,
+    Gateway,
     Relays,
     Policies,
     Flows
   }
+  alias __MODULE__.DB
 
   alias Domain.Relays.Presence.Debouncer
   require Logger
@@ -347,7 +348,7 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           Gateways.all_compatible_gateways_for_client_and_resource(
+           DB.all_compatible_gateways_for_client_and_resource(
              socket.assigns.client,
              resource,
              socket.assigns.subject
@@ -357,7 +358,7 @@ defmodule API.Client.Channel do
         socket.assigns.client.last_seen_remote_ip_location_lon
       }
 
-      gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
+      gateway = Gateway.load_balance_gateways(location, gateways, connected_gateway_ids)
 
       # TODO: Optimization
       # Move this to a Task.start that completes after broadcasting authorize_flow
@@ -439,7 +440,7 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           Gateways.all_compatible_gateways_for_client_and_resource(
+           DB.all_compatible_gateways_for_client_and_resource(
              socket.assigns.client,
              resource,
              socket.assigns.subject
@@ -449,7 +450,7 @@ defmodule API.Client.Channel do
         socket.assigns.client.last_seen_remote_ip_location_lon
       }
 
-      gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
+      gateway = Gateway.load_balance_gateways(location, gateways, connected_gateway_ids)
 
       reply =
         {:ok,
@@ -494,9 +495,9 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
+           DB.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
            |> then(fn
-             {:ok, gw} -> {:ok, Gateways.preload_gateways_presence([gw]) |> List.first()}
+             {:ok, gw} -> {:ok, Domain.Gateways.Presence.preload_gateways_presence([gw]) |> List.first()}
              error -> error
            end),
          %Cache.Cacheable.GatewayGroup{} <-
@@ -565,9 +566,9 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
+           DB.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
            |> then(fn
-             {:ok, gw} -> {:ok, Gateways.preload_gateways_presence([gw]) |> List.first()}
+             {:ok, gw} -> {:ok, Domain.Gateways.Presence.preload_gateways_presence([gw]) |> List.first()}
              error -> error
            end),
          %Cache.Cacheable.GatewayGroup{} <-
@@ -786,8 +787,8 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Clients.Client{} = old_client,
-           struct: %Clients.Client{id: client_id} = client
+           old_struct: %Client{} = old_client,
+           struct: %Client{id: client_id} = client
          },
          %{assigns: %{client: %{id: id}}} = socket
        )
@@ -806,7 +807,7 @@ defmodule API.Client.Channel do
   end
 
   defp handle_change(
-         %Change{op: :delete, old_struct: %Clients.Client{id: id}},
+         %Change{op: :delete, old_struct: %Client{id: id}},
          %{assigns: %{client: %{id: client_id}}} = socket
        )
        when id == client_id do
@@ -820,8 +821,8 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Gateways.Group{name: old_name},
-           struct: %Gateways.Group{name: name} = group
+           old_struct: %Domain.Gateways.Group{name: old_name},
+           struct: %Domain.Gateways.Group{name: name} = group
          },
          socket
        )
@@ -980,5 +981,76 @@ defmodule API.Client.Channel do
     end
 
     {:noreply, assign(socket, cache: cache)}
+  end
+  
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Gateway, Gateways, Client, Resource}
+    
+    def fetch_gateway_by_id(id, subject) do
+      result =
+        from(g in Gateway, as: :gateways)
+        |> where([gateways: g], g.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+      
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        gateway -> {:ok, gateway}
+      end
+    end
+    
+    def all_compatible_gateways_for_client_and_resource(
+          %Client{} = client,
+          resource,
+          subject
+        ) do
+      resource_id = Ecto.UUID.load!(resource.id)
+      
+      connected_gateway_ids =
+        Domain.Gateways.Presence.Account.list(subject.account.id)
+        |> Map.keys()
+      
+      gateways =
+        from(g in Gateway, as: :gateways)
+        |> where([gateways: g], g.id in ^connected_gateway_ids)
+        |> join(:inner, [gateways: g], rc in Domain.Resources.Connection,
+          on: rc.gateway_group_id == g.group_id
+        )
+        |> where([gateways: g, rc], rc.resource_id == ^resource_id)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> case do
+          {:error, :unauthorized} -> []
+          gateways -> filter_compatible_gateways(gateways, resource, client.last_seen_version)
+        end
+      
+      {:ok, gateways}
+    end
+    
+    # Filters gateways by the resource type, gateway version, and client version.
+    defp filter_compatible_gateways(gateways, resource, client_version) do
+      case Version.parse(client_version) do
+        {:ok, version} ->
+          gateways
+          |> Enum.filter(fn gateway ->
+            case Version.parse(gateway.last_seen_version) do
+              {:ok, gateway_version} ->
+                Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
+                  Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
+                  not is_nil(
+                    Resource.adapt_resource_for_version(resource, gateway.last_seen_version)
+                  )
+              
+              _ ->
+                false
+            end
+          end)
+        
+        :error ->
+          []
+      end
+    end
   end
 end

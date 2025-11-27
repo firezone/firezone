@@ -1,10 +1,11 @@
 defmodule Web.Clients.Edit do
   use Web, :live_view
   alias Domain.Clients
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, client} <- Clients.fetch_client_by_id(id, socket.assigns.subject) do
-      changeset = Clients.change_client(client)
+    with {:ok, client} <- DB.fetch_client_by_id(id, socket.assigns.subject) do
+      changeset = update_changeset(client, %{})
 
       socket =
         assign(socket,
@@ -55,20 +56,62 @@ defmodule Web.Clients.Edit do
 
   def handle_event("change", %{"client" => attrs}, socket) do
     changeset =
-      Clients.change_client(socket.assigns.client, attrs)
+      update_changeset(socket.assigns.client, attrs)
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("submit", %{"client" => attrs}, socket) do
-    with {:ok, client} <-
-           Clients.update_client(socket.assigns.client, attrs, socket.assigns.subject) do
+    changeset = update_changeset(socket.assigns.client, attrs)
+    
+    with {:ok, client} <- DB.update_client(changeset, socket.assigns.subject) do
       socket = push_navigate(socket, to: ~p"/#{socket.assigns.account}/clients/#{client}")
       {:noreply, socket}
     else
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+  
+  defp update_changeset(client, attrs) do
+    import Ecto.Changeset
+    update_fields = ~w[name]a
+    required_fields = ~w[external_id name public_key]a
+    
+    client
+    |> cast(attrs, update_fields)
+    |> validate_required(required_fields)
+    |> Domain.Client.changeset()
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Clients, Safe}
+    alias Domain.Client
+
+    def fetch_client_by_id(id, subject) do
+      result =
+        from(c in Client, as: :clients)
+        |> where([clients: c], c.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        client -> {:ok, client}
+      end
+    end
+
+    def update_client(changeset, subject) do
+      case Safe.scoped(changeset, subject) |> Safe.update() do
+        {:ok, updated_client} ->
+          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 end

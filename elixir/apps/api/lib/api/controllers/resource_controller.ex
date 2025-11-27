@@ -58,8 +58,9 @@ defmodule API.ResourceController do
 
   def create(conn, %{"resource" => params}) do
     attrs = set_param_defaults(params)
+    changeset = create_changeset(attrs, conn.assigns.subject)
 
-    with {:ok, resource} <- Resources.create_resource(attrs, conn.assigns.subject) do
+    with {:ok, resource} <- DB.insert_resource(changeset, conn.assigns.subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/resources/#{resource}")
@@ -127,6 +128,10 @@ defmodule API.ResourceController do
   defp set_param_defaults(params) do
     Map.put_new(params, "filters", %{})
   end
+  
+  defp create_changeset(attrs, subject) do
+    Resources.Resource.Changeset.create(subject.account, attrs, subject)
+  end
 
   defmodule DB do
     import Ecto.Query
@@ -155,6 +160,11 @@ defmodule API.ResourceController do
       resource
       |> Safe.scoped(subject)
       |> Safe.delete()
+    end
+    
+    def insert_resource(changeset, subject) do
+      Safe.scoped(changeset, subject)
+      |> Safe.insert()
     end
 
     defp changeset(resource, attrs, subject) do

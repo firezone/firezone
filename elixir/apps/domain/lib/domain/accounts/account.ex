@@ -38,10 +38,10 @@ defmodule Domain.Accounts.Account do
 
     has_many :flows, Domain.Flows.Flow
 
-    has_many :resources, Domain.Resources.Resource
+    has_many :resources, Domain.Resource
     has_many :resource_connections, Domain.Resources.Connection
 
-    has_many :clients, Domain.Clients.Client
+    has_many :clients, Domain.Client
 
     has_many :gateways, Domain.Gateways.Gateway
     has_many :gateway_groups, Domain.Gateways.Group

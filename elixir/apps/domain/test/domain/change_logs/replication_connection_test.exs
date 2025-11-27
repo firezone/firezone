@@ -3,7 +3,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
   import Ecto.Query
   alias Domain.ChangeLogs.ReplicationConnection
-  alias Domain.ChangeLogs.ChangeLog
+  alias Domain.ChangeLog
   alias Domain.Repo
 
   setup do

@@ -433,10 +433,14 @@ defmodule Domain.Billing.EventHandler do
     # Create default groups and resources
     # TODO: IDP REFACTOR
     # Use special case everyone group instead of storing in DB
-    {:ok, _everyone_group} = Domain.Actors.create_managed_group(account, %{name: "Everyone"})
-    {:ok, _gateway_group} = Domain.Gateways.create_group(account, %{name: "Default Site"})
-    {:ok, internet_gateway_group} = Domain.Gateways.create_internet_group(account)
-    {:ok, _resource} = Domain.Resources.create_internet_resource(account, internet_gateway_group)
+    changeset = create_everyone_group_changeset(account)
+    {:ok, _everyone_group} = DB.insert(changeset)
+    changeset = create_group_changeset(account, %{name: "Default Site"})
+    {:ok, _gateway_group} = DB.insert_group(changeset)
+    changeset = create_internet_group_changeset(account)
+    {:ok, internet_gateway_group} = DB.insert_group(changeset)
+    changeset = create_internet_resource_changeset(account, internet_gateway_group)
+    {:ok, _resource} = DB.insert(changeset)
 
     # Create email provider
     {:ok, _email_provider} = DB.create_email_provider(account)
@@ -446,9 +450,74 @@ defmodule Domain.Billing.EventHandler do
     given_name = metadata["account_owner_first_name"]
     family_name = metadata["account_owner_last_name"]
     name = "#{given_name} #{family_name}"
-    {:ok, _actor} = DB.create_admin(account, email, name)
+    changeset = create_admin_changeset(account, email, name)
+    {:ok, _actor} = DB.insert(changeset)
 
     :ok
+  end
+
+  defp create_everyone_group_changeset(account) do
+    import Ecto.Changeset
+    attrs = %{account_id: account.id, name: "Everyone", type: :managed}
+    cast(%Domain.Actors.Group{}, attrs, ~w[account_id name type]a)
+  end
+
+  defp create_admin_changeset(account, email, name) do
+    import Ecto.Changeset
+    attrs = %{account_id: account.id, email: email, name: name, type: :account_admin_user}
+    cast(%Domain.Actors.Actor{}, attrs, ~w[account_id email name type]a)
+  end
+  
+  defp create_group_changeset(account, attrs) do
+    import Ecto.Changeset
+    
+    %Domain.Gateways.Group{
+      account_id: account.id,
+      created_by_identity_id: nil,
+      managed_by: :account,
+      tokens: []
+    }
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> Domain.Gateways.Group.changeset()
+  end
+  
+  defp create_internet_group_changeset(account) do
+    import Ecto.Changeset
+    
+    %Domain.Gateways.Group{
+      account_id: account.id,
+      created_by_identity_id: nil,
+      managed_by: :system,
+      tokens: []
+    }
+    |> cast(%{name: "Internet", managed_by: :system}, [:name, :managed_by])
+    |> validate_required([:name, :managed_by])
+    |> Domain.Gateways.Group.changeset()
+  end
+  
+  defp create_internet_resource_changeset(account, group) do
+    import Ecto.Changeset
+    
+    attrs = %{
+      type: :internet,
+      name: "Internet",
+      connections: %{
+        group.id => %{
+          gateway_group_id: group.id,
+          enabled: true
+        }
+      }
+    }
+    
+    %Domain.Resource{connections: []}
+    |> cast(attrs, [:type, :name])
+    |> validate_required([:name, :type])
+    |> put_change(:account_id, account.id)
+    |> Domain.Resource.changeset()
+    |> cast_assoc(:connections,
+      with: &Domain.Resources.Connection.Changeset.changeset(account.id, &1, &2)
+    )
   end
 
   # Account Updates
@@ -535,6 +604,7 @@ defmodule Domain.Billing.EventHandler do
     alias Domain.{
       Accounts.Account,
       Actors.Actor,
+      Actors.Group,
       AuthProvider,
       EmailOTP,
       Safe
@@ -558,13 +628,6 @@ defmodule Domain.Billing.EventHandler do
       end
     end
 
-    def create_admin(account, email, name) do
-      attrs = %{account_id: account.id, email: email, name: name, type: :account_admin_user}
-
-      cast(%Actor{}, attrs, ~w[account_id email name type]a)
-      |> Safe.unscoped()
-      |> Safe.insert()
-    end
 
     def insert(changeset) do
       Safe.unscoped(changeset)
@@ -585,6 +648,11 @@ defmodule Domain.Billing.EventHandler do
           |> Safe.unscoped()
           |> Safe.update()
       end
+    end
+    
+    def insert_group(changeset) do
+      Safe.unscoped(changeset)
+      |> Safe.insert()
     end
   end
 end

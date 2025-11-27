@@ -20,7 +20,7 @@ defmodule Web.HomeController do
   def redirect_to_sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     params = Web.Auth.take_sign_in_params(params)
 
-    case Domain.Accounts.Account.Changeset.validate_account_id_or_slug(account_id_or_slug) do
+    case validate_account_id_or_slug(account_id_or_slug) do
       {:ok, account_id_or_slug} ->
         redirect(conn, to: ~p"/#{account_id_or_slug}?#{params}")
 
@@ -28,6 +28,21 @@ defmodule Web.HomeController do
         conn
         |> put_flash(:error, reason)
         |> redirect(to: ~p"/?#{params}")
+    end
+  end
+
+  @slug_regex ~r/^[a-zA-Z0-9_]+$/
+  
+  defp validate_account_id_or_slug(account_id_or_slug) do
+    cond do
+      match?({:ok, _}, Ecto.UUID.cast(account_id_or_slug)) ->
+        {:ok, String.downcase(account_id_or_slug)}
+
+      String.match?(account_id_or_slug, @slug_regex) ->
+        {:ok, String.downcase(account_id_or_slug)}
+
+      true ->
+        {:error, "Account ID or Slug can only contain letters, digits and underscore"}
     end
   end
 

@@ -1,7 +1,7 @@
 defmodule Domain.Resources.Resource.Changeset do
   use Domain, :changeset
-  alias Domain.{Auth, Accounts, Network}
-  alias Domain.Resources.{Resource, Connection}
+  alias Domain.{Auth, Accounts, Network, Resource}
+  alias Domain.Resources.Connection
 
   @fields ~w[address address_description name type ip_stack]a
   @update_fields ~w[address address_description name type ip_stack]a

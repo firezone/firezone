@@ -1,7 +1,8 @@
 defmodule Domain.Flows do
   alias Domain.{Repo, Safe}
-  alias Domain.{Auth, Actors, Clients, Gateways, Resources, Policies}
+  alias Domain.{Auth, Actors, Clients, Gateway, Resources, Policies}
   alias Domain.Flows.Flow
+  alias __MODULE__.DB
   require Ecto.Query
   require Logger
 
@@ -9,7 +10,7 @@ defmodule Domain.Flows do
   # Connection setup latency - doesn't need to block setting up flow. Authorizing the flow
   # is now handled in memory and this only logs it, so these can be done in parallel.
   def create_flow(
-        %Clients.Client{
+        %Client{
           id: client_id,
           account_id: account_id,
           actor_id: actor_id
@@ -72,9 +73,9 @@ defmodule Domain.Flows do
   # This will be much smoother once https://github.com/firezone/firezone/issues/10074 is implemented,
   # since we won't need to be so careful about reject_access messages to the gateway.
   def reauthorize_flow(%Flow{} = flow) do
-    with client when not is_nil(client) <- Clients.fetch_client_by_id!(flow.client_id),
+    with client when not is_nil(client) <- DB.fetch_client_by_id!(flow.client_id),
          {:ok, token} <- Domain.Tokens.fetch_token_by_id(flow.token_id),
-         {:ok, gateway} <- Gateways.fetch_gateway_by_id(flow.gateway_id),
+         {:ok, gateway} <- DB.fetch_gateway_by_id(flow.gateway_id),
          # We only want to reauthorize the resource for this gateway if the resource is still connected to its
          # gateway_group.
          policies when policies != [] <-
@@ -87,7 +88,7 @@ defmodule Domain.Flows do
          {:ok, policy, expires_at} <-
            Policies.longest_conforming_policy_for_client(policies, client, token, flow.expires_at),
          {:ok, membership} <-
-           Actors.fetch_membership_by_actor_id_and_group_id(
+           DB.fetch_membership_by_actor_id_and_group_id(
              client.actor_id,
              policy.actor_group_id
            ),
@@ -124,20 +125,16 @@ defmodule Domain.Flows do
   end
 
   def fetch_flow_by_id(id, %Auth.Subject{} = subject) do
-    with true <- Repo.valid_uuid?(id) do
-      result =
-        Flow.Query.all()
-        |> Flow.Query.by_id(id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
+    result =
+      Flow.Query.all()
+      |> Flow.Query.by_id(id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
 
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        flow -> {:ok, flow}
-      end
-    else
-      false -> {:error, :not_found}
+    case result do
+      nil -> {:error, :not_found}
+      {:error, :unauthorized} -> {:error, :unauthorized}
+      flow -> {:ok, flow}
     end
   end
 
@@ -164,7 +161,7 @@ defmodule Domain.Flows do
     |> list_flows(subject, opts)
   end
 
-  def list_flows_for(%Clients.Client{} = client, %Auth.Subject{} = subject, opts) do
+  def list_flows_for(%Client{} = client, %Auth.Subject{} = subject, opts) do
     Flow.Query.all()
     |> Flow.Query.by_client_id(client.id)
     |> list_flows(subject, opts)
@@ -207,7 +204,7 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
-  def delete_flows_for(%Domain.Clients.Client{} = client) do
+  def delete_flows_for(%Domain.Client{} = client) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(client.account_id)
     |> Flow.Query.by_client_id(client.id)
@@ -228,7 +225,7 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
-  def delete_flows_for(%Domain.Resources.Resource{} = resource) do
+  def delete_flows_for(%Domain.Resource{} = resource) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(resource.account_id)
     |> Flow.Query.by_resource_id(resource.id)
@@ -255,12 +252,54 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
-  def delete_stale_flows_on_connect(%Clients.Client{} = client, resource_ids)
+  def delete_stale_flows_on_connect(%Client{} = client, resource_ids)
       when is_list(resource_ids) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(client.account_id)
     |> Flow.Query.by_client_id(client.id)
     |> Flow.Query.by_not_in_resource_ids(resource_ids)
     |> Repo.delete_all()
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Repo, Gateway}
+    alias Domain.Actors.Membership
+    alias Domain.Client
+
+    def fetch_membership_by_actor_id_and_group_id(actor_id, group_id) do
+      from(m in Membership,
+        where: m.actor_id == ^actor_id,
+        where: m.group_id == ^group_id
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        membership -> {:ok, membership}
+      end
+    end
+
+    def fetch_client_by_id!(id, _opts \\ []) do
+      import Ecto.Query
+      
+      from(c in Client, as: :clients)
+      |> where([clients: c], c.id == ^id)
+      |> Repo.one()
+    end
+    
+    def fetch_gateway_by_id(id) do
+      result =
+        from(g in Gateway, as: :gateways)
+        |> where([gateways: g], g.id == ^id)
+        |> Safe.unscoped()
+        |> Safe.one()
+      
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        gateway -> {:ok, gateway}
+      end
+    end
   end
 end

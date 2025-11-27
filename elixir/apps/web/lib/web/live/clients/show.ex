@@ -3,13 +3,14 @@ defmodule Web.Clients.Show do
   import Web.Policies.Components
   import Web.Clients.Components
   alias Domain.{Clients, ComponentVersions, Flows}
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, client} <- Clients.fetch_client_by_id(id, socket.assigns.subject) do
+    with {:ok, client} <- DB.fetch_client_by_id(id, socket.assigns.subject) do
       client =
         client
         |> Domain.Repo.preload(:actor)
-        |> then(fn c -> Clients.preload_clients_presence([c]) |> List.first() end)
+        |> then(fn c -> DB.preload_clients_presence([c]) |> List.first() end)
 
       if connected?(socket) do
         :ok = Clients.Presence.Actor.subscribe(client.actor_id)
@@ -392,7 +393,7 @@ defmodule Web.Clients.Show do
       cond do
         Map.has_key?(payload.joins, client.id) ->
           {:ok, client} =
-            Clients.fetch_client_by_id(client.id, socket.assigns.subject)
+            DB.fetch_client_by_id(client.id, socket.assigns.subject)
             |> then(fn {:ok, c} -> {:ok, Domain.Repo.preload(c, :actor)} end)
 
           assign(socket, client: %{client | online?: true})
@@ -411,7 +412,15 @@ defmodule Web.Clients.Show do
     do: handle_live_table_event(event, params, socket)
 
   def handle_event("verify_client", _params, socket) do
-    {:ok, client} = Clients.verify_client(socket.assigns.client, socket.assigns.subject)
+    import Ecto.Changeset
+    import Domain.Repo.Changeset
+    
+    changeset = 
+      socket.assigns.client
+      |> change()
+      |> put_default_value(:verified_at, DateTime.utc_now())
+    
+    {:ok, client} = DB.verify_client(changeset, socket.assigns.subject)
 
     client = %{
       client
@@ -423,8 +432,14 @@ defmodule Web.Clients.Show do
   end
 
   def handle_event("remove_client_verification", _params, socket) do
-    {:ok, client} =
-      Clients.remove_client_verification(socket.assigns.client, socket.assigns.subject)
+    import Ecto.Changeset
+    
+    changeset = 
+      socket.assigns.client
+      |> change()
+      |> put_change(:verified_at, nil)
+    
+    {:ok, client} = DB.remove_client_verification(changeset, socket.assigns.subject)
 
     client = %{
       client
@@ -436,7 +451,7 @@ defmodule Web.Clients.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _deleted_client} = Clients.delete_client(socket.assigns.client, socket.assigns.subject)
+    {:ok, _deleted_client} = DB.delete_client(socket.assigns.client, socket.assigns.subject)
 
     socket =
       socket
@@ -444,5 +459,69 @@ defmodule Web.Clients.Show do
       |> push_navigate(to: ~p"/#{socket.assigns.account}/clients")
 
     {:noreply, socket}
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Clients, Safe}
+    alias Domain.Client
+
+    def fetch_client_by_id(id, subject) do
+      result =
+        from(c in Client, as: :clients)
+        |> where([clients: c], c.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        client -> {:ok, client}
+      end
+    end
+
+    def preload_clients_presence(clients) do
+      Clients.preload_clients_presence(clients)
+    end
+
+    def verify_client(changeset, subject) do
+      # Only account_admin_user can verify clients
+      if subject.actor.type == :account_admin_user do
+        case Safe.scoped(changeset, subject) |> Safe.update() do
+          {:ok, updated_client} ->
+            {:ok, preload_clients_presence([updated_client]) |> List.first()}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      else
+        {:error, :unauthorized}
+      end
+    end
+
+    def remove_client_verification(changeset, subject) do
+      # Only account_admin_user can remove client verification
+      if subject.actor.type == :account_admin_user do
+        case Safe.scoped(changeset, subject) |> Safe.update() do
+          {:ok, updated_client} ->
+            {:ok, preload_clients_presence([updated_client]) |> List.first()}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      else
+        {:error, :unauthorized}
+      end
+    end
+
+    def delete_client(client, subject) do
+      case Safe.scoped(client, subject) |> Safe.delete() do
+        {:ok, deleted_client} ->
+          {:ok, preload_clients_presence([deleted_client]) |> List.first()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
   end
 end

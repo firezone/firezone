@@ -13,20 +13,16 @@ defmodule Domain.Tokens do
   end
 
   def fetch_token_by_id(id, %Auth.Subject{} = subject) do
-    with true <- Repo.valid_uuid?(id) do
-      result =
-        Token.Query.all()
-        |> Token.Query.by_id(id)
-        |> scope_tokens_for_subject(subject)
-        |> Safe.one()
+    result =
+      Token.Query.all()
+      |> Token.Query.by_id(id)
+      |> scope_tokens_for_subject(subject)
+      |> Safe.one()
 
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        token -> {:ok, token}
-      end
-    else
-      false -> {:error, :not_found}
+    case result do
+      nil -> {:error, :not_found}
+      {:error, :unauthorized} -> {:error, :unauthorized}
+      token -> {:ok, token}
     end
   end
 

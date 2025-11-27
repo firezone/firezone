@@ -5,20 +5,16 @@ defmodule Domain.Policies do
   require Logger
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject) do
-    with true <- Repo.valid_uuid?(id) do
-      result =
-        Policy.Query.all()
-        |> Policy.Query.by_id(id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
+    result =
+      Policy.Query.all()
+      |> Policy.Query.by_id(id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
 
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        policy -> {:ok, policy}
-      end
-    else
-      false -> {:error, :not_found}
+    case result do
+      nil -> {:error, :not_found}
+      {:error, :unauthorized} -> {:error, :unauthorized}
+      policy -> {:ok, policy}
     end
   end
 
@@ -103,7 +99,7 @@ defmodule Domain.Policies do
 
   def filter_by_conforming_policies_for_client(
         policies,
-        %Clients.Client{} = client,
+        %Client{} = client,
         auth_provider_id
       ) do
     Enum.filter(policies, fn policy ->
@@ -143,7 +139,7 @@ defmodule Domain.Policies do
 
   defp ensure_client_conforms_policy_conditions(
          %__MODULE__.Policy{} = policy,
-         %Clients.Client{} = client,
+         %Client{} = client,
          auth_provider_id
        ) do
     ensure_client_conforms_policy_conditions(Cacheable.to_cache(policy), client, auth_provider_id)
@@ -151,7 +147,7 @@ defmodule Domain.Policies do
 
   defp ensure_client_conforms_policy_conditions(
          %Cacheable.Policy{} = policy,
-         %Clients.Client{} = client,
+         %Client{} = client,
          auth_provider_id
        ) do
     case Condition.Evaluator.ensure_conforms(policy.conditions, client, auth_provider_id) do

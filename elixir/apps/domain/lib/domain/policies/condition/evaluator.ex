@@ -3,11 +3,11 @@ defmodule Domain.Policies.Condition.Evaluator do
 
   @days_of_week ~w[M T W R F S U]
 
-  def ensure_conforms([], %Clients.Client{}, _auth_provider_id) do
+  def ensure_conforms([], %Client{}, _auth_provider_id) do
     {:ok, nil}
   end
 
-  def ensure_conforms(conditions, %Clients.Client{} = client, auth_provider_id)
+  def ensure_conforms(conditions, %Client{} = client, auth_provider_id)
       when is_list(conditions) do
     conditions
     |> Enum.reduce({[], nil}, fn condition, {violated_properties, min_expires_at} ->
@@ -36,7 +36,7 @@ defmodule Domain.Policies.Condition.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip_location_region, operator: :is_in, values: values},
-        %Clients.Client{} = client,
+        %Client{} = client,
         _auth_provider_id
       ) do
     if client.last_seen_remote_ip_location_region in values do
@@ -48,7 +48,7 @@ defmodule Domain.Policies.Condition.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip_location_region, operator: :is_not_in, values: values},
-        %Clients.Client{} = client,
+        %Client{} = client,
         _auth_provider_id
       ) do
     if client.last_seen_remote_ip_location_region in values do
@@ -60,7 +60,7 @@ defmodule Domain.Policies.Condition.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip, operator: :is_in_cidr, values: values},
-        %Clients.Client{} = client,
+        %Client{} = client,
         _auth_provider_id
       ) do
     Enum.reduce_while(values, :error, fn cidr, :error ->
@@ -77,7 +77,7 @@ defmodule Domain.Policies.Condition.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip, operator: :is_not_in_cidr, values: values},
-        %Clients.Client{} = client,
+        %Client{} = client,
         _auth_provider_id
       ) do
     Enum.reduce_while(values, {:ok, nil}, fn cidr, {:ok, nil} ->
@@ -94,7 +94,7 @@ defmodule Domain.Policies.Condition.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :auth_provider_id, operator: :is_in, values: values},
-        %Clients.Client{},
+        %Client{},
         auth_provider_id
       ) do
     if auth_provider_id in values do
@@ -106,7 +106,7 @@ defmodule Domain.Policies.Condition.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :auth_provider_id, operator: :is_not_in, values: values},
-        %Clients.Client{},
+        %Client{},
         auth_provider_id
       ) do
     if auth_provider_id in values do
@@ -122,7 +122,7 @@ defmodule Domain.Policies.Condition.Evaluator do
           operator: :is,
           values: ["true"]
         },
-        %Clients.Client{verified_at: verified_at}
+        %Client{verified_at: verified_at}
       ) do
     if is_nil(verified_at) do
       :error
@@ -137,7 +137,7 @@ defmodule Domain.Policies.Condition.Evaluator do
           operator: :is,
           values: _other
         },
-        %Clients.Client{}
+        %Client{}
       ) do
     {:ok, nil}
   end
@@ -148,7 +148,7 @@ defmodule Domain.Policies.Condition.Evaluator do
           operator: :is_in_day_of_week_time_ranges,
           values: values
         },
-        %Clients.Client{}
+        %Client{}
       ) do
     case find_day_of_the_week_time_range(values, DateTime.utc_now()) do
       nil -> :error

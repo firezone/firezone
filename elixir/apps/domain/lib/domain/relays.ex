@@ -25,20 +25,16 @@ defmodule Domain.Relays do
   end
 
   def fetch_group_by_id(id, %Auth.Subject{} = subject) do
-    with true <- Repo.valid_uuid?(id) do
-      result =
-        Group.Query.all()
-        |> Group.Query.by_id(id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
+    result =
+      Group.Query.all()
+      |> Group.Query.by_id(id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
 
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        group -> {:ok, group}
-      end
-    else
-      false -> {:error, :not_found}
+    case result do
+      nil -> {:error, :not_found}
+      {:error, :unauthorized} -> {:error, :unauthorized}
+      group -> {:ok, group}
     end
   end
 
@@ -141,20 +137,16 @@ defmodule Domain.Relays do
   end
 
   def fetch_relay_by_id(id, %Auth.Subject{} = subject) do
-    with true <- Repo.valid_uuid?(id) do
-      result =
-        Relay.Query.all()
-        |> Relay.Query.by_id(id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
+    result =
+      Relay.Query.all()
+      |> Relay.Query.by_id(id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
 
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        relay -> {:ok, relay}
-      end
-    else
-      false -> {:error, :not_found}
+    case result do
+      nil -> {:error, :not_found}
+      {:error, :unauthorized} -> {:error, :unauthorized}
+      relay -> {:ok, relay}
     end
   end
 
