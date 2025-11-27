@@ -13,9 +13,9 @@ use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::gateway::filter_engine::FilterEngine;
-use crate::gateway::flow_tracker;
-use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
+use crate::gateway::nat_table::NatTable;
 use crate::gateway::unroutable_packet::UnroutablePacket;
+use crate::gateway::{flow_tracker, nat_table};
 use crate::messages::gateway::Filters;
 use crate::messages::gateway::ResourceDescription;
 use crate::utils::network_contains_network;
@@ -346,7 +346,7 @@ impl ClientOnGateway {
             IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
 
-        let packet = self.transform_tun_to_network(packet, now)?;
+        let packet = self.maybe_apply_inbound_dns_resource_nat(packet, now)?;
 
         self.ensure_client_ip(packet.destination())?;
 
@@ -416,14 +416,14 @@ impl ClientOnGateway {
         Ok(TranslateOutboundResult::Send(packet))
     }
 
-    fn transform_tun_to_network(
+    fn maybe_apply_inbound_dns_resource_nat(
         &mut self,
         mut packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<IpPacket> {
-        let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
-            TranslateIncomingResult::Ok { proto, src } => (proto, src),
-            TranslateIncomingResult::IcmpError(prototype) => {
+        let (proto, src) = match self.nat_table.translate_incoming(&packet, now)? {
+            nat_table::TranslateIncomingResult::Ok { proto, src } => (proto, src),
+            nat_table::TranslateIncomingResult::IcmpError(prototype) => {
                 tracing::debug!(error = ?prototype.error(), dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), "ICMP Error");
 
                 let icmp_error = prototype
@@ -432,10 +432,10 @@ impl ClientOnGateway {
 
                 return Ok(icmp_error);
             }
-            TranslateIncomingResult::ExpiredNatSession => {
+            nat_table::TranslateIncomingResult::ExpiredNatSession => {
                 bail!(UnroutablePacket::expired_nat_session(&packet))
             }
-            TranslateIncomingResult::NoNatSession => {
+            nat_table::TranslateIncomingResult::NoNatSession => {
                 // No NAT session means packet is likely for Internet Resource or a CIDR resource.
 
                 return Ok(packet);
@@ -443,7 +443,7 @@ impl ClientOnGateway {
         };
 
         packet
-            .translate_source(proto, ip)
+            .translate_source(proto, src)
             .context("Failed to translate packet to new source")?;
         packet.update_checksum();
 
