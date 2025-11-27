@@ -690,6 +690,7 @@ mod tests {
         time::Duration,
     };
 
+    use anyhow::ErrorExt;
     use ip_packet::make::TcpFlags;
 
     use crate::{
@@ -1212,6 +1213,34 @@ mod tests {
         assert!(peer.permanent_translations.contains_key(&proxy_ip4_2()));
         assert!(peer.permanent_translations.contains_key(&proxy_ip6_1()));
         assert!(peer.permanent_translations.contains_key(&proxy_ip6_2()));
+    }
+
+    #[test]
+    fn no_translate_outbound_icmp_error() {
+        let _guard = logging::test("trace");
+
+        let now = Instant::now();
+
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_tun(),
+            gateway_tun(),
+            flow_tracker::ClientProperties::default(),
+        );
+
+        let icmp_unreachable = ip_packet::make::icmp_dest_unreachable_network(
+            &ip_packet::make::udp_packet(proxy_ip4_1(), client_tun_ipv4(), 443, 50000, vec![])
+                .unwrap(),
+        )
+        .unwrap();
+
+        let error = peer.translate_outbound(icmp_unreachable, now).unwrap_err();
+        let error = error.any_downcast_ref::<UnroutablePacket>().unwrap();
+
+        assert_eq!(error.to_string(), "Unroutable packet: OutboundIcmpError");
+        assert_eq!(error.source().to_string(), "unknown");
+        assert_eq!(error.destination().to_string(), "unknown");
+        assert_eq!(error.proto().to_string(), "unknown");
     }
 
     fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
