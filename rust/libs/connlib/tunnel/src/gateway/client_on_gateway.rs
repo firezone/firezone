@@ -372,11 +372,6 @@ impl ClientOnGateway {
     ) -> anyhow::Result<TranslateOutboundResult> {
         let dst = packet.destination();
 
-        // Packets to the TUN interface don't get transformed.
-        if self.gateway_tun.is_ip(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
-        }
-
         // Packets for CIDR resources / Internet resource are forwarded as is.
         if !is_dns_addr(dst) {
             return Ok(TranslateOutboundResult::Send(packet));
