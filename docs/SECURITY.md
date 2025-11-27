@@ -5,9 +5,9 @@ seriously and strive to fix all security issues as soon as they're reported.
 
 ## Announcements
 
-We'll announce major security issues on our security mailing list located at:
+We'll announce major security issues on our blog located at:
 
-https://discourse.firez.one/?utm_source=security
+https://www.firezone.dev/blog
 
 ## Supported Versions
 
