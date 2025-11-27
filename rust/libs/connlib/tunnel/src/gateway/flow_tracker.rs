@@ -414,7 +414,7 @@ impl FlowTracker {
                     }
                 };
             }
-            (Protocol::Icmp(_), Protocol::Icmp(_)) => {}
+            (Protocol::IcmpEcho(_), Protocol::IcmpEcho(_)) => {}
             _ => {
                 tracing::error!("src and dst protocol must be the same");
             }
@@ -508,7 +508,7 @@ impl FlowTracker {
                     }
                 };
             }
-            (Protocol::Icmp(_), Protocol::Icmp(_)) => {}
+            (Protocol::IcmpEcho(_), Protocol::IcmpEcho(_)) => {}
             _ => {
                 tracing::error!("src and dst protocol must be the same");
             }

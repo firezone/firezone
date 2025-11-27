@@ -119,7 +119,7 @@ impl FiveTuple {
                 dst: MaybeIpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
                 proto: MaybeProto::Udp,
             },
-            (Ok(Protocol::Icmp(_)), Ok(Protocol::Icmp(_))) => Self {
+            (Ok(Protocol::IcmpEcho(_)), Ok(Protocol::IcmpEcho(_))) => Self {
                 src: MaybeIpOrSocket::Ip(src_ip),
                 dst: MaybeIpOrSocket::Ip(dst_ip),
                 proto: MaybeProto::Icmp,
