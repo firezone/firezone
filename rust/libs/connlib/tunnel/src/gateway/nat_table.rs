@@ -62,24 +62,24 @@ impl NatTable {
 
             self.expired.insert(outside);
 
-            let last_outgoing = now.duration_since(state.last_outgoing);
-            let last_incoming = state.last_incoming.map(|t| now.duration_since(t));
+            let last_outbound = now.duration_since(state.last_outbound);
+            let last_inbound = state.last_inbound.map(|t| now.duration_since(t));
 
             tracing::debug!(
                 ?inside,
                 ?outside,
-                ?last_outgoing,
-                ?last_incoming,
-                fin_tx = %state.outgoing_fin,
-                fin_rx = %state.incoming_fin,
-                rst_tx = %state.outgoing_rst,
-                rst_rx = %state.incoming_rst,
+                ?last_outbound,
+                ?last_inbound,
+                fin_tx = %state.outbound_fin,
+                fin_rx = %state.inbound_fin,
+                rst_tx = %state.outbound_rst,
+                rst_rx = %state.inbound_rst,
                 "NAT entry removed"
             );
         }
     }
 
-    pub(crate) fn translate_outgoing(
+    pub(crate) fn translate_outbound(
         &mut self,
         packet: &IpPacket,
         outside_dst: IpAddr,
@@ -90,22 +90,16 @@ impl NatTable {
 
         let inside = Inside(src, dst);
 
-        if let Some(outside) = self.table.get_by_left(&inside).copied()
-            && let Some(state) = self.state_by_inside.get_mut(&inside)
-        {
-            tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
-
+        if let Some((inside, state)) = self.translate_outbound_inner(&inside, now) {
             if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                state.outgoing_rst = true;
+                state.outbound_rst = true;
             }
 
             if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
-                state.outgoing_fin = true;
+                state.outbound_fin = true;
             }
 
-            state.last_outgoing = now;
-
-            return Ok(outside.into_inner());
+            return Ok(inside.into_inner());
         }
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.
@@ -125,18 +119,18 @@ impl NatTable {
         Ok(outside.into_inner())
     }
 
-    pub(crate) fn translate_incoming(
+    pub(crate) fn translate_inbound(
         &mut self,
         packet: &IpPacket,
         now: Instant,
-    ) -> Result<TranslateIncomingResult> {
+    ) -> Result<TranslateInboundResult> {
         if let Some((failed_packet, icmp_error)) = packet.icmp_error()? {
             let outside = Outside(failed_packet.src_proto(), failed_packet.dst());
 
-            if let Some(Inside(inside_proto, inside_dst)) =
-                self.translate_incoming_inner(&outside, now)
+            if let Some((Inside(inside_proto, inside_dst), _)) =
+                self.translate_inbound_inner(&outside, now)
             {
-                return Ok(TranslateIncomingResult::IcmpError(IcmpErrorPrototype {
+                return Ok(TranslateInboundResult::IcmpError(IcmpErrorPrototype {
                     inside_dst,
                     inside_proto,
                     failed_packet,
@@ -145,72 +139,89 @@ impl NatTable {
             }
 
             if self.expired.contains(&outside) {
-                return Ok(TranslateIncomingResult::ExpiredNatSession);
+                return Ok(TranslateInboundResult::ExpiredNatSession);
             }
 
-            return Ok(TranslateIncomingResult::NoNatSession);
+            return Ok(TranslateInboundResult::NoNatSession);
         }
 
         let outside = Outside(packet.destination_protocol()?, packet.source());
 
-        if let Some(inside) = self.translate_incoming_inner(&outside, now)
-            && let Some(state) = self.state_by_inside.get_mut(&inside)
-        {
+        if let Some((inside, state)) = self.translate_inbound_inner(&outside, now) {
             if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                state.incoming_rst = true;
+                state.inbound_rst = true;
             }
 
             if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
-                state.incoming_fin = true;
+                state.inbound_fin = true;
             }
 
             let (proto, src) = inside.into_inner();
 
-            return Ok(TranslateIncomingResult::Ok { proto, src });
+            return Ok(TranslateInboundResult::Ok { proto, src });
         }
 
         if self.expired.contains(&outside) {
-            return Ok(TranslateIncomingResult::ExpiredNatSession);
+            return Ok(TranslateInboundResult::ExpiredNatSession);
         }
 
-        Ok(TranslateIncomingResult::NoNatSession)
+        Ok(TranslateInboundResult::NoNatSession)
     }
 
-    fn translate_incoming_inner(&mut self, outside: &Outside, now: Instant) -> Option<Inside> {
+    fn translate_outbound_inner(
+        &mut self,
+        inside: &Inside,
+        now: Instant,
+    ) -> Option<(Outside, &mut EntryState)> {
+        let outside = self.table.get_by_left(inside)?;
+        let state = self.state_by_inside.get_mut(inside)?;
+
+        tracing::trace!(?inside, ?outside, ?state, "Translating outbound packet");
+
+        state.last_outbound = now;
+
+        Some((*outside, state))
+    }
+
+    fn translate_inbound_inner(
+        &mut self,
+        outside: &Outside,
+        now: Instant,
+    ) -> Option<(Inside, &mut EntryState)> {
         let inside = self.table.get_by_right(outside)?;
         let state = self.state_by_inside.get_mut(inside)?;
 
-        tracing::trace!(?inside, ?outside, ?state, "Translating incoming packet");
+        tracing::trace!(?inside, ?outside, ?state, "Translating inbound packet");
 
-        let prev_last_incoming = state.last_incoming.replace(now);
-        if prev_last_incoming.is_none() {
+        let prev_last_inbound = state.last_inbound.replace(now);
+        if prev_last_inbound.is_none() {
             tracing::debug!(?inside, ?outside, "NAT session confirmed");
         }
 
-        Some(*inside)
+        Some((*inside, state))
     }
 }
 
 #[derive(Debug)]
 struct EntryState {
-    last_outgoing: Instant,
-    last_incoming: Option<Instant>,
+    last_outbound: Instant,
+    last_inbound: Option<Instant>,
 
-    outgoing_rst: bool,
-    incoming_rst: bool,
-    outgoing_fin: bool,
-    incoming_fin: bool,
+    outbound_rst: bool,
+    inbound_rst: bool,
+    outbound_fin: bool,
+    inbound_fin: bool,
 }
 
 impl EntryState {
-    fn new(last_outgoing: Instant) -> Self {
+    fn new(last_outbound: Instant) -> Self {
         Self {
-            last_outgoing,
-            last_incoming: None,
-            outgoing_rst: false,
-            incoming_rst: false,
-            outgoing_fin: false,
-            incoming_fin: false,
+            last_outbound,
+            last_inbound: None,
+            outbound_rst: false,
+            inbound_rst: false,
+            outbound_fin: false,
+            inbound_fin: false,
         }
     }
 
@@ -225,15 +236,15 @@ impl EntryState {
     }
 
     fn unconfirmed_timeout(&self) -> Option<Instant> {
-        if self.last_incoming.is_some() {
+        if self.last_inbound.is_some() {
             return None;
         }
 
-        Some(self.last_outgoing + UNCONFIRMED_TTL)
+        Some(self.last_outbound + UNCONFIRMED_TTL)
     }
 
     fn fin_timeout(&self) -> Option<Instant> {
-        if !self.outgoing_fin || !self.incoming_fin {
+        if !self.outbound_fin || !self.inbound_fin {
             return None;
         }
 
@@ -241,7 +252,7 @@ impl EntryState {
     }
 
     fn rst_timeout(&self) -> Option<Instant> {
-        if !self.outgoing_rst && !self.incoming_rst {
+        if !self.outbound_rst && !self.inbound_rst {
             return None;
         }
 
@@ -258,11 +269,11 @@ impl EntryState {
     }
 
     fn last_packet(&self) -> Instant {
-        let Some(last_incoming) = self.last_incoming else {
-            return self.last_outgoing;
+        let Some(last_inbound) = self.last_inbound else {
+            return self.last_outbound;
         };
 
-        std::cmp::max(self.last_outgoing, last_incoming)
+        std::cmp::max(self.last_outbound, last_inbound)
     }
 }
 
@@ -328,7 +339,7 @@ impl IcmpErrorPrototype {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum TranslateIncomingResult {
+pub enum TranslateInboundResult {
     Ok { proto: Protocol, src: IpAddr },
     IcmpError(IcmpErrorPrototype),
     ExpiredNatSession,
@@ -359,7 +370,7 @@ mod tests {
 
         // Translate out
         let (new_source_protocol, new_dst_ip) =
-            table.translate_outgoing(&packet, outside_dst, now).unwrap();
+            table.translate_outbound(&packet, outside_dst, now).unwrap();
 
         // Pretend we are getting a response.
         let mut response = packet.clone();
@@ -371,12 +382,12 @@ mod tests {
         table.handle_timeout(now);
 
         // Confirm mapping
-        table.translate_incoming(&response.clone(), now).unwrap();
+        table.translate_inbound(&response.clone(), now).unwrap();
 
         // Simulate another packet after _response_delay_
         now += response_delay;
         table.handle_timeout(now);
-        let translate_incoming = table.translate_incoming(&response, now).unwrap();
+        let translate_inbound = table.translate_inbound(&response, now).unwrap();
 
         let ttl = match src {
             Protocol::Tcp(_) => 7200,
@@ -386,14 +397,11 @@ mod tests {
 
         // Assert
         if response_delay >= Duration::from_secs(ttl) {
-            assert_eq!(
-                translate_incoming,
-                TranslateIncomingResult::ExpiredNatSession
-            );
+            assert_eq!(translate_inbound, TranslateInboundResult::ExpiredNatSession);
         } else {
             assert_eq!(
-                translate_incoming,
-                TranslateIncomingResult::Ok {
+                translate_inbound,
+                TranslateInboundResult::Ok {
                     proto: src,
                     src: dst
                 }
@@ -426,7 +434,7 @@ mod tests {
         // Translate out
         let new_src_p_and_dst = packets
             .clone()
-            .map(|(p, d)| table.translate_outgoing(&p, d, Instant::now()).unwrap());
+            .map(|(p, d)| table.translate_outbound(&p, d, Instant::now()).unwrap());
 
         // Pretend we are getting a response.
         for ((p, _), (new_src_p, new_d)) in packets.iter_mut().zip(new_src_p_and_dst) {
@@ -436,13 +444,13 @@ mod tests {
 
         // Translate in
         let responses = packets.map(|(p, _)| {
-            let res = table.translate_incoming(&p, Instant::now()).unwrap();
+            let res = table.translate_inbound(&p, Instant::now()).unwrap();
 
             match res {
-                TranslateIncomingResult::Ok { proto, src } => (proto, src),
-                TranslateIncomingResult::NoNatSession
-                | TranslateIncomingResult::ExpiredNatSession
-                | TranslateIncomingResult::IcmpError(_) => panic!("Wrong result"),
+                TranslateInboundResult::Ok { proto, src } => (proto, src),
+                TranslateInboundResult::NoNatSession
+                | TranslateInboundResult::ExpiredNatSession
+                | TranslateInboundResult::IcmpError(_) => panic!("Wrong result"),
             }
         });
 
@@ -450,7 +458,7 @@ mod tests {
     }
 
     #[test_strategy::proptest]
-    fn outgoing_tcp_rst_removes_nat_mapping(
+    fn outbound_tcp_rst_removes_nat_mapping(
         #[strategy(tcp_packet(Just(TcpFlags::default())))] req: IpPacket,
         #[strategy(tcp_packet(Just(TcpFlags { rst: true })))] mut rst: IpPacket,
         #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
@@ -466,7 +474,7 @@ mod tests {
         let mut table = NatTable::default();
         let mut now = Instant::now();
 
-        let outside = table.translate_outgoing(&req, outside_dst, now).unwrap();
+        let outside = table.translate_outbound(&req, outside_dst, now).unwrap();
 
         let mut response = req.clone();
         response.set_destination_protocol(outside.0.value());
@@ -474,27 +482,27 @@ mod tests {
 
         now += Duration::from_secs(1);
 
-        match table.translate_incoming(&response, now).unwrap() {
-            TranslateIncomingResult::Ok { .. } => {}
-            result @ (TranslateIncomingResult::NoNatSession
-            | TranslateIncomingResult::ExpiredNatSession
-            | TranslateIncomingResult::IcmpError(_)) => {
+        match table.translate_inbound(&response, now).unwrap() {
+            TranslateInboundResult::Ok { .. } => {}
+            result @ (TranslateInboundResult::NoNatSession
+            | TranslateInboundResult::ExpiredNatSession
+            | TranslateInboundResult::IcmpError(_)) => {
                 panic!("Wrong result: {result:?}")
             }
         };
 
         now += Duration::from_secs(1);
 
-        table.translate_outgoing(&rst, outside_dst, now).unwrap();
+        table.translate_outbound(&rst, outside_dst, now).unwrap();
 
         now += Duration::from_secs(1);
         table.handle_timeout(now);
 
-        match table.translate_incoming(&response, now).unwrap() {
-            TranslateIncomingResult::ExpiredNatSession => {}
-            result @ (TranslateIncomingResult::NoNatSession
-            | TranslateIncomingResult::Ok { .. }
-            | TranslateIncomingResult::IcmpError(_)) => {
+        match table.translate_inbound(&response, now).unwrap() {
+            TranslateInboundResult::ExpiredNatSession => {}
+            result @ (TranslateInboundResult::NoNatSession
+            | TranslateInboundResult::Ok { .. }
+            | TranslateInboundResult::IcmpError(_)) => {
                 panic!("Wrong result: {result:?}")
             }
         };

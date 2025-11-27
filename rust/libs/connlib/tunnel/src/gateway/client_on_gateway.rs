@@ -13,9 +13,9 @@ use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::gateway::filter_engine::FilterEngine;
-use crate::gateway::flow_tracker;
-use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
+use crate::gateway::nat_table::NatTable;
 use crate::gateway::unroutable_packet::UnroutablePacket;
+use crate::gateway::{flow_tracker, nat_table};
 use crate::messages::gateway::Filters;
 use crate::messages::gateway::ResourceDescription;
 use crate::utils::network_contains_network;
@@ -35,7 +35,7 @@ pub struct ClientOnGateway {
     internet_resource_enabled: Option<ResourceId>,
     filters: IpNetworkTable<(FilterEngine, ResourceId)>,
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
-    nat_table: NatTable,
+    dns_resource_nat: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
 }
 
@@ -61,7 +61,7 @@ impl ClientOnGateway {
             resources: BTreeMap::new(),
             filters: IpNetworkTable::new(),
             permanent_translations: Default::default(),
-            nat_table: Default::default(),
+            dns_resource_nat: Default::default(),
             buffered_events: Default::default(),
             internet_resource_enabled: None,
         }
@@ -89,7 +89,7 @@ impl ClientOnGateway {
         if self.have_proxy_ips_been_reassigned(resource_id, &name, &proxy_ips) {
             tracing::info!("Client has re-assigned proxy IPs, resetting DNS resource NAT");
 
-            self.nat_table = Default::default();
+            self.dns_resource_nat = Default::default();
             self.permanent_translations = Default::default();
         }
 
@@ -159,7 +159,7 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        self.nat_table.handle_timeout(now);
+        self.dns_resource_nat.handle_timeout(now);
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
@@ -300,16 +300,36 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
-        // Filtering a packet is not an error.
-        if let Err(e) = self.ensure_allowed_outbound(&packet) {
-            tracing::debug!(filtered_packet = ?packet, "{e:#}");
-            return Ok(TranslateOutboundResult::Filtered(
-                ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
-            ));
+        // Traffic to our own IP is allowed.
+        if self.gateway_tun.is_ip(packet.destination()) {
+            return Ok(TranslateOutboundResult::Send(packet));
         }
 
-        // Failing to transform is an error we want to know about further up.
-        let result = self.transform_network_to_tun(packet, now)?;
+        // Only traffic originating from the Client's TUN device is routed.
+        self.ensure_client_ip(packet.source())?;
+
+        // Classify the resource based on its destination IP / protocol.
+        // This needs to happen _before_ we apply the DNS resource NAT.
+        match self.classify_resource(packet.destination(), packet.destination_protocol()) {
+            Ok(rid) => match self.resources.get(&rid) {
+                Some(resource) => flow_tracker::inbound_wg::record_resource(
+                    rid,
+                    resource.name(),
+                    resource.address(packet.destination()),
+                ),
+                None => tracing::warn!(%rid, "Internal state mismatch: No resource for ID"),
+            },
+            Err(e) => {
+                // Filtering a packet is not an error.
+
+                tracing::debug!(filtered_packet = ?packet, "{e:#}");
+                return Ok(TranslateOutboundResult::Filtered(
+                    ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+                ));
+            }
+        };
+
+        let result = self.maybe_apply_outbound_dns_resource_nat(packet, now)?;
 
         Ok(result)
     }
@@ -326,7 +346,7 @@ impl ClientOnGateway {
             IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
 
-        let packet = self.transform_tun_to_network(packet, now)?;
+        let packet = self.maybe_apply_inbound_dns_resource_nat(packet, now)?;
 
         self.ensure_client_ip(packet.destination())?;
 
@@ -344,17 +364,12 @@ impl ClientOnGateway {
         Ok(packet)
     }
 
-    fn transform_network_to_tun(
+    fn maybe_apply_outbound_dns_resource_nat(
         &mut self,
         mut packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
         let dst = packet.destination();
-
-        // Packets to the TUN interface don't get transformed.
-        if self.gateway_tun.is_ip(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
-        }
 
         // Packets for CIDR resources / Internet resource are forwarded as is.
         if !is_dns_addr(dst) {
@@ -390,8 +405,8 @@ impl ClientOnGateway {
         flow_tracker::inbound_wg::record_domain(state.domain.clone());
 
         let (source_protocol, real_ip) =
-            self.nat_table
-                .translate_outgoing(&packet, resolved_ip, now)?;
+            self.dns_resource_nat
+                .translate_outbound(&packet, resolved_ip, now)?;
 
         packet
             .translate_destination(source_protocol, real_ip)
@@ -401,14 +416,14 @@ impl ClientOnGateway {
         Ok(TranslateOutboundResult::Send(packet))
     }
 
-    fn transform_tun_to_network(
+    fn maybe_apply_inbound_dns_resource_nat(
         &mut self,
         mut packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<IpPacket> {
-        let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
-            TranslateIncomingResult::Ok { proto, src } => (proto, src),
-            TranslateIncomingResult::IcmpError(prototype) => {
+        let (proto, src) = match self.dns_resource_nat.translate_inbound(&packet, now)? {
+            nat_table::TranslateInboundResult::Ok { proto, src } => (proto, src),
+            nat_table::TranslateInboundResult::IcmpError(prototype) => {
                 tracing::debug!(error = ?prototype.error(), dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), "ICMP Error");
 
                 let icmp_error = prototype
@@ -417,10 +432,10 @@ impl ClientOnGateway {
 
                 return Ok(icmp_error);
             }
-            TranslateIncomingResult::ExpiredNatSession => {
+            nat_table::TranslateInboundResult::ExpiredNatSession => {
                 bail!(UnroutablePacket::expired_nat_session(&packet))
             }
-            TranslateIncomingResult::NoNatSession => {
+            nat_table::TranslateInboundResult::NoNatSession => {
                 // No NAT session means packet is likely for Internet Resource or a CIDR resource.
 
                 return Ok(packet);
@@ -428,7 +443,7 @@ impl ClientOnGateway {
         };
 
         packet
-            .translate_source(proto, ip)
+            .translate_source(proto, src)
             .context("Failed to translate packet to new source")?;
         packet.update_checksum();
 
@@ -437,30 +452,6 @@ impl ClientOnGateway {
 
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
         self.resources.contains_key(&resource)
-    }
-
-    fn ensure_allowed_outbound(&self, packet: &IpPacket) -> anyhow::Result<()> {
-        self.ensure_client_ip(packet.source())?;
-
-        // Traffic to our own IP is allowed.
-        if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(());
-        }
-
-        let rid = self.classify_resource(packet.destination(), packet.destination_protocol())?;
-
-        let Some(resource) = self.resources.get(&rid) else {
-            tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
-            return Ok(());
-        };
-
-        flow_tracker::inbound_wg::record_resource(
-            rid,
-            resource.name(),
-            resource.address(packet.destination()),
-        );
-
-        Ok(())
     }
 
     fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {

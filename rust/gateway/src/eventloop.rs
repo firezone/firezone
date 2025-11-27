@@ -326,6 +326,11 @@ impl Eventloop {
                 continue;
             }
 
+            if e.any_is::<tunnel::NotClientIp>() {
+                tracing::debug!("{e:#}");
+                continue;
+            }
+
             if e.any_is::<tunnel::UdpSocketThreadStopped>() {
                 return Err(e);
             }
