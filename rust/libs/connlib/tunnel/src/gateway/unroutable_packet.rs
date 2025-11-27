@@ -68,7 +68,7 @@ impl UnroutablePacket {
     }
 
     pub fn proto(&self) -> impl Display {
-        self.five_tuple.proto
+        self.five_tuple.proto.keyword_str().unwrap_or("unknown")
     }
 }
 
@@ -80,23 +80,11 @@ enum IpOrSocket {
     Socket(SocketAddr),
 }
 
-#[derive(Debug, derive_more::Display, Clone, Copy)]
-enum MaybeProto {
-    #[display("TCP")]
-    Tcp,
-    #[display("UDP")]
-    Udp,
-    #[display("ICMP")]
-    Icmp,
-    #[display("{_0:?}")]
-    Other(IpNumber),
-}
-
 #[derive(Debug, Clone, Copy)]
 struct FiveTuple {
     src: IpOrSocket,
     dst: IpOrSocket,
-    proto: MaybeProto,
+    proto: IpNumber,
 }
 
 impl FiveTuple {
@@ -110,22 +98,22 @@ impl FiveTuple {
             (Ok(Protocol::Tcp(src_port)), Ok(Protocol::Tcp(dst_port))) => Self {
                 src: IpOrSocket::Socket(SocketAddr::new(src_ip, src_port)),
                 dst: IpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
-                proto: MaybeProto::Tcp,
+                proto: p.next_header(),
             },
             (Ok(Protocol::Udp(src_port)), Ok(Protocol::Udp(dst_port))) => Self {
                 src: IpOrSocket::Socket(SocketAddr::new(src_ip, src_port)),
                 dst: IpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
-                proto: MaybeProto::Udp,
+                proto: p.next_header(),
             },
             (Ok(Protocol::IcmpEcho(_)), Ok(Protocol::IcmpEcho(_))) => Self {
                 src: IpOrSocket::Ip(src_ip),
                 dst: IpOrSocket::Ip(dst_ip),
-                proto: MaybeProto::Icmp,
+                proto: p.next_header(),
             },
             _ => Self {
                 src: IpOrSocket::Ip(src_ip),
                 dst: IpOrSocket::Ip(dst_ip),
-                proto: MaybeProto::Other(p.next_header()),
+                proto: p.next_header(),
             },
         }
     }
