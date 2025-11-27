@@ -329,8 +329,7 @@ impl ClientOnGateway {
             }
         };
 
-        // Failing to transform is an error we want to know about further up.
-        let result = self.transform_network_to_tun(packet, now)?;
+        let result = self.maybe_apply_outbound_dns_resource_nat(packet, now)?;
 
         Ok(result)
     }
@@ -365,7 +364,7 @@ impl ClientOnGateway {
         Ok(packet)
     }
 
-    fn transform_network_to_tun(
+    fn maybe_apply_outbound_dns_resource_nat(
         &mut self,
         mut packet: IpPacket,
         now: Instant,
