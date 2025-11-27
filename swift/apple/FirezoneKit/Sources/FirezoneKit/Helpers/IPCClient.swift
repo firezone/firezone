@@ -104,30 +104,17 @@ enum IPCClient {
     let message = ProviderMessage.exportLogs
     let encodedMessage = try encoder.encode(message)
 
-    func loop() async throws {
-      try await withCheckedThrowingContinuation {
-        (continuation: CheckedContinuation<Void, Swift.Error>) in
+    func nextChunk() async throws -> LogChunk {
+      try await withCheckedThrowingContinuation { continuation in
         do {
           try session.sendProviderMessage(encodedMessage) { data in
-            guard let data = data else {
+            guard let data else {
               return continuation.resume(throwing: Error.noIPCData)
             }
             guard let chunk = try? decoder.decode(LogChunk.self, from: data) else {
               return continuation.resume(throwing: Error.decodeIPCDataFailed)
             }
-
-            do {
-              try fileHandle.seekToEnd()
-              fileHandle.write(chunk.data)
-
-              continuation.resume()
-
-              if !chunk.done {
-                Task { try await loop() }
-              }
-            } catch {
-              return continuation.resume(throwing: error)
-            }
+            continuation.resume(returning: chunk)
           }
         } catch {
           continuation.resume(throwing: error)
@@ -135,8 +122,14 @@ enum IPCClient {
       }
     }
 
-    // Start exporting
-    try await loop()
+    while true {
+      let chunk = try await nextChunk()
+
+      try fileHandle.seekToEnd()
+      fileHandle.write(chunk.data)
+
+      if chunk.done { break }
+    }
   }
 
   // Subscribe to system notifications about our VPN status changing
