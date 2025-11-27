@@ -73,13 +73,11 @@ impl UnroutablePacket {
 }
 
 #[derive(Debug, derive_more::Display, Clone, Copy)]
-enum MaybeIpOrSocket {
+enum IpOrSocket {
     #[display("{_0}")]
     Ip(IpAddr),
     #[display("{_0}")]
     Socket(SocketAddr),
-    #[display("unknown")]
-    Unknown,
 }
 
 #[derive(Debug, derive_more::Display, Clone, Copy)]
@@ -96,8 +94,8 @@ enum MaybeProto {
 
 #[derive(Debug, Clone, Copy)]
 struct FiveTuple {
-    src: MaybeIpOrSocket,
-    dst: MaybeIpOrSocket,
+    src: IpOrSocket,
+    dst: IpOrSocket,
     proto: MaybeProto,
 }
 
@@ -110,23 +108,23 @@ impl FiveTuple {
 
         match (src_proto, dst_proto) {
             (Ok(Protocol::Tcp(src_port)), Ok(Protocol::Tcp(dst_port))) => Self {
-                src: MaybeIpOrSocket::Socket(SocketAddr::new(src_ip, src_port)),
-                dst: MaybeIpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
+                src: IpOrSocket::Socket(SocketAddr::new(src_ip, src_port)),
+                dst: IpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
                 proto: MaybeProto::Tcp,
             },
             (Ok(Protocol::Udp(src_port)), Ok(Protocol::Udp(dst_port))) => Self {
-                src: MaybeIpOrSocket::Socket(SocketAddr::new(src_ip, src_port)),
-                dst: MaybeIpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
+                src: IpOrSocket::Socket(SocketAddr::new(src_ip, src_port)),
+                dst: IpOrSocket::Socket(SocketAddr::new(dst_ip, dst_port)),
                 proto: MaybeProto::Udp,
             },
             (Ok(Protocol::IcmpEcho(_)), Ok(Protocol::IcmpEcho(_))) => Self {
-                src: MaybeIpOrSocket::Ip(src_ip),
-                dst: MaybeIpOrSocket::Ip(dst_ip),
+                src: IpOrSocket::Ip(src_ip),
+                dst: IpOrSocket::Ip(dst_ip),
                 proto: MaybeProto::Icmp,
             },
             _ => Self {
-                src: MaybeIpOrSocket::Unknown,
-                dst: MaybeIpOrSocket::Unknown,
+                src: IpOrSocket::Ip(src_ip),
+                dst: IpOrSocket::Ip(dst_ip),
                 proto: MaybeProto::Other(p.next_header()),
             },
         }
