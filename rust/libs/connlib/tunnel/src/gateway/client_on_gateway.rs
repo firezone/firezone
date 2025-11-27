@@ -300,6 +300,10 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
+        if packet.icmp_error().is_ok_and(|e| e.is_some()) {
+            bail!(UnroutablePacket::outbound_icmp_error(&packet))
+        }
+
         // Filtering a packet is not an error.
         if let Err(e) = self.ensure_allowed_outbound(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
