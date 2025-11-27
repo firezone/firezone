@@ -406,7 +406,7 @@ impl ClientOnGateway {
 
         let (source_protocol, real_ip) =
             self.nat_table
-                .translate_outgoing(&packet, resolved_ip, now)?;
+                .translate_outbound(&packet, resolved_ip, now)?;
 
         packet
             .translate_destination(source_protocol, real_ip)
@@ -421,9 +421,9 @@ impl ClientOnGateway {
         mut packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<IpPacket> {
-        let (proto, src) = match self.nat_table.translate_incoming(&packet, now)? {
-            nat_table::TranslateIncomingResult::Ok { proto, src } => (proto, src),
-            nat_table::TranslateIncomingResult::IcmpError(prototype) => {
+        let (proto, src) = match self.nat_table.translate_inbound(&packet, now)? {
+            nat_table::TranslateInboundResult::Ok { proto, src } => (proto, src),
+            nat_table::TranslateInboundResult::IcmpError(prototype) => {
                 tracing::debug!(error = ?prototype.error(), dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), "ICMP Error");
 
                 let icmp_error = prototype
@@ -432,10 +432,10 @@ impl ClientOnGateway {
 
                 return Ok(icmp_error);
             }
-            nat_table::TranslateIncomingResult::ExpiredNatSession => {
+            nat_table::TranslateInboundResult::ExpiredNatSession => {
                 bail!(UnroutablePacket::expired_nat_session(&packet))
             }
-            nat_table::TranslateIncomingResult::NoNatSession => {
+            nat_table::TranslateInboundResult::NoNatSession => {
                 // No NAT session means packet is likely for Internet Resource or a CIDR resource.
 
                 return Ok(packet);
