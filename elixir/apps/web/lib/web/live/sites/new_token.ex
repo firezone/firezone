@@ -98,18 +98,7 @@ defmodule Web.Sites.NewToken do
               ><%= debian_command_install() %></.code_block>
 
               <p class="p-6">
-                Step 3: Copy the token:
-              </p>
-
-              <.code_block
-                id="code-sample-debian3"
-                class="w-full text-xs whitespace-pre-line"
-                phx-no-format
-                phx-update="ignore"
-              ><%= token(@env) %></.code_block>
-
-              <p class="p-6">
-                Step 4: Configure the token:
+                Step 3: Configure a token:
               </p>
 
               <.code_block
@@ -118,6 +107,17 @@ defmodule Web.Sites.NewToken do
                 phx-no-format
                 phx-update="ignore"
               ><%= debian_command_authenticate() %></.code_block>
+
+              <p class="p-6">
+                Step 4: Use the below token when prompted:
+              </p>
+
+              <.code_block
+                id="code-sample-debian3"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+                phx-update="ignore"
+              ><%= token(@env) %></.code_block>
 
               <p class="p-6">
                 Step 5: You are now ready to manage the Gateway using the <code>firezone</code> CLI.
@@ -312,22 +312,22 @@ defmodule Web.Sites.NewToken do
 
   defp debian_command_apt_repository do
     """
-    mkdir --parents /etc/apt/keyrings
-    wget -qO- https://artifacts.firezone.dev/apt/key.gpg | gpg --dearmor -o /etc/apt/keyrings/firezone.gpg
-    echo "deb [signed-by=/etc/apt/keyrings/firezone.gpg] https://artifacts.firezone.dev/apt/ stable main" > /etc/apt/sources.list.d/firezone.list
+    sudo mkdir --parents /etc/apt/keyrings
+    wget -qO- https://artifacts.firezone.dev/apt/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/firezone.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/firezone.gpg] https://artifacts.firezone.dev/apt/ stable main" | sudo tee /etc/apt/sources.list.d/firezone.list > /dev/null
     """
   end
 
   defp debian_command_install do
     """
-    apt update
-    apt install firezone-gateway
+    sudo apt update
+    sudo apt install firezone-gateway
     """
   end
 
   defp debian_command_authenticate do
     """
-    firezone gateway authenticate
+    sudo firezone gateway authenticate
     """
   end
 
@@ -365,14 +365,14 @@ defmodule Web.Sites.NewToken do
 
   defp manual_command_masquerading do
     """
-    iptables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i tun-firezone -j ACCEPT
-    iptables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -o tun-firezone -j ACCEPT
-    iptables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -o e+ -j MASQUERADE
-    iptables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -o w+ -j MASQUERADE
-    ip6tables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -A FORWARD -i tun-firezone -j ACCEPT
-    ip6tables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -A FORWARD -o tun-firezone -j ACCEPT
-    ip6tables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o e+ -j MASQUERADE
-    ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
+    sudo iptables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || sudo iptables -A FORWARD -i tun-firezone -j ACCEPT
+    sudo iptables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || sudo iptables -A FORWARD -o tun-firezone -j ACCEPT
+    sudo iptables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || sudo iptables -t nat -A POSTROUTING -o e+ -j MASQUERADE
+    sudo iptables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || sudo iptables -t nat -A POSTROUTING -o w+ -j MASQUERADE
+    sudo ip6tables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || sudo ip6tables -A FORWARD -i tun-firezone -j ACCEPT
+    sudo ip6tables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || sudo ip6tables -A FORWARD -o tun-firezone -j ACCEPT
+    sudo ip6tables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || sudo ip6tables -t nat -A POSTROUTING -o e+ -j MASQUERADE
+    sudo ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || sudo ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
     """
   end
 
