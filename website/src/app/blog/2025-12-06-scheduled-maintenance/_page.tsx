@@ -14,4 +14,3 @@ export default function _Page() {
     </Post>
   );
 }
-
