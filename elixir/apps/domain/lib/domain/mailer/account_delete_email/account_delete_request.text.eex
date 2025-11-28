@@ -1,1 +1,6 @@
-Request to delete account: <%= @account.id %>
+Request to Delete Account
+
+Request details:
+----------------
+Account ID: <%= @account.id %>
+Actor ID:   <%= @subject.actor.id %>

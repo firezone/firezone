@@ -92,7 +92,7 @@ defmodule Web.Live.Settings.ApiClients.BetaTest do
       assert email.subject == "REST API Beta Request - #{account.slug}"
       assert email.text_body =~ "REST API Beta Request"
       assert email.text_body =~ "#{account.id}"
-      assert email.text_body =~ "#{account.slug}"
+      assert email.text_body =~ "#{identity.actor_id}"
     end)
   end
 end

@@ -12,6 +12,6 @@ defmodule Domain.Mailer.AccountDelete do
     default_email()
     |> subject("ACCOUNT DELETE REQUEST - #{account.slug}")
     |> to("support@firezone.dev")
-    |> render_text_body(__MODULE__, :account_delete_request, account: account)
+    |> render_text_body(__MODULE__, :account_delete_request, account: account, subject: subject)
   end
 end
