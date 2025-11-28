@@ -155,6 +155,6 @@ defmodule Web.Live.Settings.AccountTest do
       assert email.subject == "ACCOUNT DELETE REQUEST - #{account.slug}"
       assert email.text_body =~ "#{account.id}"
       assert email.text_body =~ "#{identity.actor_id}"
-    end
+    end)
   end
 end
