@@ -20,7 +20,7 @@ export default function Posts() {
       type: "Announcement",
       description: (
         <p className="mb-2">
-          Firezone will undergo scheduled maintenance on Friday, December 6,
+          Firezone will undergo scheduled maintenance on Saturday, December 6,
           2025 from 8:00 PM to 10:00 PM Pacific Time to roll out major
           improvements to authentication, directory sync, and user and group
           management. We expect only a few minutes of downtime.
