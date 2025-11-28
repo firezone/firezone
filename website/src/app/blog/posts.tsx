@@ -12,6 +12,22 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
+      title: "Nov 28 2025 Incident Post-Mortem",
+      date: "November 28, 2025",
+      href: "/blog/2025-11-28-incident-post-mortem",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Announcement",
+      description: (
+        <p className="mb-2">
+          On November 28, 2025, a PII leak incident occurred affecting a small
+          number of user names and email addresses. This post-mortem details the
+          incident, its impact, and the steps we&apos;re taking to prevent
+          future occurrences.
+        </p>
+      ),
+    },
+    {
       title: "Scheduled Maintenance - December 6, 2025",
       date: "November 22, 2025",
       href: "/blog/2025-12-06-scheduled-maintenance",
