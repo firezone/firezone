@@ -12,6 +12,22 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
+      title: "Scheduled Maintenance - December 6, 2025",
+      date: "November 22, 2025",
+      href: "/blog/2025-12-06-scheduled-maintenance",
+      authorName: "Firezone Team",
+      authorAvatarSrc: "/images/logo-main-light.svg",
+      type: "Announcement",
+      description: (
+        <p className="mb-2">
+          Firezone will undergo scheduled maintenance on Friday, December 6,
+          2025 from 8:00 PM to 10:00 PM Pacific Time to roll out major
+          improvements to authentication, directory sync, and user and group
+          management. We expect only a few minutes of downtime.
+        </p>
+      ),
+    },
+    {
       title: "October 2025 Devlog",
       date: "October 31, 2025",
       href: "/blog/devlog/2025-10",
@@ -48,8 +64,8 @@ export default function Posts() {
     },
 
     {
-      title: "Migrate your Internet Resource by March 15, 2024",
-      date: "February 16, 2024",
+      title: "Migrate your Internet Resource by March 15, 2025",
+      date: "February 16, 2025",
       href: "/blog/migrate-your-internet-resource",
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
@@ -59,7 +75,7 @@ export default function Posts() {
         <p className="mb-2">
           We&apos;re making some changes to the way Internet Resources work to
           improve security and performance. Migrate your Internet Resources by
-          <strong>March 15, 2024</strong> to avoid any interruptions.
+          <strong>March 15, 2025</strong> to avoid any interruptions.
         </p>
       ),
     },
