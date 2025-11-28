@@ -89,7 +89,7 @@ defmodule Web.Live.Settings.ApiClients.BetaTest do
            |> element_to_text() =~ "request to join"
 
     assert_email_sent(fn email ->
-      assert email.subject == "REST API Beta Request - #{account.slug}"
+      assert email.subject == "REST API Beta Request - #{account.id}"
       assert email.text_body =~ "REST API Beta Request"
       assert email.text_body =~ "#{account.id}"
       assert email.text_body =~ "#{identity.actor_id}"

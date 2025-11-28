@@ -152,7 +152,7 @@ defmodule Web.Live.Settings.AccountTest do
            |> element_to_text() =~ "A request has been sent to delete your account"
 
     assert_email_sent(fn email ->
-      assert email.subject == "ACCOUNT DELETE REQUEST - #{account.slug}"
+      assert email.subject == "ACCOUNT DELETE REQUEST - #{account.id}"
       assert email.text_body =~ "#{account.id}"
       assert email.text_body =~ "#{identity.actor_id}"
     end)
