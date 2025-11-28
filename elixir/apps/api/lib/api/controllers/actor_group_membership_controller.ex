@@ -3,6 +3,7 @@ defmodule API.ActorGroupMembershipController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Actors
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -27,16 +28,15 @@ defmodule API.ActorGroupMembershipController do
     responses: [
       ok:
         {"Actor Group Membership Response", "application/json",
-         API.Schemas.ActorGroupMembership.ListResponse}
+         API.Schemas.ActorGroupMembership.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # List members for a given Actor Group
   def index(conn, %{"actor_group_id" => actor_group_id} = params) do
-    list_opts =
-      Pagination.params_to_list_opts(params)
-      |> Keyword.put(:filter, group_id: actor_group_id)
-
-    with {:ok, actors, metadata} <- Actors.list_actors(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts <- Keyword.put(list_opts, :filter, group_id: actor_group_id),
+         {:ok, actors, metadata} <- Actors.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
     end
   end
@@ -56,7 +56,9 @@ defmodule API.ActorGroupMembershipController do
     responses: [
       ok:
         {"Actor Group Membership Response", "application/json",
-         API.Schemas.ActorGroupMembership.MembershipResponse}
+         API.Schemas.ActorGroupMembership.MembershipResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def update_put(
@@ -93,7 +95,9 @@ defmodule API.ActorGroupMembershipController do
     responses: [
       ok:
         {"Actor Group Membership Response", "application/json",
-         API.Schemas.ActorGroupMembership.MembershipResponse}
+         API.Schemas.ActorGroupMembership.MembershipResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Update Actor Group Memberships

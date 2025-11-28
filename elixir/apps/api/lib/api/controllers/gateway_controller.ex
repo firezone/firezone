@@ -3,6 +3,7 @@ defmodule API.GatewayController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Gateways
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -21,24 +22,17 @@ defmodule API.GatewayController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.ListResponse}
+      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # List Gateways
   def index(conn, params) do
-    list_opts =
-      params
-      |> Pagination.params_to_list_opts()
-      |> Keyword.put(:preload, :online?)
-
-    list_opts =
-      if group_id = params["gateway_group_id"] do
-        Keyword.put(list_opts, :filter, gateway_group_id: group_id)
-      else
-        list_opts
-      end
-
-    with {:ok, gateways, metadata} <- Gateways.list_gateways(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts <- Keyword.put(list_opts, :preload, :online?),
+         list_opts <-
+           Keyword.put(list_opts, :filter, gateway_group_id: params["gateway_group_id"]),
+         {:ok, gateways, metadata} <- Gateways.list_gateways(conn.assigns.subject, list_opts) do
       render(conn, :index, gateways: gateways, metadata: metadata)
     end
   end
@@ -60,7 +54,9 @@ defmodule API.GatewayController do
       ]
     ],
     responses: [
-      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response}
+      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Show a specific Gateway
@@ -88,7 +84,9 @@ defmodule API.GatewayController do
       ]
     ],
     responses: [
-      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response}
+      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Delete a Gateway

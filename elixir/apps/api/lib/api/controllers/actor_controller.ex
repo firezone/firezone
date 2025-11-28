@@ -3,6 +3,7 @@ defmodule API.ActorController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Actors
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -15,14 +16,14 @@ defmodule API.ActorController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"ActorsResponse", "application/json", API.Schemas.Actor.ListResponse}
+      ok: {"ActorsResponse", "application/json", API.Schemas.Actor.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # List Actors
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, actors, metadata} <- Actors.list_actors(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, actors, metadata} <- Actors.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
     end
   end
@@ -38,7 +39,9 @@ defmodule API.ActorController do
       ]
     ],
     responses: [
-      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Show a specific Actor
@@ -53,7 +56,8 @@ defmodule API.ActorController do
     request_body:
       {"Actor attributes", "application/json", API.Schemas.Actor.Request, required: true},
     responses: [
-      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+      created: {"ActorResponse", "application/json", API.Schemas.Actor.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Create a new Actor
@@ -85,7 +89,9 @@ defmodule API.ActorController do
     request_body:
       {"Actor attributes", "application/json", API.Schemas.Actor.Request, required: true},
     responses: [
-      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Update an Actor
@@ -113,7 +119,9 @@ defmodule API.ActorController do
       ]
     ],
     responses: [
-      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Delete an Actor

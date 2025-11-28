@@ -49,6 +49,7 @@ defmodule API.Router do
 
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]
+    resources "/policy_authorizations", PolicyAuthorizationsController, only: [:index, :show]
 
     resources "/gateway_groups", GatewayGroupController, except: [:new, :edit] do
       post "/tokens", GatewayGroupController, :create_token

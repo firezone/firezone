@@ -3,6 +3,7 @@ defmodule API.ClientController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Clients
+  alias OpenApiSpex.Reference
 
   action_fallback(API.FallbackController)
 
@@ -20,18 +21,16 @@ defmodule API.ClientController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.ListResponse}
+      ok: {"Client Response", "application/json", API.Schemas.Client.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
   )
 
   # List Clients
   def index(conn, params) do
-    list_opts =
-      params
-      |> Pagination.params_to_list_opts()
-      |> Keyword.put(:preload, :online?)
-
-    with {:ok, clients, metadata} <- Clients.list_clients(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts <- Keyword.put(list_opts, :preload, :online?),
+         {:ok, clients, metadata} <- Clients.list_clients(conn.assigns.subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
     end
   end
@@ -47,7 +46,8 @@ defmodule API.ClientController do
       ]
     ],
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+      ok: {"Client Response", "application/json", API.Schemas.Client.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
   )
 
@@ -72,7 +72,9 @@ defmodule API.ClientController do
     request_body:
       {"Client Attributes", "application/json", API.Schemas.Client.Request, required: true},
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+      ok: {"Client Response", "application/json", API.Schemas.Client.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
   )
 
@@ -101,7 +103,9 @@ defmodule API.ClientController do
       ]
     ],
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+      ok: {"Client Response", "application/json", API.Schemas.Client.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
   )
 
@@ -126,7 +130,9 @@ defmodule API.ClientController do
       ]
     ],
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+      ok: {"Client Response", "application/json", API.Schemas.Client.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
   )
 
@@ -151,7 +157,9 @@ defmodule API.ClientController do
       ]
     ],
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+      ok: {"Client Response", "application/json", API.Schemas.Client.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
   )
 

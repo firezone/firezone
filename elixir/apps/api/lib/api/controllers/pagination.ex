@@ -3,9 +3,14 @@ defmodule API.Pagination do
   alias Domain.Repo.Paginator.Metadata
 
   def params_to_list_opts(params) do
-    [
-      page: params_to_page(params)
-    ]
+    params_to_list_opts([], params)
+  end
+
+  def params_to_list_opts(list_opts, params) do
+    case params_to_page(params) do
+      {:ok, value} -> {:ok, Keyword.merge(list_opts, page: value)}
+      other -> other
+    end
   end
 
   def metadata(%Metadata{} = metadata) do
@@ -18,18 +23,24 @@ defmodule API.Pagination do
   end
 
   defp params_to_page(%{"limit" => limit, "page_cursor" => cursor}) do
-    [cursor: cursor, limit: String.to_integer(limit)]
+    case Integer.parse(limit) do
+      {value, ""} -> {:ok, [cursor: cursor, limit: value]}
+      _other -> {:error, :bad_request}
+    end
   end
 
   defp params_to_page(%{"limit" => limit}) do
-    [limit: String.to_integer(limit)]
+    case Integer.parse(limit) do
+      {value, ""} -> {:ok, [limit: value]}
+      _other -> {:error, :bad_request}
+    end
   end
 
   defp params_to_page(%{"page_cursor" => cursor}) do
-    [cursor: cursor]
+    {:ok, [cursor: cursor]}
   end
 
   defp params_to_page(_params) do
-    []
+    {:ok, []}
   end
 end

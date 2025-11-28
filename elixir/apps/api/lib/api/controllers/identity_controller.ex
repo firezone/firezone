@@ -3,6 +3,7 @@ defmodule API.IdentityController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Auth
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -16,15 +17,16 @@ defmodule API.IdentityController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Identity List Response", "application/json", API.Schemas.Identity.ListResponse}
+      ok: {"Identity List Response", "application/json", API.Schemas.Identity.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # List Identities
   def index(conn, %{"actor_id" => actor_id} = params) do
     subject = conn.assigns.subject
-    list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, actor} <- Domain.Actors.fetch_actor_by_id(actor_id, subject),
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, actor} <- Domain.Actors.fetch_actor_by_id(actor_id, subject),
          {:ok, identities, metadata} <- Auth.list_identities_for(actor, subject, list_opts) do
       render(conn, :index, identities: identities, metadata: metadata)
     end
@@ -39,7 +41,9 @@ defmodule API.IdentityController do
     request_body:
       {"Identity Attributes", "application/json", API.Schemas.Identity.Request, required: true},
     responses: [
-      ok: {"Identity Response", "application/json", API.Schemas.Identity.Response}
+      created: {"Identity Response", "application/json", API.Schemas.Identity.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Create an Identity
@@ -86,7 +90,9 @@ defmodule API.IdentityController do
       ]
     ],
     responses: [
-      ok: {"Identity Response", "application/json", API.Schemas.Identity.Response}
+      ok: {"Identity Response", "application/json", API.Schemas.Identity.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Show a specific Identity
@@ -113,7 +119,9 @@ defmodule API.IdentityController do
       ]
     ],
     responses: [
-      ok: {"Identity Response", "application/json", API.Schemas.Identity.Response}
+      ok: {"Identity Response", "application/json", API.Schemas.Identity.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Delete an Identity
