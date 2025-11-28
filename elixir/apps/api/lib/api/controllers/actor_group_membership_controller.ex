@@ -3,6 +3,7 @@ defmodule API.ActorGroupMembershipController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Actors
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -27,7 +28,8 @@ defmodule API.ActorGroupMembershipController do
     responses: [
       ok:
         {"Actor Group Membership Response", "application/json",
-         API.Schemas.ActorGroupMembership.ListResponse}
+         API.Schemas.ActorGroupMembership.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # List members for a given Actor Group
@@ -56,7 +58,9 @@ defmodule API.ActorGroupMembershipController do
     responses: [
       ok:
         {"Actor Group Membership Response", "application/json",
-         API.Schemas.ActorGroupMembership.MembershipResponse}
+         API.Schemas.ActorGroupMembership.MembershipResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def update_put(
@@ -93,7 +97,9 @@ defmodule API.ActorGroupMembershipController do
     responses: [
       ok:
         {"Actor Group Membership Response", "application/json",
-         API.Schemas.ActorGroupMembership.MembershipResponse}
+         API.Schemas.ActorGroupMembership.MembershipResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Update Actor Group Memberships
