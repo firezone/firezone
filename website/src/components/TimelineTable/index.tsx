@@ -47,3 +47,4 @@ export default function TimelineTable({ entries }: TimelineTableProps) {
     </table>
   );
 }
+
