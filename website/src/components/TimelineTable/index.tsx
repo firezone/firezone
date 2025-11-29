@@ -11,33 +11,21 @@ interface TimelineTableProps {
 
 export default function TimelineTable({ entries }: TimelineTableProps) {
   return (
-    <table
-      style={{
-        borderCollapse: "separate",
-        borderSpacing: "0",
-        marginTop: "1rem",
-        marginBottom: "2rem",
-      }}
-    >
+    <table className="mt-4 mb-8 border-separate border-spacing-0">
       <tbody>
         {entries.map((entry, index) => (
           <tr key={index}>
             <td
-              style={{
-                verticalAlign: "top",
-                paddingRight: "1rem",
-                paddingBottom: index === entries.length - 1 ? "0" : "1rem",
-                width: "200px",
-                border: "none",
-              }}
+              className={`align-top pr-4 w-[200px] border-none font-bold ${
+                index === entries.length - 1 ? "pb-0" : "pb-4"
+              }`}
             >
-              <strong>{entry.time}</strong>
+              {entry.time}
             </td>
             <td
-              style={{
-                paddingBottom: index === entries.length - 1 ? "0" : "1rem",
-                border: "none",
-              }}
+              className={`border-none ${
+                index === entries.length - 1 ? "pb-0" : "pb-4"
+              }`}
             >
               {entry.event}
             </td>
@@ -47,4 +35,3 @@ export default function TimelineTable({ entries }: TimelineTableProps) {
     </table>
   );
 }
-
