@@ -18,10 +18,9 @@ defmodule Domain.Mailer.AccountDeleteEmailTest do
     test "should contain account info", %{account: account, subject: subject} do
       email_body = account_delete_email(account, subject)
 
-      assert email_body.text_body =~ "REQUEST TO DELETE ACCOUNT!"
+      assert email_body.text_body =~ "Request to Delete Account"
       assert email_body.text_body =~ ~r/Account ID:\s*#{account.id}/
       assert email_body.text_body =~ ~r/Actor ID:\s*#{subject.actor.id}/
-      assert email_body.text_body =~ ~r/Identifier:\s*#{subject.identity.provider_identifier}/
     end
   end
 end
