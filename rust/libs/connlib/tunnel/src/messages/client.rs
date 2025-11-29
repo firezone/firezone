@@ -22,7 +22,7 @@ pub struct ResourceDescriptionDns {
     pub name: String,
 
     pub address_description: Option<String>,
-    #[serde(rename = "gateway_groups")]
+    #[serde(rename = "gateway_groups", alias = "sites")]
     pub sites: Vec<Site>,
 
     /// The IP stack supported by this resource.
@@ -43,7 +43,7 @@ pub struct ResourceDescriptionCidr {
     pub name: String,
 
     pub address_description: Option<String>,
-    #[serde(rename = "gateway_groups")]
+    #[serde(rename = "gateway_groups", alias = "sites")]
     pub sites: Vec<Site>,
 }
 
@@ -62,7 +62,7 @@ pub struct ResourceDescriptionInternet {
     /// Resource's id.
     pub id: ResourceId,
     /// Sites for the internet resource
-    #[serde(rename = "gateway_groups")]
+    #[serde(rename = "gateway_groups", alias = "sites")]
     pub sites: Vec<Site>,
 }
 
@@ -97,7 +97,7 @@ pub struct FlowCreated {
     pub gateway_public_key: Key,
     pub gateway_ipv4: Ipv4Addr,
     pub gateway_ipv6: Ipv6Addr,
-    #[serde(rename = "gateway_group_id")]
+    #[serde(rename = "gateway_group_id", alias = "site_id")]
     pub site_id: SiteId,
     pub preshared_key: SecretKey,
     pub client_ice_credentials: IceCredentials,
@@ -210,7 +210,7 @@ mod tests {
                 "name": "gitlab.mycorp.com",
                 "address": "gitlab.mycorp.com",
                 "address_description": "dns resource",
-                "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
             },
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
@@ -244,7 +244,7 @@ mod tests {
                 "name": "gitlab.mycorp.com",
                 "address": "gitlab.mycorp.com",
                 "address_description": "dns resource",
-                "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
             },
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
@@ -345,7 +345,7 @@ mod tests {
                         "id": "73037362-715d-4a83-a749-f18eadd970e7",
                         "name": "172.173.0.0/16",
                         "address_description": null,
-                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                         "type": "cidr"
                     },
                     {
