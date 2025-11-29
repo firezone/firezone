@@ -1,4 +1,6 @@
-In the early morning hours of November 28, 2025 (UTC), we experienced a limited PII exposure affecting a small number of users. The issue **has been resolved**, and this post-mortem explains what happened, what data was involved, how we responded, and what we’re changing to make sure this can’t happen again.
+import TimelineTable from "@/components/TimelineTable";
+
+In the early morning hours of November 28, 2025 (UTC), we experienced a limited PII exposure affecting a small number of users. The issue **has been resolved**, and this post-mortem explains what happened, what data was involved, how we responded, and what we're changing to make sure this can't happen again.
 
 We want to be upfront here: this was **not a product security breach or unauthorized access to our systems**. It was an email routing / mailing-list configuration mistake on our side — but even so, we understand that any exposure of personal information is serious, and we’re sorry this happened.
 
@@ -21,14 +23,40 @@ We have:
 
 ## Detailed timeline
 
-| Time (UTC)          | Event                                                                                                                                                                                                                                                                                      |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 18:30, Nov 27, 2025 | A member of the backend infrastructure team deploys a configuration change to the support email system. This change involved updating the mailing list configuration in our email service provider to prepare for a scheduled maintenance announcement which would be sent later this day. |
-| 06:06, Nov 28, 2025 | The first support email containing PII is sent by our backend automation system to the misconfigured mailing list.                                                                                                                                                                         |
-| 06:08, Nov 28, 2025 | The infrastructure team notices unusual email activity and begins investigating.                                                                                                                                                                                                           |
-| 06:13, Nov 28, 2025 | The second support email containing PII is sent by our backend system.                                                                                                                                                                                                                     |
-| 06:14, Nov 28, 2025 | The third and final support email containing PII is sent by our backend system.                                                                                                                                                                                                            |
-| 06:15, Nov 28, 2025 | The infrastructure team identifies the misconfiguration and corrects it, stopping further emails from being sent.                                                                                                                                                                          |
+<TimelineTable
+  entries={[
+    {
+      time: "18:30, Nov 27, 2025",
+      event:
+        "A member of the backend infrastructure team deploys a configuration change to the support email system. This change involved updating the mailing list configuration in our email service provider to prepare for a scheduled maintenance announcement which would be sent later this day.",
+    },
+    {
+      time: "06:06, Nov 28, 2025",
+      event:
+        "The first support email containing PII is sent by our backend automation system to the misconfigured mailing list.",
+    },
+    {
+      time: "06:08, Nov 28, 2025",
+      event:
+        "The infrastructure team notices unusual email activity and begins investigating.",
+    },
+    {
+      time: "06:13, Nov 28, 2025",
+      event:
+        "The second support email containing PII is sent by our backend system.",
+    },
+    {
+      time: "06:14, Nov 28, 2025",
+      event:
+        "The third and final support email containing PII is sent by our backend system.",
+    },
+    {
+      time: "06:15, Nov 28, 2025",
+      event:
+        "The infrastructure team identifies the misconfiguration and corrects it, stopping further emails from being sent.",
+    },
+  ]}
+/>
 
 ## How this happened
 
@@ -45,7 +73,7 @@ This was a configuration error introduced during a manual step. We corrected it 
 
 ## Next steps
 
-We take privacy seriously, and we’re making concrete changes based on this incident.
+We take privacy seriously, and we’re making the following concrete changes based on this incident.
 
 1. **Remove PII from automated support communications.**
    We’re updating our backend automation so that deletion-request and other support-triggered emails contain **no PII**. Any personal details needed for support will be accessed only through authenticated internal tools.
