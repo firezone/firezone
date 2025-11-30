@@ -1,6 +1,7 @@
 defmodule Domain.RelaysTest do
   use Domain.DataCase, async: true
   import Domain.Relays
+  import Ecto.Query
   alias Domain.{Relays, Tokens, Presence}
 
   setup do
@@ -376,8 +377,7 @@ defmodule Domain.RelaysTest do
       assert {:ok, _group} = delete_group(group, subject)
 
       relays =
-        Domain.Relays.Relay.Query.all()
-        |> Domain.Relays.Relay.Query.by_group_id(group.id)
+        from(relays in Domain.Relay, where: relays.group_id == ^group.id)
         |> Repo.all()
 
       assert length(relays) == 0

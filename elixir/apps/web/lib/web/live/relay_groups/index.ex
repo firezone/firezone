@@ -154,7 +154,7 @@ defmodule Web.RelayGroups.Index do
 
     def preloads,
       do: [
-        relays: Domain.Relays.Relay.Query.preloads()
+        relays: [online?: &Domain.Presence.Relays.preload_relays_presence/1]
       ]
 
     def filters, do: []

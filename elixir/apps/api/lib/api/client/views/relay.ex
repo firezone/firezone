@@ -1,5 +1,5 @@
 defmodule API.Client.Views.Relay do
-  alias Domain.Relays
+  alias Domain.{Relays, Relay}
 
   def render_many(relays, salt, expires_at) do
     relays
@@ -14,7 +14,7 @@ defmodule API.Client.Views.Relay do
 
   defp render_addr(_relay, _salt, _expires_at, nil), do: []
 
-  defp render_addr(%Relays.Relay{} = relay, salt, expires_at, address) do
+  defp render_addr(%Relay{} = relay, salt, expires_at, address) do
     %{
       username: username,
       password: password,

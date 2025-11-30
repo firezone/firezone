@@ -6,7 +6,7 @@ defmodule Domain.Presence do
   alias Domain.PubSub
   alias Domain.Client
   alias Domain.Gateway
-  alias Domain.Relays.Relay
+  alias Domain.Relay
 
   defmodule Clients do
     def connect(%Client{} = client, token_id) do
@@ -311,7 +311,7 @@ defmodule Domain.Presence do
       })
     end
 
-    def connect(%Domain.Relays.Relay{} = relay, secret, token_id) do
+    def connect(%Domain.Relay{} = relay, secret, token_id) do
       with {:ok, _} <-
              Domain.Presence.track(
                self(),
@@ -332,14 +332,14 @@ defmodule Domain.Presence do
       end
     end
 
-    defp track_relay_with_secret(%Domain.Relays.Relay{account_id: nil} = relay, secret) do
+    defp track_relay_with_secret(%Domain.Relay{account_id: nil} = relay, secret) do
       Domain.Presence.track(self(), __MODULE__.Global.topic(), relay.id, %{
         online_at: System.system_time(:second),
         secret: secret
       })
     end
 
-    defp track_relay_with_secret(%Domain.Relays.Relay{account_id: account_id} = relay, secret) do
+    defp track_relay_with_secret(%Domain.Relay{account_id: account_id} = relay, secret) do
       Domain.Presence.track(self(), __MODULE__.Account.topic(account_id), relay.id, %{
         online_at: System.system_time(:second),
         secret: secret
@@ -377,14 +377,15 @@ defmodule Domain.Presence do
     end
 
     defmodule DB do
-      alias Domain.Relays.Relay
+      import Ecto.Query
+      alias Domain.Relay
       alias Domain.Safe
 
       def fetch_relays_by_ids(relay_ids, account_id) do
-        Relay.Query.all()
-        |> Relay.Query.by_ids(relay_ids)
-        |> Relay.Query.global_or_by_account_id(account_id)
-        |> Relay.Query.prefer_global()
+        from(relays in Relay, as: :relays)
+        |> where([relays: relays], relays.id in ^relay_ids)
+        |> where([relays: relays], relays.account_id == ^account_id or is_nil(relays.account_id))
+        |> order_by([relays: relays], asc_nulls_first: relays.account_id)
         |> Safe.unscoped()
         |> Safe.all()
       end
