@@ -45,7 +45,7 @@ defmodule Domain.Account do
     has_many :clients, Domain.Client
 
     has_many :gateways, Domain.Gateway
-    has_many :gateway_groups, Domain.Gateways.Group
+    has_many :sites, Domain.Site
 
     has_many :relays, Domain.Relays.Relay
     has_many :relay_groups, Domain.Relays.Group

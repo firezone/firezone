@@ -213,7 +213,7 @@ defmodule Web.Live.Policies.ShowTest do
         policy: policy
       )
 
-    flow = Repo.preload(flow, client: [:actor], gateway: [:group])
+    flow = Repo.preload(flow, client: [:actor], gateway: [:site])
 
     {:ok, lv, _html} =
       conn
@@ -232,7 +232,7 @@ defmodule Web.Live.Policies.ShowTest do
     assert row["client, actor"] =~ to_string(flow.client_remote_ip)
 
     assert row["gateway"] =~
-             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+             "#{flow.gateway.site.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "allows deleting policy", %{

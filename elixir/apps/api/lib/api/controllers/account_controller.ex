@@ -1,7 +1,6 @@
 defmodule API.AccountController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Domain.Accounts
   alias __MODULE__.DB
 
   action_fallback API.FallbackController
@@ -25,7 +24,7 @@ defmodule API.AccountController do
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
-    alias Domain.Accounts.Account
+    alias Domain.Account
 
     def get_account_by_id!(id, subject) do
       from(a in Account, where: a.id == ^id)

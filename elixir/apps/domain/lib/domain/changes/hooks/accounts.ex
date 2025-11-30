@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Accounts do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Accounts, Billing, Changes.Change, Flows, PubSub}
+  alias Domain.{Billing, Changes.Change, Flows, PubSub}
   import Domain.SchemaHelpers
   require Logger
 
@@ -20,15 +20,15 @@ defmodule Domain.Changes.Hooks.Accounts do
       when not is_nil(disabled_at) do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
-    account = struct_from_params(Accounts.Account, old_data)
+    account = struct_from_params(Domain.Account, old_data)
     Flows.delete_flows_for(account)
 
     on_delete(lsn, old_data)
   end
 
   def on_update(lsn, old_data, data) do
-    old_account = struct_from_params(Accounts.Account, old_data)
-    account = struct_from_params(Accounts.Account, data)
+    old_account = struct_from_params(Domain.Account, old_data)
+    account = struct_from_params(Domain.Account, data)
     change = %Change{lsn: lsn, op: :update, old_struct: old_account, struct: account}
 
     # Start async task for billing update if name or slug changed
@@ -44,7 +44,7 @@ defmodule Domain.Changes.Hooks.Accounts do
   @impl true
 
   def on_delete(lsn, old_data) do
-    account = struct_from_params(Accounts.Account, old_data)
+    account = struct_from_params(Domain.Account, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: account}
 
     PubSub.Account.broadcast(account.id, change)

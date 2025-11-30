@@ -1,7 +1,7 @@
-defmodule Domain.Actors.Membership.QueryTest do
+defmodule Domain.Membership.QueryTest do
   use Domain.DataCase, async: true
   alias Domain.Repo
-  alias Domain.Actors.Membership
+  alias Domain.Membership
 
   describe "batch_upsert/4" do
     setup do

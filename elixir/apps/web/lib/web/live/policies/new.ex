@@ -115,21 +115,21 @@ defmodule Web.Policies.New do
                   <:option :let={resource}>
                     <%= if resource.type == :internet do %>
                       Internet
-                      <span :if={not Domain.Accounts.Account.internet_resource_enabled?(@account)}>
+                      <span :if={not Domain.Account.internet_resource_enabled?(@account)}>
                         - <span class="text-red-800">upgrade to unlock</span>
                       </span>
                     <% else %>
                       {resource.name}
 
                       <span
-                        :if={length(resource.gateway_groups) > 0}
+                        :if={length(resource.sites) > 0}
                         class="text-neutral-500 inline-flex"
                       >
-                        (<.resource_gateway_groups gateway_groups={resource.gateway_groups} />)
+                        (<.resource_sites sites={resource.sites} />)
                       </span>
                     <% end %>
 
-                    <span :if={resource.gateway_groups == []} class="text-red-800">
+                    <span :if={resource.sites == []} class="text-red-800">
                       (not connected to any Site)
                     </span>
                   </:option>

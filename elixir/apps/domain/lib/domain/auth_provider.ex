@@ -12,7 +12,7 @@ defmodule Domain.AuthProvider do
 
   @primary_key false
   schema "auth_providers" do
-    belongs_to :account, Domain.Accounts.Account, primary_key: true
+    belongs_to :account, Domain.Account, primary_key: true
     field :id, :binary_id, primary_key: true
     field :type, Ecto.Enum, values: ~w[google okta entra oidc email_otp userpass]a
 

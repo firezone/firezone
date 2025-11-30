@@ -13,6 +13,40 @@ defmodule Domain.Clients.Presence do
     end
   end
 
+  # Functions moved from Domain.Clients
+  @doc false
+  def preload_clients_presence([client]) do
+    __MODULE__.Account.get(client.account_id, client.id)
+    |> case do
+      [] -> %{client | online?: false}
+      %{metas: [_ | _]} -> %{client | online?: true}
+    end
+    |> List.wrap()
+  end
+
+  def preload_clients_presence(clients) do
+    # we fetch list of account clients for every account_id present in the clients list
+    connected_clients =
+      clients
+      |> Enum.map(& &1.account_id)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.reduce([], fn account_id, acc ->
+        connected_client_ids = online_client_ids(account_id)
+        connected_client_ids ++ acc
+      end)
+
+    Enum.map(clients, fn client ->
+      %{client | online?: client.id in connected_clients}
+    end)
+  end
+
+  def online_client_ids(account_id) do
+    account_id
+    |> __MODULE__.Account.list()
+    |> Map.keys()
+  end
+
   defmodule Account do
     def track(account_id, client_id) do
       Domain.Clients.Presence.track(

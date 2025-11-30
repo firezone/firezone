@@ -49,10 +49,10 @@ defmodule Domain.Flows.Flow.Query do
     where(queryable, [flows: flows], flows.actor_group_membership_id == ^membership_id)
   end
 
-  def by_gateway_group_id(queryable, gateway_group_id) do
+  def by_site_id(queryable, site_id) do
     queryable
-    |> with_joined_gateway_group()
-    |> where([gateway_group: gateway_group], gateway_group.id == ^gateway_group_id)
+    |> with_joined_site()
+    |> where([site: site], site.id == ^site_id)
   end
 
   def by_resource_id(queryable, resource_id) do
@@ -89,13 +89,11 @@ defmodule Domain.Flows.Flow.Query do
     end)
   end
 
-  def with_joined_gateway_group(queryable) do
+  def with_joined_site(queryable) do
     queryable
     |> with_joined_gateway()
-    |> with_named_binding(:gateway_group, fn queryable, binding ->
-      join(queryable, :inner, [gateway: gateway], gateway_group in assoc(gateway, :group),
-        as: ^binding
-      )
+    |> with_named_binding(:site, fn queryable, binding ->
+      join(queryable, :inner, [gateway: gateway], site in assoc(gateway, :site), as: ^binding)
     end)
   end
 

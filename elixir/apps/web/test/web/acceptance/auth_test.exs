@@ -90,7 +90,6 @@ defmodule Web.Acceptance.AuthTest do
 
     tokens =
       Domain.Tokens.Token.Query.all()
-      |> Domain.Tokens.Token.Query.by_identity_id(identity.id)
       |> Domain.Repo.all()
 
     {:ok, _count} = Domain.Tokens.delete_tokens_for(identity)

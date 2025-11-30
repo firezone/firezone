@@ -9,8 +9,8 @@ defmodule Web.Sites.Index do
       :ok = Gateways.Presence.Account.subscribe(socket.assigns.account.id)
     end
 
-    {:ok, managed_groups, _metadata} =
-      DB.list_groups(socket.assigns.subject,
+    {:ok, managed_sites, _metadata} =
+      DB.list_sites(socket.assigns.subject,
         preload: [
           gateways: [:online?]
         ],
@@ -19,38 +19,38 @@ defmodule Web.Sites.Index do
         ]
       )
 
-    {internet_resource, existing_group_name} =
+    {internet_resource, existing_site_name} =
       with {:ok, internet_resource} <-
              DB.fetch_internet_resource(socket.assigns.subject),
            internet_resource =
-             Domain.Repo.preload(internet_resource, connections: :gateway_group),
+             Domain.Repo.preload(internet_resource, connections: :site),
            connection when not is_nil(connection) <-
              Enum.find(internet_resource.connections, fn connection ->
-               connection.gateway_group.name != "Internet" &&
-                 connection.gateway_group.managed_by != "system"
+               connection.site.name != "Internet" &&
+                 connection.site.managed_by != "system"
              end) do
-        {internet_resource, connection.gateway_group.name}
+        {internet_resource, connection.site.name}
       else
         _ -> {nil, nil}
       end
 
-    internet_gateway_group = Enum.find(managed_groups, fn group -> group.name == "Internet" end)
+    internet_site = Enum.find(managed_sites, fn site -> site.name == "Internet" end)
 
     socket =
       socket
       |> assign(page_title: "Sites")
       |> assign(internet_resource: internet_resource)
-      |> assign(existing_internet_resource_group_name: existing_group_name)
-      |> assign(internet_gateway_group: internet_gateway_group)
-      |> assign_live_table("groups",
-        query_module: Gateways.Group.Query,
+      |> assign(existing_internet_resource_site_name: existing_site_name)
+      |> assign(internet_site: internet_site)
+      |> assign_live_table("sites",
+        query_module: DB,
         sortable_fields: [
-          {:groups, :name}
+          {:sites, :name}
         ],
         enforce_filters: [
           {:managed_by, "account"}
         ],
-        callback: &handle_groups_update!/2
+        callback: &handle_sites_update!/2
       )
 
     {:ok, socket}
@@ -61,15 +61,15 @@ defmodule Web.Sites.Index do
     {:noreply, socket}
   end
 
-  def handle_groups_update!(socket, list_opts) do
+  def handle_sites_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, gateways: [:online?], connections: [:resource])
 
-    with {:ok, groups, metadata} <-
-           DB.list_groups(socket.assigns.subject, list_opts) do
+    with {:ok, sites, metadata} <-
+           DB.list_sites(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
-         groups: groups,
-         groups_metadata: metadata
+         sites: sites,
+         sites_metadata: metadata
        )}
     end
   end
@@ -101,22 +101,22 @@ defmodule Web.Sites.Index do
 
       <:content>
         <.live_table
-          id="groups"
-          rows={@groups}
-          row_id={&"group-#{&1.id}"}
-          filters={@filters_by_table_id["groups"]}
-          filter={@filter_form_by_table_id["groups"]}
-          ordered_by={@order_by_table_id["groups"]}
-          metadata={@groups_metadata}
+          id="sites"
+          rows={@sites}
+          row_id={&"site-#{&1.id}"}
+          filters={@filters_by_table_id["sites"]}
+          filter={@filter_form_by_table_id["sites"]}
+          ordered_by={@order_by_table_id["sites"]}
+          metadata={@sites_metadata}
         >
-          <:col :let={group} field={{:groups, :name}} label="site" class="w-1/6">
-            <.link navigate={~p"/#{@account}/sites/#{group}"} class={[link_style()]}>
-              {group.name}
+          <:col :let={site} field={{:sites, :name}} label="site" class="w-1/6">
+            <.link navigate={~p"/#{@account}/sites/#{site}"} class={[link_style()]}>
+              {site.name}
             </.link>
           </:col>
 
-          <:col :let={group} label="resources">
-            <% connections = Enum.reject(group.connections, &is_nil(&1.resource))
+          <:col :let={site} label="resources">
+            <% connections = Enum.reject(site.connections, &is_nil(&1.resource))
             peek = %{count: length(connections), items: Enum.take(connections, 5)} %>
             <.peek peek={peek}>
               <:empty>
@@ -130,7 +130,7 @@ defmodule Web.Sites.Index do
               <:item :let={connection}>
                 <.link
                   navigate={
-                    ~p"/#{@account}/resources/#{connection.resource}?site_id=#{connection.gateway_group_id}"
+                    ~p"/#{@account}/resources/#{connection.resource}?site_id=#{connection.site_id}"
                   }
                   class={["inline-block", link_style()]}
                   phx-no-format
@@ -141,7 +141,7 @@ defmodule Web.Sites.Index do
                 <span class="pl-1">
                   and
                   <.link
-                    navigate={~p"/#{@account}/sites/#{group}?#resources"}
+                    navigate={~p"/#{@account}/sites/#{site}?#resources"}
                     class={["font-medium", link_style()]}
                   >
                     {count} more.
@@ -151,8 +151,8 @@ defmodule Web.Sites.Index do
             </.peek>
           </:col>
 
-          <:col :let={group} label="online gateways" class="w-1/6">
-            <% gateways = Enum.filter(group.gateways, & &1.online?)
+          <:col :let={site} label="online gateways" class="w-1/6">
+            <% gateways = Enum.filter(site.gateways, & &1.online?)
             peek = %{count: length(gateways), items: Enum.take(gateways, 5)} %>
             <.peek peek={peek}>
               <:empty>
@@ -180,7 +180,7 @@ defmodule Web.Sites.Index do
                 <span class="pl-1">
                   and
                   <.link
-                    navigate={~p"/#{@account}/sites/#{group}?#gateways"}
+                    navigate={~p"/#{@account}/sites/#{site}?#gateways"}
                     class={["font-medium", link_style()]}
                   >
                     {count} more.
@@ -205,21 +205,21 @@ defmodule Web.Sites.Index do
       </:content>
     </.section>
 
-    <.section :if={@internet_gateway_group} id="internet-site-banner">
+    <.section :if={@internet_site} id="internet-site-banner">
       <:title>
         <div class="flex items-center space-x-2.5">
           <span>Internet</span>
 
-          <% online? = Enum.any?(@internet_gateway_group.gateways, & &1.online?) %>
+          <% online? = Enum.any?(@internet_site.gateways, & &1.online?) %>
 
           <.ping_icon
-            :if={Domain.Accounts.Account.internet_resource_enabled?(@account)}
+            :if={Domain.Account.internet_resource_enabled?(@account)}
             color={if online?, do: "success", else: "danger"}
             title={if online?, do: "Online", else: "Offline"}
           />
 
           <.link
-            :if={not Domain.Accounts.Account.internet_resource_enabled?(@account)}
+            :if={not Domain.Account.internet_resource_enabled?(@account)}
             navigate={~p"/#{@account}/settings/billing"}
             class="text-sm text-primary-500"
           >
@@ -234,8 +234,8 @@ defmodule Web.Sites.Index do
         <.docs_action path="/deploy/resources" fragment="the-internet-resource" />
       </:action>
 
-      <:action :if={Domain.Accounts.Account.internet_resource_enabled?(@account)}>
-        <.edit_button navigate={~p"/#{@account}/sites/#{@internet_gateway_group}"}>
+      <:action :if={Domain.Account.internet_resource_enabled?(@account)}>
+        <.edit_button navigate={~p"/#{@account}/sites/#{@internet_site}"}>
           Manage Internet Site
         </.edit_button>
       </:action>
@@ -252,8 +252,8 @@ defmodule Web.Sites.Index do
         %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},
         socket
       ) do
-    {:ok, managed_groups, _metadata} =
-      DB.list_groups(socket.assigns.subject,
+    {:ok, managed_sites, _metadata} =
+      DB.list_sites(socket.assigns.subject,
         preload: [
           gateways: [:online?]
         ],
@@ -268,13 +268,13 @@ defmodule Web.Sites.Index do
         _ -> nil
       end
 
-    internet_gateway_group = Enum.find(managed_groups, fn group -> group.name == "Internet" end)
+    internet_site = Enum.find(managed_sites, fn site -> site.name == "Internet" end)
 
     socket =
       socket
       |> assign(internet_resource: internet_resource)
-      |> assign(internet_gateway_group: internet_gateway_group)
-      |> reload_live_table!("groups")
+      |> assign(internet_site: internet_site)
+      |> reload_live_table!("sites")
 
     {:noreply, socket}
   end
@@ -284,28 +284,41 @@ defmodule Web.Sites.Index do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Gateways}
-    alias Domain.Gateways.Group
+    alias Domain.Safe
+    alias Domain.Site
     alias Domain.Resource
 
-    def list_groups(subject, opts \\ []) do
-      from(g in Group, as: :groups)
+    def list_sites(subject, opts \\ []) do
+      from(g in Site, as: :sites)
       |> Safe.scoped(subject)
-      |> Safe.list(Gateways.Group.Query, opts)
+      |> Safe.list(__MODULE__, opts)
     end
-    
+
     def fetch_internet_resource(subject) do
       result =
         from(r in Resource, as: :resources)
         |> where([resources: r], r.type == :internet)
         |> Safe.scoped(subject)
         |> Safe.one()
-      
+
       case result do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}
         resource -> {:ok, resource}
       end
     end
+
+    def cursor_fields,
+      do: [
+        {:sites, :asc, :inserted_at},
+        {:sites, :asc, :id}
+      ]
+
+    def preloads,
+      do: [
+        gateways: [
+          online?: &Domain.Gateways.Presence.preload_gateways_presence/1
+        ]
+      ]
   end
 end

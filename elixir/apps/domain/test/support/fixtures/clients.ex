@@ -26,7 +26,7 @@ defmodule Domain.Fixtures.Clients do
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
         if relation = attrs[:actor] do
-          Repo.get!(Domain.Accounts.Account, relation.account_id)
+          Repo.get!(Domain.Account, relation.account_id)
         else
           Fixtures.Accounts.create_account(assoc_attrs)
         end

@@ -150,9 +150,9 @@ defmodule API.ActorGroupMembershipController do
     alias Domain.{Actors, Safe}
 
     def list_actors(subject, opts) do
-      from(a in Actors.Actor, as: :actors)
+      from(a in Domain.Actor, as: :actors)
       |> Safe.scoped(subject)
-      |> Safe.list(Actors.Actor.Query, opts)
+      |> Safe.list(Actor.Query, opts)
     end
 
     def fetch_group_by_id(id, subject) do

@@ -14,7 +14,7 @@ defmodule Domain.OIDC.AuthProvider do
     # Allows setting the ID manually in changesets
     field :id, :binary_id, primary_key: true
 
-    belongs_to :account, Domain.Accounts.Account
+    belongs_to :account, Domain.Account
 
     belongs_to :auth_provider, Domain.AuthProvider,
       foreign_key: :id,
@@ -33,6 +33,10 @@ defmodule Domain.OIDC.AuthProvider do
 
     field :is_disabled, :boolean, read_after_writes: true, default: false
     field :is_default, :boolean, read_after_writes: true, default: false
+
+    # Indicates if this is a legacy provider created before the IDP refactor.
+    # Used to build the legacy redirect_uri.
+    field :is_legacy, :boolean, read_after_writes: true, default: false
 
     field :name, :string, default: "OpenID Connect"
     field :client_id, :string

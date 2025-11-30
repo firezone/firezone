@@ -12,14 +12,14 @@ defmodule Domain.Actors.Group do
 
     has_many :policies, Domain.Policies.Policy, foreign_key: :actor_group_id
 
-    has_many :memberships, Domain.Actors.Membership, on_replace: :delete
+    has_many :memberships, Domain.Membership, on_replace: :delete
     field :member_count, :integer, virtual: true
     field :count, :integer, virtual: true
     field :directory_name, :string, virtual: true
 
     has_many :actors, through: [:memberships, :actor]
 
-    belongs_to :account, Domain.Accounts.Account
+    belongs_to :account, Domain.Account
     belongs_to :directory, Domain.Directory
 
     timestamps()

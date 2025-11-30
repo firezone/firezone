@@ -1,6 +1,6 @@
 defmodule Domain.Version do
   alias Domain.{
-    Clients.Client,
+    Client,
     ComponentVersions
   }
 

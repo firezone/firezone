@@ -3,7 +3,7 @@ defmodule Domain.Repo.Seeds do
   Seeds the database with initial data.
   """
   import Ecto.Changeset
-  
+
   alias Domain.{
     Repo,
     Accounts,
@@ -81,14 +81,17 @@ defmodule Domain.Repo.Seeds do
     end
 
     account =
-      %Accounts.Account{}
-      |> cast(%{
-        name: "Firezone Account",
-        slug: "firezone",
-        config: %{
-          search_domain: "httpbin.search.test"
-        }
-      }, [:name, :slug])
+      %Domain.Account{}
+      |> cast(
+        %{
+          name: "Firezone Account",
+          slug: "firezone",
+          config: %{
+            search_domain: "httpbin.search.test"
+          }
+        },
+        [:name, :slug]
+      )
       |> cast_embed(:config)
       |> Repo.insert!()
 
@@ -123,17 +126,20 @@ defmodule Domain.Repo.Seeds do
           users_count: 15,
           monthly_active_users_count: 10,
           service_accounts_count: 10,
-          gateway_groups_count: 3,
+          sites_count: 3,
           account_admin_users_count: 5
         }
       )
 
     other_account =
-      %Accounts.Account{}
-      |> cast(%{
-        name: "Other Corp Account",
-        slug: "not_firezone"
-      }, [:name, :slug])
+      %Domain.Account{}
+      |> cast(
+        %{
+          name: "Other Corp Account",
+          slug: "not_firezone"
+        },
+        [:name, :slug]
+      )
       |> Repo.insert!()
 
     other_account = maybe_repo_update.(other_account, id: "9b9290bf-e1bc-4dd3-b401-511908262690")
@@ -146,14 +152,14 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
-    {:ok, internet_gateway_group} =
-      Gateways.create_internet_group(account)
+    {:ok, internet_site} =
+      Sites.create_internet_site(account)
 
-    {:ok, other_internet_gateway_group} =
-      Gateways.create_internet_group(other_account)
+    {:ok, other_internet_site} =
+      Sites.create_internet_site(other_account)
 
-    Domain.Resources.create_internet_resource(account, internet_gateway_group)
-    Domain.Resources.create_internet_resource(other_account, other_internet_gateway_group)
+    Domain.Resources.create_internet_resource(account, internet_site)
+    Domain.Resources.create_internet_resource(other_account, other_internet_site)
 
     IO.puts("")
 
@@ -170,7 +176,7 @@ defmodule Domain.Repo.Seeds do
     # Create auth providers for main account
     system_subject = %Auth.Subject{
       account: account,
-      actor: %Actors.Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
+      actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
       token_id: Ecto.UUID.generate(),
       auth_provider_id: nil,
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
@@ -229,7 +235,7 @@ defmodule Domain.Repo.Seeds do
     # Create auth providers for other_account
     other_system_subject = %Auth.Subject{
       account: other_account,
-      actor: %Actors.Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
+      actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
       token_id: Ecto.UUID.generate(),
       auth_provider_id: nil,
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
@@ -250,7 +256,7 @@ defmodule Domain.Repo.Seeds do
     admin_actor_email = "firezone@localhost.local"
 
     {:ok, unprivileged_actor} =
-      Repo.insert(%Actors.Actor{
+      Repo.insert(%Actor{
         account_id: account.id,
         type: :account_user,
         name: "Firezone Unprivileged",
@@ -262,7 +268,7 @@ defmodule Domain.Repo.Seeds do
         email = "user-#{i}@localhost.local"
 
         {:ok, actor} =
-          Repo.insert(%Actors.Actor{
+          Repo.insert(%Actor{
             account_id: account.id,
             type: :account_user,
             name: "Firezone Unprivileged #{i}",
@@ -275,7 +281,7 @@ defmodule Domain.Repo.Seeds do
     other_actors = Enum.map(other_actors_with_emails, fn {actor, _email} -> actor end)
 
     {:ok, admin_actor} =
-      Repo.insert(%Actors.Actor{
+      Repo.insert(%Actor{
         account_id: account.id,
         type: :account_admin_user,
         name: "Firezone Admin",
@@ -283,7 +289,7 @@ defmodule Domain.Repo.Seeds do
       })
 
     {:ok, service_account_actor} =
-      Repo.insert(%Actors.Actor{
+      Repo.insert(%Actor{
         account_id: account.id,
         type: :service_account,
         name: "Backup Manager"
@@ -398,7 +404,7 @@ defmodule Domain.Repo.Seeds do
     other_admin_actor_email = "other@localhost.local"
 
     {:ok, other_unprivileged_actor} =
-      Repo.insert(%Actors.Actor{
+      Repo.insert(%Actor{
         account_id: other_account.id,
         type: :account_user,
         name: "Other Unprivileged",
@@ -406,7 +412,7 @@ defmodule Domain.Repo.Seeds do
       })
 
     {:ok, other_admin_actor} =
-      Repo.insert(%Actors.Actor{
+      Repo.insert(%Actor{
         account_id: other_account.id,
         type: :account_admin_user,
         name: "Other Admin",
@@ -657,7 +663,7 @@ defmodule Domain.Repo.Seeds do
     memberships
     |> Enum.chunk_every(1000)
     |> Enum.each(fn chunk ->
-      Repo.insert_all(Domain.Actors.Membership, chunk)
+      Repo.insert_all(Domain.Membership, chunk)
     end)
 
     now = DateTime.utc_now()
@@ -891,27 +897,30 @@ defmodule Domain.Repo.Seeds do
     IO.puts("    IPv4: #{relay.ipv4} IPv6: #{relay.ipv6}")
     IO.puts("")
 
-    gateway_group =
-      account
-      |> Gateways.Group.Changeset.create(
-        %{name: "mycro-aws-gws", tokens: [%{}]},
-        admin_subject
-      )
+    site =
+      %Domain.Site{account: account}
+      |> Ecto.Changeset.cast(%{name: "mycro-aws-gws", tokens: [%{}]}, [:name])
+      |> Domain.Repo.Changeset.trim_change([:name])
+      |> Domain.Repo.Changeset.put_default_value(:name, &Domain.NameGenerator.generate/0)
+      |> Ecto.Changeset.validate_required([:name])
+      |> Domain.Site.changeset()
+      |> Domain.Repo.Changeset.put_default_value(:managed_by, :account)
+      |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Repo.insert!()
 
-    {:ok, gateway_group_token} =
+    {:ok, site_token} =
       Tokens.create_token(
         %{
-          "type" => :gateway_group,
+          "type" => :site,
           "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
           "account_id" => admin_subject.account.id,
-          "gateway_group_id" => gateway_group.id
+          "site_id" => site.id
         },
         admin_subject
       )
 
-    gateway_group_token =
-      gateway_group_token
+    site_token =
+      site_token
       |> maybe_repo_update.(
         id: "2274560b-e97b-45e4-8b34-679c7617e98d",
         secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
@@ -919,53 +928,56 @@ defmodule Domain.Repo.Seeds do
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
       )
 
-    gateway_group_encoded_token = Domain.Crypto.encode_token_fragment!(gateway_group_token)
+    site_encoded_token = Domain.Crypto.encode_token_fragment!(site_token)
 
-    IO.puts("Created gateway groups:")
-    IO.puts("  #{gateway_group.name} token: #{gateway_group_encoded_token}")
+    IO.puts("Created sites:")
+    IO.puts("  #{site.name} token: #{site_encoded_token}")
     IO.puts("")
 
+    # TODO: Just use Repo.update for this...
     {:ok, gateway1} =
       Gateways.upsert_gateway(
-        gateway_group,
         %{
+          site_id: site.id,
           external_id: Ecto.UUID.generate(),
           name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
         },
         %Auth.Context{
-          type: :gateway_group,
+          type: :site,
           user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
           remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
         }
       )
 
+    # TODO: Just use Repo.update for this...
     {:ok, gateway2} =
       Gateways.upsert_gateway(
-        gateway_group,
         %{
+          site_id: site.id,
           external_id: Ecto.UUID.generate(),
           name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
         },
         %Auth.Context{
-          type: :gateway_group,
+          type: :site,
           user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
           remote_ip: %Postgrex.INET{address: {164, 112, 78, 62}}
         }
       )
 
     for i <- 1..10 do
+      # TODO: Just use Repo.update for this...
       {:ok, _gateway} =
         Gateways.upsert_gateway(
-          gateway_group,
           %{
+            site_id: site.id,
             external_id: Ecto.UUID.generate(),
             name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
             public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
           },
           %Auth.Context{
-            type: :gateway_group,
+            type: :site,
             user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
             remote_ip: %Postgrex.INET{address: {164, 112, 78, 62 + i}}
           }
@@ -973,14 +985,14 @@ defmodule Domain.Repo.Seeds do
     end
 
     IO.puts("Created gateways:")
-    gateway_name = "#{gateway_group.name}-#{gateway1.name}"
+    gateway_name = "#{site.name}-#{gateway1.name}"
     IO.puts("  #{gateway_name}:")
     IO.puts("    External UUID: #{gateway1.external_id}")
     IO.puts("    Public Key: #{gateway1.public_key}")
     IO.puts("    IPv4: #{gateway1.ipv4} IPv6: #{gateway1.ipv6}")
     IO.puts("")
 
-    gateway_name = "#{gateway_group.name}-#{gateway2.name}"
+    gateway_name = "#{site.name}-#{gateway2.name}"
     IO.puts("  #{gateway_name}:")
     IO.puts("    External UUID: #{gateway1.external_id}")
     IO.puts("    Public Key: #{gateway2.public_key}")
@@ -994,7 +1006,7 @@ defmodule Domain.Repo.Seeds do
           name: "foobar.com",
           address: "foobar.com",
           address_description: "https://foobar.com/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: []
         },
         admin_subject
@@ -1007,7 +1019,7 @@ defmodule Domain.Repo.Seeds do
           name: "**.firez.one",
           address: "**.firez.one",
           address_description: "https://firez.one/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: []
         },
         admin_subject
@@ -1020,7 +1032,7 @@ defmodule Domain.Repo.Seeds do
           name: "*.firezone.dev",
           address: "*.firezone.dev",
           address_description: "https://firezone.dev/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: []
         },
         admin_subject
@@ -1033,7 +1045,7 @@ defmodule Domain.Repo.Seeds do
           name: "example.com",
           address: "example.com",
           address_description: "https://example.com:1234/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: []
         },
         admin_subject
@@ -1046,7 +1058,7 @@ defmodule Domain.Repo.Seeds do
           name: "ip6only",
           address: "ip6only.me",
           address_description: "https://ip6only.me/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: []
         },
         admin_subject
@@ -1058,7 +1070,7 @@ defmodule Domain.Repo.Seeds do
           type: :dns,
           name: "Example",
           address: "*.example.com",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: []
         },
         admin_subject
@@ -1071,7 +1083,7 @@ defmodule Domain.Repo.Seeds do
           name: "gitlab.mycorp.com",
           address: "gitlab.mycorp.com",
           address_description: "https://gitlab.mycorp.com/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -1088,7 +1100,7 @@ defmodule Domain.Repo.Seeds do
           name: "Public DNS",
           address: "1.2.3.4",
           address_description: "http://1.2.3.4:3000/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -1105,7 +1117,7 @@ defmodule Domain.Repo.Seeds do
           name: "MyCorp Network",
           address: "172.20.0.1/16",
           address_description: "172.20.0.1/16",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: []
         },
         admin_subject
@@ -1118,7 +1130,7 @@ defmodule Domain.Repo.Seeds do
           name: "MyCorp Network (IPv6)",
           address: "172:20:0::1/64",
           address_description: "172:20:0::1/64",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: []
         },
         admin_subject
@@ -1131,7 +1143,7 @@ defmodule Domain.Repo.Seeds do
           name: "**.httpbin",
           address: "**.httpbin",
           address_description: "http://httpbin/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -1148,7 +1160,7 @@ defmodule Domain.Repo.Seeds do
           name: "**.httpbin.search.test",
           address: "**.httpbin.search.test",
           address_description: "http://httpbin/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          connections: [%{site_id: site.id}],
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -1286,7 +1298,7 @@ defmodule Domain.Repo.Seeds do
     IO.puts("")
 
     membership =
-      Repo.get_by(Domain.Actors.Membership,
+      Repo.get_by(Domain.Membership,
         group_id: synced_group.id,
         actor_id: unprivileged_actor.id
       )

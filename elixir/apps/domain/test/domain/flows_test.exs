@@ -21,14 +21,14 @@ defmodule Domain.FlowsTest do
 
     client = Fixtures.Clients.create_client(account: account, actor: actor, identity: identity)
 
-    gateway_group = Fixtures.Gateways.create_group(account: account)
+    site = Fixtures.Sites.create_site(account: account)
 
-    gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
+    gateway = Fixtures.Gateways.create_gateway(account: account, site: site)
 
     resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{gateway_group_id: gateway_group.id}]
+        connections: [%{site_id: site.id}]
       )
 
     policy =
@@ -47,7 +47,7 @@ defmodule Domain.FlowsTest do
       identity: identity,
       subject: subject,
       client: client,
-      gateway_group: gateway_group,
+      site: site,
       gateway: gateway,
       resource: resource,
       policy: policy

@@ -15,7 +15,7 @@ defmodule Domain.Telemetry.SyncErrorNotification do
     max_attempts: 3,
     unique: [period: 3600]
 
-  alias Domain.{Entra, Google, Actors, Mailer}
+  alias Domain.{Entra, Google, Mailer}
   alias __MODULE__.DB
   require Logger
 
@@ -146,7 +146,7 @@ defmodule Domain.Telemetry.SyncErrorNotification do
     end
 
     def get_account_admin_actors(account_id) do
-      from(a in Actors.Actor,
+      from(a in Domain.Actor,
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
         where: is_nil(a.disabled_at)

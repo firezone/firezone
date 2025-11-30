@@ -123,7 +123,8 @@ defmodule Domain.Entra.APIClient do
         %{
           id: Integer.to_string(index),
           method: "GET",
-          url: "/users/#{user_id}?$select=id,displayName,mail,userPrincipalName,givenName,surname,aboutMe"
+          url:
+            "/users/#{user_id}?$select=id,displayName,mail,userPrincipalName,givenName,surname,aboutMe"
         }
       end)
 

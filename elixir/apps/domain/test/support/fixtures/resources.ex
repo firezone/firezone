@@ -30,7 +30,7 @@ defmodule Domain.Fixtures.Resources do
       Map.pop_lazy(attrs, :connections, fn ->
         Enum.map(1..2, fn _ ->
           gateway = Fixtures.Gateways.create_gateway(account: account)
-          %{gateway_group_id: gateway.group_id}
+          %{site_id: gateway.site_id}
         end)
       end)
 

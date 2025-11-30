@@ -1,6 +1,6 @@
 defmodule Web.SignUp do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-  alias Domain.{Accounts, Actors, Config}
+  alias Domain.{Accounts, Actor, Actors, Config}
   alias Web.Registration
   alias __MODULE__.DB
 
@@ -13,8 +13,8 @@ defmodule Web.SignUp do
 
     embedded_schema do
       field(:email, :string)
-      embeds_one(:account, Accounts.Account)
-      embeds_one(:actor, Actors.Actor)
+      embeds_one(:account, Domain.Account)
+      embeds_one(:actor, Actor)
     end
 
     def changeset(attrs) do
@@ -40,30 +40,20 @@ defmodule Web.SignUp do
 
     defp create_account_changeset(attrs) do
       import Ecto.Changeset
-      
-      %Accounts.Account{}
+
+      %Domain.Account{}
       |> cast(attrs, [:name, :legal_name, :slug])
-      |> Accounts.Account.changeset()
-      |> put_default_value(:config, %Accounts.Config{})
+      |> Domain.Account.changeset()
+      |> Domain.Repo.Changeset.put_default_value(:config, %Accounts.Config{})
     end
-    
+
     defp create_actor_changeset(attrs) do
       import Ecto.Changeset
-      
-      %Actors.Actor{}
+
+      %Domain.Actor{}
       |> cast(attrs, [:name])
       |> validate_required([:name])
       |> validate_length(:name, min: 1, max: 255)
-    end
-    
-    defp put_default_value(changeset, field, value) do
-      import Ecto.Changeset
-      
-      if get_field(changeset, field) do
-        changeset
-      else
-        put_change(changeset, field, value)
-      end
     end
 
     defp validate_email_allowed(changeset, []) do
@@ -394,8 +384,8 @@ defmodule Web.SignUp do
 
   defp create_account_changeset(attrs) do
     import Ecto.Changeset
-    
-    %Accounts.Account{}
+
+    %Domain.Account{}
     |> cast(attrs, [:name])
     |> cast_embed(:metadata)
     |> validate_required([:name])
@@ -403,7 +393,7 @@ defmodule Web.SignUp do
 
   defp create_everyone_group_changeset(account) do
     import Ecto.Changeset
-    
+
     %Actors.Group{}
     |> cast(%{name: "Everyone"}, [:name])
     |> put_change(:account_id, account.id)
@@ -443,15 +433,15 @@ defmodule Web.SignUp do
     |> Ecto.Multi.run(
       :default_site,
       fn _repo, %{account: account} ->
-        changeset = create_group_changeset(account, %{name: "Default Site"})
-        DB.insert_group(changeset)
+        changeset = create_site_changeset(account, %{name: "Default Site"})
+        DB.insert(changeset)
       end
     )
     |> Ecto.Multi.run(
       :internet_site,
       fn _repo, %{account: account} ->
-        changeset = create_internet_group_changeset(account)
-        DB.insert_group(changeset)
+        changeset = create_internet_site_changeset(account)
+        DB.insert(changeset)
       end
     )
     |> Ecto.Multi.run(
@@ -479,49 +469,47 @@ defmodule Web.SignUp do
     )
     |> Domain.Repo.transaction()
   end
-  
-  defp create_group_changeset(account, attrs) do
+
+  defp create_site_changeset(account, attrs) do
     import Ecto.Changeset
-    
-    %Domain.Gateways.Group{
+
+    %Domain.Site{
       account_id: account.id,
-      created_by_identity_id: nil,
       managed_by: :account,
       tokens: []
     }
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> Domain.Gateways.Group.changeset()
+    |> Domain.Site.changeset()
   end
-  
-  defp create_internet_group_changeset(account) do
+
+  defp create_internet_site_changeset(account) do
     import Ecto.Changeset
-    
-    %Domain.Gateways.Group{
+
+    %Domain.Site{
       account_id: account.id,
-      created_by_identity_id: nil,
       managed_by: :system,
       tokens: []
     }
     |> cast(%{name: "Internet", managed_by: :system}, [:name, :managed_by])
     |> validate_required([:name, :managed_by])
-    |> Domain.Gateways.Group.changeset()
+    |> Domain.Site.changeset()
   end
-  
-  defp create_internet_resource_changeset(account, group) do
+
+  defp create_internet_resource_changeset(account, site) do
     import Ecto.Changeset
-    
+
     attrs = %{
       type: :internet,
       name: "Internet",
       connections: %{
-        group.id => %{
-          gateway_group_id: group.id,
+        site.id => %{
+          site_id: site.id,
           enabled: true
         }
       }
     }
-    
+
     %Domain.Resource{connections: []}
     |> cast(attrs, [:type, :name])
     |> validate_required([:name, :type])
@@ -536,7 +524,7 @@ defmodule Web.SignUp do
     import Ecto.Changeset
 
     alias Domain.{
-      Actors.Actor,
+      Actor,
       AuthProvider,
       EmailOTP,
       Safe
@@ -561,18 +549,13 @@ defmodule Web.SignUp do
     def create_admin(account, email, name) do
       attrs = %{account_id: account.id, email: email, name: name, type: :account_admin_user}
 
-      cast(%Actor{}, attrs, ~w[account_id email name type]a)
-      |> Actor.changeset()
+      cast(%Domain.Actor{}, attrs, ~w[account_id email name type]a)
+      |> Domain.Actor.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
     end
 
     def insert(changeset) do
-      Safe.unscoped(changeset)
-      |> Safe.insert()
-    end
-    
-    def insert_group(changeset) do
       Safe.unscoped(changeset)
       |> Safe.insert()
     end

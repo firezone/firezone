@@ -1,13 +1,12 @@
 defmodule Web.Settings.ApiClients.Index do
   use Web, :live_view
-  alias Domain.Actors
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Actors, Safe}
+    alias Domain.Safe
 
     def list_actors(subject, opts \\ []) do
-      from(a in Actors.Actor, as: :actors)
+      from(a in Domain.Actor, as: :actors)
       |> where([actors: a], a.type == :api_client)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
@@ -22,7 +21,7 @@ defmodule Web.Settings.ApiClients.Index do
   end
 
   def mount(_params, _session, socket) do
-    if Domain.Accounts.Account.rest_api_enabled?(socket.assigns.account) do
+    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
       socket =
         socket
         |> assign(page_title: "API Clients")

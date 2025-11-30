@@ -40,8 +40,8 @@ defmodule Domain.Fixtures.Accounts do
 
   def create_account(attrs \\ %{}) do
     attrs = account_attrs(attrs)
-    
-    %Accounts.Account{}
+
+    %Domain.Account{}
     |> cast(attrs, [:name, :legal_name, :slug])
     |> cast_embed(:config)
     |> cast_embed(:features)
@@ -50,29 +50,38 @@ defmodule Domain.Fixtures.Accounts do
     |> Repo.insert!()
   end
 
-  def delete_account(%Accounts.Account{} = account) do
+  def delete_account(%Domain.Account{} = account) do
     Repo.delete(account)
   end
 
-  def disable_account(%Accounts.Account{} = account) do
+  def disable_account(%Domain.Account{} = account) do
     update_account(account, disabled_at: DateTime.utc_now())
   end
 
-  def change_to_enterprise(%Accounts.Account{} = account) do
+  def change_to_enterprise(%Domain.Account{} = account) do
     update_account(account, %{metadata: %{stripe: %{product_name: "Enterprise"}}})
   end
 
-  def change_to_team(%Accounts.Account{} = account) do
+  def change_to_team(%Domain.Account{} = account) do
     update_account(account, %{metadata: %{stripe: %{product_name: "Team"}}})
   end
 
-  def change_to_starter(%Accounts.Account{} = account) do
+  def change_to_starter(%Domain.Account{} = account) do
     update_account(account, %{metadata: %{stripe: %{product_name: "Starter"}}})
   end
 
   def update_account(account, attrs \\ %{}) do
     account
-    |> cast(attrs, [:name, :legal_name, :slug, :warning, :warning_delivery_attempts, :warning_last_sent_at, :disabled_at, :disabled_reason])
+    |> cast(attrs, [
+      :name,
+      :legal_name,
+      :slug,
+      :warning,
+      :warning_delivery_attempts,
+      :warning_last_sent_at,
+      :disabled_at,
+      :disabled_reason
+    ])
     |> cast_embed(:config)
     |> cast_embed(:features)
     |> cast_embed(:limits)

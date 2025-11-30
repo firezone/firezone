@@ -2,8 +2,6 @@ defmodule Web.OIDCController do
   use Web, :controller
 
   alias Domain.{
-    Accounts,
-    Actors,
     AuthProvider,
     Tokens,
     Safe
@@ -28,7 +26,7 @@ defmodule Web.OIDCController do
   action_fallback Web.FallbackController
 
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
-    with %Accounts.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
+    with %Domain.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
          provider when not is_nil(provider) <- fetch_provider(account, params) do
       provider_redirect(conn, account, provider, params)
     else
@@ -61,7 +59,7 @@ defmodule Web.OIDCController do
     with {:ok, cookie} <- Map.fetch(conn.cookies, cookie_key),
          conn = delete_resp_cookie(conn, cookie_key),
          true = Plug.Crypto.secure_compare(cookie["state"], state),
-         %Accounts.Account{} = account <- DB.get_account_by_id_or_slug(cookie["account_id"]),
+         %Domain.Account{} = account <- DB.get_account_by_id_or_slug(cookie["account_id"]),
          provider when not is_nil(provider) <- fetch_provider(account, cookie),
          :ok <- validate_context(provider, context_type),
          {:ok, tokens} <-
@@ -198,12 +196,12 @@ defmodule Web.OIDCController do
   end
 
   defp check_admin(
-         %Domain.ExternalIdentity{actor: %Actors.Actor{type: :account_admin_user}},
+         %Domain.ExternalIdentity{actor: %Domain.Actor{type: :account_admin_user}},
          _context_type
        ),
        do: :ok
 
-  defp check_admin(%Domain.ExternalIdentity{actor: %Actors.Actor{type: :account_user}}, :client),
+  defp check_admin(%Domain.ExternalIdentity{actor: %Domain.Actor{type: :account_user}}, :client),
     do: :ok
 
   defp check_admin(_identity, _context_type), do: {:error, :not_admin}
@@ -252,7 +250,7 @@ defmodule Web.OIDCController do
     }
 
     with {:ok, token} <- Tokens.create_token(attrs) do
-      {:ok, Domain.Crypto.encode_token_fragment!(token)}
+      {:ok, Domain.Tokens.encode_fragment!(token)}
     end
   end
 
@@ -320,7 +318,7 @@ defmodule Web.OIDCController do
   defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, AuthProvider, ExternalIdentity}
-    alias Domain.Accounts.Account
+    alias Domain.Account
 
     def get_account_by_id_or_slug(id_or_slug) do
       from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)

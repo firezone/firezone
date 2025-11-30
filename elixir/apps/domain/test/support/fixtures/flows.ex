@@ -27,11 +27,11 @@ defmodule Domain.Fixtures.Flows do
         |> Fixtures.Clients.create_client()
       end)
 
-    {gateway_group, attrs} =
-      pop_assoc_fixture(attrs, :gateway_group, fn assoc_attrs ->
+    {site, attrs} =
+      pop_assoc_fixture(attrs, :site, fn assoc_attrs ->
         assoc_attrs
         |> Enum.into(%{account: account, subject: subject})
-        |> Fixtures.Gateways.create_group()
+        |> Fixtures.Sites.create_site()
       end)
 
     {gateway, attrs} =
@@ -39,7 +39,7 @@ defmodule Domain.Fixtures.Flows do
         assoc_attrs
         |> Enum.into(%{
           account: account,
-          gateway_group: gateway_group,
+          site: site,
           subject: subject
         })
         |> Fixtures.Gateways.create_gateway()

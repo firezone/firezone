@@ -61,7 +61,7 @@ defmodule Domain.OpsTest do
       assert provider.name == "Email"
       assert provider.adapter == :email
 
-      account = Domain.Repo.get_by!(Domain.Accounts.Account, slug: "test_account")
+      account = Domain.Repo.get_by!(Domain.Account, slug: "test_account")
       assert account.name == "Test Account"
       assert account.metadata.stripe.customer_id
     end
@@ -110,7 +110,7 @@ defmodule Domain.OpsTest do
         assert delete_disabled_account(account.id) == :ok
       end
 
-      refute Repo.one(Domain.Accounts.Account)
+      refute Repo.one(Domain.Account)
     end
   end
 end

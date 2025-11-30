@@ -7,7 +7,7 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
   import Phoenix.Controller, only: [redirect: 2]
 
   alias Domain.{
-    Accounts.Account,
+    Account,
     OIDC,
     Google,
     Okta,
@@ -70,7 +70,7 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
     import Ecto.Query
 
     alias Domain.{
-      Accounts.Account,
+      Account,
       OIDC,
       Okta,
       Google,

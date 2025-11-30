@@ -55,7 +55,7 @@ defmodule Domain.Policies.Policy.Query do
         queryable,
         :inner,
         [],
-        actor in Domain.Actors.Actor,
+        actor in Domain.Actor,
         on: actor.id == ^actor_id,
         as: ^binding
       )
@@ -79,13 +79,13 @@ defmodule Domain.Policies.Policy.Query do
     )
   end
 
-  def by_gateway_group_id(queryable, gateway_group_id) do
+  def by_site_id(queryable, site_id) do
     queryable
     |> with_joined_resource()
     |> with_joined_resource_connections()
     |> where(
       [resource_connections: resource_connections],
-      resource_connections.gateway_group_id == ^gateway_group_id
+      resource_connections.site_id == ^site_id
     )
   end
 
@@ -137,9 +137,9 @@ defmodule Domain.Policies.Policy.Query do
     end)
   end
 
-  def with_preloaded_resource_gateway_groups(queryable) do
+  def with_preloaded_resource_sites(queryable) do
     queryable
-    |> preload(resource: :gateway_groups)
+    |> preload(resource: :sites)
   end
 
   # Pagination
@@ -249,11 +249,11 @@ defmodule Domain.Policies.Policy.Query do
   def filter_by_status(queryable, "disabled") do
     {queryable, dynamic([policies: policies], not is_nil(policies.disabled_at))}
   end
-  
+
   defp all_resources!(subject) do
     import Ecto.Query
     alias Domain.{Resource, Safe}
-    
+
     from(resources in Resource, as: :resources)
     |> filter_features(subject.account)
     |> Safe.scoped(subject)
@@ -263,9 +263,9 @@ defmodule Domain.Policies.Policy.Query do
       resources -> resources
     end
   end
-  
-  defp filter_features(queryable, %Domain.Accounts.Account{} = account) do
-    if Domain.Accounts.Account.internet_resource_enabled?(account) do
+
+  defp filter_features(queryable, %Domain.Account{} = account) do
+    if Domain.Account.internet_resource_enabled?(account) do
       queryable
     else
       where(queryable, [resources: resources], resources.type != ^:internet)

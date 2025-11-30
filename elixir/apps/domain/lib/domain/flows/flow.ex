@@ -20,12 +20,12 @@ defmodule Domain.Flows.Flow do
   schema "flows" do
     belongs_to :policy, Domain.Policies.Policy
     belongs_to :client, Domain.Client
-    belongs_to :gateway, Domain.Gateways.Gateway
+    belongs_to :gateway, Domain.Gateway
     belongs_to :resource, Domain.Resource
     belongs_to :token, Domain.Tokens.Token
-    belongs_to :actor_group_membership, Domain.Actors.Membership
+    belongs_to :actor_group_membership, Domain.Membership
 
-    belongs_to :account, Domain.Accounts.Account
+    belongs_to :account, Domain.Account
 
     # TODO: These can be removed since we don't use them
     field :client_remote_ip, Domain.Types.IP

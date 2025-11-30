@@ -150,8 +150,8 @@ defmodule Domain.PoliciesTest do
     end
   end
 
-  describe "all_policies_in_gateway_group_for_resource_id_and_actor_id!/4" do
-    test "does not return policies for other gateway groups", %{
+  describe "all_policies_in_site_for_resource_id_and_actor_id!/4" do
+    test "does not return policies for other sites", %{
       account: account,
       resource: resource,
       actor_group: actor_group,
@@ -165,28 +165,28 @@ defmodule Domain.PoliciesTest do
         )
 
       connections = resource.connections
-      original_gateway_group_id = List.first(connections).gateway_group_id
+      original_site_id = List.first(connections).site_id
 
-      new_gateway_group = Fixtures.Gateways.create_group(account: account)
+      new_site = Fixtures.Sites.create_site(account: account)
 
       # Admin moves resource to another site
-      connections = [%{gateway_group_id: new_gateway_group.id}]
+      connections = [%{site_id: new_site.id}]
       resource = Fixtures.Resources.update_resource(resource, connections: connections)
 
       # Since this function is used to reauthorize flows, we need to ensure we don't find
-      # policies for the old gateway group
+      # policies for the old site
       assert [] =
-               all_policies_in_gateway_group_for_resource_id_and_actor_id!(
+               all_policies_in_site_for_resource_id_and_actor_id!(
                  account.id,
-                 original_gateway_group_id,
+                 original_site_id,
                  resource.id,
                  actor.id
                )
 
       assert [^policy] =
-               all_policies_in_gateway_group_for_resource_id_and_actor_id!(
+               all_policies_in_site_for_resource_id_and_actor_id!(
                  account.id,
-                 new_gateway_group.id,
+                 new_site.id,
                  resource.id,
                  actor.id
                )

@@ -1,6 +1,6 @@
 defmodule API.ActorControllerTest do
   use API.ConnCase, async: true
-  alias Domain.Actors.Actor
+  alias Domain.Actor
 
   setup do
     account = Fixtures.Accounts.create_account()

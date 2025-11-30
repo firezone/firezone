@@ -1,6 +1,6 @@
 defmodule Web.LiveHooks.FetchSubject do
   import Phoenix.LiveView
-  alias Domain.Accounts.Account
+  alias Domain.Account
 
   def on_mount(:default, params, session, %{assigns: %{account: %Account{} = account}} = socket) do
     socket =

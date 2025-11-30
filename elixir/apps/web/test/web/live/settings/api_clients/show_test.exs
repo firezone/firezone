@@ -141,7 +141,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
     |> render_click()
 
     assert_redirect(lv, ~p"/#{account}/settings/api_clients")
-    refute Repo.get(Domain.Actors.Actor, api_client.id)
+    refute Repo.get(Domain.Actor, api_client.id)
   end
 
   test "allows disabling api clients", %{
@@ -164,7 +164,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
            |> Floki.find(".flash-info")
            |> element_to_text() =~ "API Client was disabled."
 
-    assert Repo.get(Domain.Actors.Actor, api_client.id).disabled_at
+    assert Repo.get(Domain.Actor, api_client.id).disabled_at
   end
 
   test "allows enabling api clients", %{
@@ -189,7 +189,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
            |> Floki.find(".flash-info")
            |> element_to_text() =~ "API Client was enabled."
 
-    refute Repo.get(Domain.Actors.Actor, api_client.id).disabled_at
+    refute Repo.get(Domain.Actor, api_client.id).disabled_at
   end
 
   test "renders api client tokens", %{

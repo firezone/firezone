@@ -6,7 +6,7 @@ defmodule Domain.Mailer.BetaEmail do
   embed_templates "beta_email/*.text", suffix: "_text"
 
   def rest_api_beta_email(
-        %Domain.Accounts.Account{} = account,
+        %Domain.Account{} = account,
         %Domain.Auth.Subject{} = subject
       ) do
     default_email()

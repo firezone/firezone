@@ -193,7 +193,7 @@ defmodule Domain.Safe do
 
   ## Examples
       Safe.transact(fn -> ... end)
-      
+
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:user, changeset)
       |> Safe.transact()
@@ -284,7 +284,7 @@ defmodule Domain.Safe do
   @spec insert(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def insert(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
     schema = get_schema_module(changeset.data)
-    
+
     changeset
     |> apply_schema_changeset(schema)
     |> Repo.insert()
@@ -296,10 +296,11 @@ defmodule Domain.Safe do
     case changeset_or_struct do
       %Ecto.Changeset{} = changeset ->
         schema = get_schema_module(changeset.data)
+
         changeset
         |> apply_schema_changeset(schema)
         |> Repo.insert(opts)
-      
+
       struct ->
         Repo.insert(struct, opts)
     end
@@ -326,7 +327,7 @@ defmodule Domain.Safe do
   @spec update(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def update(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
     schema = get_schema_module(changeset.data)
-    
+
     changeset
     |> apply_schema_changeset(schema)
     |> Repo.update()
@@ -338,6 +339,7 @@ defmodule Domain.Safe do
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def update(repo, changeset, opts \\ []) when repo == Repo do
     schema = get_schema_module(changeset.data)
+
     changeset
     |> apply_schema_changeset(schema)
     |> Repo.update(opts)
@@ -422,7 +424,7 @@ defmodule Domain.Safe do
   @spec delete(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def delete(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
     schema = get_schema_module(changeset.data)
-    
+
     changeset
     |> apply_schema_changeset(schema)
     |> Repo.delete()
@@ -438,10 +440,11 @@ defmodule Domain.Safe do
     case struct_or_changeset do
       %Ecto.Changeset{} = changeset ->
         schema = get_schema_module(changeset.data)
+
         changeset
         |> apply_schema_changeset(schema)
         |> Repo.delete(opts)
-      
+
       struct ->
         Repo.delete(struct, opts)
     end
@@ -486,7 +489,7 @@ defmodule Domain.Safe do
   end
 
   # Helper functions
-  defp apply_account_filter(queryable, Domain.Accounts.Account, account_id) do
+  defp apply_account_filter(queryable, Domain.Account, account_id) do
     # For Account schema, filter by id instead of account_id
     where(queryable, id: ^account_id)
   end
@@ -514,11 +517,11 @@ defmodule Domain.Safe do
     permit(action, schema, subject.actor.type)
   end
 
-  def permit(_action, Domain.Accounts.Account, :account_admin_user), do: :ok
-  def permit(:read, Domain.Accounts.Account, :account_user), do: :ok
-  def permit(:read, Domain.Accounts.Account, :service_account), do: :ok
-  def permit(:read, Domain.Accounts.Account, :api_client), do: :ok
-  def permit(_action, Domain.Actors.Actor, :account_admin_user), do: :ok
+  def permit(_action, Domain.Account, :account_admin_user), do: :ok
+  def permit(:read, Domain.Account, :account_user), do: :ok
+  def permit(:read, Domain.Account, :service_account), do: :ok
+  def permit(:read, Domain.Account, :api_client), do: :ok
+  def permit(_action, Domain.Actor, :account_admin_user), do: :ok
   def permit(_action, Domain.Actors.Group, :account_admin_user), do: :ok
   def permit(_action, Domain.ExternalIdentity, :account_admin_user), do: :ok
   def permit(_action, Domain.Tokens.Token, :account_admin_user), do: :ok
@@ -548,12 +551,12 @@ defmodule Domain.Safe do
   def permit(_action, Domain.Flows.Flow, :account_admin_user), do: :ok
 
   # Gateway permissions
-  def permit(_action, Domain.Gateways.Gateway, :account_admin_user), do: :ok
-  def permit(:read, Domain.Gateways.Gateway, _), do: :ok
+  def permit(_action, Domain.Gateway, :account_admin_user), do: :ok
+  def permit(:read, Domain.Gateway, _), do: :ok
 
-  # Gateway Group permissions
-  def permit(_action, Domain.Gateways.Group, :account_admin_user), do: :ok
-  def permit(:read, Domain.Gateways.Group, _), do: :ok
+  # Site permissions
+  def permit(_action, Domain.Site, :account_admin_user), do: :ok
+  def permit(:read, Domain.Site, _), do: :ok
 
   # Resource permissions
   def permit(_action, Domain.Resource, :account_admin_user), do: :ok

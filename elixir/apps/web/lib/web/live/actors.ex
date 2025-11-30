@@ -4,7 +4,7 @@ defmodule Web.Actors do
   alias __MODULE__.DB
 
   alias Domain.{
-    Actors,
+    Actor,
     ExternalIdentity,
     Tokens.Token
   }
@@ -37,7 +37,7 @@ defmodule Web.Actors do
 
   # Add User Modal
   def handle_params(params, uri, %{assigns: %{live_action: :add_user}} = socket) do
-    changeset = changeset(%Actors.Actor{}, %{type: :account_user})
+    changeset = changeset(%Domain.Actor{}, %{type: :account_user})
     socket = handle_live_tables_params(socket, params, uri)
 
     {:noreply,
@@ -50,7 +50,7 @@ defmodule Web.Actors do
   # Add Service Account Modal
   def handle_params(params, uri, %{assigns: %{live_action: :add_service_account}} = socket) do
     # Create an actor struct with type already set
-    actor = %Actors.Actor{type: :service_account}
+    actor = %Domain.Actor{type: :service_account}
     changeset = changeset(actor, %{})
     socket = handle_live_tables_params(socket, params, uri)
 
@@ -175,7 +175,7 @@ defmodule Web.Actors do
 
   def handle_event("create_user", %{"actor" => attrs}, socket) do
     attrs = Map.put(attrs, "type", "account_user")
-    changeset = changeset(%Actors.Actor{}, attrs)
+    changeset = changeset(%Domain.Actor{}, attrs)
 
     case DB.create(changeset, socket.assigns.subject) do
       {:ok, actor} ->
@@ -196,7 +196,7 @@ defmodule Web.Actors do
 
   def handle_event("create_service_account", %{"actor" => attrs} = params, socket) do
     attrs = Map.put(attrs, "type", "service_account")
-    changeset = changeset(%Actors.Actor{type: :service_account}, attrs)
+    changeset = changeset(%Domain.Actor{type: :service_account}, attrs)
     token_expiration = Map.get(params, "token_expiration")
 
     result =
@@ -1323,7 +1323,7 @@ defmodule Web.Actors do
 
         case DB.create(changeset, subject) do
           {:ok, token} ->
-            encoded_token = Domain.Crypto.encode_token_fragment!(token)
+            encoded_token = Domain.Tokens.encode_fragment!(token)
             {:ok, {token, encoded_token}}
 
           error ->
@@ -1417,12 +1417,12 @@ defmodule Web.Actors do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Actors, Safe, Tokens.Token}
+    alias Domain.{Safe, Tokens.Token}
     alias Domain.Directory
     alias Domain.Repo.Filter
 
     def all do
-      from(actors in Actors.Actor, as: :actors)
+      from(actors in Domain.Actor, as: :actors)
       |> select_merge([actors: actors], %{
         email:
           fragment(
@@ -1557,7 +1557,7 @@ defmodule Web.Actors do
     end
 
     def get_actor!(id, subject) do
-      from(a in Actors.Actor, as: :actors)
+      from(a in Actor, as: :actors)
       |> where([actors: a], a.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one!()
@@ -1598,7 +1598,7 @@ defmodule Web.Actors do
     end
 
     def other_enabled_admins_exist?(account_id, actor_id, subject) do
-      from(a in Actors.Actor,
+      from(a in Actor,
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
         where: a.id != ^actor_id,

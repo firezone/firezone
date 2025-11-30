@@ -3,7 +3,7 @@ defmodule Domain.ChangeLog do
 
   @primary_key false
   schema "change_logs" do
-    belongs_to :account, Domain.Accounts.Account
+    belongs_to :account, Domain.Account
 
     field :lsn, :integer, primary_key: true
     field :table, :string

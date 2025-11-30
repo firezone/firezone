@@ -1,23 +1,23 @@
 defmodule Web.Sites.NewToken do
   use Web, :live_view
-  alias Domain.Gateways
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <-
-           Gateways.fetch_group_by_id(id, socket.assigns.subject) do
-      {group, token, env} =
+    with {:ok, site} <-
+           DB.fetch_site_by_id(id, socket.assigns.subject) do
+      {site, token, env} =
         if connected?(socket) do
-          {:ok, token, encoded_token} = Gateways.create_token(group, %{}, socket.assigns.subject)
-          :ok = Gateways.Presence.Group.subscribe(group.id)
-          {group, token, env(encoded_token)}
+          {:ok, token, encoded_token} = DB.create_token(site, %{}, socket.assigns.subject)
+          :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+          {site, token, env(encoded_token)}
         else
-          {group, nil, nil}
+          {site, nil, nil}
         end
 
       {:ok,
        assign(socket,
          page_title: "New Site Gateway",
-         group: group,
+         site: site,
          token: token,
          env: env,
          connected?: false
@@ -39,10 +39,10 @@ defmodule Web.Sites.NewToken do
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        {@group.name}
+      <.breadcrumb path={~p"/#{@account}/sites/#{@site}"}>
+        {@site.name}
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@group}/new_token"}>Deploy</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@site}/new_token"}>Deploy</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
@@ -280,7 +280,7 @@ defmodule Web.Sites.NewToken do
             <.initial_connection_status
               :if={@env}
               type="gateway"
-              navigate={~p"/#{@account}/sites/#{@group}"}
+              navigate={~p"/#{@account}/sites/#{@site}"}
               connected?={@connected?}
             />
           </div>
@@ -404,7 +404,7 @@ defmodule Web.Sites.NewToken do
   def handle_info(
         %Phoenix.Socket.Broadcast{
           event: "presence_diff",
-          topic: "presences:group_gateways:" <> _group_id,
+          topic: "presences:sites:" <> _site_id,
           payload: %{joins: joins}
         },
         socket
@@ -421,6 +421,34 @@ defmodule Web.Sites.NewToken do
         end)
 
       {:noreply, assign(socket, connected?: connected?)}
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Tokens}
+
+    def fetch_site_by_id(id, subject) do
+      result =
+        from(g in Domain.Site, as: :sites)
+        |> where([sites: g], g.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        site -> {:ok, site}
+      end
+    end
+
+    def create_token(site, attrs, subject) do
+      attrs =
+        attrs
+        |> Map.put("type", :site)
+        |> Map.put("site_id", site.id)
+
+      Tokens.create_token(attrs, subject)
     end
   end
 end

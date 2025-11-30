@@ -2,11 +2,11 @@ defmodule Web.Settings.ApiClients.Edit do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
   import Ecto.Changeset
-  alias Domain.Actors
+
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    if Domain.Accounts.Account.rest_api_enabled?(socket.assigns.account) do
+    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
       with {:ok, actor} <- DB.fetch_api_client(id, socket.assigns.subject) do
         changeset = changeset(actor, %{})
 
@@ -89,10 +89,10 @@ defmodule Web.Settings.ApiClients.Edit do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Actors}
+    alias Domain.Safe
 
     def fetch_api_client(id, subject) do
-      from(a in Actors.Actor, where: a.id == ^id, where: a.type == :api_client)
+      from(a in Domain.Actor, where: a.id == ^id, where: a.type == :api_client)
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do

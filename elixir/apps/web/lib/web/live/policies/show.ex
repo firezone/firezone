@@ -43,7 +43,7 @@ defmodule Web.Policies.Show do
     list_opts =
       Keyword.put(list_opts, :preload,
         client: [:actor],
-        gateway: [:group]
+        gateway: [:site]
       )
 
     with {:ok, flows, metadata} <-
@@ -201,7 +201,7 @@ defmodule Web.Policies.Show do
           </:col>
           <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={link_style()}>
-              {flow.gateway.group.name}-{flow.gateway.name}
+              {flow.gateway.site.name}-{flow.gateway.name}
             </.link>
             <br />
             <code class="text-xs">{flow.gateway_remote_ip}</code>

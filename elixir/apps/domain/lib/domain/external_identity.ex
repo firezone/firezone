@@ -2,7 +2,7 @@ defmodule Domain.ExternalIdentity do
   use Domain, :schema
 
   schema "external_identities" do
-    belongs_to :actor, Domain.Actors.Actor, on_replace: :update
+    belongs_to :actor, Domain.Actor, on_replace: :update
 
     # Identity Provider fields
     field :issuer
@@ -26,7 +26,7 @@ defmodule Domain.ExternalIdentity do
 
     field :directory_name, :string, virtual: true
 
-    belongs_to :account, Domain.Accounts.Account
+    belongs_to :account, Domain.Account
     belongs_to :directory, Domain.Directory
 
     timestamps(updated_at: false)

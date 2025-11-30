@@ -47,7 +47,7 @@ defmodule Web.Live.SignUpTest do
     assert html =~ "Your account has been created!"
     assert html =~ account_name
 
-    account = Repo.one(Domain.Accounts.Account)
+    account = Repo.one(Domain.Account)
     assert account.name == account_name
     assert account.metadata.stripe.customer_id
     assert account.metadata.stripe.billing_email == email
@@ -60,7 +60,7 @@ defmodule Web.Live.SignUpTest do
     provider = Repo.one(Domain.Auth.Provider)
     assert provider.account_id == account.id
 
-    actor = Repo.one(Domain.Actors.Actor)
+    actor = Repo.one(Domain.Actor)
     assert actor.account_id == account.id
     assert actor.name == "John Doe"
 
@@ -78,13 +78,13 @@ defmodule Web.Live.SignUpTest do
     assert internet_resource.name == "Internet"
     assert internet_resource.type == :internet
 
-    default_gateway_group = Repo.get_by(Domain.Gateways.Group, name: "Default Site")
-    assert default_gateway_group.account_id == account.id
-    assert default_gateway_group.managed_by == :account
+    default_site = Repo.get_by(Domain.Site, name: "Default Site")
+    assert default_site.account_id == account.id
+    assert default_site.managed_by == :account
 
-    internet_gateway_group = Repo.get_by(Domain.Gateways.Group, name: "Internet")
-    assert internet_gateway_group.account_id == account.id
-    assert internet_gateway_group.managed_by == :system
+    internet_site = Repo.get_by(Domain.Site, name: "Internet")
+    assert internet_site.account_id == account.id
+    assert internet_site.managed_by == :system
   end
 
   test "rate limits welcome emails", %{conn: conn} do
@@ -153,7 +153,7 @@ defmodule Web.Live.SignUpTest do
     |> form("form", registration: attrs)
     |> render_submit()
 
-    account = Repo.one(Domain.Accounts.Account)
+    account = Repo.one(Domain.Account)
     assert account.name == account_name
     assert account.metadata.stripe.customer_id
     assert account.metadata.stripe.billing_email == email

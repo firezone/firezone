@@ -2,11 +2,11 @@ defmodule Web.Settings.ApiClients.New do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
   import Ecto.Changeset
-  alias Domain.Actors
+  alias Domain.Actor
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
-    if Domain.Accounts.Account.rest_api_enabled?(socket.assigns.account) do
+    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
       changeset = changeset(%{})
 
       socket =
@@ -78,7 +78,7 @@ defmodule Web.Settings.ApiClients.New do
   end
 
   defp changeset(attrs) do
-    %Actors.Actor{type: :api_client}
+    %Actor{type: :api_client}
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 255)

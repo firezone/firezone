@@ -14,7 +14,7 @@ defmodule Domain.Okta.AuthProvider do
     # Allows setting the ID manually in changesets
     field :id, :binary_id, primary_key: true
 
-    belongs_to :account, Domain.Accounts.Account
+    belongs_to :account, Domain.Account
 
     belongs_to :auth_provider, Domain.AuthProvider,
       foreign_key: :id,

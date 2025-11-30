@@ -5,8 +5,7 @@ defmodule Web.EmailOTPController do
   use Web, :controller
 
   alias Domain.{
-    Accounts,
-    Actors,
+    Actor,
     EmailOTP,
     Safe,
     Tokens
@@ -41,7 +40,7 @@ defmodule Web.EmailOTPController do
       ) do
     email = email_params["email"]
 
-    with %Accounts.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
+    with %Domain.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
          %EmailOTP.AuthProvider{} <- fetch_provider(account, auth_provider_id) do
       conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id)
 
@@ -84,9 +83,9 @@ defmodule Web.EmailOTPController do
     with {:ok, cookie_binary} <- Map.fetch(conn.cookies, cookie_key),
          {fragment, email, _stored_params} <- :erlang.binary_to_term(cookie_binary),
          conn = delete_resp_cookie(conn, cookie_key),
-         %Accounts.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
+         %Domain.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
          %EmailOTP.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
-         %Actors.Actor{} = actor <- fetch_actor(account, email),
+         %Domain.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
          secret = String.downcase(nonce) <> fragment,
          {:ok, actor, _expires_at} <- verify_secret(actor, secret, conn),
@@ -111,7 +110,7 @@ defmodule Web.EmailOTPController do
     {fragment, error} =
       Web.Auth.execute_with_constant_time(
         fn ->
-          with %Actors.Actor{} = actor <- fetch_actor(account, email),
+          with %Domain.Actor{} = actor <- fetch_actor(account, email),
                {:ok, actor, fragment, nonce} <- request_sign_in_token(actor, context),
                {:ok, fragment} <-
                  send_email_otp(conn, actor, fragment, nonce, auth_provider_id, params) do
@@ -120,7 +119,7 @@ defmodule Web.EmailOTPController do
             {:error, :rate_limited} ->
               # Generate fake fragment but track the error
               fake_fragment =
-                Domain.Crypto.encode_token_fragment!(%Domain.Tokens.Token{
+                Domain.Tokens.encode_fragment!(%Domain.Tokens.Token{
                   type: :email,
                   secret_nonce: Domain.Crypto.random_token(5, encoder: :user_friendly),
                   secret_fragment: Domain.Crypto.random_token(27, encoder: :hex32),
@@ -135,7 +134,7 @@ defmodule Web.EmailOTPController do
             _ ->
               # We generate a fake fragment to prevent information leakage
               fake_fragment =
-                Domain.Crypto.encode_token_fragment!(%Domain.Tokens.Token{
+                Domain.Tokens.encode_fragment!(%Domain.Tokens.Token{
                   type: :email,
                   secret_nonce: Domain.Crypto.random_token(5, encoder: :user_friendly),
                   secret_fragment: Domain.Crypto.random_token(27, encoder: :hex32),
@@ -181,7 +180,7 @@ defmodule Web.EmailOTPController do
     import Ecto.Query
 
     # Fetch actor by email and account_id, ensuring the actor is not disabled
-    from(a in Actors.Actor,
+    from(a in Actor,
       where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at),
       preload: [:account]
     )
@@ -189,7 +188,7 @@ defmodule Web.EmailOTPController do
     |> Safe.one()
   end
 
-  defp request_sign_in_token(actor, context) do
+  defp request_sign_in_token(actor, _context) do
     # Token expiration: 30 minutes
     sign_in_token_expiration_seconds = 30 * 60
     # Max attempts: 3
@@ -212,7 +211,7 @@ defmodule Web.EmailOTPController do
         expires_at: expires_at
       })
 
-    fragment = Domain.Crypto.encode_token_fragment!(token)
+    fragment = Domain.Tokens.encode_fragment!(token)
 
     {:ok, actor, fragment, nonce}
   end
@@ -264,8 +263,8 @@ defmodule Web.EmailOTPController do
     end
   end
 
-  defp check_admin(%Actors.Actor{type: :account_admin_user}, _context_type), do: :ok
-  defp check_admin(%Actors.Actor{type: :account_user}, :client), do: :ok
+  defp check_admin(%Domain.Actor{type: :account_admin_user}, _context_type), do: :ok
+  defp check_admin(%Domain.Actor{type: :account_user}, :client), do: :ok
   defp check_admin(_actor, _context_type), do: {:error, :not_admin}
 
   defp create_token(conn, actor, provider, params) do
@@ -299,7 +298,7 @@ defmodule Web.EmailOTPController do
     }
 
     with {:ok, token} <- Tokens.create_token(attrs) do
-      {:ok, Domain.Crypto.encode_token_fragment!(token)}
+      {:ok, Domain.Tokens.encode_fragment!(token)}
     end
   end
 
@@ -426,7 +425,7 @@ defmodule Web.EmailOTPController do
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
-    alias Domain.Accounts.Account
+    alias Domain.Account
 
     def get_account_by_id_or_slug(id_or_slug) do
       from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)

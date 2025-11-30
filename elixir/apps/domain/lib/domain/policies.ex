@@ -1,6 +1,6 @@
 defmodule Domain.Policies do
-  alias Domain.{Repo, Safe}
-  alias Domain.{Auth, Cache.Cacheable, Clients}
+  alias Domain.{Safe, Client}
+  alias Domain.{Auth, Cache.Cacheable}
   alias Domain.Policies.{Policy, Condition}
   require Logger
 
@@ -27,7 +27,7 @@ defmodule Domain.Policies do
   def all_policies_for_actor_id!(actor_id) do
     Policy.Query.not_disabled()
     |> Policy.Query.by_actor_id(actor_id)
-    |> Policy.Query.with_preloaded_resource_gateway_groups()
+    |> Policy.Query.with_preloaded_resource_sites()
     |> Safe.unscoped()
     |> Safe.all()
   end
@@ -36,21 +36,21 @@ defmodule Domain.Policies do
     Policy.Query.not_disabled()
     |> Policy.Query.by_account_id(account_id)
     |> Policy.Query.by_actor_group_id(actor_group_id)
-    |> Policy.Query.with_preloaded_resource_gateway_groups()
+    |> Policy.Query.with_preloaded_resource_sites()
     |> Safe.unscoped()
     |> Safe.all()
   end
 
-  def all_policies_in_gateway_group_for_resource_id_and_actor_id!(
+  def all_policies_in_site_for_resource_id_and_actor_id!(
         account_id,
-        gateway_group_id,
+        site_id,
         resource_id,
         actor_id
       ) do
     Policy.Query.not_disabled()
     |> Policy.Query.by_account_id(account_id)
     |> Policy.Query.by_resource_id(resource_id)
-    |> Policy.Query.by_gateway_group_id(gateway_group_id)
+    |> Policy.Query.by_site_id(site_id)
     |> Policy.Query.by_actor_id(actor_id)
     |> Safe.unscoped()
     |> Safe.all()

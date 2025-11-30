@@ -7,11 +7,11 @@ defmodule Web.Gateways.Show do
     with {:ok, gateway} <- DB.fetch_gateway_by_id(id, socket.assigns.subject) do
       gateway =
         gateway
-        |> Domain.Repo.preload(:group)
+        |> Domain.Repo.preload(:site)
         |> then(fn gw -> DB.preload_gateways_presence([gw]) |> List.first() end)
 
       if connected?(socket) do
-        :ok = Gateways.Presence.Group.subscribe(gateway.group_id)
+        :ok = Gateways.Presence.Site.subscribe(gateway.site_id)
       end
 
       socket =
@@ -31,10 +31,10 @@ defmodule Web.Gateways.Show do
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}"}>
-        {@gateway.group.name}
+      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.site}"}>
+        {@gateway.site.name}
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}/gateways"}>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.site}/gateways"}>
         Gateways
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}"}>
@@ -51,10 +51,10 @@ defmodule Web.Gateways.Show do
             <:label>Site</:label>
             <:value>
               <.link
-                navigate={~p"/#{@account}/sites/#{@gateway.group}"}
+                navigate={~p"/#{@account}/sites/#{@gateway.site}"}
                 class={["font-medium", link_style()]}
               >
-                {@gateway.group.name}
+                {@gateway.site.name}
               </.link>
             </:value>
           </.vertical_table_row>
@@ -123,7 +123,7 @@ defmodule Web.Gateways.Show do
             Deleting the gateway does not remove it's access token so it can be re-created again,
             revoke the token on the
             <.link
-              navigate={~p"/#{@account}/sites/#{@gateway.group}"}
+              navigate={~p"/#{@account}/sites/#{@gateway.site}"}
               class={["font-medium", link_style()]}
             >
               site
@@ -145,7 +145,7 @@ defmodule Web.Gateways.Show do
 
   def handle_info(
         %Phoenix.Socket.Broadcast{
-          topic: "presences:group_gateways:" <> _group_id,
+          topic: "presences:sites:" <> _site_id,
           payload: payload
         },
         socket
@@ -157,7 +157,7 @@ defmodule Web.Gateways.Show do
         Map.has_key?(payload.joins, gateway.id) ->
           {:ok, gateway} =
             DB.fetch_gateway_by_id(gateway.id, socket.assigns.subject)
-            |> then(fn {:ok, gw} -> {:ok, Domain.Repo.preload(gw, :group)} end)
+            |> then(fn {:ok, gw} -> {:ok, Domain.Repo.preload(gw, :site)} end)
 
           assign(socket, gateway: %{gateway | online?: true})
 
@@ -177,16 +177,16 @@ defmodule Web.Gateways.Show do
     socket =
       socket
       |> put_flash(:success, "Gateway was deleted.")
-      |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.group}")
+      |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.site}")
 
     {:noreply, socket}
   end
-  
+
   defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, Gateways}
     alias Domain.Gateway
-    
+
     def fetch_gateway_by_id(id, subject) do
       result =
         from(g in Gateway, as: :gateways)
@@ -200,12 +200,12 @@ defmodule Web.Gateways.Show do
         gateway -> {:ok, gateway}
       end
     end
-    
+
     def delete_gateway(gateway, subject) do
       Safe.scoped(gateway, subject)
       |> Safe.delete()
     end
-    
+
     def preload_gateways_presence(gateways) do
       Domain.Gateways.Presence.preload_gateways_presence(gateways)
     end

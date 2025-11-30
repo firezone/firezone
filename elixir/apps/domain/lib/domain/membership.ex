@@ -19,7 +19,7 @@ defmodule Domain.Membership do
 
   def changeset(changeset) do
     import Ecto.Changeset
-    
+
     changeset
     |> assoc_constraint(:actor)
     |> assoc_constraint(:group)

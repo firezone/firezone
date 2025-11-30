@@ -319,7 +319,7 @@ defmodule Web.Settings.DNS do
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
-    alias Domain.Accounts.Account
+    alias Domain.Account
 
     def get_account_by_id!(id, subject) do
       from(a in Account, where: a.id == ^id)

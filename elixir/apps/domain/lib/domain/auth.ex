@@ -1,6 +1,6 @@
 defmodule Domain.Auth do
   require Ecto.Query
-  alias Domain.{Accounts, Actors, Tokens}
+  alias Domain.Tokens
   alias Domain.Auth.{Subject, Context}
   alias __MODULE__.DB
   require Logger
@@ -8,7 +8,7 @@ defmodule Domain.Auth do
   # Tokens
 
   def create_service_account_token(
-        %Actors.Actor{type: :service_account, account_id: account_id} = actor,
+        %Domain.Actor{type: :service_account, account_id: account_id} = actor,
         attrs,
         %Subject{account: %{id: account_id}} = subject
       ) do
@@ -23,7 +23,7 @@ defmodule Domain.Auth do
     # Only account admins can create service account tokens
     if subject.actor.type == :account_admin_user do
       with {:ok, token} <- Tokens.create_token(attrs, subject) do
-        {:ok, Domain.Crypto.encode_token_fragment!(token)}
+        {:ok, Tokens.encode_fragment!(token)}
       end
     else
       {:error, :unauthorized}
@@ -31,7 +31,7 @@ defmodule Domain.Auth do
   end
 
   def create_api_client_token(
-        %Actors.Actor{type: :api_client, account_id: account_id} = actor,
+        %Domain.Actor{type: :api_client, account_id: account_id} = actor,
         attrs,
         %Subject{account: %{id: account_id}} = subject
       ) do
@@ -46,7 +46,7 @@ defmodule Domain.Auth do
     # Only account admins can create API client tokens
     if subject.actor.type == :account_admin_user do
       with {:ok, token} <- Tokens.create_token(attrs, subject) do
-        {:ok, Domain.Crypto.encode_token_fragment!(token)}
+        {:ok, Tokens.encode_fragment!(token)}
       end
     else
       {:error, :unauthorized}
@@ -88,8 +88,8 @@ defmodule Domain.Auth do
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
-    alias Domain.Accounts.Account
-    alias Domain.Actors.Actor
+    alias Domain.Account
+    alias Domain.Actor
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)

@@ -8,13 +8,13 @@ defmodule Web.Live.Resources.EditTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
-    group = Fixtures.Gateways.create_group(account: account, subject: subject)
+    group = Fixtures.Sites.create_site(account: account, subject: subject)
 
     resource =
       Fixtures.Resources.create_resource(
         account: account,
         subject: subject,
-        connections: [%{gateway_group_id: group.id}]
+        connections: [%{site_id: group.id}]
       )
 
     %{
@@ -91,9 +91,9 @@ defmodule Web.Live.Resources.EditTest do
     connection_inputs =
       for connection <- resource.connections do
         [
-          "resource[connections][#{connection.gateway_group_id}][enabled]",
-          "resource[connections][#{connection.gateway_group_id}][gateway_group_id]",
-          "resource[connections][#{connection.gateway_group_id}][resource_id]"
+          "resource[connections][#{connection.site_id}][enabled]",
+          "resource[connections][#{connection.site_id}][site_id]",
+          "resource[connections][#{connection.site_id}][resource_id]"
         ]
       end
       |> List.flatten()
@@ -438,7 +438,7 @@ defmodule Web.Live.Resources.EditTest do
     conn: conn
   } do
     Domain.Config.feature_flag_override(:multi_site_resources, false)
-    group2 = Fixtures.Gateways.create_group(account: account)
+    group2 = Fixtures.Sites.create_site(account: account)
 
     {:ok, lv, _html} =
       conn
@@ -447,11 +447,11 @@ defmodule Web.Live.Resources.EditTest do
 
     lv
     |> form("form")
-    |> render_change(%{"resource[connections][0][gateway_group_id]" => group2.id})
+    |> render_change(%{"resource[connections][0][site_id]" => group2.id})
 
     assert has_element?(
              lv,
-             "select[name='resource[connections][0][gateway_group_id]'] option[value='#{group2.id}'][selected]"
+             "select[name='resource[connections][0][site_id]'] option[value='#{group2.id}'][selected]"
            )
   end
 
@@ -462,7 +462,7 @@ defmodule Web.Live.Resources.EditTest do
     identity: identity,
     conn: conn
   } do
-    group2 = Fixtures.Gateways.create_group(account: account)
+    group2 = Fixtures.Sites.create_site(account: account)
 
     {:ok, lv, _html} =
       conn

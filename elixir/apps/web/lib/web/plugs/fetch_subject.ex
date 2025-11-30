@@ -2,7 +2,7 @@ defmodule Web.Plugs.FetchSubject do
   @behaviour Plug
 
   import Plug.Conn
-  alias Domain.Accounts.Account
+  alias Domain.Account
   alias Domain.Tokens
 
   @impl true

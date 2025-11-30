@@ -580,11 +580,11 @@ defmodule Domain.TokensTest do
       refute Repo.get(Tokens.Token, token.id)
     end
 
-    test "deletes gateway group tokens", %{account: account, subject: subject} do
-      group = Fixtures.Gateways.create_group(account: account)
-      token = Fixtures.Gateways.create_token(account: account, group: group)
+    test "deletes site tokens", %{account: account, subject: subject} do
+      site = Fixtures.Sites.create_site(account: account)
+      token = Fixtures.Sites.create_token(account: account, site: site)
 
-      assert {:ok, _num_deleted} = delete_tokens_for(group, subject)
+      assert {:ok, _num_deleted} = delete_tokens_for(site, subject)
       refute Repo.get(Tokens.Token, token.id)
     end
 

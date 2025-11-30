@@ -16,7 +16,7 @@ defmodule Web.SignIn.Email do
 
     account = DB.get_account_by_id_or_slug(account_id_or_slug)
 
-    with %Domain.Accounts.Account{} = account <- account,
+    with %Domain.Account{} = account <- account,
          {:ok, email} <-
            Plug.Crypto.verify(
              secret_key_base,
@@ -52,7 +52,7 @@ defmodule Web.SignIn.Email do
           |> push_navigate(to: ~p"/")
 
         {:ok, socket}
-      
+
       _ ->
         socket =
           socket
@@ -204,7 +204,7 @@ defmodule Web.SignIn.Email do
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
-    alias Domain.Accounts.Account
+    alias Domain.Account
 
     def get_account_by_id_or_slug(id_or_slug) do
       from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)

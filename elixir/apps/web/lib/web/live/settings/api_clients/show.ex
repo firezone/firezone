@@ -1,11 +1,11 @@
 defmodule Web.Settings.ApiClients.Show do
   use Web, :live_view
-  alias Domain.{Actors, Tokens}
+  alias Domain.Tokens
   alias __MODULE__.DB
   import Ecto.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
-    if Domain.Accounts.Account.rest_api_enabled?(socket.assigns.account) do
+    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
       with {:ok, actor} <- DB.fetch_api_client(id, socket.assigns.subject) do
         socket =
           socket
@@ -238,6 +238,7 @@ defmodule Web.Settings.ApiClients.Show do
 
   def handle_event("disable", _params, socket) do
     changeset = disable_actor_changeset(socket.assigns.actor)
+
     with {:ok, actor} <- DB.update_actor(changeset, socket.assigns.subject) do
       socket =
         socket
@@ -247,18 +248,6 @@ defmodule Web.Settings.ApiClients.Show do
 
       {:noreply, socket}
     end
-  end
-
-  defp disable_actor_changeset(actor) do
-    actor
-    |> change()
-    |> put_change(:disabled_at, DateTime.utc_now())
-  end
-
-  defp enable_actor_changeset(actor) do
-    actor
-    |> change()
-    |> put_change(:disabled_at, nil)
   end
 
   def handle_event("enable", _params, socket) do
@@ -303,12 +292,24 @@ defmodule Web.Settings.ApiClients.Show do
     end
   end
 
+  defp disable_actor_changeset(actor) do
+    actor
+    |> change()
+    |> put_change(:disabled_at, DateTime.utc_now())
+  end
+
+  defp enable_actor_changeset(actor) do
+    actor
+    |> change()
+    |> put_change(:disabled_at, nil)
+  end
+
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Actors, Tokens}
+    alias Domain.{Safe, Tokens}
 
     def fetch_api_client(id, subject) do
-      from(a in Actors.Actor, where: a.id == ^id, where: a.type == :api_client)
+      from(a in Domain.Actor, where: a.id == ^id, where: a.type == :api_client)
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do

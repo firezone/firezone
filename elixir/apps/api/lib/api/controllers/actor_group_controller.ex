@@ -72,14 +72,14 @@ defmodule API.ActorGroupController do
     end
   end
 
+  def create(_conn, _params) do
+    {:error, :bad_request}
+  end
+
   defp create_group_changeset(account, attrs) do
     %Actors.Group{account_id: account.id}
     |> cast(attrs, [:name, :type, :description])
     |> validate_required([:name, :type])
-  end
-
-  def create(_conn, _params) do
-    {:error, :bad_request}
   end
 
   operation :update,
@@ -110,6 +110,10 @@ defmodule API.ActorGroupController do
     end
   end
 
+  def update(_conn, _params) do
+    {:error, :bad_request}
+  end
+
   defp update_group_changeset(%Actors.Group{type: :managed}, _attrs) do
     {:error, :managed_group}
   end
@@ -119,16 +123,12 @@ defmodule API.ActorGroupController do
       group
       |> cast(attrs, [:name, :description])
       |> validate_required([:name])
-    
+
     {:changeset, changeset}
   end
 
   defp update_group_changeset(%Actors.Group{}, _attrs) do
     {:error, :synced_group}
-  end
-
-  def update(_conn, _params) do
-    {:error, :bad_request}
   end
 
   operation :delete,
@@ -157,7 +157,7 @@ defmodule API.ActorGroupController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Actors, Safe, Repo}
+    alias Domain.{Actors, Safe}
 
     def list_groups(subject, opts \\ []) do
       from(g in Actors.Group, as: :groups)

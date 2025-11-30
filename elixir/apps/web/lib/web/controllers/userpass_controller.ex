@@ -5,8 +5,6 @@ defmodule Web.UserpassController do
   use Web, :controller
 
   alias Domain.{
-    Accounts,
-    Actors,
     Repo,
     Tokens,
     Userpass
@@ -31,9 +29,9 @@ defmodule Web.UserpassController do
     password = userpass["secret"]
     context_type = context_type(params)
 
-    with %Accounts.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
+    with %Domain.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
          %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
-         %Actors.Actor{} = actor <- fetch_actor(account, email),
+         %Domain.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
          {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
          {:ok, token} <- create_token(conn, actor, provider, params) do
@@ -63,8 +61,8 @@ defmodule Web.UserpassController do
     end
   end
 
-  defp check_admin(%Actors.Actor{type: :account_admin_user}, _context_type), do: :ok
-  defp check_admin(%Actors.Actor{type: :account_user}, :client), do: :ok
+  defp check_admin(%Domain.Actor{type: :account_admin_user}, _context_type), do: :ok
+  defp check_admin(%Domain.Actor{type: :account_user}, :client), do: :ok
   defp check_admin(_actor, _context_type), do: {:error, :not_admin}
 
   defp create_token(conn, actor, provider, params) do
@@ -98,7 +96,7 @@ defmodule Web.UserpassController do
     }
 
     with {:ok, token} <- Tokens.create_token(attrs) do
-      {:ok, Domain.Crypto.encode_token_fragment!(token)}
+      {:ok, Domain.Tokens.encode_fragment!(token)}
     end
   end
 
@@ -136,7 +134,7 @@ defmodule Web.UserpassController do
     import Ecto.Query
 
     # Fetch actor by email and account_id, ensuring the actor is not disabled
-    from(a in Actors.Actor,
+    from(a in Domain.Actor,
       where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at)
     )
     |> Repo.one()
@@ -186,7 +184,7 @@ defmodule Web.UserpassController do
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
-    alias Domain.Accounts.Account
+    alias Domain.Account
 
     def get_account_by_id_or_slug(id_or_slug) do
       from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)

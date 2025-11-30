@@ -5,7 +5,7 @@ defmodule Domain.RepoTest do
   describe "fetch/3" do
     test "returns {:ok, schema} when a single result is found" do
       account = Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
       assert fetch(queryable, query_module) == {:ok, account}
     end
@@ -17,7 +17,7 @@ defmodule Domain.RepoTest do
       Fixtures.Clients.create_client(account: account)
       Fixtures.Policies.create_policy(account: account)
 
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       assert {:ok, account} =
@@ -44,7 +44,7 @@ defmodule Domain.RepoTest do
 
     test "allows to use filters" do
       account = Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       assert {:ok, _account} = fetch(queryable, query_module, filter: [slug: account.slug])
@@ -54,7 +54,7 @@ defmodule Domain.RepoTest do
     test "raises when the query returns more than one row" do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       assert_raise Ecto.MultipleResultsError, fn ->
@@ -63,7 +63,7 @@ defmodule Domain.RepoTest do
     end
 
     test "returns {:error, :not_found} when no results are found" do
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       assert fetch(queryable, query_module) == {:error, :not_found}
@@ -73,7 +73,7 @@ defmodule Domain.RepoTest do
   describe "fetch_and_update/3" do
     test "returns updated schema for a single updated record" do
       account = Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
       new_value = Ecto.UUID.generate()
       changeset_cb = fn account -> Ecto.Changeset.change(account, name: new_value) end
@@ -88,7 +88,7 @@ defmodule Domain.RepoTest do
     test "raises when the query returns more than one row" do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
       changeset_cb = fn account -> Ecto.Changeset.change(account, name: "foo") end
 
@@ -98,7 +98,7 @@ defmodule Domain.RepoTest do
     end
 
     test "returns {:error, :not_found} when no results are found" do
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
       changeset_cb = fn account -> Ecto.Changeset.change(account, name: "foo") end
       assert fetch_and_update(queryable, query_module, with: changeset_cb) == {:error, :not_found}
@@ -106,7 +106,7 @@ defmodule Domain.RepoTest do
 
     test "returns {:error, changeset} when changeset is invalid" do
       Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       changeset_cb = fn account ->
@@ -121,7 +121,7 @@ defmodule Domain.RepoTest do
 
     test "allows to execute a callback after transaction is committed" do
       Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       test_pid = self()
@@ -155,7 +155,7 @@ defmodule Domain.RepoTest do
       Fixtures.Clients.create_client(account: account)
       Fixtures.Policies.create_policy(account: account)
 
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
       new_value = Ecto.UUID.generate()
       changeset_cb = fn account -> Ecto.Changeset.change(account, name: new_value) end
@@ -185,7 +185,7 @@ defmodule Domain.RepoTest do
 
     test "allows to use filters" do
       account = Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
       new_value = Ecto.UUID.generate()
       changeset_cb = fn account -> Ecto.Changeset.change(account, name: new_value) end
@@ -206,7 +206,7 @@ defmodule Domain.RepoTest do
   describe "list/2" do
     setup do
       account = Fixtures.Accounts.create_account()
-      query_module = Domain.Actors.Actor.Query
+      query_module = Domain.Actor.Query
       queryable = query_module.all()
 
       %{account: account, query_module: query_module, queryable: queryable}
@@ -242,7 +242,7 @@ defmodule Domain.RepoTest do
       Fixtures.Clients.create_client(account: account)
       Fixtures.Policies.create_policy(account: account)
 
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       assert {:ok, accounts, _metadata} =
@@ -291,7 +291,7 @@ defmodule Domain.RepoTest do
     end
 
     test "allows to filter results" do
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       account1 = Fixtures.Accounts.create_account(name: "Josh Account")
@@ -344,7 +344,7 @@ defmodule Domain.RepoTest do
     end
 
     test "returns error on invalid filter type" do
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       assert list(queryable, query_module, filter: [name: 1]) ==

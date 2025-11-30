@@ -120,7 +120,7 @@ defmodule Web.Live.Actors.ShowTest do
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:actor_group, :resource]])
 
     {:ok, lv, _html} =
       conn
@@ -141,7 +141,7 @@ defmodule Web.Live.Actors.ShowTest do
              "#{flow.client.name} #{client.last_seen_remote_ip}"
 
     assert row["gateway"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+             "#{flow.gateway.site.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "does not render flows for deleted policies", %{
@@ -158,7 +158,7 @@ defmodule Web.Live.Actors.ShowTest do
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:actor_group, :resource]])
     Fixtures.Policies.delete_policy(flow.policy)
 
     {:ok, lv, _html} =
@@ -187,7 +187,7 @@ defmodule Web.Live.Actors.ShowTest do
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:actor_group, :resource]])
     Fixtures.Actors.delete_group(flow.policy.actor_group)
     Fixtures.Resources.delete_resource(flow.policy.resource)
 
@@ -746,7 +746,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      refute Repo.get(Domain.Actors.Actor, actor.id)
+      refute Repo.get(Domain.Actor, actor.id)
     end
 
     test "allows deleting synced actors that don't have any identities left", %{
@@ -769,7 +769,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      refute Repo.get(Domain.Actors.Actor, actor.id)
+      refute Repo.get(Domain.Actor, actor.id)
     end
 
     test "renders error when trying to delete last admin", %{
@@ -790,7 +790,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't delete the last admin of an account."
 
-      assert Repo.get(Domain.Actors.Actor, actor.id)
+      assert Repo.get(Domain.Actor, actor.id)
     end
 
     test "allows disabling actors", %{
@@ -814,7 +814,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was disabled."
 
-      assert Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+      assert Repo.get(Domain.Actor, actor.id).disabled_at
     end
 
     test "renders error when trying to disable last admin", %{
@@ -835,7 +835,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't disable the last admin of an account."
 
-      refute Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+      refute Repo.get(Domain.Actor, actor.id).disabled_at
     end
 
     test "allows enabling actors", %{
@@ -860,7 +860,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was enabled."
 
-      refute Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+      refute Repo.get(Domain.Actor, actor.id).disabled_at
     end
   end
 
@@ -976,7 +976,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      refute Repo.get(Domain.Actors.Actor, actor.id)
+      refute Repo.get(Domain.Actor, actor.id)
     end
 
     test "allows disabling actors", %{
@@ -999,7 +999,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was disabled."
 
-      assert Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+      assert Repo.get(Domain.Actor, actor.id).disabled_at
     end
 
     test "allows enabling actors", %{
@@ -1024,7 +1024,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was enabled."
 
-      refute Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+      refute Repo.get(Domain.Actor, actor.id).disabled_at
     end
 
     test "renders actor tokens", %{

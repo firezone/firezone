@@ -5,7 +5,7 @@ defmodule Domain.Google.Directory do
   schema "google_directories" do
     # Allows setting the id manually for easier associations
     field :id, Ecto.UUID, primary_key: true
-    belongs_to :account, Domain.Accounts.Account
+    belongs_to :account, Domain.Account
 
     belongs_to :directory, Domain.Directory,
       foreign_key: :id,
@@ -29,7 +29,7 @@ defmodule Domain.Google.Directory do
   def changeset(changeset) do
     changeset
     |> validate_required([:domain, :is_verified, :name, :impersonation_email])
-    |> validate_email(:impersonation_email)
+    |> Domain.Repo.Changeset.validate_email(:impersonation_email)
     |> validate_length(:domain, min: 1, max: 255)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)

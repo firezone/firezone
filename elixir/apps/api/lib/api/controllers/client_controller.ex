@@ -2,7 +2,7 @@ defmodule API.ClientController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Clients
+  alias Domain.Clients.Presence
   alias __MODULE__.DB
 
   action_fallback(API.FallbackController)
@@ -55,7 +55,7 @@ defmodule API.ClientController do
   # Show a specific Client
   def show(conn, %{"id" => id}) do
     with {:ok, client} <- DB.fetch_client_by_id(id, conn.assigns.subject) do
-      client = DB.preload_clients_presence([client]) |> List.first()
+      client = Presence.preload_clients_presence([client]) |> List.first()
       render(conn, :show, client: client)
     end
   end
@@ -87,20 +87,20 @@ defmodule API.ClientController do
       render(conn, :show, client: client)
     end
   end
-  
+
+  def update(_conn, _params) do
+    {:error, :bad_request}
+  end
+
   defp update_changeset(client, attrs) do
     import Ecto.Changeset
     update_fields = ~w[name]a
     required_fields = ~w[external_id name public_key]a
-    
+
     client
     |> cast(attrs, update_fields)
     |> validate_required(required_fields)
     |> Domain.Client.changeset()
-  end
-
-  def update(_conn, _params) do
-    {:error, :bad_request}
   end
 
   operation(:verify,
@@ -185,7 +185,7 @@ defmodule API.ClientController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Clients, Safe}
+    alias Domain.{Clients.Presence, Safe}
     alias Domain.Client
 
     def list_clients(subject, opts \\ []) do
@@ -215,14 +215,10 @@ defmodule API.ClientController do
       end
     end
 
-    def preload_clients_presence(clients) do
-      Clients.preload_clients_presence(clients)
-    end
-
     def update_client(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_client} ->
-          {:ok, preload_clients_presence([updated_client]) |> List.first()}
+          {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}
@@ -234,7 +230,7 @@ defmodule API.ClientController do
       if subject.actor.type == :account_admin_user do
         case Safe.scoped(changeset, subject) |> Safe.update() do
           {:ok, updated_client} ->
-            {:ok, preload_clients_presence([updated_client]) |> List.first()}
+            {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
 
           {:error, reason} ->
             {:error, reason}
@@ -249,7 +245,7 @@ defmodule API.ClientController do
       if subject.actor.type == :account_admin_user do
         case Safe.scoped(changeset, subject) |> Safe.update() do
           {:ok, updated_client} ->
-            {:ok, preload_clients_presence([updated_client]) |> List.first()}
+            {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
 
           {:error, reason} ->
             {:error, reason}
@@ -262,7 +258,7 @@ defmodule API.ClientController do
     def delete_client(client, subject) do
       case Safe.scoped(client, subject) |> Safe.delete() do
         {:ok, deleted_client} ->
-          {:ok, preload_clients_presence([deleted_client]) |> List.first()}
+          {:ok, Presence.preload_clients_presence([deleted_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}

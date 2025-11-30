@@ -1,6 +1,7 @@
 defmodule Domain.Fixtures.Actors do
   use Domain.Fixture
-  alias Domain.Actors
+  import Ecto.Changeset
+  alias Domain.{Actors, Membership}
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
@@ -133,12 +134,22 @@ defmodule Domain.Fixtures.Actors do
         |> create_actor()
       end)
 
-    Actors.Membership.Changeset.upsert(account.id, %Actors.Membership{}, %{
-      group_id: group_id,
-      actor_id: actor_id,
-      last_synced_at: attrs[:last_synced_at]
-    })
-    |> Repo.insert!()
+    %Membership{}
+    |> cast(
+      %{
+        group_id: group_id,
+        actor_id: actor_id,
+        last_synced_at: attrs[:last_synced_at]
+      },
+      ~w[actor_id group_id last_synced_at]a
+    )
+    |> validate_required_one_of(~w[actor_id group_id]a)
+    |> Domain.Membership.changeset()
+    |> put_change(:account_id, account.id)
+    |> Repo.insert!(
+      on_conflict: :nothing,
+      conflict_target: [:group_id, :actor_id]
+    )
   end
 
   def update(actor, updates) do

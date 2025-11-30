@@ -7,12 +7,12 @@ defmodule Domain.Gateways.Presence do
   alias Domain.PubSub
 
   def connect(%Gateway{} = gateway, token_id) do
-    with {:ok, _} <- __MODULE__.Group.track(gateway.group_id, gateway.id, token_id),
+    with {:ok, _} <- __MODULE__.Site.track(gateway.site_id, gateway.id, token_id),
          {:ok, _} <- __MODULE__.Account.track(gateway.account_id, gateway.id) do
       :ok
     end
   end
-  
+
   @doc false
   def preload_gateways_presence([gateway]) do
     __MODULE__.Account.get(gateway.account_id, gateway.id)
@@ -73,30 +73,30 @@ defmodule Domain.Gateways.Presence do
     end
   end
 
-  defmodule Group do
-    def track(gateway_group_id, gateway_id, token_id) do
+  defmodule Site do
+    def track(site_id, gateway_id, token_id) do
       Domain.Gateways.Presence.track(
         self(),
-        topic(gateway_group_id),
+        topic(site_id),
         gateway_id,
         %{token_id: token_id}
       )
     end
 
-    def subscribe(gateway_group_id) do
-      gateway_group_id
+    def subscribe(site_id) do
+      site_id
       |> topic()
       |> PubSub.subscribe()
     end
 
-    def list(gateway_group_id) do
-      gateway_group_id
+    def list(site_id) do
+      site_id
       |> topic()
       |> Domain.Gateways.Presence.list()
     end
 
-    defp topic(gateway_group_id) do
-      "presences:group_gateways:" <> gateway_group_id
+    defp topic(site_id) do
+      "presences:sites:" <> site_id
     end
   end
 end

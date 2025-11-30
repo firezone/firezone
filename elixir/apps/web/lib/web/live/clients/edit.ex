@@ -1,6 +1,6 @@
 defmodule Web.Clients.Edit do
   use Web, :live_view
-  alias Domain.Clients
+  alias Domain.Clients.Presence
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -64,7 +64,7 @@ defmodule Web.Clients.Edit do
 
   def handle_event("submit", %{"client" => attrs}, socket) do
     changeset = update_changeset(socket.assigns.client, attrs)
-    
+
     with {:ok, client} <- DB.update_client(changeset, socket.assigns.subject) do
       socket = push_navigate(socket, to: ~p"/#{socket.assigns.account}/clients/#{client}")
       {:noreply, socket}
@@ -73,12 +73,12 @@ defmodule Web.Clients.Edit do
         {:noreply, assign(socket, form: to_form(changeset))}
     end
   end
-  
+
   defp update_changeset(client, attrs) do
     import Ecto.Changeset
     update_fields = ~w[name]a
     required_fields = ~w[external_id name public_key]a
-    
+
     client
     |> cast(attrs, update_fields)
     |> validate_required(required_fields)
@@ -87,7 +87,7 @@ defmodule Web.Clients.Edit do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Clients, Safe}
+    alias Domain.{Clients.Presence, Safe}
     alias Domain.Client
 
     def fetch_client_by_id(id, subject) do
@@ -107,7 +107,7 @@ defmodule Web.Clients.Edit do
     def update_client(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_client} ->
-          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+          {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}

@@ -33,7 +33,7 @@ defmodule Domain.Actor do
 
   def changeset(changeset) do
     import Domain.Repo.Changeset
-    
+
     changeset
     |> validate_required(~w[name type]a)
     |> trim_change(~w[name email]a)
@@ -47,7 +47,7 @@ defmodule Domain.Actor do
 
   defp normalize_email(changeset, field) do
     import Domain.Repo.Changeset, only: [try_encode_domain: 1]
-    
+
     update_change(changeset, field, fn
       nil ->
         nil

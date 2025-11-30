@@ -197,7 +197,7 @@ defmodule Web.Live.Clients.ShowTest do
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:actor_group, :resource]])
 
     {:ok, lv, _html} =
       conn
@@ -216,7 +216,7 @@ defmodule Web.Live.Clients.ShowTest do
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["gateway"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+             "#{flow.gateway.site.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "does not render flows for deleted policies", %{
@@ -231,7 +231,7 @@ defmodule Web.Live.Clients.ShowTest do
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:actor_group, :resource]])
     Fixtures.Policies.delete_policy(flow.policy)
 
     {:ok, lv, _html} =
@@ -258,7 +258,7 @@ defmodule Web.Live.Clients.ShowTest do
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:actor_group, :resource]])
     Fixtures.Actors.delete_group(flow.policy.actor_group)
     Fixtures.Resources.delete_resource(flow.policy.resource)
 

@@ -20,7 +20,7 @@ defmodule Domain.Policies.Policy do
 
     belongs_to :actor_group, Domain.Actors.Group
     belongs_to :resource, Domain.Resource
-    belongs_to :account, Domain.Accounts.Account
+    belongs_to :account, Domain.Account
 
     field :disabled_at, :utc_datetime_usec
 

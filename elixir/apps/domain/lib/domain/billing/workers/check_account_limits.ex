@@ -9,7 +9,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
     max_attempts: 3,
     unique: [period: 300]
 
-  alias Domain.{Accounts, Billing, Gateways}
+  alias Domain.Billing
   alias __MODULE__.DB
 
   @impl Oban.Worker
@@ -25,7 +25,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
         |> check_users_limit(account)
         |> check_seats_limit(account)
         |> check_service_accounts_limit(account)
-        |> check_gateway_groups_limit(account)
+        |> check_sites_limit(account)
         |> check_admin_limit(account)
         |> case do
           [] ->
@@ -87,10 +87,10 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
     end
   end
 
-  defp check_gateway_groups_limit(limits_exceeded, account) do
-    gateway_groups_count = DB.count_groups_for_account(account)
+  defp check_sites_limit(limits_exceeded, account) do
+    sites_count = DB.count_sites_for_account(account)
 
-    if Billing.gateway_groups_limit_exceeded?(account, gateway_groups_count) do
+    if Billing.sites_limit_exceeded?(account, sites_count) do
       limits_exceeded ++ ["sites"]
     else
       limits_exceeded
@@ -109,7 +109,7 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
 
   defp update_account_warning(account, attrs) do
     import Ecto.Changeset
-    
+
     account
     |> cast(attrs, [:warning, :warning_delivery_attempts, :warning_last_sent_at])
     |> DB.update()
@@ -118,8 +118,8 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
   defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, Repo}
-    alias Domain.Accounts.Account
-    alias Domain.Actors.Actor
+    alias Domain.Account
+    alias Domain.Actor
     alias Domain.Client
 
     def all_active_accounts do
@@ -175,9 +175,9 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
       |> distinct(true)
       |> Repo.aggregate(:count)
     end
-    
-    def count_groups_for_account(account) do
-      from(g in Domain.Gateways.Group,
+
+    def count_sites_for_account(account) do
+      from(g in Domain.Site,
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )

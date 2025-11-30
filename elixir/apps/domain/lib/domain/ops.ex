@@ -1,5 +1,6 @@
 defmodule Domain.Ops do
   alias __MODULE__.DB
+
   def sync_pricing_plans do
     {:ok, subscriptions} = Domain.Billing.list_all_subscriptions()
 
@@ -27,7 +28,7 @@ defmodule Domain.Ops do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Accounts.Account
+    alias Domain.Account
 
     def get_disabled_account!(id) do
       from(a in Account,

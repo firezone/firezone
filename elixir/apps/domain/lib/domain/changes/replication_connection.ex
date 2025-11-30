@@ -8,7 +8,7 @@ defmodule Domain.Changes.ReplicationConnection do
     "clients" => Hooks.Clients,
     "flows" => Hooks.Flows,
     "gateways" => Hooks.Gateways,
-    "gateway_groups" => Hooks.GatewayGroups,
+    "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,
     "resource_connections" => Hooks.ResourceConnections,
     "resources" => Hooks.Resources,

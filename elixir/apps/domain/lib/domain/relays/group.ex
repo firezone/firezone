@@ -4,7 +4,7 @@ defmodule Domain.Relays.Group do
   schema "relay_groups" do
     field :name, :string
 
-    belongs_to :account, Domain.Accounts.Account
+    belongs_to :account, Domain.Account
     has_many :relays, Domain.Relays.Relay, foreign_key: :group_id
     has_many :tokens, Domain.Tokens.Token, foreign_key: :relay_group_id
 

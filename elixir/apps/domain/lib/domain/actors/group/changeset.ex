@@ -1,6 +1,6 @@
 defmodule Domain.Actors.Group.Changeset do
   use Domain, :changeset
-  alias Domain.{Auth, Accounts}
+  alias Domain.Auth
   alias Domain.Actors
 
   @fields ~w[name type last_synced_at]a
@@ -13,7 +13,7 @@ defmodule Domain.Actors.Group.Changeset do
 
   def upsert_on_conflict, do: {:replace, ~w[name updated_at]a}
 
-  def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = _subject) do
+  def create(%Domain.Account{} = account, attrs, %Auth.Subject{} = _subject) do
     %Actors.Group{memberships: []}
     |> cast(attrs, @fields)
     |> validate_required(~w[name type]a)
@@ -23,7 +23,7 @@ defmodule Domain.Actors.Group.Changeset do
     |> cast_membership_assocs(account.id)
   end
 
-  def create(%Accounts.Account{} = account, attrs) do
+  def create(%Domain.Account{} = account, attrs) do
     %Actors.Group{memberships: []}
     |> cast(attrs, ~w[name last_synced_at]a)
     |> validate_required(~w[name]a)
@@ -53,11 +53,19 @@ defmodule Domain.Actors.Group.Changeset do
     case fetch_field(changeset, :type) do
       {_data_or_changes, :static} ->
         cast_assoc(changeset, :memberships,
-          with: &Actors.Membership.Changeset.for_group(account_id, &1, &2)
+          with: &membership_changeset_for_group(account_id, &1, &2)
         )
 
       _other ->
         changeset
     end
+  end
+
+  defp membership_changeset_for_group(account_id, membership, attrs) do
+    membership
+    |> cast(attrs, ~w[actor_id last_synced_at]a)
+    |> validate_required(~w[actor_id]a)
+    |> Domain.Membership.changeset()
+    |> put_change(:account_id, account_id)
   end
 end

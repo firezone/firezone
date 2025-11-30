@@ -66,7 +66,7 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     okta_directories
     google_directories
     clients
-    gateway_groups
+    sites
     gateways
     policies
     resource_connections
@@ -110,7 +110,7 @@ config :domain, Domain.Changes.ReplicationConnection,
     clients
     flows
     gateways
-    gateway_groups
+    sites
     policies
     resource_connections
     resources

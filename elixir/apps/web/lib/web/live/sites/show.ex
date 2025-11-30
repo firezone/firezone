@@ -1,38 +1,39 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
-  alias Domain.{Gateways, Resources, Policies, Flows, Tokens}
+  alias Domain.{Policies, Flows, Tokens}
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <-
-           Gateways.fetch_group_by_id(id, socket.assigns.subject) do
+    with {:ok, site} <-
+           DB.fetch_site(id, socket.assigns.subject) do
       if connected?(socket) do
-        :ok = Gateways.Presence.Group.subscribe(group.id)
+        :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
       end
 
       socket =
         socket
         |> assign(
-          page_title: "Site #{group.name}",
-          group: group
+          page_title: "Site #{site.name}",
+          site: site
         )
 
-      mount_page(socket, group)
+      mount_page(socket, site)
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 
-  defp mount_page(socket, %{managed_by: :system, name: "Internet"} = group) do
-    with {:ok, resource} <- Resources.fetch_internet_resource(socket.assigns.subject) do
-      resource = Domain.Repo.preload(resource, :gateway_groups)
+  defp mount_page(socket, %{managed_by: :system, name: "Internet"} = site) do
+    with {:ok, resource} <- DB.fetch_internet_resource(socket.assigns.subject) do
+      resource = Domain.Repo.preload(resource, :sites)
 
       socket =
         socket
         |> assign(resource: resource)
         |> assign_live_table("gateways",
-          query_module: Gateways.Gateway.Query,
+          query_module: DB,
           enforce_filters: [
-            {:gateway_group_id, group.id}
+            {:site_id, site.id}
           ],
           sortable_fields: [
             {:gateways, :last_seen_at}
@@ -64,13 +65,13 @@ defmodule Web.Sites.Show do
     end
   end
 
-  defp mount_page(socket, group) do
+  defp mount_page(socket, site) do
     socket =
       socket
       |> assign_live_table("gateways",
-        query_module: Gateways.Gateway.Query,
+        query_module: DB,
         enforce_filters: [
-          {:gateway_group_id, group.id}
+          {:site_id, site.id}
         ],
         sortable_fields: [
           {:gateways, :last_seen_at}
@@ -80,7 +81,7 @@ defmodule Web.Sites.Show do
       |> assign_live_table("resources",
         query_module: DB.ResourceQuery,
         enforce_filters: [
-          {:gateway_group_id, group.id}
+          {:site_id, site.id}
         ],
         sortable_fields: [
           {:resources, :name},
@@ -98,7 +99,7 @@ defmodule Web.Sites.Show do
   end
 
   def handle_gateways_update!(socket, list_opts) do
-    online_ids = Gateways.all_online_gateway_ids_by_group_id!(socket.assigns.group.id)
+    online_ids = Domain.Gateways.Presence.Site.list(socket.assigns.site.id) |> Map.keys()
 
     list_opts =
       list_opts
@@ -107,7 +108,7 @@ defmodule Web.Sites.Show do
         filter ++ [{:ids, online_ids}]
       end)
 
-    with {:ok, gateways, metadata} <- Gateways.list_gateways(socket.assigns.subject, list_opts) do
+    with {:ok, gateways, metadata} <- DB.list_gateways(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          gateways: gateways,
@@ -118,9 +119,9 @@ defmodule Web.Sites.Show do
 
   def handle_resources_update!(socket, list_opts) do
     with {:ok, resources, metadata} <-
-           Resources.list_resources(socket.assigns.subject, list_opts),
+           DB.list_resources(socket.assigns.subject, list_opts),
          {:ok, resource_actor_groups_peek} <-
-           Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
+           DB.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
       {:ok,
        assign(socket,
          resources: resources,
@@ -146,8 +147,8 @@ defmodule Web.Sites.Show do
     list_opts =
       Keyword.put(list_opts, :preload,
         client: [:actor],
-        gateway: [:group],
-        policy: [:resource, :actor_group]
+        gateway: [:site],
+        policy: [:resource, :actor_site]
       )
 
     with {:ok, flows, metadata} <-
@@ -164,31 +165,31 @@ defmodule Web.Sites.Show do
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        {@group.name}
+      <.breadcrumb path={~p"/#{@account}/sites/#{@site}"}>
+        {@site.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Site: <code>{@group.name}</code>
+        Site: <code>{@site.name}</code>
       </:title>
 
-      <:action :if={@group.managed_by == :account}>
-        <.edit_button navigate={~p"/#{@account}/sites/#{@group}/edit"}>
+      <:action :if={@site.managed_by == :account}>
+        <.edit_button navigate={~p"/#{@account}/sites/#{@site}/edit"}>
           Edit Site
         </.edit_button>
       </:action>
 
-      <:help :if={@group.managed_by == :system and @group.name == "Internet"}>
+      <:help :if={@site.managed_by == :system and @site.name == "Internet"}>
         Use this Site to manage secure, private access to the public internet for your workforce.
       </:help>
 
-      <:content :if={@group.managed_by != :system and @group.name != "Internet"}>
-        <.vertical_table id="group">
+      <:content :if={@site.managed_by != :system and @site.name != "Internet"}>
+        <.vertical_table id="site">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value>{@group.name}</:value>
+            <:value>{@site.name}</:value>
           </.vertical_table_row>
         </.vertical_table>
       </:content>
@@ -197,7 +198,7 @@ defmodule Web.Sites.Show do
     <.section>
       <:title>
         Online Gateways
-        <.link class={["text-sm", link_style()]} navigate={~p"/#{@account}/sites/#{@group}/gateways"}>
+        <.link class={["text-sm", link_style()]} navigate={~p"/#{@account}/sites/#{@site}/gateways"}>
           see all <.icon name="hero-arrow-right" class="w-2 h-2" />
         </.link>
       </:title>
@@ -205,7 +206,7 @@ defmodule Web.Sites.Show do
         <.docs_action path="/deploy/gateways" />
       </:action>
       <:action>
-        <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
+        <.add_button navigate={~p"/#{@account}/sites/#{@site}/new_token"}>
           Deploy Gateway
         </.add_button>
       </:action>
@@ -230,10 +231,10 @@ defmodule Web.Sites.Show do
           Revoke All
         </.button_with_confirmation>
       </:action>
-      <:help :if={@group.managed_by == :system and @group.name == "Internet"}>
+      <:help :if={@site.managed_by == :system and @site.name == "Internet"}>
         Gateways deployed to the Internet Site are used to tunnel all traffic that doesn't match any specific Resource.
       </:help>
-      <:help :if={@group.managed_by == :account}>
+      <:help :if={@site.managed_by == :account}>
         Deploy gateways to terminate connections to your site's resources. All
         gateways deployed within a site must be able to reach all
         its resources.
@@ -268,7 +269,7 @@ defmodule Web.Sites.Show do
               </code>
             </:col>
             <:col :let={gateway} label="version">
-              <.version_status outdated={Gateways.gateway_outdated?(gateway)} />
+              <.version_status outdated={Domain.Gateway.gateway_outdated?(gateway)} />
               {gateway.last_seen_version}
             </:col>
             <:col :let={gateway} label="status">
@@ -278,18 +279,18 @@ defmodule Web.Sites.Show do
               <div class="flex flex-col items-center justify-center text-center text-neutral-500 p-4">
                 <div class="pb-4">
                   No gateways to display.
-                  <span :if={@group.managed_by == :system and @group.name == "Internet"}>
+                  <span :if={@site.managed_by == :system and @site.name == "Internet"}>
                     <.link
                       class={[link_style()]}
-                      navigate={~p"/#{@account}/sites/#{@group}/new_token"}
+                      navigate={~p"/#{@account}/sites/#{@site}/new_token"}
                     >
                       Deploy a Gateway to the Internet Site.
                     </.link>
                   </span>
-                  <span :if={@group.managed_by == :account}>
+                  <span :if={@site.managed_by == :account}>
                     <.link
                       class={[link_style()]}
-                      navigate={~p"/#{@account}/sites/#{@group}/new_token"}
+                      navigate={~p"/#{@account}/sites/#{@site}/new_token"}
                     >
                       Deploy a gateway to connect resources.
                     </.link>
@@ -302,12 +303,12 @@ defmodule Web.Sites.Show do
       </:content>
     </.section>
 
-    <.section :if={@group.managed_by == :account}>
+    <.section :if={@site.managed_by == :account}>
       <:title>
         Resources
       </:title>
       <:action>
-        <.add_button navigate={~p"/#{@account}/resources/new?site_id=#{@group}"}>
+        <.add_button navigate={~p"/#{@account}/resources/new?site_id=#{@site}"}>
           Add Resource
         </.add_button>
       </:action>
@@ -326,7 +327,7 @@ defmodule Web.Sites.Show do
           >
             <:col :let={resource} label="name" field={{:resources, :name}}>
               <.link
-                navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
+                navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@site}"}
                 class={[link_style()]}
               >
                 {resource.name}
@@ -348,7 +349,7 @@ defmodule Web.Sites.Show do
                   </div>
                   <.link
                     class={[link_style(), "mr-1"]}
-                    navigate={~p"/#{@account}/policies/new?resource_id=#{resource}&site_id=#{@group}"}
+                    navigate={~p"/#{@account}/policies/new?resource_id=#{resource}&site_id=#{@site}"}
                   >
                     Create a Policy
                   </.link>
@@ -378,13 +379,13 @@ defmodule Web.Sites.Show do
       </:content>
     </.section>
 
-    <.section :if={@group.managed_by == :system and @group.name == "Internet"}>
+    <.section :if={@site.managed_by == :system and @site.name == "Internet"}>
       <:title>
         Policies
       </:title>
       <:action>
         <.add_button navigate={
-          ~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{@group}"
+          ~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{@site}"
         }>
           Add Policy
         </.add_button>
@@ -423,7 +424,7 @@ defmodule Web.Sites.Show do
                 /> No policies to display.
                 <.link
                   class={[link_style()]}
-                  navigate={~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{@group}"}
+                  navigate={~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{@site}"}
                 >
                   Add a policy
                 </.link>
@@ -435,7 +436,7 @@ defmodule Web.Sites.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={@group.managed_by == :account}>
+    <.danger_zone :if={@site.managed_by == :account}>
       <:action>
         <.button_with_confirmation
           id="delete_site"
@@ -462,7 +463,7 @@ defmodule Web.Sites.Show do
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id},
+        %Phoenix.Socket.Broadcast{topic: "presences:sites:" <> _site_id},
         socket
       ) do
     {:noreply, reload_live_table!(socket, "gateways")}
@@ -473,7 +474,7 @@ defmodule Web.Sites.Show do
 
   def handle_event("revoke_all_tokens", _params, socket) do
     {:ok, deleted_token_count} =
-      Tokens.delete_tokens_for(socket.assigns.group, socket.assigns.subject)
+      Tokens.delete_tokens_for(socket.assigns.site, socket.assigns.subject)
 
     socket =
       socket
@@ -483,7 +484,7 @@ defmodule Web.Sites.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _deleted_group} = DB.delete_group(socket.assigns.group, socket.assigns.subject)
+    {:ok, _deleted_site} = DB.delete_site(socket.assigns.site, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
   end
 
@@ -508,21 +509,20 @@ defmodule Web.Sites.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Repo}
-    alias Domain.Gateways.Group
+    alias Domain.Safe
     alias Domain.Gateway
 
-    def fetch_group_by_id(id, subject) do
+    def fetch_site(id, subject) do
       result =
-        from(g in Group, as: :groups)
-        |> where([groups: g], g.id == ^id)
+        from(g in Domain.Site, as: :sites)
+        |> where([sites: g], g.id == ^id)
         |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}
-        group -> {:ok, group}
+        site -> {:ok, site}
       end
     end
 
@@ -531,28 +531,28 @@ defmodule Web.Sites.Show do
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
-    
+
     def cursor_fields do
       [
         {:gateways, :asc, :last_seen_at},
         {:gateways, :asc, :id}
       ]
     end
-    
+
     def preloads do
       [
         online?: &Domain.Gateways.Presence.preload_gateways_presence/1
       ]
     end
-    
+
     def filters do
       [
         %Domain.Repo.Filter{
-          name: :gateway_group_id,
+          name: :site_id,
           title: "Site",
           type: {:string, :uuid},
           values: [],
-          fun: &filter_by_group_id/2
+          fun: &filter_by_site_id/2
         },
         %Domain.Repo.Filter{
           name: :ids,
@@ -561,25 +561,73 @@ defmodule Web.Sites.Show do
         }
       ]
     end
-    
-    def filter_by_group_id(queryable, group_id) do
-      {queryable, dynamic([gateways: gateways], gateways.group_id == ^group_id)}
+
+    def filter_by_site_id(queryable, site_id) do
+      {queryable, dynamic([gateways: gateways], gateways.site_id == ^site_id)}
     end
-    
+
     def filter_by_ids(queryable, ids) do
       {queryable, dynamic([gateways: gateways], gateways.id in ^ids)}
     end
 
-    def delete_group(group, subject) do
-      Safe.scoped(group, subject)
+    def delete_site(site, subject) do
+      Safe.scoped(site, subject)
       |> Safe.delete()
     end
+
+    def fetch_internet_resource(subject) do
+      result =
+        from(r in Domain.Resource, as: :resources)
+        |> where([resources: r], r.address == "0.0.0.0/0" or r.address == "::/0")
+        |> limit(1)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        resource -> {:ok, resource}
+      end
+    end
+
+    def list_resources(subject, opts \\ []) do
+      from(r in Domain.Resource, as: :resources)
+      |> Safe.scoped(subject)
+      |> Safe.list(DB.ResourceQuery, opts)
+    end
+
+    def peek_resource_actor_groups(resources, limit, subject) do
+      resource_ids = Enum.map(resources, & &1.id)
+
+      groups_by_resource =
+        from(p in Domain.Policies.Policy, as: :policies)
+        |> join(:inner, [policies: p], g in Domain.Actors.Group,
+          on: g.id == p.actor_group_id,
+          as: :groups
+        )
+        |> where([policies: p], p.resource_id in ^resource_ids)
+        |> where([policies: p], is_nil(p.disabled_at))
+        |> select([policies: p, groups: g], {p.resource_id, g})
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+        |> Map.new(fn {resource_id, groups} ->
+          {resource_id, Enum.take(groups, limit)}
+        end)
+
+      peek =
+        Enum.into(resources, %{}, fn resource ->
+          {resource.id, Map.get(groups_by_resource, resource.id, [])}
+        end)
+
+      {:ok, peek}
+    end
   end
-  
+
   defmodule DB.ResourceQuery do
     import Ecto.Query
-    alias Domain.Resource
-    
+    import Domain.Repo.Query
+
     def cursor_fields do
       [
         {:resources, :asc, :name},
@@ -587,7 +635,7 @@ defmodule Web.Sites.Show do
         {:resources, :asc, :id}
       ]
     end
-    
+
     def filters do
       [
         %Domain.Repo.Filter{
@@ -597,10 +645,10 @@ defmodule Web.Sites.Show do
           fun: &filter_by_name_fts_or_address/2
         },
         %Domain.Repo.Filter{
-          name: :gateway_group_id,
+          name: :site_id,
           type: {:string, :uuid},
           values: [],
-          fun: &filter_by_gateway_group_id/2
+          fun: &filter_by_site_id/2
         },
         %Domain.Repo.Filter{
           name: :type,
@@ -609,7 +657,7 @@ defmodule Web.Sites.Show do
         }
       ]
     end
-    
+
     def filter_by_name_fts_or_address(queryable, name_or_address) do
       {queryable,
        dynamic(
@@ -618,22 +666,22 @@ defmodule Web.Sites.Show do
            ilike(resources.address, ^"%#{name_or_address}%")
        )}
     end
-    
-    def filter_by_gateway_group_id(queryable, gateway_group_id) do
+
+    def filter_by_site_id(queryable, site_id) do
       {with_joined_connections(queryable),
-       dynamic([connections: connections], connections.gateway_group_id == ^gateway_group_id)}
+       dynamic([connections: connections], connections.site_id == ^site_id)}
     end
-    
+
     def filter_by_type(queryable, {:not_in, types}) do
       {queryable, dynamic([resources: resources], resources.type not in ^types)}
     end
-    
+
     def filter_by_type(queryable, types) do
       {queryable, dynamic([resources: resources], resources.type in ^types)}
     end
-    
+
     def with_joined_connections(queryable) do
-      with_named_binding(queryable, :connections, fn queryable, binding ->
+      ensure_named_binding(queryable, :connections, fn queryable, binding ->
         queryable
         |> join(
           :inner,
@@ -644,8 +692,8 @@ defmodule Web.Sites.Show do
         )
       end)
     end
-    
-    def with_named_binding(queryable, binding, fun) do
+
+    def ensure_named_binding(queryable, binding, fun) do
       if has_named_binding?(queryable, binding) do
         queryable
       else

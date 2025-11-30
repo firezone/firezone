@@ -2,7 +2,7 @@ defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Clients.Components
-  alias Domain.{Clients, ComponentVersions, Flows}
+  alias Domain.{Clients.Presence, ComponentVersions, Flows}
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -10,10 +10,10 @@ defmodule Web.Clients.Show do
       client =
         client
         |> Domain.Repo.preload(:actor)
-        |> then(fn c -> DB.preload_clients_presence([c]) |> List.first() end)
+        |> then(fn c -> Presence.preload_clients_presence([c]) |> List.first() end)
 
       if connected?(socket) do
-        :ok = Clients.Presence.Actor.subscribe(client.actor_id)
+        :ok = Presence.Actor.subscribe(client.actor_id)
       end
 
       socket =
@@ -44,7 +44,7 @@ defmodule Web.Clients.Show do
     list_opts =
       Keyword.put(list_opts, :preload,
         client: [:actor],
-        gateway: [:group],
+        gateway: [:site],
         policy: [:actor_group, :resource]
       )
 
@@ -289,7 +289,7 @@ defmodule Web.Clients.Show do
           </:col>
           <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              {flow.gateway.group.name}-{flow.gateway.name}
+              {flow.gateway.site.name}-{flow.gateway.name}
             </.link>
             <br />
             <code class="text-xs">{flow.gateway_remote_ip}</code>
@@ -414,12 +414,12 @@ defmodule Web.Clients.Show do
   def handle_event("verify_client", _params, socket) do
     import Ecto.Changeset
     import Domain.Repo.Changeset
-    
-    changeset = 
+
+    changeset =
       socket.assigns.client
       |> change()
       |> put_default_value(:verified_at, DateTime.utc_now())
-    
+
     {:ok, client} = DB.verify_client(changeset, socket.assigns.subject)
 
     client = %{
@@ -433,12 +433,12 @@ defmodule Web.Clients.Show do
 
   def handle_event("remove_client_verification", _params, socket) do
     import Ecto.Changeset
-    
-    changeset = 
+
+    changeset =
       socket.assigns.client
       |> change()
       |> put_change(:verified_at, nil)
-    
+
     {:ok, client} = DB.remove_client_verification(changeset, socket.assigns.subject)
 
     client = %{
@@ -463,7 +463,7 @@ defmodule Web.Clients.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Clients, Safe}
+    alias Domain.{Clients.Presence, Safe}
     alias Domain.Client
 
     def fetch_client_by_id(id, subject) do
@@ -480,16 +480,12 @@ defmodule Web.Clients.Show do
       end
     end
 
-    def preload_clients_presence(clients) do
-      Clients.preload_clients_presence(clients)
-    end
-
     def verify_client(changeset, subject) do
       # Only account_admin_user can verify clients
       if subject.actor.type == :account_admin_user do
         case Safe.scoped(changeset, subject) |> Safe.update() do
           {:ok, updated_client} ->
-            {:ok, preload_clients_presence([updated_client]) |> List.first()}
+            {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
 
           {:error, reason} ->
             {:error, reason}
@@ -504,7 +500,7 @@ defmodule Web.Clients.Show do
       if subject.actor.type == :account_admin_user do
         case Safe.scoped(changeset, subject) |> Safe.update() do
           {:ok, updated_client} ->
-            {:ok, preload_clients_presence([updated_client]) |> List.first()}
+            {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
 
           {:error, reason} ->
             {:error, reason}
@@ -517,7 +513,7 @@ defmodule Web.Clients.Show do
     def delete_client(client, subject) do
       case Safe.scoped(client, subject) |> Safe.delete() do
         {:ok, deleted_client} ->
-          {:ok, preload_clients_presence([deleted_client]) |> List.first()}
+          {:ok, Presence.preload_clients_presence([deleted_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}

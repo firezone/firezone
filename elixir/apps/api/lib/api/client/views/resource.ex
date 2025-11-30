@@ -17,7 +17,8 @@ defmodule API.Client.Views.Resource do
     %{
       id: resource.id,
       type: :internet,
-      gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
+      # TODO: conditionally rename to sites based on client version
+      gateway_groups: Views.Site.render_many(resource.sites),
       can_be_disabled: true
     }
   end
@@ -33,7 +34,8 @@ defmodule API.Client.Views.Resource do
       address: address,
       address_description: resource.address_description,
       name: resource.name,
-      gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
+      # TODO: conditionally rename to sites based on client version
+      gateway_groups: Views.Site.render_many(resource.sites),
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
   end
@@ -45,7 +47,8 @@ defmodule API.Client.Views.Resource do
       address: resource.address,
       address_description: resource.address_description,
       name: resource.name,
-      gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
+      # TODO: conditionally rename to sites based on client version
+      gateway_groups: Views.Site.render_many(resource.sites),
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
     |> maybe_put_ip_stack(resource)

@@ -1,16 +1,15 @@
 defmodule Web.Sites.Edit do
   use Web, :live_view
-  alias Domain.Gateways
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <- DB.fetch_group_by_id(id, socket.assigns.subject) do
-      changeset = change_group(group)
+    with {:ok, site} <- DB.fetch_site(id, socket.assigns.subject) do
+      changeset = change_site(site)
 
       socket =
         assign(socket,
-          page_title: "Edit #{group.name}",
-          group: group,
+          page_title: "Edit #{site.name}",
+          site: site,
           form: to_form(changeset)
         )
 
@@ -24,14 +23,14 @@ defmodule Web.Sites.Edit do
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        {@group.name}
+      <.breadcrumb path={~p"/#{@account}/sites/#{@site}"}>
+        {@site.name}
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@group}/edit"}>Edit</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@site}/edit"}>Edit</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
-      <:title>Edit Site: <code>{@group.name}</code></:title>
+      <:title>Edit Site: <code>{@site.name}</code></:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
@@ -48,22 +47,22 @@ defmodule Web.Sites.Edit do
     """
   end
 
-  def handle_event("change", %{"group" => attrs}, socket) do
+  def handle_event("change", %{"site" => attrs}, socket) do
     changeset =
-      change_group(socket.assigns.group, attrs)
+      change_site(socket.assigns.site, attrs)
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
-  def handle_event("submit", %{"group" => attrs}, socket) do
-    changeset = update_changeset(socket.assigns.group, attrs, socket.assigns.subject)
-    
-    with {:ok, group} <- DB.update_group(changeset, socket.assigns.subject) do
+  def handle_event("submit", %{"site" => attrs}, socket) do
+    changeset = update_changeset(socket.assigns.site, attrs, socket.assigns.subject)
+
+    with {:ok, site} <- DB.update_site(changeset, socket.assigns.subject) do
       socket =
         socket
-        |> put_flash(:success, "Site #{group.name} updated successfully")
-        |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{group}")
+        |> put_flash(:success, "Site #{site.name} updated successfully")
+        |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{site}")
 
       {:noreply, socket}
     else
@@ -72,47 +71,45 @@ defmodule Web.Sites.Edit do
     end
   end
 
-  defp change_group(group, attrs \\ %{}) do
+  defp change_site(site, attrs \\ %{}) do
     import Ecto.Changeset
-    
-    group
+
+    site
     |> Domain.Repo.preload(:account)
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> Domain.Gateways.Group.changeset()
+    |> Domain.Site.changeset()
   end
 
-  defp update_changeset(group, attrs, subject) do
+  defp update_changeset(site, attrs, _subject) do
     import Ecto.Changeset
-    
-    group
+
+    site
     |> Domain.Repo.preload(:account)
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> Domain.Gateways.Group.changeset()
-    |> put_change(:updated_by_identity_id, subject.identity.id)
+    |> Domain.Site.changeset()
   end
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Repo}
-    alias Domain.Gateways.Group
+    alias Domain.Safe
 
-    def fetch_group_by_id(id, subject) do
+    def fetch_site(id, subject) do
       result =
-        from(g in Group, as: :groups)
-        |> where([groups: g], g.id == ^id)
+        from(g in Domain.Site, as: :site)
+        |> where([site: g], g.id == ^id)
         |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}
-        group -> {:ok, group}
+        site -> {:ok, site}
       end
     end
 
-    def update_group(changeset, subject) do
+    def update_site(changeset, subject) do
       Safe.scoped(changeset, subject)
       |> Safe.update()
     end

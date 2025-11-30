@@ -26,7 +26,7 @@ defmodule Domain.ExternalIdentity.QueryTest do
                {:ok, %{upserted_identities: 0}}
 
       assert Repo.aggregate(Identity, :count) == 0
-      assert Repo.aggregate(Actors.Actor, :count) == 0
+      assert Repo.aggregate(Actor, :count) == 0
     end
 
     test "creates new identities and actors when they don't exist", %{
@@ -72,7 +72,7 @@ defmodule Domain.ExternalIdentity.QueryTest do
 
       # Verify correct counts
       assert Repo.aggregate(Identity, :count) == 2
-      assert Repo.aggregate(Actors.Actor, :count) == 2
+      assert Repo.aggregate(Actor, :count) == 2
     end
 
     test "updates existing identities when they already exist", %{
@@ -138,7 +138,7 @@ defmodule Domain.ExternalIdentity.QueryTest do
 
       # Verify total count (1 updated, 1 new)
       assert Repo.aggregate(Identity, :count) == 2
-      assert Repo.aggregate(Actors.Actor, :count) == 2
+      assert Repo.aggregate(Actor, :count) == 2
     end
 
     test "preserves identities from different providers", %{

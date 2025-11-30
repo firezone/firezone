@@ -1,6 +1,6 @@
 defmodule Domain.Relays.Group.Changeset do
   use Domain, :changeset
-  alias Domain.{Auth, Accounts}
+  alias Domain.Auth
   alias Domain.Relays
 
   @fields ~w[name]a
@@ -10,7 +10,7 @@ defmodule Domain.Relays.Group.Changeset do
     |> changeset(attrs)
   end
 
-  def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = _subject) do
+  def create(%Domain.Account{} = account, attrs, %Auth.Subject{} = _subject) do
     %Relays.Group{account: account}
     |> changeset(attrs)
     |> put_change(:account_id, account.id)

@@ -18,7 +18,7 @@ defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
       }
 
       assert :ok == on_insert(0, data)
-      assert_receive %Change{op: :insert, struct: %Actors.Membership{} = membership, lsn: 0}
+      assert_receive %Change{op: :insert, struct: %Membership{} = membership, lsn: 0}
       assert membership.account_id == account_id
       assert membership.actor_id == actor_id
       assert membership.group_id == group_id
@@ -63,7 +63,7 @@ defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
 
       assert_receive %Change{
         op: :delete,
-        old_struct: %Actors.Membership{} = membership,
+        old_struct: %Membership{} = membership,
         lsn: 0
       }
 

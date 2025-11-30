@@ -14,6 +14,7 @@ defmodule Domain.Repo.Migrations.CreateOidcAuthProviders do
       add(:portal_session_lifetime_secs, :integer)
       add(:is_disabled, :boolean, default: false, null: false)
       add(:is_default, :boolean, default: false, null: false)
+      add(:is_legacy, :boolean, default: false, null: false)
 
       add(:issuer, :text, null: false)
       add(:name, :string, null: false)

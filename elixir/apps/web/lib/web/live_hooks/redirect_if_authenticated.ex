@@ -1,5 +1,5 @@
 defmodule Web.LiveHooks.RedirectIfAuthenticated do
-  alias Domain.Accounts.Account
+  alias Domain.Account
   alias Domain.Auth.Subject
   alias Web.Session.Redirector
 

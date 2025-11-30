@@ -154,7 +154,7 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     |> form("form", actor: attrs)
     |> render_submit()
 
-    assert actor = Repo.get_by(Domain.Actors.Actor, name: attrs.name)
+    assert actor = Repo.get_by(Domain.Actor, name: attrs.name)
     assert actor.type == :service_account
 
     assert_redirect(lv, ~p"/#{account}/actors/service_accounts/#{actor}/new_identity")

@@ -22,7 +22,7 @@ defmodule Domain.Repo.FilterTest do
     end
 
     test "constructs a binary dynamic filter" do
-      queryable = Domain.Accounts.Account.Query.all()
+      queryable = Domain.Account.Query.all()
 
       filters = %{
         bool: %Filter{
@@ -39,7 +39,7 @@ defmodule Domain.Repo.FilterTest do
       assert queryable
              |> where(^dynamic)
              |> inspect() == """
-             #Ecto.Query<from a0 in Domain.Accounts.Account,\
+             #Ecto.Query<from a0 in Domain.Account,\
               as: :accounts,\
               where: is_nil(a0.disabled_at)>\
              """
@@ -49,7 +49,7 @@ defmodule Domain.Repo.FilterTest do
       assert queryable
              |> where(^dynamic)
              |> inspect() == """
-             #Ecto.Query<from a0 in Domain.Accounts.Account,\
+             #Ecto.Query<from a0 in Domain.Account,\
               as: :accounts,\
               where: not is_nil(a0.disabled_at)>\
              """
@@ -72,10 +72,10 @@ defmodule Domain.Repo.FilterTest do
       filter = [{:or, [[name: "name1"], [name: "name2"]]}]
       assert {:queryable, dynamic} = build_dynamic(:queryable, filter, filters, nil)
 
-      assert Domain.Accounts.Account.Query.all()
+      assert Domain.Account.Query.all()
              |> where(^dynamic)
              |> inspect() == """
-             #Ecto.Query<from a0 in Domain.Accounts.Account,\
+             #Ecto.Query<from a0 in Domain.Account,\
               as: :accounts,\
               where: a0.name == ^"name1" or a0.name == ^"name2">\
              """
@@ -95,10 +95,10 @@ defmodule Domain.Repo.FilterTest do
       filter = [{:and, [[name: "name1"], [name: "name2"]]}]
       assert {:queryable, dynamic} = build_dynamic(:queryable, filter, filters, nil)
 
-      assert Domain.Accounts.Account.Query.all()
+      assert Domain.Account.Query.all()
              |> where(^dynamic)
              |> inspect() == """
-             #Ecto.Query<from a0 in Domain.Accounts.Account,\
+             #Ecto.Query<from a0 in Domain.Account,\
               as: :accounts,\
               where: a0.name == ^"name1" and a0.name == ^"name2">\
              """

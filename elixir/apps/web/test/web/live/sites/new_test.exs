@@ -66,7 +66,7 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name])
+    attrs = Fixtures.Sites.site_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
@@ -74,8 +74,8 @@ defmodule Web.Live.Sites.NewTest do
       |> live(~p"/#{account}/sites/new")
 
     lv
-    |> form("form", group: attrs)
-    |> validate_change(%{group: %{name: String.duplicate("a", 256)}}, fn form, _html ->
+    |> form("form", site: attrs)
+    |> validate_change(%{site: %{name: String.duplicate("a", 256)}}, fn form, _html ->
       assert form_validation_errors(form) == %{
                "group[name]" => ["should be at most 64 character(s)"]
              }
@@ -87,7 +87,7 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    other_gateway = Fixtures.Gateways.create_group(account: account)
+    other_gateway = Fixtures.Sites.create_site(account: account)
     attrs = %{name: other_gateway.name}
 
     {:ok, lv, _html} =
@@ -96,7 +96,7 @@ defmodule Web.Live.Sites.NewTest do
       |> live(~p"/#{account}/sites/new")
 
     assert lv
-           |> form("form", group: attrs)
+           |> form("form", site: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
              "group[name]" => ["has already been taken"]
@@ -108,7 +108,7 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name])
+    attrs = Fixtures.Sites.site_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
@@ -116,11 +116,11 @@ defmodule Web.Live.Sites.NewTest do
       |> live(~p"/#{account}/sites/new")
 
     lv
-    |> form("form", group: attrs)
+    |> form("form", site: attrs)
     |> render_submit()
 
     group =
-      Repo.get_by(Domain.Gateways.Group, name: attrs.name)
+      Repo.get_by(Domain.Site, name: attrs.name)
       |> Repo.preload(:tokens)
 
     assert assert_redirect(lv, ~p"/#{account}/sites/#{group}")
@@ -131,12 +131,12 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    Fixtures.Gateways.create_group(account: account)
+    Fixtures.Sites.create_site(account: account)
 
     {:ok, account} =
       Fixtures.Accounts.update_account(account, %{
         limits: %{
-          gateway_groups_count: 1
+          sites_count: 1
         }
       })
 
@@ -146,12 +146,12 @@ defmodule Web.Live.Sites.NewTest do
       |> live(~p"/#{account}/sites/new")
 
     attrs =
-      Fixtures.Gateways.group_attrs()
+      Fixtures.Sites.site_attrs()
       |> Map.take([:name])
 
     html =
       lv
-      |> form("form", group: attrs)
+      |> form("form", site: attrs)
       |> render_submit()
 
     assert html =~ "You have reached the maximum number of"

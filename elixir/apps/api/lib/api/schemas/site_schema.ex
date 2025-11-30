@@ -1,4 +1,4 @@
-defmodule API.Schemas.GatewayGroup do
+defmodule API.Schemas.Site do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -6,12 +6,12 @@ defmodule API.Schemas.GatewayGroup do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "GatewayGroup",
-      description: "Gateway Group",
+      title: "Site",
+      description: "Site",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Gateway Group ID"},
-        name: %Schema{type: :string, description: "Gateway Group Name"}
+        id: %Schema{type: :string, description: "Site ID"},
+        name: %Schema{type: :string, description: "Site Name"}
       },
       required: [:id, :name],
       example: %{
@@ -24,18 +24,18 @@ defmodule API.Schemas.GatewayGroup do
   defmodule Request do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.GatewayGroup
+    alias API.Schemas.Site
 
     OpenApiSpex.schema(%{
-      title: "GatewayGroupRequest",
-      description: "POST body for creating a Gateway Group",
+      title: "SiteRequest",
+      description: "POST body for creating a Site",
       type: :object,
       properties: %{
-        gateway_group: GatewayGroup.Schema
+        site: Site.Schema
       },
-      required: [:gateway_group],
+      required: [:site],
       example: %{
-        "gateway_group" => %{
+        "site" => %{
           "name" => "vpc-us-east"
         }
       }
@@ -45,14 +45,14 @@ defmodule API.Schemas.GatewayGroup do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.GatewayGroup
+    alias API.Schemas.Site
 
     OpenApiSpex.schema(%{
-      title: "GatewayGroupResponse",
-      description: "Response schema for single Gateway Group",
+      title: "SiteResponse",
+      description: "Response schema for single Site",
       type: :object,
       properties: %{
-        data: GatewayGroup.Schema
+        data: Site.Schema
       },
       example: %{
         "data" => %{
@@ -66,17 +66,17 @@ defmodule API.Schemas.GatewayGroup do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.GatewayGroup
+    alias API.Schemas.Site
 
     OpenApiSpex.schema(%{
-      title: "GatewayGroupListResponse",
-      description: "Response schema for multiple Gateway Groups",
+      title: "SiteListResponse",
+      description: "Response schema for multiple Sites",
       type: :object,
       properties: %{
         data: %Schema{
-          description: "Gateway Group details",
+          description: "Site details",
           type: :array,
-          items: GatewayGroup.Schema
+          items: Site.Schema
         },
         metadata: %Schema{description: "Pagination metadata", type: :object}
       },

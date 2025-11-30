@@ -1,7 +1,7 @@
 defmodule Web.Plugs.RedirectIfAuthenticated do
   @behaviour Plug
 
-  alias Domain.Accounts.Account
+  alias Domain.Account
   alias Domain.Auth.Subject
   alias Web.Session.Redirector
 

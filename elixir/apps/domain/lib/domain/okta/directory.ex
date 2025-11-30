@@ -2,7 +2,7 @@ defmodule Domain.Okta.Directory do
   use Domain, :schema
 
   schema "okta_directories" do
-    belongs_to :account, Domain.Accounts.Account
+    belongs_to :account, Domain.Account
 
     belongs_to :directory, Domain.Directory,
       foreign_key: :id,

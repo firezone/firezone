@@ -8,7 +8,7 @@ defmodule Web.Live.Gateways.ShowTest do
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
     gateway = Fixtures.Gateways.create_gateway(account: account, actor: actor, identity: identity)
-    gateway = Repo.preload(gateway, :group)
+    gateway = Repo.preload(gateway, :site)
 
     %{
       account: account,
@@ -64,7 +64,7 @@ defmodule Web.Live.Gateways.ShowTest do
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
-    assert breadcrumbs =~ gateway.group.name
+    assert breadcrumbs =~ gateway.site.name
     assert breadcrumbs =~ gateway.name
   end
 
@@ -85,7 +85,7 @@ defmodule Web.Live.Gateways.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["site"] =~ gateway.group.name
+    assert table["site"] =~ gateway.site.name
     assert table["name"] =~ gateway.name
     assert table["last started"]
     assert table["last seen remote ip"] =~ to_string(gateway.last_seen_remote_ip)
@@ -100,8 +100,8 @@ defmodule Web.Live.Gateways.ShowTest do
     identity: identity,
     conn: conn
   } do
-    gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
-    :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
+    site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
+    :ok = Domain.Gateways.Presence.connect(gateway, site_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -132,7 +132,7 @@ defmodule Web.Live.Gateways.ShowTest do
     |> element("button[type=submit]", "Delete Gateway")
     |> render_click()
 
-    assert_redirected(lv, ~p"/#{account}/sites/#{gateway.group}")
+    assert_redirected(lv, ~p"/#{account}/sites/#{gateway.site}")
 
     refute Repo.get(Domain.Gateways.Gateway, gateway.id)
   end
@@ -148,10 +148,10 @@ defmodule Web.Live.Gateways.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
-    :ok = Domain.Gateways.Presence.Group.subscribe(gateway.group.id)
-    gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
-    :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
-    assert_receive %{topic: "presences:group_gateways:" <> _}
+    :ok = Domain.Gateways.Presence.Site.subscribe(gateway.site.id)
+    site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
+    :ok = Domain.Gateways.Presence.connect(gateway, site_token.id)
+    assert_receive %{topic: "presences:sites:" <> _}
 
     table =
       lv

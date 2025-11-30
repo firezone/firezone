@@ -7,26 +7,26 @@ defmodule Web.Live.Sites.ShowTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
-    group = Fixtures.Gateways.create_group(account: account, subject: subject)
-    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-    gateway = Repo.preload(gateway, :group)
+    site = Fixtures.Sites.create_site(account: account, subject: subject)
+    gateway = Fixtures.Gateways.create_gateway(account: account, site: site)
+    gateway = Repo.preload(gateway, :site)
 
     %{
       account: account,
       actor: actor,
       identity: identity,
       subject: subject,
-      group: group,
+      site: site,
       gateway: gateway
     }
   end
 
   test "redirects to sign in page for unauthorized user", %{
     account: account,
-    group: group,
+    site: site,
     conn: conn
   } do
-    path = ~p"/#{account}/sites/#{group}"
+    path = ~p"/#{account}/sites/#{site}"
 
     assert live(conn, path) ==
              {:error,
@@ -37,117 +37,117 @@ defmodule Web.Live.Sites.ShowTest do
                }}}
   end
 
-  test "raises NotFoundError for deleted gateway group", %{
+  test "raises NotFoundError for deleted site", %{
     account: account,
-    group: group,
+    site: site,
     identity: identity,
     conn: conn
   } do
-    {:ok, deleted_group} = Fixtures.Gateways.delete_group(group)
+    {:ok, deleted_site} = Fixtures.Sites.delete_site(site)
 
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/sites/#{deleted_group}")
+      |> live(~p"/#{account}/sites/#{deleted_site}")
     end
   end
 
   test "renders breadcrumbs item", %{
     account: account,
-    group: group,
+    site: site,
     identity: identity,
     conn: conn
   } do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/sites/#{group}")
+      |> live(~p"/#{account}/sites/#{site}")
 
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
-    assert breadcrumbs =~ group.name
+    assert breadcrumbs =~ site.name
   end
 
   describe "for non-managed sites" do
-    test "allows editing gateway groups", %{
+    test "allows editing gateway sites", %{
       account: account,
-      group: group,
+      site: site,
       identity: identity,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       assert lv
              |> element("a", "Edit Site")
              |> render_click() ==
-               {:error, {:live_redirect, %{to: ~p"/#{account}/sites/#{group}/edit", kind: :push}}}
+               {:error, {:live_redirect, %{to: ~p"/#{account}/sites/#{site}/edit", kind: :push}}}
     end
 
-    test "renders group details", %{
+    test "renders site details", %{
       account: account,
       actor: actor,
       identity: identity,
-      group: group,
+      site: site,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       table =
         lv
-        |> element("#group")
+        |> element("#site")
         |> render()
         |> vertical_table_to_map()
 
-      assert table["name"] =~ group.name
+      assert table["name"] =~ site.name
       assert table["created"] =~ actor.name
     end
 
-    test "renders group details when group created by API", %{
+    test "renders site details when site created by API", %{
       account: account,
       identity: identity,
       conn: conn
     } do
       actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
       subject = Fixtures.Auth.create_subject(account: account, actor: actor)
-      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      site = Fixtures.Sites.create_site(account: account, subject: subject)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       table =
         lv
-        |> element("#group")
+        |> element("#site")
         |> render()
         |> vertical_table_to_map()
 
-      assert table["name"] =~ group.name
+      assert table["name"] =~ site.name
       assert table["created"] =~ actor.name
     end
 
     test "renders online gateways table", %{
       account: account,
       identity: identity,
-      group: group,
+      site: site,
       gateway: gateway,
       conn: conn
     } do
-      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
-      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
-      Fixtures.Gateways.create_gateway(account: account, group: group)
+      site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, site_token.id)
+      Fixtures.Gateways.create_gateway(account: account, site: site)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       rows =
         lv
@@ -168,7 +168,7 @@ defmodule Web.Live.Sites.ShowTest do
 
     test "updates online gateways table", %{
       account: account,
-      group: group,
+      site: site,
       gateway: gateway,
       identity: identity,
       conn: conn
@@ -176,12 +176,12 @@ defmodule Web.Live.Sites.ShowTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
-      :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+      gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
       :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
-      assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
+      assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{gateway.site.id}"}
 
       wait_for(fn ->
         lv
@@ -196,38 +196,38 @@ defmodule Web.Live.Sites.ShowTest do
 
     test "allows revoking all tokens", %{
       account: account,
-      group: group,
+      site: site,
       identity: identity,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       assert lv
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      refute Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id)
+      refute Repo.get_by(Domain.Tokens.Token, site_id: site.id)
     end
 
     test "renders resources table", %{
       account: account,
       identity: identity,
-      group: group,
+      site: site,
       conn: conn
     } do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{gateway_group_id: group.id}]
+          connections: [%{site_id: site.id}]
         )
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       resource_rows =
         lv
@@ -245,13 +245,13 @@ defmodule Web.Live.Sites.ShowTest do
     test "renders authorized groups peek", %{
       account: account,
       identity: identity,
-      group: group,
+      site: site,
       conn: conn
     } do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{gateway_group_id: group.id}]
+          connections: [%{site_id: site.id}]
         )
 
       policies =
@@ -274,7 +274,7 @@ defmodule Web.Live.Sites.ShowTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       resource_rows =
         lv
@@ -296,7 +296,7 @@ defmodule Web.Live.Sites.ShowTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       resource_rows =
         lv
@@ -309,16 +309,16 @@ defmodule Web.Live.Sites.ShowTest do
       end)
     end
 
-    test "allows deleting gateway groups", %{
+    test "allows deleting sites", %{
       account: account,
-      group: group,
+      site: site,
       identity: identity,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       lv
       |> element("button[type=submit]", "Delete")
@@ -326,65 +326,65 @@ defmodule Web.Live.Sites.ShowTest do
 
       assert_redirected(lv, ~p"/#{account}/sites")
 
-      refute Repo.get(Domain.Gateways.Group, group.id)
+      refute Repo.get(Domain.Site, site.id)
     end
   end
 
   describe "for non-internet resources" do
-    test "allows editing gateway groups", %{
+    test "allows editing sites", %{
       account: account,
-      group: group,
+      site: site,
       identity: identity,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       assert lv
              |> element("a", "Edit Site")
              |> render_click() ==
-               {:error, {:live_redirect, %{to: ~p"/#{account}/sites/#{group}/edit", kind: :push}}}
+               {:error, {:live_redirect, %{to: ~p"/#{account}/sites/#{site}/edit", kind: :push}}}
     end
 
-    test "renders group details", %{
+    test "renders site details", %{
       account: account,
       actor: actor,
       identity: identity,
-      group: group,
+      site: site,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       table =
         lv
-        |> element("#group")
+        |> element("#site")
         |> render()
         |> vertical_table_to_map()
 
-      assert table["name"] =~ group.name
+      assert table["name"] =~ site.name
       assert table["created"] =~ actor.name
     end
 
     test "renders online gateways table", %{
       account: account,
       identity: identity,
-      group: group,
+      site: site,
       gateway: gateway,
       conn: conn
     } do
-      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
-      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
-      Fixtures.Gateways.create_gateway(account: account, group: group)
+      site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, site_token.id)
+      Fixtures.Gateways.create_gateway(account: account, site: site)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       rows =
         lv
@@ -404,7 +404,7 @@ defmodule Web.Live.Sites.ShowTest do
 
     test "updates online gateways table", %{
       account: account,
-      group: group,
+      site: site,
       gateway: gateway,
       identity: identity,
       conn: conn
@@ -412,12 +412,12 @@ defmodule Web.Live.Sites.ShowTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
-      :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
-      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
-      assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
+      :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+      site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, site_token.id)
+      assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{gateway.site.id}"}
 
       wait_for(fn ->
         lv
@@ -432,38 +432,38 @@ defmodule Web.Live.Sites.ShowTest do
 
     test "allows revoking all tokens", %{
       account: account,
-      group: group,
+      site: site,
       identity: identity,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       assert lv
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      refute Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id)
+      refute Repo.get_by(Domain.Tokens.Token, site_id: site.id)
     end
 
     test "renders resources table", %{
       account: account,
       identity: identity,
-      group: group,
+      site: site,
       conn: conn
     } do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{gateway_group_id: group.id}]
+          connections: [%{site_id: site.id}]
         )
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       resource_rows =
         lv
@@ -481,13 +481,13 @@ defmodule Web.Live.Sites.ShowTest do
     test "renders authorized groups peek", %{
       account: account,
       identity: identity,
-      group: group,
+      site: site,
       conn: conn
     } do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{gateway_group_id: group.id}]
+          connections: [%{site_id: site.id}]
         )
 
       policies =
@@ -510,7 +510,7 @@ defmodule Web.Live.Sites.ShowTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       resource_rows =
         lv
@@ -532,7 +532,7 @@ defmodule Web.Live.Sites.ShowTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       resource_rows =
         lv
@@ -545,16 +545,16 @@ defmodule Web.Live.Sites.ShowTest do
       end)
     end
 
-    test "allows deleting gateway groups", %{
+    test "allows deleting sites", %{
       account: account,
-      group: group,
+      site: site,
       identity: identity,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       lv
       |> element("button[type=submit]", "Delete")
@@ -562,20 +562,19 @@ defmodule Web.Live.Sites.ShowTest do
 
       assert_redirected(lv, ~p"/#{account}/sites")
 
-      refute Repo.get(Domain.Gateways.Group, group.id)
+      refute Repo.get(Domain.Site, site.id)
     end
   end
 
   describe "for internet sites" do
     setup %{account: account, subject: subject} do
-      {:ok, group} = Domain.Gateways.create_internet_group(account)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-      gateway = Repo.preload(gateway, :group)
-
-      {:ok, resource} = Domain.Resources.create_internet_resource(account, group)
+      site = Fixtures.Sites.create_internet_site(account)
+      gateway = Fixtures.Gateways.create_gateway(account: account, site: site)
+      gateway = Repo.preload(gateway, :site)
+      resource = Fixtures.Resources.create_internet_resource(account, site)
 
       %{
-        group: group,
+        site: site,
         gateway: gateway,
         resource: resource,
         subject: subject
@@ -584,14 +583,14 @@ defmodule Web.Live.Sites.ShowTest do
 
     test "does not allow editing", %{
       account: account,
-      group: group,
+      site: site,
       identity: identity,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       refute has_element?(lv, "a", "Edit Site")
     end
@@ -599,18 +598,18 @@ defmodule Web.Live.Sites.ShowTest do
     test "renders online gateways table", %{
       account: account,
       identity: identity,
-      group: group,
+      site: site,
       gateway: gateway,
       conn: conn
     } do
-      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
       :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
-      Fixtures.Gateways.create_gateway(account: account, group: group)
+      Fixtures.Gateways.create_gateway(account: account, site: site)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       rows =
         lv
@@ -630,7 +629,7 @@ defmodule Web.Live.Sites.ShowTest do
 
     test "updates online gateways table", %{
       account: account,
-      group: group,
+      site: site,
       gateway: gateway,
       identity: identity,
       conn: conn
@@ -638,12 +637,12 @@ defmodule Web.Live.Sites.ShowTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
-      :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+      site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
       :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
-      assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
+      assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{gateway.site.id}"}
 
       wait_for(fn ->
         lv
@@ -658,32 +657,32 @@ defmodule Web.Live.Sites.ShowTest do
 
     test "allows revoking all tokens", %{
       account: account,
-      group: group,
+      site: site,
       identity: identity,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       assert lv
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      refute Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id)
+      refute Repo.get_by(Domain.Tokens.Token, site_id: site.id)
     end
 
     test "does not render resources table", %{
       account: account,
       identity: identity,
-      group: group,
+      site: site,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       refute has_element?(lv, "#resources")
     end
@@ -691,7 +690,7 @@ defmodule Web.Live.Sites.ShowTest do
     test "renders policies table", %{
       account: account,
       identity: identity,
-      group: group,
+      site: site,
       resource: resource,
       conn: conn
     } do
@@ -713,7 +712,7 @@ defmodule Web.Live.Sites.ShowTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       rows =
         lv
@@ -728,16 +727,16 @@ defmodule Web.Live.Sites.ShowTest do
              end)
     end
 
-    test "does not allow deleting the group", %{
+    test "does not allow deleting the site", %{
       account: account,
-      group: group,
+      site: site,
       identity: identity,
       conn: conn
     } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
+        |> live(~p"/#{account}/sites/#{site}")
 
       refute has_element?(lv, "button[type=submit]", "Delete")
     end

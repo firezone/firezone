@@ -1,11 +1,11 @@
 defmodule Domain.Changes.Hooks.ActorGroupMemberships do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Actors, Changes.Change, PubSub}
+  alias Domain.{Changes.Change, PubSub}
   import Domain.SchemaHelpers
 
   @impl true
   def on_insert(lsn, data) do
-    membership = struct_from_params(Actors.Membership, data)
+    membership = struct_from_params(Membership, data)
     change = %Change{lsn: lsn, op: :insert, struct: membership}
 
     PubSub.Account.broadcast(membership.account_id, change)
@@ -16,7 +16,7 @@ defmodule Domain.Changes.Hooks.ActorGroupMemberships do
 
   @impl true
   def on_delete(lsn, old_data) do
-    membership = struct_from_params(Actors.Membership, old_data)
+    membership = struct_from_params(Membership, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: membership}
 
     PubSub.Account.broadcast(membership.account_id, change)

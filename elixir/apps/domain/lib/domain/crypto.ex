@@ -1,5 +1,5 @@
 defmodule Domain.Crypto do
-  alias Domain.{Clients, Gateways, Tokens.Token}
+  alias Domain.{Client, Gateway}
 
   @doc """
   Generates a WireGuard pre-shared key for a client-gateway pair.
@@ -10,7 +10,7 @@ defmodule Domain.Crypto do
           public_key: client_pubkey,
           psk_base: client_psk_base
         },
-        %Gateways.Gateway{
+        %Gateway{
           id: gateway_id,
           public_key: gateway_pubkey,
           psk_base: gateway_psk_base
@@ -121,5 +121,4 @@ defmodule Domain.Crypto do
 
   def equal?(algo, secret, hash),
     do: Plug.Crypto.secure_compare(hash(algo, secret), hash)
-
 end

@@ -321,7 +321,7 @@ defmodule Domain.ActorsTest do
 
       assert peek[group1.id].count == 4
       assert length(peek[group1.id].items) == 3
-      assert [%Actors.Actor{} | _] = peek[group1.id].items
+      assert [%Actor{} | _] = peek[group1.id].items
 
       assert peek[group2.id].count == 0
       assert Enum.empty?(peek[group2.id].items)
@@ -979,7 +979,7 @@ defmodule Domain.ActorsTest do
       assert {group1.id, identity1.actor_id} in insert
       assert {group2.id, identity2.actor_id} in insert
 
-      memberships = Repo.all(Actors.Membership)
+      memberships = Repo.all(Membership)
       assert length(memberships) == 2
 
       for membership <- memberships do
@@ -1035,8 +1035,8 @@ defmodule Domain.ActorsTest do
                  tuples_list
                )
 
-      assert Repo.aggregate(Actors.Membership, :count) == 2
-      assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 2
+      assert Repo.aggregate(Membership, :count) == 2
+      assert Repo.aggregate(Membership.Query.all(), :count) == 2
     end
 
     test "deletes removed memberships", %{
@@ -1087,8 +1087,8 @@ defmodule Domain.ActorsTest do
       assert {group1.id, identity1.actor_id} in delete
       assert {group2.id, identity2.actor_id} in delete
 
-      assert Repo.aggregate(Actors.Membership, :count) == 0
-      assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 0
+      assert Repo.aggregate(Membership, :count) == 0
+      assert Repo.aggregate(Membership.Query.all(), :count) == 0
     end
 
     test "deletes memberships of removed groups", %{
@@ -1139,8 +1139,8 @@ defmodule Domain.ActorsTest do
 
       assert delete == [{group2.id, identity2.actor_id}]
 
-      assert Repo.aggregate(Actors.Membership, :count) == 1
-      assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 1
+      assert Repo.aggregate(Membership, :count) == 1
+      assert Repo.aggregate(Membership.Query.all(), :count) == 1
     end
 
     test "ignores memberships that are not synced from the provider", %{
@@ -1410,7 +1410,7 @@ defmodule Domain.ActorsTest do
       assert group.type == attrs.type
 
       group = Repo.preload(group, :memberships)
-      assert [%Actors.Membership{} = membership] = group.memberships
+      assert [%Membership{} = membership] = group.memberships
       assert membership.actor_id == actor.id
       assert membership.account_id == account.id
       assert membership.group_id == group.id
@@ -1535,19 +1535,19 @@ defmodule Domain.ActorsTest do
       attrs = %{memberships: [%{actor_id: actor1.id}]}
       assert {:ok, %{memberships: [membership]}} = update_group(group, attrs, subject)
       assert membership.actor_id == actor1.id
-      assert Repo.one(Actors.Membership).actor_id == membership.actor_id
+      assert Repo.one(Membership).actor_id == membership.actor_id
 
       # Delete existing membership and create a new one
       attrs = %{memberships: [%{actor_id: actor2.id}]}
       assert {:ok, %{memberships: [membership]}} = update_group(group, attrs, subject)
       assert membership.actor_id == actor2.id
-      assert Repo.one(Actors.Membership).actor_id == membership.actor_id
+      assert Repo.one(Membership).actor_id == membership.actor_id
 
       # Doesn't produce changes when membership is not changed
       attrs = %{memberships: [Map.from_struct(membership)]}
       assert {:ok, %{memberships: [membership]}} = update_group(group, attrs, subject)
       assert membership.actor_id == actor2.id
-      assert Repo.one(Actors.Membership).actor_id == membership.actor_id
+      assert Repo.one(Membership).actor_id == membership.actor_id
 
       # Add one more membership
       attrs = %{memberships: [%{actor_id: actor1.id}, %{actor_id: actor2.id}]}
@@ -1555,11 +1555,11 @@ defmodule Domain.ActorsTest do
       assert [membership1, membership2] = memberships
       assert membership1.actor_id == actor1.id
       assert membership2.actor_id == actor2.id
-      assert Repo.aggregate(Actors.Membership, :count, :actor_id) == 2
+      assert Repo.aggregate(Membership, :count, :actor_id) == 2
 
       # Delete all memberships
       assert {:ok, %{memberships: []}} = update_group(group, %{memberships: []}, subject)
-      assert Repo.aggregate(Actors.Membership, :count, :actor_id) == 0
+      assert Repo.aggregate(Membership, :count, :actor_id) == 0
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -1622,7 +1622,7 @@ defmodule Domain.ActorsTest do
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
 
       refute Enum.any?(
-               Repo.all(Actors.Membership),
+               Repo.all(Membership),
                &(&1.actor_id == service_account.id)
              )
     end
@@ -1639,11 +1639,11 @@ defmodule Domain.ActorsTest do
           subject: subject
         )
 
-      assert memberships = Repo.all(Actors.Membership)
+      assert memberships = Repo.all(Membership)
       assert length(memberships) == 0
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
 
-      assert memberships = Repo.all(Actors.Membership)
+      assert memberships = Repo.all(Membership)
       assert Enum.all?(memberships, &(&1.actor_id == identity.actor_id))
       refute Enum.any?(memberships, &(&1.group_id == static_group.id))
     end
@@ -1654,7 +1654,7 @@ defmodule Domain.ActorsTest do
     } do
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
 
-      assert memberships = Repo.all(Actors.Membership)
+      assert memberships = Repo.all(Membership)
       assert Enum.all?(memberships, &(&1.actor_id == identity.actor_id))
     end
 
@@ -1671,7 +1671,7 @@ defmodule Domain.ActorsTest do
       {:ok, _deleted_actor} = Actors.delete_actor(actor2, subject)
 
       # Update memberships - should remove the membership for deleted actor and keep for the existing actor
-      assert [membership] = Repo.all(Actors.Membership)
+      assert [membership] = Repo.all(Membership)
       assert membership.actor_id == actor.id
     end
 
@@ -1687,7 +1687,7 @@ defmodule Domain.ActorsTest do
         Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
 
       # Create initial memberships
-      assert [membership] = Repo.all(Actors.Membership)
+      assert [membership] = Repo.all(Membership)
       assert membership.actor_id == actor.id
       assert membership.group_id == managed_group.id
 
@@ -1695,7 +1695,7 @@ defmodule Domain.ActorsTest do
       {:ok, _deleted_group} = Actors.delete_group(managed_group, subject)
 
       # Update memberships - should remove the membership for deleted group
-      assert [] = Repo.all(Actors.Membership)
+      assert [] = Repo.all(Membership)
     end
 
     test "handles multiple actors and multiple managed groups", %{
@@ -1713,7 +1713,7 @@ defmodule Domain.ActorsTest do
       managed_group2 =
         Fixtures.Actors.create_managed_group(account: account, name: "Managed Group 2")
 
-      memberships = Repo.all(Actors.Membership)
+      memberships = Repo.all(Membership)
       # 2 user actors × 2 managed groups
       assert length(memberships) == 4
 
@@ -1741,7 +1741,7 @@ defmodule Domain.ActorsTest do
       assert {:ok, _results} = update_managed_group_memberships(account.id)
 
       # Should still only have one membership
-      assert [membership] = Repo.all(Actors.Membership)
+      assert [membership] = Repo.all(Membership)
       assert membership.actor_id == actor.id
       assert membership.group_id == managed_group.id
     end
@@ -1756,16 +1756,16 @@ defmodule Domain.ActorsTest do
         )
 
       assert {:ok, _results} = update_managed_group_memberships(account.id)
-      assert [] = Repo.all(Actors.Membership)
+      assert [] = Repo.all(Membership)
     end
 
     test "handles accounts with no actors", %{account: account} do
       Repo.delete_all(ExternalIdentity)
-      Repo.delete_all(Actors.Actor)
+      Repo.delete_all(Actor)
 
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
 
-      assert [] = Repo.all(Actors.Membership)
+      assert [] = Repo.all(Membership)
     end
 
     test "only affects the specified account" do
@@ -1786,7 +1786,7 @@ defmodule Domain.ActorsTest do
       actor1 = Fixtures.Actors.create_actor(account: account1)
       Fixtures.Actors.create_actor(account: account2)
 
-      memberships = Repo.all(Actors.Membership)
+      memberships = Repo.all(Membership)
 
       # Should only have membership for account1
       assert length(memberships) == 2
@@ -1807,11 +1807,11 @@ defmodule Domain.ActorsTest do
 
       # Membership is already created for actor1
 
-      memberships = Repo.all(Actors.Membership)
+      memberships = Repo.all(Membership)
       assert length(memberships) == 2
 
       # Original membership should still exist
-      assert Repo.get_by(Actors.Membership, actor_id: actor1.id, group_id: managed_group.id)
+      assert Repo.get_by(Membership, actor_id: actor1.id, group_id: managed_group.id)
 
       # New membership for actor2 should be created
       assert Enum.any?(
@@ -1832,13 +1832,13 @@ defmodule Domain.ActorsTest do
       managed_group2 = Fixtures.Actors.create_managed_group(account: account, name: "Group 2")
 
       # 2 user actors × 2 groups
-      assert length(Repo.all(Actors.Membership)) == 4
+      assert length(Repo.all(Membership)) == 4
 
       # Delete one actor and one group
       {:ok, _} = Actors.delete_actor(actor2, subject)
       {:ok, _} = Actors.delete_group(managed_group2, subject)
 
-      memberships = Repo.all(Actors.Membership)
+      memberships = Repo.all(Membership)
       # 1 remaining user actor × 1 remaining group
       assert length(memberships) == 1
 
@@ -1893,7 +1893,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, _deleted} = delete_group(group, subject)
 
-      assert Repo.aggregate(Actors.Membership, :count) == 0
+      assert Repo.aggregate(Membership, :count) == 0
     end
 
     # Leaving this test here for now.  May want to consider moving this test
@@ -2572,19 +2572,19 @@ defmodule Domain.ActorsTest do
       attrs = %{memberships: [%{group_id: group1.id}]}
       assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
       assert membership.group_id == group1.id
-      assert Repo.one(Actors.Membership).group_id == membership.group_id
+      assert Repo.one(Membership).group_id == membership.group_id
 
       # Delete existing membership and create a new one
       attrs = %{memberships: [%{group_id: group2.id}]}
       assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
       assert membership.group_id == group2.id
-      assert Repo.one(Actors.Membership).group_id == membership.group_id
+      assert Repo.one(Membership).group_id == membership.group_id
 
       # Doesn't produce changes when membership is not changed
       attrs = %{memberships: [Map.from_struct(membership)]}
       assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
       assert membership.group_id == group2.id
-      assert Repo.one(Actors.Membership).group_id == membership.group_id
+      assert Repo.one(Membership).group_id == membership.group_id
 
       # Add one more membership
       attrs = %{memberships: [%{group_id: group1.id}, %{group_id: group2.id}]}
@@ -2592,11 +2592,11 @@ defmodule Domain.ActorsTest do
       assert [membership1, membership2] = memberships
       assert membership1.group_id == group1.id
       assert membership2.group_id == group2.id
-      assert Repo.aggregate(Actors.Membership, :count, :group_id) == 2
+      assert Repo.aggregate(Membership, :count, :group_id) == 2
 
       # Delete all memberships
       assert {:ok, %{memberships: []}} = update_actor(actor, %{memberships: []}, subject)
-      assert Repo.aggregate(Actors.Membership, :count, :group_id) == 0
+      assert Repo.aggregate(Membership, :count, :group_id) == 0
     end
 
     test "returns error on invalid membership", %{account: account, subject: subject} do
@@ -2625,7 +2625,7 @@ defmodule Domain.ActorsTest do
 
       attrs = %{memberships: []}
       assert {:ok, %{memberships: []}} = update_actor(actor, attrs, subject)
-      assert membership = Repo.one(Actors.Membership)
+      assert membership = Repo.one(Membership)
       assert membership.group_id == group.id
       assert membership.actor_id == actor.id
     end
@@ -2655,10 +2655,10 @@ defmodule Domain.ActorsTest do
       assert {:ok, actor} = disable_actor(actor, subject)
       assert actor.disabled_at
 
-      assert actor = Repo.get(Actors.Actor, actor.id)
+      assert actor = Repo.get(Actor, actor.id)
       assert actor.disabled_at
 
-      assert other_actor = Repo.get(Actors.Actor, other_actor.id)
+      assert other_actor = Repo.get(Actor, other_actor.id)
       assert is_nil(other_actor.disabled_at)
     end
 
@@ -2754,10 +2754,10 @@ defmodule Domain.ActorsTest do
       assert {:ok, actor} = enable_actor(actor, subject)
       refute actor.disabled_at
 
-      assert actor = Repo.get(Actors.Actor, actor.id)
+      assert actor = Repo.get(Actor, actor.id)
       refute actor.disabled_at
 
-      assert other_actor = Repo.get(Actors.Actor, other_actor.id)
+      assert other_actor = Repo.get(Actor, other_actor.id)
       assert is_nil(other_actor.disabled_at)
     end
 
@@ -2824,9 +2824,9 @@ defmodule Domain.ActorsTest do
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       assert {:ok, actor} = delete_actor(actor, subject)
-      refute Repo.get(Actors.Actor, actor.id)
+      refute Repo.get(Actor, actor.id)
 
-      assert Repo.get(Actors.Actor, other_actor.id)
+      assert Repo.get(Actor, other_actor.id)
     end
 
     test "updates managed group memberships", %{account: account, actor: actor, subject: subject} do
@@ -2835,7 +2835,7 @@ defmodule Domain.ActorsTest do
       group = Fixtures.Actors.create_managed_group(account: account)
 
       assert {:ok, actor} = delete_actor(actor, subject)
-      refute Repo.get(Domain.Actors.Actor, actor.id)
+      refute Repo.get(Domain.Actor, actor.id)
 
       group = Repo.preload(group, :memberships, force: true)
       assert [membership] = group.memberships
@@ -2873,7 +2873,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, _actor} = delete_actor(actor_to_delete, subject)
 
-      assert Repo.aggregate(Domain.Clients.Client.Query.all(), :count) == 0
+      assert Repo.aggregate(Ecto.Query.from(c in Domain.Client), :count) == 0
     end
 
     test "deletes actor memberships", %{
@@ -2885,7 +2885,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, _actor} = delete_actor(actor, subject)
 
-      assert Repo.aggregate(Actors.Membership, :count) == 0
+      assert Repo.aggregate(Membership, :count) == 0
     end
 
     test "returns error when trying to delete the last admin actor", %{
@@ -2929,7 +2929,7 @@ defmodule Domain.ActorsTest do
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
 
       assert {:ok, service_account_actor} = delete_actor(service_account_actor, subject)
-      refute Repo.get(Domain.Actors.Actor, service_account_actor.id)
+      refute Repo.get(Domain.Actor, service_account_actor.id)
     end
 
     test "does not allow to delete an actor twice", %{
@@ -2967,7 +2967,7 @@ defmodule Domain.ActorsTest do
                  [
                    reason: :missing_permissions,
                    missing_permissions: [
-                     %Domain.Auth.Permission{resource: Domain.Actors.Actor, action: :manage}
+                     %Domain.Auth.Permission{resource: Domain.Actor, action: :manage}
                    ]
                  ]}}
     end
@@ -3195,10 +3195,10 @@ defmodule Domain.ActorsTest do
                {:ok, %{deleted_memberships: 1}}
 
       # Verify old membership is deleted
-      refute Repo.get(Actors.Membership, old_membership.id)
+      refute Repo.get(Membership, old_membership.id)
 
       # Verify new membership still exists
-      assert Repo.get(Actors.Membership, new_membership.id)
+      assert Repo.get(Membership, new_membership.id)
     end
 
     test "only deletes memberships for groups belonging to the provider", %{
@@ -3247,8 +3247,8 @@ defmodule Domain.ActorsTest do
                {:ok, %{deleted_memberships: 1}}
 
       # Verify only our provider's membership is deleted
-      refute Repo.get(Actors.Membership, our_membership.id)
-      assert Repo.get(Actors.Membership, other_membership.id)
+      refute Repo.get(Membership, our_membership.id)
+      assert Repo.get(Membership, other_membership.id)
     end
 
     test "returns 0 when no memberships to delete", %{provider: provider} do

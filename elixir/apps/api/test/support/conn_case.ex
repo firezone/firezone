@@ -36,7 +36,7 @@ defmodule API.ConnCase do
     {:ok, conn: conn, user_agent: user_agent}
   end
 
-  def authorize_conn(conn, %Domain.Actors.Actor{} = actor) do
+  def authorize_conn(conn, %Domain.Actor{} = actor) do
     expires_in = DateTime.utc_now() |> DateTime.add(300, :second)
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0)
 

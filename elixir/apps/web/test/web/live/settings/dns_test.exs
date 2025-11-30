@@ -131,7 +131,7 @@ defmodule Web.Live.Settings.DNSTest do
     |> form("form", attrs)
     |> render_submit()
 
-    account = Domain.Repo.get!(Domain.Accounts.Account, account.id)
+    account = Domain.Repo.get!(Domain.Account, account.id)
     assert account.config.search_domain == "example.com"
   end
 
@@ -198,7 +198,7 @@ defmodule Web.Live.Settings.DNSTest do
     |> form("form", attrs)
     |> render_submit()
 
-    account = Domain.Repo.get!(Domain.Accounts.Account, account.id)
+    account = Domain.Repo.get!(Domain.Account, account.id)
     assert account.config.clients_upstream_dns.type == :custom
     assert length(account.config.clients_upstream_dns.addresses) == 1
     assert hd(account.config.clients_upstream_dns.addresses).address == "8.8.8.8"
@@ -371,7 +371,7 @@ defmodule Web.Live.Settings.DNSTest do
     |> form("form", attrs)
     |> render_submit()
 
-    account = Domain.Repo.get!(Domain.Accounts.Account, account.id)
+    account = Domain.Repo.get!(Domain.Account, account.id)
     assert account.config.clients_upstream_dns.type == :system
     assert Enum.empty?(account.config.clients_upstream_dns.addresses)
   end
@@ -494,7 +494,7 @@ defmodule Web.Live.Settings.DNSTest do
     |> form("form", attrs)
     |> render_submit()
 
-    account = Domain.Repo.get!(Domain.Accounts.Account, account.id)
+    account = Domain.Repo.get!(Domain.Account, account.id)
     assert account.config.clients_upstream_dns.type == :custom
     assert length(account.config.clients_upstream_dns.addresses) == 3
 
@@ -535,7 +535,7 @@ defmodule Web.Live.Settings.DNSTest do
     |> form("form", attrs)
     |> render_submit()
 
-    account = Domain.Repo.get!(Domain.Accounts.Account, account.id)
+    account = Domain.Repo.get!(Domain.Account, account.id)
     assert account.config.clients_upstream_dns.type == :secure
     assert account.config.clients_upstream_dns.doh_provider == :cloudflare
   end

@@ -9,7 +9,7 @@ defmodule Web.Session.Redirector do
   """
   use Web, :verified_routes
 
-  alias Domain.{Accounts.Account, Tokens}
+  alias Domain.Tokens
 
   @doc """
   Sanitizes and validates a redirect_to parameter.
@@ -17,7 +17,8 @@ defmodule Web.Session.Redirector do
   Returns the redirect_to if it's valid (starts with account ID or slug),
   otherwise returns the default portal path.
   """
-  def sanitize_redirect_to(%Account{} = account, redirect_to) when is_binary(redirect_to) do
+  def sanitize_redirect_to(%Domain.Account{} = account, redirect_to)
+      when is_binary(redirect_to) do
     if String.starts_with?(redirect_to, "/#{account.id}") or
          String.starts_with?(redirect_to, "/#{account.slug}") do
       redirect_to
@@ -26,7 +27,7 @@ defmodule Web.Session.Redirector do
     end
   end
 
-  def sanitize_redirect_to(%Account{} = account, _redirect_to) do
+  def sanitize_redirect_to(%Domain.Account{} = account, _redirect_to) do
     default_portal_path(account)
   end
 
@@ -35,12 +36,12 @@ defmodule Web.Session.Redirector do
 
   Works with both LiveView sockets and Plug connections.
   """
-  def portal_signed_in(%Phoenix.LiveView.Socket{} = socket, %Account{} = account, params) do
+  def portal_signed_in(%Phoenix.LiveView.Socket{} = socket, %Domain.Account{} = account, params) do
     redirect_to = sanitize_redirect_to(account, params["redirect_to"])
     Phoenix.LiveView.redirect(socket, to: redirect_to)
   end
 
-  def portal_signed_in(%Plug.Conn{} = conn, %Account{} = account, params) do
+  def portal_signed_in(%Plug.Conn{} = conn, %Domain.Account{} = account, params) do
     redirect_to = sanitize_redirect_to(account, params["redirect_to"])
 
     conn
@@ -106,7 +107,7 @@ defmodule Web.Session.Redirector do
     |> Plug.Conn.clear_session()
   end
 
-  defp default_portal_path(%Account{} = account) do
+  defp default_portal_path(%Domain.Account{} = account) do
     ~p"/#{account.id}/sites"
   end
 end

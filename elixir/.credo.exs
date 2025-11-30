@@ -174,7 +174,6 @@
           {Credo.Check.Refactor.PipeChainStart, [excluded_functions: ["from"]]}
         ],
         disabled: [
-
           #
           # Controversial and experimental checks (opt-in, just move the check to `:enabled`
           #   and be sure to use `mix credo --strict` to see low priority checks)

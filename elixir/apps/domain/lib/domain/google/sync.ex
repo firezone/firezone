@@ -579,10 +579,18 @@ defmodule Domain.Google.Sync do
         |> Safe.insert_all(Domain.Actors.Group, values,
           on_conflict: [
             set: [
-              name: {:fragment, "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.name ELSE actor_groups.name END"},
-              directory_id: {:fragment, "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.directory_id ELSE actor_groups.directory_id END"},
-              last_synced_at: {:fragment, "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.last_synced_at ELSE actor_groups.last_synced_at END"},
-              updated_at: {:fragment, "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.updated_at ELSE actor_groups.updated_at END"}
+              name:
+                {:fragment,
+                 "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.name ELSE actor_groups.name END"},
+              directory_id:
+                {:fragment,
+                 "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.directory_id ELSE actor_groups.directory_id END"},
+              last_synced_at:
+                {:fragment,
+                 "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.last_synced_at ELSE actor_groups.last_synced_at END"},
+              updated_at:
+                {:fragment,
+                 "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.updated_at ELSE actor_groups.updated_at END"}
             ]
           ],
           conflict_target: {:unsafe_fragment, ~s[(account_id, idp_id) WHERE idp_id IS NOT NULL]},
@@ -689,7 +697,7 @@ defmodule Domain.Google.Sync do
     def delete_unsynced_memberships(account_id, directory_id, synced_at) do
       # Delete memberships for groups in this directory that haven't been synced
       query =
-        from(m in Domain.Actors.Membership,
+        from(m in Domain.Membership,
           join: g in Domain.Actors.Group,
           on: m.group_id == g.id,
           where: g.account_id == ^account_id,
@@ -705,7 +713,7 @@ defmodule Domain.Google.Sync do
       # This cleans up actors whose identities were deleted in the previous step
       # Only delete actors created by this specific directory
       query =
-        from(a in Domain.Actors.Actor,
+        from(a in Domain.Actor,
           where: a.account_id == ^account_id,
           where: a.created_by_directory_id == ^directory_id,
           where:

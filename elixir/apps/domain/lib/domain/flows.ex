@@ -1,6 +1,6 @@
 defmodule Domain.Flows do
-  alias Domain.{Repo, Safe}
-  alias Domain.{Auth, Actors, Clients, Gateway, Resources, Policies}
+  alias Domain.{Repo, Safe, Client, Resource}
+  alias Domain.{Auth, Gateway, Policies}
   alias Domain.Flows.Flow
   alias __MODULE__.DB
   require Ecto.Query
@@ -15,7 +15,7 @@ defmodule Domain.Flows do
           account_id: account_id,
           actor_id: actor_id
         },
-        %Gateways.Gateway{
+        %Gateway{
           id: gateway_id,
           last_seen_remote_ip: gateway_remote_ip,
           account_id: account_id
@@ -77,11 +77,11 @@ defmodule Domain.Flows do
          {:ok, token} <- Domain.Tokens.fetch_token_by_id(flow.token_id),
          {:ok, gateway} <- DB.fetch_gateway_by_id(flow.gateway_id),
          # We only want to reauthorize the resource for this gateway if the resource is still connected to its
-         # gateway_group.
+         # site.
          policies when policies != [] <-
-           Policies.all_policies_in_gateway_group_for_resource_id_and_actor_id!(
+           Policies.all_policies_in_site_for_resource_id_and_actor_id!(
              flow.account_id,
-             gateway.group_id,
+             gateway.site_id,
              flow.resource_id,
              client.actor_id
            ),
@@ -138,7 +138,7 @@ defmodule Domain.Flows do
     end
   end
 
-  def all_gateway_flows_for_cache!(%Gateways.Gateway{} = gateway) do
+  def all_gateway_flows_for_cache!(%Gateway{} = gateway) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(gateway.account_id)
     |> Flow.Query.by_gateway_id(gateway.id)
@@ -155,7 +155,7 @@ defmodule Domain.Flows do
     |> list_flows(subject, opts)
   end
 
-  def list_flows_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject, opts) do
+  def list_flows_for(%Resource{} = resource, %Auth.Subject{} = subject, opts) do
     Flow.Query.all()
     |> Flow.Query.by_resource_id(resource.id)
     |> list_flows(subject, opts)
@@ -167,13 +167,13 @@ defmodule Domain.Flows do
     |> list_flows(subject, opts)
   end
 
-  def list_flows_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts) do
+  def list_flows_for(%Domain.Actor{} = actor, %Auth.Subject{} = subject, opts) do
     Flow.Query.all()
     |> Flow.Query.by_actor_id(actor.id)
     |> list_flows(subject, opts)
   end
 
-  def list_flows_for(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject, opts) do
+  def list_flows_for(%Gateway{} = gateway, %Auth.Subject{} = subject, opts) do
     Flow.Query.all()
     |> Flow.Query.by_gateway_id(gateway.id)
     |> list_flows(subject, opts)
@@ -191,13 +191,13 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
-  def delete_flows_for(%Domain.Accounts.Account{} = account) do
+  def delete_flows_for(%Domain.Account{} = account) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(account.id)
     |> Repo.delete_all()
   end
 
-  def delete_flows_for(%Domain.Actors.Membership{} = membership) do
+  def delete_flows_for(%Domain.Membership{} = membership) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(membership.account_id)
     |> Flow.Query.by_actor_group_membership_id(membership.id)
@@ -211,7 +211,7 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
-  def delete_flows_for(%Domain.Gateways.Gateway{} = gateway) do
+  def delete_flows_for(%Domain.Gateway{} = gateway) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(gateway.account_id)
     |> Flow.Query.by_gateway_id(gateway.id)
@@ -236,7 +236,7 @@ defmodule Domain.Flows do
     Flow.Query.all()
     |> Flow.Query.by_account_id(connection.account_id)
     |> Flow.Query.by_resource_id(connection.resource_id)
-    |> Flow.Query.by_gateway_group_id(connection.gateway_group_id)
+    |> Flow.Query.by_site_id(connection.site_id)
     |> Repo.delete_all()
   end
 
@@ -264,7 +264,7 @@ defmodule Domain.Flows do
   defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, Repo, Gateway}
-    alias Domain.Actors.Membership
+    alias Domain.Membership
     alias Domain.Client
 
     def fetch_membership_by_actor_id_and_group_id(actor_id, group_id) do
@@ -282,19 +282,19 @@ defmodule Domain.Flows do
 
     def fetch_client_by_id!(id, _opts \\ []) do
       import Ecto.Query
-      
+
       from(c in Client, as: :clients)
       |> where([clients: c], c.id == ^id)
       |> Repo.one()
     end
-    
+
     def fetch_gateway_by_id(id) do
       result =
         from(g in Gateway, as: :gateways)
         |> where([gateways: g], g.id == ^id)
         |> Safe.unscoped()
         |> Safe.one()
-      
+
       case result do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}

@@ -1,6 +1,6 @@
 defmodule API.ClientJSON do
   alias API.Pagination
-  alias Domain.Clients
+  alias Domain.Client
 
   @doc """
   Renders a list of Clients.

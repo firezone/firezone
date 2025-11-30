@@ -11,7 +11,7 @@ defmodule Web.Plugs.FetchAccount do
   def call(%Plug.Conn{path_info: [account_id_or_slug | _rest]} = conn, _opts) do
     case DB.get_account_by_id_or_slug(account_id_or_slug) do
       nil -> conn
-      %Domain.Accounts.Account{} = account -> assign(conn, :account, account)
+      %Domain.Account{} = account -> assign(conn, :account, account)
     end
   end
 
@@ -20,7 +20,7 @@ defmodule Web.Plugs.FetchAccount do
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
-    alias Domain.Accounts.Account
+    alias Domain.Account
 
     def get_account_by_id_or_slug(id_or_slug) do
       from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)

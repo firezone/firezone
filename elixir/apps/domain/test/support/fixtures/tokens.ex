@@ -79,7 +79,7 @@ defmodule Domain.Fixtures.Tokens do
         relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Actors.Actor, relation.actor_id)
+          Repo.get!(Domain.Actor, relation.actor_id)
         else
           assoc_attrs
           |> Enum.into(%{account: account})

@@ -1201,7 +1201,7 @@ defmodule Web.CoreComponents do
   attr :account, :any, required: true
   attr :actor, :any, required: true
 
-  def actor_link(%{actor: %Domain.Actors.Actor{type: :api_client}} = assigns) do
+  def actor_link(%{actor: %Domain.Actor{type: :api_client}} = assigns) do
     ~H"""
     <.link class={link_style()} navigate={~p"/#{@account}/settings/api_clients/#{@actor}"}>
       {assigns.actor.name}
@@ -1501,12 +1501,14 @@ defmodule Web.CoreComponents do
   """
   def provider_type_from_group(%{directory_type: type}) when not is_nil(type), do: to_string(type)
   def provider_type_from_group(_), do: "firezone"
-  
+
   @doc """
   Helper function to get provider type from identity
   Identities now have directory_type field that indicates the provider
   """
-  def provider_type_from_identity(%{directory_type: type}) when not is_nil(type), do: to_string(type)
+  def provider_type_from_identity(%{directory_type: type}) when not is_nil(type),
+    do: to_string(type)
+
   def provider_type_from_identity(_), do: "firezone"
 
   @doc """

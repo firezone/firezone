@@ -1,12 +1,11 @@
 defmodule Domain.Auth.Subject do
-  alias Domain.Actors
   alias Domain.Auth.Context
 
-  @type actor :: %Actors.Actor{}
+  @type actor :: %Domain.Actor{}
 
   @type t :: %__MODULE__{
           actor: actor(),
-          account: %Domain.Accounts.Account{},
+          account: %Domain.Account{},
           token_id: Ecto.UUID.t(),
           auth_provider_id: Ecto.UUID.t() | nil,
           expires_at: DateTime.t(),

@@ -1,6 +1,6 @@
 defmodule Domain.Tokens do
   alias Domain.Repo
-  alias Domain.{Auth, Actors, Relays, Gateways, Safe}
+  alias Domain.{Auth, Relays, Safe}
   alias Domain.Tokens.Token
   require Ecto.Query
   require Logger
@@ -32,7 +32,7 @@ defmodule Domain.Tokens do
     |> list_tokens(subject, opts)
   end
 
-  def list_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts \\ []) do
+  def list_tokens_for(%Domain.Actor{} = actor, %Auth.Subject{} = subject, opts \\ []) do
     case subject.actor.type do
       :account_admin_user ->
         Token.Query.all()
@@ -205,12 +205,12 @@ defmodule Domain.Tokens do
     end
   end
 
-  def delete_tokens_for(%Gateways.Group{} = group, %Auth.Subject{} = subject) do
+  def delete_tokens_for(%Domain.Site{} = site, %Auth.Subject{} = subject) do
     case subject.actor.type do
       :account_admin_user ->
         queryable =
           Token.Query.all()
-          |> Token.Query.by_gateway_group_id(group.id)
+          |> Token.Query.by_site_id(site.id)
 
         case queryable |> Safe.scoped(subject) |> Safe.delete_all() do
           {:error, :unauthorized} -> {:error, :unauthorized}

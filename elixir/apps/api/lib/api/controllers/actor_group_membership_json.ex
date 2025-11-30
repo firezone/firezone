@@ -1,6 +1,6 @@
 defmodule API.ActorGroupMembershipJSON do
   alias API.Pagination
-  alias Domain.Actors
+  alias Domain.Actor
 
   @doc """
   Renders a list of Actors.
@@ -20,7 +20,7 @@ defmodule API.ActorGroupMembershipJSON do
     %{data: %{actor_ids: actor_ids}}
   end
 
-  defp data(%Actors.Actor{} = actor) do
+  defp data(%Actor{} = actor) do
     %{
       id: actor.id,
       name: actor.name,

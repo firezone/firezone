@@ -298,7 +298,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         assert identity.actor.name in ["John Doe", "Jane Smith"]
       end
 
-      memberships = Actors.Membership |> Repo.all()
+      memberships = Membership |> Repo.all()
       assert length(memberships) == 4
 
       updated_provider = Repo.get!(Domain.Auth.Provider, provider.id)
@@ -712,10 +712,10 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
 
       assert created_group.name == "Group:DevOps"
 
-      assert memberships = Repo.all(Domain.Actors.Membership.Query.all())
+      assert memberships = Repo.all(Domain.Membership.Query.all())
       assert length(memberships) == 4
 
-      assert memberships = Repo.all(Domain.Actors.Membership.Query.with_joined_groups())
+      assert memberships = Repo.all(Domain.Membership.Query.with_joined_groups())
       assert length(memberships) == 4
 
       membership_group_ids = Enum.map(memberships, & &1.group_id)
@@ -723,16 +723,16 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       assert deleted_group.id not in membership_group_ids
 
       # Deletes membership for a deleted group
-      refute Repo.get_by(Domain.Actors.Membership, group_id: deleted_group.id)
+      refute Repo.get_by(Domain.Membership, group_id: deleted_group.id)
 
       # Creates membership for a new group
-      assert Repo.get_by(Domain.Actors.Membership, actor_id: actor.id, group_id: created_group.id)
+      assert Repo.get_by(Domain.Membership, actor_id: actor.id, group_id: created_group.id)
 
       # Creates membership for a member of existing group
-      assert Repo.get_by(Domain.Actors.Membership, actor_id: other_actor.id, group_id: group.id)
+      assert Repo.get_by(Domain.Membership, actor_id: other_actor.id, group_id: group.id)
 
       # Deletes membership that is not found on IdP end
-      refute Repo.get_by(Domain.Actors.Membership,
+      refute Repo.get_by(Domain.Membership,
                actor_id: deleted_membership.actor_id,
                group_id: deleted_membership.group_id
              )

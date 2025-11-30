@@ -516,7 +516,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:provider] || attrs[:actor] || attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Accounts.Account, relation.account_id)
+          Repo.get!(Domain.Account, relation.account_id)
         else
           Fixtures.Accounts.create_account(assoc_attrs)
         end
@@ -548,7 +548,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Actors.Actor, relation.actor_id)
+          Repo.get!(Domain.Actor, relation.actor_id)
         else
           assoc_attrs
           |> Enum.into(%{
@@ -622,7 +622,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:provider] || attrs[:actor] || attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Accounts.Account, relation.account_id)
+          Repo.get!(Domain.Account, relation.account_id)
         else
           Fixtures.Accounts.create_account(assoc_attrs)
         end
@@ -654,7 +654,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Actors.Actor, relation.actor_id)
+          Repo.get!(Domain.Actor, relation.actor_id)
         else
           assoc_attrs
           |> Enum.into(%{

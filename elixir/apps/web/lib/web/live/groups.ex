@@ -866,7 +866,6 @@ defmodule Web.Groups do
     )
   end
 
-
   defmodule DB do
     import Ecto.Query
     alias Domain.{Actors, Safe}
@@ -883,7 +882,7 @@ defmodule Web.Groups do
       {order_by, opts} = Keyword.pop(opts, :order_by, [])
 
       member_counts_query =
-        from(m in Actors.Membership,
+        from(m in Domain.Membership,
           group_by: m.group_id,
           select: %{
             group_id: m.group_id,
@@ -1035,7 +1034,7 @@ defmodule Web.Groups do
     end
 
     def get_actor!(id, subject) do
-      from(a in Actors.Actor, as: :actors)
+      from(a in Domain.Actor, as: :actors)
       |> where([actors: a], a.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one!()
@@ -1045,7 +1044,7 @@ defmodule Web.Groups do
       exclude_ids = Enum.map(exclude_actors, & &1.id)
       search_pattern = "%#{search_term}%"
 
-      case from(a in Actors.Actor, as: :actors)
+      case from(a in Domain.Actor, as: :actors)
            |> where(
              [actors: a],
              (ilike(a.name, ^search_pattern) or ilike(a.email, ^search_pattern)) and

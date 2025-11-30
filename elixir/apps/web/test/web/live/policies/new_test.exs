@@ -171,12 +171,12 @@ defmodule Web.Live.Policies.NewTest do
     identity: identity,
     conn: conn
   } do
-    internet_gateway_group = Fixtures.Gateways.create_internet_group(account: account)
+    internet_site = Fixtures.Sites.create_internet_site(account: account)
 
     resource =
       Fixtures.Resources.create_internet_resource(
         account: account,
-        connections: [%{gateway_group_id: internet_gateway_group.id}]
+        connections: [%{site_id: internet_site.id}]
       )
 
     {:ok, lv, _html} =
@@ -466,7 +466,7 @@ defmodule Web.Live.Policies.NewTest do
     group = Fixtures.Actors.create_group(account: account)
     resource = Fixtures.Resources.create_resource(account: account)
 
-    Fixtures.Gateways.create_group(account: account)
+    Fixtures.Sites.create_site(account: account)
 
     attrs = %{resource_id: resource.id}
 
@@ -493,14 +493,14 @@ defmodule Web.Live.Policies.NewTest do
     group = Fixtures.Actors.create_group(account: account)
     resource = Fixtures.Resources.create_resource(account: account)
 
-    gateway_group = Fixtures.Gateways.create_group(account: account)
+    site = Fixtures.Sites.create_site(account: account)
 
     attrs = %{actor_group_id: group.id, resource_id: resource.id}
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/policies/new?site_id=#{gateway_group.id}")
+      |> live(~p"/#{account}/policies/new?site_id=#{site.id}")
 
     assert lv
            |> form("form", policy: attrs)
@@ -509,6 +509,6 @@ defmodule Web.Live.Policies.NewTest do
     policy = Repo.get_by(Domain.Policies.Policy, attrs)
     assert policy.resource_id == resource.id
 
-    assert assert_redirect(lv, ~p"/#{account}/sites/#{gateway_group}?#resources")
+    assert assert_redirect(lv, ~p"/#{account}/sites/#{site}?#resources")
   end
 end

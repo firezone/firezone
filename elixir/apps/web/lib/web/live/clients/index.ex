@@ -1,19 +1,19 @@
 defmodule Web.Clients.Index do
   use Web, :live_view
   import Web.Clients.Components
-  alias Domain.{Clients, ComponentVersions}
+  alias Domain.{Clients.Presence, ComponentVersions}
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = Clients.Presence.Account.subscribe(socket.assigns.subject.account.id)
+      :ok = Presence.Account.subscribe(socket.assigns.subject.account.id)
     end
 
     socket =
       socket
       |> assign(page_title: "Clients")
       |> assign_live_table("clients",
-        query_module: Clients.Client.Query,
+        query_module: DB,
         sortable_fields: [
           {:clients, :name},
           {:clients, :last_seen_version},
@@ -143,13 +143,93 @@ defmodule Web.Clients.Index do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Clients, Safe}
+    import Domain.Repo.Query
+    alias Domain.{Clients.Presence, Safe}
     alias Domain.Client
 
     def list_clients(subject, opts \\ []) do
       from(c in Client, as: :clients)
       |> Safe.scoped(subject)
-      |> Safe.list(Clients.Client.Query, opts)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:clients, :desc, :last_seen_at},
+        {:clients, :asc, :id}
+      ]
+    end
+
+    def preloads do
+      [
+        :actor,
+        online?: &Presence.preload_clients_presence/1
+      ]
+    end
+
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :name,
+          title: "Name",
+          type: {:string, :websearch},
+          fun: &filter_by_name_fts/2
+        },
+        %Domain.Repo.Filter{
+          name: :actor_id,
+          title: "Actor",
+          type: {:string, :uuid},
+          fun: &filter_by_actor_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :last_seen,
+          title: "Last Seen",
+          type: {:string, :datetime},
+          fun: &filter_by_last_seen/2
+        },
+        %Domain.Repo.Filter{
+          name: :actor_type,
+          title: "Actor Type",
+          type: :string,
+          values: [
+            {"Users", :account_user},
+            {"Admins", :account_admin_user},
+            {"Service Accounts", :service_account}
+          ],
+          fun: &filter_by_actor_type/2
+        }
+      ]
+    end
+
+    def filter_by_name_fts(queryable, name) do
+      {queryable, dynamic([clients: c], fulltext_search(c.name, ^name))}
+    end
+
+    def filter_by_actor_id(queryable, actor_id) do
+      {queryable, dynamic([clients: c], c.actor_id == ^actor_id)}
+    end
+
+    def filter_by_last_seen(queryable, last_seen) do
+      {queryable, dynamic([clients: c], c.last_seen_at > ^last_seen)}
+    end
+
+    def filter_by_actor_type(queryable, actor_type) do
+      queryable = with_joined_actor(queryable)
+      {queryable, dynamic([actor: a], a.type == ^actor_type)}
+    end
+
+    defp with_joined_actor(queryable) do
+      ensure_named_binding(queryable, :actor, fn queryable, binding ->
+        join(queryable, :inner, [clients: c], a in assoc(c, ^binding), as: ^binding)
+      end)
+    end
+
+    defp ensure_named_binding(queryable, binding, fun) do
+      if has_named_binding?(queryable, binding) do
+        queryable
+      else
+        fun.(queryable, binding)
+      end
     end
   end
 end

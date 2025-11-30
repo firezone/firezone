@@ -411,7 +411,7 @@ defmodule Domain.Billing.EventHandler do
     slug_candidate = Domain.NameGenerator.generate_slug()
     queryable = DB.slug_query(slug_candidate)
 
-    if queryable |> Safe.unscoped() |> Safe.exists?() do
+    if queryable |> Domain.Safe.unscoped() |> Domain.Safe.exists?() do
       generate_unique_slug()
     else
       slug_candidate
@@ -435,11 +435,11 @@ defmodule Domain.Billing.EventHandler do
     # Use special case everyone group instead of storing in DB
     changeset = create_everyone_group_changeset(account)
     {:ok, _everyone_group} = DB.insert(changeset)
-    changeset = create_group_changeset(account, %{name: "Default Site"})
-    {:ok, _gateway_group} = DB.insert_group(changeset)
-    changeset = create_internet_group_changeset(account)
-    {:ok, internet_gateway_group} = DB.insert_group(changeset)
-    changeset = create_internet_resource_changeset(account, internet_gateway_group)
+    changeset = create_site_changeset(account, %{name: "Default Site"})
+    {:ok, _site} = DB.insert_site(changeset)
+    changeset = create_internet_site_changeset(account)
+    {:ok, internet_site} = DB.insert_site(changeset)
+    changeset = create_internet_resource_changeset(account, internet_site)
     {:ok, _resource} = DB.insert(changeset)
 
     # Create email provider
@@ -465,51 +465,51 @@ defmodule Domain.Billing.EventHandler do
   defp create_admin_changeset(account, email, name) do
     import Ecto.Changeset
     attrs = %{account_id: account.id, email: email, name: name, type: :account_admin_user}
-    cast(%Domain.Actors.Actor{}, attrs, ~w[account_id email name type]a)
+    cast(%Domain.Actor{}, attrs, ~w[account_id email name type]a)
   end
-  
-  defp create_group_changeset(account, attrs) do
+
+  defp create_site_changeset(account, attrs) do
     import Ecto.Changeset
-    
-    %Domain.Gateways.Group{
+
+    %Domain.Site{
       account_id: account.id,
-      created_by_identity_id: nil,
       managed_by: :account,
       tokens: []
     }
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> Domain.Gateways.Group.changeset()
+    |> validate_length(:name, min: 1, max: 255)
+    |> unique_constraint(:name, name: :sites_account_id_name_index)
   end
-  
-  defp create_internet_group_changeset(account) do
+
+  defp create_internet_site_changeset(account) do
     import Ecto.Changeset
-    
-    %Domain.Gateways.Group{
+
+    %Domain.Site{
       account_id: account.id,
-      created_by_identity_id: nil,
       managed_by: :system,
       tokens: []
     }
     |> cast(%{name: "Internet", managed_by: :system}, [:name, :managed_by])
     |> validate_required([:name, :managed_by])
-    |> Domain.Gateways.Group.changeset()
+    |> validate_length(:name, min: 1, max: 255)
+    |> unique_constraint(:name, name: :sites_account_id_name_index)
   end
-  
-  defp create_internet_resource_changeset(account, group) do
+
+  defp create_internet_resource_changeset(account, site) do
     import Ecto.Changeset
-    
+
     attrs = %{
       type: :internet,
       name: "Internet",
       connections: %{
-        group.id => %{
-          gateway_group_id: group.id,
+        site.id => %{
+          site_id: site.id,
           enabled: true
         }
       }
     }
-    
+
     %Domain.Resource{connections: []}
     |> cast(attrs, [:type, :name])
     |> validate_required([:name, :type])
@@ -590,8 +590,8 @@ defmodule Domain.Billing.EventHandler do
 
   defp create_account_changeset(attrs) do
     import Ecto.Changeset
-    
-    %Accounts.Account{}
+
+    %Domain.Account{}
     |> cast(attrs, [:name])
     |> cast_embed(:metadata)
     |> validate_required([:name])
@@ -602,16 +602,14 @@ defmodule Domain.Billing.EventHandler do
     import Ecto.Changeset
 
     alias Domain.{
-      Accounts.Account,
-      Actors.Actor,
-      Actors.Group,
+      Account,
       AuthProvider,
       EmailOTP,
       Safe
     }
 
     def slug_query(slug) do
-      from(a in Domain.Accounts.Account, where: a.slug == ^slug)
+      from(a in Domain.Account, where: a.slug == ^slug)
     end
 
     def create_email_provider(account) do
@@ -627,7 +625,6 @@ defmodule Domain.Billing.EventHandler do
         {:ok, email_provider}
       end
     end
-
 
     def insert(changeset) do
       Safe.unscoped(changeset)
@@ -649,8 +646,8 @@ defmodule Domain.Billing.EventHandler do
           |> Safe.update()
       end
     end
-    
-    def insert_group(changeset) do
+
+    def insert_site(changeset) do
       Safe.unscoped(changeset)
       |> Safe.insert()
     end

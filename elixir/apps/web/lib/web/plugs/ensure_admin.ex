@@ -4,7 +4,7 @@ defmodule Web.Plugs.EnsureAdmin do
   import Plug.Conn
 
   alias Domain.Auth.Subject
-  alias Domain.Actors.Actor
+  alias Domain.Actor
 
   @impl true
   def init(opts), do: opts

@@ -3,7 +3,7 @@ defmodule Domain.Directory do
 
   @primary_key false
   schema "directories" do
-    belongs_to :account, Domain.Accounts.Account, primary_key: true
+    belongs_to :account, Domain.Account, primary_key: true
     field :id, :binary_id, primary_key: true
     field :type, Ecto.Enum, values: ~w[google entra okta]a
 

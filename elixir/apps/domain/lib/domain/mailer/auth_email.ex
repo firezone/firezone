@@ -7,8 +7,8 @@ defmodule Domain.Mailer.AuthEmail do
   embed_templates "auth_email/*.text", suffix: "_text"
 
   def sign_up_link_email(
-        %Domain.Accounts.Account{} = account,
-        %Domain.Actors.Actor{} = actor,
+        %Domain.Account{} = account,
+        %Domain.Actor{} = actor,
         user_agent,
         remote_ip
       ) do
@@ -26,7 +26,7 @@ defmodule Domain.Mailer.AuthEmail do
   end
 
   def sign_in_link_email(
-        %Domain.Actors.Actor{} = actor,
+        %Domain.Actor{} = actor,
         token_created_at,
         auth_provider_id,
         secret,
@@ -60,8 +60,8 @@ defmodule Domain.Mailer.AuthEmail do
   end
 
   def new_user_email(
-        %Domain.Accounts.Account{} = account,
-        %Domain.Actors.Actor{} = actor,
+        %Domain.Account{} = account,
+        %Domain.Actor{} = actor,
         %Domain.Auth.Subject{} = subject
       ) do
     default_email()

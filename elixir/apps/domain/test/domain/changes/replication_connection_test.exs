@@ -144,7 +144,7 @@ defmodule Domain.Changes.ReplicationConnectionTest do
       old_data = %{
         "account_id" => Ecto.UUID.generate(),
         "resource_id" => Ecto.UUID.generate(),
-        "gateway_group_id" => Ecto.UUID.generate(),
+        "site_id" => Ecto.UUID.generate(),
         "id" => Ecto.UUID.generate(),
         "name" => "deleted item"
       }
@@ -278,7 +278,7 @@ defmodule Domain.Changes.ReplicationConnectionTest do
         "actor_group_memberships" => Domain.Changes.Hooks.ActorGroupMemberships,
         "clients" => Domain.Changes.Hooks.Clients,
         "flows" => Domain.Changes.Hooks.Flows,
-        "gateway_groups" => Domain.Changes.Hooks.GatewayGroups,
+        "sites" => Domain.Changes.Hooks.Sites,
         "gateways" => Domain.Changes.Hooks.Gateways,
         "policies" => Domain.Changes.Hooks.Policies,
         "resource_connections" => Domain.Changes.Hooks.ResourceConnections,
@@ -293,7 +293,7 @@ defmodule Domain.Changes.ReplicationConnectionTest do
                  "actor_group_memberships",
                  "clients",
                  "flows",
-                 "gateway_groups",
+                 "sites",
                  "gateways",
                  "policies",
                  "resource_connections",

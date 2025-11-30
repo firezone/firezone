@@ -1,9 +1,9 @@
 defmodule Web.RelayGroups.Index do
   use Web, :live_view
-  alias Domain.{Accounts, Relays}
+  alias Domain.{Relays}
 
   def mount(_params, _session, socket) do
-    if Accounts.Account.self_hosted_relays_enabled?(socket.assigns.account) do
+    if Domain.Account.self_hosted_relays_enabled?(socket.assigns.account) do
       if connected?(socket) do
         :ok = Relays.subscribe_to_relays_presence_in_account(socket.assigns.account)
       end

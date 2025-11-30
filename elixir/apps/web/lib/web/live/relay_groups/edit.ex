@@ -1,9 +1,9 @@
 defmodule Web.RelayGroups.Edit do
   use Web, :live_view
-  alias Domain.{Accounts, Relays}
+  alias Domain.{Relays}
 
   def mount(%{"id" => id}, _session, socket) do
-    with true <- Accounts.Account.self_hosted_relays_enabled?(socket.assigns.account),
+    with true <- Domain.Account.self_hosted_relays_enabled?(socket.assigns.account),
          {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject) do
       changeset = Relays.change_group(group)
 

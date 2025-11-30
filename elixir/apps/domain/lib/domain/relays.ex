@@ -1,20 +1,7 @@
 defmodule Domain.Relays do
-  use Supervisor
   alias Domain.{Repo, Auth, Geo, PubSub, Safe}
-  alias Domain.{Accounts, Tokens}
+  alias Domain.Tokens
   alias Domain.Relays.{Relay, Group, Presence}
-
-  def start_link(opts) do
-    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
-  end
-
-  def init(_opts) do
-    children = [
-      Presence
-    ]
-
-    Supervisor.init(children, strategy: :one_for_one)
-  end
 
   def send_metrics do
     count = global_groups_presence_topic() |> Presence.list() |> Enum.count()
@@ -103,7 +90,7 @@ defmodule Domain.Relays do
       })
 
     with {:ok, token} <- Tokens.create_token(attrs) do
-      {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Domain.Crypto.encode_token_fragment!(token)}
+      {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Tokens.encode_fragment!(token)}
     end
   end
 
@@ -121,7 +108,7 @@ defmodule Domain.Relays do
       })
 
     with {:ok, token} <- Tokens.create_token(attrs, subject) do
-      {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Domain.Crypto.encode_token_fragment!(token)}
+      {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Tokens.encode_fragment!(token)}
     end
   end
 
@@ -207,7 +194,7 @@ defmodule Domain.Relays do
 
   def all_connected_relays_for_account(account_id_or_account, except_ids \\ [])
 
-  def all_connected_relays_for_account(%Accounts.Account{} = account, except_ids) do
+  def all_connected_relays_for_account(%Domain.Account{} = account, except_ids) do
     all_connected_relays_for_account(account.id, except_ids)
   end
 
@@ -362,7 +349,7 @@ defmodule Domain.Relays do
 
   defp global_groups_topic, do: "global_relays"
 
-  defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
+  defp account_topic(%Domain.Account{} = account), do: account_topic(account.id)
   defp account_topic(account_id), do: "account_relays:#{account_id}"
 
   defp group_topic(%Group{} = group), do: group_topic(group.id)

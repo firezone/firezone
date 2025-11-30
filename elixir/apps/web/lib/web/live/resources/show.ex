@@ -2,7 +2,7 @@ defmodule Web.Resources.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Resources.Components
-  alias Domain.{PubSub, Resources, Policies, Flows}
+  alias Domain.{PubSub, Policies, Flows}
   alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
@@ -68,7 +68,7 @@ defmodule Web.Resources.Show do
     list_opts =
       Keyword.put(list_opts, :preload,
         client: [:actor],
-        gateway: [:group],
+        gateway: [:site],
         policy: [:resource, :actor_group]
       )
 
@@ -167,16 +167,16 @@ defmodule Web.Resources.Show do
             </:label>
             <:value>
               <.link
-                :for={gateway_group <- @resource.gateway_groups}
-                :if={@resource.gateway_groups != []}
-                navigate={~p"/#{@account}/sites/#{gateway_group}"}
+                :for={site <- @resource.sites}
+                :if={@resource.sites != []}
+                navigate={~p"/#{@account}/sites/#{site}"}
                 class={[link_style()]}
               >
                 <.badge type="info">
-                  {gateway_group.name}
+                  {site.name}
                 </.badge>
               </.link>
-              <span :if={@resource.gateway_groups == []}>
+              <span :if={@resource.sites == []}>
                 No linked Sites to display
               </span>
             </:value>
@@ -303,7 +303,7 @@ defmodule Web.Resources.Show do
           </:col>
           <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              {flow.gateway.group.name}-{flow.gateway.name}
+              {flow.gateway.site.name}-{flow.gateway.name}
             </.link>
             <br />
             <code class="text-xs">{flow.gateway_remote_ip}</code>
@@ -344,14 +344,14 @@ defmodule Web.Resources.Show do
 
   # TODO: Do we really want to update the view in place?
   def handle_info(
-        {_action, _old_resource, %Resources.Resource{id: resource_id}},
+        {_action, _old_resource, %Domain.Resource{id: resource_id}},
         %{assigns: %{resource: %{id: id}}} = socket
       )
       when resource_id == id do
     {:ok, resource} =
       DB.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject)
 
-    resource = Domain.Safe.preload(resource, [:gateway_groups, :policies])
+    resource = Domain.Safe.preload(resource, [:sites, :policies])
 
     {:noreply, assign(socket, resource: resource)}
   end
@@ -365,7 +365,7 @@ defmodule Web.Resources.Show do
 
   def handle_event("delete", %{"id" => _resource_id}, socket) do
     {:ok, _deleted_resource} =
-      Resources.delete_resource(socket.assigns.resource, socket.assigns.subject)
+      DB.delete_resource(socket.assigns.resource, socket.assigns.subject)
 
     socket = put_flash(socket, :success, "Resource was deleted.")
 
@@ -391,7 +391,7 @@ defmodule Web.Resources.Show do
   defp fetch_resource("internet", subject) do
     DB.fetch_internet_resource(subject)
     |> case do
-      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :gateway_groups)}
+      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :sites)}
       error -> error
     end
   end
@@ -399,7 +399,7 @@ defmodule Web.Resources.Show do
   defp fetch_resource(id, subject) do
     DB.fetch_resource_by_id(id, subject)
     |> case do
-      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :gateway_groups)}
+      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :sites)}
       error -> error
     end
   end
@@ -407,70 +407,70 @@ defmodule Web.Resources.Show do
   defp format_ip_stack(:dual), do: "Dual-stack (IPv4 and IPv6)"
   defp format_ip_stack(:ipv4_only), do: "IPv4 only"
   defp format_ip_stack(:ipv6_only), do: "IPv6 only"
-  
+
   defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, Resource, Repo}
-    
+
     def fetch_resource_by_id(id, subject) do
       result =
         from(r in Resource, as: :resources)
         |> where([resources: r], r.id == ^id)
         |> Safe.scoped(subject)
         |> Safe.one()
-      
+
       case result do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}
         resource -> {:ok, resource}
       end
     end
-    
+
     def fetch_internet_resource(subject) do
       result =
         from(r in Resource, as: :resources)
         |> where([resources: r], r.type == :internet)
         |> Safe.scoped(subject)
         |> Safe.one()
-      
+
       case result do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}
         resource -> {:ok, resource}
       end
     end
-    
+
     def peek_resource_actor_groups(resources, limit, subject) do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
-      
+
       {:ok, peek} =
         all()
         |> by_id({:in, ids})
         |> preload_few_actor_groups_for_each_resource(limit)
         |> where(account_id: ^subject.account.id)
         |> Repo.peek(resources)
-      
+
       group_by_ids =
         Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
         |> Enum.map(&{&1.id, &1})
         |> Enum.into(%{})
-      
+
       peek =
         for {id, %{items: items} = map} <- peek, into: %{} do
           {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
         end
-      
+
       {:ok, peek}
     end
-    
+
     def all do
       from(resources in Resource, as: :resources)
     end
-    
+
     def by_id(queryable, {:in, ids}) do
       where(queryable, [resources: resources], resources.id in ^ids)
     end
-    
+
     def preload_few_actor_groups_for_each_resource(queryable, limit) do
       queryable
       |> with_joined_actor_groups(limit)
@@ -484,18 +484,18 @@ defmodule Web.Resources.Show do
         }
       )
     end
-    
+
     def with_joined_actor_groups(queryable, limit) do
       policies_subquery =
         Domain.Policies.Policy.Query.not_disabled()
         |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
         |> select([policies: policies], policies.actor_group_id)
         |> limit(^limit)
-      
+
       actor_groups_subquery =
         Domain.Actors.Group.Query.all()
         |> where([groups: groups], groups.id in subquery(policies_subquery))
-      
+
       join(
         queryable,
         :cross_lateral,
@@ -504,16 +504,25 @@ defmodule Web.Resources.Show do
         as: :actor_groups
       )
     end
-    
+
     def with_joined_policies_counts(queryable) do
       subquery =
         Domain.Policies.Policy.Query.not_disabled()
         |> Domain.Policies.Policy.Query.count_by_resource_id()
         |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
-      
-      join(queryable, :cross_lateral, [resources: resources], policies_counts in subquery(subquery),
+
+      join(
+        queryable,
+        :cross_lateral,
+        [resources: resources],
+        policies_counts in subquery(subquery),
         as: :policies_counts
       )
+    end
+
+    def delete_resource(resource, subject) do
+      Safe.scoped(resource, subject)
+      |> Safe.delete()
     end
   end
 end

@@ -1,5 +1,4 @@
 defmodule API.AccountJSON do
-  alias Domain.{Accounts, Actors, Clients, Gateways}
   alias __MODULE__.DB
 
   @doc """
@@ -9,7 +8,7 @@ defmodule API.AccountJSON do
     %{data: data(account)}
   end
 
-  defp data(%Accounts.Account{} = account) do
+  defp data(%Domain.Account{} = account) do
     %{
       id: account.id,
       slug: account.slug,
@@ -25,7 +24,7 @@ defmodule API.AccountJSON do
     monthly_active_users_count = DB.count_1m_active_users_for_account(account)
     service_accounts_count = DB.count_service_accounts_for_account(account)
     admin_users_count = DB.count_account_admin_users_for_account(account)
-    gateway_groups_count = DB.count_groups_for_account(account)
+    sites_count = DB.count_groups_for_account(account)
 
     %{}
     |> put_limit(:users, account.limits.users_count, users_count)
@@ -40,7 +39,7 @@ defmodule API.AccountJSON do
       account.limits.account_admin_users_count,
       admin_users_count
     )
-    |> put_limit(:gateway_groups, account.limits.gateway_groups_count, gateway_groups_count)
+    |> put_limit(:sites, account.limits.sites_count, sites_count)
   end
 
   defp put_limit(limits, _key, nil, _used), do: limits
@@ -56,7 +55,7 @@ defmodule API.AccountJSON do
   defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, Repo}
-    alias Domain.Actors.Actor
+    alias Domain.Actor
     alias Domain.Client
 
     def count_users_for_account(account) do
@@ -100,9 +99,9 @@ defmodule API.AccountJSON do
       |> distinct(true)
       |> Repo.aggregate(:count)
     end
-    
+
     def count_groups_for_account(account) do
-      from(g in Domain.Gateways.Group,
+      from(g in Domain.Site,
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )

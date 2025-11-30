@@ -1,6 +1,6 @@
 defmodule Domain.Billing do
   use Supervisor
-  alias Domain.{Auth, Accounts, Actors, Gateways}
+  alias Domain.Auth
   alias Domain.Billing.EventHandler
   alias Domain.Billing.Stripe.APIClient
   alias __MODULE__.DB
@@ -36,22 +36,22 @@ defmodule Domain.Billing do
 
   # Limits and Features
 
-  def users_limit_exceeded?(%Accounts.Account{} = account, users_count) do
+  def users_limit_exceeded?(%Domain.Account{} = account, users_count) do
     not is_nil(account.limits.users_count) and
       users_count > account.limits.users_count
   end
 
-  def seats_limit_exceeded?(%Accounts.Account{} = account, active_users_count) do
+  def seats_limit_exceeded?(%Domain.Account{} = account, active_users_count) do
     not is_nil(account.limits.monthly_active_users_count) and
       active_users_count > account.limits.monthly_active_users_count
   end
 
-  def can_create_users?(%Accounts.Account{} = account) do
+  def can_create_users?(%Domain.Account{} = account) do
     users_count = DB.count_users_for_account(account)
     active_users_count = DB.count_1m_active_users_for_account(account)
 
     cond do
-      not Accounts.Account.active?(account) ->
+      not Domain.Account.active?(account) ->
         false
 
       not is_nil(account.limits.monthly_active_users_count) ->
@@ -65,48 +65,48 @@ defmodule Domain.Billing do
     end
   end
 
-  def service_accounts_limit_exceeded?(%Accounts.Account{} = account, service_accounts_count) do
+  def service_accounts_limit_exceeded?(%Domain.Account{} = account, service_accounts_count) do
     not is_nil(account.limits.service_accounts_count) and
       service_accounts_count > account.limits.service_accounts_count
   end
 
-  def can_create_service_accounts?(%Accounts.Account{} = account) do
+  def can_create_service_accounts?(%Domain.Account{} = account) do
     service_accounts_count = DB.count_service_accounts_for_account(account)
 
-    Accounts.Account.active?(account) and
+    Domain.Account.active?(account) and
       (is_nil(account.limits.service_accounts_count) or
          service_accounts_count < account.limits.service_accounts_count)
   end
 
-  def gateway_groups_limit_exceeded?(%Accounts.Account{} = account, gateway_groups_count) do
-    not is_nil(account.limits.gateway_groups_count) and
-      gateway_groups_count > account.limits.gateway_groups_count
+  def sites_limit_exceeded?(%Domain.Account{} = account, sites_count) do
+    not is_nil(account.limits.sites_count) and
+      sites_count > account.limits.sites_count
   end
 
-  def can_create_gateway_groups?(%Accounts.Account{} = account) do
-    gateway_groups_count = DB.count_groups_for_account(account)
+  def can_create_sites?(%Domain.Account{} = account) do
+    sites_count = DB.count_sites_for_account(account)
 
-    Accounts.Account.active?(account) and
-      (is_nil(account.limits.gateway_groups_count) or
-         gateway_groups_count < account.limits.gateway_groups_count)
+    Domain.Account.active?(account) and
+      (is_nil(account.limits.sites_count) or
+         sites_count < account.limits.sites_count)
   end
 
-  def admins_limit_exceeded?(%Accounts.Account{} = account, account_admins_count) do
+  def admins_limit_exceeded?(%Domain.Account{} = account, account_admins_count) do
     not is_nil(account.limits.account_admin_users_count) and
       account_admins_count > account.limits.account_admin_users_count
   end
 
-  def can_create_admin_users?(%Accounts.Account{} = account) do
+  def can_create_admin_users?(%Domain.Account{} = account) do
     account_admins_count = DB.count_account_admin_users_for_account(account)
 
-    Accounts.Account.active?(account) and
+    Domain.Account.active?(account) and
       (is_nil(account.limits.account_admin_users_count) or
          account_admins_count < account.limits.account_admin_users_count)
   end
 
   # API wrappers
 
-  def create_customer(%Accounts.Account{} = account) do
+  def create_customer(%Domain.Account{} = account) do
     secret_key = fetch_config!(:secret_key)
     email = get_customer_email(account)
 
@@ -144,7 +144,7 @@ defmodule Domain.Billing do
   defp get_customer_email(%{metadata: %{stripe: %{billing_email: email}}}), do: email
   defp get_customer_email(_account), do: nil
 
-  def update_stripe_customer(%Accounts.Account{} = account) do
+  def update_stripe_customer(%Domain.Account{} = account) do
     secret_key = fetch_config!(:secret_key)
     customer_id = account.metadata.stripe.customer_id
 
@@ -220,7 +220,7 @@ defmodule Domain.Billing do
     APIClient.list_all_subscriptions(secret_key)
   end
 
-  def create_subscription(%Accounts.Account{} = account) do
+  def create_subscription(%Domain.Account{} = account) do
     secret_key = fetch_config!(:secret_key)
     default_price_id = fetch_config!(:default_price_id)
     customer_id = account.metadata.stripe.customer_id
@@ -279,16 +279,16 @@ defmodule Domain.Billing do
 
   # Account management, sync and provisioning
 
-  def account_provisioned?(%Accounts.Account{metadata: %{stripe: %{customer_id: customer_id}}})
+  def account_provisioned?(%Domain.Account{metadata: %{stripe: %{customer_id: customer_id}}})
       when not is_nil(customer_id) do
     enabled?()
   end
 
-  def account_provisioned?(%Accounts.Account{}) do
+  def account_provisioned?(%Domain.Account{}) do
     false
   end
 
-  def provision_account(%Accounts.Account{} = account) do
+  def provision_account(%Domain.Account{} = account) do
     with true <- enabled?(),
          true <- not account_provisioned?(account),
          {:ok, account} <- create_customer(account),
@@ -303,7 +303,7 @@ defmodule Domain.Billing do
     end
   end
 
-  def on_account_name_or_slug_changed(%Accounts.Account{} = account) do
+  def on_account_name_or_slug_changed(%Domain.Account{} = account) do
     cond do
       not account_provisioned?(account) ->
         :ok
@@ -317,7 +317,7 @@ defmodule Domain.Billing do
     end
   end
 
-  def billing_portal_url(%Accounts.Account{} = account, return_url, %Auth.Subject{} = subject) do
+  def billing_portal_url(%Domain.Account{} = account, return_url, %Auth.Subject{} = subject) do
     secret_key = fetch_config!(:secret_key)
 
     # Only account admins can manage billing
@@ -348,21 +348,23 @@ defmodule Domain.Billing do
 
   defp update_account_metadata_changeset(account, stripe_metadata) do
     import Ecto.Changeset
-    
+
     account
     |> cast(%{metadata: %{stripe: stripe_metadata}}, [])
-    |> cast_embed(:metadata, with: fn metadata, _params ->
-      metadata
-      |> cast(%{stripe: stripe_metadata}, [])
-      |> cast_embed(:stripe)
-    end)
+    |> cast_embed(:metadata,
+      with: fn metadata, _params ->
+        metadata
+        |> cast(%{stripe: stripe_metadata}, [])
+        |> cast_embed(:stripe)
+      end
+    )
   end
 
   defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, Repo}
-    alias Domain.Accounts.Account
-    alias Domain.Actors.Actor
+    alias Domain.Account
+    alias Domain.Actor
     alias Domain.Client
 
     def update(changeset) do
@@ -412,9 +414,9 @@ defmodule Domain.Billing do
       |> distinct(true)
       |> Repo.aggregate(:count)
     end
-    
-    def count_groups_for_account(account) do
-      from(g in Domain.Gateways.Group,
+
+    def count_sites_for_account(account) do
+      from(g in Domain.Site,
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )

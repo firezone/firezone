@@ -1,6 +1,6 @@
 defmodule Web.LiveHooks.EnsureAdmin do
   alias Domain.Auth.Subject
-  alias Domain.Actors.Actor
+  alias Domain.Actor
 
   def on_mount(
         :default,

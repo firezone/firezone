@@ -1,5 +1,6 @@
 defmodule Domain.Cache.Client do
   alias __MODULE__.DB
+
   @moduledoc """
     This cache is used in the client channel to maintain a materialized view of the client access state.
     The cache is updated via WAL messages streamed from the Domain.Changes.ReplicationConnection module.
@@ -30,10 +31,10 @@ defmodule Domain.Cache.Client do
             ip_stack: atom:0,
             type: atom:0,
             filters: [%{protocol: atom:0, ports: [string:(~ 1.25 bytes per char)]}:(40 - small map)]:(16 * len),
-            gateway_groups: [%{
+            sites: [%{
               name:string:(~1.25 bytes per char),
               resource_id:uuidv4:16,
-              gateway_group_id:uuidv4:16
+              site_id:uuidv4:16
             }]
           }},
 
@@ -52,7 +53,7 @@ defmodule Domain.Cache.Client do
 
   """
 
-  alias Domain.{Actors, Auth, Clients, Cache, Gateways, Resource, Policies, Version}
+  alias Domain.{Auth, Clients, Cache, Resource, Policies, Version}
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.UUID, only: [dump!: 1, load!: 1]
@@ -70,7 +71,7 @@ defmodule Domain.Cache.Client do
     # The list resources the client can currently connect to. This is defined as:
     # 1. The resource is authorized based on policies and conditions
     # 2. The resource is compatible with the client (i.e. the client can connect to it)
-    # 3. The resource has at least one gateway group associated with it
+    # 3. The resource has at least one site associated with it
     :connectable_resources
   ]
 
@@ -227,7 +228,7 @@ defmodule Domain.Cache.Client do
     Removes all policies, resources, and memberships associated with the given group_id from the cache.
   """
 
-  @spec delete_membership(t(), Actors.Membership.t(), Clients.Client.t(), Auth.Subject.t()) ::
+  @spec delete_membership(t(), Membership.t(), Clients.Client.t(), Auth.Subject.t()) ::
           {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def delete_membership(cache, membership, client, subject) do
@@ -261,29 +262,29 @@ defmodule Domain.Cache.Client do
   end
 
   @doc """
-    Updates any relevant resources in the cache with the new group name.
+    Updates any relevant resources in the cache with the new site name.
   """
 
-  @spec update_resources_with_group_name(
+  @spec update_resources_with_site_name(
           t(),
-          Gateways.Group.t(),
+          Site.t(),
           Clients.Client.t(),
           Auth.Subject.t()
         ) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def update_resources_with_group_name(cache, group, client, subject) do
-    group = Domain.Cache.Cacheable.to_cache(group)
+  def update_resources_with_site_name(cache, site, client, subject) do
+    site = Domain.Cache.Cacheable.to_cache(site)
 
     # Get updated resources
     resources =
       for {id, resource} <- cache.resources, into: %{} do
-        gateway_groups =
-          for gg <- resource.gateway_groups do
-            if gg.id == group.id, do: group, else: gg
+        sites =
+          for s <- resource.sites do
+            if s.id == site.id, do: site, else: s
           end
 
-        {id, %{resource | gateway_groups: gateway_groups}}
+        {id, %{resource | sites: sites}}
       end
 
     cache = %{cache | resources: resources}
@@ -319,8 +320,8 @@ defmodule Domain.Cache.Client do
           cache
         else
           # Need to fetch the resource from the DB
-          {:ok, resource} = Resources.fetch_resource_by_id(resource_id, subject)
-          resource = Domain.Repo.preload(resource, :gateway_groups)
+          {:ok, resource} = DB.fetch_resource_by_id(resource_id, subject)
+          resource = Domain.Repo.preload(resource, :sites)
 
           resource = Domain.Cache.Cacheable.to_cache(resource)
 
@@ -380,11 +381,11 @@ defmodule Domain.Cache.Client do
   end
 
   @doc """
-    Adds a gateway group (by virtue of the added resource connection) to the appropriate resource in the cache.
+    Adds a site (by virtue of the added resource connection) to the appropriate resource in the cache.
 
-    Since resource connection is a join record, we need to fetch the group from the DB to get its name.
+    Since resource connection is a join record, we need to fetch the site from the DB to get its name.
 
-    Since adding a gateway group requires re-evaluating policies, the resource could now be connectable or not connectable
+    Since adding a site requires re-evaluating policies, the resource could now be connectable or not connectable
     so we return either the deleted resource ID or the updated resource if there's a change. Otherwise we simply
     return the updated cache.
   """
@@ -399,24 +400,24 @@ defmodule Domain.Cache.Client do
     rid_bytes = dump!(connection.resource_id)
 
     if Map.has_key?(cache.resources, rid_bytes) do
-      # We need the gateway group to add it
-      {:ok, gateway_group} = Gateways.fetch_group_by_id(connection.gateway_group_id, subject)
-      gateway_group = Domain.Cache.Cacheable.to_cache(gateway_group)
+      # We need the site to add it
+      {:ok, site} = DB.fetch_site_by_id(connection.site_id, subject)
+      site = Domain.Cache.Cacheable.to_cache(site)
 
       # Update the cache
       resources =
         cache.resources
         |> Map.update!(rid_bytes, fn resource ->
-          if gateway_group in resource.gateway_groups do
+          if site in resource.sites do
             # Duplicates here mean something is amiss, so be noisy about it.
-            Logger.error("Duplicate gateway group in resource cache",
+            Logger.error("Duplicate site in resource cache",
               resource: resource,
-              gateway_group: gateway_group
+              site: site
             )
 
             resource
           else
-            %{resource | gateway_groups: [gateway_group | resource.gateway_groups]}
+            %{resource | sites: [site | resource.sites]}
           end
         end)
 
@@ -431,8 +432,8 @@ defmodule Domain.Cache.Client do
   end
 
   @doc """
-    Deletes a gateway group (by virtue of the deleted resource connection) from the appropriate resource in the cache.
-    If the resource has no more gateway groups, we return the resource ID so the client can remove it. Otherwise, we
+    Deletes a site (by virtue of the deleted resource connection) from the appropriate resource in the cache.
+    If the resource has no more sites, we return the resource ID so the client can remove it. Otherwise, we
     return the updated resource.
   """
 
@@ -452,12 +453,12 @@ defmodule Domain.Cache.Client do
       resources =
         cache.resources
         |> Map.update!(rid_bytes, fn resource ->
-          gateway_groups =
-            Enum.reject(resource.gateway_groups, fn gg ->
-              gg.id == dump!(connection.gateway_group_id)
+          sites =
+            Enum.reject(resource.sites, fn gg ->
+              gg.id == dump!(connection.site_id)
             end)
 
-          %{resource | gateway_groups: gateway_groups}
+          %{resource | sites: sites}
         end)
 
       cache = %{cache | resources: resources}
@@ -490,10 +491,10 @@ defmodule Domain.Cache.Client do
     resource = Domain.Cache.Cacheable.to_cache(resource)
 
     if Map.has_key?(cache.resources, resource.id) do
-      # Copy preloaded gateway groups
+      # Copy preloaded sites
       resource = %{
         resource
-        | gateway_groups: Map.get(cache.resources, resource.id).gateway_groups
+        | sites: Map.get(cache.resources, resource.id).sites
       }
 
       # Update the cache
@@ -538,7 +539,7 @@ defmodule Domain.Cache.Client do
     for id <- conforming_resource_ids,
         adapted_resource = Map.get(resources, id) |> adapt(client),
         not is_nil(adapted_resource),
-        adapted_resource.gateway_groups != [] do
+        adapted_resource.sites != [] do
       adapted_resource
     end
   end
@@ -562,13 +563,38 @@ defmodule Domain.Cache.Client do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Actors.Membership
+    alias Domain.{Safe, Resource, Membership}
 
     def all_memberships_for_actor_id!(actor_id) do
       from(m in Membership, where: m.actor_id == ^actor_id)
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def fetch_resource_by_id(id, subject) do
+      result =
+        from(r in Resource, where: r.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        resource -> {:ok, resource}
+      end
+    end
+
+    def fetch_site_by_id(id, subject) do
+      result =
+        from(s in Domain.Site, where: s.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        site -> {:ok, site}
+      end
     end
   end
 end

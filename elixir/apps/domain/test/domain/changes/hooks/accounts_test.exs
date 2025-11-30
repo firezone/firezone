@@ -26,7 +26,7 @@ defmodule Domain.Changes.Hooks.AccountsTest do
       }
 
       assert :ok == on_update(0, old_data, data)
-      assert_receive %Change{op: :delete, old_struct: %Accounts.Account{} = account, lsn: 0}
+      assert_receive %Change{op: :delete, old_struct: %Domain.Account{} = account, lsn: 0}
 
       assert account.id == account_id
     end
@@ -58,7 +58,7 @@ defmodule Domain.Changes.Hooks.AccountsTest do
       old_data = %{"id" => account_id}
 
       assert :ok == on_delete(0, old_data)
-      assert_receive %Change{op: :delete, old_struct: %Accounts.Account{} = account, lsn: 0}
+      assert_receive %Change{op: :delete, old_struct: %Domain.Account{} = account, lsn: 0}
       assert account.id == account_id
     end
   end

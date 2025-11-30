@@ -195,7 +195,7 @@ defmodule Domain.Repo.Changeset do
     end
   end
 
-  defp try_encode_domain(domain) do
+  def try_encode_domain(domain) do
     charlist = String.to_charlist(domain)
 
     try do
@@ -245,6 +245,14 @@ defmodule Domain.Repo.Changeset do
           [{field, "is invalid. Error at #{part}"}]
       end
     end)
+  end
+
+  @email_regex ~r/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+
+  def validate_email(%Ecto.Changeset{} = changeset, field) do
+    changeset
+    |> validate_format(field, @email_regex, message: "is an invalid email address")
+    |> validate_length(field, max: 160)
   end
 
   def normalize_url(%Ecto.Changeset{} = changeset, field) do

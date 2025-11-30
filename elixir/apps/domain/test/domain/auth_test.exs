@@ -1635,12 +1635,12 @@ defmodule Domain.AuthTest do
       assert identity1.provider_identifier in update
       assert identity2.provider_identifier in update
 
-      actor = Repo.get(Domain.Actors.Actor, identity1.actor_id)
+      actor = Repo.get(Domain.Actor, identity1.actor_id)
       assert actor.type == :account_admin_user
       assert actor.name == "Brian Manifold"
       assert Map.get(actor_ids_by_provider_identifier, identity1.provider_identifier) == actor.id
 
-      actor = Repo.get(Domain.Actors.Actor, identity2.actor_id)
+      actor = Repo.get(Domain.Actor, identity2.actor_id)
       assert actor.type == :account_user
       assert actor.name == "Jennie Smith"
       assert Map.get(actor_ids_by_provider_identifier, identity2.provider_identifier) == actor.id
@@ -1809,7 +1809,7 @@ defmodule Domain.AuthTest do
              }
 
       assert Repo.aggregate(ExternalIdentity, :count) == 0
-      assert Repo.aggregate(Domain.Actors.Actor, :count) == 0
+      assert Repo.aggregate(Domain.Actor, :count) == 0
     end
   end
 

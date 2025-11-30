@@ -19,7 +19,7 @@ defmodule Domain.Gateway do
           last_seen_at: DateTime.t(),
           online?: boolean(),
           account_id: Ecto.UUID.t(),
-          group_id: Ecto.UUID.t(),
+          site_id: Ecto.UUID.t(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -46,8 +46,8 @@ defmodule Domain.Gateway do
 
     field :online?, :boolean, virtual: true
 
-    belongs_to :account, Domain.Accounts.Account
-    belongs_to :group, Domain.Gateways.Group
+    belongs_to :account, Domain.Account
+    belongs_to :site, Domain.Site
 
     timestamps()
   end
@@ -59,16 +59,16 @@ defmodule Domain.Gateway do
     changeset
     |> trim_change(:name)
     |> validate_length(:name, min: 1, max: 255)
-    |> unique_constraint(:name, name: :gateways_group_id_name_index)
+    |> unique_constraint(:name, name: :gateways_site_id_name_index)
     |> unique_constraint([:public_key])
     |> unique_constraint(:external_id)
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)
     |> unique_constraint(:public_key, name: :gateways_account_id_public_key_index)
   end
-  
+
   # Utility functions moved from Domain.Gateways
-  
+
   def load_balance_gateways({_lat, _lon}, []) do
     nil
   end
@@ -114,7 +114,7 @@ defmodule Domain.Gateway do
       preferred_gateways -> load_balance_gateways({lat, lon}, preferred_gateways)
     end
   end
-  
+
   def gateway_outdated?(gateway) do
     latest_release = Domain.ComponentVersions.gateway_version()
 

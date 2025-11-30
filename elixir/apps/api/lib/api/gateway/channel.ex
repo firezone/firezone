@@ -4,7 +4,6 @@ defmodule API.Gateway.Channel do
   alias __MODULE__.DB
 
   alias Domain.{
-    Accounts,
     Cache,
     Changes.Change,
     Flows,
@@ -384,7 +383,7 @@ defmodule API.Gateway.Channel do
             :connect,
             socket_ref,
             resource_id,
-            socket.assigns.gateway.group_id,
+            socket.assigns.gateway.site_id,
             socket.assigns.gateway.id,
             socket.assigns.gateway.public_key,
             socket.assigns.gateway.ipv4,
@@ -550,8 +549,8 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Accounts.Account{slug: old_slug},
-           struct: %Accounts.Account{slug: slug} = account
+           old_struct: %Domain.Account{slug: old_slug},
+           struct: %Domain.Account{slug: slug} = account
          },
          socket
        )
@@ -629,7 +628,7 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :delete,
-           old_struct: %Gateways.Gateway{id: gateway_id}
+           old_struct: %Domain.Gateway{id: gateway_id}
          },
          %{
            assigns: %{gateway: %{id: gateway_id}}
@@ -646,12 +645,12 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Resources.Resource{
+           old_struct: %Domain.Resource{
              address: old_address,
              ip_stack: old_ip_stack,
              type: old_type
            },
-           struct: %Resources.Resource{address: address, ip_stack: ip_stack, type: type, id: id}
+           struct: %Domain.Resource{address: address, ip_stack: ip_stack, type: type, id: id}
          },
          socket
        )
@@ -670,8 +669,8 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Resources.Resource{filters: old_filters},
-           struct: %Resources.Resource{filters: filters} = resource
+           old_struct: %Domain.Resource{filters: old_filters},
+           struct: %Domain.Resource{filters: filters} = resource
          },
          socket
        )
@@ -695,7 +694,7 @@ defmodule API.Gateway.Channel do
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
-    alias Domain.Accounts.Account
+    alias Domain.Account
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)

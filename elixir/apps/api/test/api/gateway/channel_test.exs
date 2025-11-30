@@ -11,17 +11,17 @@ defmodule API.Gateway.ChannelTest do
     subject = Fixtures.Auth.create_subject(identity: identity)
     client = Fixtures.Clients.create_client(subject: subject)
     gateway = Fixtures.Gateways.create_gateway(account: account)
-    {:ok, gateway_group} = Gateways.fetch_group_by_id(gateway.group_id, subject)
+    {:ok, site} = Sites.fetch_site_by_id(gateway.site_id, subject)
 
     resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{gateway_group_id: gateway.group_id}]
+        connections: [%{site_id: gateway.site_id}]
       )
 
     token =
-      Fixtures.Gateways.create_token(
-        group: gateway_group,
+      Fixtures.Sites.create_token(
+        site: site,
         account: account
       )
 
@@ -30,7 +30,7 @@ defmodule API.Gateway.ChannelTest do
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        gateway_group: gateway_group,
+        site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
@@ -50,7 +50,7 @@ defmodule API.Gateway.ChannelTest do
       identity: identity,
       subject: subject,
       client: client,
-      gateway_group: gateway_group,
+      site: site,
       gateway: gateway,
       resource: resource,
       relay: relay,
@@ -292,8 +292,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert_receive %Changes.Change{
         lsn: 100,
-        old_struct: %Accounts.Account{},
-        struct: %Accounts.Account{slug: "new-slug"}
+        old_struct: %Domain.Account{},
+        struct: %Domain.Account{slug: "new-slug"}
       }
 
       # Consume first init from join
@@ -313,7 +313,7 @@ defmodule API.Gateway.ChannelTest do
       data = %{
         "id" => token.id,
         "account_id" => account.id,
-        "type" => "gateway_group"
+        "type" => "site"
       }
 
       Changes.Hooks.Tokens.on_delete(100, data)
@@ -415,12 +415,12 @@ defmodule API.Gateway.ChannelTest do
       relay: relay,
       socket: socket
     } do
-      internet_gateway_group = Fixtures.Gateways.create_internet_group(account: account)
+      internet_site = Fixtures.Sites.create_internet_site(account: account)
 
       resource =
         Fixtures.Resources.create_internet_resource(
           account: account,
-          connections: [%{gateway_group_id: internet_gateway_group.id}]
+          connections: [%{site_id: internet_site.id}]
         )
 
       flow =
@@ -664,7 +664,7 @@ defmodule API.Gateway.ChannelTest do
       other_resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{gateway_group_id: gateway.group_id}]
+          connections: [%{site_id: gateway.site_id}]
         )
 
       other_flow1 =
@@ -1039,7 +1039,7 @@ defmodule API.Gateway.ChannelTest do
     test "handles resource_updated with version adaptation for old gateways", %{
       gateway: gateway,
       resource: resource,
-      gateway_group: gateway_group,
+      site: site,
       token: token
     } do
       # Create a new socket with the gateway set to an old version (< 1.2.0)
@@ -1048,7 +1048,7 @@ defmodule API.Gateway.ChannelTest do
         |> socket("gateway:#{gateway.id}", %{
           token_id: token.id,
           gateway: Map.put(gateway, :last_seen_version, "1.1.0"),
-          gateway_group: gateway_group,
+          site: site,
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
         })
@@ -1144,7 +1144,7 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           type: :dns,
           address: "**.example.com",
-          connections: [%{gateway_group_id: socket.assigns.gateway.group_id}]
+          connections: [%{site_id: socket.assigns.gateway.site_id}]
         )
 
       old_data = %{
@@ -1180,7 +1180,7 @@ defmodule API.Gateway.ChannelTest do
 
     test "subscribes for relays presence", %{
       gateway: gateway,
-      gateway_group: gateway_group,
+      site: site,
       token: token
     } do
       relay_group = Fixtures.Relays.create_global_group()
@@ -1209,7 +1209,7 @@ defmodule API.Gateway.ChannelTest do
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        gateway_group: gateway_group,
+        site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
@@ -1245,7 +1245,7 @@ defmodule API.Gateway.ChannelTest do
 
     test "subscribes for account relays presence if there were no relays online", %{
       gateway: gateway,
-      gateway_group: gateway_group,
+      site: site,
       token: token
     } do
       relay_group = Fixtures.Relays.create_global_group()
@@ -1263,7 +1263,7 @@ defmodule API.Gateway.ChannelTest do
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        gateway_group: gateway_group,
+        site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
@@ -1666,7 +1666,7 @@ defmodule API.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
-      gateway_group_id = gateway.group_id
+      site_id = gateway.site_id
       gateway_id = gateway.id
       gateway_public_key = gateway.public_key
       gateway_ipv4 = gateway.ipv4
@@ -1701,7 +1701,7 @@ defmodule API.Gateway.ChannelTest do
         :connect,
         ^socket_ref,
         ^rid_bytes,
-        ^gateway_group_id,
+        ^site_id,
         ^gateway_id,
         ^gateway_public_key,
         ^gateway_ipv4,

@@ -7,7 +7,7 @@ defmodule Web.Live.Resources.NewTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
-    group = Fixtures.Gateways.create_group(account: account, subject: subject)
+    group = Fixtures.Sites.create_site(account: account, subject: subject)
 
     %{
       account: account,
@@ -70,7 +70,7 @@ defmodule Web.Live.Resources.NewTest do
 
     connection_inputs = [
       "resource[connections][0][enabled]",
-      "resource[connections][0][gateway_group_id]"
+      "resource[connections][0][site_id]"
     ]
 
     expected_inputs =
@@ -117,7 +117,7 @@ defmodule Web.Live.Resources.NewTest do
 
     connection_inputs = [
       "resource[connections][#{group.id}][enabled]",
-      "resource[connections][#{group.id}][gateway_group_id]"
+      "resource[connections][#{group.id}][site_id]"
     ]
 
     expected_inputs =
@@ -162,7 +162,7 @@ defmodule Web.Live.Resources.NewTest do
 
     connection_inputs = [
       "resource[connections][0][enabled]",
-      "resource[connections][0][gateway_group_id]"
+      "resource[connections][0][site_id]"
     ]
 
     expected_inputs =
@@ -297,7 +297,7 @@ defmodule Web.Live.Resources.NewTest do
     identity: identity,
     conn: conn
   } do
-    gateway_group = Fixtures.Gateways.create_group(account: account)
+    site = Fixtures.Sites.create_site(account: account)
 
     attrs = %{
       name: "foobar.com",
@@ -307,7 +307,7 @@ defmodule Web.Live.Resources.NewTest do
         tcp: %{ports: "80, 443", enabled: true},
         udp: %{ports: "100", enabled: true}
       },
-      connections: %{gateway_group.id => %{enabled: true}}
+      connections: %{site.id => %{enabled: true}}
     }
 
     {:ok, lv, _html} =
@@ -371,7 +371,7 @@ defmodule Web.Live.Resources.NewTest do
     identity: identity,
     conn: conn
   } do
-    gateway_group = Fixtures.Gateways.create_group(account: account)
+    site = Fixtures.Sites.create_site(account: account)
 
     attrs = %{
       name: "foobar.com",
@@ -383,7 +383,7 @@ defmodule Web.Live.Resources.NewTest do
         tcp: %{ports: "80, 443", enabled: true},
         udp: %{ports: "4000 - 5000", enabled: true}
       },
-      connections: %{gateway_group.id => %{enabled: true}}
+      connections: %{site.id => %{enabled: true}}
     }
 
     {:ok, lv, _html} =
@@ -571,7 +571,7 @@ defmodule Web.Live.Resources.NewTest do
 
     resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
     assert %{connections: [connection]} = Repo.preload(resource, :connections)
-    assert connection.gateway_group_id == group.id
+    assert connection.site_id == group.id
 
     assert assert_redirect(
              lv,
@@ -618,7 +618,7 @@ defmodule Web.Live.Resources.NewTest do
     conn: conn
   } do
     Domain.Config.feature_flag_override(:multi_site_resources, false)
-    group2 = Fixtures.Gateways.create_group(account: account)
+    group2 = Fixtures.Sites.create_site(account: account)
 
     {:ok, lv, _html} =
       conn
@@ -627,11 +627,11 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(%{"resource[connections][0][gateway_group_id]" => group2.id})
+    |> render_change(%{"resource[connections][0][site_id]" => group2.id})
 
     assert has_element?(
              lv,
-             "select[name='resource[connections][0][gateway_group_id]'] option[value='#{group2.id}'][selected]"
+             "select[name='resource[connections][0][site_id]'] option[value='#{group2.id}'][selected]"
            )
   end
 
@@ -641,7 +641,7 @@ defmodule Web.Live.Resources.NewTest do
     identity: identity,
     conn: conn
   } do
-    group2 = Fixtures.Gateways.create_group(account: account)
+    group2 = Fixtures.Sites.create_site(account: account)
 
     {:ok, lv, _html} =
       conn

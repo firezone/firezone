@@ -154,7 +154,7 @@ defmodule API.ResourceControllerTest do
     end
 
     test "creates a resource with valid attrs", %{conn: conn, account: account, actor: actor} do
-      gateway_group = Fixtures.Gateways.create_group(%{account: account})
+      site = Fixtures.Sites.create_site(%{account: account})
 
       attrs = %{
         "address" => "google.com",
@@ -162,7 +162,7 @@ defmodule API.ResourceControllerTest do
         "type" => "dns",
         "ip_stack" => "ipv6_only",
         "connections" => [
-          %{"gateway_group_id" => gateway_group.id}
+          %{"site_id" => site.id}
         ]
       }
 

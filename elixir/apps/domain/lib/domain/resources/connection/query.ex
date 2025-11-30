@@ -13,11 +13,11 @@ defmodule Domain.Resources.Connection.Query do
     where(queryable, [connections: connections], connections.resource_id == ^resource_id)
   end
 
-  def by_gateway_group_id(queryable \\ all(), gateway_group_id) do
+  def by_site_id(queryable \\ all(), site_id) do
     where(
       queryable,
       [connections: connections],
-      connections.gateway_group_id == ^gateway_group_id
+      connections.site_id == ^site_id
     )
   end
 

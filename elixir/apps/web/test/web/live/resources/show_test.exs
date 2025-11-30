@@ -7,16 +7,16 @@ defmodule Web.Live.Resources.ShowTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
-    group = Fixtures.Gateways.create_group(account: account, subject: subject)
-    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-    gateway = Repo.preload(gateway, :group)
+    site = Fixtures.Sites.create_site(account: account, subject: subject)
+    gateway = Fixtures.Gateways.create_gateway(account: account, site: site)
+    gateway = Repo.preload(gateway, :site)
 
     resource =
       Fixtures.Resources.create_resource(
         account: account,
         subject: subject,
         ip_stack: :ipv4_only,
-        connections: [%{gateway_group_id: group.id}]
+        connections: [%{site_id: site.id}]
       )
 
     %{
@@ -24,7 +24,7 @@ defmodule Web.Live.Resources.ShowTest do
       actor: actor,
       identity: identity,
       subject: subject,
-      group: group,
+      site: site,
       gateway: gateway,
       resource: resource
     }
@@ -51,12 +51,12 @@ defmodule Web.Live.Resources.ShowTest do
     identity: identity,
     conn: conn
   } do
-    group = Fixtures.Gateways.create_internet_group(account: account)
+    site = Fixtures.Sites.create_internet_site(account: account)
 
     resource =
       Fixtures.Resources.create_internet_resource(
         account: account,
-        connections: [%{gateway_group_id: group.id}]
+        connections: [%{site_id: site.id}]
       )
 
     {:ok, _lv, html} =
@@ -267,10 +267,10 @@ defmodule Web.Live.Resources.ShowTest do
            end)
   end
 
-  test "renders gateway groups row", %{
+  test "renders sites row", %{
     account: account,
     identity: identity,
-    group: group,
+    site: site,
     resource: resource,
     conn: conn
   } do
@@ -285,7 +285,7 @@ defmodule Web.Live.Resources.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["connected sites"] =~ group.name
+    assert table["connected sites"] =~ site.name
   end
 
   test "renders logs table", %{
@@ -301,7 +301,7 @@ defmodule Web.Live.Resources.ShowTest do
       )
 
     flow =
-      Repo.preload(flow, client: [:actor], gateway: [:group], policy: [:actor_group, :resource])
+      Repo.preload(flow, client: [:actor], gateway: [:site], policy: [:actor_group, :resource])
 
     {:ok, lv, _html} =
       conn
@@ -319,7 +319,7 @@ defmodule Web.Live.Resources.ShowTest do
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["gateway"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+             "#{flow.gateway.site.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
 
     assert row["client, actor"] =~ flow.client.name
     assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"

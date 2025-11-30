@@ -9,7 +9,7 @@ defmodule Domain.Tokens.Token.Changeset do
 
   @create_attrs ~w[
     name
-    account_id actor_id relay_group_id gateway_group_id auth_provider_id
+    account_id actor_id relay_group_id site_id auth_provider_id
     secret_fragment secret_nonce
     remaining_attempts
     expires_at
@@ -36,7 +36,7 @@ defmodule Domain.Tokens.Token.Changeset do
     |> validate_inclusion(:type, [
       :client,
       :relay_group,
-      :gateway_group,
+      :site,
       :api_client,
       :service_account_client
     ])
@@ -81,9 +81,9 @@ defmodule Domain.Tokens.Token.Changeset do
         changeset
         |> validate_required(:relay_group_id)
 
-      {_data_or_changes, :gateway_group} ->
+      {_data_or_changes, :site} ->
         changeset
-        |> validate_required(:gateway_group_id)
+        |> validate_required(:site_id)
 
       {_data_or_changes, :email} ->
         changeset

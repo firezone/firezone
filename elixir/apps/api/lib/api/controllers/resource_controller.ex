@@ -2,7 +2,6 @@ defmodule API.ResourceController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Resources
   alias __MODULE__.DB
 
   action_fallback API.FallbackController
@@ -128,23 +127,34 @@ defmodule API.ResourceController do
   defp set_param_defaults(params) do
     Map.put_new(params, "filters", %{})
   end
-  
+
   defp create_changeset(attrs, subject) do
-    Resources.Resource.Changeset.create(subject.account, attrs, subject)
+    account = subject.account
+
+    %Domain.Resource{connections: []}
+    |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack]a)
+    |> Domain.Resource.changeset()
+    |> Ecto.Changeset.validate_required(~w[name type]a)
+    |> Ecto.Changeset.put_change(:account_id, account.id)
+    |> Domain.Resource.validate_address(account)
+    |> Ecto.Changeset.cast_assoc(:connections,
+      with: &Domain.Resources.Connection.Changeset.changeset(account.id, &1, &2, subject),
+      required: true
+    )
   end
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Resources, Safe}
+    alias Domain.Safe
 
     def list_resources(subject, opts \\ []) do
-      from(r in Resources.Resource, as: :resources)
+      from(r in Domain.Resource, as: :resources)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_resource(subject, id) do
-      from(r in Resources.Resource, where: r.id == ^id)
+      from(r in Domain.Resource, where: r.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one!()
     end
@@ -161,14 +171,26 @@ defmodule API.ResourceController do
       |> Safe.scoped(subject)
       |> Safe.delete()
     end
-    
+
     def insert_resource(changeset, subject) do
       Safe.scoped(changeset, subject)
       |> Safe.insert()
     end
 
     defp changeset(resource, attrs, subject) do
-      Resources.Resource.Changeset.update(resource, attrs, subject)
+      update_fields = ~w[address address_description name type ip_stack]a
+      required_fields = ~w[name type]a
+
+      resource
+      |> Ecto.Changeset.cast(attrs, update_fields)
+      |> Ecto.Changeset.validate_required(required_fields)
+      |> Domain.Resource.validate_address(subject.account)
+      |> Domain.Resource.changeset()
+      |> Ecto.Changeset.cast_assoc(:connections,
+        with:
+          &Domain.Resources.Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
+        required: true
+      )
     end
 
     def cursor_fields do

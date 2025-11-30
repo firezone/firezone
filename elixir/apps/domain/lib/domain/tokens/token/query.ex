@@ -59,8 +59,8 @@ defmodule Domain.Tokens.Token.Query do
     where(queryable, [tokens: tokens], tokens.relay_group_id == ^relay_group_id)
   end
 
-  def by_gateway_group_id(queryable, gateway_group_id) do
-    where(queryable, [tokens: tokens], tokens.gateway_group_id == ^gateway_group_id)
+  def by_site_id(queryable, site_id) do
+    where(queryable, [tokens: tokens], tokens.site_id == ^site_id)
   end
 
   def with_joined_account(queryable) do
@@ -89,7 +89,7 @@ defmodule Domain.Tokens.Token.Query do
           {"Browser", "browser"},
           {"Client", "client"},
           {"Email", "email"},
-          {"Gateway Group", "gateway_group"},
+          {"Site", "site"},
           {"Relay Group", "relay_group"}
         ],
         fun: &filter_by_type/2

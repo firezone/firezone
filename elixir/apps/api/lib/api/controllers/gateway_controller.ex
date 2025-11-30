@@ -2,7 +2,6 @@ defmodule API.GatewayController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Gateways
   alias __MODULE__.DB
 
   action_fallback API.FallbackController
@@ -12,9 +11,9 @@ defmodule API.GatewayController do
   operation :index,
     summary: "List Gateways",
     parameters: [
-      gateway_group_id: [
+      site_id: [
         in: :path,
-        description: "Gateway Group ID",
+        description: "Site ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
@@ -33,8 +32,8 @@ defmodule API.GatewayController do
       |> Keyword.put(:preload, :online?)
 
     list_opts =
-      if group_id = params["gateway_group_id"] do
-        Keyword.put(list_opts, :filter, gateway_group_id: group_id)
+      if site_id = params["site_id"] do
+        Keyword.put(list_opts, :filter, site_id: site_id)
       else
         list_opts
       end
@@ -47,9 +46,9 @@ defmodule API.GatewayController do
   operation :show,
     summary: "Show Gateway",
     parameters: [
-      gateway_group_id: [
+      site_id: [
         in: :path,
-        description: "Gateway Group ID",
+        description: "Site ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
@@ -75,9 +74,9 @@ defmodule API.GatewayController do
   operation :delete,
     summary: "Delete a Gateway",
     parameters: [
-      gateway_group_id: [
+      site_id: [
         in: :path,
-        description: "Gateway Group ID",
+        description: "Site ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
@@ -104,7 +103,7 @@ defmodule API.GatewayController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Gateways, Safe}
+    alias Domain.Safe
     alias Domain.Gateway
 
     def list_gateways(subject, opts \\ []) do

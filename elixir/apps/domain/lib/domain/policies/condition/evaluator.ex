@@ -1,5 +1,5 @@
 defmodule Domain.Policies.Condition.Evaluator do
-  alias Domain.Clients
+  alias Domain.Client
 
   @days_of_week ~w[M T W R F S U]
 

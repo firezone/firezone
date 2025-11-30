@@ -7,14 +7,14 @@ defmodule Domain.Changes.Hooks.ResourceConnectionsTest do
     test "broadcasts created resource connection" do
       account = Fixtures.Accounts.create_account()
       resource = Fixtures.Resources.create_resource(account: account)
-      gateway_group = Fixtures.Gateways.create_group(account: account)
+      site = Fixtures.Sites.create_site(account: account)
 
       :ok = PubSub.Account.subscribe(account.id)
 
       data = %{
         "account_id" => account.id,
         "resource_id" => resource.id,
-        "gateway_group_id" => gateway_group.id
+        "site_id" => site.id
       }
 
       assert :ok == on_insert(0, data)
@@ -27,7 +27,7 @@ defmodule Domain.Changes.Hooks.ResourceConnectionsTest do
 
       assert connection.account_id == data["account_id"]
       assert connection.resource_id == data["resource_id"]
-      assert connection.gateway_group_id == data["gateway_group_id"]
+      assert connection.site_id == data["site_id"]
     end
   end
 
@@ -38,20 +38,20 @@ defmodule Domain.Changes.Hooks.ResourceConnectionsTest do
   end
 
   describe "delete/1" do
-    test "deletes flows for resource and gateway group" do
+    test "deletes flows for resource and site" do
     end
 
     test "broadcasts deleted connection" do
       account = Fixtures.Accounts.create_account()
       resource = Fixtures.Resources.create_resource(account: account)
-      gateway_group = Fixtures.Gateways.create_group(account: account)
+      site = Fixtures.Sites.create_site(account: account)
 
       :ok = PubSub.Account.subscribe(account.id)
 
       old_data = %{
         "account_id" => account.id,
         "resource_id" => resource.id,
-        "gateway_group_id" => gateway_group.id
+        "site_id" => site.id
       }
 
       assert :ok == on_delete(0, old_data)
@@ -64,7 +64,7 @@ defmodule Domain.Changes.Hooks.ResourceConnectionsTest do
 
       assert deleted_connection.account_id == old_data["account_id"]
       assert deleted_connection.resource_id == old_data["resource_id"]
-      assert deleted_connection.gateway_group_id == old_data["gateway_group_id"]
+      assert deleted_connection.site_id == old_data["site_id"]
     end
   end
 end

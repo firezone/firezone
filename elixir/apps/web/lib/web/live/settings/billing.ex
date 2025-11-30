@@ -1,6 +1,6 @@
 defmodule Web.Settings.Billing do
   use Web, :live_view
-  alias Domain.{Accounts, Clients, Gateways, Billing}
+  alias Domain.Billing
   alias __MODULE__.DB
   require Logger
 
@@ -10,7 +10,7 @@ defmodule Web.Settings.Billing do
       service_accounts_count = DB.count_service_accounts_for_account(socket.assigns.account)
       users_count = DB.count_users_for_account(socket.assigns.account)
       active_users_count = DB.count_1m_active_users_for_account(socket.assigns.account)
-      gateway_groups_count = DB.count_groups_for_account(socket.assigns.account)
+      sites_count = DB.count_groups_for_account(socket.assigns.account)
 
       socket =
         assign(socket,
@@ -20,7 +20,7 @@ defmodule Web.Settings.Billing do
           users_count: users_count,
           active_users_count: active_users_count,
           service_accounts_count: service_accounts_count,
-          gateway_groups_count: gateway_groups_count
+          sites_count: sites_count
         )
 
       {:ok, socket}
@@ -174,18 +174,18 @@ defmodule Web.Settings.Billing do
             </:value>
           </.vertical_table_row>
 
-          <.vertical_table_row :if={not is_nil(@account.limits.gateway_groups_count)}>
+          <.vertical_table_row :if={not is_nil(@account.limits.sites_count)}>
             <:label>
               <p>Sites</p>
             </:label>
             <:value>
               <span class={[
-                (not is_nil(@gateway_groups_count) and
-                   @gateway_groups_count > @account.limits.gateway_groups_count) && "text-red-500"
+                (not is_nil(@sites_count) and
+                   @sites_count > @account.limits.sites_count) && "text-red-500"
               ]}>
-                {@gateway_groups_count} used
+                {@sites_count} used
               </span>
-              / {@account.limits.gateway_groups_count} allowed
+              / {@account.limits.sites_count} allowed
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -252,7 +252,7 @@ defmodule Web.Settings.Billing do
         </h3>
         <p class="ml-4 mb-4 text-neutral-600">
           <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-red-500" /> To
-          <span :if={Accounts.Account.active?(@account)}>disable your account and</span>
+          <span :if={Domain.Account.active?(@account)}>disable your account and</span>
           schedule it for deletion, please <.link
             class={link_style()}
             target="_blank"
@@ -291,8 +291,8 @@ defmodule Web.Settings.Billing do
   defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, Repo}
-    alias Domain.Accounts.Account
-    alias Domain.Actors.Actor
+    alias Domain.Account
+    alias Domain.Actor
     alias Domain.Client
 
     def count_account_admin_users_for_account(%Account{} = account) do
@@ -336,9 +336,9 @@ defmodule Web.Settings.Billing do
       |> distinct(true)
       |> Repo.aggregate(:count)
     end
-    
+
     def count_groups_for_account(account) do
-      from(g in Domain.Gateways.Group,
+      from(g in Domain.Site,
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )

@@ -1,20 +1,19 @@
 defmodule Web.Resources.Edit do
   use Web, :live_view
   import Web.Resources.Components
-  alias Domain.{Accounts, Gateways, Resources}
   alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <- DB.fetch_resource_by_id(id, socket.assigns.subject) do
-      resource = Domain.Repo.preload(resource, :gateway_groups)
-      gateway_groups = Gateways.all_groups!(socket.assigns.subject)
+      resource = Domain.Repo.preload(resource, :sites)
+      sites = DB.all_groups!(socket.assigns.subject)
       form = change_resource(resource, socket.assigns.subject) |> to_form()
 
       socket =
         assign(
           socket,
           resource: resource,
-          gateway_groups: gateway_groups,
+          sites: sites,
           form: form,
           params: Map.take(params, ["site_id"]),
           page_title: "Edit #{resource.name}"
@@ -209,11 +208,11 @@ defmodule Web.Resources.Edit do
             <.connections_form
               :if={is_nil(@params["site_id"])}
               id="connections_form"
-              multiple={Accounts.Account.multi_site_resources_enabled?(@account)}
+              multiple={Domain.Account.multi_site_resources_enabled?(@account)}
               form={@form[:connections]}
               account={@account}
               resource={@resource}
-              gateway_groups={@gateway_groups}
+              sites={@sites}
             />
 
             <.submit_button phx-disable-with="Updating Resource...">
@@ -248,7 +247,7 @@ defmodule Web.Resources.Edit do
       |> maybe_delete_connections(socket.assigns.params)
 
     changeset = update_changeset(socket.assigns.resource, attrs, socket.assigns.subject)
-    
+
     case DB.update_resource(changeset, socket.assigns.subject) do
       {:ok, resource} ->
         socket = put_flash(socket, :success, "Resource #{resource.name} updated successfully")
@@ -275,35 +274,64 @@ defmodule Web.Resources.Edit do
       attrs
     end
   end
-  
+
   defp change_resource(resource, attrs \\ %{}, subject) do
-    Resources.Resource.Changeset.update(resource, attrs, subject)
+    update_fields = ~w[address address_description name type ip_stack]a
+    required_fields = ~w[name type]a
+
+    resource
+    |> Ecto.Changeset.cast(attrs, update_fields)
+    |> Ecto.Changeset.validate_required(required_fields)
+    |> Domain.Resource.validate_address(subject.account)
+    |> Domain.Resource.changeset()
+    |> Ecto.Changeset.cast_assoc(:connections,
+      with:
+        &Domain.Resources.Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
+      required: true
+    )
   end
-  
+
   defp update_changeset(resource, attrs, subject) do
+    update_fields = ~w[address address_description name type ip_stack]a
+    required_fields = ~w[name type]a
+
     resource
     |> Domain.Repo.preload(:connections)
-    |> Resources.Resource.Changeset.update(attrs, subject)
+    |> Ecto.Changeset.cast(attrs, update_fields)
+    |> Ecto.Changeset.validate_required(required_fields)
+    |> Domain.Resource.validate_address(subject.account)
+    |> Domain.Resource.changeset()
+    |> Ecto.Changeset.cast_assoc(:connections,
+      with:
+        &Domain.Resources.Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
+      required: true
+    )
   end
-  
+
   defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, Resource}
-    
+
+    def all_groups!(subject) do
+      from(g in Domain.Site, as: :groups)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
     def fetch_resource_by_id(id, subject) do
       result =
         from(r in Resource, as: :resources)
         |> where([resources: r], r.id == ^id)
         |> Safe.scoped(subject)
         |> Safe.one()
-      
+
       case result do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}
         resource -> {:ok, resource}
       end
     end
-    
+
     def update_resource(changeset, subject) do
       Safe.scoped(changeset, subject)
       |> Safe.update()

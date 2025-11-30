@@ -13,7 +13,7 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
   require OpenTelemetry.Tracer
 
   alias __MODULE__.DB
-  alias Domain.{Gateways, Mailer}
+  alias Domain.{Gateway, Mailer}
 
   @impl Oban.Worker
   def perform(_job) do
@@ -29,18 +29,18 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
       incompatible_client_count = DB.count_incompatible_for(account, latest_version)
 
       all_online_gateways_for_account(account)
-      |> Enum.filter(&Gateways.gateway_outdated?/1)
+      |> Enum.filter(&Gateway.gateway_outdated?/1)
       |> send_notifications(account, incompatible_client_count)
     end)
   end
 
   defp all_online_gateways_for_account(account) do
     gateways_by_id =
-      Gateways.all_gateways_for_account!(account)
+      DB.all_gateways_for_account!(account)
       |> Enum.group_by(& &1.id)
 
-    Gateways.all_groups_for_account!(account)
-    |> Enum.flat_map(&Gateways.all_online_gateway_ids_by_group_id!(&1.id))
+    DB.all_sites_for_account!(account)
+    |> Enum.flat_map(&DB.all_online_gateway_ids_by_site_id!(&1.id))
     |> Enum.flat_map(&Map.get(gateways_by_id, &1))
   end
 
@@ -52,16 +52,17 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
     DB.all_admins_for_account!(account)
     |> Enum.each(&send_email(account, gateways, incompatible_client_count, &1.email))
 
-    changeset = account_changeset(account, %{
-      config: %{
-        notifications: %{
-          outdated_gateway: %{
-            last_notified: DateTime.utc_now()
+    changeset =
+      account_changeset(account, %{
+        config: %{
+          notifications: %{
+            outdated_gateway: %{
+              last_notified: DateTime.utc_now()
+            }
           }
         }
-      }
-    })
-    
+      })
+
     DB.update_account(changeset)
   end
 
@@ -77,31 +78,37 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
 
   defp account_changeset(account, attrs) do
     import Ecto.Changeset
-    
+
     account
     |> cast(attrs, [])
-    |> cast_embed(:config, with: fn config, config_attrs ->
-      config
-      |> cast(config_attrs, [])
-      |> cast_embed(:notifications, with: fn notifications, notif_attrs ->
-        notifications
-        |> cast(notif_attrs, [])
-        |> cast_embed(:outdated_gateway, with: fn gateway, gateway_attrs ->
-          gateway
-          |> cast(gateway_attrs, [:last_notified])
-        end)
-      end)
-    end)
+    |> cast_embed(:config,
+      with: fn config, config_attrs ->
+        config
+        |> cast(config_attrs, [])
+        |> cast_embed(:notifications,
+          with: fn notifications, notif_attrs ->
+            notifications
+            |> cast(notif_attrs, [])
+            |> cast_embed(:outdated_gateway,
+              with: fn gateway, gateway_attrs ->
+                gateway
+                |> cast(gateway_attrs, [:last_notified])
+              end
+            )
+          end
+        )
+      end
+    )
   end
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Repo, Accounts, Actors, Safe}
+    alias Domain.{Repo, Safe}
     alias Domain.Client
 
     def all_accounts_pending_notification! do
       Domain.Repo.all(
-        from a in Accounts.Account,
+        from a in Domain.Account,
           where:
             fragment("?->'notifications'->'outdated_gateway'->>'enabled' = 'true'", a.config),
           where:
@@ -117,7 +124,7 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
     end
 
     def all_admins_for_account!(account) do
-      from(a in Actors.Actor, as: :actors)
+      from(a in Domain.Actor, as: :actors)
       |> where([actors: a], is_nil(a.disabled_at))
       |> where([actors: a], a.account_id == ^account.id)
       |> where([actors: a], a.type == :account_admin_user)
@@ -133,7 +140,7 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
 
     def count_incompatible_for(account, gateway_version) do
       %{major: g_major, minor: g_minor} = Version.parse!(gateway_version)
-      
+
       from(c in Client, as: :clients)
       |> where([clients: c], c.account_id == ^account.id)
       |> where([clients: c], c.last_seen_at > ago(1, "week"))
@@ -143,9 +150,30 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
           (fragment("split_part(?, '.', 1)::int", c.last_seen_version) == ^g_major and
              fragment("split_part(?, '.', 2)::int", c.last_seen_version) <= ^(g_minor - 2))
       )
-      |> join(:inner, [clients: c], a in Actor, on: c.actor_id == a.id, as: :actor)
+      |> join(:inner, [clients: c], a in Domain.Actor, on: c.actor_id == a.id, as: :actor)
       |> where([actor: a], is_nil(a.disabled_at))
       |> Repo.aggregate(:count)
+    end
+
+    def all_gateways_for_account!(account) do
+      from(g in Domain.Gateway,
+        where: g.account_id == ^account.id
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def all_sites_for_account!(account) do
+      from(g in Domain.Site,
+        where: g.account_id == ^account.id
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def all_online_gateway_ids_by_site_id!(site_id) do
+      Domain.Gateways.Presence.Site.list(site_id)
+      |> Map.keys()
     end
   end
 end

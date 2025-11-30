@@ -1,4 +1,4 @@
-defmodule Domain.Cache.Cacheable.GatewayGroup do
+defmodule Domain.Cache.Cacheable.Site do
   defstruct [
     :id,
     :name

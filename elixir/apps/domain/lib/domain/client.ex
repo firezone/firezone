@@ -54,8 +54,8 @@ defmodule Domain.Client do
 
     field :online?, :boolean, virtual: true
 
-    belongs_to :account, Domain.Accounts.Account
-    belongs_to :actor, Domain.Actors.Actor
+    belongs_to :account, Domain.Account
+    belongs_to :actor, Domain.Actor
 
     # Hardware Identifiers
     field :device_serial, :string

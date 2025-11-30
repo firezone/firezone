@@ -2,7 +2,7 @@ defmodule API.ActorController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.{Actors, Safe}
+  alias Domain.Safe
   alias __MODULE__.DB
   import Ecto.Changeset
 
@@ -131,7 +131,7 @@ defmodule API.ActorController do
   end
 
   defp create_actor_changeset(account, attrs) do
-    %Actors.Actor{account_id: account.id}
+    %Domain.Actor{account_id: account.id}
     |> cast(attrs, [:name, :email, :type])
     |> validate_required([:name, :type])
   end
@@ -144,10 +144,10 @@ defmodule API.ActorController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Actors, Safe}
+    alias Domain.Safe
 
     def list_actors(subject, opts \\ []) do
-      from(a in Actors.Actor, as: :actors)
+      from(a in Domain.Actor, as: :actors)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -160,7 +160,7 @@ defmodule API.ActorController do
     end
 
     def fetch_actor_by_id(id, subject) do
-      from(a in Actors.Actor, where: a.id == ^id)
+      from(a in Domain.Actor, where: a.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do

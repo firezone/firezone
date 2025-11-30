@@ -1,10 +1,10 @@
 defmodule Web.Sites.New do
   use Web, :live_view
-  alias Domain.{Gateways, Billing}
+  alias Domain.Billing
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
-    changeset = new_group()
+    changeset = new_site()
     socket = assign(socket, form: to_form(changeset), page_title: "New Site")
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
@@ -42,30 +42,31 @@ defmodule Web.Sites.New do
     """
   end
 
-  def handle_event("change", %{"group" => attrs}, socket) do
+  def handle_event("change", %{"site" => attrs}, socket) do
     changeset =
-      new_group(attrs)
+      new_site(attrs)
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
-  def handle_event("submit", %{"group" => attrs}, socket) do
+  def handle_event("submit", %{"site" => attrs}, socket) do
     attrs = Map.put(attrs, "tokens", [%{}])
 
-    with true <- Billing.can_create_gateway_groups?(socket.assigns.subject.account),
-         changeset = create_changeset(socket.assigns.subject.account, attrs, socket.assigns.subject),
-         {:ok, group} <- DB.create_group(changeset, socket.assigns.subject) do
+    with true <- Billing.can_create_sites?(socket.assigns.subject.account),
+         changeset =
+           create_changeset(socket.assigns.subject.account, attrs, socket.assigns.subject),
+         {:ok, site} <- DB.create_site(changeset, socket.assigns.subject) do
       socket =
         socket
-        |> put_flash(:success, "Site #{group.name} created successfully")
-        |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{group}")
+        |> put_flash(:success, "Site #{site.name} created successfully")
+        |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{site}")
 
       {:noreply, socket}
     else
       false ->
         changeset =
-          new_group(attrs)
+          new_site(attrs)
           |> Map.put(:action, :insert)
 
         socket =
@@ -82,41 +83,50 @@ defmodule Web.Sites.New do
         {:noreply, assign(socket, form: to_form(changeset))}
     end
   end
-  
-  defp new_group(attrs \\ %{}) do
-    change_group(%Domain.Gateways.Group{}, attrs)
+
+  defp new_site(attrs \\ %{}) do
+    change_site(%Domain.Site{}, attrs)
   end
-  
-  defp change_group(group, attrs \\ %{}) do
+
+  defp change_site(site, attrs) do
     import Ecto.Changeset
-    
-    group
+
+    site
     |> Domain.Repo.preload(:account)
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> Domain.Gateways.Group.changeset()
+    |> Domain.Site.changeset()
   end
-  
+
   defp create_changeset(account, attrs, subject) do
     import Ecto.Changeset
-    
-    %Domain.Gateways.Group{}
+
+    %Domain.Site{}
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> Domain.Gateways.Group.changeset()
+    |> Domain.Site.changeset()
     |> put_change(:account_id, account.id)
     |> put_change(:managed_by, :account)
-    |> put_change(:created_by_identity_id, subject.identity && subject.identity.id)
     |> cast_assoc(:tokens,
       required: false,
-      with: &Domain.Tokens.Token.Changeset.create_gateway_group_token(&1, &2, subject)
+      with: fn struct, attrs ->
+        import Ecto.Changeset
+
+        struct
+        |> cast(attrs, [:name, :expires_at])
+        |> put_change(:type, :site)
+        |> put_change(:account_id, subject.account.id)
+        |> put_change(:created_by, :identity)
+        |> put_change(:created_by_identity_id, subject.identity.id)
+        |> Domain.Tokens.Token.changeset()
+      end
     )
   end
-  
+
   defmodule DB do
-    alias Domain.{Safe}
-    
-    def create_group(changeset, subject) do
+    alias Domain.Safe
+
+    def create_site(changeset, subject) do
       Safe.scoped(changeset, subject)
       |> Safe.insert()
     end

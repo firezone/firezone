@@ -5,26 +5,26 @@ defmodule Web.Live.Sites.NewTokenTest do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    group = Fixtures.Gateways.create_group(account: account)
+    site = Fixtures.Sites.create_site(account: account)
 
     %{
       account: account,
       actor: actor,
       identity: identity,
-      group: group
+      site: site
     }
   end
 
-  test "creates a new group on valid attrs and redirects when gateway is connected", %{
+  test "creates a new site on valid attrs and redirects when gateway is connected", %{
     account: account,
     identity: identity,
-    group: group,
+    site: site,
     conn: conn
   } do
     {:ok, lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/sites/#{group}/new_token")
+      |> live(~p"/#{account}/sites/#{site}/new_token")
 
     assert html =~ "Select deployment method"
     assert html =~ "FIREZONE_TOKEN="
@@ -36,13 +36,13 @@ defmodule Web.Live.Sites.NewTokenTest do
       |> List.last()
       |> String.trim("&quot;")
 
-    :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-    context = Fixtures.Auth.build_context(type: :gateway_group)
-    assert {:ok, group, token} = Domain.Gateways.authenticate(token, context)
-    gateway = Fixtures.Gateways.create_gateway(account: account, group: group, token: token)
+    :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+    context = Fixtures.Auth.build_context(type: :site)
+    assert {:ok, site, token} = Domain.Gateways.authenticate(token, context)
+    gateway = Fixtures.Gateways.create_gateway(account: account, site: site, token: token)
     :ok = Domain.Gateways.Presence.connect(gateway, token.id)
 
-    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id}
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{site.id}"}
 
     wait_for(fn ->
       assert element(lv, "#connection-status")

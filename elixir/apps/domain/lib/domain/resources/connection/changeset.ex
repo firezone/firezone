@@ -2,7 +2,7 @@ defmodule Domain.Resources.Connection.Changeset do
   use Domain, :changeset
   alias Domain.Auth
 
-  @fields ~w[gateway_group_id]a
+  @fields ~w[site_id]a
   @required_fields @fields
 
   def changeset(account_id, connection, attrs, %Auth.Subject{} = _subject) do
@@ -18,7 +18,7 @@ defmodule Domain.Resources.Connection.Changeset do
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)
     |> assoc_constraint(:resource)
-    |> assoc_constraint(:gateway_group)
+    |> assoc_constraint(:site)
     |> assoc_constraint(:account)
     |> check_constraint(:resource,
       name: :internet_resource_in_internet_site,

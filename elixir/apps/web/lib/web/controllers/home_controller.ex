@@ -1,6 +1,6 @@
 defmodule Web.HomeController do
   use Web, :controller
-  alias Domain.Accounts
+  alias __MODULE__.DB
 
   def home(conn, params) do
     recent_account_ids = Web.Auth.recent_account_ids(conn) || []
@@ -32,7 +32,7 @@ defmodule Web.HomeController do
   end
 
   @slug_regex ~r/^[a-zA-Z0-9_]+$/
-  
+
   defp validate_account_id_or_slug(account_id_or_slug) do
     cond do
       match?({:ok, _}, Ecto.UUID.cast(account_id_or_slug)) ->
@@ -48,10 +48,10 @@ defmodule Web.HomeController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Accounts, Safe}
+    alias Domain.Safe
 
     def get_accounts_by_ids(account_ids) do
-      from(a in Accounts.Account, where: a.id in ^account_ids)
+      from(a in Domain.Account, where: a.id in ^account_ids)
       |> Safe.unscoped()
       |> Safe.all()
     end

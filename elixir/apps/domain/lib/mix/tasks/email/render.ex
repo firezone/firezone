@@ -208,14 +208,14 @@
 #     # Create a test gateway
 #     account = get_or_create_test_account()
 #
-#     # Create a gateway group
-#     group = get_or_create_gateway_group(account)
+#     # Create a site
+#     site = get_or_create_site(account)
 #
 #     gateway1 =
 #       Repo.insert!(
-#         %Domain.Gateways.Gateway{
+#         %Domain.Gateway{
 #           account_id: account.id,
-#           group_id: group.id,
+#           site_id: site.id,
 #           external_id: "test-gateway-us-east",
 #           name: "Gateway US East",
 #           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
@@ -229,7 +229,7 @@
 #
 #     gateway2 =
 #       Repo.insert!(
-#         %Domain.Gateways.Gateway{
+#         %Domain.Gateway{
 #           account_id: account.id,
 #           group_id: group.id,
 #           external_id: "test-gateway-eu-west",
@@ -310,7 +310,7 @@
 #   # Helper functions
 #
 #   defp get_or_create_test_account do
-#     case Repo.get_by(Accounts.Account, slug: "test_email_account") do
+#     case Repo.get_by(Domain.Account, slug: "test_email_account") do
 #       nil ->
 #         {:ok, account} =
 #           Accounts.create_account(%{
@@ -346,9 +346,9 @@
 #   defp get_or_create_test_actor(account, type, name \\ "Test User", slug_suffix \\ "test") do
 #     slug = "test-actor-#{slug_suffix}"
 #
-#     case Repo.get_by(Actors.Actor, account_id: account.id, name: slug) do
+#     case Repo.get_by(Actor, account_id: account.id, name: slug) do
 #       nil ->
-#         Repo.insert!(%Actors.Actor{
+#         Repo.insert!(%Domain.Actor{
 #           account_id: account.id,
 #           type: type,
 #           name: name
@@ -380,12 +380,12 @@
 #     end
 #   end
 #
-#   defp get_or_create_gateway_group(account) do
-#     case Repo.get_by(Domain.Gateways.Group, account_id: account.id, name: "Test Gateway Group") do
+#   defp get_or_create_site(account) do
+#     case Repo.get_by(Domain.Site, account_id: account.id, name: "Test Site") do
 #       nil ->
-#         Repo.insert!(%Domain.Gateways.Group{
+#         Repo.insert!(%Domain.Site{
 #           account_id: account.id,
-#           name: "Test Gateway Group",
+#           name: "Test Site",
 #           managed_by: :account,
 #         })
 #

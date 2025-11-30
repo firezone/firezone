@@ -1,7 +1,7 @@
 defmodule Web.Settings.ApiClients.NewToken do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
-  alias Domain.{Auth, Actors, Tokens}
+  alias Domain.{Auth, Tokens}
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -100,10 +100,10 @@ defmodule Web.Settings.ApiClients.NewToken do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Actors}
+    alias Domain.Safe
 
     def fetch_api_client(id, subject) do
-      from(a in Actors.Actor, where: a.id == ^id, where: a.type == :api_client)
+      from(a in Domain.Actor, where: a.id == ^id, where: a.type == :api_client)
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
