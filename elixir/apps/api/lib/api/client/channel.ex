@@ -3,7 +3,6 @@ defmodule API.Client.Channel do
   alias API.Client.Views
 
   alias Domain.{
-    Clients,
     Cache,
     Changes.Change,
     PubSub,
@@ -11,12 +10,11 @@ defmodule API.Client.Channel do
     Flows,
     Gateway,
     Relays,
-    Policies
+    Policies,
+    Presence
   }
 
   alias __MODULE__.DB
-
-  alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
 
@@ -57,14 +55,14 @@ defmodule API.Client.Channel do
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
-    :ok = Enum.each(relays, &Relays.subscribe_to_relay_presence/1)
+    :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe/1)
     :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
     # Initialize debouncer for flappy relays
-    socket = Debouncer.cache_stamp_secrets(socket, relays)
+    socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
 
     # Track client's presence
-    :ok = Clients.Presence.connect(socket.assigns.client, socket.assigns.subject.token_id)
+    :ok = Presence.Clients.connect(socket.assigns.client, socket.assigns.subject.token_id)
 
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
@@ -95,7 +93,14 @@ defmodule API.Client.Channel do
 
   # Called to actually push relays_presence with a disconnected relay to the client
   def handle_info({:push_leave, relay_id, stamp_secret, payload}, socket) do
-    {:noreply, Debouncer.handle_leave(socket, relay_id, stamp_secret, payload, &push/3)}
+    {:noreply,
+     Presence.Relays.Debouncer.handle_leave(
+       socket,
+       relay_id,
+       stamp_secret,
+       payload,
+       &push/3
+     )}
   end
 
   ####################################
@@ -163,7 +168,7 @@ defmodule API.Client.Channel do
         socket
       ) do
     if Map.has_key?(leaves, relay_id) do
-      :ok = Relays.unsubscribe_from_relay_presence(relay_id)
+      :ok = Presence.Relays.Relay.unsubscribe(relay_id)
 
       {:ok, relays} = select_relays(socket, [relay_id])
       :ok = maybe_subscribe_for_relays_presence(relays, socket)
@@ -171,8 +176,8 @@ defmodule API.Client.Channel do
       :ok =
         Enum.each(relays, fn relay ->
           # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Relays.unsubscribe_from_relay_presence(relay)
-          :ok = Relays.subscribe_to_relay_presence(relay)
+          :ok = Presence.Relays.Relay.unsubscribe(relay)
+          :ok = Presence.Relays.Relay.subscribe(relay)
         end)
 
       payload = %{
@@ -185,7 +190,7 @@ defmodule API.Client.Channel do
           )
       }
 
-      {:noreply, Debouncer.queue_leave(self(), socket, relay_id, payload)}
+      {:noreply, Presence.Relays.Debouncer.queue_leave(self(), socket, relay_id, payload)}
     else
       {:noreply, socket}
     end
@@ -203,23 +208,24 @@ defmodule API.Client.Channel do
       {:ok, relays} = select_relays(socket)
 
       if length(relays) > 0 do
-        :ok = Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.subject.account)
+        :ok = Presence.Relays.Global.unsubscribe()
+        :ok = Presence.Relays.Account.unsubscribe(socket.assigns.subject.account)
 
         :ok =
           Enum.each(relays, fn relay ->
             # TODO: Why are we unsubscribing and subscribing again?
-            :ok = Relays.unsubscribe_from_relay_presence(relay)
-            :ok = Relays.subscribe_to_relay_presence(relay)
+            :ok = Presence.Relays.Relay.unsubscribe(relay)
+            :ok = Presence.Relays.Relay.subscribe(relay)
           end)
 
         # Cache new stamp secrets
-        socket = Debouncer.cache_stamp_secrets(socket, relays)
+        socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
 
         # If a relay reconnects with a different stamp_secret, disconnect them immediately
         joined_ids = Map.keys(joins)
 
         {socket, disconnected_ids} =
-          Debouncer.cancel_leaves_or_disconnect_immediately(
+          Presence.Relays.Debouncer.cancel_leaves_or_disconnect_immediately(
             socket,
             joined_ids,
             socket.assigns.client.account_id
@@ -502,7 +508,7 @@ defmodule API.Client.Channel do
            DB.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
            |> then(fn
              {:ok, gw} ->
-               {:ok, Domain.Gateways.Presence.preload_gateways_presence([gw]) |> List.first()}
+               {:ok, Presence.Gateways.preload_gateways_presence([gw]) |> List.first()}
 
              error ->
                error
@@ -576,7 +582,7 @@ defmodule API.Client.Channel do
            DB.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
            |> then(fn
              {:ok, gw} ->
-               {:ok, Domain.Gateways.Presence.preload_gateways_presence([gw]) |> List.first()}
+               {:ok, Presence.Gateways.preload_gateways_presence([gw]) |> List.first()}
 
              error ->
                error
@@ -684,7 +690,8 @@ defmodule API.Client.Channel do
     if length(relays) > 0 do
       :ok
     else
-      Relays.subscribe_to_relays_presence_in_account(socket.assigns.subject.account)
+      :ok = Presence.Relays.Global.subscribe()
+      Presence.Relays.Account.subscribe(socket.assigns.subject.account)
     end
   end
 
@@ -1019,7 +1026,7 @@ defmodule API.Client.Channel do
       resource_id = Ecto.UUID.load!(resource.id)
 
       connected_gateway_ids =
-        Domain.Gateways.Presence.Account.list(subject.account.id)
+        Presence.Gateways.Account.list(subject.account.id)
         |> Map.keys()
 
       gateways =

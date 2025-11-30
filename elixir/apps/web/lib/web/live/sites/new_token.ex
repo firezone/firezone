@@ -8,7 +8,7 @@ defmodule Web.Sites.NewToken do
       {site, token, env} =
         if connected?(socket) do
           {:ok, token, encoded_token} = DB.create_token(site, %{}, socket.assigns.subject)
-          :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+          :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
           {site, token, env(encoded_token)}
         else
           {site, nil, nil}

@@ -2,7 +2,7 @@ defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Clients.Components
-  alias Domain.{Clients.Presence, ComponentVersions, Flows}
+  alias Domain.{Presence.Clients, ComponentVersions, Flows}
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -10,10 +10,10 @@ defmodule Web.Clients.Show do
       client =
         client
         |> Domain.Repo.preload(:actor)
-        |> then(fn c -> Presence.preload_clients_presence([c]) |> List.first() end)
+        |> then(fn c -> Clients.preload_clients_presence([c]) |> List.first() end)
 
       if connected?(socket) do
-        :ok = Presence.Actor.subscribe(client.actor_id)
+        :ok = Clients.Actor.subscribe(client.actor_id)
       end
 
       socket =
@@ -463,7 +463,7 @@ defmodule Web.Clients.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Clients.Presence, Safe}
+    alias Domain.{Presence.Clients, Safe}
     alias Domain.Client
 
     def fetch_client_by_id(id, subject) do
@@ -485,7 +485,7 @@ defmodule Web.Clients.Show do
       if subject.actor.type == :account_admin_user do
         case Safe.scoped(changeset, subject) |> Safe.update() do
           {:ok, updated_client} ->
-            {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
+            {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
           {:error, reason} ->
             {:error, reason}
@@ -500,7 +500,7 @@ defmodule Web.Clients.Show do
       if subject.actor.type == :account_admin_user do
         case Safe.scoped(changeset, subject) |> Safe.update() do
           {:ok, updated_client} ->
-            {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
+            {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
           {:error, reason} ->
             {:error, reason}
@@ -513,7 +513,7 @@ defmodule Web.Clients.Show do
     def delete_client(client, subject) do
       case Safe.scoped(client, subject) |> Safe.delete() do
         {:ok, deleted_client} ->
-          {:ok, Presence.preload_clients_presence([deleted_client]) |> List.first()}
+          {:ok, Clients.preload_clients_presence([deleted_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}

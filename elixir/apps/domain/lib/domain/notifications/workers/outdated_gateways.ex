@@ -172,7 +172,7 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
     end
 
     def all_online_gateway_ids_by_site_id!(site_id) do
-      Domain.Gateways.Presence.Site.list(site_id)
+      Domain.Presence.Gateways.Site.list(site_id)
       |> Map.keys()
     end
   end

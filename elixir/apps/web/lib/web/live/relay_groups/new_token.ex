@@ -8,7 +8,7 @@ defmodule Web.RelayGroups.NewToken do
       {group, token, env} =
         if connected?(socket) do
           {:ok, token, encoded_token} = Relays.create_token(group, %{}, socket.assigns.subject)
-          :ok = Relays.subscribe_to_relays_presence_in_group(group)
+          :ok = Domain.Presence.Relays.Group.subscribe(group)
           {group, token, env(encoded_token)}
         else
           {group, nil, nil}

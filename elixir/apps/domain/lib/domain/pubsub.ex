@@ -61,4 +61,58 @@ defmodule Domain.PubSub do
       Atom.to_string(__MODULE__) <> ":" <> account_id
     end
   end
+
+  defmodule Relay do
+    def subscribe(relay_id) do
+      relay_id
+      |> topic()
+      |> Domain.PubSub.subscribe()
+    end
+
+    def broadcast(relay_id, payload) do
+      relay_id
+      |> topic()
+      |> Domain.PubSub.broadcast(payload)
+    end
+
+    defp topic(relay_id) do
+      "relays:" <> relay_id
+    end
+  end
+
+  defmodule RelayGroup do
+    def subscribe(group_id) do
+      group_id
+      |> topic()
+      |> Domain.PubSub.subscribe()
+    end
+
+    def broadcast(group_id, payload) do
+      group_id
+      |> topic()
+      |> Domain.PubSub.broadcast(payload)
+    end
+
+    defp topic(group_id) do
+      "group_relays:" <> group_id
+    end
+  end
+
+  defmodule RelayAccount do
+    def subscribe(account_id) do
+      account_id
+      |> topic()
+      |> Domain.PubSub.subscribe()
+    end
+
+    def broadcast(account_id, payload) do
+      account_id
+      |> topic()
+      |> Domain.PubSub.broadcast(payload)
+    end
+
+    defp topic(account_id) do
+      "account_relays:" <> account_id
+    end
+  end
 end

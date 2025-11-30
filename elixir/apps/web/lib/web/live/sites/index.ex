@@ -1,12 +1,12 @@
 defmodule Web.Sites.Index do
   use Web, :live_view
-  alias Domain.Gateways
+  alias Domain.Presence
   alias __MODULE__.DB
   require Logger
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = Gateways.Presence.Account.subscribe(socket.assigns.account.id)
+      :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
     end
 
     {:ok, managed_sites, _metadata} =
@@ -317,7 +317,7 @@ defmodule Web.Sites.Index do
     def preloads,
       do: [
         gateways: [
-          online?: &Domain.Gateways.Presence.preload_gateways_presence/1
+          online?: &Presence.Gateways.preload_gateways_presence/1
         ]
       ]
   end

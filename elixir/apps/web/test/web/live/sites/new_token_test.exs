@@ -36,11 +36,11 @@ defmodule Web.Live.Sites.NewTokenTest do
       |> List.last()
       |> String.trim("&quot;")
 
-    :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+    :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
     context = Fixtures.Auth.build_context(type: :site)
     assert {:ok, site, token} = Domain.Gateways.authenticate(token, context)
     gateway = Fixtures.Gateways.create_gateway(account: account, site: site, token: token)
-    :ok = Domain.Gateways.Presence.connect(gateway, token.id)
+    :ok = Domain.Presence.Gateways.connect(gateway, token.id)
 
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{site.id}"}
 

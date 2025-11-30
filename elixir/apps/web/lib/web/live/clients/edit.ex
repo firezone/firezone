@@ -1,6 +1,6 @@
 defmodule Web.Clients.Edit do
   use Web, :live_view
-  alias Domain.Clients.Presence
+  alias Domain.Presence.Clients
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -87,7 +87,7 @@ defmodule Web.Clients.Edit do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Clients.Presence, Safe}
+    alias Domain.{Presence.Clients, Safe}
     alias Domain.Client
 
     def fetch_client_by_id(id, subject) do
@@ -107,7 +107,7 @@ defmodule Web.Clients.Edit do
     def update_client(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_client} ->
-          {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
+          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}

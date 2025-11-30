@@ -7,7 +7,7 @@ defmodule Web.Sites.Show do
     with {:ok, site} <-
            DB.fetch_site(id, socket.assigns.subject) do
       if connected?(socket) do
-        :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+        :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
       end
 
       socket =
@@ -99,7 +99,7 @@ defmodule Web.Sites.Show do
   end
 
   def handle_gateways_update!(socket, list_opts) do
-    online_ids = Domain.Gateways.Presence.Site.list(socket.assigns.site.id) |> Map.keys()
+    online_ids = Domain.Presence.Gateways.Site.list(socket.assigns.site.id) |> Map.keys()
 
     list_opts =
       list_opts
@@ -541,7 +541,7 @@ defmodule Web.Sites.Show do
 
     def preloads do
       [
-        online?: &Domain.Gateways.Presence.preload_gateways_presence/1
+        online?: &Domain.Presence.Gateways.preload_gateways_presence/1
       ]
     end
 

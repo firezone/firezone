@@ -1,6 +1,6 @@
 defmodule Web.Gateways.Show do
   use Web, :live_view
-  alias Domain.Gateways
+  alias Domain.Presence
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -11,7 +11,7 @@ defmodule Web.Gateways.Show do
         |> then(fn gw -> DB.preload_gateways_presence([gw]) |> List.first() end)
 
       if connected?(socket) do
-        :ok = Gateways.Presence.Site.subscribe(gateway.site_id)
+        :ok = Presence.Gateways.Site.subscribe(gateway.site_id)
       end
 
       socket =
@@ -184,7 +184,7 @@ defmodule Web.Gateways.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Gateways}
+    alias Domain.Safe
     alias Domain.Gateway
 
     def fetch_gateway_by_id(id, subject) do
@@ -207,7 +207,7 @@ defmodule Web.Gateways.Show do
     end
 
     def preload_gateways_presence(gateways) do
-      Domain.Gateways.Presence.preload_gateways_presence(gateways)
+      Presence.Gateways.preload_gateways_presence(gateways)
     end
   end
 end

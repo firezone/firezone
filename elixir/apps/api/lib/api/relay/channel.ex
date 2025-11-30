@@ -1,6 +1,7 @@
 defmodule API.Relay.Channel do
   use API, :channel
-  alias Domain.Relays
+  alias Domain.Relays.Relay
+  alias Domain.{PubSub, Presence}
   require OpenTelemetry.Tracer
   require Logger
 
@@ -42,7 +43,12 @@ defmodule API.Relay.Channel do
 
     OpenTelemetry.Tracer.with_span "relay.after_join" do
       push(socket, "init", %{})
-      :ok = Relays.connect_relay(socket.assigns.relay, stamp_secret, socket.assigns.token_id)
+      relay = socket.assigns.relay
+      token_id = socket.assigns.token_id
+
+      # Connect the relay by tracking presence and subscribing to PubSub topics
+      :ok = connect_relay(relay, stamp_secret, token_id)
+
       {:noreply, socket}
     end
   end
@@ -54,4 +60,43 @@ defmodule API.Relay.Channel do
 
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
+
+  # Private function that replicates Domain.Relays.connect_relay functionality
+  defp connect_relay(%Relay{} = relay, secret, token_id) do
+    with {:ok, _} <-
+           Presence.track(
+             self(),
+             Presence.Relays.Group.topic(relay.group_id),
+             relay.id,
+             %{
+               token_id: token_id
+             }
+           ),
+         {:ok, _} <-
+           track_relay_with_secret(relay, secret),
+         {:ok, _} <-
+           Presence.track(self(), "presences:relays:#{relay.id}", relay.id, %{}) do
+      :ok = PubSub.Relay.subscribe(get_relay_id(relay))
+      :ok = PubSub.RelayGroup.subscribe(relay.group_id)
+      :ok = PubSub.RelayAccount.subscribe(relay.account_id)
+      :ok
+    end
+  end
+
+  defp track_relay_with_secret(%Relay{account_id: nil} = relay, secret) do
+    Presence.track(self(), Presence.Relays.Global.topic(), relay.id, %{
+      online_at: System.system_time(:second),
+      secret: secret
+    })
+  end
+
+  defp track_relay_with_secret(%Relay{account_id: account_id} = relay, secret) do
+    Presence.track(self(), Presence.Relays.Account.topic(account_id), relay.id, %{
+      online_at: System.system_time(:second),
+      secret: secret
+    })
+  end
+
+  defp get_relay_id(%Relay{id: id}), do: id
+  defp get_relay_id(relay_id) when is_binary(relay_id), do: relay_id
 end

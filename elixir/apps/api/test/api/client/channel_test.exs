@@ -532,7 +532,7 @@ defmodule API.Client.ChannelTest do
                username: _
              } = relay_view
 
-      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
+      Domain.Presence.Relays.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
 
       assert_push "relays_presence",
                   %{
@@ -645,7 +645,7 @@ defmodule API.Client.ChannelTest do
                username: _
              } = relay_view
 
-      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
+      Domain.Presence.Relays.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
 
       assert_push "relays_presence",
                   %{

@@ -6,7 +6,8 @@ defmodule Web.RelayGroups.Index do
   def mount(_params, _session, socket) do
     if Domain.Account.self_hosted_relays_enabled?(socket.assigns.account) do
       if connected?(socket) do
-        :ok = Relays.subscribe_to_relays_presence_in_account(socket.assigns.account)
+        :ok = Domain.Presence.Relays.Global.subscribe()
+        :ok = Domain.Presence.Relays.Account.subscribe(socket.assigns.account)
       end
 
       socket =

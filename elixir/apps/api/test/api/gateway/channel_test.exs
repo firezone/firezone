@@ -1229,7 +1229,7 @@ defmodule API.Gateway.ChannelTest do
                username: _
              } = relay_view
 
-      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
+      Domain.Presence.Relays.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
 
       assert_push "relays_presence",
                   %{
@@ -1846,7 +1846,7 @@ defmodule API.Gateway.ChannelTest do
           identity: client_identity
         )
 
-      :ok = Domain.Clients.Presence.connect(client, client_token.id)
+      :ok = Domain.Presence.Clients.connect(client, client_token.id)
       PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
       :ok = PubSub.Account.subscribe(gateway.account_id)
 
@@ -1901,7 +1901,7 @@ defmodule API.Gateway.ChannelTest do
           identity: client_identity
         )
 
-      :ok = Domain.Clients.Presence.connect(client, client_token.id)
+      :ok = Domain.Presence.Clients.connect(client, client_token.id)
       PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)

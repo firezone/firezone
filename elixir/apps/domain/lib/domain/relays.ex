@@ -1,16 +1,12 @@
 defmodule Domain.Relays do
   import Ecto.Changeset
-  alias Domain.{Repo, Auth, Geo, PubSub, Safe}
+  alias Domain.{Repo, Auth, Geo, Safe, Presence}
   alias Domain.Tokens
-  alias Domain.Relays.{Relay, Presence}
+  alias Domain.Relays.Relay
   alias Domain.RelayGroup
 
   def send_metrics do
-    count = global_groups_presence_topic() |> Presence.list() |> Enum.count()
-
-    :telemetry.execute([:domain, :relays], %{
-      online_relays_count: count
-    })
+    Presence.Relays.send_metrics()
   end
 
   def fetch_group_by_id(id, %Auth.Subject{} = subject) do
@@ -148,52 +144,8 @@ defmodule Domain.Relays do
   end
 
   @doc false
-  def preload_relays_presence([%{account_id: nil} = relay]) do
-    global_groups_presence_topic()
-    |> Presence.get_by_key(relay.id)
-    |> case do
-      [] -> %{relay | online?: false}
-      %{metas: [_ | _]} -> %{relay | online?: true}
-    end
-    |> List.wrap()
-  end
-
-  def preload_relays_presence([relay]) do
-    relay.account_id
-    |> account_presence_topic()
-    |> Presence.get_by_key(relay.id)
-    |> case do
-      [] -> %{relay | online?: false}
-      %{metas: [_ | _]} -> %{relay | online?: true}
-    end
-    |> List.wrap()
-  end
-
   def preload_relays_presence(relays) do
-    # if there are relays without account_id, we need to fetch global relays
-    connected_global_relays =
-      if Enum.any?(relays, &is_nil(&1.account_id)) do
-        global_groups_presence_topic() |> Presence.list()
-      else
-        %{}
-      end
-
-    # we fetch list of account relays for every account_id present in the relays list
-    connected_relays =
-      relays
-      |> Enum.map(& &1.account_id)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
-      |> Enum.reduce(%{}, fn account_id, acc ->
-        connected_relays = account_id |> account_presence_topic() |> Presence.list()
-        Map.merge(acc, connected_relays)
-      end)
-
-    all_connected_relays = Map.merge(connected_relays, connected_global_relays)
-
-    Enum.map(relays, fn relay ->
-      %{relay | online?: Map.has_key?(all_connected_relays, relay.id)}
-    end)
+    Presence.Relays.preload_relays_presence(relays)
   end
 
   def all_connected_relays_for_account(account_id_or_account, except_ids \\ [])
@@ -203,13 +155,8 @@ defmodule Domain.Relays do
   end
 
   def all_connected_relays_for_account(account_id, except_ids) do
-    connected_global_relays =
-      global_groups_presence_topic()
-      |> Presence.list()
-
-    connected_account_relays =
-      account_presence_topic(account_id)
-      |> Presence.list()
+    connected_global_relays = Presence.Relays.Global.list()
+    connected_account_relays = Presence.Relays.Account.list(account_id)
 
     connected_relays = Map.merge(connected_global_relays, connected_account_relays)
     connected_relay_ids = Map.keys(connected_relays) -- except_ids
@@ -306,105 +253,84 @@ defmodule Domain.Relays do
   # Refactor to use new conventions
   def connect_relay(%Relay{} = relay, secret, token_id) do
     with {:ok, _} <-
-           Presence.track(self(), group_presence_topic(relay.group_id), relay.id, %{
-             token_id: token_id
-           }),
+           Presence.track(
+             self(),
+             Presence.Relays.Group.topic(relay.group_id),
+             relay.id,
+             %{
+               token_id: token_id
+             }
+           ),
          {:ok, _} <-
-           Presence.track(self(), account_or_global_presence_topic(relay), relay.id, %{
-             online_at: System.system_time(:second),
-             secret: secret
-           }),
-         {:ok, _} <- Presence.track(self(), presence_topic(relay), relay.id, %{}) do
-      :ok = PubSub.subscribe(relay_topic(relay))
-      :ok = PubSub.subscribe(group_topic(relay.group_id))
-      :ok = PubSub.subscribe(account_topic(relay.account_id))
+           track_relay_with_secret(relay, secret),
+         {:ok, _} <-
+           Presence.track(self(), "presences:relays:#{relay.id}", relay.id, %{}) do
+      :ok = Domain.PubSub.Relay.subscribe(relay.id)
+      :ok = Domain.PubSub.RelayGroup.subscribe(relay.group_id)
+      :ok = Domain.PubSub.RelayAccount.subscribe(relay.account_id)
       :ok
     end
   end
 
-  ### Presence
+  defp track_relay_with_secret(%Relay{account_id: nil} = relay, secret) do
+    Presence.track(self(), Presence.Relays.Global.topic(), relay.id, %{
+      online_at: System.system_time(:second),
+      secret: secret
+    })
+  end
 
-  # TODO: Move these to Presence module
-
-  defp presence_topic(relay_or_id),
-    do: "presences:#{relay_topic(relay_or_id)}"
-
-  defp account_or_global_presence_topic(%Relay{account_id: nil}),
-    do: global_groups_presence_topic()
-
-  defp account_or_global_presence_topic(%Relay{account_id: account_id}),
-    do: account_presence_topic(account_id)
-
-  def global_groups_presence_topic,
-    do: "presences:#{global_groups_topic()}"
-
-  def account_presence_topic(account_or_id),
-    do: "presences:#{account_topic(account_or_id)}"
-
-  defp group_presence_topic(group_or_id),
-    do: "presences:#{group_topic(group_or_id)}"
-
-  ### PubSub
-
-  # TODO: Move these to PubSub module
-
-  defp relay_topic(%Relay{} = relay), do: relay_topic(relay.id)
-  defp relay_topic(relay_id), do: "relays:#{relay_id}"
-
-  defp global_groups_topic, do: "global_relays"
-
-  defp account_topic(%Domain.Account{} = account), do: account_topic(account.id)
-  defp account_topic(account_id), do: "account_relays:#{account_id}"
-
-  defp group_topic(%RelayGroup{} = group), do: group_topic(group.id)
-  defp group_topic(group_id), do: "group_relays:#{group_id}"
+  defp track_relay_with_secret(%Relay{account_id: account_id} = relay, secret) do
+    Presence.track(self(), Presence.Relays.Account.topic(account_id), relay.id, %{
+      online_at: System.system_time(:second),
+      secret: secret
+    })
+  end
 
   def subscribe_to_relay_presence(relay_or_id) do
-    PubSub.subscribe(presence_topic(relay_or_id))
+    Presence.Relays.Relay.subscribe(get_relay_id(relay_or_id))
   end
 
   def unsubscribe_from_relay_presence(relay_or_id) do
-    PubSub.unsubscribe(presence_topic(relay_or_id))
+    Presence.Relays.Relay.unsubscribe(get_relay_id(relay_or_id))
   end
 
   def subscribe_to_relays_presence_in_account(account_or_id) do
-    PubSub.subscribe(global_groups_presence_topic())
-    PubSub.subscribe(account_presence_topic(account_or_id))
+    Presence.Relays.Global.subscribe()
+    Presence.Relays.Account.subscribe(get_account_id(account_or_id))
   end
 
   def unsubscribe_from_relays_presence_in_account(account_or_id) do
-    PubSub.unsubscribe(global_groups_presence_topic())
-    PubSub.unsubscribe(account_presence_topic(account_or_id))
+    Presence.Relays.Global.unsubscribe()
+    Presence.Relays.Account.unsubscribe(get_account_id(account_or_id))
   end
 
   def subscribe_to_relays_presence_in_group(group_or_id) do
-    group_or_id
-    |> group_presence_topic()
-    |> PubSub.subscribe()
+    Presence.Relays.Group.subscribe(get_group_id(group_or_id))
   end
 
   def unsubscribe_from_relays_presence_in_group(group_or_id) do
-    group_or_id
-    |> group_presence_topic()
-    |> PubSub.unsubscribe()
+    Presence.Relays.Group.unsubscribe(get_group_id(group_or_id))
   end
 
+  defp get_relay_id(%Relay{id: id}), do: id
+  defp get_relay_id(relay_id) when is_binary(relay_id), do: relay_id
+
+  defp get_account_id(%Domain.Account{id: id}), do: id
+  defp get_account_id(account_id) when is_binary(account_id), do: account_id
+
+  defp get_group_id(%RelayGroup{id: id}), do: id
+  defp get_group_id(group_id) when is_binary(group_id), do: group_id
+
   def broadcast_to_relay(relay_or_id, payload) do
-    relay_or_id
-    |> relay_topic()
-    |> PubSub.broadcast(payload)
+    Domain.PubSub.Relay.broadcast(get_relay_id(relay_or_id), payload)
   end
 
   defp broadcast_to_relays_in_account(account_or_id, payload) do
-    account_or_id
-    |> account_topic()
-    |> PubSub.broadcast(payload)
+    Domain.PubSub.RelayAccount.broadcast(get_account_id(account_or_id), payload)
   end
 
   defp broadcast_to_relays_in_group(group_or_id, payload) do
-    group_or_id
-    |> group_topic()
-    |> PubSub.broadcast(payload)
+    Domain.PubSub.RelayGroup.broadcast(get_group_id(group_or_id), payload)
   end
 
   def disconnect_relay(relay_or_id) do

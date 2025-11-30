@@ -13,7 +13,7 @@ defmodule Web.Relays.Show do
         |> List.first()
 
       if connected?(socket) do
-        :ok = Relays.subscribe_to_relays_presence_in_group(relay.group)
+        :ok = Domain.Presence.Relays.Group.subscribe(relay.group)
       end
 
       socket =

@@ -1,12 +1,12 @@
 defmodule Web.Clients.Index do
   use Web, :live_view
   import Web.Clients.Components
-  alias Domain.{Clients.Presence, ComponentVersions}
+  alias Domain.{Presence.Clients, ComponentVersions}
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = Presence.Account.subscribe(socket.assigns.subject.account.id)
+      :ok = Clients.Account.subscribe(socket.assigns.subject.account.id)
     end
 
     socket =
@@ -144,7 +144,7 @@ defmodule Web.Clients.Index do
   defmodule DB do
     import Ecto.Query
     import Domain.Repo.Query
-    alias Domain.{Clients.Presence, Safe}
+    alias Domain.{Presence.Clients, Safe}
     alias Domain.Client
 
     def list_clients(subject, opts \\ []) do
@@ -163,7 +163,7 @@ defmodule Web.Clients.Index do
     def preloads do
       [
         :actor,
-        online?: &Presence.preload_clients_presence/1
+        online?: &Clients.preload_clients_presence/1
       ]
     end
 

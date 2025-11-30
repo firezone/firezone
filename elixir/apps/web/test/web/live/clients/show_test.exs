@@ -118,7 +118,7 @@ defmodule Web.Live.Clients.ShowTest do
     client_token =
       Fixtures.Tokens.create_client_token(account: account, actor: actor, identity: identity)
 
-    :ok = Domain.Clients.Presence.connect(client, client_token.id)
+    :ok = Domain.Presence.Clients.connect(client, client_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -146,12 +146,12 @@ defmodule Web.Live.Clients.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients/#{client}")
 
-    :ok = Domain.Clients.Presence.Actor.subscribe(actor.id)
+    :ok = Domain.Presence.Clients.Actor.subscribe(actor.id)
 
     client_token =
       Fixtures.Tokens.create_client_token(account: account, actor: actor, identity: identity)
 
-    assert Domain.Clients.Presence.connect(client, client_token.id) == :ok
+    assert Domain.Presence.Clients.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
 
     wait_for(fn ->
@@ -348,7 +348,7 @@ defmodule Web.Live.Clients.ShowTest do
     client_token =
       Fixtures.Tokens.create_client_token(account: account, actor: actor, identity: identity)
 
-    :ok = Domain.Clients.Presence.connect(client, client_token.id)
+    :ok = Domain.Presence.Clients.connect(client, client_token.id)
 
     {:ok, lv, _html} =
       conn

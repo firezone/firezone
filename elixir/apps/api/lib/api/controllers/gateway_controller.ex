@@ -3,6 +3,7 @@ defmodule API.GatewayController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias __MODULE__.DB
+  alias Domain.Presence
 
   action_fallback API.FallbackController
 
@@ -66,7 +67,7 @@ defmodule API.GatewayController do
   # Show a specific Gateway
   def show(conn, %{"id" => id}) do
     with {:ok, gateway} <- DB.fetch_gateway_by_id(id, conn.assigns.subject) do
-      gateway = DB.preload_gateways_presence([gateway]) |> List.first()
+      gateway = Presence.Gateways.preload_gateways_presence([gateway]) |> List.first()
       render(conn, :show, gateway: gateway)
     end
   end
@@ -105,6 +106,7 @@ defmodule API.GatewayController do
     import Ecto.Query
     alias Domain.Safe
     alias Domain.Gateway
+    alias Domain.Presence
 
     def list_gateways(subject, opts \\ []) do
       from(g in Gateway, as: :gateways)
@@ -136,15 +138,11 @@ defmodule API.GatewayController do
     def delete_gateway(gateway, subject) do
       case Safe.scoped(gateway, subject) |> Safe.delete() do
         {:ok, deleted_gateway} ->
-          {:ok, preload_gateways_presence([deleted_gateway]) |> List.first()}
+          {:ok, Presence.Gateways.preload_gateways_presence([deleted_gateway]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}
       end
-    end
-
-    def preload_gateways_presence(gateways) do
-      Domain.Gateways.Presence.preload_gateways_presence(gateways)
     end
   end
 end

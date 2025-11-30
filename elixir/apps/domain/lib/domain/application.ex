@@ -28,9 +28,7 @@ defmodule Domain.Application do
       Domain.Cluster,
 
       # Application
-      Domain.Relays.Presence,
-      Domain.Gateways.Presence,
-      Domain.Clients.Presence,
+      Domain.Presence,
       Domain.Billing,
       Domain.Mailer,
       Domain.Mailer.RateLimiter,

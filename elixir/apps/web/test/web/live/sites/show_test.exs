@@ -141,7 +141,7 @@ defmodule Web.Live.Sites.ShowTest do
       conn: conn
     } do
       site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Gateways.Presence.connect(gateway, site_token.id)
+      :ok = Domain.Presence.Gateways.connect(gateway, site_token.id)
       Fixtures.Gateways.create_gateway(account: account, site: site)
 
       {:ok, lv, _html} =
@@ -178,9 +178,9 @@ defmodule Web.Live.Sites.ShowTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/sites/#{site}")
 
-      :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
       gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
+      :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{gateway.site.id}"}
 
       wait_for(fn ->
@@ -378,7 +378,7 @@ defmodule Web.Live.Sites.ShowTest do
       conn: conn
     } do
       site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Gateways.Presence.connect(gateway, site_token.id)
+      :ok = Domain.Presence.Gateways.connect(gateway, site_token.id)
       Fixtures.Gateways.create_gateway(account: account, site: site)
 
       {:ok, lv, _html} =
@@ -414,9 +414,9 @@ defmodule Web.Live.Sites.ShowTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/sites/#{site}")
 
-      :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
       site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Gateways.Presence.connect(gateway, site_token.id)
+      :ok = Domain.Presence.Gateways.connect(gateway, site_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{gateway.site.id}"}
 
       wait_for(fn ->
@@ -603,7 +603,7 @@ defmodule Web.Live.Sites.ShowTest do
       conn: conn
     } do
       site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
+      :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway(account: account, site: site)
 
       {:ok, lv, _html} =
@@ -639,9 +639,9 @@ defmodule Web.Live.Sites.ShowTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/sites/#{site}")
 
-      :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
       site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
+      :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{gateway.site.id}"}
 
       wait_for(fn ->

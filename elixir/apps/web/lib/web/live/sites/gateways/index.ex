@@ -5,7 +5,7 @@ defmodule Web.Sites.Gateways.Index do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, site} <- DB.fetch_site_by_id(id, socket.assigns.subject) do
       if connected?(socket) do
-        :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
+        :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
       end
 
       socket =
@@ -173,7 +173,7 @@ defmodule Web.Sites.Gateways.Index do
 
     def preloads do
       [
-        online?: &Domain.Gateways.Presence.preload_gateways_presence/1
+        online?: &Domain.Presence.Gateways.preload_gateways_presence/1
       ]
     end
 

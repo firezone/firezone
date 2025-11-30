@@ -89,9 +89,9 @@ defmodule Web.Live.Actors.ShowTest do
       |> live(~p"/#{account}/actors/#{actor}")
 
     Domain.Config.put_env_override(:test_pid, self())
-    :ok = Domain.Clients.Presence.Actor.subscribe(actor.id)
+    :ok = Domain.Presence.Clients.Actor.subscribe(actor.id)
     client_token = Fixtures.Tokens.create_client_token(account: account, actor: actor)
-    assert Domain.Clients.Presence.connect(client, client_token.id) == :ok
+    assert Domain.Presence.Clients.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
     assert_receive {:live_table_reloaded, "clients"}, 500
 

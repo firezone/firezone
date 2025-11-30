@@ -2,7 +2,7 @@ defmodule API.ClientController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Clients.Presence
+  alias Domain.Presence.Clients
   alias __MODULE__.DB
 
   action_fallback(API.FallbackController)
@@ -55,7 +55,7 @@ defmodule API.ClientController do
   # Show a specific Client
   def show(conn, %{"id" => id}) do
     with {:ok, client} <- DB.fetch_client_by_id(id, conn.assigns.subject) do
-      client = Presence.preload_clients_presence([client]) |> List.first()
+      client = Clients.preload_clients_presence([client]) |> List.first()
       render(conn, :show, client: client)
     end
   end
@@ -185,7 +185,7 @@ defmodule API.ClientController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Clients.Presence, Safe}
+    alias Domain.{Presence.Clients, Safe}
     alias Domain.Client
 
     def list_clients(subject, opts \\ []) do
@@ -218,7 +218,7 @@ defmodule API.ClientController do
     def update_client(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_client} ->
-          {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
+          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}
@@ -230,7 +230,7 @@ defmodule API.ClientController do
       if subject.actor.type == :account_admin_user do
         case Safe.scoped(changeset, subject) |> Safe.update() do
           {:ok, updated_client} ->
-            {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
+            {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
           {:error, reason} ->
             {:error, reason}
@@ -245,7 +245,7 @@ defmodule API.ClientController do
       if subject.actor.type == :account_admin_user do
         case Safe.scoped(changeset, subject) |> Safe.update() do
           {:ok, updated_client} ->
-            {:ok, Presence.preload_clients_presence([updated_client]) |> List.first()}
+            {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
           {:error, reason} ->
             {:error, reason}
@@ -258,7 +258,7 @@ defmodule API.ClientController do
     def delete_client(client, subject) do
       case Safe.scoped(client, subject) |> Safe.delete() do
         {:ok, deleted_client} ->
-          {:ok, Presence.preload_clients_presence([deleted_client]) |> List.first()}
+          {:ok, Clients.preload_clients_presence([deleted_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}

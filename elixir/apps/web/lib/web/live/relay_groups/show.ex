@@ -6,7 +6,7 @@ defmodule Web.RelayGroups.Show do
     with true <- Domain.Account.self_hosted_relays_enabled?(socket.assigns.account),
          {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject) do
       if connected?(socket) do
-        :ok = Relays.subscribe_to_relays_presence_in_group(group)
+        :ok = Domain.Presence.Relays.Group.subscribe(group)
       end
 
       socket =

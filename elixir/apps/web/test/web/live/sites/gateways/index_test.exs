@@ -97,8 +97,8 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{site}/gateways")
 
-    :ok = Domain.Gateways.Presence.Site.subscribe(site.id)
-    :ok = Domain.Gateways.Presence.connect(gateway, token.id)
+    :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
+    :ok = Domain.Presence.Gateways.connect(gateway, token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{site.id}"}
 
     wait_for(fn ->

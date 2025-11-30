@@ -7,14 +7,13 @@ defmodule API.Gateway.Channel do
     Cache,
     Changes.Change,
     Flows,
-    Gateways,
     Auth,
     PubSub,
     Relays,
-    Resource
+    Resource,
+    Presence
   }
 
-  alias Domain.Relays.Presence.Debouncer
   require Logger
 
   # The interval at which the flow cache is pruned.
@@ -41,14 +40,14 @@ defmodule API.Gateway.Channel do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
-    :ok = Gateways.Presence.connect(socket.assigns.gateway, socket.assigns.token_id)
+    :ok = Presence.Gateways.connect(socket.assigns.gateway, socket.assigns.token_id)
 
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.gateway.account_id)
 
     # Return all connected relays for the account
     {:ok, relays} = select_relays(socket)
-    :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+    :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe/1)
     :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
     account = DB.get_account_by_id!(socket.assigns.gateway.account_id)
@@ -56,7 +55,7 @@ defmodule API.Gateway.Channel do
     init(socket, account, relays)
 
     # Cache new stamp secrets
-    socket = Debouncer.cache_stamp_secrets(socket, relays)
+    socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
 
     {:noreply, socket}
   end
@@ -68,7 +67,14 @@ defmodule API.Gateway.Channel do
 
   # Called to actually push relays_presence with a disconnected relay to the gateway
   def handle_info({:push_leave, relay_id, stamp_secret, payload}, socket) do
-    {:noreply, Debouncer.handle_leave(socket, relay_id, stamp_secret, payload, &push/3)}
+    {:noreply,
+     Presence.Relays.Debouncer.handle_leave(
+       socket,
+       relay_id,
+       stamp_secret,
+       payload,
+       &push/3
+     )}
   end
 
   ####################################
@@ -105,7 +111,7 @@ defmodule API.Gateway.Channel do
         socket
       ) do
     if Map.has_key?(leaves, relay_id) do
-      :ok = Domain.Relays.unsubscribe_from_relay_presence(relay_id)
+      :ok = Presence.Relays.Relay.unsubscribe(relay_id)
 
       relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
       {:ok, relays} = select_relays(socket, [relay_id])
@@ -114,8 +120,8 @@ defmodule API.Gateway.Channel do
       :ok =
         Enum.each(relays, fn relay ->
           # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Domain.Relays.unsubscribe_from_relay_presence(relay)
-          :ok = Domain.Relays.subscribe_to_relay_presence(relay)
+          :ok = Presence.Relays.Relay.unsubscribe(relay)
+          :ok = Presence.Relays.Relay.subscribe(relay)
         end)
 
       payload = %{
@@ -128,7 +134,7 @@ defmodule API.Gateway.Channel do
           )
       }
 
-      socket = Debouncer.queue_leave(self(), socket, relay_id, payload)
+      socket = Presence.Relays.Debouncer.queue_leave(self(), socket, relay_id, payload)
 
       {:noreply, socket}
     else
@@ -150,24 +156,24 @@ defmodule API.Gateway.Channel do
     if length(relays) > 0 do
       relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
 
-      :ok =
-        Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.gateway.account_id)
+      :ok = Presence.Relays.Global.unsubscribe()
+      :ok = Presence.Relays.Account.unsubscribe(socket.assigns.gateway.account_id)
 
       :ok =
         Enum.each(relays, fn relay ->
           # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Relays.unsubscribe_from_relay_presence(relay)
-          :ok = Relays.subscribe_to_relay_presence(relay)
+          :ok = Presence.Relays.Relay.unsubscribe(relay)
+          :ok = Presence.Relays.Relay.subscribe(relay)
         end)
 
       # Cache new stamp secrets
-      socket = Debouncer.cache_stamp_secrets(socket, relays)
+      socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
 
       # If a relay reconnects with a different stamp_secret, disconnect them immediately
       joined_ids = Map.keys(joins)
 
       {socket, disconnected_ids} =
-        Debouncer.cancel_leaves_or_disconnect_immediately(
+        Presence.Relays.Debouncer.cancel_leaves_or_disconnect_immediately(
           socket,
           joined_ids,
           socket.assigns.gateway.account_id
@@ -535,7 +541,8 @@ defmodule API.Gateway.Channel do
     if length(relays) > 0 do
       :ok
     else
-      Relays.subscribe_to_relays_presence_in_account(socket.assigns.gateway.account_id)
+      :ok = Presence.Relays.Global.subscribe()
+      Presence.Relays.Account.subscribe(socket.assigns.gateway.account_id)
     end
   end
 
