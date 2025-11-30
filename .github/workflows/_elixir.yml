@@ -175,7 +175,6 @@ jobs:
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: ./.github/actions/setup-postgres
-      - uses: nanasess/setup-chromedriver@e93e57b843c0c92788f22483f1a31af8ee48db25 # v2.3.0
       - run: |
           export DISPLAY=:99
           chromedriver --url-base=/wd/hub &
