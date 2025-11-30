@@ -154,41 +154,29 @@ defmodule Domain.Fixtures.Relays do
     relay
   end
 
+  # Manually disconnects a relay for testing purposes.
+  # This simulates the relay socket closing without token deletion.
+  # Used to test relay presence debouncing in client/gateway channels.
   def disconnect_relay(relay) do
-    :ok = Domain.PubSub.Relay.broadcast(relay.id, "disconnect")
-
-    :ok = Domain.Presence.Relays.Relay.unsubscribe(relay.id)
-
+    # Untrack presence for the relay
     if relay.account_id do
-      :ok = Domain.Presence.Relays.Global.unsubscribe()
-      :ok = Domain.Presence.Relays.Account.unsubscribe(relay.account_id)
+      :ok =
+        Domain.Presence.untrack(self(), "presences:account_relays:#{relay.account_id}", relay.id)
+    else
+      :ok = Domain.Presence.untrack(self(), "presences:global_relays", relay.id)
     end
 
-    :ok = Domain.Presence.Relays.Group.unsubscribe(relay.group_id)
+    :ok = Domain.Presence.untrack(self(), "presences:group_relays:#{relay.group_id}", relay.id)
+    :ok = Domain.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
 
+    # Unsubscribe from PubSub topics that were subscribed in Presence.Relays.connect
     :ok = Domain.PubSub.unsubscribe("relays:#{relay.id}")
+    :ok = Domain.PubSub.unsubscribe("group_relays:#{relay.group_id}")
 
     if relay.account_id do
       :ok = Domain.PubSub.unsubscribe("account_relays:#{relay.account_id}")
     end
 
-    :ok = Domain.PubSub.unsubscribe("global_relays")
-    :ok = Domain.PubSub.unsubscribe("group_relays:#{relay.group_id}")
-
-    :ok = Domain.Presence.Relays.untrack(self(), "presences:global_relays", relay.id)
-
-    :ok =
-      Domain.Presence.Relays.untrack(self(), "presences:group_relays:#{relay.group_id}", relay.id)
-
-    if relay.account_id do
-      :ok =
-        Domain.Presence.Relays.untrack(
-          self(),
-          "presences:account_relays:#{relay.account_id}",
-          relay.id
-        )
-    end
-
-    :ok = Domain.Presence.Relays.untrack(self(), "presences:relays:#{relay.id}", relay.id)
+    :ok
   end
 end

@@ -1,13 +1,9 @@
 defmodule Domain.Relays do
   import Ecto.Changeset
-  alias Domain.{Repo, Auth, Geo, Safe, Presence}
+  alias Domain.{Repo, Auth, Geo, Safe}
   alias Domain.Tokens
   alias Domain.Relays.Relay
   alias Domain.RelayGroup
-
-  def send_metrics do
-    Presence.Relays.send_metrics()
-  end
 
   def fetch_group_by_id(id, %Auth.Subject{} = subject) do
     result =
@@ -143,46 +139,6 @@ defmodule Domain.Relays do
     |> Safe.list(Relay.Query, opts)
   end
 
-  @doc false
-  def preload_relays_presence(relays) do
-    Presence.Relays.preload_relays_presence(relays)
-  end
-
-  def all_connected_relays_for_account(account_id_or_account, except_ids \\ [])
-
-  def all_connected_relays_for_account(%Domain.Account{} = account, except_ids) do
-    all_connected_relays_for_account(account.id, except_ids)
-  end
-
-  def all_connected_relays_for_account(account_id, except_ids) do
-    connected_global_relays = Presence.Relays.Global.list()
-    connected_account_relays = Presence.Relays.Account.list(account_id)
-
-    connected_relays = Map.merge(connected_global_relays, connected_account_relays)
-    connected_relay_ids = Map.keys(connected_relays) -- except_ids
-
-    relays =
-      Relay.Query.all()
-      |> Relay.Query.by_ids(connected_relay_ids)
-      |> Relay.Query.global_or_by_account_id(account_id)
-      # |> Relay.Query.by_last_seen_at_greater_than(5, "second", :ago)
-      |> Relay.Query.prefer_global()
-      |> Safe.unscoped()
-      |> Safe.all()
-      |> Enum.map(fn relay ->
-        %{metas: metas} = Map.get(connected_relays, relay.id)
-
-        %{secret: stamp_secret} =
-          metas
-          |> Enum.sort_by(& &1.online_at, :desc)
-          |> List.first()
-
-        %{relay | stamp_secret: stamp_secret}
-      end)
-
-    {:ok, relays}
-  end
-
   # TODO: Relays
   # Revisit credential lifetime when https://github.com/firezone/firezone/issues/8222 is implemented
   def generate_username_and_password(%Relay{stamp_secret: stamp_secret}, public_key, expires_at)
@@ -247,102 +203,6 @@ defmodule Domain.Relays do
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.take(2)
     |> Enum.map(&Enum.random(elem(&1, 1)))
-  end
-
-  # TODO: WAL
-  # Refactor to use new conventions
-  def connect_relay(%Relay{} = relay, secret, token_id) do
-    with {:ok, _} <-
-           Presence.track(
-             self(),
-             Presence.Relays.Group.topic(relay.group_id),
-             relay.id,
-             %{
-               token_id: token_id
-             }
-           ),
-         {:ok, _} <-
-           track_relay_with_secret(relay, secret),
-         {:ok, _} <-
-           Presence.track(self(), "presences:relays:#{relay.id}", relay.id, %{}) do
-      :ok = Domain.PubSub.Relay.subscribe(relay.id)
-      :ok = Domain.PubSub.RelayGroup.subscribe(relay.group_id)
-      :ok = Domain.PubSub.RelayAccount.subscribe(relay.account_id)
-      :ok
-    end
-  end
-
-  defp track_relay_with_secret(%Relay{account_id: nil} = relay, secret) do
-    Presence.track(self(), Presence.Relays.Global.topic(), relay.id, %{
-      online_at: System.system_time(:second),
-      secret: secret
-    })
-  end
-
-  defp track_relay_with_secret(%Relay{account_id: account_id} = relay, secret) do
-    Presence.track(self(), Presence.Relays.Account.topic(account_id), relay.id, %{
-      online_at: System.system_time(:second),
-      secret: secret
-    })
-  end
-
-  def subscribe_to_relay_presence(relay_or_id) do
-    Presence.Relays.Relay.subscribe(get_relay_id(relay_or_id))
-  end
-
-  def unsubscribe_from_relay_presence(relay_or_id) do
-    Presence.Relays.Relay.unsubscribe(get_relay_id(relay_or_id))
-  end
-
-  def subscribe_to_relays_presence_in_account(account_or_id) do
-    Presence.Relays.Global.subscribe()
-    Presence.Relays.Account.subscribe(get_account_id(account_or_id))
-  end
-
-  def unsubscribe_from_relays_presence_in_account(account_or_id) do
-    Presence.Relays.Global.unsubscribe()
-    Presence.Relays.Account.unsubscribe(get_account_id(account_or_id))
-  end
-
-  def subscribe_to_relays_presence_in_group(group_or_id) do
-    Presence.Relays.Group.subscribe(get_group_id(group_or_id))
-  end
-
-  def unsubscribe_from_relays_presence_in_group(group_or_id) do
-    Presence.Relays.Group.unsubscribe(get_group_id(group_or_id))
-  end
-
-  defp get_relay_id(%Relay{id: id}), do: id
-  defp get_relay_id(relay_id) when is_binary(relay_id), do: relay_id
-
-  defp get_account_id(%Domain.Account{id: id}), do: id
-  defp get_account_id(account_id) when is_binary(account_id), do: account_id
-
-  defp get_group_id(%RelayGroup{id: id}), do: id
-  defp get_group_id(group_id) when is_binary(group_id), do: group_id
-
-  def broadcast_to_relay(relay_or_id, payload) do
-    Domain.PubSub.Relay.broadcast(get_relay_id(relay_or_id), payload)
-  end
-
-  defp broadcast_to_relays_in_account(account_or_id, payload) do
-    Domain.PubSub.RelayAccount.broadcast(get_account_id(account_or_id), payload)
-  end
-
-  defp broadcast_to_relays_in_group(group_or_id, payload) do
-    Domain.PubSub.RelayGroup.broadcast(get_group_id(group_or_id), payload)
-  end
-
-  def disconnect_relay(relay_or_id) do
-    broadcast_to_relay(relay_or_id, "disconnect")
-  end
-
-  def disconnect_relays_in_group(group_or_id) do
-    broadcast_to_relays_in_group(group_or_id, "disconnect")
-  end
-
-  def disconnect_relays_in_account(account_or_id) do
-    broadcast_to_relays_in_account(account_or_id, "disconnect")
   end
 
   defmodule DB do

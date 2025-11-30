@@ -1,6 +1,6 @@
 defmodule Web.Relays.Show do
   use Web, :live_view
-  alias Domain.{Relays}
+  alias Domain.{Relays, Presence}
 
   def mount(%{"id" => id}, _session, socket) do
     with true <- Domain.Account.self_hosted_relays_enabled?(socket.assigns.account),
@@ -9,7 +9,7 @@ defmodule Web.Relays.Show do
         relay
         |> Domain.Repo.preload(:group)
         |> List.wrap()
-        |> Relays.preload_relays_presence()
+        |> Presence.Relays.preload_relays_presence()
         |> List.first()
 
       if connected?(socket) do

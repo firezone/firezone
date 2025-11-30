@@ -69,7 +69,7 @@ defmodule Domain.Relays.Relay.Query do
   @impl Domain.Repo.Query
   def preloads,
     do: [
-      online?: &Domain.Relays.preload_relays_presence/1
+      online?: &Domain.Presence.Relays.preload_relays_presence/1
     ]
 
   @impl Domain.Repo.Query

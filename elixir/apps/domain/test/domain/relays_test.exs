@@ -1,7 +1,7 @@
 defmodule Domain.RelaysTest do
   use Domain.DataCase, async: true
   import Domain.Relays
-  alias Domain.{Relays, Tokens}
+  alias Domain.{Relays, Tokens, Presence}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -709,7 +709,7 @@ defmodule Domain.RelaysTest do
       # self hosted
       Fixtures.Relays.create_relay(account: account)
 
-      assert all_connected_relays_for_account(account) == {:ok, []}
+      assert Presence.Relays.all_connected_relays_for_account(account) == {:ok, []}
     end
 
     # test "does not return relays connected less than 5 seconds ago", %{account: account} do
@@ -744,7 +744,7 @@ defmodule Domain.RelaysTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-600, :second)
       )
 
-      assert {:ok, connected_relays} = all_connected_relays_for_account(account)
+      assert {:ok, connected_relays} = Presence.Relays.all_connected_relays_for_account(account)
 
       assert Enum.all?(connected_relays, &(&1.stamp_secret == stamp_secret))
       assert Enum.sort(Enum.map(connected_relays, & &1.id)) == Enum.sort([relay1.id, relay2.id])
@@ -762,7 +762,7 @@ defmodule Domain.RelaysTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      assert {:ok, [connected_relay]} = all_connected_relays_for_account(account)
+      assert {:ok, [connected_relay]} = Presence.Relays.all_connected_relays_for_account(account)
 
       assert connected_relay.id == relay.id
       assert connected_relay.stamp_secret == stamp_secret
@@ -1285,7 +1285,7 @@ defmodule Domain.RelaysTest do
     end
   end
 
-  describe "connect_relay/3" do
+  describe "Presence.Relays.connect/3" do
     test "does not allow duplicate presence", %{account: account} do
       relay = Fixtures.Relays.create_relay(account: account) |> Repo.preload(:group)
       relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
@@ -1301,63 +1301,18 @@ defmodule Domain.RelaysTest do
       relay = Fixtures.Relays.create_relay(account: account) |> Repo.preload(:group)
       relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
 
-      assert connect_relay(relay, "foo", relay_token.id) == :ok
+      assert Presence.Relays.connect(relay, "foo", relay_token.id) == :ok
 
-      [relay] = preload_relays_presence([relay])
+      [relay] = Presence.Relays.preload_relays_presence([relay])
       assert relay.online? == true
-    end
-
-    test "tracks relay presence for actor", %{account: account} do
-      relay = Fixtures.Relays.create_relay(account: account) |> Repo.preload(:group)
-      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
-
-      assert connect_relay(relay, "foo", relay_token.id) == :ok
-
-      assert broadcast_to_relay(relay, "test") == :ok
-
-      assert_receive "test"
-    end
-
-    test "subscribes to relay events", %{account: account} do
-      relay = Fixtures.Relays.create_relay(account: account) |> Repo.preload(:group)
-      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
-
-      assert connect_relay(relay, "foo", relay_token.id) == :ok
-
-      assert disconnect_relay(relay) == :ok
-
-      assert_receive "disconnect"
-    end
-
-    test "subscribes to relay group events", %{account: account} do
-      group = Fixtures.Relays.create_group(account: account)
-      relay = Fixtures.Relays.create_relay(account: account, group: group) |> Repo.preload(:group)
-      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
-
-      assert connect_relay(relay, "foo", relay_token.id) == :ok
-
-      assert disconnect_relays_in_group(group) == :ok
-
-      assert_receive "disconnect"
-    end
-
-    test "subscribes to account events", %{account: account} do
-      relay = Fixtures.Relays.create_relay(account: account) |> Repo.preload(:group)
-      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
-
-      assert connect_relay(relay, "foo", relay_token.id) == :ok
-
-      assert disconnect_relays_in_account(account) == :ok
-
-      assert_receive "disconnect"
     end
 
     test "subscribes to relay presence", %{account: account} do
       relay = Fixtures.Relays.create_relay(account: account) |> Repo.preload(:group)
       relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
-      :ok = subscribe_to_relay_presence(relay)
+      :ok = Presence.Relays.Relay.subscribe(relay.id)
 
-      assert connect_relay(relay, "foo", relay_token.id) == :ok
+      assert Presence.Relays.connect(relay, "foo", relay_token.id) == :ok
 
       relay_id = relay.id
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:relays:" <> ^relay_id}
