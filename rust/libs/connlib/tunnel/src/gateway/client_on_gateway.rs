@@ -1238,9 +1238,9 @@ mod tests {
         let error = error.any_downcast_ref::<UnroutablePacket>().unwrap();
 
         assert_eq!(error.to_string(), "Unroutable packet: OutboundIcmpError");
-        assert_eq!(error.source().to_string(), "unknown");
-        assert_eq!(error.destination().to_string(), "unknown");
-        assert_eq!(error.proto().to_string(), "unknown");
+        assert_eq!(error.source().to_string(), "100.64.0.1");
+        assert_eq!(error.destination().to_string(), "100.96.0.1");
+        assert_eq!(error.proto().to_string(), "ICMP");
     }
 
     fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {

@@ -2,9 +2,5 @@ REST API Beta Request
 
 Request details:
 ----------------
-Account ID:   <%= @account.id %>
-Account Slug: <%= @account.slug %>
-Account Name: <%= @account.name %>
-Actor ID:     <%= @subject.actor.id %>
-Actor Name:   <%= @subject.actor.name %>
-Actor Email:   <%= @subject.identity.actor.email %>
+Account ID: <%= @account.id %>
+Actor ID:   <%= @subject.actor.id %>

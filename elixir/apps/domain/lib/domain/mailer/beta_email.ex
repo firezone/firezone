@@ -10,12 +10,8 @@ defmodule Domain.Mailer.BetaEmail do
         %Domain.Auth.Subject{} = subject
       ) do
     default_email()
-    |> subject("REST API Beta Request - #{account.slug}")
+    |> subject("REST API Beta Request - #{account.id}")
     |> to("support@firezone.dev")
-    |> reply_to(subject.actor.email)
-    |> render_text_body(__MODULE__, :rest_api_request,
-      account: account,
-      subject: subject
-    )
+    |> render_text_body(__MODULE__, :rest_api_request, account: account, subject: subject)
   end
 end
