@@ -624,7 +624,7 @@ defmodule Domain.Repo.Seeds do
 
         {_, inserted_groups} =
           Repo.insert_all(
-            Domain.Actors.Group,
+            Domain.ActorGroup,
             group_attrs,
             returning: [:id]
           )
@@ -696,7 +696,7 @@ defmodule Domain.Repo.Seeds do
     ]
 
     {3, group_results} =
-      Repo.insert_all(Domain.Actors.Group, group_values, returning: [:id, :name])
+      Repo.insert_all(Domain.ActorGroup, group_values, returning: [:id, :name])
 
     for group <- group_results do
       IO.puts("  Name: #{group.name}  ID: #{group.id}")
@@ -705,9 +705,9 @@ defmodule Domain.Repo.Seeds do
     # Reload as structs for further use
     [eng_group_id, finance_group_id, synced_group_id] = Enum.map(group_results, & &1.id)
 
-    eng_group = Repo.get!(Domain.Actors.Group, eng_group_id)
-    finance_group = Repo.get!(Domain.Actors.Group, finance_group_id)
-    synced_group = Repo.get!(Domain.Actors.Group, synced_group_id)
+    eng_group = Repo.get!(Domain.ActorGroup, eng_group_id)
+    finance_group = Repo.get!(Domain.ActorGroup, finance_group_id)
+    synced_group = Repo.get!(Domain.ActorGroup, synced_group_id)
 
     eng_group
     |> Repo.preload(:memberships)
@@ -759,10 +759,10 @@ defmodule Domain.Repo.Seeds do
       end)
 
     {_count, extra_group_results} =
-      Repo.insert_all(Domain.Actors.Group, extra_group_values, returning: [:id])
+      Repo.insert_all(Domain.ActorGroup, extra_group_values, returning: [:id])
 
     for %{id: group_id} <- extra_group_results do
-      group = Repo.get!(Domain.Actors.Group, group_id)
+      group = Repo.get!(Domain.ActorGroup, group_id)
 
       group
       |> Repo.preload(:memberships)

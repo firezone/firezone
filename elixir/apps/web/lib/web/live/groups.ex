@@ -3,10 +3,6 @@ defmodule Web.Groups do
 
   alias __MODULE__.DB
 
-  alias Domain.{
-    Actors
-  }
-
   import Ecto.Changeset
 
   def mount(_params, _session, socket) do
@@ -28,7 +24,7 @@ defmodule Web.Groups do
 
   # Add Group Modal
   def handle_params(params, uri, %{assigns: %{live_action: :add}} = socket) do
-    changeset = changeset(%Actors.Group{}, %{})
+    changeset = changeset(%Domain.ActorGroup{}, %{})
     socket = handle_live_tables_params(socket, params, uri)
 
     {:noreply,
@@ -88,7 +84,7 @@ defmodule Web.Groups do
   end
 
   def handle_event("validate", %{"group" => attrs}, socket) do
-    group = Map.get(socket.assigns, :group, %Actors.Group{})
+    group = Map.get(socket.assigns, :group, %Domain.ActorGroup{})
     changeset = changeset(group, attrs)
 
     # Only search if member_search value has changed
@@ -126,7 +122,7 @@ defmodule Web.Groups do
         {uniq_by_id([actor | socket.assigns.members_to_add]), []}
       end
 
-    group = Map.get(socket.assigns, :group, %Actors.Group{})
+    group = Map.get(socket.assigns, :group, %Domain.ActorGroup{})
     updated_params = Map.put(socket.assigns.form.params, "member_search", "")
     changeset = changeset(group, updated_params)
 
@@ -178,7 +174,7 @@ defmodule Web.Groups do
 
   def handle_event("create", %{"group" => attrs}, socket) do
     attrs = build_attrs_with_memberships_for_add(attrs, socket)
-    group = %Actors.Group{account_id: socket.assigns.subject.account.id}
+    group = %Domain.ActorGroup{account_id: socket.assigns.subject.account.id}
     changeset = changeset(group, attrs)
 
     case DB.create(changeset, socket.assigns.subject) do
@@ -868,12 +864,12 @@ defmodule Web.Groups do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Actors, Safe}
+    alias Domain.Safe
     alias Domain.Directory
     alias Domain.Repo.Filter
 
     def all do
-      from(groups in Actors.Group, as: :groups)
+      from(groups in Domain.ActorGroup, as: :groups)
     end
 
     # Inlined from Domain.Actors.list_groups
@@ -891,7 +887,7 @@ defmodule Web.Groups do
         )
 
       query =
-        from(g in Actors.Group, as: :groups)
+        from(g in Domain.ActorGroup, as: :groups)
         |> join(:left, [groups: g], mc in subquery(member_counts_query),
           on: mc.group_id == g.id,
           as: :member_counts
@@ -1020,7 +1016,7 @@ defmodule Web.Groups do
     end
 
     def get_group!(id, subject) do
-      from(g in Actors.Group, as: :groups)
+      from(g in Domain.ActorGroup, as: :groups)
       |> join(:left, [groups: g], d in Directory,
         on: d.id == g.directory_id,
         as: :directory
@@ -1060,7 +1056,7 @@ defmodule Web.Groups do
 
     def get_group_with_actors!(id, subject) do
       query =
-        from(g in Actors.Group, as: :groups)
+        from(g in Domain.ActorGroup, as: :groups)
         |> where([groups: groups], groups.id == ^id)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
         |> select_merge([groups: g, directory: d], %{

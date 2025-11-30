@@ -820,7 +820,7 @@ defmodule Web.Policies.Components do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Actors}
+    alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
 
     def all_active_providers_for_account(account, subject) do
       # Query all auth provider types that are not disabled
@@ -866,7 +866,7 @@ defmodule Web.Policies.Components do
     # Inlined from Web.Groups.Components
     def fetch_group_option(id, subject) do
       group =
-        from(g in Actors.Group, as: :groups)
+        from(g in Domain.ActorGroup, as: :groups)
         |> where([groups: g], g.id == ^id)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
         |> join(:left, [directory: d], gd in Domain.Google.Directory,
@@ -902,7 +902,7 @@ defmodule Web.Policies.Components do
 
     def list_group_options(search_query_or_nil, subject) do
       query =
-        from(g in Actors.Group, as: :groups)
+        from(g in Domain.ActorGroup, as: :groups)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
         |> join(:left, [directory: d], gd in Domain.Google.Directory,
           on: gd.id == d.id and d.type == :google,

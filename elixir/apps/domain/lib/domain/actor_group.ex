@@ -1,4 +1,4 @@
-defmodule Domain.Actors.Group do
+defmodule Domain.ActorGroup do
   use Domain, :schema
 
   schema "actor_groups" do
@@ -12,7 +12,7 @@ defmodule Domain.Actors.Group do
 
     has_many :policies, Domain.Policies.Policy, foreign_key: :actor_group_id
 
-    has_many :memberships, Domain.Membership, on_replace: :delete
+    has_many :memberships, Domain.Membership, foreign_key: :group_id, on_replace: :delete
     field :member_count, :integer, virtual: true
     field :count, :integer, virtual: true
     field :directory_name, :string, virtual: true
@@ -26,6 +26,8 @@ defmodule Domain.Actors.Group do
   end
 
   def changeset(changeset) do
+    import Ecto.Changeset
+
     changeset
     |> validate_required(~w[name type]a)
     |> trim_change(~w[name idp_id]a)

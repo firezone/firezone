@@ -254,7 +254,7 @@ defmodule Web.Resources.Index do
         |> limit(^limit)
 
       actor_groups_subquery =
-        Domain.Actors.Group.Query.all()
+        from(g in Domain.ActorGroup, as: :groups)
         |> where([groups: groups], groups.id in subquery(policies_subquery))
 
       join(

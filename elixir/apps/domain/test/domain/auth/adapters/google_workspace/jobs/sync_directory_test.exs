@@ -637,13 +637,13 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok
 
-      assert updated_group = Repo.get(Domain.Actors.Group, group.id)
+      assert updated_group = Repo.get(Domain.ActorGroup, group.id)
       assert updated_group.name == "Group:Infrastructure"
 
-      assert updated_org_unit = Repo.get(Domain.Actors.Group, org_unit.id)
+      assert updated_org_unit = Repo.get(Domain.ActorGroup, org_unit.id)
       assert updated_org_unit.name == "OrgUnit:Engineering"
 
-      assert created_group = Repo.get_by(Domain.Actors.Group, provider_identifier: "G:GROUP_ID2")
+      assert created_group = Repo.get_by(Domain.ActorGroup, provider_identifier: "G:GROUP_ID2")
       assert created_group.name == "Group:Devs"
 
       assert memberships = Repo.all(Domain.Membership.Query.all())

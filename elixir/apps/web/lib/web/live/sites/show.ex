@@ -601,7 +601,7 @@ defmodule Web.Sites.Show do
 
       groups_by_resource =
         from(p in Domain.Policies.Policy, as: :policies)
-        |> join(:inner, [policies: p], g in Domain.Actors.Group,
+        |> join(:inner, [policies: p], g in Domain.ActorGroup,
           on: g.id == p.actor_group_id,
           as: :groups
         )

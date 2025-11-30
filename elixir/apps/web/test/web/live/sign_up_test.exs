@@ -52,7 +52,7 @@ defmodule Web.Live.SignUpTest do
     assert account.metadata.stripe.customer_id
     assert account.metadata.stripe.billing_email == email
 
-    group = Repo.one(Domain.Actors.Group)
+    group = Repo.one(Domain.ActorGroup)
     assert group.account_id == account.id
     assert group.name == "Everyone"
     assert group.type == :managed

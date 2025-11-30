@@ -1,6 +1,6 @@
 defmodule API.ActorGroupControllerTest do
   use API.ConnCase, async: true
-  alias Domain.Actors.Group
+  alias Domain.ActorGroup
 
   setup do
     account = Fixtures.Accounts.create_account()

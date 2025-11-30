@@ -305,6 +305,6 @@ defmodule Web.Live.Groups.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/groups")
 
-    refute Repo.get(Domain.Actors.Group, group.id)
+    refute Repo.get(Domain.ActorGroup, group.id)
   end
 end

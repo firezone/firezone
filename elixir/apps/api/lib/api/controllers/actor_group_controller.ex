@@ -2,7 +2,7 @@ defmodule API.ActorGroupController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Actors
+  alias Domain.ActorGroup
   alias __MODULE__.DB
   import Ecto.Changeset
 
@@ -77,7 +77,7 @@ defmodule API.ActorGroupController do
   end
 
   defp create_group_changeset(account, attrs) do
-    %Actors.Group{account_id: account.id}
+    %ActorGroup{account_id: account.id}
     |> cast(attrs, [:name, :type, :description])
     |> validate_required([:name, :type])
   end
@@ -114,11 +114,11 @@ defmodule API.ActorGroupController do
     {:error, :bad_request}
   end
 
-  defp update_group_changeset(%Actors.Group{type: :managed}, _attrs) do
+  defp update_group_changeset(%ActorGroup{type: :managed}, _attrs) do
     {:error, :managed_group}
   end
 
-  defp update_group_changeset(%Actors.Group{directory: "firezone"} = group, attrs) do
+  defp update_group_changeset(%ActorGroup{directory: "firezone"} = group, attrs) do
     changeset =
       group
       |> cast(attrs, [:name, :description])
@@ -127,7 +127,7 @@ defmodule API.ActorGroupController do
     {:changeset, changeset}
   end
 
-  defp update_group_changeset(%Actors.Group{}, _attrs) do
+  defp update_group_changeset(%ActorGroup{}, _attrs) do
     {:error, :synced_group}
   end
 
@@ -157,10 +157,10 @@ defmodule API.ActorGroupController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Actors, Safe}
+    alias Domain.{ActorGroup, Safe}
 
     def list_groups(subject, opts \\ []) do
-      from(g in Actors.Group, as: :groups)
+      from(g in ActorGroup, as: :groups)
       |> where(
         [groups: g],
         not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
@@ -170,7 +170,7 @@ defmodule API.ActorGroupController do
     end
 
     def fetch_group(subject, id) do
-      from(g in Actors.Group,
+      from(g in ActorGroup,
         where: g.id == ^id,
         where: not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
       )
@@ -190,7 +190,7 @@ defmodule API.ActorGroupController do
       |> Safe.update()
     end
 
-    def delete_group(%Actors.Group{} = group, subject) do
+    def delete_group(%ActorGroup{} = group, subject) do
       group
       |> Safe.scoped(subject)
       |> Safe.delete()

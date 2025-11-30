@@ -459,7 +459,7 @@ defmodule Domain.Billing.EventHandler do
   defp create_everyone_group_changeset(account) do
     import Ecto.Changeset
     attrs = %{account_id: account.id, name: "Everyone", type: :managed}
-    cast(%Domain.Actors.Group{}, attrs, ~w[account_id name type]a)
+    cast(%Domain.ActorGroup{}, attrs, ~w[account_id name type]a)
   end
 
   defp create_admin_changeset(account, email, name) do

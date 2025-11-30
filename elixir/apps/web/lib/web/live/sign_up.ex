@@ -1,13 +1,13 @@
 defmodule Web.SignUp do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-  alias Domain.{Accounts, Actor, Actors, Config}
+  alias Domain.{Accounts, Actor, Config}
   alias Web.Registration
   alias __MODULE__.DB
 
   defmodule Registration do
     use Domain, :schema
 
-    alias Domain.{Accounts, Actors}
+    alias Domain.Accounts
 
     @primary_key false
 
@@ -394,7 +394,7 @@ defmodule Web.SignUp do
   defp create_everyone_group_changeset(account) do
     import Ecto.Changeset
 
-    %Actors.Group{}
+    %Domain.ActorGroup{}
     |> cast(%{name: "Everyone"}, [:name])
     |> put_change(:account_id, account.id)
     |> put_change(:type, :managed)

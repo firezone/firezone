@@ -2,7 +2,6 @@ defmodule API.ActorGroupMembershipController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Actors
   alias __MODULE__.DB
   import Ecto.Changeset
 
@@ -147,16 +146,16 @@ defmodule API.ActorGroupMembershipController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Actors, Safe}
+    alias Domain.Safe
 
     def list_actors(subject, opts) do
       from(a in Domain.Actor, as: :actors)
       |> Safe.scoped(subject)
-      |> Safe.list(Actor.Query, opts)
+      |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_group_by_id(id, subject) do
-      from(g in Actors.Group, where: g.id == ^id)
+      from(g in Domain.ActorGroup, where: g.id == ^id)
       |> preload(:memberships)
       |> Safe.scoped(subject)
       |> Safe.one()
@@ -170,6 +169,13 @@ defmodule API.ActorGroupMembershipController do
       changeset
       |> Safe.scoped(subject)
       |> Safe.update()
+    end
+
+    def cursor_fields do
+      [
+        {:actors, :asc, :inserted_at},
+        {:actors, :asc, :id}
+      ]
     end
   end
 end

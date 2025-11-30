@@ -576,7 +576,7 @@ defmodule Domain.Google.Sync do
 
       {count, _} =
         Safe.unscoped()
-        |> Safe.insert_all(Domain.Actors.Group, values,
+        |> Safe.insert_all(Domain.ActorGroup, values,
           on_conflict: [
             set: [
               name:
@@ -674,7 +674,7 @@ defmodule Domain.Google.Sync do
 
     def delete_unsynced_groups(account_id, directory_id, synced_at) do
       query =
-        from(g in Domain.Actors.Group,
+        from(g in Domain.ActorGroup,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,
           where: g.last_synced_at < ^synced_at or is_nil(g.last_synced_at)
@@ -698,7 +698,7 @@ defmodule Domain.Google.Sync do
       # Delete memberships for groups in this directory that haven't been synced
       query =
         from(m in Domain.Membership,
-          join: g in Domain.Actors.Group,
+          join: g in Domain.ActorGroup,
           on: m.group_id == g.id,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,

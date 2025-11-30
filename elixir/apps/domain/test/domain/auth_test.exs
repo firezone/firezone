@@ -1200,7 +1200,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _provider} = delete_provider(provider, subject)
 
-      refute Repo.get(Domain.Actors.Group, actor_group.id)
+      refute Repo.get(Domain.ActorGroup, actor_group.id)
     end
 
     test "returns error when trying to delete the last provider", %{

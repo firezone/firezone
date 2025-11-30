@@ -795,8 +795,8 @@ defmodule Domain.ActorsTest do
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in delete))
       assert Repo.aggregate(Actors.Group, :count) == 3
-      refute Repo.get(Domain.Actors.Group, group1.id)
-      refute Repo.get(Domain.Actors.Group, group2.id)
+      refute Repo.get(Domain.ActorGroup, group1.id)
+      refute Repo.get(Domain.ActorGroup, group2.id)
 
       assert Map.keys(group_ids_by_provider_identifier) |> length() == 3
     end
@@ -1884,7 +1884,7 @@ defmodule Domain.ActorsTest do
       group = Fixtures.Actors.create_group(account: account)
 
       assert {:ok, _deleted} = delete_group(group, subject)
-      refute Repo.get(Domain.Actors.Group, group.id)
+      refute Repo.get(Domain.ActorGroup, group.id)
     end
 
     test "deletes group memberships", %{account: account, subject: subject} do
