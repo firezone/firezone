@@ -18,6 +18,11 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: :internet,
       # TODO: conditionally rename to sites based on client version
+      # apple: >= 1.5.11
+      # headless: >= 1.5.6
+      # android: >= 1.5.8
+      # gui: >= 1.5.10
+      # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
       gateway_groups: Views.Site.render_many(resource.sites),
       can_be_disabled: true
     }
@@ -35,6 +40,11 @@ defmodule API.Client.Views.Resource do
       address_description: resource.address_description,
       name: resource.name,
       # TODO: conditionally rename to sites based on client version
+      # apple: >= 1.5.11
+      # headless: >= 1.5.6
+      # android: >= 1.5.8
+      # gui: >= 1.5.10
+      # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
       gateway_groups: Views.Site.render_many(resource.sites),
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
@@ -48,6 +58,11 @@ defmodule API.Client.Views.Resource do
       address_description: resource.address_description,
       name: resource.name,
       # TODO: conditionally rename to sites based on client version
+      # apple: >= 1.5.11
+      # headless: >= 1.5.6
+      # android: >= 1.5.8
+      # gui: >= 1.5.10
+      # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
       gateway_groups: Views.Site.render_many(resource.sites),
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }

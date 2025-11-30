@@ -307,6 +307,11 @@ defmodule API.Client.Channel do
       preshared_key: preshared_key,
       client_ice_credentials: ice_credentials.client,
       # TODO: conditionally rename to site_id based on client version
+      # apple: >= 1.5.11
+      # headless: >= 1.5.6
+      # android: >= 1.5.8
+      # gui: >= 1.5.10
+      # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
       gateway_group_id: site_id,
       gateway_id: gateway_id,
       gateway_public_key: gateway_public_key,
