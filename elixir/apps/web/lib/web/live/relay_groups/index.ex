@@ -1,6 +1,7 @@
 defmodule Web.RelayGroups.Index do
   use Web, :live_view
   alias Domain.{Relays}
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     if Domain.Account.self_hosted_relays_enabled?(socket.assigns.account) do
@@ -12,7 +13,7 @@ defmodule Web.RelayGroups.Index do
         socket
         |> assign(page_title: "Relays")
         |> assign_live_table("groups",
-          query_module: Relays.Group.Query,
+          query_module: DB,
           sortable_fields: [],
           callback: &handle_groups_update!/2
         )
@@ -134,4 +135,27 @@ defmodule Web.RelayGroups.Index do
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
     do: handle_live_table_event(event, params, socket)
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.RelayGroup
+
+    def all do
+      from(groups in RelayGroup, as: :groups)
+    end
+
+    # Pagination - implementing Query behavior
+    def cursor_fields,
+      do: [
+        {:groups, :asc, :inserted_at},
+        {:groups, :asc, :id}
+      ]
+
+    def preloads,
+      do: [
+        relays: Domain.Relays.Relay.Query.preloads()
+      ]
+
+    def filters, do: []
+  end
 end

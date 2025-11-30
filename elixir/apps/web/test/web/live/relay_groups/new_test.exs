@@ -119,7 +119,7 @@ defmodule Web.Live.RelayGroups.NewTest do
     |> form("form", group: attrs)
     |> render_submit()
 
-    group = Repo.get_by(Domain.Relays.Group, name: attrs.name)
+    group = Repo.get_by(Domain.RelayGroup, name: attrs.name)
 
     assert assert_redirect(lv, ~p"/#{account}/relay_groups/#{group}")
   end

@@ -136,7 +136,7 @@ defmodule Domain.RelaysTest do
 
   describe "new_group/1" do
     test "returns group changeset" do
-      assert %Ecto.Changeset{data: %Relays.Group{}, changes: changes} = new_group()
+      assert %Ecto.Changeset{data: %Domain.RelayGroup{}, changes: changes} = new_group()
       assert Map.has_key?(changes, :name)
       assert Enum.count(changes) == 1
     end
@@ -345,7 +345,7 @@ defmodule Domain.RelaysTest do
       group = Fixtures.Relays.create_group(account: account)
 
       assert {:ok, _group} = delete_group(group, subject)
-      refute Repo.get(Relays.Group, group.id)
+      refute Repo.get(Domain.RelayGroup, group.id)
     end
 
     test "does not allow deleting global group", %{subject: subject} do
@@ -359,7 +359,7 @@ defmodule Domain.RelaysTest do
       Fixtures.Relays.create_token(account: account, group: [account: account])
 
       assert {:ok, _group} = delete_group(group, subject)
-      refute Repo.get(Relays.Group, group.id)
+      refute Repo.get(Domain.RelayGroup, group.id)
 
       tokens =
         Domain.Tokens.Token.Query.all()

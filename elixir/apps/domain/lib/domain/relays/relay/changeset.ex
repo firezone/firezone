@@ -31,7 +31,7 @@ defmodule Domain.Relays.Relay.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert(%Relays.Group{} = group, attrs, %Auth.Context{} = context) do
+  def upsert(%Domain.RelayGroup{} = group, attrs, %Auth.Context{} = context) do
     %Relays.Relay{}
     |> cast(attrs, @upsert_fields)
     |> validate_required_one_of(~w[ipv4 ipv6]a)

@@ -205,7 +205,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/relay_groups")
 
-    refute Repo.get(Domain.Relays.Group, group.id)
+    refute Repo.get(Domain.RelayGroup, group.id)
   end
 
   test "allows revoking all tokens", %{

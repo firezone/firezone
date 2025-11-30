@@ -835,8 +835,9 @@ defmodule Domain.Repo.Seeds do
     IO.puts("")
 
     relay_group =
-      account
-      |> Relays.Group.Changeset.create(%{name: "mycorp-aws-relays"}, admin_subject)
+      %Domain.RelayGroup{account: account}
+      |> Ecto.Changeset.cast(%{name: "mycorp-aws-relays"}, ~w[name]a)
+      |> put_change(:account_id, account.id)
       |> Repo.insert!()
 
     {:ok, relay_group_token} =

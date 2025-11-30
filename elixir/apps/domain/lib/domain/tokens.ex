@@ -1,6 +1,6 @@
 defmodule Domain.Tokens do
   alias Domain.Repo
-  alias Domain.{Auth, Relays, Safe}
+  alias Domain.{Auth, Safe}
   alias Domain.Tokens.Token
   require Ecto.Query
   require Logger
@@ -188,7 +188,7 @@ defmodule Domain.Tokens do
     end
   end
 
-  def delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
+  def delete_tokens_for(%Domain.RelayGroup{} = group, %Auth.Subject{} = subject) do
     case subject.actor.type do
       :account_admin_user ->
         queryable =

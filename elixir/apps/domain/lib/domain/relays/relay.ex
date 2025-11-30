@@ -23,7 +23,7 @@ defmodule Domain.Relays.Relay do
     field :online?, :boolean, virtual: true
 
     belongs_to :account, Domain.Account
-    belongs_to :group, Domain.Relays.Group
+    belongs_to :group, Domain.RelayGroup
 
     timestamps()
   end

@@ -20,7 +20,7 @@ defmodule Domain.Tokens.Token do
     # set for browser and client tokens
     belongs_to :actor, Domain.Actor
     # set for relay tokens
-    belongs_to :relay_group, Domain.Relays.Group
+    belongs_to :relay_group, Domain.RelayGroup
     # set for gateway tokens
     belongs_to :site, Domain.Site
 

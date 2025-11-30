@@ -151,7 +151,7 @@ defmodule Web.Live.RelayGroups.EditTest do
 
     assert_redirected(lv, ~p"/#{account}/relay_groups/#{group}")
 
-    assert group = Repo.get_by(Domain.Relays.Group, id: group.id)
+    assert group = Repo.get_by(Domain.RelayGroup, id: group.id)
     assert group.name == attrs.name
   end
 

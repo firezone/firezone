@@ -1,7 +1,9 @@
 defmodule Domain.Relays do
+  import Ecto.Changeset
   alias Domain.{Repo, Auth, Geo, PubSub, Safe}
   alias Domain.Tokens
-  alias Domain.Relays.{Relay, Group, Presence}
+  alias Domain.Relays.{Relay, Presence}
+  alias Domain.RelayGroup
 
   def send_metrics do
     count = global_groups_presence_topic() |> Presence.list() |> Enum.count()
@@ -13,8 +15,8 @@ defmodule Domain.Relays do
 
   def fetch_group_by_id(id, %Auth.Subject{} = subject) do
     result =
-      Group.Query.all()
-      |> Group.Query.by_id(id)
+      __MODULE__.DB.all_groups()
+      |> __MODULE__.DB.by_id(id)
       |> Safe.scoped(subject)
       |> Safe.one()
 
@@ -26,62 +28,64 @@ defmodule Domain.Relays do
   end
 
   def list_groups(%Auth.Subject{} = subject, opts \\ []) do
-    Group.Query.all()
+    __MODULE__.DB.all_groups()
     |> Safe.scoped(subject)
-    |> Safe.list(Group.Query, opts)
+    |> Safe.list(__MODULE__.DB, opts)
   end
 
   def new_group(attrs \\ %{}) do
-    change_group(%Group{}, attrs)
+    change_group(%RelayGroup{}, attrs)
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do
     changeset =
-      subject.account
-      |> Group.Changeset.create(attrs, subject)
+      %RelayGroup{account: subject.account}
+      |> cast(attrs, ~w[name]a)
+      |> put_change(:account_id, subject.account.id)
 
     Safe.scoped(changeset, subject)
     |> Safe.insert()
   end
 
   def create_global_group(attrs) do
-    Group.Changeset.create(attrs)
+    %RelayGroup{}
+    |> cast(attrs, ~w[name]a)
     |> Safe.unscoped()
     |> Safe.insert()
   end
 
-  def change_group(%Group{} = group, attrs \\ %{}) do
+  def change_group(%RelayGroup{} = group, attrs \\ %{}) do
     group
     |> Safe.preload(:account)
-    |> Group.Changeset.update(attrs)
+    |> cast(attrs, ~w[name]a)
   end
 
   def update_group(group, attrs \\ %{}, subject)
 
-  def update_group(%Group{account_id: nil}, _attrs, %Auth.Subject{}) do
+  def update_group(%RelayGroup{account_id: nil}, _attrs, %Auth.Subject{}) do
     {:error, :unauthorized}
   end
 
-  def update_group(%Group{} = group, attrs, %Auth.Subject{} = subject) do
+  def update_group(%RelayGroup{} = group, attrs, %Auth.Subject{} = subject) do
     changeset =
       group
       |> Safe.preload(:account)
-      |> Group.Changeset.update(attrs, subject)
+      |> cast(attrs, ~w[name]a)
 
     Safe.scoped(changeset, subject)
     |> Safe.update()
   end
 
-  def delete_group(%Group{account_id: nil}, %Auth.Subject{}) do
+  def delete_group(%RelayGroup{account_id: nil}, %Auth.Subject{}) do
     {:error, :unauthorized}
   end
 
-  def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
+  def delete_group(%RelayGroup{} = group, %Auth.Subject{} = subject) do
     Safe.scoped(group, subject)
     |> Safe.delete()
   end
 
-  def create_token(%Group{account_id: nil} = group, attrs) do
+  def create_token(%RelayGroup{account_id: nil} = group, attrs) do
     attrs =
       Map.merge(attrs, %{
         "type" => :relay_group,
@@ -95,7 +99,7 @@ defmodule Domain.Relays do
   end
 
   def create_token(
-        %Group{account_id: account_id} = group,
+        %RelayGroup{account_id: account_id} = group,
         attrs,
         %Auth.Subject{account: %{id: account_id}} = subject
       ) do
@@ -114,8 +118,8 @@ defmodule Domain.Relays do
 
   def authenticate(encoded_token, %Auth.Context{} = context) when is_binary(encoded_token) do
     with {:ok, token} <- Tokens.use_token(encoded_token, context),
-         queryable = Group.Query.all() |> Group.Query.by_id(token.relay_group_id),
-         {:ok, group} <- Repo.fetch(queryable, Group.Query, []) do
+         queryable = __MODULE__.DB.all_groups() |> __MODULE__.DB.by_id(token.relay_group_id),
+         {:ok, group} <- Repo.fetch(queryable, RelayGroup, []) do
       {:ok, group, token}
     else
       {:error, :invalid_or_expired_token} -> {:error, :unauthorized}
@@ -248,7 +252,7 @@ defmodule Domain.Relays do
     |> Base.encode64(padding: false)
   end
 
-  def upsert_relay(%Group{} = group, attrs, %Auth.Context{} = context) do
+  def upsert_relay(%RelayGroup{} = group, attrs, %Auth.Context{} = context) do
     changeset = Relay.Changeset.upsert(group, attrs, context)
 
     Ecto.Multi.new()
@@ -352,7 +356,7 @@ defmodule Domain.Relays do
   defp account_topic(%Domain.Account{} = account), do: account_topic(account.id)
   defp account_topic(account_id), do: "account_relays:#{account_id}"
 
-  defp group_topic(%Group{} = group), do: group_topic(group.id)
+  defp group_topic(%RelayGroup{} = group), do: group_topic(group.id)
   defp group_topic(group_id), do: "group_relays:#{group_id}"
 
   def subscribe_to_relay_presence(relay_or_id) do
@@ -413,5 +417,48 @@ defmodule Domain.Relays do
 
   def disconnect_relays_in_account(account_or_id) do
     broadcast_to_relays_in_account(account_or_id, "disconnect")
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.RelayGroup
+
+    def all_groups do
+      from(groups in RelayGroup, as: :groups)
+    end
+
+    def by_id(queryable, id) do
+      where(queryable, [groups: groups], groups.id == ^id)
+    end
+
+    def by_account_id(queryable, account_id) do
+      where(queryable, [groups: groups], groups.account_id == ^account_id)
+    end
+
+    def global(queryable) do
+      where(queryable, [groups: groups], is_nil(groups.account_id))
+    end
+
+    def global_or_by_account_id(queryable, account_id) do
+      where(
+        queryable,
+        [groups: groups],
+        groups.account_id == ^account_id or is_nil(groups.account_id)
+      )
+    end
+
+    # Pagination - implementing Query behavior
+    def cursor_fields,
+      do: [
+        {:groups, :asc, :inserted_at},
+        {:groups, :asc, :id}
+      ]
+
+    def preloads,
+      do: [
+        relays: Domain.Relays.Relay.Query.preloads()
+      ]
+
+    def filters, do: []
   end
 end
