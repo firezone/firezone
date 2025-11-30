@@ -1587,12 +1587,6 @@ defmodule Web.CoreComponents do
     """
   end
 
-  def feature_name(%{feature: :self_hosted_relays} = assigns) do
-    ~H"""
-    Host your own Relays
-    """
-  end
-
   def feature_name(%{feature: :rest_api} = assigns) do
     ~H"""
     REST API

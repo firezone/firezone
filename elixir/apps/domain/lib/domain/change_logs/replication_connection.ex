@@ -19,9 +19,9 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
     Map.delete(state, :current_subject)
   end
 
-  # Ignore token writes for relay_groups since these are not expected to have an account_id
-  def on_write(state, _lsn, _op, "tokens", %{"type" => "relay_group"}, _data), do: state
-  def on_write(state, _lsn, _op, "tokens", _old_data, %{"type" => "relay_group"}), do: state
+  # Ignore token writes for relays since these are not expected to have an account_id
+  def on_write(state, _lsn, _op, "tokens", %{"type" => "relay"}, _data), do: state
+  def on_write(state, _lsn, _op, "tokens", _old_data, %{"type" => "relay"}), do: state
 
   # Handle accounts specially
   def on_write(state, lsn, op, "accounts", %{"id" => account_id} = old_data, data) do

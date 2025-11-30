@@ -7,7 +7,7 @@ defmodule Domain.Changes.Hooks.Tokens do
   def on_insert(_lsn, _data), do: :ok
 
   @impl true
-  # updates for email and relay_group tokens have no side effects
+  # updates for email and relay tokens have no side effects
   def on_update(_lsn, _old_data, _new_data), do: :ok
 
   @impl true

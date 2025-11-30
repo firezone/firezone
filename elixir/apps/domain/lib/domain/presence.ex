@@ -214,14 +214,6 @@ defmodule Domain.Presence do
   end
 
   defmodule Relays do
-    def connect(%Relay{} = relay) do
-      with {:ok, _} <- track_relay(relay),
-           {:ok, _} <- __MODULE__.Group.track(relay.group_id, relay.id),
-           {:ok, _} <- __MODULE__.AccountOrGlobal.track(relay) do
-        :ok
-      end
-    end
-
     def track(pid, topic, id, meta) do
       Domain.Presence.track(pid, topic, id, meta)
     end
@@ -230,18 +222,11 @@ defmodule Domain.Presence do
       Domain.Presence.untrack(pid, topic, id)
     end
 
-    defp track_relay(%Relay{} = relay) do
-      Domain.Presence.track(self(), relay_topic(relay), relay.id, %{})
-    end
-
-    defp relay_topic(relay_or_id)
-    defp relay_topic(%Relay{id: id}), do: relay_topic(id)
-    defp relay_topic(relay_id), do: "presences:relays:#{relay_id}"
-
     # Functions moved from Domain.Relays
     @doc false
     def preload_relays_presence([relay]) do
-      __MODULE__.AccountOrGlobal.get(relay)
+      __MODULE__.Global.topic()
+      |> Domain.Presence.get_by_key(relay.id)
       |> case do
         [] -> %{relay | online?: false}
         %{metas: [_ | _]} -> %{relay | online?: true}
@@ -250,57 +235,19 @@ defmodule Domain.Presence do
     end
 
     def preload_relays_presence(relays) do
-      # Global relays
-      global_relays =
+      # Only global relays now
+      connected_relays =
         __MODULE__.Global.list()
         |> Map.keys()
-
-      # Account-specific relays
-      connected_relays =
-        relays
-        |> Enum.map(& &1.account_id)
-        |> Enum.reject(&is_nil/1)
-        |> Enum.uniq()
-        |> Enum.reduce(global_relays, fn account_id, acc ->
-          connected_relays =
-            account_id
-            |> __MODULE__.Account.list()
-            |> Map.keys()
-
-          connected_relays ++ acc
-        end)
 
       Enum.map(relays, fn relay ->
         %{relay | online?: relay.id in connected_relays}
       end)
     end
 
-    def count_online_relays_for_group(group_id) do
-      group_id
-      |> __MODULE__.Group.list()
-      |> Enum.count()
-    end
-
     def online_relay_ids do
-      global_relay_ids =
-        __MODULE__.Global.list()
-        |> Map.keys()
-
-      # TODO: This needs to aggregate across all accounts if needed
-      global_relay_ids
-    end
-
-    def online_relay_ids(account_id) do
-      global_relay_ids =
-        __MODULE__.Global.list()
-        |> Map.keys()
-
-      account_relay_ids =
-        account_id
-        |> __MODULE__.Account.list()
-        |> Map.keys()
-
-      global_relay_ids ++ account_relay_ids
+      __MODULE__.Global.list()
+      |> Map.keys()
     end
 
     def send_metrics do
@@ -313,53 +260,23 @@ defmodule Domain.Presence do
 
     def connect(%Domain.Relay{} = relay, secret, token_id) do
       with {:ok, _} <-
-             Domain.Presence.track(
-               self(),
-               __MODULE__.Group.topic(relay.group_id),
-               relay.id,
-               %{
-                 token_id: token_id
-               }
-             ),
-           {:ok, _} <-
-             track_relay_with_secret(relay, secret),
+             Domain.Presence.track(self(), __MODULE__.Global.topic(), relay.id, %{
+               online_at: System.system_time(:second),
+               secret: secret,
+               token_id: token_id
+             }),
            {:ok, _} <-
              Domain.Presence.track(self(), "presences:relays:#{relay.id}", relay.id, %{}) do
         :ok = PubSub.Relay.subscribe(relay.id)
-        :ok = PubSub.RelayGroup.subscribe(relay.group_id)
-        :ok = PubSub.RelayAccount.subscribe(relay.account_id)
         :ok
       end
     end
 
-    defp track_relay_with_secret(%Domain.Relay{account_id: nil} = relay, secret) do
-      Domain.Presence.track(self(), __MODULE__.Global.topic(), relay.id, %{
-        online_at: System.system_time(:second),
-        secret: secret
-      })
-    end
-
-    defp track_relay_with_secret(%Domain.Relay{account_id: account_id} = relay, secret) do
-      Domain.Presence.track(self(), __MODULE__.Account.topic(account_id), relay.id, %{
-        online_at: System.system_time(:second),
-        secret: secret
-      })
-    end
-
-    def all_connected_relays_for_account(account_id_or_account, except_ids \\ [])
-
-    def all_connected_relays_for_account(%Domain.Account{} = account, except_ids) do
-      all_connected_relays_for_account(account.id, except_ids)
-    end
-
-    def all_connected_relays_for_account(account_id, except_ids) do
-      connected_global_relays = __MODULE__.Global.list()
-      connected_account_relays = __MODULE__.Account.list(account_id)
-
-      connected_relays = Map.merge(connected_global_relays, connected_account_relays)
+    def all_connected_relays(except_ids \\ []) do
+      connected_relays = __MODULE__.Global.list()
       connected_relay_ids = Map.keys(connected_relays) -- except_ids
 
-      relays = __MODULE__.DB.fetch_relays_by_ids(connected_relay_ids, account_id)
+      relays = __MODULE__.DB.fetch_relays_by_ids(connected_relay_ids)
 
       enriched_relays =
         Enum.map(relays, fn relay ->
@@ -381,11 +298,9 @@ defmodule Domain.Presence do
       alias Domain.Relay
       alias Domain.Safe
 
-      def fetch_relays_by_ids(relay_ids, account_id) do
+      def fetch_relays_by_ids(relay_ids) do
         from(relays in Relay, as: :relays)
         |> where([relays: relays], relays.id in ^relay_ids)
-        |> where([relays: relays], relays.account_id == ^account_id or is_nil(relays.account_id))
-        |> order_by([relays: relays], asc_nulls_first: relays.account_id)
         |> Safe.unscoped()
         |> Safe.all()
       end
@@ -404,102 +319,6 @@ defmodule Domain.Presence do
 
       def unsubscribe do
         PubSub.unsubscribe(topic())
-      end
-    end
-
-    defmodule Account do
-      def track(account_id, relay_id) do
-        Domain.Presence.track(
-          self(),
-          topic(account_id),
-          relay_id,
-          %{online_at: System.system_time(:second)}
-        )
-      end
-
-      def get(account_id, relay_id) do
-        account_id
-        |> topic()
-        |> Domain.Presence.get_by_key(relay_id)
-      end
-
-      def list(account_id) do
-        account_id
-        |> topic()
-        |> Domain.Presence.list()
-      end
-
-      def subscribe(account_id) do
-        account_id
-        |> topic()
-        |> PubSub.subscribe()
-      end
-
-      def unsubscribe(account_id) do
-        account_id
-        |> topic()
-        |> PubSub.unsubscribe()
-      end
-
-      def topic(account_id) do
-        "presences:account_relays:" <> account_id
-      end
-    end
-
-    defmodule AccountOrGlobal do
-      def track(%Relay{account_id: nil} = relay) do
-        Domain.Presence.track(
-          self(),
-          Global.topic(),
-          relay.id,
-          %{online_at: System.system_time(:second)}
-        )
-      end
-
-      def track(%Relay{account_id: account_id} = relay) do
-        Account.track(account_id, relay.id)
-      end
-
-      def get(%Relay{account_id: nil, id: relay_id}) do
-        Global.topic()
-        |> Domain.Presence.get_by_key(relay_id)
-      end
-
-      def get(%Relay{account_id: account_id, id: relay_id}) do
-        Account.get(account_id, relay_id)
-      end
-    end
-
-    defmodule Group do
-      def track(group_id, relay_id) do
-        Domain.Presence.track(
-          self(),
-          topic(group_id),
-          relay_id,
-          %{online_at: System.system_time(:second)}
-        )
-      end
-
-      def list(group_id) do
-        group_id
-        |> topic()
-        |> Domain.Presence.list()
-      end
-
-      def subscribe(group_id) do
-        group_id
-        |> topic()
-        |> PubSub.subscribe()
-      end
-
-      def unsubscribe(group_id) do
-        group_id
-        |> topic()
-        |> PubSub.unsubscribe()
-      end
-
-      def topic(group_id) do
-        "presences:group_relays:" <> group_id
       end
     end
 
@@ -544,9 +363,9 @@ defmodule Domain.Presence do
       # Removes reconnected relays from pending leaves:
       # - If the stamp secret hasn't changed, we need to cancel the pending leave
       # - If it has, we need to disconnect from the relay immediately
-      def cancel_leaves_or_disconnect_immediately(socket, joined_ids, account_id) do
+      def cancel_leaves_or_disconnect_immediately(socket, joined_ids, _account_id) do
         {:ok, connected_relays} =
-          Domain.Presence.Relays.all_connected_relays_for_account(account_id)
+          Domain.Presence.Relays.all_connected_relays()
 
         joined_stamp_secrets =
           connected_relays

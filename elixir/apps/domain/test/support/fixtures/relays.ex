@@ -1,15 +1,10 @@
 defmodule Domain.Fixtures.Relays do
   use Domain.Fixture
-  alias Domain.Relays
+  import Ecto.Changeset
+  alias Domain.{Relay, Tokens}
 
-  def group_attrs(attrs \\ %{}) do
-    Enum.into(attrs, %{
-      name: "group-#{unique_integer()}"
-    })
-  end
-
-  def create_group(attrs \\ %{}) do
-    attrs = group_attrs(attrs)
+  def create_token(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
 
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
@@ -23,68 +18,46 @@ defmodule Domain.Fixtures.Relays do
         |> Fixtures.Auth.create_subject()
       end)
 
-    {:ok, group} = Relays.create_group(attrs, subject)
-    group
-  end
+    token_attrs = %{
+      "type" => :relay,
+      "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32)
+    }
 
-  def create_global_group(attrs \\ %{}) do
-    attrs = group_attrs(attrs)
-    {:ok, group} = Relays.create_global_group(attrs)
-    group
-  end
+    # Add account_id if we have a subject with account
+    token_attrs =
+      if subject do
+        Map.put(token_attrs, "account_id", subject.account.id)
+      else
+        token_attrs
+      end
 
-  def delete_group(group) do
-    group = Repo.preload(group, :account)
+    {:ok, token} =
+      if subject do
+        Tokens.create_token(token_attrs, subject)
+      else
+        Tokens.create_token(token_attrs)
+      end
 
-    subject =
-      Fixtures.Auth.create_subject(
-        account: group.account,
-        actor: [type: :account_admin_user]
-      )
+    encoded_token = Domain.Crypto.encode_token_fragment!(token)
+    context = Fixtures.Auth.build_context(type: :relay)
+    {:ok, {_account_id, _id, nonce, secret}} = Domain.Tokens.peek_token(encoded_token, context)
 
-    {:ok, group} = Relays.delete_group(group, subject)
-    group
+    %{token | secret_nonce: nonce, secret_fragment: secret}
   end
 
   def create_global_token(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
-    {group, attrs} =
-      pop_assoc_fixture(attrs, :group, fn assoc_attrs ->
-        create_global_group(assoc_attrs)
-      end)
+    token_attrs = %{
+      "type" => :relay,
+      "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32)
+    }
 
-    {:ok, token, encoded_token} = Relays.create_token(group, attrs)
-    context = Fixtures.Auth.build_context(type: :relay_group)
+    {:ok, token} = Tokens.create_token(token_attrs)
+    encoded_token = Domain.Crypto.encode_token_fragment!(token)
+    context = Fixtures.Auth.build_context(type: :relay)
     {:ok, {_account_id, _id, nonce, secret}} = Domain.Tokens.peek_token(encoded_token, context)
-    %{token | secret_nonce: nonce, secret_fragment: secret}
-  end
 
-  def create_token(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-
-    {account, attrs} =
-      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
-        Fixtures.Accounts.create_account(assoc_attrs)
-      end)
-
-    {group, attrs} =
-      pop_assoc_fixture(attrs, :group, fn assoc_attrs ->
-        assoc_attrs
-        |> Enum.into(%{account: account})
-        |> create_group()
-      end)
-
-    {subject, _attrs} =
-      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
-        assoc_attrs
-        |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
-        |> Fixtures.Auth.create_subject()
-      end)
-
-    {:ok, token, encoded_token} = Relays.create_token(group, attrs, subject)
-    context = Fixtures.Auth.build_context(type: :relay_group)
-    {:ok, {_account_id, _id, nonce, secret}} = Domain.Tokens.peek_token(encoded_token, context)
     %{token | secret_nonce: nonce, secret_fragment: secret}
   end
 
@@ -92,6 +65,7 @@ defmodule Domain.Fixtures.Relays do
     ipv4 = unique_ipv4()
 
     Enum.into(attrs, %{
+      name: "relay-#{unique_integer()}",
       ipv4: ipv4,
       ipv6: unique_ipv6()
     })
@@ -100,39 +74,26 @@ defmodule Domain.Fixtures.Relays do
   def create_relay(attrs \\ %{}) do
     attrs = relay_attrs(attrs)
 
-    {account, attrs} =
-      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
-        Fixtures.Accounts.create_account(assoc_attrs)
-      end)
-
-    {group, attrs} =
-      pop_assoc_fixture(attrs, :group, fn assoc_attrs ->
-        assoc_attrs
-        |> Enum.into(%{account: account})
-        |> create_group()
-      end)
-
-    {_token, attrs} =
-      pop_assoc_fixture(attrs, :token, fn assoc_attrs ->
-        if group.account_id do
-          assoc_attrs
-          |> Enum.into(%{account: account, group: group})
-          |> create_token()
-        else
-          assoc_attrs
-          |> Enum.into(%{group: group})
-          |> create_global_token()
-        end
-      end)
-
     {context, attrs} =
       pop_assoc_fixture(attrs, :context, fn assoc_attrs ->
         assoc_attrs
-        |> Enum.into(%{type: :relay_group})
+        |> Enum.into(%{type: :relay})
         |> Fixtures.Auth.build_context()
       end)
 
-    {:ok, relay} = Relays.upsert_relay(group, attrs, context)
+    # Create relay directly using inline logic from API.Relay.Socket
+    {:ok, relay} =
+      %Relay{}
+      |> cast(attrs, [:name, :ipv4, :ipv6, :port])
+      |> put_change(:last_seen_at, DateTime.utc_now())
+      |> put_change(:last_seen_user_agent, context.user_agent)
+      |> put_change(:last_seen_remote_ip, context.remote_ip)
+      |> Repo.insert(
+        on_conflict: {:replace, [:last_seen_at, :last_seen_user_agent, :last_seen_remote_ip]},
+        conflict_target: {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6), port)/},
+        returning: true
+      )
+
     %{relay | online?: false}
   end
 
@@ -142,15 +103,7 @@ defmodule Domain.Fixtures.Relays do
   end
 
   def delete_relay(relay) do
-    relay = Repo.preload(relay, :account)
-
-    subject =
-      Fixtures.Auth.create_subject(
-        account: relay.account,
-        actor: [type: :account_admin_user]
-      )
-
-    {:ok, relay} = Relays.delete_relay(relay, subject)
+    {:ok, _} = Repo.delete(relay)
     relay
   end
 
@@ -158,24 +111,12 @@ defmodule Domain.Fixtures.Relays do
   # This simulates the relay socket closing without token deletion.
   # Used to test relay presence debouncing in client/gateway channels.
   def disconnect_relay(relay) do
-    # Untrack presence for the relay
-    if relay.account_id do
-      :ok =
-        Domain.Presence.untrack(self(), "presences:account_relays:#{relay.account_id}", relay.id)
-    else
-      :ok = Domain.Presence.untrack(self(), "presences:global_relays", relay.id)
-    end
-
-    :ok = Domain.Presence.untrack(self(), "presences:group_relays:#{relay.group_id}", relay.id)
+    # Untrack presence for the relay (only global now)
+    :ok = Domain.Presence.untrack(self(), "presences:global_relays", relay.id)
     :ok = Domain.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
 
-    # Unsubscribe from PubSub topics that were subscribed in Presence.Relays.connect
+    # Unsubscribe from PubSub topics
     :ok = Domain.PubSub.unsubscribe("relays:#{relay.id}")
-    :ok = Domain.PubSub.unsubscribe("group_relays:#{relay.group_id}")
-
-    if relay.account_id do
-      :ok = Domain.PubSub.unsubscribe("account_relays:#{relay.account_id}")
-    end
 
     :ok
   end

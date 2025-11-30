@@ -55,10 +55,6 @@ defmodule Domain.Tokens.Token.Query do
     where(queryable, [tokens: tokens], tokens.actor_id == ^actor_id)
   end
 
-  def by_relay_group_id(queryable, relay_group_id) do
-    where(queryable, [tokens: tokens], tokens.relay_group_id == ^relay_group_id)
-  end
-
   def by_site_id(queryable, site_id) do
     where(queryable, [tokens: tokens], tokens.site_id == ^site_id)
   end
@@ -90,7 +86,7 @@ defmodule Domain.Tokens.Token.Query do
           {"Client", "client"},
           {"Email", "email"},
           {"Site", "site"},
-          {"Relay Group", "relay_group"}
+          {"Relay", "relay"}
         ],
         fun: &filter_by_type/2
       }

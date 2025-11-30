@@ -9,7 +9,7 @@ defmodule Domain.Tokens.Token.Changeset do
 
   @create_attrs ~w[
     name
-    account_id actor_id relay_group_id site_id auth_provider_id
+    account_id actor_id site_id auth_provider_id
     secret_fragment secret_nonce
     remaining_attempts
     expires_at
@@ -24,7 +24,7 @@ defmodule Domain.Tokens.Token.Changeset do
     %Token{}
     |> cast(attrs, @create_attrs)
     |> validate_required(@required_attrs)
-    |> validate_inclusion(:type, [:email, :browser, :client, :relay_group, :api_client])
+    |> validate_inclusion(:type, [:email, :browser, :client, :relay, :api_client])
     |> changeset()
   end
 
@@ -35,7 +35,7 @@ defmodule Domain.Tokens.Token.Changeset do
     |> validate_required(@required_attrs)
     |> validate_inclusion(:type, [
       :client,
-      :relay_group,
+      :relay,
       :site,
       :api_client,
       :service_account_client
@@ -77,9 +77,8 @@ defmodule Domain.Tokens.Token.Changeset do
         |> validate_required(:actor_id)
         |> validate_required(:name)
 
-      {_data_or_changes, :relay_group} ->
+      {_data_or_changes, :relay} ->
         changeset
-        |> validate_required(:relay_group_id)
 
       {_data_or_changes, :site} ->
         changeset

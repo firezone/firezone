@@ -25,7 +25,6 @@ defmodule Domain.Fixtures.Accounts do
         policy_conditions: true,
         multi_site_resources: true,
         traffic_filters: true,
-        self_hosted_relays: true,
         idp_sync: true,
         rest_api: true
       },

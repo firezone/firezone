@@ -47,9 +47,6 @@ defmodule Domain.Account do
     has_many :gateways, Domain.Gateway
     has_many :sites, Domain.Site
 
-    has_many :relays, Domain.Relay
-    has_many :relay_groups, Domain.RelayGroup
-
     has_many :tokens, Domain.Tokens.Token
 
     has_many :google_directories, Domain.Google.Directory

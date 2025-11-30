@@ -573,10 +573,6 @@ defmodule Domain.Safe do
   def permit(_action, Domain.Relay, :account_admin_user), do: :ok
   def permit(:read, Domain.Relay, _), do: :ok
 
-  # Relay Group permissions
-  def permit(_action, Domain.RelayGroup, :account_admin_user), do: :ok
-  def permit(:read, Domain.RelayGroup, _), do: :ok
-
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 
   # Helper function to emit subject information to the replication stream

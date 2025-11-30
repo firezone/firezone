@@ -164,18 +164,6 @@ defmodule Web.Router do
         live "/:id/edit", Edit
       end
 
-      scope "/relay_groups", RelayGroups do
-        live "/", Index
-        live "/new", New
-        live "/:id/edit", Edit
-        live "/:id/new_token", NewToken
-        live "/:id", Show
-      end
-
-      scope "/relays", Relays do
-        live "/:id", Show
-      end
-
       scope "/sites", Sites do
         live "/", Index
         live "/new", New

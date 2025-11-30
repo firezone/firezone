@@ -24,17 +24,23 @@ defmodule Domain.Relay do
 
     field :online?, :boolean, virtual: true
 
-    belongs_to :account, Domain.Account
-    belongs_to :group, Domain.RelayGroup
-
     timestamps()
   end
 
   def changeset(relay \\ %__MODULE__{}, attrs) do
     relay
-    |> cast(attrs, [:name, :ipv4, :ipv6, :port, :last_seen_user_agent, :last_seen_remote_ip,
-                    :last_seen_remote_ip_location_region, :last_seen_remote_ip_location_city,
-                    :last_seen_remote_ip_location_lat, :last_seen_remote_ip_location_lon])
+    |> cast(attrs, [
+      :name,
+      :ipv4,
+      :ipv6,
+      :port,
+      :last_seen_user_agent,
+      :last_seen_remote_ip,
+      :last_seen_remote_ip_location_region,
+      :last_seen_remote_ip_location_city,
+      :last_seen_remote_ip_location_lat,
+      :last_seen_remote_ip_location_lon
+    ])
     |> validate_required_one_of(~w[ipv4 ipv6]a)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:port, greater_than_or_equal_to: 1, less_than_or_equal_to: 65_535)

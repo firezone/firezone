@@ -188,23 +188,6 @@ defmodule Domain.Tokens do
     end
   end
 
-  def delete_tokens_for(%Domain.RelayGroup{} = group, %Auth.Subject{} = subject) do
-    case subject.actor.type do
-      :account_admin_user ->
-        queryable =
-          Token.Query.all()
-          |> Token.Query.by_relay_group_id(group.id)
-
-        case queryable |> Safe.scoped(subject) |> Safe.delete_all() do
-          {:error, :unauthorized} -> {:error, :unauthorized}
-          {num_deleted, _} -> {:ok, num_deleted}
-        end
-
-      _ ->
-        {:error, :unauthorized}
-    end
-  end
-
   def delete_tokens_for(%Domain.Site{} = site, %Auth.Subject{} = subject) do
     case subject.actor.type do
       :account_admin_user ->

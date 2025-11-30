@@ -79,40 +79,4 @@ defmodule Domain.PubSub do
       "relays:" <> relay_id
     end
   end
-
-  defmodule RelayGroup do
-    def subscribe(group_id) do
-      group_id
-      |> topic()
-      |> Domain.PubSub.subscribe()
-    end
-
-    def broadcast(group_id, payload) do
-      group_id
-      |> topic()
-      |> Domain.PubSub.broadcast(payload)
-    end
-
-    defp topic(group_id) do
-      "group_relays:" <> group_id
-    end
-  end
-
-  defmodule RelayAccount do
-    def subscribe(account_id) do
-      account_id
-      |> topic()
-      |> Domain.PubSub.subscribe()
-    end
-
-    def broadcast(account_id, payload) do
-      account_id
-      |> topic()
-      |> Domain.PubSub.broadcast(payload)
-    end
-
-    defp topic(account_id) do
-      "account_relays:" <> account_id
-    end
-  end
 end

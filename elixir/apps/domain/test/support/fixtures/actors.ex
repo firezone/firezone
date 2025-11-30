@@ -1,6 +1,7 @@
 defmodule Domain.Fixtures.Actors do
   use Domain.Fixture
   import Ecto.Changeset
+  import Domain.Repo.Changeset
   alias Domain.{Actors, Membership}
 
   def group_attrs(attrs \\ %{}) do

@@ -9,7 +9,6 @@ defmodule API.Gateway.Channel do
     Flows,
     Auth,
     PubSub,
-    Relays,
     Resource,
     Presence
   }
@@ -48,7 +47,7 @@ defmodule API.Gateway.Channel do
     # Return all connected relays for the account
     {:ok, relays} = select_relays(socket)
     :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe/1)
-    :ok = maybe_subscribe_for_relays_presence(relays, socket)
+    :ok = maybe_subscribe_for_relays_presence(relays)
 
     account = DB.get_account_by_id!(socket.assigns.gateway.account_id)
 
@@ -115,7 +114,7 @@ defmodule API.Gateway.Channel do
 
       relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
       {:ok, relays} = select_relays(socket, [relay_id])
-      :ok = maybe_subscribe_for_relays_presence(relays, socket)
+      :ok = maybe_subscribe_for_relays_presence(relays)
 
       :ok =
         Enum.each(relays, fn relay ->
@@ -157,7 +156,6 @@ defmodule API.Gateway.Channel do
       relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
 
       :ok = Presence.Relays.Global.unsubscribe()
-      :ok = Presence.Relays.Account.unsubscribe(socket.assigns.gateway.account_id)
 
       :ok =
         Enum.each(relays, fn relay ->
@@ -503,17 +501,14 @@ defmodule API.Gateway.Channel do
 
   defp select_relays(socket, except_ids \\ []) do
     {:ok, relays} =
-      Presence.Relays.all_connected_relays_for_account(
-        socket.assigns.gateway.account_id,
-        except_ids
-      )
+      Presence.Relays.all_connected_relays(except_ids)
 
     location = {
       socket.assigns.gateway.last_seen_remote_ip_location_lat,
       socket.assigns.gateway.last_seen_remote_ip_location_lon
     }
 
-    relays = Relays.load_balance_relays(location, relays)
+    relays = load_balance_relays(location, relays)
 
     {:ok, relays}
   end
@@ -540,13 +535,10 @@ defmodule API.Gateway.Channel do
     })
   end
 
-  defp maybe_subscribe_for_relays_presence(relays, socket) do
-    if length(relays) > 0 do
-      :ok
-    else
-      :ok = Presence.Relays.Global.subscribe()
-      Presence.Relays.Account.subscribe(socket.assigns.gateway.account_id)
-    end
+  defp maybe_subscribe_for_relays_presence([]), do: :ok
+
+  defp maybe_subscribe_for_relays_presence(_relays) do
+    :ok = Presence.Relays.Global.subscribe()
   end
 
   ##########################################
@@ -700,6 +692,32 @@ defmodule API.Gateway.Channel do
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
+
+  defp load_balance_relays({lat, lon}, relays) when is_nil(lat) or is_nil(lon) do
+    relays
+    |> Enum.shuffle()
+    |> Enum.take(2)
+  end
+
+  defp load_balance_relays({lat, lon}, relays) do
+    relays
+    # This allows to group relays that are running at the same location so
+    # we are using at least 2 locations to build ICE candidates
+    |> Enum.group_by(fn relay ->
+      {relay.last_seen_remote_ip_location_lat, relay.last_seen_remote_ip_location_lon}
+    end)
+    |> Enum.map(fn
+      {{nil, nil}, relay} ->
+        {nil, relay}
+
+      {{relay_lat, relay_lon}, relay} ->
+        distance = Domain.Geo.distance({lat, lon}, {relay_lat, relay_lon})
+        {distance, relay}
+    end)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.take(2)
+    |> Enum.map(&Enum.random(elem(&1, 1)))
+  end
 
   defmodule DB do
     import Ecto.Query

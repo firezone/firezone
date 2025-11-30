@@ -7,7 +7,7 @@ defmodule Domain.Tokens.Token do
         :browser,
         :client,
         :api_client,
-        :relay_group,
+        :relay,
         :site,
         :email
       ]
@@ -19,8 +19,6 @@ defmodule Domain.Tokens.Token do
 
     # set for browser and client tokens
     belongs_to :actor, Domain.Actor
-    # set for relay tokens
-    belongs_to :relay_group, Domain.RelayGroup
     # set for gateway tokens
     belongs_to :site, Domain.Site
 
@@ -68,7 +66,6 @@ defmodule Domain.Tokens.Token do
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
     |> assoc_constraint(:auth_provider)
-    |> assoc_constraint(:relay_group)
     |> assoc_constraint(:site)
     |> unique_constraint(:secret_hash)
   end

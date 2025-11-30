@@ -448,7 +448,6 @@ defmodule Domain.BillingTest do
           features: %{
             multi_site_resources: nil,
             traffic_filters: nil,
-            self_hosted_relays: nil,
             idp_sync: nil
           },
           limits: %{
@@ -964,7 +963,6 @@ defmodule Domain.BillingTest do
         metadata: %{
           "name" => "Enterprise",
           "multi_site_resources" => "false",
-          "self_hosted_relays" => "false",
           "monthly_active_users_count" => "1000",
           "service_accounts_count" => "unlimited",
           "users_count" => 14,
@@ -1016,7 +1014,6 @@ defmodule Domain.BillingTest do
       assert account.features == %Domain.Accounts.Features{
                idp_sync: true,
                multi_site_resources: true,
-               self_hosted_relays: false,
                traffic_filters: true
              }
 

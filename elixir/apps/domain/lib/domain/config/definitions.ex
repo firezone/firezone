@@ -732,11 +732,6 @@ defmodule Domain.Config.Definitions do
   defconfig(:feature_flow_activities_enabled, :boolean, default: false)
 
   @doc """
-  Boolean flag to turn Account relays admin functionality on/off for all accounts.
-  """
-  defconfig(:feature_self_hosted_relays_enabled, :boolean, default: false)
-
-  @doc """
   Boolean flag to turn Policy Conditions functionality on/off for all accounts.
   """
   defconfig(:feature_policy_conditions_enabled, :boolean, default: false)

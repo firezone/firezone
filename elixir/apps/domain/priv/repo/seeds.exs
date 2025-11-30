@@ -102,7 +102,6 @@ defmodule Domain.Repo.Seeds do
           policy_conditions: true,
           multi_site_resources: true,
           traffic_filters: true,
-          self_hosted_relays: true,
           idp_sync: true,
           rest_api: true,
           internet_resource: true
@@ -774,18 +773,15 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
-    {:ok, global_relay_group} =
-      Relays.create_global_group(%{name: "fz-global-relays"})
-
-    {:ok, global_relay_group_token} =
+    # Create relay tokens
+    {:ok, global_relay_token} =
       Tokens.create_token(%{
-        "type" => :relay_group,
-        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
-        "relay_group_id" => global_relay_group.id
+        "type" => :relay,
+        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32)
       })
 
-    global_relay_group_token =
-      global_relay_group_token
+    global_relay_token =
+      global_relay_token
       |> maybe_repo_update.(
         id: "e82fcdc1-057a-4015-b90b-3b18f0f28053",
         secret_salt: "lZWUdgh-syLGVDsZEu_29A",
@@ -793,63 +789,76 @@ defmodule Domain.Repo.Seeds do
         secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
       )
 
-    global_relay_group_encoded_token =
-      Domain.Crypto.encode_token_fragment!(global_relay_group_token)
+    global_relay_encoded_token =
+      Domain.Crypto.encode_token_fragment!(global_relay_token)
 
-    IO.puts("Created global relay groups:")
-    IO.puts("  #{global_relay_group.name} token: #{global_relay_group_encoded_token}")
-
+    IO.puts("Created global relay token:")
+    IO.puts("  Token: #{global_relay_encoded_token}")
     IO.puts("")
 
+    # Create relays directly using the inline upsert logic from API.Relay.Socket
     relay_context = %Auth.Context{
-      type: :relay_group,
+      type: :relay,
       user_agent: "Ubuntu/14.04 connlib/0.7.412",
       remote_ip: {100, 64, 100, 58}
     }
 
+    # Create first global relay
     {:ok, global_relay} =
-      Relays.upsert_relay(
-        global_relay_group,
+      %Domain.Relay{}
+      |> Ecto.Changeset.cast(
         %{
+          name: "global-relay-1",
           ipv4: {189, 172, 72, 111},
           ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
         },
-        relay_context
+        [:name, :ipv4, :ipv6]
+      )
+      |> put_change(:last_seen_at, DateTime.utc_now())
+      |> put_change(:last_seen_user_agent, relay_context.user_agent)
+      |> put_change(:last_seen_remote_ip, relay_context.remote_ip)
+      |> Repo.insert(
+        on_conflict: {:replace, [:last_seen_at, :last_seen_user_agent, :last_seen_remote_ip]},
+        conflict_target: {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6), port)/},
+        returning: true
       )
 
+    # Create additional global relays
     for i <- 1..5 do
       {:ok, _global_relay} =
-        Relays.upsert_relay(
-          global_relay_group,
+        %Domain.Relay{}
+        |> Ecto.Changeset.cast(
           %{
+            name: "global-relay-#{i + 1}",
             ipv4: {189, 172, 72, 111 + i},
             ipv6: {0, 0, 0, 0, 0, 0, 0, i}
           },
-          %{relay_context | remote_ip: %Postgrex.INET{address: {189, 172, 72, 111 + i}}}
+          [:name, :ipv4, :ipv6]
+        )
+        |> put_change(:last_seen_at, DateTime.utc_now())
+        |> put_change(:last_seen_user_agent, relay_context.user_agent)
+        |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: {189, 172, 72, 111 + i}})
+        |> Repo.insert(
+          on_conflict: {:replace, [:last_seen_at, :last_seen_user_agent, :last_seen_remote_ip]},
+          conflict_target: {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6), port)/},
+          returning: true
         )
     end
 
     IO.puts("Created global relays:")
-    IO.puts("  Group #{global_relay_group.name}:")
-    IO.puts("    IPv4: #{global_relay.ipv4} IPv6: #{global_relay.ipv6}")
+    IO.puts("  Relay: IPv4: #{global_relay.ipv4} IPv6: #{global_relay.ipv6}")
     IO.puts("")
 
-    relay_group =
-      %Domain.RelayGroup{account: account}
-      |> Ecto.Changeset.cast(%{name: "mycorp-aws-relays"}, ~w[name]a)
-      |> put_change(:account_id, account.id)
-      |> Repo.insert!()
-
-    {:ok, relay_group_token} =
+    # Create another relay token for testing
+    {:ok, relay_token} =
       Tokens.create_token(%{
-        "type" => :relay_group,
+        "type" => :relay,
         "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
-        "account_id" => admin_subject.account.id,
-        "relay_group_id" => global_relay_group.id
+        "account_id" => admin_subject.account.id
       })
 
-    relay_group_token =
-      relay_group_token
+    relay_token =
+      relay_token
       |> maybe_repo_update.(
         id: "549c4107-1492-4f8f-a4ec-a9d2a66d8aa9",
         secret_salt: "jaJwcwTRhzQr15SgzTB2LA",
@@ -857,45 +866,61 @@ defmodule Domain.Repo.Seeds do
         secret_hash: "af133f7efe751ca978ec3e5fadf081ce9ab50138ff52862395858c3d2c11c0c5"
       )
 
-    relay_group_encoded_token = Domain.Crypto.encode_token_fragment!(relay_group_token)
+    relay_encoded_token = Domain.Crypto.encode_token_fragment!(relay_token)
 
-    IO.puts("Created relay groups:")
-    IO.puts("  #{relay_group.name} token: #{relay_group_encoded_token}")
+    IO.puts("Created relay token:")
+    IO.puts("  Token: #{relay_encoded_token}")
     IO.puts("")
 
+    # Create more relays
+    relay_context2 = %Auth.Context{
+      type: :relay,
+      user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
+    }
+
     {:ok, relay} =
-      Relays.upsert_relay(
-        relay_group,
+      %Domain.Relay{}
+      |> Ecto.Changeset.cast(
         %{
+          name: "relay-1",
           ipv4: {189, 172, 73, 111},
           ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
         },
-        %Auth.Context{
-          type: :relay_group,
-          user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-          remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
-        }
+        [:name, :ipv4, :ipv6]
+      )
+      |> put_change(:last_seen_at, DateTime.utc_now())
+      |> put_change(:last_seen_user_agent, relay_context2.user_agent)
+      |> put_change(:last_seen_remote_ip, relay_context2.remote_ip)
+      |> Repo.insert(
+        on_conflict: {:replace, [:last_seen_at, :last_seen_user_agent, :last_seen_remote_ip]},
+        conflict_target: {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6), port)/},
+        returning: true
       )
 
     for i <- 1..5 do
       {:ok, _relay} =
-        Relays.upsert_relay(
-          relay_group,
+        %Domain.Relay{}
+        |> Ecto.Changeset.cast(
           %{
+            name: "relay-#{i + 1}",
             ipv4: {189, 172, 73, 111 + i},
             ipv6: {0, 0, 0, 0, 0, 0, 0, i}
           },
-          %Auth.Context{
-            type: :relay_group,
-            user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-            remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
-          }
+          [:name, :ipv4, :ipv6]
+        )
+        |> put_change(:last_seen_at, DateTime.utc_now())
+        |> put_change(:last_seen_user_agent, relay_context2.user_agent)
+        |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: {189, 172, 73, 111 + i}})
+        |> Repo.insert(
+          on_conflict: {:replace, [:last_seen_at, :last_seen_user_agent, :last_seen_remote_ip]},
+          conflict_target: {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6), port)/},
+          returning: true
         )
     end
 
     IO.puts("Created relays:")
-    IO.puts("  Group #{relay_group.name}:")
-    IO.puts("    IPv4: #{relay.ipv4} IPv6: #{relay.ipv6}")
+    IO.puts("  Relay: IPv4: #{relay.ipv4} IPv6: #{relay.ipv6}")
     IO.puts("")
 
     site =
