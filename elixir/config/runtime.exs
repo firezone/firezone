@@ -157,7 +157,7 @@ if config_env() == :prod do
       {Oban.Plugins.Cron,
        crontab: [
          # Delete expired flows every minute
-         {"* * * * *", Domain.Flows.Workers.DeleteExpiredFlows},
+         {"* * * * *", Domain.Workers.DeleteExpiredFlows},
 
          # Schedule Entra directory sync every 2 hours
          {"0 */2 * * *", Domain.Entra.Scheduler},
@@ -190,7 +190,7 @@ if config_env() == :prod do
          {"0 9 * * 0", Domain.Notifications.Workers.OutdatedGateways},
 
          # Delete expired tokens every 5 minutes
-         {"*/5 * * * *", Domain.Tokens.Workers.DeleteExpiredTokens}
+         {"*/5 * * * *", Domain.Workers.DeleteExpiredTokens}
        ]}
     ],
     queues:

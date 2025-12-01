@@ -5,6 +5,36 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
 
+  # This will be inserted into the change log to indicate that the data has been redacted
+  @redacted "[redacted]"
+
+  # Used to introspect field redactions
+  @tables_to_schemas %{
+    "accounts" => Domain.Account,
+    "actor_group_memberships" => Domain.Membership,
+    "actor_groups" => Domain.ActorGroup,
+    "actors" => Domain.Actor,
+    "auth_providers" => Domain.AuthProvider,
+    "clients" => Domain.Client,
+    "directories" => Domain.Directory,
+    "email_otp_auth_providers" => Domain.EmailOTP.AuthProvider,
+    "entra_auth_providers" => Domain.Entra.AuthProvider,
+    "entra_directories" => Domain.Entra.Directory,
+    "flows" => Domain.Flow,
+    "gateways" => Domain.Gateway,
+    "google_auth_providers" => Domain.Google.AuthProvider,
+    "google_directories" => Domain.Google.Directory,
+    "oidc_auth_providers" => Domain.OIDC.AuthProvider,
+    "okta_auth_providers" => Domain.Okta.AuthProvider,
+    "okta_directories" => Domain.Okta.Directory,
+    "policies" => Domain.Policy,
+    "resource_connections" => Domain.Resources.Connection,
+    "resources" => Domain.Resource,
+    "sites" => Domain.Site,
+    "tokens" => Domain.Token,
+    "userpass_auth_providers" => Domain.UserPass.AuthProvider
+  }
+
   # Handle LogicalMessage to track subject info
   def on_logical_message(state, %{prefix: "subject", content: content, transactional: true}) do
     # Store the subject content for the current transaction
@@ -25,21 +55,25 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
 
   # Handle accounts specially
   def on_write(state, lsn, op, "accounts", %{"id" => account_id} = old_data, data) do
+    {old_data, data} = redact_from_schema("accounts", old_data, data)
     buffer(state, lsn, op, "accounts", account_id, old_data, data)
   end
 
   def on_write(state, lsn, op, "accounts", old_data, %{"id" => account_id} = data) do
+    {old_data, data} = redact_from_schema("accounts", old_data, data)
     buffer(state, lsn, op, "accounts", account_id, old_data, data)
   end
 
   # Handle other writes where an account_id is present
   def on_write(state, lsn, op, table, old_data, %{"account_id" => account_id} = data)
       when not is_nil(account_id) do
+    {old_data, data} = redact_from_schema(table, old_data, data)
     buffer(state, lsn, op, table, account_id, old_data, data)
   end
 
   def on_write(state, lsn, op, table, %{"account_id" => account_id} = old_data, data)
       when not is_nil(account_id) do
+    {old_data, data} = redact_from_schema(table, old_data, data)
     buffer(state, lsn, op, table, account_id, old_data, data)
   end
 
@@ -104,6 +138,35 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
       })
 
     %{state | flush_buffer: flush_buffer}
+  end
+
+  # Field redactions - introspects schema to redact sensitive fields
+
+  defp redact_from_schema(table, old_data, data) do
+    schema_module = Map.get(@tables_to_schemas, table)
+
+    if schema_module do
+      fields_to_redact = schema_module.__schema__(:redact_fields)
+      redacted_old_data = redact_fields(old_data, fields_to_redact)
+      redacted_data = redact_fields(data, fields_to_redact)
+      {redacted_old_data, redacted_data}
+    else
+      {old_data, data}
+    end
+  end
+
+  defp redact_fields(nil, _fields), do: nil
+
+  defp redact_fields(map, fields) when is_map(map) and is_list(fields) do
+    Enum.reduce(fields, map, fn field, acc ->
+      field = to_string(field)
+
+      if Map.has_key?(acc, field) do
+        Map.put(acc, field, @redacted)
+      else
+        acc
+      end
+    end)
   end
 
   defmodule DB do

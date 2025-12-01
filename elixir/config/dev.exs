@@ -43,7 +43,7 @@ config :domain, Oban,
     # Periodic jobs
     {Oban.Plugins.Cron,
      crontab: [
-       {worker_dev_schedule, Domain.Flows.Workers.DeleteExpiredFlows},
+       {worker_dev_schedule, Domain.Workers.DeleteExpiredFlows},
        {worker_dev_schedule, Domain.Entra.Scheduler},
        {worker_dev_schedule, Domain.Google.Scheduler},
        {worker_dev_schedule, Domain.Telemetry.SyncErrorNotification,
@@ -60,7 +60,7 @@ config :domain, Oban,
         args: %{provider: "google", frequency: "weekly"}},
        {worker_dev_schedule, Domain.Billing.Workers.CheckAccountLimits},
        {worker_dev_schedule, Domain.Notifications.Workers.OutdatedGateways},
-       {worker_dev_schedule, Domain.Tokens.Workers.DeleteExpiredTokens}
+       {worker_dev_schedule, Domain.Workers.DeleteExpiredTokens}
      ]}
   ],
   queues: [
