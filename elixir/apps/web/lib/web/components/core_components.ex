@@ -779,10 +779,6 @@ defmodule Web.CoreComponents do
   attr :size, :integer, required: true
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
-  # TODO: IDP REFACTOR
-  # Fetch image and re-host it internally via Azure CDN
-  # For now, we disable loading pictures from identity providers due to CSP restrictions
-
   def avatar(assigns) do
     ~H"""
     <img src={build_gravatar_url(@actor, @size)} {@rest} />

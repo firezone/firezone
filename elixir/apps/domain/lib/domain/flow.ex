@@ -36,4 +36,17 @@ defmodule Domain.Flow do
 
     timestamps(updated_at: false)
   end
+
+  def changeset(changeset) do
+    import Ecto.Changeset
+
+    changeset
+    |> assoc_constraint(:token)
+    |> assoc_constraint(:policy)
+    |> assoc_constraint(:client)
+    |> assoc_constraint(:gateway)
+    |> assoc_constraint(:resource)
+    |> assoc_constraint(:membership)
+    |> assoc_constraint(:account)
+  end
 end

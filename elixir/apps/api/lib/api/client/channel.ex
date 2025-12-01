@@ -1135,7 +1135,7 @@ defmodule API.Client.Channel do
          expires_at
        ) do
     changeset =
-      Domain.Flow.Changeset.create(%{
+      create_flow_changeset(%{
         token_id: token_id,
         policy_id: policy_id,
         client_id: client_id,
@@ -1151,5 +1151,20 @@ defmodule API.Client.Channel do
 
     Domain.Safe.scoped(changeset, subject)
     |> Domain.Safe.insert()
+  end
+
+  defp create_flow_changeset(attrs) do
+    import Ecto.Changeset
+
+    fields = ~w[token_id policy_id client_id gateway_id resource_id membership_id
+                account_id
+                expires_at
+                client_remote_ip client_user_agent
+                gateway_remote_ip]a
+
+    %Domain.Flow{}
+    |> cast(attrs, fields)
+    |> validate_required(fields)
+    |> Domain.Flow.changeset()
   end
 end

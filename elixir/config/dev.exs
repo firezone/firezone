@@ -85,9 +85,6 @@ config :web, dev_routes: true
 
 config :web, Web.Endpoint,
   url: [scheme: "https", host: "localhost", port: 13443],
-  # TODO: IDP REFACTOR
-  # This can / should be removed since all built URLs will use https due to the `url` config above.
-  # http: [port: 13_000],
   https: [
     port: 13_443,
     cipher_suite: :strong,

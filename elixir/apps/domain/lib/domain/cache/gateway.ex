@@ -205,11 +205,16 @@ defmodule Domain.Cache.Gateway do
   defp all_gateway_flows_for_cache!(%Domain.Gateway{} = gateway) do
     import Ecto.Query
 
+    now = DateTime.utc_now()
+
     from(f in Domain.Flow, as: :flows)
     |> where([flows: f], f.account_id == ^gateway.account_id)
     |> where([flows: f], f.gateway_id == ^gateway.id)
-    |> Domain.Flow.Query.not_expired()
-    |> Domain.Flow.Query.for_cache()
+    |> where([flows: f], f.expires_at > ^now)
+    |> select(
+      [flows: f],
+      {{f.client_id, f.resource_id}, {f.id, f.expires_at}}
+    )
     |> Domain.Safe.unscoped()
     |> Domain.Safe.all()
   end
@@ -237,7 +242,7 @@ defmodule Domain.Cache.Gateway do
              policy.group_id
            ),
          {:ok, new_flow} <-
-           Domain.Flow.Changeset.create(%{
+           create_flow_changeset(%{
              token_id: flow.token_id,
              policy_id: policy.id,
              client_id: flow.client_id,
@@ -425,5 +430,21 @@ defmodule Domain.Cache.Gateway do
     else
       token_expires_at
     end
+  end
+
+  # Private changeset function for flow creation
+  defp create_flow_changeset(attrs) do
+    import Ecto.Changeset
+
+    fields = ~w[token_id policy_id client_id gateway_id resource_id membership_id
+                account_id
+                expires_at
+                client_remote_ip client_user_agent
+                gateway_remote_ip]a
+
+    %Domain.Flow{}
+    |> cast(attrs, fields)
+    |> validate_required(fields)
+    |> Domain.Flow.changeset()
   end
 end

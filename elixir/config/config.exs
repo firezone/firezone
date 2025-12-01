@@ -239,7 +239,7 @@ config :domain, docker_registry: "ghcr.io/firezone"
 
 config :domain, outbound_email_adapter_configured?: false
 
-config :domain, web_external_url: "http://localhost:13000"
+config :domain, web_external_url: "https://localhost:13443"
 
 ###############################
 ##### Web #####################

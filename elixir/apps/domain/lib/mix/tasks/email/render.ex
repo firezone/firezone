@@ -4,14 +4,14 @@
 #   @moduledoc """
 #   Render email templates for development and testing purposes.
 #
-#   All emails will appear in the Swoosh mailbox at http://localhost:13000/dev/mailbox
+#   All emails will appear in the Swoosh mailbox at https://localhost:13443/dev/mailbox
 #
 #   ## Usage
 #
 #       # Make sure no iex session is running, then:
 #       $ mix email.render
 #
-#       # Then visit: http://localhost:13000/dev/mailbox
+#       # Then visit: https://localhost:13443/dev/mailbox
 #
 #       # The task will:
 #       # 1. Start the application
@@ -33,7 +33,7 @@
 #
 #   ## Testing Dark Mode
 #
-#   1. Open an email in the mailbox at http://localhost:13000/dev/mailbox
+#   1. Open an email in the mailbox at http://localhost:13443/dev/mailbox
 #   2. Toggle macOS system appearance: System Settings → Appearance → Dark
 #   3. Or use browser dev tools to emulate prefers-color-scheme: dark
 #
@@ -114,7 +114,7 @@
 #   end
 #
 #   defp keep_running do
-#     Mix.shell().info("\n📬 Open http://localhost:13000/dev/mailbox to view the emails")
+#     Mix.shell().info("\n📬 Open https://localhost:13443/dev/mailbox to view the emails")
 #     Mix.shell().info("\n⏳ Keeping app running so you can view the emails...")
 #     Mix.shell().info("   Press Ctrl+C twice to exit when done.\n")
 #
