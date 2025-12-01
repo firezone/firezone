@@ -3,7 +3,6 @@ defmodule Web.OIDCController do
 
   alias Domain.{
     AuthProvider,
-    Tokens,
     Safe
   }
 
@@ -249,8 +248,8 @@ defmodule Web.OIDCController do
       expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
     }
 
-    with {:ok, token} <- Tokens.create_token(attrs) do
-      {:ok, Domain.Tokens.encode_fragment!(token)}
+    with {:ok, token} <- Domain.Auth.create_token(attrs) do
+      {:ok, Domain.Auth.encode_fragment!(token)}
     end
   end
 

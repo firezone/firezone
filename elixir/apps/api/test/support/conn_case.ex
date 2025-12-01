@@ -49,8 +49,8 @@ defmodule API.ConnCase do
       "actor_id" => actor.id
     }
 
-    {:ok, token} = Domain.Tokens.create_token(attrs)
-    encoded_fragment = Domain.Crypto.encode_token_fragment!(token)
+    {:ok, token} = Domain.Auth.create_token(attrs)
+    encoded_fragment = Domain.Auth.encode_fragment!(token)
 
     Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> encoded_fragment)
   end

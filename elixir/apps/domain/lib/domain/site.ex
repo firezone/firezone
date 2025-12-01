@@ -17,7 +17,7 @@ defmodule Domain.Site do
 
     belongs_to :account, Domain.Account
     has_many :gateways, Domain.Gateway
-    has_many :tokens, Domain.Tokens.Token
+    has_many :tokens, Domain.Token
     has_many :connections, Domain.Resources.Connection
 
     timestamps()

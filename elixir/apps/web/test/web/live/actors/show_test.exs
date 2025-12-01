@@ -674,7 +674,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
+      refute Repo.get_by(Domain.Token, id: token.id)
     end
 
     test "allows revoking all tokens", %{
@@ -707,7 +707,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
+      refute Repo.get_by(Domain.Token, id: token.id)
     end
 
     test "allows editing actors", %{
@@ -1109,7 +1109,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
+      refute Repo.get_by(Domain.Token, id: token.id)
     end
 
     test "allows revoking all tokens", %{
@@ -1142,7 +1142,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
+      refute Repo.get_by(Domain.Token, id: token.id)
     end
   end
 end

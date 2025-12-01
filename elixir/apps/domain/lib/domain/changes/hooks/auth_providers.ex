@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.AuthProviders do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Repo, Tokens}
+  alias Domain.Repo
   import Ecto.Query
 
   @impl true
@@ -47,7 +47,7 @@ defmodule Domain.Changes.Hooks.AuthProviders do
   defp delete_tokens_for_provider(provider_id) do
     # Query and delete all tokens for this provider
     # The Tokens hook will handle disconnecting sockets
-    from(t in Tokens.Token,
+    from(t in Domain.Token,
       where: t.auth_provider_id == ^provider_id
     )
     |> Repo.delete_all()

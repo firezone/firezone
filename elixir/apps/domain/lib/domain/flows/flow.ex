@@ -22,7 +22,7 @@ defmodule Domain.Flows.Flow do
     belongs_to :client, Domain.Client
     belongs_to :gateway, Domain.Gateway
     belongs_to :resource, Domain.Resource
-    belongs_to :token, Domain.Tokens.Token
+    belongs_to :token, Domain.Token
     belongs_to :actor_group_membership, Domain.Membership
 
     belongs_to :account, Domain.Account

@@ -1,6 +1,7 @@
 defmodule Domain.Auth do
+  use Domain, :changeset
   require Ecto.Query
-  alias Domain.Tokens
+  alias Domain.{Repo, Safe, Token}
   alias Domain.Auth.{Subject, Context}
   alias __MODULE__.DB
   require Logger
@@ -22,8 +23,8 @@ defmodule Domain.Auth do
 
     # Only account admins can create service account tokens
     if subject.actor.type == :account_admin_user do
-      with {:ok, token} <- Tokens.create_token(attrs, subject) do
-        {:ok, Tokens.encode_fragment!(token)}
+      with {:ok, token} <- create_token(attrs, subject) do
+        {:ok, encode_fragment!(token)}
       end
     else
       {:error, :unauthorized}
@@ -45,19 +46,208 @@ defmodule Domain.Auth do
 
     # Only account admins can create API client tokens
     if subject.actor.type == :account_admin_user do
-      with {:ok, token} <- Tokens.create_token(attrs, subject) do
-        {:ok, Tokens.encode_fragment!(token)}
+      with {:ok, token} <- create_token(attrs, subject) do
+        {:ok, encode_fragment!(token)}
       end
     else
       {:error, :unauthorized}
     end
   end
 
+  # Token encoding/decoding
+
+  @doc """
+  Encodes a token fragment for transmission.
+
+  The token is encoded as a tuple of {account_id, token_id, secret_fragment}
+  which is then signed using Plug.Crypto to ensure it can't be tampered with.
+  """
+  def encode_fragment!(%Token{secret_fragment: fragment, type: type} = token)
+      when not is_nil(fragment) do
+    body = {token.account_id, token.id, fragment}
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt)
+    "." <> Plug.Crypto.sign(key_base, salt <> to_string(type), body)
+  end
+
+  defp fetch_config! do
+    Domain.Config.fetch_env!(:domain, Domain.Tokens)
+  end
+
+  # Token Management
+
+  def create_token(attrs) do
+    changeset = create_token_changeset(%Token{}, attrs, nil)
+
+    Safe.unscoped()
+    |> Safe.insert(changeset)
+  end
+
+  def create_token(attrs, %Subject{} = subject) do
+    changeset = create_token_changeset(%Token{}, attrs, subject)
+
+    Safe.unscoped()
+    |> Safe.insert(changeset)
+  end
+
+  defp create_token_changeset(token, attrs, subject) do
+    changeset =
+      token
+      |> cast(
+        attrs,
+        ~w[name account_id actor_id site_id auth_provider_id secret_fragment secret_nonce remaining_attempts expires_at type]a
+      )
+      |> validate_required(~w[type]a)
+
+    changeset =
+      if subject do
+        changeset
+        |> put_change(:account_id, subject.account.id)
+        |> validate_inclusion(:type, [
+          :client,
+          :relay,
+          :site,
+          :api_client,
+          :service_account_client
+        ])
+      else
+        validate_inclusion(changeset, :type, [:email, :browser, :client, :relay, :api_client])
+      end
+
+    changeset
+    |> put_change(:secret_salt, Domain.Crypto.random_token(16))
+    |> validate_format(:secret_nonce, ~r/^[^\.]{0,128}$/)
+    |> validate_required(:secret_fragment)
+    |> put_hash(:secret_fragment, :sha3_256,
+      with_nonce: :secret_nonce,
+      with_salt: :secret_salt,
+      to: :secret_hash
+    )
+    |> delete_change(:secret_nonce)
+    |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
+    |> validate_required(~w[secret_salt secret_hash]a)
+    |> validate_required_assocs()
+    |> assoc_constraint(:account)
+    |> assoc_constraint(:actor)
+  end
+
+  defp validate_required_assocs(changeset) do
+    case fetch_field(changeset, :type) do
+      {_data_or_changes, :browser} ->
+        changeset
+        |> validate_required(:actor_id)
+        |> validate_required(:expires_at)
+
+      {_data_or_changes, :client} ->
+        changeset
+        |> validate_required(:actor_id)
+
+      {_data_or_changes, :api_client} ->
+        changeset
+        |> validate_required(:actor_id)
+        |> validate_required(:name)
+
+      {_data_or_changes, :relay} ->
+        changeset
+
+      {_data_or_changes, :site} ->
+        changeset
+        |> validate_required(:site_id)
+
+      {_data_or_changes, :email} ->
+        changeset
+        |> validate_required(:actor_id)
+        |> validate_required(:expires_at)
+        |> validate_required(:remaining_attempts)
+
+      _ ->
+        changeset
+    end
+  end
+
+  def use_token(encoded_token, %Context{} = context)
+      when is_binary(encoded_token) do
+    with {:ok, {account_id, id, fragment}} <- decode_token_with_context(encoded_token, context),
+         {:ok, token} <- fetch_token_for_use(id, account_id, context.type),
+         :ok <- verify_secret_hash(token, fragment),
+         changeset = use_token_changeset(token, context),
+         {:ok, token} <- Safe.unscoped() |> Safe.update(changeset) do
+      {:ok, token}
+    else
+      _ -> {:error, :invalid_or_expired_token}
+    end
+  end
+
+  defp decode_token_with_context(encoded_token, %Context{} = context) do
+    with [_nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2) do
+      config = fetch_config!()
+      key_base = Keyword.fetch!(config, :key_base)
+      salt = Keyword.fetch!(config, :salt) <> to_string(context.type)
+      Plug.Crypto.verify(key_base, salt, encoded_fragment, max_age: :infinity)
+    else
+      _ -> {:error, :invalid_token}
+    end
+  end
+
+  defp fetch_token_for_use(id, account_id, context_type) do
+    import Ecto.Query
+
+    from(tokens in Token, as: :tokens)
+    |> where(
+      [tokens: tokens],
+      tokens.expires_at > ^DateTime.utc_now() or is_nil(tokens.expires_at)
+    )
+    |> where([tokens: tokens], tokens.id == ^id)
+    |> where([tokens: tokens], tokens.account_id == ^account_id)
+    |> where([tokens: tokens], tokens.type == ^context_type)
+    |> update([tokens: tokens],
+      set: [
+        last_seen_at: ^DateTime.utc_now()
+      ]
+    )
+    |> select([tokens: tokens], tokens)
+    |> Repo.one()
+  end
+
+  defp use_token_changeset(%Token{} = token, %Context{} = context) do
+    token
+    |> change()
+    |> put_change(:last_seen_user_agent, context.user_agent)
+    |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
+    |> put_change(:last_seen_remote_ip_location_region, context.remote_ip_location_region)
+    |> put_change(:last_seen_remote_ip_location_city, context.remote_ip_location_city)
+    |> put_change(:last_seen_remote_ip_location_lat, context.remote_ip_location_lat)
+    |> put_change(:last_seen_remote_ip_location_lon, context.remote_ip_location_lon)
+    |> put_change(:last_seen_at, DateTime.utc_now())
+    |> validate_required(~w[last_seen_user_agent last_seen_remote_ip]a)
+  end
+
+  defp verify_secret_hash(token, fragment) do
+    expected_hash = token_secret_hash(token, fragment)
+
+    if Plug.Crypto.secure_compare(expected_hash, token.secret_hash) do
+      :ok
+    else
+      :error
+    end
+  end
+
+  defp token_secret_hash(token, fragment) do
+    :sha3_256
+    |> Domain.Crypto.hash(fragment <> token.secret_salt)
+    |> Base.encode16(case: :lower)
+  end
+
+  def socket_id(id) when is_binary(id) do
+    "tokens:#{id}"
+  end
+
   # Authentication
 
   def authenticate(encoded_token, %Context{} = context)
       when is_binary(encoded_token) do
-    with {:ok, token} <- Tokens.use_token(encoded_token, context),
+    with {:ok, token} <- use_token(encoded_token, context),
          {:ok, subject} <- build_subject(token, context) do
       {:ok, subject}
     else
@@ -68,7 +258,7 @@ defmodule Domain.Auth do
     end
   end
 
-  def build_subject(%Tokens.Token{type: type} = token, %Context{} = context)
+  def build_subject(%Token{type: type} = token, %Context{} = context)
       when type in [:browser, :client, :api_client] do
     account = DB.get_account_by_id!(token.account_id)
 

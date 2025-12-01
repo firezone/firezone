@@ -56,7 +56,7 @@ defmodule API.Gateway.Socket do
   end
 
   @impl true
-  def id(socket), do: Domain.Tokens.socket_id(socket.assigns.token_id)
+  def id(socket), do: Domain.Auth.socket_id(socket.assigns.token_id)
 
   defp upsert_changeset(site, attrs, context) do
     import Ecto.Changeset
@@ -116,13 +116,13 @@ defmodule API.Gateway.Socket do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Repo, Network, Safe, Tokens, Auth}
+    alias Domain.{Repo, Network, Safe, Auth}
     alias Domain.Gateway
     alias Domain.Site
 
     def authenticate_gateway_token(encoded_token, %Auth.Context{} = context)
         when is_binary(encoded_token) do
-      with {:ok, token} <- Tokens.use_token(encoded_token, context),
+      with {:ok, token} <- Auth.use_token(encoded_token, context),
            {:ok, site} <- fetch_site(token.site_id) do
         {:ok, site, token}
       else

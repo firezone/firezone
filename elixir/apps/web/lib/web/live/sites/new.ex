@@ -118,7 +118,7 @@ defmodule Web.Sites.New do
         |> put_change(:account_id, subject.account.id)
         |> put_change(:created_by, :identity)
         |> put_change(:created_by_identity_id, subject.identity.id)
-        |> Domain.Tokens.Token.changeset()
+        |> Domain.Token.changeset()
       end
     )
   end

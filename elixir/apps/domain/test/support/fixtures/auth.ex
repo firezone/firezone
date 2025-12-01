@@ -38,16 +38,9 @@ defmodule Domain.Fixtures.Auth do
   def user_agent, do: "iOS/12.5 connlib/1.3.0"
   def email(domain \\ "example.com"), do: "user-#{unique_integer()}@#{domain}"
 
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: :email, name: name}) do
-    "user-#{unique_integer()}@#{String.downcase(name)}.com"
-  end
-
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: :userpass, name: name}) do
-    "user-#{unique_integer()}@#{String.downcase(name)}.com"
-  end
-
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: _other_adapter}) do
-    Ecto.UUID.generate()
+  def random_provider_identifier(_provider) do
+    # Simplified since provider system has changed
+    "user-#{unique_integer()}@example.com"
   end
 
   def random_workos_org_identifier do
@@ -527,7 +520,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Auth.Provider, relation.provider_id)
+          Repo.get!(Domain.AuthProvider, relation.provider_id)
         else
           {provider, _bypass} =
             assoc_attrs
@@ -633,7 +626,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Auth.Provider, relation.provider_id)
+          Repo.get!(Domain.AuthProvider, relation.provider_id)
         else
           {provider, _bypass} =
             assoc_attrs

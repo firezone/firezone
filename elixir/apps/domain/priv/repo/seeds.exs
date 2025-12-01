@@ -356,7 +356,7 @@ defmodule Domain.Repo.Seeds do
       }
 
       {:ok, token} =
-        Repo.insert(%Tokens.Token{
+        Repo.insert(%Token{
           type: :browser,
           account_id: account.id,
           actor_id: identity.actor_id,
@@ -443,7 +443,7 @@ defmodule Domain.Repo.Seeds do
 
     # Create client token for unprivileged actor so flows can reference it
     {:ok, unprivileged_client_token} =
-      Repo.insert(%Tokens.Token{
+      Repo.insert(%Token{
         type: :client,
         account_id: account.id,
         actor_id: unprivileged_actor.id,

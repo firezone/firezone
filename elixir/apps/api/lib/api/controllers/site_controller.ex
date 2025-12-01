@@ -2,7 +2,7 @@ defmodule API.SiteController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Tokens
+  alias Domain.{Auth, Safe}
   alias __MODULE__.DB
 
   action_fallback API.FallbackController
@@ -98,7 +98,7 @@ defmodule API.SiteController do
         |> put_change(:account_id, subject.account.id)
         |> put_change(:created_by, :identity)
         |> put_change(:created_by_identity_id, subject.identity.id)
-        |> Domain.Tokens.Token.changeset()
+        |> Domain.Token.changeset()
       end
     )
   end
@@ -208,9 +208,9 @@ defmodule API.SiteController do
   def delete_token(conn, %{"site_id" => _site_id, "id" => token_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, token} <- Tokens.fetch_token_by_id(token_id, subject),
-         {:ok, token} <- Tokens.delete_token(token, subject) do
-      render(conn, :deleted_token, token: token)
+    with {:ok, token} <- DB.fetch_token_by_id(token_id, subject),
+         {:ok, deleted_token} <- Safe.scoped(token, subject) |> Safe.delete() do
+      render(conn, :deleted_token, token: deleted_token)
     end
   end
 
@@ -231,15 +231,25 @@ defmodule API.SiteController do
   def delete_all_tokens(conn, %{"site_id" => site_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, site} <- DB.fetch_site_by_id(site_id, subject),
-         {:ok, deleted_count} <- Tokens.delete_tokens_for(site, subject) do
+    with {:ok, site} <- DB.fetch_site_by_id(site_id, subject) do
+      # Only account admins can delete site tokens
+      deleted_count =
+        if subject.actor.type == :account_admin_user do
+          import Ecto.Query
+          query = from(t in Domain.Token, where: t.site_id == ^site.id)
+          {count, _} = Safe.scoped(subject) |> Safe.delete_all(query)
+          count
+        else
+          0
+        end
+
       render(conn, :deleted_tokens, %{count: deleted_count})
     end
   end
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Repo, Tokens, Billing}
+    alias Domain.{Safe, Repo, Billing, Token}
     alias Domain.Site
 
     def list_sites(subject, opts \\ []) do
@@ -300,9 +310,24 @@ defmodule API.SiteController do
           "site_id" => site.id
         })
 
-      with {:ok, token} <- Tokens.create_token(attrs, subject) do
-        {:ok, %{token | secret_nonce: nil, secret_fragment: nil},
-         Domain.Tokens.encode_fragment!(token)}
+      with {:ok, token} <- Auth.create_token(attrs, subject) do
+        {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Auth.encode_fragment!(token)}
+      end
+    end
+
+    def fetch_token_by_id(id, subject) do
+      result =
+        from(t in Token,
+          where: t.id == ^id,
+          where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
+        )
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        token -> {:ok, token}
       end
     end
 

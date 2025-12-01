@@ -209,7 +209,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      refute Repo.get_by(Domain.Tokens.Token, site_id: site.id)
+      refute Repo.get_by(Domain.Token, site_id: site.id)
     end
 
     test "renders resources table", %{
@@ -445,7 +445,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      refute Repo.get_by(Domain.Tokens.Token, site_id: site.id)
+      refute Repo.get_by(Domain.Token, site_id: site.id)
     end
 
     test "renders resources table", %{
@@ -670,7 +670,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      refute Repo.get_by(Domain.Tokens.Token, site_id: site.id)
+      refute Repo.get_by(Domain.Token, site_id: site.id)
     end
 
     test "does not render resources table", %{

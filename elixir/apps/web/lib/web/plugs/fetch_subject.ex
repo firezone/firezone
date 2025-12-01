@@ -3,7 +3,7 @@ defmodule Web.Plugs.FetchSubject do
 
   import Plug.Conn
   alias Domain.Account
-  alias Domain.Tokens
+  alias Domain.Auth
 
   @impl true
   def init(opts), do: opts
@@ -18,7 +18,7 @@ defmodule Web.Plugs.FetchSubject do
     with {:ok, fragment} <- fetch_token(conn, account),
          {:ok, subject} <- Domain.Auth.authenticate(fragment, context) do
       conn
-      |> put_session(:live_socket_id, Tokens.socket_id(subject.token_id))
+      |> put_session(:live_socket_id, Auth.socket_id(subject.token_id))
       # Token is used by LiveView
       |> put_session(:token, fragment)
       |> assign(:subject, subject)

@@ -363,8 +363,8 @@ defmodule Domain.RelaysTest do
       refute Repo.get(Domain.RelayGroup, group.id)
 
       tokens =
-        Domain.Tokens.Token.Query.all()
-        |> Domain.Tokens.Token.Query.by_relay_group_id(group.id)
+        Domain.Token.Query.all()
+        |> Domain.Token.Query.by_relay_group_id(group.id)
         |> Repo.all()
 
       assert length(tokens) == 0
@@ -444,7 +444,7 @@ defmodule Domain.RelaysTest do
       assert {:ok, fetched_group, fetched_token} = authenticate(encoded_token, context)
       assert fetched_group.id == group.id
 
-      assert token = Repo.get_by(Tokens.Token, relay_group_id: fetched_group.id)
+      assert token = Repo.get_by(Token, relay_group_id: fetched_group.id)
       assert token.id == fetched_token.id
       assert token.id == created_token.id
       assert token.type == :relay_group
@@ -508,7 +508,7 @@ defmodule Domain.RelaysTest do
       assert {:ok, fetched_group, fetched_token} = authenticate(encoded_token, context)
       assert fetched_group.id == group.id
 
-      assert token = Repo.get_by(Tokens.Token, relay_group_id: fetched_group.id)
+      assert token = Repo.get_by(Token, relay_group_id: fetched_group.id)
       assert token.id == fetched_token.id
       assert token.id == created_token.id
       assert token.type == :relay_group

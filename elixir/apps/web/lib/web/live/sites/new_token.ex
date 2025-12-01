@@ -426,7 +426,7 @@ defmodule Web.Sites.NewToken do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Tokens}
+    alias Domain.Safe
 
     def fetch_site_by_id(id, subject) do
       result =
@@ -448,7 +448,7 @@ defmodule Web.Sites.NewToken do
         |> Map.put("type", :site)
         |> Map.put("site_id", site.id)
 
-      Tokens.create_token(attrs, subject)
+      Domain.Auth.create_token(attrs, subject)
     end
   end
 end

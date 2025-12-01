@@ -74,7 +74,7 @@ defmodule Domain.Flows do
   # since we won't need to be so careful about reject_access messages to the gateway.
   def reauthorize_flow(%Flow{} = flow) do
     with client when not is_nil(client) <- DB.fetch_client_by_id!(flow.client_id),
-         {:ok, token} <- Domain.Tokens.fetch_token_by_id(flow.token_id),
+         {:ok, token} <- DB.fetch_token_by_id(flow.token_id),
          {:ok, gateway} <- DB.fetch_gateway_by_id(flow.gateway_id),
          # We only want to reauthorize the resource for this gateway if the resource is still connected to its
          # site.
@@ -240,12 +240,12 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
-  def delete_flows_for(%Domain.Tokens.Token{account_id: nil}) do
+  def delete_flows_for(%Domain.Token{account_id: nil}) do
     # Tokens without an account_id are not associated with any flows. I.e. global relay tokens
     {0, []}
   end
 
-  def delete_flows_for(%Domain.Tokens.Token{id: id, account_id: account_id}) do
+  def delete_flows_for(%Domain.Token{id: id, account_id: account_id}) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(account_id)
     |> Flow.Query.by_token_id(id)
@@ -266,6 +266,7 @@ defmodule Domain.Flows do
     alias Domain.{Safe, Repo, Gateway}
     alias Domain.Membership
     alias Domain.Client
+    alias Domain.Token
 
     def fetch_membership_by_actor_id_and_group_id(actor_id, group_id) do
       from(m in Membership,
@@ -299,6 +300,22 @@ defmodule Domain.Flows do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}
         gateway -> {:ok, gateway}
+      end
+    end
+
+    def fetch_token_by_id(id) do
+      result =
+        from(t in Token,
+          where: t.id == ^id,
+          where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
+        )
+        |> Safe.unscoped()
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        token -> {:ok, token}
       end
     end
   end

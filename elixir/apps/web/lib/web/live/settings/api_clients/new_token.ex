@@ -1,8 +1,9 @@
 defmodule Web.Settings.ApiClients.NewToken do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
-  alias Domain.{Auth, Tokens}
+  alias Domain.{Auth, Token}
   alias __MODULE__.DB
+  import Ecto.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
     unless Domain.Config.global_feature_enabled?(:rest_api),
@@ -10,7 +11,7 @@ defmodule Web.Settings.ApiClients.NewToken do
 
     with {:ok, %{type: :api_client} = actor} <-
            DB.fetch_api_client(id, socket.assigns.subject) do
-      changeset = Tokens.Token.Changeset.create(%{})
+      changeset = build_token_changeset(%{})
 
       socket =
         assign(socket,
@@ -68,7 +69,7 @@ defmodule Web.Settings.ApiClients.NewToken do
     attrs = map_expires_at(attrs)
 
     changeset =
-      Tokens.Token.Changeset.create(attrs)
+      build_token_changeset(attrs)
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -96,6 +97,13 @@ defmodule Web.Settings.ApiClients.NewToken do
       "" -> ""
       value -> "#{value}T00:00:00.000000Z"
     end)
+  end
+
+  # Local changeset for form validation
+  defp build_token_changeset(attrs) do
+    %Token{}
+    |> cast(attrs, [:name, :expires_at])
+    |> validate_required([:name])
   end
 
   defmodule DB do

@@ -1,4 +1,4 @@
-defmodule Domain.Tokens.Token do
+defmodule Domain.Token do
   use Domain, :schema
 
   schema "tokens" do

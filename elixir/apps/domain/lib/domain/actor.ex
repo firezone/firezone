@@ -15,7 +15,7 @@ defmodule Domain.Actor do
 
     has_many :clients, Domain.Client, preload_order: [desc: :last_seen_at]
 
-    has_many :tokens, Domain.Tokens.Token
+    has_many :tokens, Domain.Token
 
     has_many :memberships, Domain.Membership, on_replace: :delete
     has_many :groups, through: [:memberships, :group]

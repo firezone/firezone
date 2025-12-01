@@ -9,7 +9,7 @@ defmodule Web.Session.Redirector do
   """
   use Web, :verified_routes
 
-  alias Domain.Tokens
+  alias Domain.Safe
 
   @doc """
   Sanitizes and validates a redirect_to parameter.
@@ -88,7 +88,10 @@ defmodule Web.Session.Redirector do
         account_or_slug
       ) do
     post_sign_out_url = url(~p"/#{account_or_slug}")
-    {:ok, _num_deleted} = Tokens.delete_token_for(subject)
+    # Delete the token for the subject
+    import Ecto.Query
+    query = from(t in Domain.Token, where: t.id == ^subject.token_id)
+    {_num_deleted, _} = Safe.scoped(subject) |> Safe.delete_all(query)
 
     conn = delete_session(conn, account.id)
 

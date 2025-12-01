@@ -6,9 +6,10 @@ defmodule Web.EmailOTPController do
 
   alias Domain.{
     Actor,
+    Auth,
     EmailOTP,
     Safe,
-    Tokens
+    Token
   }
 
   alias __MODULE__.DB
@@ -119,7 +120,7 @@ defmodule Web.EmailOTPController do
             {:error, :rate_limited} ->
               # Generate fake fragment but track the error
               fake_fragment =
-                Domain.Tokens.encode_fragment!(%Domain.Tokens.Token{
+                Auth.encode_fragment!(%Token{
                   type: :email,
                   secret_nonce: Domain.Crypto.random_token(5, encoder: :user_friendly),
                   secret_fragment: Domain.Crypto.random_token(27, encoder: :hex32),
@@ -134,7 +135,7 @@ defmodule Web.EmailOTPController do
             _ ->
               # We generate a fake fragment to prevent information leakage
               fake_fragment =
-                Domain.Tokens.encode_fragment!(%Domain.Tokens.Token{
+                Auth.encode_fragment!(%Token{
                   type: :email,
                   secret_nonce: Domain.Crypto.random_token(5, encoder: :user_friendly),
                   secret_fragment: Domain.Crypto.random_token(27, encoder: :hex32),
@@ -201,7 +202,7 @@ defmodule Web.EmailOTPController do
     {:ok, _count} = delete_all_email_tokens_for_actor(actor)
 
     {:ok, token} =
-      Tokens.create_token(%{
+      Auth.create_token(%{
         type: :email,
         secret_fragment: Domain.Crypto.random_token(27),
         secret_nonce: nonce,
@@ -211,7 +212,7 @@ defmodule Web.EmailOTPController do
         expires_at: expires_at
       })
 
-    fragment = Domain.Tokens.encode_fragment!(token)
+    fragment = Auth.encode_fragment!(token)
 
     {:ok, actor, fragment, nonce}
   end
@@ -220,7 +221,7 @@ defmodule Web.EmailOTPController do
     import Ecto.Query
 
     query =
-      from(t in Domain.Tokens.Token,
+      from(t in Domain.Token,
         where: t.type == :email and t.account_id == ^actor.account_id and t.actor_id == ^actor.id
       )
 
@@ -253,7 +254,7 @@ defmodule Web.EmailOTPController do
   defp verify_secret(actor, encoded_token, conn) do
     context = auth_context(conn, :browser)
 
-    with {:ok, token} <- Tokens.use_token(encoded_token, %{context | type: :email}),
+    with {:ok, token} <- Auth.use_token(encoded_token, %{context | type: :email}),
          true <- token.actor_id == actor.id do
       {:ok, _count} = delete_all_email_tokens_for_actor(actor)
       {:ok, actor, nil}
@@ -297,8 +298,8 @@ defmodule Web.EmailOTPController do
       expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
     }
 
-    with {:ok, token} <- Tokens.create_token(attrs) do
-      {:ok, Domain.Tokens.encode_fragment!(token)}
+    with {:ok, token} <- Auth.create_token(attrs) do
+      {:ok, Auth.encode_fragment!(token)}
     end
   end
 

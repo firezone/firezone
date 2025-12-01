@@ -1,6 +1,5 @@
 defmodule Web.Settings.ApiClients.Show do
   use Web, :live_view
-  alias Domain.Tokens
   alias __MODULE__.DB
   import Ecto.Changeset
 
@@ -14,7 +13,7 @@ defmodule Web.Settings.ApiClients.Show do
             page_title: "API Client #{actor.name}"
           )
           |> assign_live_table("tokens",
-            query_module: Tokens.Token.Query,
+            query_module: DB,
             sortable_fields: [],
             callback: &handle_tokens_update!/2
           )
@@ -34,7 +33,7 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_tokens_update!(socket, list_opts) do
-    case Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+    case DB.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
       {:ok, tokens, metadata} ->
         {:ok,
          assign(socket,
@@ -306,7 +305,7 @@ defmodule Web.Settings.ApiClients.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Tokens}
+    alias Domain.Safe
 
     def fetch_api_client(id, subject) do
       from(a in Domain.Actor, where: a.id == ^id, where: a.type == :api_client)
@@ -324,20 +323,55 @@ defmodule Web.Settings.ApiClients.Show do
       |> Safe.update()
     end
 
+    def list_tokens_for(actor, subject, opts \\ []) do
+      case subject.actor.type do
+        :account_admin_user ->
+          from(t in Domain.Token,
+            as: :tokens,
+            where: t.actor_id == ^actor.id,
+            order_by: [desc: t.inserted_at, desc: t.id]
+          )
+          |> Safe.scoped(subject)
+          |> Safe.list(__MODULE__, opts)
+
+        _ ->
+          {:error, :unauthorized}
+      end
+    end
+
     def delete_all_tokens_for_actor(actor, subject) do
-      query = from(t in Tokens.Token, where: t.actor_id == ^actor.id)
+      query = from(t in Domain.Token, where: t.actor_id == ^actor.id)
       {count, _} = query |> Safe.scoped(subject) |> Safe.delete_all()
       {:ok, count}
     end
 
     def delete_token(token_id, subject) do
-      with {:ok, token} <- Tokens.fetch_token_by_id(token_id, subject) do
-        Safe.scoped(token, subject) |> Safe.delete()
+      import Ecto.Query
+
+      result =
+        from(t in Domain.Token,
+          where: t.id == ^token_id,
+          where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
+        )
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        token -> Safe.scoped(token, subject) |> Safe.delete()
       end
     end
 
     def delete_actor(actor, subject) do
       Safe.scoped(actor, subject) |> Safe.delete()
+    end
+
+    def cursor_fields do
+      [
+        {:tokens, :desc, :inserted_at},
+        {:tokens, :desc, :id}
+      ]
     end
   end
 end

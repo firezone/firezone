@@ -607,7 +607,7 @@ defmodule Domain.AuthTest do
       provider_adapter_config: provider_adapter_config
     } do
       assert changeset = new_provider(account)
-      assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
+      assert %Ecto.Changeset{data: %Domain.AuthProvider{}} = changeset
 
       assert changeset.changes == %{
                account_id: account.id
@@ -620,7 +620,7 @@ defmodule Domain.AuthTest do
         )
 
       assert changeset = new_provider(account, provider_attrs)
-      assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
+      assert %Ecto.Changeset{data: %Domain.AuthProvider{}} = changeset
       assert changeset.changes.name == provider_attrs.name
       assert changeset.changes.provisioner == provider_attrs.provisioner
       assert changeset.changes.adapter == provider_attrs.adapter
@@ -837,7 +837,7 @@ defmodule Domain.AuthTest do
       provider_attrs = Fixtures.Auth.provider_attrs()
 
       assert changeset = change_provider(provider, provider_attrs)
-      assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
+      assert %Ecto.Changeset{data: %Domain.AuthProvider{}} = changeset
 
       assert changeset.changes.name == provider_attrs.name
     end
@@ -1007,7 +1007,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _provider} = disable_provider(provider, subject)
 
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
     test "returns error when trying to disable the last provider", %{
@@ -1188,7 +1188,7 @@ defmodule Domain.AuthTest do
       assert {:ok, _provider} = delete_provider(provider, subject)
 
       refute Repo.get(ExternalIdentity, identity.id)
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
     test "deletes provider actor groups", %{
@@ -1266,7 +1266,7 @@ defmodule Domain.AuthTest do
                  [
                    reason: :missing_permissions,
                    missing_permissions: [
-                     %Domain.Auth.Permission{resource: Domain.Auth.Provider, action: :manage}
+                     %Domain.Auth.Permission{resource: Domain.AuthProvider, action: :manage}
                    ]
                  ]}}
     end
@@ -2335,7 +2335,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _deleted_identity} = delete_identity(identity, subject)
 
-      refute Repo.get(Domain.Tokens.Token, token.id)
+      refute Repo.get(Domain.Token, token.id)
     end
 
     test "does not delete identity that belongs to another actor with manage_own permission", %{
@@ -2456,7 +2456,7 @@ defmodule Domain.AuthTest do
 
       assert delete_identities_for(actor, subject) == {:ok, 1}
 
-      refute Repo.get(Domain.Tokens.Token, token.id)
+      refute Repo.get(Domain.Token, token.id)
     end
 
     test "does not remove identities that belong to another actor", %{
@@ -2604,7 +2604,7 @@ defmodule Domain.AuthTest do
       assert subject.expires_at
       assert subject.context.type == context.type
 
-      assert token = Repo.get(Tokens.Token, subject.token_id)
+      assert token = Repo.get(Token, subject.token_id)
       assert token.type == context.type
       assert token.expires_at
       assert token.account_id == account.id
@@ -2670,7 +2670,7 @@ defmodule Domain.AuthTest do
                sign_in(provider, identity.id, nonce, secret, context)
 
       {:ok, {_account_id, id, _nonce, _secret}} = Tokens.peek_token(fragment, context)
-      assert token = Repo.get(Domain.Tokens.Token, id)
+      assert token = Repo.get(Domain.Token, id)
       assert token.type == context.type
       assert token.identity_id == token_identity.id
     end
@@ -2930,7 +2930,7 @@ defmodule Domain.AuthTest do
       assert subject.identity.id == token_identity.id
       assert subject.context.type == context.type
 
-      assert token = Repo.get(Tokens.Token, subject.token_id)
+      assert token = Repo.get(Token, subject.token_id)
       assert token.type == context.type
       assert token.account_id == account.id
       assert token.identity_id == identity.id
@@ -2970,7 +2970,7 @@ defmodule Domain.AuthTest do
       assert {:ok, token_identity, fragment} = sign_in(provider, nonce, payload, context)
 
       {:ok, {_account_id, id, _nonce, _secret}} = Tokens.peek_token(fragment, context)
-      assert token = Repo.get(Domain.Tokens.Token, id)
+      assert token = Repo.get(Domain.Token, id)
       assert token.type == context.type
       assert token.identity_id == token_identity.id
     end
@@ -3288,7 +3288,7 @@ defmodule Domain.AuthTest do
       assert redirect_url =~ "client_id=#{provider.adapter_config["client_id"]}"
       assert redirect_url =~ "post_logout_redirect_uri=#{post_redirect_url}"
 
-      refute Repo.get(Tokens.Token, subject.token_id)
+      refute Repo.get(Token, subject.token_id)
     end
 
     test "returns identity and url without changes for other providers" do
@@ -3301,7 +3301,7 @@ defmodule Domain.AuthTest do
       assert {:ok, %ExternalIdentity{}, "https://fz.d/sign_out"} =
                sign_out(subject, "https://fz.d/sign_out")
 
-      refute Repo.get(Tokens.Token, subject.token_id)
+      refute Repo.get(Token, subject.token_id)
     end
   end
 
@@ -3368,7 +3368,7 @@ defmodule Domain.AuthTest do
       assert sa_subject.context.type == context.type
       assert sa_subject.permissions == fetch_type_permissions!(:service_account)
 
-      assert token = Repo.get(Tokens.Token, sa_subject.token_id)
+      assert token = Repo.get(Token, sa_subject.token_id)
       assert token.name == "foo"
       assert token.type == context.type
       assert token.account_id == account.id
@@ -3479,7 +3479,7 @@ defmodule Domain.AuthTest do
       assert api_subject.context.type == context.type
       assert api_subject.permissions == fetch_type_permissions!(:api_client)
 
-      assert token = Repo.get(Tokens.Token, api_subject.token_id)
+      assert token = Repo.get(Token, api_subject.token_id)
       assert token.name == "foo"
       assert token.type == context.type
       assert token.account_id == account.id
@@ -3746,7 +3746,7 @@ defmodule Domain.AuthTest do
     } do
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
 
-      assert token = Repo.get(Tokens.Token, subject.token_id)
+      assert token = Repo.get(Token, subject.token_id)
       assert token.last_seen_remote_ip.address == context.remote_ip
       assert token.last_seen_remote_ip_location_region == context.remote_ip_location_region
       assert token.last_seen_remote_ip_location_city == context.remote_ip_location_city

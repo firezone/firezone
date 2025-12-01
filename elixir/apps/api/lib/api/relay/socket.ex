@@ -2,7 +2,7 @@ defmodule API.Relay.Socket do
   use Phoenix.Socket
   import Ecto.Changeset
   import Domain.Repo.Changeset
-  alias Domain.{Tokens, Safe, Auth, Version, Relay}
+  alias Domain.{Safe, Auth, Version, Relay}
   require Logger
   require OpenTelemetry.Tracer
 
@@ -54,11 +54,11 @@ defmodule API.Relay.Socket do
   end
 
   @impl true
-  def id(socket), do: Tokens.socket_id(socket.assigns.token_id)
+  def id(socket), do: Auth.socket_id(socket.assigns.token_id)
 
   defp authenticate_token(encoded_token, %Auth.Context{} = context)
        when is_binary(encoded_token) do
-    with {:ok, token} <- Tokens.use_token(encoded_token, context) do
+    with {:ok, token} <- Auth.use_token(encoded_token, context) do
       {:ok, token}
     else
       {:error, :invalid_or_expired_token} -> {:error, :unauthorized}

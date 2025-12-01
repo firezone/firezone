@@ -6,7 +6,7 @@ defmodule Web.Actors do
   alias Domain.{
     Actor,
     ExternalIdentity,
-    Tokens.Token
+    Token
   }
 
   import Ecto.Changeset
@@ -1323,7 +1323,7 @@ defmodule Web.Actors do
 
         case DB.create(changeset, subject) do
           {:ok, token} ->
-            encoded_token = Domain.Tokens.encode_fragment!(token)
+            encoded_token = Domain.Auth.encode_fragment!(token)
             {:ok, {token, encoded_token}}
 
           error ->
@@ -1417,7 +1417,7 @@ defmodule Web.Actors do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Tokens.Token}
+    alias Domain.{Safe, Token}
     alias Domain.Directory
     alias Domain.Repo.Filter
 

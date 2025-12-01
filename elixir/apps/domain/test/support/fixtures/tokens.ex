@@ -36,7 +36,7 @@ defmodule Domain.Fixtures.Tokens do
     attrs = Map.put(attrs, :identity_id, identity_id)
     attrs = Map.put(attrs, :account_id, account.id)
 
-    {:ok, token} = Domain.Tokens.create_token(attrs)
+    {:ok, token} = Domain.Auth.create_token(attrs)
     token
   end
 
@@ -62,7 +62,7 @@ defmodule Domain.Fixtures.Tokens do
 
     attrs = Map.put(attrs, :identity_id, identity_id)
 
-    {:ok, token} = Domain.Tokens.create_token(attrs, subject)
+    {:ok, token} = Domain.Auth.create_token(attrs, subject)
     token
   end
 
@@ -107,7 +107,7 @@ defmodule Domain.Fixtures.Tokens do
     attrs = Map.put(attrs, :actor_id, actor.id)
     attrs = Map.put(attrs, :identity_id, identity.id)
 
-    {:ok, token} = Domain.Tokens.create_token(attrs)
+    {:ok, token} = Domain.Auth.create_token(attrs)
     token
   end
 
@@ -137,7 +137,7 @@ defmodule Domain.Fixtures.Tokens do
     attrs = Map.put(attrs, :actor_id, actor.id)
     attrs = Map.put(attrs, :identity_id, identity.id)
 
-    {:ok, token} = Domain.Tokens.create_token(attrs)
+    {:ok, token} = Domain.Auth.create_token(attrs)
     token
   end
 
@@ -188,7 +188,7 @@ defmodule Domain.Fixtures.Tokens do
         expires_at: expires_at
       })
 
-    {:ok, token} = Domain.Tokens.create_token(attrs, subject)
+    {:ok, token} = Domain.Auth.create_token(attrs, subject)
     token
   end
 

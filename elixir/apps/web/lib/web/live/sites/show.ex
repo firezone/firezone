@@ -1,6 +1,6 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
-  alias Domain.{Policies, Flows, Tokens}
+  alias Domain.{Policies, Flows, Safe}
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -473,8 +473,17 @@ defmodule Web.Sites.Show do
     do: handle_live_table_event(event, params, socket)
 
   def handle_event("revoke_all_tokens", _params, socket) do
-    {:ok, deleted_token_count} =
-      Tokens.delete_tokens_for(socket.assigns.site, socket.assigns.subject)
+    # Only account admins can delete site tokens
+    deleted_token_count =
+      if socket.assigns.subject.actor.type == :account_admin_user do
+        import Ecto.Query
+
+        query = from(t in Domain.Token, where: t.site_id == ^socket.assigns.site.id)
+        {count, _} = Safe.scoped(socket.assigns.subject) |> Safe.delete_all(query)
+        count
+      else
+        0
+      end
 
     socket =
       socket

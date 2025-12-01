@@ -1,6 +1,6 @@
 defmodule API.Client.Socket do
   use Phoenix.Socket
-  alias Domain.{Auth, Tokens, Version}
+  alias Domain.{Auth, Version}
   alias Domain.Client
   alias __MODULE__.DB
   require Logger
@@ -58,7 +58,7 @@ defmodule API.Client.Socket do
 
   @impl true
 
-  def id(socket), do: Tokens.socket_id(socket.assigns.subject.token_id)
+  def id(socket), do: Auth.socket_id(socket.assigns.subject.token_id)
 
   defp upsert_changeset(actor, subject, attrs) do
     import Ecto.Changeset

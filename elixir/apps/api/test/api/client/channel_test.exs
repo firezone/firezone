@@ -229,7 +229,7 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      token = Repo.get_by(Domain.Tokens.Token, id: subject.token_id)
+      token = Repo.get_by(Domain.Token, id: subject.token_id)
 
       data = %{
         "id" => token.id,

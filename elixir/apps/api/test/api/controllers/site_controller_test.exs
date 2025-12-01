@@ -1,7 +1,7 @@
 defmodule API.SiteControllerTest do
   use API.ConnCase, async: true
   alias Domain.Site
-  alias Domain.Tokens.Token
+  alias Domain.Token
 
   setup do
     account = Fixtures.Accounts.create_account()
