@@ -1,7 +1,7 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{PubSub, Flows, Policy, Safe, Auth}
+  alias Domain.{PubSub, Policy, Safe, Auth}
   alias Web.Policies.Components.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -22,7 +22,7 @@ defmodule Web.Policies.Show do
           providers: providers
         )
         |> assign_live_table("flows",
-          query_module: Flows.Flow.Query,
+          query_module: DB.FlowQuery,
           sortable_fields: [],
           hide_filters: [:expiration],
           callback: &handle_flows_update!/2
@@ -47,7 +47,7 @@ defmodule Web.Policies.Show do
       )
 
     with {:ok, flows, metadata} <-
-           Flows.list_flows_for(socket.assigns.policy, socket.assigns.subject, list_opts) do
+           DB.list_flows_for(socket.assigns.policy, socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          flows: flows,

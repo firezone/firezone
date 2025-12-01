@@ -7,9 +7,9 @@ defmodule API.Client.Channel do
     Changes.Change,
     PubSub,
     Resources,
-    Flows,
     Gateway,
-    Presence
+    Presence,
+    Auth
   }
 
   alias __MODULE__.DB
@@ -66,7 +66,7 @@ defmodule API.Client.Channel do
     :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
 
     # Delete any stale flows for resources we may not have access to anymore based on policy conditions
-    Flows.delete_stale_flows_on_connect(
+    delete_stale_flows_on_connect(
       socket.assigns.client,
       Enum.map(resources, &Ecto.UUID.load!(&1.id))
     )
@@ -370,7 +370,7 @@ defmodule API.Client.Channel do
       # TODO: Optimization
       # Move this to a Task.start that completes after broadcasting authorize_flow
       {:ok, flow} =
-        Flows.create_flow(
+        create_flow(
           socket.assigns.client,
           gateway,
           resource_id,
@@ -517,7 +517,7 @@ defmodule API.Client.Channel do
          true <- gateway.online? do
       # TODO: Optimization
       {:ok, flow} =
-        Flows.create_flow(
+        create_flow(
           socket.assigns.client,
           gateway,
           resource_id,
@@ -591,7 +591,7 @@ defmodule API.Client.Channel do
          true <- gateway.online? do
       # TODO: Optimization
       {:ok, flow} =
-        Flows.create_flow(
+        create_flow(
           socket.assigns.client,
           gateway,
           resource_id,
@@ -1093,5 +1093,63 @@ defmodule API.Client.Channel do
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.take(2)
     |> Enum.map(&Enum.random(elem(&1, 1)))
+  end
+
+  # Inline functions from Domain.Flows
+
+  defp delete_stale_flows_on_connect(%Domain.Client{} = client, resource_ids)
+       when is_list(resource_ids) do
+    import Ecto.Query
+
+    from(f in Domain.Flow, as: :flows)
+    |> where([flows: f], f.account_id == ^client.account_id)
+    |> where([flows: f], f.client_id == ^client.id)
+    |> where([flows: f], f.resource_id not in ^resource_ids)
+    |> Domain.Safe.unscoped()
+    |> Domain.Safe.delete_all()
+  end
+
+  defp create_flow(
+         %Domain.Client{
+           id: client_id,
+           account_id: account_id,
+           actor_id: actor_id
+         },
+         %Domain.Gateway{
+           id: gateway_id,
+           last_seen_remote_ip: gateway_remote_ip,
+           account_id: account_id
+         },
+         resource_id,
+         policy_id,
+         membership_id,
+         %Auth.Subject{
+           account: %{id: account_id},
+           actor: %{id: actor_id},
+           token_id: token_id,
+           context: %Auth.Context{
+             remote_ip: client_remote_ip,
+             user_agent: client_user_agent
+           }
+         } = subject,
+         expires_at
+       ) do
+    changeset =
+      Domain.Flow.Changeset.create(%{
+        token_id: token_id,
+        policy_id: policy_id,
+        client_id: client_id,
+        gateway_id: gateway_id,
+        resource_id: resource_id,
+        actor_group_membership_id: membership_id,
+        account_id: account_id,
+        client_remote_ip: client_remote_ip,
+        client_user_agent: client_user_agent,
+        gateway_remote_ip: gateway_remote_ip,
+        expires_at: expires_at
+      })
+
+    Domain.Safe.scoped(changeset, subject)
+    |> Domain.Safe.insert()
   end
 end

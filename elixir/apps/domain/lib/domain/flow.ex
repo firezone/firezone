@@ -1,4 +1,4 @@
-defmodule Domain.Flows.Flow do
+defmodule Domain.Flow do
   use Domain, :schema
 
   @type t :: %__MODULE__{

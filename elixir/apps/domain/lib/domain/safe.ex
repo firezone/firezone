@@ -545,10 +545,10 @@ defmodule Domain.Safe do
   def permit(:update, Domain.Client, :service_account), do: :ok
 
   # Flow permissions - all actor types can read and create flows
-  def permit(:read, Domain.Flows.Flow, _), do: :ok
-  def permit(:insert, Domain.Flows.Flow, _), do: :ok
+  def permit(:read, Domain.Flow, _), do: :ok
+  def permit(:insert, Domain.Flow, _), do: :ok
   # Only admin can manage/delete flows
-  def permit(_action, Domain.Flows.Flow, :account_admin_user), do: :ok
+  def permit(_action, Domain.Flow, :account_admin_user), do: :ok
 
   # Gateway permissions
   def permit(_action, Domain.Gateway, :account_admin_user), do: :ok

@@ -1,8 +1,8 @@
-defmodule Domain.Flows.Flow.Query do
+defmodule Domain.Flow.Query do
   use Domain, :query
 
   def all do
-    from(flows in Domain.Flows.Flow, as: :flows)
+    from(flows in Domain.Flow, as: :flows)
   end
 
   def expired(queryable) do

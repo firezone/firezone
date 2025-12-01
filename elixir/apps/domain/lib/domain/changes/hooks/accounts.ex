@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Accounts do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Billing, Changes.Change, Flows, PubSub}
+  alias Domain.{Billing, Changes.Change, PubSub}
   import Domain.SchemaHelpers
   require Logger
 
@@ -21,7 +21,7 @@ defmodule Domain.Changes.Hooks.Accounts do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
     account = struct_from_params(Domain.Account, old_data)
-    Flows.delete_flows_for(account)
+    delete_flows_for(account)
 
     on_delete(lsn, old_data)
   end
@@ -48,5 +48,15 @@ defmodule Domain.Changes.Hooks.Accounts do
     change = %Change{lsn: lsn, op: :delete, old_struct: account}
 
     PubSub.Account.broadcast(account.id, change)
+  end
+
+  # Inline function from Domain.Flows
+  defp delete_flows_for(%Domain.Account{} = account) do
+    import Ecto.Query
+
+    from(f in Domain.Flow, as: :flows)
+    |> where([flows: f], f.account_id == ^account.id)
+    |> Domain.Safe.unscoped()
+    |> Domain.Safe.delete_all()
   end
 end

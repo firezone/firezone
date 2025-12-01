@@ -6,7 +6,6 @@ defmodule API.Gateway.Channel do
   alias Domain.{
     Cache,
     Changes.Change,
-    Flows,
     Auth,
     PubSub,
     Resource,
@@ -569,7 +568,7 @@ defmodule API.Gateway.Channel do
          %Change{
            op: :delete,
            old_struct:
-             %Flows.Flow{gateway_id: gateway_id, client_id: client_id, resource_id: resource_id} =
+             %Domain.Flow{gateway_id: gateway_id, client_id: client_id, resource_id: resource_id} =
                flow
          },
          %{

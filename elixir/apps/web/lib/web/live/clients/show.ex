@@ -2,7 +2,7 @@ defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Clients.Components
-  alias Domain.{Presence.Clients, ComponentVersions, Flows}
+  alias Domain.{Presence.Clients, ComponentVersions}
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -23,7 +23,7 @@ defmodule Web.Clients.Show do
           page_title: "Client #{client.name}"
         )
         |> assign_live_table("flows",
-          query_module: Flows.Flow.Query,
+          query_module: DB.FlowQuery,
           sortable_fields: [],
           hide_filters: [:expiration],
           callback: &handle_flows_update!/2
@@ -49,7 +49,7 @@ defmodule Web.Clients.Show do
       )
 
     with {:ok, flows, metadata} <-
-           Flows.list_flows_for(socket.assigns.client, socket.assigns.subject, list_opts) do
+           DB.list_flows_for(socket.assigns.client, socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          flows: flows,
@@ -519,5 +519,166 @@ defmodule Web.Clients.Show do
           {:error, reason}
       end
     end
+
+    # Inline functions from Domain.Flows
+    def list_flows_for(assoc, subject, opts \\ [])
+
+    def list_flows_for(%Domain.Policy{} = policy, %Domain.Auth.Subject{} = subject, opts) do
+      DB.FlowQuery.all()
+      |> DB.FlowQuery.by_policy_id(policy.id)
+      |> list_flows(subject, opts)
+    end
+
+    def list_flows_for(%Domain.Resource{} = resource, %Domain.Auth.Subject{} = subject, opts) do
+      DB.FlowQuery.all()
+      |> DB.FlowQuery.by_resource_id(resource.id)
+      |> list_flows(subject, opts)
+    end
+
+    def list_flows_for(%Domain.Client{} = client, %Domain.Auth.Subject{} = subject, opts) do
+      DB.FlowQuery.all()
+      |> DB.FlowQuery.by_client_id(client.id)
+      |> list_flows(subject, opts)
+    end
+
+    def list_flows_for(%Domain.Actor{} = actor, %Domain.Auth.Subject{} = subject, opts) do
+      DB.FlowQuery.all()
+      |> DB.FlowQuery.by_actor_id(actor.id)
+      |> list_flows(subject, opts)
+    end
+
+    def list_flows_for(%Domain.Gateway{} = gateway, %Domain.Auth.Subject{} = subject, opts) do
+      DB.FlowQuery.all()
+      |> DB.FlowQuery.by_gateway_id(gateway.id)
+      |> list_flows(subject, opts)
+    end
+
+    defp list_flows(queryable, subject, opts) do
+      queryable
+      |> Domain.Safe.scoped(subject)
+      |> Domain.Safe.list(DB.FlowQuery, opts)
+    end
+  end
+
+  defmodule DB.FlowQuery do
+    use Domain, :query
+
+    def all do
+      from(flows in Domain.Flow, as: :flows)
+    end
+
+    def expired(queryable) do
+      now = DateTime.utc_now()
+      where(queryable, [flows: flows], flows.expires_at <= ^now)
+    end
+
+    def not_expired(queryable) do
+      now = DateTime.utc_now()
+      where(queryable, [flows: flows], flows.expires_at > ^now)
+    end
+
+    def by_id(queryable, id) do
+      where(queryable, [flows: flows], flows.id == ^id)
+    end
+
+    def by_account_id(queryable, account_id) do
+      where(queryable, [flows: flows], flows.account_id == ^account_id)
+    end
+
+    def by_token_id(queryable, token_id) do
+      where(queryable, [flows: flows], flows.token_id == ^token_id)
+    end
+
+    def by_policy_id(queryable, policy_id) do
+      where(queryable, [flows: flows], flows.policy_id == ^policy_id)
+    end
+
+    def for_cache(queryable) do
+      queryable
+      |> select(
+        [flows: flows],
+        {{flows.client_id, flows.resource_id}, {flows.id, flows.expires_at}}
+      )
+    end
+
+    def by_policy_actor_group_id(queryable, actor_group_id) do
+      queryable
+      |> with_joined_policy()
+      |> where([policy: policy], policy.actor_group_id == ^actor_group_id)
+    end
+
+    def by_actor_group_membership_id(queryable, membership_id) do
+      where(queryable, [flows: flows], flows.actor_group_membership_id == ^membership_id)
+    end
+
+    def by_site_id(queryable, site_id) do
+      queryable
+      |> with_joined_site()
+      |> where([site: site], site.id == ^site_id)
+    end
+
+    def by_resource_id(queryable, resource_id) do
+      where(queryable, [flows: flows], flows.resource_id == ^resource_id)
+    end
+
+    def by_not_in_resource_ids(queryable, resource_ids) do
+      where(queryable, [flows: flows], flows.resource_id not in ^resource_ids)
+    end
+
+    def by_client_id(queryable, client_id) do
+      where(queryable, [flows: flows], flows.client_id == ^client_id)
+    end
+
+    def by_actor_id(queryable, actor_id) do
+      queryable
+      |> with_joined_client()
+      |> where([client: client], client.actor_id == ^actor_id)
+    end
+
+    def by_gateway_id(queryable, gateway_id) do
+      where(queryable, [flows: flows], flows.gateway_id == ^gateway_id)
+    end
+
+    def with_joined_policy(queryable) do
+      with_flow_named_binding(queryable, :policy, fn queryable, binding ->
+        join(queryable, :inner, [flows: flows], policy in assoc(flows, ^binding), as: ^binding)
+      end)
+    end
+
+    def with_joined_client(queryable) do
+      with_flow_named_binding(queryable, :client, fn queryable, binding ->
+        join(queryable, :inner, [flows: flows], client in assoc(flows, ^binding), as: ^binding)
+      end)
+    end
+
+    def with_joined_site(queryable) do
+      queryable
+      |> with_joined_gateway()
+      |> with_flow_named_binding(:site, fn queryable, binding ->
+        join(queryable, :inner, [gateway: gateway], site in assoc(gateway, :site), as: ^binding)
+      end)
+    end
+
+    def with_joined_gateway(queryable) do
+      with_flow_named_binding(queryable, :gateway, fn queryable, binding ->
+        join(queryable, :inner, [flows: flows], gateway in assoc(flows, ^binding), as: ^binding)
+      end)
+    end
+
+    def with_flow_named_binding(queryable, binding, fun) do
+      if has_named_binding?(queryable, binding) do
+        queryable
+      else
+        fun.(queryable, binding)
+      end
+    end
+
+    # Pagination
+    @impl Domain.Repo.Query
+    def cursor_fields,
+      do: [
+        {:flows, :desc, :inserted_at},
+        {:flows, :asc, :id}
+      ]
   end
 end

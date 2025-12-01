@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Policies do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Changes.Change, Flows, Policy, PubSub}
+  alias Domain.{Changes.Change, Policy, PubSub}
   import Domain.SchemaHelpers
 
   @impl true
@@ -19,7 +19,7 @@ defmodule Domain.Changes.Hooks.Policies do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
     policy = struct_from_params(Policy, old_data)
-    Flows.delete_flows_for(policy)
+    delete_flows_for(policy)
 
     on_delete(lsn, old_data)
   end
@@ -43,7 +43,7 @@ defmodule Domain.Changes.Hooks.Policies do
     if old_policy.conditions != policy.conditions or
          old_policy.actor_group_id != policy.actor_group_id or
          old_policy.resource_id != policy.resource_id do
-      Flows.delete_flows_for(old_policy)
+      delete_flows_for(old_policy)
     end
 
     PubSub.Account.broadcast(policy.account_id, change)
@@ -55,5 +55,16 @@ defmodule Domain.Changes.Hooks.Policies do
     change = %Change{lsn: lsn, op: :delete, old_struct: policy}
 
     PubSub.Account.broadcast(policy.account_id, change)
+  end
+
+  # Inline function from Domain.Flows
+  defp delete_flows_for(%Policy{} = policy) do
+    import Ecto.Query
+
+    from(f in Domain.Flow, as: :flows)
+    |> where([flows: f], f.account_id == ^policy.account_id)
+    |> where([flows: f], f.policy_id == ^policy.id)
+    |> Domain.Safe.unscoped()
+    |> Domain.Safe.delete_all()
   end
 end

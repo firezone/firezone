@@ -37,7 +37,7 @@ defmodule Domain.Account do
 
     has_many :policies, Domain.Policy
 
-    has_many :flows, Domain.Flows.Flow
+    has_many :flows, Domain.Flow
 
     has_many :resources, Domain.Resource
     has_many :resource_connections, Domain.Resources.Connection

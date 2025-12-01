@@ -1,6 +1,6 @@
-defmodule Domain.Flows.Flow.Changeset do
+defmodule Domain.Flow.Changeset do
   use Domain, :changeset
-  alias Domain.Flows.Flow
+  alias Domain.Flow
 
   @fields ~w[token_id policy_id client_id gateway_id resource_id actor_group_membership_id
              account_id
