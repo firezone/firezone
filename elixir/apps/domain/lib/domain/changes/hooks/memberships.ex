@@ -5,7 +5,7 @@ defmodule Domain.Changes.Hooks.Memberships do
 
   @impl true
   def on_insert(lsn, data) do
-    membership = struct_from_params(Membership, data)
+    membership = struct_from_params(Domain.Membership, data)
     change = %Change{lsn: lsn, op: :insert, struct: membership}
 
     PubSub.Account.broadcast(membership.account_id, change)

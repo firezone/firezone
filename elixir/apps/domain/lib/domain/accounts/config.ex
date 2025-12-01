@@ -67,4 +67,46 @@ defmodule Domain.Accounts.Config do
   end
 
   def ensure_defaults(nil), do: default_config()
+
+  @doc """
+  Changeset function for embedded Config
+  """
+  def changeset(config \\ %__MODULE__{}, attrs) do
+    import Ecto.Changeset
+
+    config
+    |> cast(attrs, [:search_domain])
+    |> cast_embed(:clients_upstream_dns, with: &clients_upstream_dns_changeset/2)
+    |> cast_embed(:notifications, with: &notifications_changeset/2)
+  end
+
+  defp clients_upstream_dns_changeset(schema, attrs) do
+    import Ecto.Changeset
+
+    schema
+    |> cast(attrs, [:type, :doh_provider])
+    |> cast_embed(:addresses, with: &address_changeset/2)
+  end
+
+  defp address_changeset(schema, attrs) do
+    import Ecto.Changeset
+
+    schema
+    |> cast(attrs, [:address])
+  end
+
+  defp notifications_changeset(schema, attrs) do
+    import Ecto.Changeset
+
+    schema
+    |> cast_embed(:outdated_gateway, with: &email_changeset/2)
+    |> cast_embed(:idp_sync_error, with: &email_changeset/2)
+  end
+
+  defp email_changeset(schema, attrs) do
+    import Ecto.Changeset
+
+    schema
+    |> cast(attrs, [:enabled])
+  end
 end

@@ -19,9 +19,12 @@ defmodule Web.LiveHooks.FetchAccount do
     alias Domain.Account
 
     def get_account_by_id_or_slug(id_or_slug) do
-      from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug)
-      |> Safe.unscoped()
-      |> Safe.one()
+      query =
+        if match?({:ok, _}, Ecto.UUID.cast(id_or_slug)),
+          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
+          else: from(a in Account, where: a.slug == ^id_or_slug)
+
+      Safe.unscoped() |> Safe.one(query)
     end
   end
 end

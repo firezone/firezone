@@ -30,11 +30,11 @@ defmodule Web.Auth do
 
   def recent_account_ids(conn) do
     conn = Plug.Conn.fetch_cookies(conn, signed: [@recent_accounts_cookie_name])
-    Map.get(conn.cookies, @recent_accounts_cookie_name)
+    Map.get(conn.cookies, @recent_accounts_cookie_name, [])
   end
 
   def prepend_recent_account_id(conn, id_to_prepend) do
-    recent = recent_account_ids(conn) || []
+    recent = recent_account_ids(conn)
     ids = [id_to_prepend | recent] |> Enum.uniq() |> Enum.take(@remember_last_account_ids)
 
     Plug.Conn.put_resp_cookie(
@@ -46,7 +46,7 @@ defmodule Web.Auth do
   end
 
   def remove_recent_account_ids(conn, ids_to_remove) do
-    recent = recent_account_ids(conn) || []
+    recent = recent_account_ids(conn)
     ids = Enum.reject(recent, fn id -> id in ids_to_remove end)
 
     Plug.Conn.put_resp_cookie(

@@ -1,6 +1,5 @@
 defmodule Domain.Actor do
-  use Ecto.Schema
-  import Ecto.Changeset
+  use Domain, :schema
 
   schema "actors" do
     field :type, Ecto.Enum,

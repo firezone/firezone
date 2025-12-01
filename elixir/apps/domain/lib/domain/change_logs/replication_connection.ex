@@ -32,7 +32,7 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
     "resources" => Domain.Resource,
     "sites" => Domain.Site,
     "tokens" => Domain.Token,
-    "userpass_auth_providers" => Domain.UserPass.AuthProvider
+    "userpass_auth_providers" => Domain.Userpass.AuthProvider
   }
 
   # Handle LogicalMessage to track subject info

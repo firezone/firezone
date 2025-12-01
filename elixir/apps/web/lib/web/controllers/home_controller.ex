@@ -3,7 +3,7 @@ defmodule Web.HomeController do
   alias __MODULE__.DB
 
   def home(conn, params) do
-    recent_account_ids = Web.Auth.recent_account_ids(conn) || []
+    recent_account_ids = Web.Auth.recent_account_ids(conn)
     recent_accounts = DB.get_accounts_by_ids(recent_account_ids)
     ids_to_remove = recent_account_ids -- Enum.map(recent_accounts, & &1.id)
     conn = Web.Auth.remove_recent_account_ids(conn, ids_to_remove)
