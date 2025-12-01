@@ -1,7 +1,6 @@
 defmodule Web.Policies.Components do
   use Web, :component_library
   alias Domain.Policies.Condition
-  alias Domain.Policies
 
   @days_of_week [
     {"M", "Monday"},
@@ -216,7 +215,7 @@ defmodule Web.Policies.Components do
   defp condition(%{property: :current_utc_datetime, values: values} = assigns) do
     assigns =
       assign_new(assigns, :tz_time_ranges_by_dow, fn ->
-        {:ok, ranges} = Policies.Condition.Evaluator.parse_days_of_week_time_ranges(values)
+        {:ok, ranges} = Domain.Policies.Evaluator.parse_days_of_week_time_ranges(values)
 
         ranges
         |> Enum.reject(fn {_dow, time_ranges} -> time_ranges == [] end)
@@ -765,7 +764,7 @@ defmodule Web.Policies.Components do
 
         condition ->
           if Map.get(condition, :property) == property do
-            to_form(Condition.Changeset.changeset(condition, %{}, 0))
+            to_form(Condition.changeset(condition, %{}, 0))
           end
       end)
 
@@ -798,7 +797,7 @@ defmodule Web.Policies.Components do
   end
 
   defp condition_operator_options(property) do
-    Domain.Policies.Condition.Changeset.valid_operators_for_property(property)
+    Domain.Policies.Condition.valid_operators_for_property(property)
     |> Enum.map(&{condition_operator_option_name(&1), &1})
   end
 

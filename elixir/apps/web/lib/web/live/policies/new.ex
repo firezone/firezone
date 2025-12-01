@@ -1,7 +1,7 @@
 defmodule Web.Policies.New do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.Policies
+  alias Domain.{Policy, Safe, Auth}
 
   def mount(params, _session, socket) do
     providers =
@@ -11,7 +11,7 @@ defmodule Web.Policies.New do
       )
 
     form =
-      Policies.new_policy(%{}, socket.assigns.subject)
+      new_policy(%{}, socket.assigns.subject)
       |> to_form()
 
     socket =
@@ -206,7 +206,7 @@ defmodule Web.Policies.New do
       |> maybe_enforce_actor_group_id(socket)
       |> map_condition_params(empty_values: :keep)
       |> maybe_drop_unsupported_conditions(socket)
-      |> Policies.new_policy(socket.assigns.subject)
+      |> new_policy(socket.assigns.subject)
       |> to_form(action: :validate)
 
     {:noreply, assign(socket, form: form)}
@@ -220,7 +220,7 @@ defmodule Web.Policies.New do
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
 
-    with {:ok, _policy} <- Policies.create_policy(params, socket.assigns.subject) do
+    with {:ok, _policy} <- create_policy(params, socket.assigns.subject) do
       socket = put_flash(socket, :success, "Policy created successfully")
 
       cond do
@@ -263,5 +263,25 @@ defmodule Web.Policies.New do
     else
       attrs
     end
+  end
+
+  # Inline functions from Domain.Policies
+
+  defp new_policy(attrs, %Auth.Subject{} = subject) do
+    import Ecto.Changeset
+
+    %Policy{}
+    |> cast(attrs, ~w[description actor_group_id resource_id]a)
+    |> validate_required(~w[actor_group_id resource_id]a)
+    |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
+    |> Policy.changeset()
+    |> put_change(:account_id, subject.account.id)
+  end
+
+  defp create_policy(attrs, %Auth.Subject{} = subject) do
+    changeset = new_policy(attrs, subject)
+
+    Safe.scoped(changeset, subject)
+    |> Safe.insert()
   end
 end

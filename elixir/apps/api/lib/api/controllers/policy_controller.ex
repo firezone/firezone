@@ -2,7 +2,6 @@ defmodule API.PolicyController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Policies
   alias __MODULE__.DB
 
   action_fallback API.FallbackController
@@ -59,7 +58,7 @@ defmodule API.PolicyController do
 
   # Create a new Policy
   def create(conn, %{"policy" => params}) do
-    with {:ok, policy} <- Policies.create_policy(params, conn.assigns.subject) do
+    with {:ok, policy} <- DB.create_policy(params, conn.assigns.subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/policies/#{policy}")
@@ -127,16 +126,17 @@ defmodule API.PolicyController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Policies, Safe}
+    import Ecto.Changeset
+    alias Domain.{Policy, Safe, Auth}
 
     def list_policies(subject, opts \\ []) do
-      from(p in Policies.Policy, as: :policies)
+      from(p in Policy, as: :policies)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_policy(subject, id) do
-      from(p in Policies.Policy, where: p.id == ^id)
+      from(p in Policy, where: p.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one!()
     end
@@ -148,14 +148,34 @@ defmodule API.PolicyController do
       |> Safe.update()
     end
 
+    def create_policy(attrs, %Auth.Subject{} = subject) do
+      changeset = create_changeset(attrs, subject)
+
+      Safe.scoped(changeset, subject)
+      |> Safe.insert()
+    end
+
     def delete_policy(policy, subject) do
       policy
       |> Safe.scoped(subject)
       |> Safe.delete()
     end
 
-    defp changeset(policy, attrs) do
-      Policies.Policy.Changeset.update(policy, attrs)
+    defp create_changeset(attrs, %Auth.Subject{} = subject) do
+      %Policy{}
+      |> cast(attrs, ~w[description actor_group_id resource_id]a)
+      |> validate_required(~w[actor_group_id resource_id]a)
+      |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
+      |> Policy.changeset()
+      |> put_change(:account_id, subject.account.id)
+    end
+
+    defp changeset(%Policy{} = policy, attrs) do
+      policy
+      |> cast(attrs, ~w[description actor_group_id resource_id]a)
+      |> validate_required(~w[actor_group_id resource_id]a)
+      |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
+      |> Policy.changeset()
     end
 
     def cursor_fields do

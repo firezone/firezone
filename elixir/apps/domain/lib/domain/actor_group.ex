@@ -10,7 +10,7 @@ defmodule Domain.ActorGroup do
 
     field :last_synced_at, :utc_datetime_usec
 
-    has_many :policies, Domain.Policies.Policy, foreign_key: :actor_group_id
+    has_many :policies, Domain.Policy, foreign_key: :actor_group_id
 
     has_many :memberships, Domain.Membership, foreign_key: :group_id, on_replace: :delete
     field :member_count, :integer, virtual: true

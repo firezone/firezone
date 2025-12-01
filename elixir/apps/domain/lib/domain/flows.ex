@@ -1,6 +1,6 @@
 defmodule Domain.Flows do
   alias Domain.{Repo, Safe, Client, Resource}
-  alias Domain.{Auth, Gateway, Policies}
+  alias Domain.{Auth, Gateway, Policy}
   alias Domain.Flows.Flow
   alias __MODULE__.DB
   require Ecto.Query
@@ -79,14 +79,14 @@ defmodule Domain.Flows do
          # We only want to reauthorize the resource for this gateway if the resource is still connected to its
          # site.
          policies when policies != [] <-
-           Policies.all_policies_in_site_for_resource_id_and_actor_id!(
+           all_policies_in_site_for_resource_id_and_actor_id!(
              flow.account_id,
              gateway.site_id,
              flow.resource_id,
              client.actor_id
            ),
          {:ok, policy, expires_at} <-
-           Policies.longest_conforming_policy_for_client(policies, client, token, flow.expires_at),
+           longest_conforming_policy_for_client(policies, client, token, flow.expires_at),
          {:ok, membership} <-
            DB.fetch_membership_by_actor_id_and_group_id(
              client.actor_id,
@@ -149,7 +149,7 @@ defmodule Domain.Flows do
 
   def list_flows_for(assoc, subject, opts \\ [])
 
-  def list_flows_for(%Policies.Policy{} = policy, %Auth.Subject{} = subject, opts) do
+  def list_flows_for(%Domain.Policy{} = policy, %Auth.Subject{} = subject, opts) do
     Flow.Query.all()
     |> Flow.Query.by_policy_id(policy.id)
     |> list_flows(subject, opts)
@@ -218,7 +218,7 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
-  def delete_flows_for(%Domain.Policies.Policy{} = policy) do
+  def delete_flows_for(%Domain.Policy{} = policy) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(policy.account_id)
     |> Flow.Query.by_policy_id(policy.id)
@@ -317,6 +317,106 @@ defmodule Domain.Flows do
         {:error, :unauthorized} -> {:error, :unauthorized}
         token -> {:ok, token}
       end
+    end
+  end
+
+  # Inline functions from Domain.Policies
+
+  defp all_policies_in_site_for_resource_id_and_actor_id!(
+         account_id,
+         site_id,
+         resource_id,
+         actor_id
+       ) do
+    import Ecto.Query
+
+    from(p in Policy, as: :policies)
+    |> where([policies: p], is_nil(p.disabled_at))
+    |> where([policies: p], p.account_id == ^account_id)
+    |> where([policies: p], p.resource_id == ^resource_id)
+    |> join(:inner, [policies: p], ag in assoc(p, :actor_group), as: :actor_group)
+    |> join(:inner, [policies: p], r in assoc(p, :resource), as: :resource)
+    |> join(:inner, [resource: r], rc in Domain.Resources.Connection,
+      on: rc.resource_id == r.id,
+      as: :resource_connections
+    )
+    |> where([resource_connections: rc], rc.site_id == ^site_id)
+    |> join(:inner, [], actor in Domain.Actor, on: actor.id == ^actor_id, as: :actor)
+    |> join(:left, [actor_group: ag], m in assoc(ag, :memberships), as: :memberships)
+    |> where(
+      [memberships: m, actor_group: ag, actor: a],
+      m.actor_id == ^actor_id or
+        (ag.type == :managed and
+           is_nil(ag.idp_id) and
+           ag.name == "Everyone" and
+           ag.account_id == a.account_id)
+    )
+    |> preload(resource: :sites)
+    |> Safe.unscoped()
+    |> Safe.all()
+  end
+
+  @infinity ~U[9999-12-31 23:59:59.999999Z]
+
+  defp longest_conforming_policy_for_client(policies, client, auth_provider_id, expires_at) do
+    policies
+    |> Enum.reduce(%{failed: [], succeeded: []}, fn policy, acc ->
+      case ensure_client_conforms_policy_conditions(policy, client, auth_provider_id) do
+        {:ok, expires_at} ->
+          %{acc | succeeded: [{expires_at, policy} | acc.succeeded]}
+
+        {:error, {:forbidden, violated_properties: violated_properties}} ->
+          %{acc | failed: acc.failed ++ violated_properties}
+      end
+    end)
+    |> case do
+      %{succeeded: [], failed: failed} ->
+        {:error, {:forbidden, violated_properties: Enum.uniq(failed)}}
+
+      %{succeeded: succeeded} ->
+        {condition_expires_at, policy} =
+          succeeded |> Enum.max_by(fn {exp, _policy} -> exp || @infinity end)
+
+        {:ok, policy, min_expires_at(condition_expires_at, expires_at)}
+    end
+  end
+
+  defp ensure_client_conforms_policy_conditions(
+         %Policy{} = policy,
+         %Client{} = client,
+         auth_provider_id
+       ) do
+    ensure_client_conforms_policy_conditions(
+      Domain.Cache.Cacheable.to_cache(policy),
+      client,
+      auth_provider_id
+    )
+  end
+
+  defp ensure_client_conforms_policy_conditions(
+         %Domain.Cache.Cacheable.Policy{} = policy,
+         %Client{} = client,
+         auth_provider_id
+       ) do
+    case Domain.Policies.Evaluator.ensure_conforms(policy.conditions, client, auth_provider_id) do
+      {:ok, expires_at} ->
+        {:ok, expires_at}
+
+      {:error, violated_properties} ->
+        {:error, {:forbidden, violated_properties: violated_properties}}
+    end
+  end
+
+  defp min_expires_at(nil, nil),
+    do: raise("Both policy_expires_at and token_expires_at cannot be nil")
+
+  defp min_expires_at(nil, token_expires_at), do: token_expires_at
+
+  defp min_expires_at(%DateTime{} = policy_expires_at, %DateTime{} = token_expires_at) do
+    if DateTime.compare(policy_expires_at, token_expires_at) == :lt do
+      policy_expires_at
+    else
+      token_expires_at
     end
   end
 end

@@ -18,7 +18,7 @@ defmodule Domain.Flows.Flow do
         }
 
   schema "flows" do
-    belongs_to :policy, Domain.Policies.Policy
+    belongs_to :policy, Domain.Policy
     belongs_to :client, Domain.Client
     belongs_to :gateway, Domain.Gateway
     belongs_to :resource, Domain.Resource

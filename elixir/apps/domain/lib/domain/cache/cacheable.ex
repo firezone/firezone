@@ -33,8 +33,8 @@ defimpl Domain.Cache.Cacheable, for: Domain.Resource do
   end
 end
 
-defimpl Domain.Cache.Cacheable, for: Domain.Policies.Policy do
-  def to_cache(%Domain.Policies.Policy{} = policy) do
+defimpl Domain.Cache.Cacheable, for: Domain.Policy do
+  def to_cache(%Domain.Policy{} = policy) do
     %Domain.Cache.Cacheable.Policy{
       id: Ecto.UUID.dump!(policy.id),
       resource_id: Ecto.UUID.dump!(policy.resource_id),

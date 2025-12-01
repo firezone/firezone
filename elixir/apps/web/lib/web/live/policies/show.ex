@@ -1,11 +1,11 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Policies, PubSub, Flows}
+  alias Domain.{PubSub, Flows, Policy, Safe, Auth}
   alias Web.Policies.Components.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
+    with {:ok, policy} <- fetch_policy_by_id(id, socket.assigns.subject) do
       policy = Domain.Repo.preload(policy, actor_group: [], resource: [])
 
       providers =
@@ -241,12 +241,12 @@ defmodule Web.Policies.Show do
 
   # TODO: Do we really want to update the view in place?
   def handle_info(
-        {_action, _old_policy, %Policies.Policy{id: policy_id}},
+        {_action, _old_policy, %Domain.Policy{id: policy_id}},
         %{assigns: %{policy: %{id: id}}} = socket
       )
       when policy_id == id do
     {:ok, policy} =
-      Policies.fetch_policy_by_id(
+      fetch_policy_by_id(
         socket.assigns.policy.id,
         socket.assigns.subject
       )
@@ -264,7 +264,7 @@ defmodule Web.Policies.Show do
     do: handle_live_table_event(event, params, socket)
 
   def handle_event("disable", _params, socket) do
-    {:ok, policy} = Policies.disable_policy(socket.assigns.policy, socket.assigns.subject)
+    {:ok, policy} = disable_policy(socket.assigns.policy, socket.assigns.subject)
 
     policy = %{
       policy
@@ -276,7 +276,7 @@ defmodule Web.Policies.Show do
   end
 
   def handle_event("enable", _params, socket) do
-    {:ok, policy} = Policies.enable_policy(socket.assigns.policy, socket.assigns.subject)
+    {:ok, policy} = enable_policy(socket.assigns.policy, socket.assigns.subject)
 
     policy = %{
       policy
@@ -288,7 +288,56 @@ defmodule Web.Policies.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _deleted_policy} = Policies.delete_policy(socket.assigns.policy, socket.assigns.subject)
+    {:ok, _deleted_policy} = delete_policy(socket.assigns.policy, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies")}
+  end
+
+  # Inline functions from Domain.Policies
+
+  defp fetch_policy_by_id(id, %Auth.Subject{} = subject) do
+    import Ecto.Query
+
+    result =
+      from(p in Policy, as: :policies)
+      |> where([policies: p], p.id == ^id)
+      |> where([policies: p], is_nil(p.deleted_at))
+      |> Safe.scoped(subject)
+      |> Safe.one()
+
+    case result do
+      nil -> {:error, :not_found}
+      {:error, :unauthorized} -> {:error, :unauthorized}
+      policy -> {:ok, policy}
+    end
+  end
+
+  defp disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+    import Ecto.Changeset
+    import Domain.Repo.Changeset
+
+    changeset =
+      policy
+      |> change()
+      |> put_default_value(:disabled_at, DateTime.utc_now())
+
+    Safe.scoped(changeset, subject)
+    |> Safe.update()
+  end
+
+  defp enable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+    import Ecto.Changeset
+
+    changeset =
+      policy
+      |> change()
+      |> put_change(:disabled_at, nil)
+
+    Safe.scoped(changeset, subject)
+    |> Safe.update()
+  end
+
+  defp delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+    Safe.scoped(policy, subject)
+    |> Safe.delete()
   end
 end

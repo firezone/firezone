@@ -9,7 +9,6 @@ defmodule API.Client.Channel do
     Resources,
     Flows,
     Gateway,
-    Policies,
     Presence
   }
 
@@ -851,7 +850,7 @@ defmodule API.Client.Channel do
   # POLICIES
 
   defp handle_change(
-         %Change{op: :insert, struct: %Policies.Policy{} = policy},
+         %Change{op: :insert, struct: %Domain.Policy{} = policy},
          socket
        ) do
     Cache.Client.add_policy(
@@ -866,12 +865,12 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Policies.Policy{
+           old_struct: %Domain.Policy{
              resource_id: old_resource_id,
              actor_group_id: old_actor_group_id,
              conditions: old_conditions
            },
-           struct: %Policies.Policy{
+           struct: %Domain.Policy{
              resource_id: resource_id,
              actor_group_id: actor_group_id,
              conditions: conditions,
@@ -901,8 +900,8 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Policies.Policy{},
-           struct: %Policies.Policy{} = policy
+           old_struct: %Domain.Policy{},
+           struct: %Domain.Policy{} = policy
          },
          socket
        ) do
@@ -911,7 +910,7 @@ defmodule API.Client.Channel do
   end
 
   defp handle_change(
-         %Change{op: :delete, old_struct: %Policies.Policy{} = policy},
+         %Change{op: :delete, old_struct: %Domain.Policy{} = policy},
          socket
        ) do
     Cache.Client.delete_policy(

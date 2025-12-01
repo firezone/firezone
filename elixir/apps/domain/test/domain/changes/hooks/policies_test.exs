@@ -18,7 +18,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       }
 
       assert :ok == on_insert(0, data)
-      assert_receive %Change{op: :insert, struct: %Policies.Policy{} = policy, lsn: 0}
+      assert_receive %Change{op: :insert, struct: %Domain.Policy{} = policy, lsn: 0}
 
       assert policy.id == data["id"]
       assert policy.account_id == data["account_id"]
@@ -51,7 +51,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
 
       assert_receive %Change{
         op: :delete,
-        old_struct: %Policies.Policy{} = broadcasted_policy,
+        old_struct: %Domain.Policy{} = broadcasted_policy,
         lsn: 0
       }
 
@@ -78,7 +78,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       data = Map.put(old_data, "disabled_at", nil)
 
       assert :ok == on_update(0, old_data, data)
-      assert_receive %Change{op: :insert, struct: %Policies.Policy{} = policy, lsn: 0}
+      assert_receive %Change{op: :insert, struct: %Domain.Policy{} = policy, lsn: 0}
 
       assert policy.id == data["id"]
       assert policy.account_id == data["account_id"]
@@ -106,8 +106,8 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
 
       assert_receive %Change{
         op: :update,
-        old_struct: %Policies.Policy{} = old_policy,
-        struct: %Policies.Policy{} = new_policy,
+        old_struct: %Domain.Policy{} = old_policy,
+        struct: %Domain.Policy{} = new_policy,
         lsn: 0
       }
 
@@ -203,7 +203,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
 
       assert_receive %Change{
         op: :delete,
-        old_struct: %Policies.Policy{} = policy,
+        old_struct: %Domain.Policy{} = policy,
         lsn: 0
       }
 

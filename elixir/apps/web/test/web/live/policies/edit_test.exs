@@ -184,7 +184,7 @@ defmodule Web.Live.Policies.EditTest do
 
     assert_redirected(lv, ~p"/#{account}/policies/#{policy}")
 
-    assert policy = Repo.get_by(Domain.Policies.Policy, id: policy.id)
+    assert policy = Repo.get_by(Domain.Policy, id: policy.id)
     assert policy.description == attrs.description
   end
 
@@ -206,7 +206,7 @@ defmodule Web.Live.Policies.EditTest do
     |> form("form", policy: attrs)
     |> render_submit()
 
-    assert updated_policy = Repo.get_by(Domain.Policies.Policy, id: policy.id)
+    assert updated_policy = Repo.get_by(Domain.Policy, id: policy.id)
 
     assert_redirected(lv, ~p"/#{account}/policies/#{updated_policy.id}")
   end

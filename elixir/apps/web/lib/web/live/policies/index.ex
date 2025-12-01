@@ -1,6 +1,7 @@
 defmodule Web.Policies.Index do
   use Web, :live_view
-  alias Domain.{Changes.Change, PubSub, Policies}
+  alias Domain.{Changes.Change, PubSub}
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -12,7 +13,7 @@ defmodule Web.Policies.Index do
       |> assign(stale: false)
       |> assign(page_title: "Policies")
       |> assign_live_table("policies",
-        query_module: Policies.Policy.Query,
+        query_module: DB,
         sortable_fields: [],
         hide_filters: [
           :actor_group_id,
@@ -34,7 +35,7 @@ defmodule Web.Policies.Index do
   def handle_policies_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, actor_group: [], resource: [])
 
-    with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- DB.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          policies: policies,
@@ -116,15 +117,35 @@ defmodule Web.Policies.Index do
       when event in ["paginate", "order_by", "filter", "reload"],
       do: handle_live_table_event(event, params, socket)
 
-  def handle_info(%Change{old_struct: %Policies.Policy{}}, socket) do
+  def handle_info(%Change{old_struct: %Domain.Policy{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
-  def handle_info(%Change{struct: %Policies.Policy{}}, socket) do
+  def handle_info(%Change{struct: %Domain.Policy{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
   def handle_info(_, socket) do
     {:noreply, socket}
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Policy}
+
+    def list_policies(subject, opts \\ []) do
+      from(p in Policy, as: :policies)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    # Pagination support
+    def cursor_fields,
+      do: [
+        {:policies, :asc, :inserted_at},
+        {:policies, :asc, :id}
+      ]
+
+    def filters, do: []
   end
 end

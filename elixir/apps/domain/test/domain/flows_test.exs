@@ -211,7 +211,7 @@ defmodule Domain.FlowsTest do
         group: other_group
       )
 
-      Repo.delete_all(Domain.Policies.Policy)
+      Repo.delete_all(Domain.Policy)
 
       Fixtures.Policies.create_policy(
         account: account,

@@ -566,8 +566,8 @@ defmodule Domain.Safe do
   def permit(_action, Domain.Resources.Connection, :account_admin_user), do: :ok
 
   # Policy permissions
-  def permit(_action, Domain.Policies.Policy, :account_admin_user), do: :ok
-  def permit(:read, Domain.Policies.Policy, _), do: :ok
+  def permit(_action, Domain.Policy, :account_admin_user), do: :ok
+  def permit(:read, Domain.Policy, _), do: :ok
 
   # Relay permissions
   def permit(_action, Domain.Relay, :account_admin_user), do: :ok

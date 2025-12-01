@@ -294,7 +294,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    assert Repo.get_by(Domain.Policies.Policy, attrs)
+    assert Repo.get_by(Domain.Policy, attrs)
 
     flash = assert_redirect(lv, ~p"/#{account}/policies")
     assert flash["info"] == "Policy created successfully."
@@ -353,7 +353,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policies.Policy, actor_group_id: group.id)
+    policy = Repo.get_by(Domain.Policy, actor_group_id: group.id)
     assert policy.resource_id == resource.id
 
     assert policy.conditions == [
@@ -410,7 +410,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policies.Policy, attrs)
+    policy = Repo.get_by(Domain.Policy, attrs)
     assert policy.resource_id == resource.id
 
     assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}")
@@ -450,7 +450,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policies.Policy, %{actor_group_id: group.id})
+    policy = Repo.get_by(Domain.Policy, %{actor_group_id: group.id})
     assert policy.resource_id == resource.id
     assert policy.conditions == []
 
@@ -479,7 +479,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policies.Policy, attrs)
+    policy = Repo.get_by(Domain.Policy, attrs)
     assert policy.resource_id == resource.id
 
     assert assert_redirect(lv, ~p"/#{account}/groups/#{group}")
@@ -506,7 +506,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policies.Policy, attrs)
+    policy = Repo.get_by(Domain.Policy, attrs)
     assert policy.resource_id == resource.id
 
     assert assert_redirect(lv, ~p"/#{account}/sites/#{site}?#resources")

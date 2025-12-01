@@ -1,6 +1,6 @@
 defmodule API.PolicyControllerTest do
   use API.ConnCase, async: true
-  alias Domain.Policies.Policy
+  alias Domain.Policy
 
   setup do
     account = Fixtures.Accounts.create_account()

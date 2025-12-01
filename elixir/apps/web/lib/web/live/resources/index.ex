@@ -184,7 +184,7 @@ defmodule Web.Resources.Index do
   defmodule DB do
     import Ecto.Query
     import Domain.Repo.Query
-    alias Domain.{Safe, Resource, Repo}
+    alias Domain.{Safe, Resource, Repo, Policy}
 
     def list_resources(subject, opts \\ []) do
       all()
@@ -248,7 +248,8 @@ defmodule Web.Resources.Index do
 
     def with_joined_actor_groups(queryable, limit) do
       policies_subquery =
-        Domain.Policies.Policy.Query.not_disabled()
+        from(p in Policy, as: :policies)
+        |> where([policies: p], is_nil(p.disabled_at))
         |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
         |> select([policies: policies], policies.actor_group_id)
         |> limit(^limit)
@@ -268,8 +269,13 @@ defmodule Web.Resources.Index do
 
     def with_joined_policies_counts(queryable) do
       subquery =
-        Domain.Policies.Policy.Query.not_disabled()
-        |> Domain.Policies.Policy.Query.count_by_resource_id()
+        from(p in Policy, as: :policies)
+        |> where([policies: p], is_nil(p.disabled_at))
+        |> group_by([policies: policies], policies.resource_id)
+        |> select([policies: policies], %{
+          resource_id: policies.resource_id,
+          count: count(policies.id)
+        })
         |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
 
       join(

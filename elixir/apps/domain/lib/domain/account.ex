@@ -35,7 +35,7 @@ defmodule Domain.Account do
 
     has_many :network_addresses, Domain.Network.Address
 
-    has_many :policies, Domain.Policies.Policy
+    has_many :policies, Domain.Policy
 
     has_many :flows, Domain.Flows.Flow
 

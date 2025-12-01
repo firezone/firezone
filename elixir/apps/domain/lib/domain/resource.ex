@@ -36,12 +36,12 @@ defmodule Domain.Resource do
     has_many :connections, Domain.Resources.Connection, on_replace: :delete
     has_many :sites, through: [:connections, :site]
 
-    has_many :policies, Domain.Policies.Policy
+    has_many :policies, Domain.Policy
     has_many :actor_groups, through: [:policies, :actor_group]
 
     # Warning: do not do Repo.preload/2 for this field, it will not work intentionally,
     # because the actual preload query should also use joins and process policy conditions
-    has_many :authorized_by_policies, Domain.Policies.Policy, where: [id: {:fragment, "FALSE"}]
+    has_many :authorized_by_policies, Domain.Policy, where: [id: {:fragment, "FALSE"}]
 
     timestamps()
   end

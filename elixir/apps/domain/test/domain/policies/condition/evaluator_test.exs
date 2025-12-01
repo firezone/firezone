@@ -1,6 +1,6 @@
-defmodule Domain.Policies.Condition.EvaluatorTest do
+defmodule Domain.Policies.EvaluatorTest do
   use Domain.DataCase, async: true
-  import Domain.Policies.Condition.Evaluator
+  import Domain.Policies.Evaluator
 
   describe "ensure_conforms/2" do
     test "returns ok when there are no conditions" do

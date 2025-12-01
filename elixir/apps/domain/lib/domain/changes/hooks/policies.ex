@@ -1,11 +1,11 @@
 defmodule Domain.Changes.Hooks.Policies do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Changes.Change, Flows, Policies, PubSub}
+  alias Domain.{Changes.Change, Flows, Policy, PubSub}
   import Domain.SchemaHelpers
 
   @impl true
   def on_insert(lsn, data) do
-    policy = struct_from_params(Policies.Policy, data)
+    policy = struct_from_params(Policy, data)
     change = %Change{lsn: lsn, op: :insert, struct: policy}
 
     PubSub.Account.broadcast(policy.account_id, change)
@@ -18,7 +18,7 @@ defmodule Domain.Changes.Hooks.Policies do
       when not is_nil(disabled_at) do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
-    policy = struct_from_params(Policies.Policy, old_data)
+    policy = struct_from_params(Policy, old_data)
     Flows.delete_flows_for(policy)
 
     on_delete(lsn, old_data)
@@ -32,8 +32,8 @@ defmodule Domain.Changes.Hooks.Policies do
 
   # Regular update
   def on_update(lsn, old_data, data) do
-    old_policy = struct_from_params(Policies.Policy, old_data)
-    policy = struct_from_params(Policies.Policy, data)
+    old_policy = struct_from_params(Policy, old_data)
+    policy = struct_from_params(Policy, data)
     change = %Change{lsn: lsn, op: :update, old_struct: old_policy, struct: policy}
 
     # Breaking updates
@@ -51,7 +51,7 @@ defmodule Domain.Changes.Hooks.Policies do
 
   @impl true
   def on_delete(lsn, old_data) do
-    policy = struct_from_params(Policies.Policy, old_data)
+    policy = struct_from_params(Policy, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: policy}
 
     PubSub.Account.broadcast(policy.account_id, change)

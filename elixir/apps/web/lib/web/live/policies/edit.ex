@@ -1,10 +1,10 @@
 defmodule Web.Policies.Edit do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.Policies
+  alias Domain.{Policy, Safe, Auth}
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, socket.assigns.subject) do
+    with {:ok, policy} <- fetch_policy_by_id(id, socket.assigns.subject) do
       policy = Domain.Repo.preload(policy, [:actor_group, :resource])
 
       providers =
@@ -15,7 +15,7 @@ defmodule Web.Policies.Edit do
 
       form =
         policy
-        |> Policies.change_policy(%{})
+        |> change_policy(%{})
         |> to_form()
 
       socket =
@@ -214,7 +214,7 @@ defmodule Web.Policies.Edit do
       |> maybe_drop_unsupported_conditions(socket)
 
     changeset =
-      Policies.change_policy(socket.assigns.policy, params)
+      change_policy(socket.assigns.policy, params)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -226,7 +226,7 @@ defmodule Web.Policies.Edit do
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
 
-    case Policies.update_policy(socket.assigns.policy, params, socket.assigns.subject) do
+    case update_policy(socket.assigns.policy, params, socket.assigns.subject) do
       {:ok, policy} ->
         socket =
           socket
@@ -238,5 +238,41 @@ defmodule Web.Policies.Edit do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
+  end
+
+  # Inline functions from Domain.Policies
+
+  defp fetch_policy_by_id(id, %Auth.Subject{} = subject) do
+    import Ecto.Query
+
+    result =
+      from(p in Policy, as: :policies)
+      |> where([policies: p], p.id == ^id)
+      |> where([policies: p], is_nil(p.deleted_at))
+      |> Safe.scoped(subject)
+      |> Safe.one()
+
+    case result do
+      nil -> {:error, :not_found}
+      {:error, :unauthorized} -> {:error, :unauthorized}
+      policy -> {:ok, policy}
+    end
+  end
+
+  defp change_policy(%Policy{} = policy, attrs) do
+    import Ecto.Changeset
+
+    policy
+    |> cast(attrs, ~w[description actor_group_id resource_id]a)
+    |> validate_required(~w[actor_group_id resource_id]a)
+    |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
+    |> Policy.changeset()
+  end
+
+  defp update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
+    changeset = change_policy(policy, attrs)
+
+    Safe.scoped(changeset, subject)
+    |> Safe.update()
   end
 end

@@ -2,7 +2,7 @@ defmodule Web.Resources.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Resources.Components
-  alias Domain.{PubSub, Policies, Flows}
+  alias Domain.{PubSub, Flows}
   alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
@@ -28,7 +28,7 @@ defmodule Web.Resources.Show do
           callback: &handle_flows_update!/2
         )
         |> assign_live_table("policies",
-          query_module: Policies.Policy.Query,
+          query_module: DB,
           hide_filters: [
             :actor_group_id,
             :resource_name,
@@ -55,7 +55,7 @@ defmodule Web.Resources.Show do
   def handle_policies_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, actor_group: [], resource: [])
 
-    with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- DB.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          policies: policies,
@@ -410,7 +410,7 @@ defmodule Web.Resources.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Resource, Repo}
+    alias Domain.{Safe, Resource, Repo, Policy}
 
     def fetch_resource_by_id(id, subject) do
       result =
@@ -487,7 +487,8 @@ defmodule Web.Resources.Show do
 
     def with_joined_actor_groups(queryable, limit) do
       policies_subquery =
-        Domain.Policies.Policy.Query.not_disabled()
+        from(p in Policy, as: :policies)
+        |> where([policies: p], is_nil(p.disabled_at))
         |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
         |> select([policies: policies], policies.actor_group_id)
         |> limit(^limit)
@@ -507,8 +508,13 @@ defmodule Web.Resources.Show do
 
     def with_joined_policies_counts(queryable) do
       subquery =
-        Domain.Policies.Policy.Query.not_disabled()
-        |> Domain.Policies.Policy.Query.count_by_resource_id()
+        from(p in Policy, as: :policies)
+        |> where([policies: p], is_nil(p.disabled_at))
+        |> group_by([policies: policies], policies.resource_id)
+        |> select([policies: policies], %{
+          resource_id: policies.resource_id,
+          count: count(policies.id)
+        })
         |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
 
       join(
@@ -524,5 +530,21 @@ defmodule Web.Resources.Show do
       Safe.scoped(resource, subject)
       |> Safe.delete()
     end
+
+    def list_policies(subject, opts \\ []) do
+      from(p in Policy, as: :policies)
+      |> where([policies: p], is_nil(p.deleted_at))
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    # Pagination support for policies
+    def cursor_fields,
+      do: [
+        {:policies, :asc, :inserted_at},
+        {:policies, :asc, :id}
+      ]
+
+    def filters, do: []
   end
 end

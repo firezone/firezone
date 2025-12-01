@@ -53,7 +53,7 @@ defmodule Domain.Cache.Client do
 
   """
 
-  alias Domain.{Auth, Clients, Cache, Resource, Policies, Version}
+  alias Domain.{Auth, Client, Cache, Resource, Policy, Version}
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.UUID, only: [dump!: 1, load!: 1]
@@ -99,7 +99,7 @@ defmodule Domain.Cache.Client do
 
     policy =
       for({_id, %{resource_id: ^rid_bytes} = p} <- cache.policies, do: p)
-      |> Policies.longest_conforming_policy_for_client(
+      |> longest_conforming_policy_for_client(
         client,
         subject.auth_provider_id,
         subject.expires_at
@@ -304,7 +304,7 @@ defmodule Domain.Cache.Client do
     otherwise we just return the updated cache.
   """
 
-  @spec add_policy(t(), Policies.Policy.t(), Clients.Client.t(), Auth.Subject.t()) ::
+  @spec add_policy(t(), Policy.t(), Clients.Client.t(), Auth.Subject.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def add_policy(cache, %{resource_id: resource_id} = policy, client, subject) do
@@ -339,7 +339,7 @@ defmodule Domain.Cache.Client do
     with a delete and then add operation.
   """
 
-  @spec update_policy(t(), Policies.Policy.t()) :: {:ok, [], [], t()}
+  @spec update_policy(t(), Policy.t()) :: {:ok, [], [], t()}
 
   def update_policy(cache, policy) do
     policy = Domain.Cache.Cacheable.to_cache(policy)
@@ -351,7 +351,7 @@ defmodule Domain.Cache.Client do
     Removes a policy from the cache. If we can't find another policy granting access to the resource,
     we return the deleted resource ID.
   """
-  @spec delete_policy(t(), Policies.Policy.t(), Clients.Client.t(), Auth.Subject.t()) ::
+  @spec delete_policy(t(), Policy.t(), Clients.Client.t(), Auth.Subject.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
   def delete_policy(cache, policy, client, subject) do
     policy = Domain.Cache.Cacheable.to_cache(policy)
@@ -514,7 +514,7 @@ defmodule Domain.Cache.Client do
 
     OpenTelemetry.Tracer.with_span "Cache.Cacheable.hydrate", attributes: attributes do
       {_policies, cache} =
-        Policies.all_policies_for_actor_id!(client.actor_id)
+        all_policies_for_actor_id!(client.actor_id)
         |> Enum.map_reduce(%{policies: %{}, resources: %{}}, fn policy, cache ->
           resource = Cache.Cacheable.to_cache(policy.resource)
           resources = Map.put(cache.resources, resource.id, resource)
@@ -556,7 +556,7 @@ defmodule Domain.Cache.Client do
 
   defp conforming_resource_ids(policies, client, auth_provider_id) do
     policies
-    |> Policies.filter_by_conforming_policies_for_client(client, auth_provider_id)
+    |> filter_by_conforming_policies_for_client(client, auth_provider_id)
     |> Enum.map(& &1.resource_id)
     |> Enum.uniq()
   end
@@ -595,6 +595,109 @@ defmodule Domain.Cache.Client do
         {:error, :unauthorized} -> {:error, :unauthorized}
         site -> {:ok, site}
       end
+    end
+  end
+
+  # Inline functions from Domain.Policies
+
+  defp all_policies_for_actor_id!(actor_id) do
+    import Ecto.Query
+    alias Domain.Safe
+
+    from(p in Policy, as: :policies)
+    |> where([policies: p], is_nil(p.disabled_at))
+    |> join(:inner, [policies: p], ag in assoc(p, :actor_group), as: :actor_group)
+    |> join(:inner, [], actor in Domain.Actor, on: actor.id == ^actor_id, as: :actor)
+    |> join(:left, [actor_group: ag], m in assoc(ag, :memberships), as: :memberships)
+    |> where(
+      [memberships: m, actor_group: ag, actor: a],
+      m.actor_id == ^actor_id or
+        (ag.type == :managed and
+           is_nil(ag.idp_id) and
+           ag.name == "Everyone" and
+           ag.account_id == a.account_id)
+    )
+    |> preload(resource: :sites)
+    |> Safe.unscoped()
+    |> Safe.all()
+  end
+
+  defp filter_by_conforming_policies_for_client(
+         policies,
+         %Client{} = client,
+         auth_provider_id
+       ) do
+    Enum.filter(policies, fn policy ->
+      policy.conditions
+      |> Domain.Policies.Evaluator.ensure_conforms(client, auth_provider_id)
+      |> case do
+        {:ok, _expires_at} -> true
+        {:error, _violated_properties} -> false
+      end
+    end)
+  end
+
+  @infinity ~U[9999-12-31 23:59:59.999999Z]
+
+  defp longest_conforming_policy_for_client(policies, client, auth_provider_id, expires_at) do
+    policies
+    |> Enum.reduce(%{failed: [], succeeded: []}, fn policy, acc ->
+      case ensure_client_conforms_policy_conditions(policy, client, auth_provider_id) do
+        {:ok, expires_at} ->
+          %{acc | succeeded: [{expires_at, policy} | acc.succeeded]}
+
+        {:error, {:forbidden, violated_properties: violated_properties}} ->
+          %{acc | failed: acc.failed ++ violated_properties}
+      end
+    end)
+    |> case do
+      %{succeeded: [], failed: failed} ->
+        {:error, {:forbidden, violated_properties: Enum.uniq(failed)}}
+
+      %{succeeded: succeeded} ->
+        {condition_expires_at, policy} =
+          succeeded |> Enum.max_by(fn {exp, _policy} -> exp || @infinity end)
+
+        {:ok, policy, min_expires_at(condition_expires_at, expires_at)}
+    end
+  end
+
+  defp ensure_client_conforms_policy_conditions(
+         %Policy{} = policy,
+         %Client{} = client,
+         auth_provider_id
+       ) do
+    ensure_client_conforms_policy_conditions(
+      Cache.Cacheable.to_cache(policy),
+      client,
+      auth_provider_id
+    )
+  end
+
+  defp ensure_client_conforms_policy_conditions(
+         %Cache.Cacheable.Policy{} = policy,
+         %Client{} = client,
+         auth_provider_id
+       ) do
+    case Domain.Policies.Evaluator.ensure_conforms(policy.conditions, client, auth_provider_id) do
+      {:ok, expires_at} ->
+        {:ok, expires_at}
+
+      {:error, violated_properties} ->
+        {:error, {:forbidden, violated_properties: violated_properties}}
+    end
+  end
+
+  defp min_expires_at(nil, nil),
+    do: raise("Both policy_expires_at and token_expires_at cannot be nil")
+
+  defp min_expires_at(nil, token_expires_at), do: token_expires_at
+
+  defp min_expires_at(%DateTime{} = policy_expires_at, %DateTime{} = token_expires_at) do
+    if DateTime.compare(policy_expires_at, token_expires_at) == :lt do
+      policy_expires_at
+    else
+      token_expires_at
     end
   end
 end

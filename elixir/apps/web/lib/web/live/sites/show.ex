@@ -1,6 +1,6 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
-  alias Domain.{Policies, Flows, Safe}
+  alias Domain.{Flows, Safe}
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -46,7 +46,7 @@ defmodule Web.Sites.Show do
           callback: &handle_flows_update!/2
         )
         |> assign_live_table("policies",
-          query_module: Policies.Policy.Query,
+          query_module: DB.PolicyQuery,
           hide_filters: [
             :actor_group_id,
             :resource_name,
@@ -134,7 +134,7 @@ defmodule Web.Sites.Show do
   def handle_policies_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, actor_group: [], resource: [])
 
-    with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- DB.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          policies: policies,
@@ -609,7 +609,7 @@ defmodule Web.Sites.Show do
       resource_ids = Enum.map(resources, & &1.id)
 
       groups_by_resource =
-        from(p in Domain.Policies.Policy, as: :policies)
+        from(p in Domain.Policy, as: :policies)
         |> join(:inner, [policies: p], g in Domain.ActorGroup,
           on: g.id == p.actor_group_id,
           as: :groups
@@ -630,6 +630,13 @@ defmodule Web.Sites.Show do
         end)
 
       {:ok, peek}
+    end
+
+    def list_policies(subject, opts \\ []) do
+      from(p in Domain.Policy, as: :policies)
+      |> where([policies: p], is_nil(p.deleted_at))
+      |> Safe.scoped(subject)
+      |> Safe.list(DB.PolicyQuery, opts)
     end
   end
 
@@ -709,5 +716,15 @@ defmodule Web.Sites.Show do
         fun.(queryable, binding)
       end
     end
+  end
+
+  defmodule DB.PolicyQuery do
+    def cursor_fields,
+      do: [
+        {:policies, :asc, :inserted_at},
+        {:policies, :asc, :id}
+      ]
+
+    def filters, do: []
   end
 end
