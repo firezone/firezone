@@ -539,7 +539,7 @@ defmodule API.Gateway.ChannelTest do
         "token_id" => flow1.token_id,
         "gateway_id" => gateway.id,
         "policy_id" => flow1.policy_id,
-        "actor_group_membership_id" => flow1.actor_group_membership_id,
+        "membership_id" => flow1.actor_group_membership_id,
         "expires_at" => flow1.expires_at
       }
 
@@ -599,7 +599,7 @@ defmodule API.Gateway.ChannelTest do
         "account_id" => account.id,
         "gateway_id" => gateway.id,
         "token_id" => flow.token_id,
-        "actor_group_membership_id" => flow.actor_group_membership_id,
+        "membership_id" => flow.actor_group_membership_id,
         "policy_id" => flow.policy_id,
         "expires_at" => flow.expires_at
       }
@@ -750,7 +750,7 @@ defmodule API.Gateway.ChannelTest do
         "gateway_id" => other_flow1.gateway_id,
         "token_id" => other_flow1.token_id,
         "policy_id" => other_flow1.policy_id,
-        "actor_group_membership_id" => other_flow1.actor_group_membership_id,
+        "membership_id" => other_flow1.actor_group_membership_id,
         "expires_at" => other_flow1.expires_at
       }
 
@@ -772,7 +772,7 @@ defmodule API.Gateway.ChannelTest do
         "gateway_id" => other_flow2.gateway_id,
         "token_id" => other_flow2.token_id,
         "policy_id" => other_flow2.policy_id,
-        "actor_group_membership_id" => other_flow2.actor_group_membership_id,
+        "membership_id" => other_flow2.actor_group_membership_id,
         "expires_at" => other_flow2.expires_at
       }
 
@@ -1469,7 +1469,7 @@ defmodule API.Gateway.ChannelTest do
         "account_id" => account.id,
         "gateway_id" => gateway.id,
         "token_id" => flow.token_id,
-        "actor_group_membership_id" => flow.actor_group_membership_id,
+        "membership_id" => flow.actor_group_membership_id,
         "policy_id" => flow.policy_id,
         "expires_at" => flow.expires_at
       }
@@ -1621,7 +1621,7 @@ defmodule API.Gateway.ChannelTest do
         "account_id" => account.id,
         "gateway_id" => gateway.id,
         "token_id" => flow.token_id,
-        "actor_group_membership_id" => flow.actor_group_membership_id,
+        "membership_id" => flow.actor_group_membership_id,
         "policy_id" => flow.policy_id,
         "expires_at" => flow.expires_at
       }

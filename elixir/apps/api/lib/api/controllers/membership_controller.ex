@@ -1,4 +1,4 @@
-defmodule API.ActorGroupMembershipController do
+defmodule API.MembershipController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
@@ -7,31 +7,29 @@ defmodule API.ActorGroupMembershipController do
 
   action_fallback API.FallbackController
 
-  tags ["Actor Group Memberships"]
+  tags ["Memberships"]
 
   operation :index,
-    summary: "List Actor Group Memberships",
+    summary: "List Memberships",
     parameters: [
       actor_group_id: [
         in: :path,
-        description: "Actor Group ID",
+        description: "ID",
         example: "00000000-0000-0000-0000-000000000000"
       ],
       limit: [
         in: :query,
-        description: "Limit Actor Group Memberships returned",
+        description: "Limit Memberships returned",
         type: :integer,
         example: 10
       ],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok:
-        {"Actor Group Membership Response", "application/json",
-         API.Schemas.ActorGroupMembership.ListResponse}
+      ok: {"Membership Response", "application/json", API.Schemas.Membership.ListResponse}
     ]
 
-  # List members for a given Actor Group
+  # List members for a given Group
   def index(conn, %{"actor_group_id" => actor_group_id} = params) do
     list_opts =
       Pagination.params_to_list_opts(params)
@@ -43,21 +41,19 @@ defmodule API.ActorGroupMembershipController do
   end
 
   operation :update_put,
-    summary: "Update Actor Group Memberships",
+    summary: "Update Memberships",
     parameters: [
       actor_group_id: [
         in: :path,
-        description: "Actor Group ID",
+        description: "ID",
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
     request_body:
-      {"Actor Group Membership Attributes", "application/json",
-       API.Schemas.ActorGroupMembership.PutRequest, required: true},
+      {"Membership Attributes", "application/json", API.Schemas.Membership.PutRequest,
+       required: true},
     responses: [
-      ok:
-        {"Actor Group Membership Response", "application/json",
-         API.Schemas.ActorGroupMembership.MembershipResponse}
+      ok: {"Membership Response", "application/json", API.Schemas.Membership.MembershipResponse}
     ]
 
   def update_put(
@@ -82,24 +78,22 @@ defmodule API.ActorGroupMembershipController do
   end
 
   operation :update_patch,
-    summary: "Update an Actor Group Membership",
+    summary: "Update an Membership",
     parameters: [
       actor_group_id: [
         in: :path,
-        description: "Actor Group ID",
+        description: "ID",
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
     request_body:
-      {"Actor Group Membership Attributes", "application/json",
-       API.Schemas.ActorGroupMembership.PatchRequest, required: true},
+      {"Membership Attributes", "application/json", API.Schemas.Membership.PatchRequest,
+       required: true},
     responses: [
-      ok:
-        {"Actor Group Membership Response", "application/json",
-         API.Schemas.ActorGroupMembership.MembershipResponse}
+      ok: {"Membership Response", "application/json", API.Schemas.Membership.MembershipResponse}
     ]
 
-  # Update Actor Group Memberships
+  # Update Memberships
   def update_patch(
         conn,
         %{"actor_group_id" => actor_group_id, "memberships" => params}

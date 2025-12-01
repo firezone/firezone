@@ -1,6 +1,6 @@
-defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
+defmodule Domain.Changes.Hooks.MembershipsTest do
   use Domain.DataCase, async: true
-  import Domain.Changes.Hooks.ActorGroupMemberships
+  import Domain.Changes.Hooks.Memberships
   alias Domain.{Actors, Changes.Change, PubSub}
 
   describe "insert/1" do

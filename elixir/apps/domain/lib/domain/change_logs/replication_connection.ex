@@ -11,7 +11,7 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   # Used to introspect field redactions
   @tables_to_schemas %{
     "accounts" => Domain.Account,
-    "actor_group_memberships" => Domain.Membership,
+    "memberships" => Domain.Membership,
     "actor_groups" => Domain.ActorGroup,
     "actors" => Domain.Actor,
     "auth_providers" => Domain.AuthProvider,

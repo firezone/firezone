@@ -26,7 +26,7 @@ defmodule Domain.Changes.Hooks.FlowsTest do
         "gateway_id" => "00000000-0000-0000-0000-000000000003",
         "resource_id" => "00000000-0000-0000-0000-000000000004",
         "token_id" => "00000000-0000-0000-0000-000000000005",
-        "actor_group_membership_id" => "00000000-0000-0000-0000-000000000006",
+        "membership_id" => "00000000-0000-0000-0000-000000000006",
         "policy_id" => "00000000-0000-0000-0000-000000000007",
         "inserted_at" => "2023-01-01T00:00:00Z"
       }
@@ -41,7 +41,7 @@ defmodule Domain.Changes.Hooks.FlowsTest do
       assert flow.gateway_id == "00000000-0000-0000-0000-000000000003"
       assert flow.resource_id == "00000000-0000-0000-0000-000000000004"
       assert flow.token_id == "00000000-0000-0000-0000-000000000005"
-      assert flow.actor_group_membership_id == "00000000-0000-0000-0000-000000000006"
+      assert flow.membership_id == "00000000-0000-0000-0000-000000000006"
       assert flow.policy_id == "00000000-0000-0000-0000-000000000007"
       assert flow.inserted_at == ~U[2023-01-01 00:00:00.000000Z]
     end

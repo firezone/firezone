@@ -204,7 +204,7 @@ defmodule Domain.Cache.Gateway do
 
   defp all_gateway_flows_for_cache!(%Domain.Gateway{} = gateway) do
     import Ecto.Query
-    
+
     from(f in Domain.Flow, as: :flows)
     |> where([flows: f], f.account_id == ^gateway.account_id)
     |> where([flows: f], f.gateway_id == ^gateway.id)
@@ -216,7 +216,7 @@ defmodule Domain.Cache.Gateway do
 
   defp reauthorize_flow(%Domain.Flow{} = flow) do
     require Logger
-    
+
     with client when not is_nil(client) <- fetch_client_by_id!(flow.client_id),
          {:ok, token} <- fetch_token_by_id(flow.token_id),
          {:ok, gateway} <- fetch_gateway_by_id(flow.gateway_id),
@@ -243,7 +243,7 @@ defmodule Domain.Cache.Gateway do
              client_id: flow.client_id,
              gateway_id: flow.gateway_id,
              resource_id: flow.resource_id,
-             actor_group_membership_id: membership.id,
+             membership_id: membership.id,
              account_id: flow.account_id,
              client_remote_ip: client.last_seen_remote_ip,
              client_user_agent: client.last_seen_user_agent,
@@ -252,7 +252,6 @@ defmodule Domain.Cache.Gateway do
            })
            |> Domain.Safe.unscoped()
            |> Domain.Safe.insert() do
-
       Logger.info("Reauthorized flow",
         old_flow: inspect(flow),
         new_flow: inspect(new_flow)

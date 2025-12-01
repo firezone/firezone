@@ -918,7 +918,7 @@ defmodule API.Client.ChannelTest do
              }
     end
 
-    test "for actor_group_membership inserts pushes resource_created_or_updated if connectable_resources changes",
+    test "for membership inserts pushes resource_created_or_updated if connectable_resources changes",
          %{
            actor: actor,
            account: account,
@@ -973,7 +973,7 @@ defmodule API.Client.ChannelTest do
              ]
     end
 
-    test "for actor_group_membership deletes pushes resource_deleted if connectable_resources changes",
+    test "for membership deletes pushes resource_deleted if connectable_resources changes",
          %{
            actor: actor,
            account: account,
@@ -1034,7 +1034,7 @@ defmodule API.Client.ChannelTest do
       assert payload == resource.id
     end
 
-    test "for actor_group_membership deletes does not push resource_deleted if another policy exists",
+    test "for membership deletes does not push resource_deleted if another policy exists",
          %{
            actor: actor,
            account: account,

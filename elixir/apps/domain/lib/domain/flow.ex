@@ -8,7 +8,7 @@ defmodule Domain.Flow do
           gateway_id: Ecto.UUID.t(),
           resource_id: Ecto.UUID.t(),
           token_id: Ecto.UUID.t(),
-          actor_group_membership_id: Ecto.UUID.t(),
+          membership_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
           client_remote_ip: Domain.Types.IP.t(),
           client_user_agent: String.t(),
@@ -23,7 +23,7 @@ defmodule Domain.Flow do
     belongs_to :gateway, Domain.Gateway
     belongs_to :resource, Domain.Resource
     belongs_to :token, Domain.Token
-    belongs_to :actor_group_membership, Domain.Membership
+    belongs_to :membership, Domain.Membership
 
     belongs_to :account, Domain.Account
 

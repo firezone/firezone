@@ -27,7 +27,7 @@ defmodule Domain.Account do
     # We mention all schemas here to leverage Ecto compile-time reference checks,
     # because later we will have to shard data by account_id.
     has_many :actors, Domain.Actor
-    has_many :actor_group_memberships, Domain.Membership
+    has_many :memberships, Domain.Membership
     has_many :actor_groups, Domain.ActorGroup
 
     has_many :auth_providers, Domain.AuthProvider

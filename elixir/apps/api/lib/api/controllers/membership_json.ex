@@ -1,4 +1,4 @@
-defmodule API.ActorGroupMembershipJSON do
+defmodule API.MembershipJSON do
   alias API.Pagination
   alias Domain.Actor
 

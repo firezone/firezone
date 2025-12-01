@@ -4,7 +4,7 @@ defmodule Domain.Changes.ReplicationConnection do
 
   @tables_to_hooks %{
     "accounts" => Hooks.Accounts,
-    "actor_group_memberships" => Hooks.ActorGroupMemberships,
+    "memberships" => Hooks.Memberships,
     "clients" => Hooks.Clients,
     "flows" => Hooks.Flows,
     "gateways" => Hooks.Gateways,

@@ -62,9 +62,9 @@ defmodule API.Router do
     end
 
     resources "/actor_groups", ActorGroupController, except: [:new, :edit] do
-      get "/memberships", ActorGroupMembershipController, :index
-      put "/memberships", ActorGroupMembershipController, :update_put
-      patch "/memberships", ActorGroupMembershipController, :update_patch
+      get "/memberships", MembershipController, :index
+      put "/memberships", MembershipController, :update_put
+      patch "/memberships", MembershipController, :update_patch
     end
 
     resources "/userpass_auth_providers", UserpassAuthProviderController, only: [:index, :show]

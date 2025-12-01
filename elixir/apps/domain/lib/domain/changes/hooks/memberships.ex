@@ -1,4 +1,4 @@
-defmodule Domain.Changes.Hooks.ActorGroupMemberships do
+defmodule Domain.Changes.Hooks.Memberships do
   @behaviour Domain.Changes.Hooks
   alias Domain.{Changes.Change, PubSub}
   import Domain.SchemaHelpers

@@ -52,7 +52,7 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
   #   2. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
-    actor_group_memberships
+    memberships
     actor_groups
     actors
     external_identities
@@ -106,7 +106,7 @@ config :domain, Domain.Changes.ReplicationConnection,
   #   3. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
-    actor_group_memberships
+    memberships
     clients
     flows
     gateways

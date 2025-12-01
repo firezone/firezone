@@ -1,4 +1,4 @@
-defmodule API.ActorGroupMembershipControllerTest do
+defmodule API.MembershipControllerTest do
   use API.ConnCase, async: true
 
   setup do

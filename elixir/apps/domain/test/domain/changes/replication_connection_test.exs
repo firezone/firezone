@@ -275,7 +275,7 @@ defmodule Domain.Changes.ReplicationConnectionTest do
       # This test ensures our tables_to_hooks map is properly configured
       tables_to_hooks = %{
         "accounts" => Domain.Changes.Hooks.Accounts,
-        "actor_group_memberships" => Domain.Changes.Hooks.ActorGroupMemberships,
+        "memberships" => Domain.Changes.Hooks.Memberships,
         "clients" => Domain.Changes.Hooks.Clients,
         "flows" => Domain.Changes.Hooks.Flows,
         "sites" => Domain.Changes.Hooks.Sites,
@@ -290,7 +290,7 @@ defmodule Domain.Changes.ReplicationConnectionTest do
       assert Map.keys(tables_to_hooks) |> Enum.sort() ==
                [
                  "accounts",
-                 "actor_group_memberships",
+                 "memberships",
                  "clients",
                  "flows",
                  "sites",

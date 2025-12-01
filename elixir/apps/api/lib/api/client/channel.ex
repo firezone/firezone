@@ -761,7 +761,7 @@ defmodule API.Client.Channel do
     {:noreply, socket}
   end
 
-  # ACTOR_GROUP_MEMBERSHIPS
+  # MEMBERSHIPS
 
   defp handle_change(
          %Change{op: :insert, struct: %Domain.Membership{actor_id: actor_id}},
@@ -1141,7 +1141,7 @@ defmodule API.Client.Channel do
         client_id: client_id,
         gateway_id: gateway_id,
         resource_id: resource_id,
-        actor_group_membership_id: membership_id,
+        membership_id: membership_id,
         account_id: account_id,
         client_remote_ip: client_remote_ip,
         client_user_agent: client_user_agent,

@@ -2,7 +2,7 @@ defmodule Domain.Flow.Changeset do
   use Domain, :changeset
   alias Domain.Flow
 
-  @fields ~w[token_id policy_id client_id gateway_id resource_id actor_group_membership_id
+  @fields ~w[token_id policy_id client_id gateway_id resource_id membership_id
              account_id
              expires_at
              client_remote_ip client_user_agent
@@ -17,7 +17,7 @@ defmodule Domain.Flow.Changeset do
     |> assoc_constraint(:client)
     |> assoc_constraint(:gateway)
     |> assoc_constraint(:resource)
-    |> assoc_constraint(:actor_group_membership)
+    |> assoc_constraint(:membership)
     |> assoc_constraint(:account)
   end
 end

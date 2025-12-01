@@ -788,7 +788,7 @@ defmodule Domain.Entra.Sync do
         preferred_username = EXCLUDED.preferred_username,
         profile = EXCLUDED.profile,
         last_synced_at = EXCLUDED.last_synced_at
-      WHERE external_identities.last_synced_at IS NULL 
+      WHERE external_identities.last_synced_at IS NULL
         OR external_identities.last_synced_at < EXCLUDED.last_synced_at
       RETURNING 1
       """
@@ -915,7 +915,7 @@ defmodule Domain.Entra.Sync do
           AND ag.account_id = $#{account_id}
         )
       )
-      INSERT INTO actor_group_memberships (id, actor_id, group_id, account_id, last_synced_at)
+      INSERT INTO memberships (id, actor_id, group_id, account_id, last_synced_at)
       SELECT
         uuid_generate_v4(),
         rm.actor_id,
@@ -925,8 +925,8 @@ defmodule Domain.Entra.Sync do
       FROM resolved_memberships rm
       ON CONFLICT (actor_id, group_id) DO UPDATE SET
         last_synced_at = EXCLUDED.last_synced_at
-      WHERE actor_group_memberships.last_synced_at IS NULL 
-        OR actor_group_memberships.last_synced_at < EXCLUDED.last_synced_at
+      WHERE memberships.last_synced_at IS NULL
+        OR memberships.last_synced_at < EXCLUDED.last_synced_at
       RETURNING 1
       """
     end

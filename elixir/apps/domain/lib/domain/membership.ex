@@ -8,7 +8,7 @@ defmodule Domain.Membership do
           account_id: Ecto.UUID.t()
         }
 
-  schema "actor_group_memberships" do
+  schema "memberships" do
     belongs_to :group, Domain.ActorGroup
     belongs_to :actor, Domain.Actor
 

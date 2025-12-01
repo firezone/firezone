@@ -88,7 +88,7 @@ defmodule Domain.FlowsTest do
       assert flow.client_remote_ip.address == subject.context.remote_ip
       assert flow.client_user_agent == subject.context.user_agent
       assert flow.gateway_remote_ip == gateway.last_seen_remote_ip
-      assert flow.actor_group_membership_id == membership.id
+      assert flow.membership_id == membership.id
       assert flow.expires_at == subject.expires_at
     end
 
@@ -128,7 +128,7 @@ defmodule Domain.FlowsTest do
       assert flow.client_remote_ip.address == subject.context.remote_ip
       assert flow.client_user_agent == subject.context.user_agent
       assert flow.gateway_remote_ip == gateway.last_seen_remote_ip
-      assert flow.actor_group_membership_id == membership.id
+      assert flow.membership_id == membership.id
       assert flow.expires_at == subject.expires_at
     end
   end
@@ -158,7 +158,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -197,7 +197,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -253,7 +253,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -292,7 +292,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -332,7 +332,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -343,7 +343,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -409,7 +409,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -482,7 +482,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -582,7 +582,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource1,
           gateway: gateway
@@ -593,7 +593,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource2,
           gateway: gateway
@@ -604,7 +604,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource3,
           gateway: gateway
@@ -636,7 +636,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource1,
           gateway: gateway
@@ -647,7 +647,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource2,
           gateway: gateway
@@ -678,7 +678,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource1,
           gateway: gateway
@@ -689,7 +689,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource2,
           gateway: gateway
@@ -724,7 +724,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource1,
           gateway: gateway
@@ -735,7 +735,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: other_client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource1,
           gateway: gateway
@@ -766,7 +766,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
-          actor_group_membership: membership,
+          membership: membership,
           policy: policy,
           resource: resource1,
           gateway: gateway

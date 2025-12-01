@@ -53,7 +53,7 @@ defmodule Domain.Fixtures.Flows do
       end)
 
     {membership, attrs} =
-      pop_assoc_fixture(attrs, :actor_group_membership, fn assoc_attrs ->
+      pop_assoc_fixture(attrs, :membership, fn assoc_attrs ->
         assoc_attrs
         |> Enum.into(%{
           account: account,
@@ -88,7 +88,7 @@ defmodule Domain.Fixtures.Flows do
       client_id: client.id,
       gateway_id: gateway.id,
       resource_id: resource_id,
-      actor_group_membership_id: membership.id,
+      membership_id: membership.id,
       account_id: account.id,
       client_remote_ip: client.last_seen_remote_ip,
       client_user_agent: client.last_seen_user_agent,
