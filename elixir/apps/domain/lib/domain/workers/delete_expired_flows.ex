@@ -1,11 +1,14 @@
-defmodule Domain.Flows.Workers.DeleteExpiredFlows do
+defmodule Domain.Workers.DeleteExpiredFlows do
   @moduledoc """
-  Job to delete expired flows.
+  Oban worker that deletes expired flows.
   """
-  use Oban.Worker, queue: :default
+
+  use Oban.Worker,
+    queue: :default,
+    max_attempts: 3,
+    unique: [period: :infinity]
 
   require Logger
-
 
   @impl Oban.Worker
   def perform(_args) do
