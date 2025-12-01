@@ -395,6 +395,10 @@ impl ClientState {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
+        if is_definitely_not_a_resource(packet.destination()) {
+            return None;
+        }
+
         let tun_config = self.tun_config.as_ref()?;
 
         if !tun_config.ip.is_ip(packet.source()) {
@@ -560,10 +564,6 @@ impl ClientState {
 
     fn encapsulate(&mut self, mut packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
         let dst = packet.destination();
-
-        if is_definitely_not_a_resource(dst) {
-            return None;
-        }
 
         let peer = if is_peer(dst) {
             let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
