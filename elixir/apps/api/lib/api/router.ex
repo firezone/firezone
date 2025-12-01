@@ -61,7 +61,7 @@ defmodule API.Router do
       resources "/external_identities", ExternalIdentityController, only: [:index, :show, :delete]
     end
 
-    resources "/actor_groups", ActorGroupController, except: [:new, :edit] do
+    resources "/groups", GroupController, except: [:new, :edit] do
       get "/memberships", MembershipController, :index
       put "/memberships", MembershipController, :update_put
       patch "/memberships", MembershipController, :update_patch

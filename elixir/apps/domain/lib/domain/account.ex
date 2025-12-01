@@ -28,7 +28,7 @@ defmodule Domain.Account do
     # because later we will have to shard data by account_id.
     has_many :actors, Domain.Actor
     has_many :memberships, Domain.Membership
-    has_many :actor_groups, Domain.ActorGroup
+    has_many :groups, Domain.Group
 
     has_many :auth_providers, Domain.AuthProvider
     has_many :external_identities, Domain.ExternalIdentity

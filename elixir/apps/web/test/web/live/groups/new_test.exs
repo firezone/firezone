@@ -126,7 +126,7 @@ defmodule Web.Live.Groups.NewTest do
     |> form("form", group: attrs)
     |> render_submit()
 
-    assert group = Repo.get_by(Domain.ActorGroup, name: attrs.name)
+    assert group = Repo.get_by(Domain.Group, name: attrs.name)
 
     assert_redirected(lv, ~p"/#{account}/groups/#{group}/edit_actors")
 

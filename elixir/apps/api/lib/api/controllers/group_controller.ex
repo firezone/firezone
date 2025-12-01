@@ -1,74 +1,73 @@
-defmodule API.ActorGroupController do
+defmodule API.GroupController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.ActorGroup
+  alias Domain.Group
   alias __MODULE__.DB
   import Ecto.Changeset
 
   action_fallback API.FallbackController
 
-  tags ["Actor Groups"]
+  tags ["Groups"]
 
   operation :index,
-    summary: "List Actor Groups",
+    summary: "List Groups",
     parameters: [
-      limit: [in: :query, description: "Limit Actor Groups returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Groups returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.ListResponse}
+      ok: {"Group Response", "application/json", API.Schemas.Group.ListResponse}
     ]
 
-  # List Actor Groups
+  # List Groups
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, actor_groups, metadata} <- DB.list_groups(conn.assigns.subject, list_opts) do
-      render(conn, :index, actor_groups: actor_groups, metadata: metadata)
+    with {:ok, groups, metadata} <- DB.list_groups(conn.assigns.subject, list_opts) do
+      render(conn, :index, groups: groups, metadata: metadata)
     end
   end
 
   operation :show,
-    summary: "Show Actor Group",
+    summary: "Show Group",
     parameters: [
       id: [
         in: :path,
-        description: "Actor Group ID",
+        description: "Group ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
     responses: [
-      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+      ok: {"Group Response", "application/json", API.Schemas.Group.Response}
     ]
 
-  # Show a specific Actor Group
+  # Show a specific Group
   def show(conn, %{"id" => id}) do
-    actor_group = DB.fetch_group(conn.assigns.subject, id)
-    render(conn, :show, actor_group: actor_group)
+    group = DB.fetch_group(conn.assigns.subject, id)
+    render(conn, :show, group: group)
   end
 
   operation :create,
-    summary: "Create Actor Group",
+    summary: "Create Group",
     parameters: [],
     request_body:
-      {"Actor Group Attributes", "application/json", API.Schemas.ActorGroup.Request,
-       required: true},
+      {"Group Attributes", "application/json", API.Schemas.Group.Request, required: true},
     responses: [
-      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+      ok: {"Group Response", "application/json", API.Schemas.Group.Response}
     ]
 
-  # Create a new Actor Group
-  def create(conn, %{"actor_group" => params}) do
+  # Create a new Group
+  def create(conn, %{"group" => params}) do
     params = Map.put(params, "type", "static")
 
     with changeset <- create_group_changeset(conn.assigns.subject.account, params),
-         {:ok, actor_group} <- DB.insert_group(changeset, conn.assigns.subject) do
+         {:ok, group} <- DB.insert_group(changeset, conn.assigns.subject) do
       conn
       |> put_status(:created)
-      |> put_resp_header("location", ~p"/actor_groups/#{actor_group}")
-      |> render(:show, actor_group: actor_group)
+      |> put_resp_header("location", ~p"/groups/#{group}")
+      |> render(:show, group: group)
     end
   end
 
@@ -77,36 +76,35 @@ defmodule API.ActorGroupController do
   end
 
   defp create_group_changeset(account, attrs) do
-    %ActorGroup{account_id: account.id}
+    %Group{account_id: account.id}
     |> cast(attrs, [:name, :type, :description])
     |> validate_required([:name, :type])
   end
 
   operation :update,
-    summary: "Update a Actor Group",
+    summary: "Update a Group",
     parameters: [
       id: [
         in: :path,
-        description: "Actor Group ID",
+        description: "Group ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
     request_body:
-      {"Actor Group Attributes", "application/json", API.Schemas.ActorGroup.Request,
-       required: true},
+      {"Group Attributes", "application/json", API.Schemas.Group.Request, required: true},
     responses: [
-      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+      ok: {"Group Response", "application/json", API.Schemas.Group.Response}
     ]
 
-  # Update an Actor Group
-  def update(conn, %{"id" => id, "actor_group" => params}) do
+  # Update an Group
+  def update(conn, %{"id" => id, "group" => params}) do
     subject = conn.assigns.subject
-    actor_group = DB.fetch_group(subject, id)
+    group = DB.fetch_group(subject, id)
 
-    with {:changeset, changeset} <- update_group_changeset(actor_group, params),
-         {:ok, actor_group} <- DB.update_group(changeset, subject) do
-      render(conn, :show, actor_group: actor_group)
+    with {:changeset, changeset} <- update_group_changeset(group, params),
+         {:ok, group} <- DB.update_group(changeset, subject) do
+      render(conn, :show, group: group)
     end
   end
 
@@ -114,11 +112,11 @@ defmodule API.ActorGroupController do
     {:error, :bad_request}
   end
 
-  defp update_group_changeset(%ActorGroup{type: :managed}, _attrs) do
+  defp update_group_changeset(%Group{type: :managed}, _attrs) do
     {:error, :managed_group}
   end
 
-  defp update_group_changeset(%ActorGroup{directory: "firezone"} = group, attrs) do
+  defp update_group_changeset(%Group{directory: "firezone"} = group, attrs) do
     changeset =
       group
       |> cast(attrs, [:name, :description])
@@ -127,40 +125,40 @@ defmodule API.ActorGroupController do
     {:changeset, changeset}
   end
 
-  defp update_group_changeset(%ActorGroup{}, _attrs) do
+  defp update_group_changeset(%Group{}, _attrs) do
     {:error, :synced_group}
   end
 
   operation :delete,
-    summary: "Delete a Actor Group",
+    summary: "Delete a Group",
     parameters: [
       id: [
         in: :path,
-        description: "Actor Group ID",
+        description: "Group ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
     responses: [
-      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+      ok: {"Group Response", "application/json", API.Schemas.Group.Response}
     ]
 
-  # Delete an Actor Group
+  # Delete an Group
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
-    actor_group = DB.fetch_group(subject, id)
+    group = DB.fetch_group(subject, id)
 
-    with {:ok, actor_group} <- DB.delete_group(actor_group, subject) do
-      render(conn, :show, actor_group: actor_group)
+    with {:ok, group} <- DB.delete_group(group, subject) do
+      render(conn, :show, group: group)
     end
   end
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{ActorGroup, Safe}
+    alias Domain.{Group, Safe}
 
     def list_groups(subject, opts \\ []) do
-      from(g in ActorGroup, as: :groups)
+      from(g in Group, as: :groups)
       |> where(
         [groups: g],
         not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
@@ -170,7 +168,7 @@ defmodule API.ActorGroupController do
     end
 
     def fetch_group(subject, id) do
-      from(g in ActorGroup,
+      from(g in Group,
         where: g.id == ^id,
         where: not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
       )
@@ -190,7 +188,7 @@ defmodule API.ActorGroupController do
       |> Safe.update()
     end
 
-    def delete_group(%ActorGroup{} = group, subject) do
+    def delete_group(%Group{} = group, subject) do
       group
       |> Safe.scoped(subject)
       |> Safe.delete()

@@ -576,21 +576,21 @@ defmodule Domain.Google.Sync do
 
       {count, _} =
         Safe.unscoped()
-        |> Safe.insert_all(Domain.ActorGroup, values,
+        |> Safe.insert_all(Domain.Group, values,
           on_conflict: [
             set: [
               name:
                 {:fragment,
-                 "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.name ELSE actor_groups.name END"},
+                 "CASE WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.name ELSE groups.name END"},
               directory_id:
                 {:fragment,
-                 "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.directory_id ELSE actor_groups.directory_id END"},
+                 "CASE WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.directory_id ELSE groups.directory_id END"},
               last_synced_at:
                 {:fragment,
-                 "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.last_synced_at ELSE actor_groups.last_synced_at END"},
+                 "CASE WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.last_synced_at ELSE groups.last_synced_at END"},
               updated_at:
                 {:fragment,
-                 "CASE WHEN actor_groups.last_synced_at IS NULL OR actor_groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.updated_at ELSE actor_groups.updated_at END"}
+                 "CASE WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.updated_at ELSE groups.updated_at END"}
             ]
           ],
           conflict_target: {:unsafe_fragment, ~s[(account_id, idp_id) WHERE idp_id IS NOT NULL]},
@@ -642,7 +642,7 @@ defmodule Domain.Google.Sync do
           AND ei.account_id = $#{account_id}
           AND ei.issuer = $#{issuer}
         )
-        JOIN actor_groups ag ON (
+        JOIN groups ag ON (
           ag.idp_id = mi.group_idp_id
           AND ag.account_id = $#{account_id}
         )
@@ -674,7 +674,7 @@ defmodule Domain.Google.Sync do
 
     def delete_unsynced_groups(account_id, directory_id, synced_at) do
       query =
-        from(g in Domain.ActorGroup,
+        from(g in Domain.Group,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,
           where: g.last_synced_at < ^synced_at or is_nil(g.last_synced_at)
@@ -698,7 +698,7 @@ defmodule Domain.Google.Sync do
       # Delete memberships for groups in this directory that haven't been synced
       query =
         from(m in Domain.Membership,
-          join: g in Domain.ActorGroup,
+          join: g in Domain.Group,
           on: m.group_id == g.id,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,

@@ -1,7 +1,7 @@
-defmodule Domain.ActorGroup do
+defmodule Domain.Group do
   use Domain, :schema
 
-  schema "actor_groups" do
+  schema "groups" do
     field :name, :string
     field :type, Ecto.Enum, values: ~w[managed static]a, default: :static
     field :entity_type, Ecto.Enum, values: ~w[group org_unit]a, default: :group
@@ -10,7 +10,7 @@ defmodule Domain.ActorGroup do
 
     field :last_synced_at, :utc_datetime_usec
 
-    has_many :policies, Domain.Policy, foreign_key: :actor_group_id
+    has_many :policies, Domain.Policy, foreign_key: :group_id
 
     has_many :memberships, Domain.Membership, foreign_key: :group_id, on_replace: :delete
     field :member_count, :integer, virtual: true
@@ -35,11 +35,11 @@ defmodule Domain.ActorGroup do
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory)
     |> unique_constraint(:name,
-      name: :actor_groups_account_id_name_index,
+      name: :groups_account_id_name_index,
       message: "A group with this name already exists."
     )
     |> check_constraint(:entity_type,
-      name: :actor_groups_entity_type_must_be_valid,
+      name: :groups_entity_type_must_be_valid,
       message: "is not valid"
     )
   end

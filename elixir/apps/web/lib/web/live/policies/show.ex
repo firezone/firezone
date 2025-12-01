@@ -6,7 +6,7 @@ defmodule Web.Policies.Show do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <- fetch_policy_by_id(id, socket.assigns.subject) do
-      policy = Domain.Repo.preload(policy, actor_group: [], resource: [])
+      policy = Domain.Repo.preload(policy, group: [], resource: [])
 
       providers =
         DB.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
@@ -135,7 +135,7 @@ defmodule Web.Policies.Show do
               Group
             </:label>
             <:value>
-              <.group_badge account={@account} group={@policy.actor_group} return_to={@current_path} />
+              <.group_badge account={@account} group={@policy.group} return_to={@current_path} />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -251,7 +251,7 @@ defmodule Web.Policies.Show do
         socket.assigns.subject
       )
 
-    policy = Domain.Repo.preload(policy, actor_group: [], resource: [])
+    policy = Domain.Repo.preload(policy, group: [], resource: [])
 
     {:noreply, assign(socket, policy: policy)}
   end
@@ -268,7 +268,7 @@ defmodule Web.Policies.Show do
 
     policy = %{
       policy
-      | actor_group: socket.assigns.policy.actor_group,
+      | group: socket.assigns.policy.group,
         resource: socket.assigns.policy.resource
     }
 
@@ -280,7 +280,7 @@ defmodule Web.Policies.Show do
 
     policy = %{
       policy
-      | actor_group: socket.assigns.policy.actor_group,
+      | group: socket.assigns.policy.group,
         resource: socket.assigns.policy.resource
     }
 

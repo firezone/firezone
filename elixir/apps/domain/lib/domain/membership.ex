@@ -9,7 +9,7 @@ defmodule Domain.Membership do
         }
 
   schema "memberships" do
-    belongs_to :group, Domain.ActorGroup
+    belongs_to :group, Domain.Group
     belongs_to :actor, Domain.Actor
 
     belongs_to :account, Domain.Account

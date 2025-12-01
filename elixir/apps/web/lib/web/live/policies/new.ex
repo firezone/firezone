@@ -22,7 +22,7 @@ defmodule Web.Policies.New do
         params: Map.take(params, ["site_id"]),
         selected_resource: nil,
         enforced_resource_id: params["resource_id"],
-        enforced_actor_group_id: params["actor_group_id"],
+        enforced_group_id: params["group_id"],
         form: form
       )
 
@@ -48,14 +48,14 @@ defmodule Web.Policies.New do
               <fieldset class="flex flex-col gap-2">
                 <.live_component
                   module={Web.Components.FormComponents.SelectWithGroups}
-                  id="policy_actor_group_id"
+                  id="policy_group_id"
                   label="Group"
-                  placeholder="Select Actor Group"
-                  field={@form[:actor_group_id]}
+                  placeholder="Select Group"
+                  field={@form[:group_id]}
                   fetch_option_callback={&Web.Policies.Components.DB.fetch_group_option(&1, @subject)}
                   list_options_callback={&Web.Policies.Components.DB.list_group_options(&1, @subject)}
-                  value={@enforced_actor_group_id || @form[:actor_group_id].value}
-                  disabled={not is_nil(@enforced_actor_group_id)}
+                  value={@enforced_group_id || @form[:group_id].value}
+                  disabled={not is_nil(@enforced_group_id)}
                   required
                 >
                   <:options_group :let={options_group}>
@@ -203,7 +203,7 @@ defmodule Web.Policies.New do
     form =
       params
       |> maybe_enforce_resource_id(socket)
-      |> maybe_enforce_actor_group_id(socket)
+      |> maybe_enforce_group_id(socket)
       |> map_condition_params(empty_values: :keep)
       |> maybe_drop_unsupported_conditions(socket)
       |> new_policy(socket.assigns.subject)
@@ -216,7 +216,7 @@ defmodule Web.Policies.New do
     params =
       params
       |> maybe_enforce_resource_id(socket)
-      |> maybe_enforce_actor_group_id(socket)
+      |> maybe_enforce_group_id(socket)
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
 
@@ -234,10 +234,9 @@ defmodule Web.Policies.New do
           {:noreply,
            push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources/#{resource_id}")}
 
-        actor_group_id = socket.assigns.enforced_actor_group_id ->
-          # Created from Add Policy from Actor Group
-          {:noreply,
-           push_navigate(socket, to: ~p"/#{socket.assigns.account}/groups/#{actor_group_id}")}
+        group_id = socket.assigns.enforced_group_id ->
+          # Created from Add Policy from Group
+          {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/groups/#{group_id}")}
 
         true ->
           # Created from Add Policy from Policies
@@ -257,9 +256,9 @@ defmodule Web.Policies.New do
     end
   end
 
-  defp maybe_enforce_actor_group_id(attrs, socket) do
-    if actor_group_id = socket.assigns.enforced_actor_group_id do
-      Map.put(attrs, "actor_group_id", actor_group_id)
+  defp maybe_enforce_group_id(attrs, socket) do
+    if group_id = socket.assigns.enforced_group_id do
+      Map.put(attrs, "group_id", group_id)
     else
       attrs
     end
@@ -271,8 +270,8 @@ defmodule Web.Policies.New do
     import Ecto.Changeset
 
     %Policy{}
-    |> cast(attrs, ~w[description actor_group_id resource_id]a)
-    |> validate_required(~w[actor_group_id resource_id]a)
+    |> cast(attrs, ~w[description group_id resource_id]a)
+    |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
     |> Policy.changeset()
     |> put_change(:account_id, subject.account.id)

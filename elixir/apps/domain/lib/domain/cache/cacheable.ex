@@ -38,7 +38,7 @@ defimpl Domain.Cache.Cacheable, for: Domain.Policy do
     %Domain.Cache.Cacheable.Policy{
       id: Ecto.UUID.dump!(policy.id),
       resource_id: Ecto.UUID.dump!(policy.resource_id),
-      actor_group_id: Ecto.UUID.dump!(policy.actor_group_id),
+      group_id: Ecto.UUID.dump!(policy.group_id),
       conditions: Enum.map(policy.conditions, &Map.from_struct/1)
     }
   end

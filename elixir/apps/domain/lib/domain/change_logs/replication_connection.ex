@@ -12,7 +12,7 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   @tables_to_schemas %{
     "accounts" => Domain.Account,
     "memberships" => Domain.Membership,
-    "actor_groups" => Domain.ActorGroup,
+    "groups" => Domain.Group,
     "actors" => Domain.Actor,
     "auth_providers" => Domain.AuthProvider,
     "clients" => Domain.Client,

@@ -48,7 +48,7 @@ defmodule Web.Sites.Show do
         |> assign_live_table("policies",
           query_module: DB.PolicyQuery,
           hide_filters: [
-            :actor_group_id,
+            :group_id,
             :resource_name,
             :group_or_resource_name
           ],
@@ -120,19 +120,19 @@ defmodule Web.Sites.Show do
   def handle_resources_update!(socket, list_opts) do
     with {:ok, resources, metadata} <-
            DB.list_resources(socket.assigns.subject, list_opts),
-         {:ok, resource_actor_groups_peek} <-
-           DB.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
+         {:ok, resource_groups_peek} <-
+           DB.peek_resource_groups(resources, 3, socket.assigns.subject) do
       {:ok,
        assign(socket,
          resources: resources,
          resources_metadata: metadata,
-         resource_actor_groups_peek: resource_actor_groups_peek
+         resource_groups_peek: resource_groups_peek
        )}
     end
   end
 
   def handle_policies_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, actor_group: [], resource: [])
+    list_opts = Keyword.put(list_opts, :preload, group: [], resource: [])
 
     with {:ok, policies, metadata} <- DB.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
@@ -339,7 +339,7 @@ defmodule Web.Sites.Show do
               </code>
             </:col>
             <:col :let={resource} label="Authorized groups">
-              <.peek peek={Map.fetch!(@resource_actor_groups_peek, resource.id)}>
+              <.peek peek={Map.fetch!(@resource_groups_peek, resource.id)}>
                 <:empty>
                   <div class="mr-1">
                     <.icon
@@ -406,7 +406,7 @@ defmodule Web.Sites.Show do
             </.link>
           </:col>
           <:col :let={policy} label="group">
-            <.group_badge account={@account} group={policy.actor_group} return_to={@current_path} />
+            <.group_badge account={@account} group={policy.group} return_to={@current_path} />
           </:col>
           <:col :let={policy} label="status">
             <%= if is_nil(policy.disabled_at) do %>
@@ -605,13 +605,13 @@ defmodule Web.Sites.Show do
       |> Safe.list(DB.ResourceQuery, opts)
     end
 
-    def peek_resource_actor_groups(resources, limit, subject) do
+    def peek_resource_groups(resources, limit, subject) do
       resource_ids = Enum.map(resources, & &1.id)
 
       groups_by_resource =
         from(p in Domain.Policy, as: :policies)
-        |> join(:inner, [policies: p], g in Domain.ActorGroup,
-          on: g.id == p.actor_group_id,
+        |> join(:inner, [policies: p], g in Domain.Group,
+          on: g.id == p.group_id,
           as: :groups
         )
         |> where([policies: p], p.resource_id in ^resource_ids)
@@ -808,10 +808,10 @@ defmodule Web.Sites.Show do
       )
     end
 
-    def by_policy_actor_group_id(queryable, actor_group_id) do
+    def by_policy_group_id(queryable, group_id) do
       queryable
       |> with_joined_policy()
-      |> where([policy: policy], policy.actor_group_id == ^actor_group_id)
+      |> where([policy: policy], policy.group_id == ^group_id)
     end
 
     def by_membership_id(queryable, membership_id) do

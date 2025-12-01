@@ -7,11 +7,11 @@ defmodule Domain.FlowsTest do
   setup do
     account = Fixtures.Accounts.create_account()
 
-    actor_group = Fixtures.Actors.create_group(account: account)
+    group = Fixtures.Actors.create_group(account: account)
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
     membership =
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
 
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     provider = Fixtures.Auth.create_email_provider(account: account)
@@ -34,13 +34,13 @@ defmodule Domain.FlowsTest do
     policy =
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource
       )
 
     %{
       account: account,
-      actor_group: actor_group,
+      group: group,
       actor: actor,
       provider: provider,
       membership: membership,
@@ -60,14 +60,14 @@ defmodule Domain.FlowsTest do
       gateway: gateway,
       resource: resource,
       policy: policy,
-      actor_group: actor_group
+      group: group
     } do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
       client = Fixtures.Clients.create_client(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(account: account, actor: actor)
 
       membership =
-        Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+        Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
 
       assert {:ok, %Flows.Flow{} = flow} =
                create_flow(
@@ -94,7 +94,7 @@ defmodule Domain.FlowsTest do
 
     test "creates a new flow for service accounts", %{
       account: account,
-      actor_group: actor_group,
+      group: group,
       gateway: gateway,
       resource: resource,
       policy: policy
@@ -102,7 +102,7 @@ defmodule Domain.FlowsTest do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
       membership =
-        Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+        Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
 
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
@@ -166,7 +166,7 @@ defmodule Domain.FlowsTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: other_group,
+        group: other_group,
         resource: resource,
         conditions: [
           %{
@@ -215,7 +215,7 @@ defmodule Domain.FlowsTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: other_group,
+        group: other_group,
         resource: resource,
         conditions: [
           %{

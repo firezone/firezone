@@ -68,7 +68,7 @@ defmodule Domain.Fixtures.Flows do
         assoc_attrs
         |> Enum.into(%{
           account: account,
-          actor_group_id: membership.group_id,
+          group_id: membership.group_id,
           resource_id: resource_id,
           subject: subject
         })

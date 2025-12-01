@@ -14,7 +14,7 @@ defmodule Domain.Cache.Client do
         %{
           policies: %{id:uuidv4:16 => {
             resource_id:uuidv4:16,
-            actor_group_id:uuidv4:16,
+            group_id:uuidv4:16,
             conditions:[%{
               property:atom:0,
               operator:atom:0,
@@ -107,7 +107,7 @@ defmodule Domain.Cache.Client do
 
     with %Cache.Cacheable.Resource{} <- resource,
          {:ok, policy, expires_at} <- policy,
-         {:ok, mid_bytes} <- Map.fetch(cache.memberships, policy.actor_group_id) do
+         {:ok, mid_bytes} <- Map.fetch(cache.memberships, policy.group_id) do
       membership_id = load!(mid_bytes)
       policy_id = load!(policy.id)
       {:ok, resource, membership_id, policy_id, expires_at}
@@ -184,7 +184,7 @@ defmodule Domain.Cache.Client do
   end
 
   @doc """
-    Fetches a membership id by an actor_group_id.
+    Fetches a membership id by an group_id.
   """
 
   @spec fetch_membership_id(t(), Cache.Cacheable.uuid_binary()) ::
@@ -235,7 +235,7 @@ defmodule Domain.Cache.Client do
     gid_bytes = dump!(membership.group_id)
 
     updated_policies =
-      for {id, p} <- cache.policies, p.actor_group_id != gid_bytes, do: {id, p}, into: %{}
+      for {id, p} <- cache.policies, p.group_id != gid_bytes, do: {id, p}, into: %{}
 
     # Only remove resources that have no remaining policies
     remaining_resource_ids =
@@ -310,7 +310,7 @@ defmodule Domain.Cache.Client do
   def add_policy(cache, %{resource_id: resource_id} = policy, client, subject) do
     policy = Domain.Cache.Cacheable.to_cache(policy)
 
-    if Map.has_key?(cache.memberships, policy.actor_group_id) do
+    if Map.has_key?(cache.memberships, policy.group_id) do
       # Add policy to the cache
       cache = %{cache | policies: Map.put(cache.policies, policy.id, policy)}
 
@@ -606,11 +606,11 @@ defmodule Domain.Cache.Client do
 
     from(p in Policy, as: :policies)
     |> where([policies: p], is_nil(p.disabled_at))
-    |> join(:inner, [policies: p], ag in assoc(p, :actor_group), as: :actor_group)
+    |> join(:inner, [policies: p], ag in assoc(p, :group), as: :group)
     |> join(:inner, [], actor in Domain.Actor, on: actor.id == ^actor_id, as: :actor)
-    |> join(:left, [actor_group: ag], m in assoc(ag, :memberships), as: :memberships)
+    |> join(:left, [group: ag], m in assoc(ag, :memberships), as: :memberships)
     |> where(
-      [memberships: m, actor_group: ag, actor: a],
+      [memberships: m, group: ag, actor: a],
       m.actor_id == ^actor_id or
         (ag.type == :managed and
            is_nil(ag.idp_id) and

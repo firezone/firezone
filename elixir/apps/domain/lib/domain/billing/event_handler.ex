@@ -431,8 +431,6 @@ defmodule Domain.Billing.EventHandler do
 
   defp setup_account_defaults(account, metadata, account_email) do
     # Create default groups and resources
-    # TODO: IDP REFACTOR
-    # Use special case everyone group instead of storing in DB
     changeset = create_everyone_group_changeset(account)
     {:ok, _everyone_group} = DB.insert(changeset)
     changeset = create_site_changeset(account, %{name: "Default Site"})
@@ -459,7 +457,7 @@ defmodule Domain.Billing.EventHandler do
   defp create_everyone_group_changeset(account) do
     import Ecto.Changeset
     attrs = %{account_id: account.id, name: "Everyone", type: :managed}
-    cast(%Domain.ActorGroup{}, attrs, ~w[account_id name type]a)
+    cast(%Domain.Group{}, attrs, ~w[account_id name type]a)
   end
 
   defp create_admin_changeset(account, email, name) do

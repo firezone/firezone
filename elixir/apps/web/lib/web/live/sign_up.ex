@@ -394,7 +394,7 @@ defmodule Web.SignUp do
   defp create_everyone_group_changeset(account) do
     import Ecto.Changeset
 
-    %Domain.ActorGroup{}
+    %Domain.Group{}
     |> cast(%{name: "Everyone"}, [:name])
     |> put_change(:account_id, account.id)
     |> put_change(:type, :managed)

@@ -181,7 +181,7 @@ defmodule Web.Live.Groups.EditTest do
 
     assert_redirected(lv, ~p"/#{account}/groups/#{group}")
 
-    assert group = Repo.get_by(Domain.ActorGroup, id: group.id)
+    assert group = Repo.get_by(Domain.Group, id: group.id)
     assert group.name == attrs.name
   end
 end

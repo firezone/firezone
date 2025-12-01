@@ -12,7 +12,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       data = %{
         "id" => policy.id,
         "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
+        "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
         "disabled_at" => nil
       }
@@ -22,7 +22,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
 
       assert policy.id == data["id"]
       assert policy.account_id == data["account_id"]
-      assert policy.actor_group_id == data["actor_group_id"]
+      assert policy.group_id == data["group_id"]
       assert policy.resource_id == data["resource_id"]
     end
   end
@@ -37,7 +37,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       old_data = %{
         "id" => policy.id,
         "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
+        "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
         "disabled_at" => nil
       }
@@ -70,7 +70,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       old_data = %{
         "id" => policy.id,
         "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
+        "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
         "disabled_at" => "2023-09-01T00:00:00Z"
       }
@@ -82,7 +82,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
 
       assert policy.id == data["id"]
       assert policy.account_id == data["account_id"]
-      assert policy.actor_group_id == data["actor_group_id"]
+      assert policy.group_id == data["group_id"]
       assert policy.resource_id == data["resource_id"]
     end
 
@@ -95,7 +95,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
         "id" => policy.id,
         "description" => "Old description",
         "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
+        "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
         "disabled_at" => nil
       }
@@ -114,7 +114,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       assert old_policy.id == old_data["id"]
       assert new_policy.description == data["description"]
       assert new_policy.account_id == old_data["account_id"]
-      assert new_policy.actor_group_id == old_data["actor_group_id"]
+      assert new_policy.group_id == old_data["group_id"]
       assert new_policy.resource_id == old_data["resource_id"]
     end
 
@@ -125,7 +125,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       old_data = %{
         "id" => policy.id,
         "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
+        "group_id" => policy.group_id,
         "resource_id" => policy.resource_id
       }
 
@@ -141,18 +141,18 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
 
-    test "breaking update on actor_group_id deletes flows" do
+    test "breaking update on group_id deletes flows" do
       account = Fixtures.Accounts.create_account()
       policy = Fixtures.Policies.create_policy(account: account)
 
       old_data = %{
         "id" => policy.id,
         "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
+        "group_id" => policy.group_id,
         "resource_id" => policy.resource_id
       }
 
-      data = Map.put(old_data, "actor_group_id", "00000000-0000-0000-0000-000000000001")
+      data = Map.put(old_data, "group_id", "00000000-0000-0000-0000-000000000001")
 
       assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)
 
@@ -167,7 +167,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       old_data = %{
         "id" => policy.id,
         "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
+        "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
         "conditions" => [
           %{"property" => "remote_ip", "operator" => "is_in", "values" => ["10.0.0.1"]}
@@ -195,7 +195,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       old_data = %{
         "id" => policy.id,
         "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
+        "group_id" => policy.group_id,
         "resource_id" => policy.resource_id
       }
 
@@ -209,7 +209,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
 
       assert policy.id == old_data["id"]
       assert policy.account_id == old_data["account_id"]
-      assert policy.actor_group_id == old_data["actor_group_id"]
+      assert policy.group_id == old_data["group_id"]
       assert policy.resource_id == old_data["resource_id"]
     end
   end

@@ -5,7 +5,7 @@ defmodule Web.Policies.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <- fetch_policy_by_id(id, socket.assigns.subject) do
-      policy = Domain.Repo.preload(policy, [:actor_group, :resource])
+      policy = Domain.Repo.preload(policy, [:group, :resource])
 
       providers =
         Web.Policies.Components.DB.all_active_providers_for_account(
@@ -59,13 +59,13 @@ defmodule Web.Policies.Edit do
               <fieldset class="flex flex-col gap-2">
                 <.live_component
                   module={Web.Components.FormComponents.SelectWithGroups}
-                  id="policy_actor_group_id"
+                  id="policy_group_id"
                   label="Group"
-                  placeholder="Select Actor Group"
-                  field={@form[:actor_group_id]}
+                  placeholder="Select Group"
+                  field={@form[:group_id]}
                   fetch_option_callback={&Web.Policies.Components.DB.fetch_group_option(&1, @subject)}
                   list_options_callback={&Web.Policies.Components.DB.list_group_options(&1, @subject)}
-                  value={@form[:actor_group_id].value}
+                  value={@form[:group_id].value}
                   required
                 >
                   <:options_group :let={options_group}>
@@ -263,8 +263,8 @@ defmodule Web.Policies.Edit do
     import Ecto.Changeset
 
     policy
-    |> cast(attrs, ~w[description actor_group_id resource_id]a)
-    |> validate_required(~w[actor_group_id resource_id]a)
+    |> cast(attrs, ~w[description group_id resource_id]a)
+    |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
     |> Policy.changeset()
   end

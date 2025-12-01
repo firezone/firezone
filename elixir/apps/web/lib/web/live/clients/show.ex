@@ -45,7 +45,7 @@ defmodule Web.Clients.Show do
       Keyword.put(list_opts, :preload,
         client: [:actor],
         gateway: [:site],
-        policy: [:actor_group, :resource]
+        policy: [:group, :resource]
       )
 
     with {:ok, flows, metadata} <-
@@ -601,10 +601,10 @@ defmodule Web.Clients.Show do
       )
     end
 
-    def by_policy_actor_group_id(queryable, actor_group_id) do
+    def by_policy_group_id(queryable, group_id) do
       queryable
       |> with_joined_policy()
-      |> where([policy: policy], policy.actor_group_id == ^actor_group_id)
+      |> where([policy: policy], policy.group_id == ^group_id)
     end
 
     def by_membership_id(queryable, membership_id) do

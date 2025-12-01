@@ -175,7 +175,7 @@ defmodule Web.Live.Resources.IndexTest do
           resource: resource
         )
       ]
-      |> Repo.preload(:actor_group)
+      |> Repo.preload(:group)
 
     {:ok, lv, _html} =
       conn
@@ -190,7 +190,7 @@ defmodule Web.Live.Resources.IndexTest do
 
     Enum.each(resource_rows, fn row ->
       for policy <- policies do
-        assert row["authorized groups"] =~ policy.actor_group.name
+        assert row["authorized groups"] =~ policy.group.name
       end
     end)
 

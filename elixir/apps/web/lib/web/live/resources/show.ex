@@ -7,8 +7,8 @@ defmodule Web.Resources.Show do
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <- fetch_resource(id, socket.assigns.subject),
-         {:ok, actor_groups_peek} <-
-           DB.peek_resource_actor_groups([resource], 3, socket.assigns.subject) do
+         {:ok, groups_peek} <-
+           DB.peek_resource_groups([resource], 3, socket.assigns.subject) do
       if connected?(socket) do
         :ok = PubSub.Account.subscribe(resource.account_id)
       end
@@ -18,7 +18,7 @@ defmodule Web.Resources.Show do
           socket,
           page_title: "Resource #{resource.name}",
           resource: resource,
-          actor_groups_peek: Map.fetch!(actor_groups_peek, resource.id),
+          groups_peek: Map.fetch!(groups_peek, resource.id),
           params: Map.take(params, ["site_id"])
         )
         |> assign_live_table("flows",
@@ -30,7 +30,7 @@ defmodule Web.Resources.Show do
         |> assign_live_table("policies",
           query_module: DB,
           hide_filters: [
-            :actor_group_id,
+            :group_id,
             :resource_name,
             :group_or_resource_name
           ],
@@ -53,7 +53,7 @@ defmodule Web.Resources.Show do
   end
 
   def handle_policies_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, actor_group: [], resource: [])
+    list_opts = Keyword.put(list_opts, :preload, group: [], resource: [])
 
     with {:ok, policies, metadata} <- DB.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
@@ -69,7 +69,7 @@ defmodule Web.Resources.Show do
       Keyword.put(list_opts, :preload,
         client: [:actor],
         gateway: [:site],
-        policy: [:resource, :actor_group]
+        policy: [:resource, :group]
       )
 
     with {:ok, flows, metadata} <-
@@ -229,7 +229,7 @@ defmodule Web.Resources.Show do
             </.link>
           </:col>
           <:col :let={policy} label="group">
-            <.group_badge account={@account} group={policy.actor_group} return_to={@current_path} />
+            <.group_badge account={@account} group={policy.group} return_to={@current_path} />
           </:col>
           <:col :let={policy} label="status">
             <%= if is_nil(policy.disabled_at) do %>
@@ -440,13 +440,13 @@ defmodule Web.Resources.Show do
       end
     end
 
-    def peek_resource_actor_groups(resources, limit, subject) do
+    def peek_resource_groups(resources, limit, subject) do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
       {:ok, peek} =
         all()
         |> by_id({:in, ids})
-        |> preload_few_actor_groups_for_each_resource(limit)
+        |> preload_few_groups_for_each_resource(limit)
         |> where(account_id: ^subject.account.id)
         |> Repo.peek(resources)
 
@@ -471,38 +471,38 @@ defmodule Web.Resources.Show do
       where(queryable, [resources: resources], resources.id in ^ids)
     end
 
-    def preload_few_actor_groups_for_each_resource(queryable, limit) do
+    def preload_few_groups_for_each_resource(queryable, limit) do
       queryable
-      |> with_joined_actor_groups(limit)
+      |> with_joined_groups(limit)
       |> with_joined_policies_counts()
       |> select(
-        [resources: resources, actor_groups: actor_groups, policies_counts: policies_counts],
+        [resources: resources, groups: groups, policies_counts: policies_counts],
         %{
           id: resources.id,
           count: policies_counts.count,
-          item: actor_groups
+          item: groups
         }
       )
     end
 
-    def with_joined_actor_groups(queryable, limit) do
+    def with_joined_groups(queryable, limit) do
       policies_subquery =
         from(p in Policy, as: :policies)
         |> where([policies: p], is_nil(p.disabled_at))
         |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
-        |> select([policies: policies], policies.actor_group_id)
+        |> select([policies: policies], policies.group_id)
         |> limit(^limit)
 
-      actor_groups_subquery =
-        from(g in Domain.ActorGroup, as: :groups)
+      groups_subquery =
+        from(g in Domain.Group, as: :groups)
         |> where([groups: groups], groups.id in subquery(policies_subquery))
 
       join(
         queryable,
         :cross_lateral,
         [resources: resources],
-        actor_groups in subquery(actor_groups_subquery),
-        as: :actor_groups
+        groups in subquery(groups_subquery),
+        as: :groups
       )
     end
 
@@ -628,10 +628,10 @@ defmodule Web.Resources.Show do
       )
     end
 
-    def by_policy_actor_group_id(queryable, actor_group_id) do
+    def by_policy_group_id(queryable, group_id) do
       queryable
       |> with_joined_policy()
-      |> where([policy: policy], policy.actor_group_id == ^actor_group_id)
+      |> where([policy: policy], policy.group_id == ^group_id)
     end
 
     def by_membership_id(queryable, membership_id) do

@@ -11,14 +11,14 @@ defmodule API.Schemas.Policy do
       type: :object,
       properties: %{
         id: %Schema{type: :string, description: "Policy ID"},
-        actor_group_id: %Schema{type: :string, description: "Actor Group ID"},
+        group_id: %Schema{type: :string, description: "Group ID"},
         resource_id: %Schema{type: :string, description: "Resource ID"},
         description: %Schema{type: :string, description: "Policy Description"}
       },
       required: [:name, :type],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "actor_group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
+        "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
         "resource_id" => "a9f60587-793c-46ae-8525-597f43ab2fb1",
         "description" => "Policy to allow something"
       }
@@ -41,7 +41,7 @@ defmodule API.Schemas.Policy do
       example: %{
         "policy" => %{
           "resource_id" => "a9f60587-793c-46ae-8525-597f43ab2fb1",
-          "actor_group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
+          "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
           "description" => "Policy to allow something"
         }
       }
@@ -64,7 +64,7 @@ defmodule API.Schemas.Policy do
         "data" => %{
           "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "resource_id" => "a9f60587-793c-46ae-8525-597f43ab2fb1",
-          "actor_group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
+          "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
           "description" => "Policy to allow something"
         }
       }
@@ -89,13 +89,13 @@ defmodule API.Schemas.Policy do
           %{
             "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "resource_id" => "a9f60587-793c-46ae-8525-597f43ab2fb1",
-            "actor_group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
+            "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
             "description" => "Policy to allow something"
           },
           %{
             "id" => "6301d7d2-4938-4123-87de-282c01cca656",
             "resource_id" => "9876bd25-0f6c-48fb-a9fd-196ba9be86e5",
-            "actor_group_id" => "343385a2-5437-4c66-8744-1332421ff736",
+            "group_id" => "343385a2-5437-4c66-8744-1332421ff736",
             "description" => "Policy to allow something else"
           }
         ],

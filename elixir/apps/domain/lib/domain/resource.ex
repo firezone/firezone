@@ -37,7 +37,7 @@ defmodule Domain.Resource do
     has_many :sites, through: [:connections, :site]
 
     has_many :policies, Domain.Policy
-    has_many :actor_groups, through: [:policies, :actor_group]
+    has_many :groups, through: [:policies, :group]
 
     # Warning: do not do Repo.preload/2 for this field, it will not work intentionally,
     # because the actual preload query should also use joins and process policy conditions

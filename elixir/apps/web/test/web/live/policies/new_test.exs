@@ -4,13 +4,13 @@ defmodule Web.Live.Policies.NewTest do
   setup do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    actor_group = Fixtures.Actors.create_group(account: account)
+    group = Fixtures.Actors.create_group(account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
     %{
       account: account,
       actor: actor,
-      actor_group: actor_group,
+      group: group,
       identity: identity
     }
   end
@@ -59,51 +59,51 @@ defmodule Web.Live.Policies.NewTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "policy[actor_group_id]",
-             "policy[actor_group_id]_name",
+             "policy[group_id]",
+             "policy[group_id]_name",
              "policy[description]",
              "policy[resource_id]",
              "policy[resource_id]_name",
-             "search_query-policy_actor_group_id",
+             "search_query-policy_group_id",
              "search_query-policy_resource_id"
            ]
   end
 
-  test "renders form with pre-set actor_group_id", %{
+  test "renders form with pre-set group_id", %{
     account: account,
     identity: identity,
-    actor_group: actor_group,
+    group: group,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/policies/new?actor_group_id=#{actor_group.id}")
+      |> live(~p"/#{account}/policies/new?group_id=#{group.id}")
 
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "policy[actor_group_id]",
-             "policy[actor_group_id]_name",
+             "policy[group_id]",
+             "policy[group_id]_name",
              "policy[description]",
              "policy[resource_id]",
              "policy[resource_id]_name",
-             "search_query-policy_actor_group_id",
+             "search_query-policy_group_id",
              "search_query-policy_resource_id"
            ]
 
     html = render(form)
 
     disabled_input =
-      html |> Floki.parse_fragment!() |> Floki.find("input[name='policy[actor_group_id]_name']")
+      html |> Floki.parse_fragment!() |> Floki.find("input[name='policy[group_id]_name']")
 
     assert Floki.attribute(disabled_input, "disabled") == [""]
-    assert Floki.attribute(disabled_input, "value") == [actor_group.name]
+    assert Floki.attribute(disabled_input, "value") == [group.name]
 
     value_input =
-      html |> Floki.parse_fragment!() |> Floki.find("input[name='policy[actor_group_id]']")
+      html |> Floki.parse_fragment!() |> Floki.find("input[name='policy[group_id]']")
 
-    assert Floki.attribute(value_input, "value") == [actor_group.id]
+    assert Floki.attribute(value_input, "value") == [group.id]
   end
 
   test "renders form with pre-set resource_id", %{
@@ -121,8 +121,8 @@ defmodule Web.Live.Policies.NewTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "policy[actor_group_id]",
-             "policy[actor_group_id]_name",
+             "policy[group_id]",
+             "policy[group_id]_name",
              "policy[conditions][client_verified][operator]",
              "policy[conditions][client_verified][property]",
              "policy[conditions][client_verified][values][]",
@@ -148,7 +148,7 @@ defmodule Web.Live.Policies.NewTest do
              "policy[description]",
              "policy[resource_id]",
              "policy[resource_id]_name",
-             "search_query-policy_actor_group_id",
+             "search_query-policy_group_id",
              "search_query-policy_resource_id"
            ]
 
@@ -187,8 +187,8 @@ defmodule Web.Live.Policies.NewTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "policy[actor_group_id]",
-             "policy[actor_group_id]_name",
+             "policy[group_id]",
+             "policy[group_id]_name",
              "policy[conditions][client_verified][operator]",
              "policy[conditions][client_verified][property]",
              "policy[conditions][client_verified][values][]",
@@ -204,7 +204,7 @@ defmodule Web.Live.Policies.NewTest do
              "policy[description]",
              "policy[resource_id]",
              "policy[resource_id]_name",
-             "search_query-policy_actor_group_id",
+             "search_query-policy_group_id",
              "search_query-policy_resource_id"
            ]
   end
@@ -219,7 +219,7 @@ defmodule Web.Live.Policies.NewTest do
 
     attrs =
       %{}
-      |> Map.put(:actor_group_id, group.id)
+      |> Map.put(:group_id, group.id)
       |> Map.put(:resource_id, resource.id)
 
     {:ok, lv, _html} =
@@ -254,13 +254,13 @@ defmodule Web.Live.Policies.NewTest do
            |> render_submit()
            |> form_validation_errors() == %{
              "policy[description]" => ["should be at most 1024 character(s)"],
-             "policy[actor_group_id]_name" => ["can't be blank"],
+             "policy[group_id]_name" => ["can't be blank"],
              "policy[resource_id]_name" => ["can't be blank"]
            }
 
     attrs = %{
       description: "",
-      actor_group_id: other_policy.actor_group_id,
+      group_id: other_policy.group_id,
       resource_id: other_policy.resource_id
     }
 
@@ -281,7 +281,7 @@ defmodule Web.Live.Policies.NewTest do
     resource = Fixtures.Resources.create_resource(account: account)
 
     attrs = %{
-      actor_group_id: group.id,
+      group_id: group.id,
       resource_id: resource.id
     }
 
@@ -309,7 +309,7 @@ defmodule Web.Live.Policies.NewTest do
     resource = Fixtures.Resources.create_resource(account: account)
 
     attrs = %{
-      actor_group_id: group.id,
+      group_id: group.id,
       resource_id: resource.id,
       conditions: %{
         current_utc_datetime: %{
@@ -353,7 +353,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policy, actor_group_id: group.id)
+    policy = Repo.get_by(Domain.Policy, group_id: group.id)
     assert policy.resource_id == resource.id
 
     assert policy.conditions == [
@@ -399,7 +399,7 @@ defmodule Web.Live.Policies.NewTest do
     resource = Fixtures.Resources.create_resource(account: account)
 
     attrs =
-      %{actor_group_id: group.id}
+      %{group_id: group.id}
 
     {:ok, lv, _html} =
       conn
@@ -432,7 +432,7 @@ defmodule Web.Live.Policies.NewTest do
     resource = Fixtures.Resources.create_resource(account: account)
 
     attrs = %{
-      actor_group_id: group.id,
+      group_id: group.id,
       conditions: %{
         current_utc_datetime: %{},
         auth_provider_id: %{},
@@ -450,14 +450,14 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policy, %{actor_group_id: group.id})
+    policy = Repo.get_by(Domain.Policy, %{group_id: group.id})
     assert policy.resource_id == resource.id
     assert policy.conditions == []
 
     assert_redirect(lv, ~p"/#{account}/resources/#{resource}")
   end
 
-  test "redirects back to actor group when a new policy is created with pre-set actor_group_id",
+  test "redirects back to actor group when a new policy is created with pre-set group_id",
        %{
          account: account,
          identity: identity,
@@ -473,7 +473,7 @@ defmodule Web.Live.Policies.NewTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/policies/new?actor_group_id=#{group}")
+      |> live(~p"/#{account}/policies/new?group_id=#{group}")
 
     assert lv
            |> form("form", policy: attrs)
@@ -495,7 +495,7 @@ defmodule Web.Live.Policies.NewTest do
 
     site = Fixtures.Sites.create_site(account: account)
 
-    attrs = %{actor_group_id: group.id, resource_id: resource.id}
+    attrs = %{group_id: group.id, resource_id: resource.id}
 
     {:ok, lv, _html} =
       conn

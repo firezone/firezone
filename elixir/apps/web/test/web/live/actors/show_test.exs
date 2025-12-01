@@ -120,7 +120,7 @@ defmodule Web.Live.Actors.ShowTest do
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:actor_group, :resource]])
+    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:group, :resource]])
 
     {:ok, lv, _html} =
       conn
@@ -134,7 +134,7 @@ defmodule Web.Live.Actors.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["policy"] =~ flow.policy.actor_group.name
+    assert row["policy"] =~ flow.policy.group.name
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["client"] ==
@@ -158,7 +158,7 @@ defmodule Web.Live.Actors.ShowTest do
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:actor_group, :resource]])
+    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:group, :resource]])
     Fixtures.Policies.delete_policy(flow.policy)
 
     {:ok, lv, _html} =
@@ -187,8 +187,8 @@ defmodule Web.Live.Actors.ShowTest do
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:actor_group, :resource]])
-    Fixtures.Actors.delete_group(flow.policy.actor_group)
+    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:group, :resource]])
+    Fixtures.Actors.delete_group(flow.policy.group)
     Fixtures.Resources.delete_resource(flow.policy.resource)
 
     {:ok, lv, _html} =

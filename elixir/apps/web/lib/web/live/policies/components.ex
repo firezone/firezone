@@ -33,7 +33,7 @@ defmodule Web.Policies.Components do
   attr(:policy, :map, required: true)
 
   def policy_name(assigns) do
-    ~H"{@policy.actor_group.name} → {@policy.resource.name}"
+    ~H"{@policy.group.name} → {@policy.resource.name}"
   end
 
   def maybe_drop_unsupported_conditions(attrs, socket) do
@@ -865,7 +865,7 @@ defmodule Web.Policies.Components do
     # Inlined from Web.Groups.Components
     def fetch_group_option(id, subject) do
       group =
-        from(g in Domain.ActorGroup, as: :groups)
+        from(g in Domain.Group, as: :groups)
         |> where([groups: g], g.id == ^id)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
         |> join(:left, [directory: d], gd in Domain.Google.Directory,
@@ -901,7 +901,7 @@ defmodule Web.Policies.Components do
 
     def list_group_options(search_query_or_nil, subject) do
       query =
-        from(g in Domain.ActorGroup, as: :groups)
+        from(g in Domain.Group, as: :groups)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
         |> join(:left, [directory: d], gd in Domain.Google.Directory,
           on: gd.id == d.id and d.type == :google,
@@ -1069,10 +1069,10 @@ defmodule Web.Policies.Components do
       )
     end
 
-    def by_policy_actor_group_id(queryable, actor_group_id) do
+    def by_policy_group_id(queryable, group_id) do
       queryable
       |> with_joined_policy()
-      |> where([policy: policy], policy.actor_group_id == ^actor_group_id)
+      |> where([policy: policy], policy.group_id == ^group_id)
     end
 
     def by_membership_id(queryable, membership_id) do

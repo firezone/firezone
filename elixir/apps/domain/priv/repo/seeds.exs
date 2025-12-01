@@ -591,7 +591,7 @@ defmodule Domain.Repo.Seeds do
     IO.puts("Clients created")
     IO.puts("")
 
-    IO.puts("Created Actor Groups: ")
+    IO.puts("Created Groups: ")
 
     # Collect all actors for this account
     all_actors = [
@@ -623,7 +623,7 @@ defmodule Domain.Repo.Seeds do
 
         {_, inserted_groups} =
           Repo.insert_all(
-            Domain.ActorGroup,
+            Domain.Group,
             group_attrs,
             returning: [:id]
           )
@@ -695,7 +695,7 @@ defmodule Domain.Repo.Seeds do
     ]
 
     {3, group_results} =
-      Repo.insert_all(Domain.ActorGroup, group_values, returning: [:id, :name])
+      Repo.insert_all(Domain.Group, group_values, returning: [:id, :name])
 
     for group <- group_results do
       IO.puts("  Name: #{group.name}  ID: #{group.id}")
@@ -704,9 +704,9 @@ defmodule Domain.Repo.Seeds do
     # Reload as structs for further use
     [eng_group_id, finance_group_id, synced_group_id] = Enum.map(group_results, & &1.id)
 
-    eng_group = Repo.get!(Domain.ActorGroup, eng_group_id)
-    finance_group = Repo.get!(Domain.ActorGroup, finance_group_id)
-    synced_group = Repo.get!(Domain.ActorGroup, synced_group_id)
+    eng_group = Repo.get!(Domain.Group, eng_group_id)
+    finance_group = Repo.get!(Domain.Group, finance_group_id)
+    synced_group = Repo.get!(Domain.Group, synced_group_id)
 
     eng_group
     |> Repo.preload(:memberships)
@@ -758,10 +758,10 @@ defmodule Domain.Repo.Seeds do
       end)
 
     {_count, extra_group_results} =
-      Repo.insert_all(Domain.ActorGroup, extra_group_values, returning: [:id])
+      Repo.insert_all(Domain.Group, extra_group_values, returning: [:id])
 
     for %{id: group_id} <- extra_group_results do
-      group = Repo.get!(Domain.ActorGroup, group_id)
+      group = Repo.get!(Domain.Group, group_id)
 
       group
       |> Repo.preload(:memberships)
@@ -1214,7 +1214,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "All Access To Google",
-          actor_group_id: everyone_group.id,
+          group_id: everyone_group.id,
           resource_id: dns_google_resource.id
         },
         admin_subject
@@ -1224,7 +1224,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "All Access To firez.one",
-          actor_group_id: synced_group.id,
+          group_id: synced_group.id,
           resource_id: firez_one.id
         },
         admin_subject
@@ -1234,7 +1234,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "All Access To firez.one",
-          actor_group_id: everyone_group.id,
+          group_id: everyone_group.id,
           resource_id: example_dns.id
         },
         admin_subject
@@ -1244,7 +1244,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "All Access To firezone.dev",
-          actor_group_id: everyone_group.id,
+          group_id: everyone_group.id,
           resource_id: firezone_dev.id
         },
         admin_subject
@@ -1254,7 +1254,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "All Access To ip6only.me",
-          actor_group_id: synced_group.id,
+          group_id: synced_group.id,
           resource_id: ip6only.id
         },
         admin_subject
@@ -1264,7 +1264,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "All access to Google",
-          actor_group_id: everyone_group.id,
+          group_id: everyone_group.id,
           resource_id: address_description_null_resource.id
         },
         admin_subject
@@ -1274,7 +1274,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "Eng Access To Gitlab",
-          actor_group_id: eng_group.id,
+          group_id: eng_group.id,
           resource_id: dns_gitlab_resource.id
         },
         admin_subject
@@ -1284,7 +1284,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "All Access To Network",
-          actor_group_id: synced_group.id,
+          group_id: synced_group.id,
           resource_id: cidr_resource.id
         },
         admin_subject
@@ -1294,7 +1294,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "All Access To Network",
-          actor_group_id: synced_group.id,
+          group_id: synced_group.id,
           resource_id: ipv6_resource.id
         },
         admin_subject
@@ -1304,7 +1304,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "All Access To **.httpbin",
-          actor_group_id: everyone_group.id,
+          group_id: everyone_group.id,
           resource_id: dns_httpbin_resource.id
         },
         admin_subject
@@ -1314,7 +1314,7 @@ defmodule Domain.Repo.Seeds do
       Policies.create_policy(
         %{
           name: "All Access To **.httpbin.search.test",
-          actor_group_id: everyone_group.id,
+          group_id: everyone_group.id,
           resource_id: search_domain_resource.id
         },
         admin_subject

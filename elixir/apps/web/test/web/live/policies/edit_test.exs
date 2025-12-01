@@ -15,7 +15,7 @@ defmodule Web.Live.Policies.EditTest do
         description: "Test Policy"
       )
 
-    policy = Repo.preload(policy, [:actor_group, :resource])
+    policy = Repo.preload(policy, [:group, :resource])
 
     %{
       account: account,
@@ -71,7 +71,7 @@ defmodule Web.Live.Policies.EditTest do
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Policies"
-    assert breadcrumbs =~ policy.actor_group.name
+    assert breadcrumbs =~ policy.group.name
     assert breadcrumbs =~ policy.resource.name
     assert breadcrumbs =~ "Edit"
   end
@@ -90,8 +90,8 @@ defmodule Web.Live.Policies.EditTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "policy[actor_group_id]",
-             "policy[actor_group_id]_name",
+             "policy[group_id]",
+             "policy[group_id]_name",
              "policy[conditions][client_verified][operator]",
              "policy[conditions][client_verified][property]",
              "policy[conditions][client_verified][values][]",
@@ -117,7 +117,7 @@ defmodule Web.Live.Policies.EditTest do
              "policy[description]",
              "policy[resource_id]",
              "policy[resource_id]_name",
-             "search_query-policy_actor_group_id",
+             "search_query-policy_group_id",
              "search_query-policy_resource_id"
            ]
   end

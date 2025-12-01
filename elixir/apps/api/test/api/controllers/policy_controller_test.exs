@@ -98,7 +98,7 @@ defmodule API.PolicyControllerTest do
       assert json_response(conn, 200) == %{
                "data" => %{
                  "id" => policy.id,
-                 "actor_group_id" => policy.actor_group_id,
+                 "group_id" => policy.group_id,
                  "resource_id" => policy.resource_id,
                  "description" => policy.description
                }
@@ -139,7 +139,7 @@ defmodule API.PolicyControllerTest do
                  "error" => %{
                    "reason" => "Unprocessable Entity",
                    "validation_errors" => %{
-                     "actor_group_id" => ["can't be blank"],
+                     "group_id" => ["can't be blank"],
                      "resource_id" => ["can't be blank"]
                    }
                  }
@@ -148,10 +148,10 @@ defmodule API.PolicyControllerTest do
 
     test "creates a policy with valid attrs", %{conn: conn, account: account, actor: actor} do
       resource = Fixtures.Resources.create_resource(%{account: account})
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
 
       attrs = %{
-        "actor_group_id" => actor_group.id,
+        "group_id" => group.id,
         "resource_id" => resource.id,
         "description" => "test policy"
       }
@@ -164,7 +164,7 @@ defmodule API.PolicyControllerTest do
 
       assert resp = json_response(conn, 201)
 
-      assert resp["data"]["actor_group_id"] == attrs["actor_group_id"]
+      assert resp["data"]["group_id"] == attrs["group_id"]
       assert resp["data"]["resource_id"] == attrs["resource_id"]
     end
   end
@@ -225,7 +225,7 @@ defmodule API.PolicyControllerTest do
       assert json_response(conn, 200) == %{
                "data" => %{
                  "id" => policy.id,
-                 "actor_group_id" => policy.actor_group_id,
+                 "group_id" => policy.group_id,
                  "resource_id" => policy.resource_id,
                  "description" => policy.description
                }

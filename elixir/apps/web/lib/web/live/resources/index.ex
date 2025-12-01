@@ -38,12 +38,12 @@ defmodule Web.Resources.Index do
 
     with {:ok, resources, metadata} <-
            DB.list_resources(socket.assigns.subject, list_opts),
-         {:ok, resource_actor_groups_peek} <-
-           DB.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
+         {:ok, resource_groups_peek} <-
+           DB.peek_resource_groups(resources, 3, socket.assigns.subject) do
       {:ok,
        assign(socket,
          resources: resources,
-         resource_actor_groups_peek: resource_actor_groups_peek,
+         resource_groups_peek: resource_groups_peek,
          resources_metadata: metadata
        )}
     end
@@ -109,7 +109,7 @@ defmodule Web.Resources.Index do
             </.link>
           </:col>
           <:col :let={resource} label="Authorized groups" class="w-4/12">
-            <.peek peek={Map.fetch!(@resource_actor_groups_peek, resource.id)}>
+            <.peek peek={Map.fetch!(@resource_groups_peek, resource.id)}>
               <:empty>
                 None -
                 <.link
@@ -205,13 +205,13 @@ defmodule Web.Resources.Index do
       end
     end
 
-    def peek_resource_actor_groups(resources, limit, subject) do
+    def peek_resource_groups(resources, limit, subject) do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
       {:ok, peek} =
         all()
         |> by_id({:in, ids})
-        |> preload_few_actor_groups_for_each_resource(limit)
+        |> preload_few_groups_for_each_resource(limit)
         |> where(account_id: ^subject.account.id)
         |> Repo.peek(resources)
 
@@ -232,38 +232,38 @@ defmodule Web.Resources.Index do
       where(queryable, [resources: resources], resources.id in ^ids)
     end
 
-    def preload_few_actor_groups_for_each_resource(queryable, limit) do
+    def preload_few_groups_for_each_resource(queryable, limit) do
       queryable
-      |> with_joined_actor_groups(limit)
+      |> with_joined_groups(limit)
       |> with_joined_policies_counts()
       |> select(
-        [resources: resources, actor_groups: actor_groups, policies_counts: policies_counts],
+        [resources: resources, groups: groups, policies_counts: policies_counts],
         %{
           id: resources.id,
           count: policies_counts.count,
-          item: actor_groups
+          item: groups
         }
       )
     end
 
-    def with_joined_actor_groups(queryable, limit) do
+    def with_joined_groups(queryable, limit) do
       policies_subquery =
         from(p in Policy, as: :policies)
         |> where([policies: p], is_nil(p.disabled_at))
         |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
-        |> select([policies: policies], policies.actor_group_id)
+        |> select([policies: policies], policies.group_id)
         |> limit(^limit)
 
-      actor_groups_subquery =
-        from(g in Domain.ActorGroup, as: :groups)
+      groups_subquery =
+        from(g in Domain.Group, as: :groups)
         |> where([groups: groups], groups.id in subquery(policies_subquery))
 
       join(
         queryable,
         :cross_lateral,
         [resources: resources],
-        actor_groups in subquery(actor_groups_subquery),
-        as: :actor_groups
+        groups in subquery(groups_subquery),
+        as: :groups
       )
     end
 

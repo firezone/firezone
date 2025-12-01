@@ -22,11 +22,11 @@ defmodule API.Client.ChannelTest do
         }
       )
 
-    actor_group = Fixtures.Actors.create_group(account: account)
+    group = Fixtures.Actors.create_group(account: account)
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
     membership =
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
 
     identity = Fixtures.Auth.create_identity(actor: actor, account: account)
     subject = Fixtures.Auth.create_subject(identity: identity)
@@ -93,25 +93,25 @@ defmodule API.Client.ChannelTest do
     dns_resource_policy =
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: dns_resource
       )
 
     Fixtures.Policies.create_policy(
       account: account,
-      actor_group: actor_group,
+      group: group,
       resource: cidr_resource
     )
 
     Fixtures.Policies.create_policy(
       account: account,
-      actor_group: actor_group,
+      group: group,
       resource: ip_resource
     )
 
     Fixtures.Policies.create_policy(
       account: account,
-      actor_group: actor_group,
+      group: group,
       resource: nonconforming_resource,
       conditions: [
         %{
@@ -125,13 +125,13 @@ defmodule API.Client.ChannelTest do
     internet_resource_policy =
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: internet_resource
       )
 
     Fixtures.Policies.create_policy(
       account: account,
-      actor_group: actor_group,
+      group: group,
       resource: offline_resource
     )
 
@@ -158,7 +158,7 @@ defmodule API.Client.ChannelTest do
     %{
       account: account,
       actor: actor,
-      actor_group: actor_group,
+      group: group,
       identity: identity,
       subject: subject,
       client: client,
@@ -374,12 +374,12 @@ defmodule API.Client.ChannelTest do
       Fixtures.Auth.create_identity(actor: actor, account: account)
       Fixtures.Auth.create_identity(actor: actor, account: account)
 
-      second_actor_group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: second_actor_group)
+      second_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: second_group)
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: second_actor_group,
+        group: second_group,
         resource: resource
       )
 
@@ -399,7 +399,7 @@ defmodule API.Client.ChannelTest do
       subject: subject,
       client: client,
       site: site,
-      actor_group: actor_group
+      group: group
     } do
       client = %{client | last_seen_version: "1.1.55"}
 
@@ -449,7 +449,7 @@ defmodule API.Client.ChannelTest do
           ] do
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group,
+          group: group,
           resource: resource
         )
       end
@@ -657,7 +657,7 @@ defmodule API.Client.ChannelTest do
       socket: socket
     } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
       site = Fixtures.Sites.create_site(account: account)
 
       resource =
@@ -692,7 +692,7 @@ defmodule API.Client.ChannelTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource,
         conditions: [
           %{
@@ -707,7 +707,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -924,14 +924,14 @@ defmodule API.Client.ChannelTest do
            account: account,
            socket: socket
          } do
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
       Fixtures.Auth.create_identity(actor: actor, account: account)
 
       membership =
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       site = Fixtures.Sites.create_site(account: account)
@@ -944,7 +944,7 @@ defmodule API.Client.ChannelTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource
       )
 
@@ -979,14 +979,14 @@ defmodule API.Client.ChannelTest do
            account: account,
            socket: socket
          } do
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
       Fixtures.Auth.create_identity(actor: actor, account: account)
 
       membership =
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1010,7 +1010,7 @@ defmodule API.Client.ChannelTest do
       policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group,
+          group: group,
           resource: resource
         )
 
@@ -1040,9 +1040,9 @@ defmodule API.Client.ChannelTest do
            account: account,
            socket: socket
          } do
-      # Create two actor groups
-      actor_group_1 = Fixtures.Actors.create_group(account: account)
-      actor_group_2 = Fixtures.Actors.create_group(account: account)
+      # Create two groups
+      group_1 = Fixtures.Actors.create_group(account: account)
+      group_2 = Fixtures.Actors.create_group(account: account)
       Fixtures.Auth.create_identity(actor: actor, account: account)
 
       # Add actor to both groups
@@ -1050,14 +1050,14 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group_1
+          group: group_1
         )
 
       membership_2 =
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group_2
+          group: group_2
         )
 
       # Send membership inserts
@@ -1090,14 +1090,14 @@ defmodule API.Client.ChannelTest do
       policy_1 =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group_1,
+          group: group_1,
           resource: resource
         )
 
       policy_2 =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group_2,
+          group: group_2,
           resource: resource
         )
 
@@ -1151,11 +1151,11 @@ defmodule API.Client.ChannelTest do
          } do
       resource = Fixtures.Resources.create_resource(account: account)
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource,
         conditions: [
           %{
@@ -1170,7 +1170,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1226,7 +1226,7 @@ defmodule API.Client.ChannelTest do
       actor: actor
     } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
       site = Fixtures.Sites.create_site(account: account)
 
       resource =
@@ -1237,7 +1237,7 @@ defmodule API.Client.ChannelTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource
       )
 
@@ -1245,7 +1245,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1283,7 +1283,7 @@ defmodule API.Client.ChannelTest do
       actor: actor
     } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       site = Fixtures.Sites.create_site(account: account)
 
@@ -1297,7 +1297,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1311,7 +1311,7 @@ defmodule API.Client.ChannelTest do
       policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group,
+          group: group,
           resource: resource
         )
 
@@ -1333,7 +1333,7 @@ defmodule API.Client.ChannelTest do
            actor: actor
          } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       site = Fixtures.Sites.create_site(account: account)
 
@@ -1346,7 +1346,7 @@ defmodule API.Client.ChannelTest do
       policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group,
+          group: group,
           resource: resource
         )
 
@@ -1354,7 +1354,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1424,7 +1424,7 @@ defmodule API.Client.ChannelTest do
       actor: actor
     } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       site = Fixtures.Sites.create_site(account: account)
 
@@ -1437,7 +1437,7 @@ defmodule API.Client.ChannelTest do
       policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group,
+          group: group,
           resource: resource
         )
 
@@ -1445,7 +1445,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1477,7 +1477,7 @@ defmodule API.Client.ChannelTest do
       actor: actor
     } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       site = Fixtures.Sites.create_site(account: account)
 
@@ -1490,7 +1490,7 @@ defmodule API.Client.ChannelTest do
       policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group,
+          group: group,
           resource: resource
         )
 
@@ -1498,7 +1498,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1533,7 +1533,7 @@ defmodule API.Client.ChannelTest do
            actor: actor
          } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       site = Fixtures.Sites.create_site(account: account)
 
@@ -1545,7 +1545,7 @@ defmodule API.Client.ChannelTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource
       )
 
@@ -1553,7 +1553,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1617,7 +1617,7 @@ defmodule API.Client.ChannelTest do
       actor: actor
     } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       site_1 = Fixtures.Sites.create_site(account: account)
       site_2 = Fixtures.Sites.create_site(account: account)
@@ -1630,7 +1630,7 @@ defmodule API.Client.ChannelTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource
       )
 
@@ -1638,7 +1638,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1676,7 +1676,7 @@ defmodule API.Client.ChannelTest do
            actor: actor
          } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       site_1 = Fixtures.Sites.create_site(account: account)
       site_2 = Fixtures.Sites.create_site(account: account)
@@ -1692,7 +1692,7 @@ defmodule API.Client.ChannelTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource
       )
 
@@ -1700,7 +1700,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1737,7 +1737,7 @@ defmodule API.Client.ChannelTest do
       actor: actor
     } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       site = Fixtures.Sites.create_site(account: account)
 
@@ -1749,7 +1749,7 @@ defmodule API.Client.ChannelTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource
       )
 
@@ -1757,7 +1757,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1792,8 +1792,8 @@ defmodule API.Client.ChannelTest do
            actor: actor
          } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group_1 = Fixtures.Actors.create_group(account: account)
-      actor_group_2 = Fixtures.Actors.create_group(account: account)
+      group_1 = Fixtures.Actors.create_group(account: account)
+      group_2 = Fixtures.Actors.create_group(account: account)
 
       site = Fixtures.Sites.create_site(account: account)
 
@@ -1807,7 +1807,7 @@ defmodule API.Client.ChannelTest do
       _restrictive_policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group_1,
+          group: group_1,
           resource: resource,
           conditions: [
             %{
@@ -1822,7 +1822,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group_1
+          group: group_1
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1838,7 +1838,7 @@ defmodule API.Client.ChannelTest do
       permissive_policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group_2,
+          group: group_2,
           resource: resource,
           conditions: []
         )
@@ -1847,7 +1847,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group_2
+          group: group_2
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1885,7 +1885,7 @@ defmodule API.Client.ChannelTest do
       actor: actor
     } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       site = Fixtures.Sites.create_site(account: account)
 
@@ -1900,7 +1900,7 @@ defmodule API.Client.ChannelTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource
       )
 
@@ -1908,7 +1908,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1941,7 +1941,7 @@ defmodule API.Client.ChannelTest do
       actor: actor
     } do
       Fixtures.Auth.create_identity(actor: actor, account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
 
       site = Fixtures.Sites.create_site(account: account)
 
@@ -1953,7 +1953,7 @@ defmodule API.Client.ChannelTest do
 
       Fixtures.Policies.create_policy(
         account: account,
-        actor_group: actor_group,
+        group: group,
         resource: resource
       )
 
@@ -1961,7 +1961,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Actors.create_membership(
           account: account,
           actor: actor,
-          group: actor_group
+          group: group
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -2089,7 +2089,7 @@ defmodule API.Client.ChannelTest do
     test "returns :not_found if resource isn't in connectable resources", %{
       account: account,
       client: client,
-      actor_group: actor_group,
+      group: group,
       site: site,
       gateway: gateway,
       membership: membership,
@@ -2116,7 +2116,7 @@ defmodule API.Client.ChannelTest do
       policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group,
+          group: group,
           resource: resource,
           conditions: [
             %{
@@ -2387,11 +2387,11 @@ defmodule API.Client.ChannelTest do
       site_token: site_token,
       global_relay: global_relay,
       global_relay_token: global_relay_token,
-      actor_group: actor_group
+      group: group
     } do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
       client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
 
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
@@ -2707,7 +2707,7 @@ defmodule API.Client.ChannelTest do
 
     test "returns gateway that support the DNS resource address syntax", %{
       account: account,
-      actor_group: actor_group,
+      group: group,
       membership: membership,
       global_relay: global_relay,
       global_relay_token: global_relay_token,
@@ -2742,7 +2742,7 @@ defmodule API.Client.ChannelTest do
       policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group,
+          group: group,
           resource: resource
         )
 
@@ -2877,11 +2877,11 @@ defmodule API.Client.ChannelTest do
       gateway: gateway,
       global_relay: global_relay,
       global_relay_token: global_relay_token,
-      actor_group: actor_group
+      group: group
     } do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
       client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
 
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
@@ -3021,7 +3021,7 @@ defmodule API.Client.ChannelTest do
     test "returns :not_found when resource is not in connectable_resources", %{
       account: account,
       client: client,
-      actor_group: actor_group,
+      group: group,
       membership: membership,
       site: site,
       gateway: gateway,
@@ -3036,7 +3036,7 @@ defmodule API.Client.ChannelTest do
       policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group,
+          group: group,
           resource: resource,
           conditions: [
             %{
@@ -3183,11 +3183,11 @@ defmodule API.Client.ChannelTest do
       membership: membership,
       gateway: gateway,
       site_token: site_token,
-      actor_group: actor_group
+      group: group
     } do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
       client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
 
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
@@ -3292,7 +3292,7 @@ defmodule API.Client.ChannelTest do
     test "returns not_found when resource is not in connectable_resources", %{
       account: account,
       client: client,
-      actor_group: actor_group,
+      group: group,
       membership: membership,
       site: site,
       gateway: gateway,
@@ -3307,7 +3307,7 @@ defmodule API.Client.ChannelTest do
       policy =
         Fixtures.Policies.create_policy(
           account: account,
-          actor_group: actor_group,
+          group: group,
           resource: resource,
           conditions: [
             %{
@@ -3435,11 +3435,11 @@ defmodule API.Client.ChannelTest do
       dns_resource: resource,
       site_token: site_token,
       gateway: gateway,
-      actor_group: actor_group
+      group: group
     } do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
       client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
 
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)

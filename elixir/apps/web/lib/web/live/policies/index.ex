@@ -16,8 +16,8 @@ defmodule Web.Policies.Index do
         query_module: DB,
         sortable_fields: [],
         hide_filters: [
-          :actor_group_id,
-          :actor_group_name,
+          :group_id,
+          :group_name,
           :resource_id,
           :resource_name
         ],
@@ -33,7 +33,7 @@ defmodule Web.Policies.Index do
   end
 
   def handle_policies_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, actor_group: [], resource: [])
+    list_opts = Keyword.put(list_opts, :preload, group: [], resource: [])
 
     with {:ok, policies, metadata} <- DB.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
@@ -82,7 +82,7 @@ defmodule Web.Policies.Index do
             </.link>
           </:col>
           <:col :let={policy} label="group" class="w-3/12">
-            <.group_badge account={@account} group={policy.actor_group} return_to={@current_path} />
+            <.group_badge account={@account} group={policy.group} return_to={@current_path} />
           </:col>
           <:col :let={policy} label="resource" class="w-2/12">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>

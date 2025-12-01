@@ -1191,16 +1191,16 @@ defmodule Domain.AuthTest do
       refute Repo.get(Token, token.id)
     end
 
-    test "deletes provider actor groups", %{
+    test "deletes provider groups", %{
       account: account,
       subject: subject,
       provider: provider
     } do
-      actor_group = Fixtures.Actors.create_group(account: account, provider: provider)
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
 
       assert {:ok, _provider} = delete_provider(provider, subject)
 
-      refute Repo.get(Domain.ActorGroup, actor_group.id)
+      refute Repo.get(Domain.Group, group.id)
     end
 
     test "returns error when trying to delete the last provider", %{

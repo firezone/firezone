@@ -21,7 +21,7 @@ defmodule API.PolicyJSON do
   defp data(%Domain.Policy{} = policy) do
     %{
       id: policy.id,
-      actor_group_id: policy.actor_group_id,
+      group_id: policy.group_id,
       resource_id: policy.resource_id,
       description: policy.description
     }

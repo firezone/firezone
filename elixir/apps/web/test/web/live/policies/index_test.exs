@@ -64,7 +64,7 @@ defmodule Web.Live.Policies.IndexTest do
   } do
     policy =
       Fixtures.Policies.create_policy(account: account, description: "foo bar")
-      |> Domain.Repo.preload(:actor_group)
+      |> Domain.Repo.preload(:group)
       |> Domain.Repo.preload(:resource)
 
     {:ok, lv, _html} =
@@ -79,7 +79,7 @@ defmodule Web.Live.Policies.IndexTest do
       |> table_to_map()
 
     assert rendered_policy["id"] =~ policy.id
-    assert rendered_policy["group"] =~ policy.actor_group.name
+    assert rendered_policy["group"] =~ policy.group.name
     assert rendered_policy["resource"] =~ policy.resource.name
   end
 
@@ -101,7 +101,7 @@ defmodule Web.Live.Policies.IndexTest do
 
       Changes.Hooks.Policies.on_insert(0, %{
         "id" => policy.id,
-        "actor_group_id" => policy.actor_group_id,
+        "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
         "account_id" => account.id
       })
@@ -134,7 +134,7 @@ defmodule Web.Live.Policies.IndexTest do
 
       Changes.Hooks.Policies.on_delete(0, %{
         "id" => policy.id,
-        "actor_group_id" => policy.actor_group_id,
+        "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
         "account_id" => account.id
       })

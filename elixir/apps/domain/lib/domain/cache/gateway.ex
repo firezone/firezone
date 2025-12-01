@@ -234,7 +234,7 @@ defmodule Domain.Cache.Gateway do
          {:ok, membership} <-
            fetch_membership_by_actor_id_and_group_id(
              client.actor_id,
-             policy.actor_group_id
+             policy.group_id
            ),
          {:ok, new_flow} <-
            Domain.Flow.Changeset.create(%{
@@ -341,7 +341,7 @@ defmodule Domain.Cache.Gateway do
     |> where([policies: p], is_nil(p.disabled_at))
     |> where([policies: p], p.account_id == ^account_id)
     |> where([policies: p], p.resource_id == ^resource_id)
-    |> join(:inner, [policies: p], ag in assoc(p, :actor_group), as: :actor_group)
+    |> join(:inner, [policies: p], ag in assoc(p, :group), as: :group)
     |> join(:inner, [policies: p], r in assoc(p, :resource), as: :resource)
     |> join(:inner, [resource: r], rc in Domain.Resources.Connection,
       on: rc.resource_id == r.id,
@@ -349,9 +349,9 @@ defmodule Domain.Cache.Gateway do
     )
     |> where([resource_connections: rc], rc.site_id == ^site_id)
     |> join(:inner, [], actor in Domain.Actor, on: actor.id == ^actor_id, as: :actor)
-    |> join(:left, [actor_group: ag], m in assoc(ag, :memberships), as: :memberships)
+    |> join(:left, [group: ag], m in assoc(ag, :memberships), as: :memberships)
     |> where(
-      [memberships: m, actor_group: ag, actor: a],
+      [memberships: m, group: ag, actor: a],
       m.actor_id == ^actor_id or
         (ag.type == :managed and
            is_nil(ag.idp_id) and

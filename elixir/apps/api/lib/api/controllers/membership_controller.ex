@@ -12,7 +12,7 @@ defmodule API.MembershipController do
   operation :index,
     summary: "List Memberships",
     parameters: [
-      actor_group_id: [
+      group_id: [
         in: :path,
         description: "ID",
         example: "00000000-0000-0000-0000-000000000000"
@@ -30,10 +30,10 @@ defmodule API.MembershipController do
     ]
 
   # List members for a given Group
-  def index(conn, %{"actor_group_id" => actor_group_id} = params) do
+  def index(conn, %{"group_id" => group_id} = params) do
     list_opts =
       Pagination.params_to_list_opts(params)
-      |> Keyword.put(:filter, group_id: actor_group_id)
+      |> Keyword.put(:filter, group_id: group_id)
 
     with {:ok, actors, metadata} <- DB.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
@@ -43,7 +43,7 @@ defmodule API.MembershipController do
   operation :update_put,
     summary: "Update Memberships",
     parameters: [
-      actor_group_id: [
+      group_id: [
         in: :path,
         description: "ID",
         example: "00000000-0000-0000-0000-000000000000"
@@ -58,11 +58,11 @@ defmodule API.MembershipController do
 
   def update_put(
         conn,
-        %{"actor_group_id" => actor_group_id, "memberships" => attrs}
+        %{"group_id" => group_id, "memberships" => attrs}
       ) do
     subject = conn.assigns.subject
 
-    with {:ok, group} <- DB.fetch_group_by_id(actor_group_id, subject),
+    with {:ok, group} <- DB.fetch_group_by_id(group_id, subject),
          true <- is_nil(group.directory_id) and group.type == :static,
          changeset <- update_group_memberships_changeset(group, attrs),
          {:ok, group} <- DB.update_group(changeset, subject) do
@@ -80,7 +80,7 @@ defmodule API.MembershipController do
   operation :update_patch,
     summary: "Update an Membership",
     parameters: [
-      actor_group_id: [
+      group_id: [
         in: :path,
         description: "ID",
         example: "00000000-0000-0000-0000-000000000000"
@@ -96,13 +96,13 @@ defmodule API.MembershipController do
   # Update Memberships
   def update_patch(
         conn,
-        %{"actor_group_id" => actor_group_id, "memberships" => params}
+        %{"group_id" => group_id, "memberships" => params}
       ) do
     add = Map.get(params, "add", [])
     remove = Map.get(params, "remove", [])
     subject = conn.assigns.subject
 
-    with {:ok, group} <- DB.fetch_group_by_id(actor_group_id, subject),
+    with {:ok, group} <- DB.fetch_group_by_id(group_id, subject),
          true <- is_nil(group.directory_id) and group.type == :static,
          membership_attrs <- prepare_membership_attrs(group, add, remove),
          changeset <- update_group_memberships_changeset(group, membership_attrs),
@@ -149,7 +149,7 @@ defmodule API.MembershipController do
     end
 
     def fetch_group_by_id(id, subject) do
-      from(g in Domain.ActorGroup, where: g.id == ^id)
+      from(g in Domain.Group, where: g.id == ^id)
       |> preload(:memberships)
       |> Safe.scoped(subject)
       |> Safe.one()

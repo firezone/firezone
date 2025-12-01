@@ -41,7 +41,7 @@ defmodule Domain.Changes.Hooks.Policies do
     # The Gateway PID will receive flow deletion messages and process them to potentially reject
     # access. The client PID (if connected) will toggle the resource deleted/created.
     if old_policy.conditions != policy.conditions or
-         old_policy.actor_group_id != policy.actor_group_id or
+         old_policy.group_id != policy.group_id or
          old_policy.resource_id != policy.resource_id do
       delete_flows_for(old_policy)
     end

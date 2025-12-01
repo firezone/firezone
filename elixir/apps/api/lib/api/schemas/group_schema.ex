@@ -1,4 +1,4 @@
-defmodule API.Schemas.ActorGroup do
+defmodule API.Schemas.Group do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -6,12 +6,12 @@ defmodule API.Schemas.ActorGroup do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "ActorGroup",
-      description: "Actor Group",
+      title: "Group",
+      description: "Group",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Actor Group ID"},
-        name: %Schema{type: :string, description: "Actor Group Name"}
+        id: %Schema{type: :string, description: "Group ID"},
+        name: %Schema{type: :string, description: "Group Name"}
       },
       required: [:id, :name],
       example: %{
@@ -24,18 +24,18 @@ defmodule API.Schemas.ActorGroup do
   defmodule Request do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.ActorGroup
+    alias API.Schemas.Group
 
     OpenApiSpex.schema(%{
-      title: "ActorGroupRequest",
-      description: "POST body for creating an Actor Group",
+      title: "GroupRequest",
+      description: "POST body for creating an Group",
       type: :object,
       properties: %{
-        actor_group: ActorGroup.Schema
+        group: Group.Schema
       },
-      required: [:actor_group],
+      required: [:group],
       example: %{
-        "actor_group" => %{
+        "group" => %{
           "name" => "Engineering"
         }
       }
@@ -45,14 +45,14 @@ defmodule API.Schemas.ActorGroup do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.ActorGroup
+    alias API.Schemas.Group
 
     OpenApiSpex.schema(%{
-      title: "ActorGroupResponse",
-      description: "Response schema for single Actor Group",
+      title: "GroupResponse",
+      description: "Response schema for single Group",
       type: :object,
       properties: %{
-        data: ActorGroup.Schema
+        data: Group.Schema
       },
       example: %{
         "data" => %{
@@ -66,14 +66,14 @@ defmodule API.Schemas.ActorGroup do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.ActorGroup
+    alias API.Schemas.Group
 
     OpenApiSpex.schema(%{
-      title: "ActorGroupListResponse",
-      description: "Response schema for multiple Actor Groups",
+      title: "GroupListResponse",
+      description: "Response schema for multiple Groups",
       type: :object,
       properties: %{
-        data: %Schema{description: "Actor Group details", type: :array, items: ActorGroup.Schema},
+        data: %Schema{description: "Group details", type: :array, items: Group.Schema},
         metadata: %Schema{description: "Pagination metadata", type: :object}
       },
       example: %{

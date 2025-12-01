@@ -13,23 +13,23 @@ defmodule API.MembershipControllerTest do
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
-      conn = get(conn, "/actor_groups/#{actor_group.id}/memberships")
+      group = Fixtures.Actors.create_group(%{account: account})
+      conn = get(conn, "/groups/#{group.id}/memberships")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "lists all memberships", %{conn: conn, account: account, actor: api_actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
 
       memberships =
         for _ <- 1..3,
-            do: Fixtures.Actors.create_membership(%{account: account, group: actor_group})
+            do: Fixtures.Actors.create_membership(%{account: account, group: group})
 
       conn =
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/actor_groups/#{actor_group.id}/memberships")
+        |> get("/groups/#{group.id}/memberships")
 
       assert %{
                "data" => data,
@@ -53,17 +53,17 @@ defmodule API.MembershipControllerTest do
     end
 
     test "lists identity providers with limit", %{conn: conn, account: account, actor: actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
 
       memberships =
         for _ <- 1..3,
-            do: Fixtures.Actors.create_membership(%{account: account, group: actor_group})
+            do: Fixtures.Actors.create_membership(%{account: account, group: group})
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/actor_groups/#{actor_group.id}/memberships", limit: "2")
+        |> get("/groups/#{group.id}/memberships", limit: "2")
 
       assert %{
                "data" => data,
@@ -92,7 +92,7 @@ defmodule API.MembershipControllerTest do
 
   describe "update_patch/2" do
     test "adds actor to group", %{conn: conn, account: account, actor: api_actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
       actor = Fixtures.Actors.create_actor(%{account: account})
       attrs = %{"add" => [actor.id]}
 
@@ -100,20 +100,20 @@ defmodule API.MembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> patch("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data == %{"actor_ids" => [actor.id]}
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: api_actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
 
       conn =
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/actor_groups/#{actor_group.id}/memberships")
+        |> patch("/groups/#{group.id}/memberships")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
@@ -126,7 +126,7 @@ defmodule API.MembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/actor_groups/00000000-0000-0000-0000-000000000000/memberships",
+        |> patch("/groups/00000000-0000-0000-0000-000000000000/memberships",
           memberships: attrs
         )
 
@@ -135,25 +135,25 @@ defmodule API.MembershipControllerTest do
     end
 
     test "returns error on invalid actor id", %{conn: conn, account: account, actor: api_actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
       attrs = %{"add" => ["00000000-0000-0000-0000-000000000000"]}
 
       conn =
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> patch("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert resp = json_response(conn, 422)
       assert resp == %{"error" => %{"reason" => "Invalid payload"}}
     end
 
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
       actor1 = Fixtures.Actors.create_actor(%{account: account})
       actor2 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: group})
 
       attrs = %{"remove" => [actor2.id]}
 
@@ -161,19 +161,19 @@ defmodule API.MembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> patch("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data == %{"actor_ids" => [actor1.id]}
     end
 
     test "adds and removes actors from group", %{conn: conn, account: account, actor: api_actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
       actor1 = Fixtures.Actors.create_actor(%{account: account})
       actor2 = Fixtures.Actors.create_actor(%{account: account})
       actor3 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: group})
 
       attrs = %{"add" => [actor3.id], "remove" => [actor2.id]}
 
@@ -181,7 +181,7 @@ defmodule API.MembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> patch("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert Enum.sort(data["actor_ids"]) == Enum.sort([actor1.id, actor3.id])
@@ -192,11 +192,11 @@ defmodule API.MembershipControllerTest do
       account: account,
       actor: api_actor
     } do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
       actor1 = Fixtures.Actors.create_actor(%{account: account})
       actor2 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: group})
 
       attrs = %{}
 
@@ -204,7 +204,7 @@ defmodule API.MembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> patch("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert Enum.sort(data["actor_ids"]) == Enum.sort([actor1.id, actor2.id])
@@ -213,7 +213,7 @@ defmodule API.MembershipControllerTest do
 
   describe "update_put/2" do
     test "adds actor to group", %{conn: conn, account: account, actor: api_actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
       actor = Fixtures.Actors.create_actor(%{account: account})
       attrs = [%{"actor_id" => actor.id}]
 
@@ -221,31 +221,31 @@ defmodule API.MembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> put("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data == %{"actor_ids" => [actor.id]}
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: api_actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
 
       conn =
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/actor_groups/#{actor_group.id}/memberships")
+        |> put("/groups/#{group.id}/memberships")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
     end
 
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
       actor1 = Fixtures.Actors.create_actor(%{account: account})
       actor2 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: group})
 
       attrs = [%{"actor_id" => actor1.id}]
 
@@ -253,19 +253,19 @@ defmodule API.MembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> put("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data == %{"actor_ids" => [actor1.id]}
     end
 
     test "adds and removes actors from group", %{conn: conn, account: account, actor: api_actor} do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
+      group = Fixtures.Actors.create_group(%{account: account})
       actor1 = Fixtures.Actors.create_actor(%{account: account})
       actor2 = Fixtures.Actors.create_actor(%{account: account})
       actor3 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: group})
 
       attrs = [%{"actor_id" => actor1.id}, %{"actor_id" => actor3.id}]
 
@@ -273,7 +273,7 @@ defmodule API.MembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> put("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert Enum.sort(data["actor_ids"]) == Enum.sort([actor1.id, actor3.id])

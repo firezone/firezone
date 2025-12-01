@@ -301,7 +301,7 @@ defmodule Web.Live.Resources.ShowTest do
       )
 
     flow =
-      Repo.preload(flow, client: [:actor], gateway: [:site], policy: [:actor_group, :resource])
+      Repo.preload(flow, client: [:actor], gateway: [:site], policy: [:group, :resource])
 
     {:ok, lv, _html} =
       conn
@@ -315,7 +315,7 @@ defmodule Web.Live.Resources.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["policy"] =~ flow.policy.actor_group.name
+    assert row["policy"] =~ flow.policy.group.name
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["gateway"] ==

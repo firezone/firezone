@@ -53,7 +53,7 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
   table_subscriptions: ~w[
     accounts
     memberships
-    actor_groups
+    groups
     actors
     external_identities
     google_auth_providers

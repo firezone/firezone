@@ -34,15 +34,15 @@ defmodule Domain.Changes.Hooks.MembershipsTest do
   describe "delete/1" do
     setup do
       account = Fixtures.Accounts.create_account()
-      actor_group = Fixtures.Actors.create_group(account: account)
+      group = Fixtures.Actors.create_group(account: account)
       actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
 
       membership =
-        Fixtures.Actors.create_membership(account: account, group: actor_group, actor: actor)
+        Fixtures.Actors.create_membership(account: account, group: group, actor: actor)
 
       %{
         account: account,
-        actor_group: actor_group,
+        group: group,
         actor: actor,
         membership: membership
       }

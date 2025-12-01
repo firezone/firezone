@@ -867,19 +867,19 @@ defmodule API.Client.Channel do
            op: :update,
            old_struct: %Domain.Policy{
              resource_id: old_resource_id,
-             actor_group_id: old_actor_group_id,
+             group_id: old_group_id,
              conditions: old_conditions
            },
            struct: %Domain.Policy{
              resource_id: resource_id,
-             actor_group_id: actor_group_id,
+             group_id: group_id,
              conditions: conditions,
              disabled_at: disabled_at
            }
          } = change,
          socket
        )
-       when old_resource_id != resource_id or old_actor_group_id != actor_group_id or
+       when old_resource_id != resource_id or old_group_id != group_id or
               old_conditions != conditions do
     # TODO: Optimization
     # Breaking update - process this as a delete and then create to make our lives easier.

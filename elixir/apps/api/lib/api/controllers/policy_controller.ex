@@ -163,8 +163,8 @@ defmodule API.PolicyController do
 
     defp create_changeset(attrs, %Auth.Subject{} = subject) do
       %Policy{}
-      |> cast(attrs, ~w[description actor_group_id resource_id]a)
-      |> validate_required(~w[actor_group_id resource_id]a)
+      |> cast(attrs, ~w[description group_id resource_id]a)
+      |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
       |> Policy.changeset()
       |> put_change(:account_id, subject.account.id)
@@ -172,8 +172,8 @@ defmodule API.PolicyController do
 
     defp changeset(%Policy{} = policy, attrs) do
       policy
-      |> cast(attrs, ~w[description actor_group_id resource_id]a)
-      |> validate_required(~w[actor_group_id resource_id]a)
+      |> cast(attrs, ~w[description group_id resource_id]a)
+      |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
       |> Policy.changeset()
     end

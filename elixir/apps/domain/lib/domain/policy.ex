@@ -5,7 +5,7 @@ defmodule Domain.Policy do
           id: Ecto.UUID.t(),
           description: String.t() | nil,
           conditions: [Domain.Policies.Condition.t()],
-          actor_group_id: Ecto.UUID.t(),
+          group_id: Ecto.UUID.t(),
           resource_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
           disabled_at: DateTime.t() | nil,
@@ -18,7 +18,7 @@ defmodule Domain.Policy do
 
     embeds_many :conditions, Domain.Policies.Condition, on_replace: :delete
 
-    belongs_to :actor_group, Domain.ActorGroup
+    belongs_to :group, Domain.Group, foreign_key: :group_id
     belongs_to :resource, Domain.Resource
     belongs_to :account, Domain.Account
 
@@ -32,14 +32,14 @@ defmodule Domain.Policy do
     |> validate_length(:description, min: 1, max: 1024)
     |> unique_constraint(
       :base,
-      name: :policies_account_id_resource_id_actor_group_id_index,
+      name: :policies_account_id_resource_id_group_id_index,
       message: "Policy for the selected Group and Resource already exists"
     )
     |> assoc_constraint(:resource)
-    |> assoc_constraint(:actor_group)
+    |> assoc_constraint(:group)
     |> unique_constraint(
       :base,
-      name: :policies_actor_group_id_fkey,
+      name: :policies_group_id_fkey,
       message: "Not allowed to create policies for groups outside of your account"
     )
     |> unique_constraint(

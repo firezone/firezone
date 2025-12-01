@@ -47,7 +47,7 @@ defmodule Web.Live.Policies.ShowTest do
         description: "Test Policy"
       )
 
-    policy = Repo.preload(policy, [:actor_group, :resource])
+    policy = Repo.preload(policy, [:group, :resource])
 
     %{
       account: account,
@@ -104,7 +104,7 @@ defmodule Web.Live.Policies.ShowTest do
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Policies"
-    assert breadcrumbs =~ policy.actor_group.name
+    assert breadcrumbs =~ policy.group.name
     assert breadcrumbs =~ policy.resource.name
   end
 
@@ -135,7 +135,7 @@ defmodule Web.Live.Policies.ShowTest do
   } do
     policy =
       policy
-      |> Domain.Repo.preload(:actor_group)
+      |> Domain.Repo.preload(:group)
       |> Domain.Repo.preload(:resource)
 
     {:ok, lv, _html} =
@@ -149,7 +149,7 @@ defmodule Web.Live.Policies.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["group"] =~ policy.actor_group.name
+    assert table["group"] =~ policy.group.name
     assert table["resource"] =~ policy.resource.name
     assert table["description"] =~ policy.description
     assert table["created"] =~ actor.name
@@ -179,7 +179,7 @@ defmodule Web.Live.Policies.ShowTest do
 
     policy =
       Fixtures.Policies.create_policy(account: account, subject: subject, resource: resource)
-      |> Domain.Repo.preload(:actor_group)
+      |> Domain.Repo.preload(:group)
       |> Domain.Repo.preload(:resource)
 
     {:ok, lv, _html} =
@@ -193,7 +193,7 @@ defmodule Web.Live.Policies.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["group"] =~ policy.actor_group.name
+    assert table["group"] =~ policy.group.name
     assert table["resource"] =~ policy.resource.name
     assert table["description"] =~ policy.description
     assert table["created"] =~ actor.name

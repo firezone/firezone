@@ -522,7 +522,7 @@ defmodule Domain.Safe do
   def permit(:read, Domain.Account, :service_account), do: :ok
   def permit(:read, Domain.Account, :api_client), do: :ok
   def permit(_action, Domain.Actor, :account_admin_user), do: :ok
-  def permit(_action, Domain.ActorGroup, :account_admin_user), do: :ok
+  def permit(_action, Domain.Group, :account_admin_user), do: :ok
   def permit(_action, Domain.ExternalIdentity, :account_admin_user), do: :ok
   def permit(_action, Domain.Token, :account_admin_user), do: :ok
   def permit(_action, Domain.Directory, :account_admin_user), do: :ok
