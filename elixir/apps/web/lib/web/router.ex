@@ -105,6 +105,10 @@ defmodule Web.Router do
       live "/sign_in/email_otp/:auth_provider_id", SignIn.Email
     end
 
+    # Legacy OIDC auth entry point - we maintain indefinitely to avoid forcing admins to update
+    # their redirect URIs. Used if the oidc_auth_provider.is_legacy flag is set to true.
+    get "/sign_in/providers/:auth_provider_id/handle_callback", OIDCController, :callback
+
     # OIDC auth entry point (placed after LiveView routes to avoid conflicts)
     get "/sign_in/:auth_provider_type/:auth_provider_id", OIDCController, :sign_in
   end

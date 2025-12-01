@@ -89,7 +89,7 @@ defmodule Web.OIDC do
         %{state: state, code_challenge_method: :S256, code_challenge: challenge}
         |> Map.merge(additional_params)
 
-      case OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
+      case OpenIDConnect.authorization_uri(config, callback_url(provider), oidc_params) do
         {:ok, uri} -> {:ok, uri, state, verifier}
         error -> error
       end
@@ -250,8 +250,12 @@ defmodule Web.OIDC do
     end
   end
 
-  defp callback_url do
-    url(~p"/auth/oidc/callback")
+  defp callback_url, do: url(~p"/auth/oidc/callback")
+  defp callback_url(%{is_legacy: false}), do: url(~p"/auth/oidc/callback")
+
+  # Maintain existing callback URL for legacy providers
+  defp callback_url(%{is_legacy: true} = provider) do
+    url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
   end
 
   # TODO: This can be refactored to reduce duplication with config_for_provider/1
