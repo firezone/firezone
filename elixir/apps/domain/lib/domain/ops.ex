@@ -1,4 +1,8 @@
 defmodule Domain.Ops do
+  import Ecto.Changeset
+  alias __MODULE__.DB
+  alias Domain.Banner
+
   def create_and_provision_account(opts) do
     %{
       name: account_name,
@@ -116,5 +120,29 @@ defmodule Domain.Ops do
     |> Domain.Repo.delete(timeout: :infinity)
 
     :ok
+  end
+
+  def set_banner(message) do
+    cast(%Banner{}, %{message: message}, [:message])
+    |> DB.insert()
+  end
+
+  def clear_banner do
+    DB.delete_all(Banner)
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Repo
+
+    def insert(changeset) do
+      changeset
+      |> Repo.insert()
+    end
+
+    def delete_all(schema) do
+      from(s in schema)
+      |> Repo.delete_all()
+    end
   end
 end
