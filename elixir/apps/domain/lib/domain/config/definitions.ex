@@ -103,19 +103,6 @@ defmodule Domain.Config.Definitions do
          :cookie_signing_salt,
          :cookie_encryption_salt
        ]},
-      {"Authorization",
-       """
-       Providers:
-
-        * `openid_connect` is used to authenticate users via OpenID Connect, this is recommended for production use;
-        * `email` is used to authenticate users via sign in tokens sent to the email;
-        * `token` is used to authenticate service accounts using an API token;
-        * `userpass` is used to authenticate users with username and password, should be used
-        with extreme care and is not recommended for production use.
-       """,
-       [
-         :auth_provider_adapters
-       ]},
       {"Outbound Emails",
        [
          :outbound_email_from,

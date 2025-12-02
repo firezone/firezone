@@ -73,8 +73,6 @@ if config_env() == :prod do
           else: [{:hostname, env_var_to_config!(:database_host)}]
         )
 
-  config :domain, run_manual_migrations: env_var_to_config!(:run_manual_migrations)
-
   config :domain, Domain.Tokens,
     key_base: env_var_to_config!(:tokens_key_base),
     salt: env_var_to_config!(:tokens_salt)
