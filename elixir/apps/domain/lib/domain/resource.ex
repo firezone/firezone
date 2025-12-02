@@ -1,5 +1,7 @@
 defmodule Domain.Resource do
   use Domain, :schema
+  import Ecto.Changeset
+  import Domain.Changeset
 
   @type filter :: %{
           protocol: :tcp | :udp | :icmp,
@@ -47,9 +49,6 @@ defmodule Domain.Resource do
   end
 
   def changeset(changeset) do
-    import Domain.Repo.Changeset
-    import Ecto.Changeset
-
     fields = ~w[address address_description name type ip_stack]a
 
     changeset
@@ -73,9 +72,6 @@ defmodule Domain.Resource do
   end
 
   def validate_address(changeset, account) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
-
     if has_errors?(changeset, :type) do
       changeset
     else
@@ -138,8 +134,6 @@ defmodule Domain.Resource do
   @prohibited_tlds ~w[localhost]
 
   defp validate_dns_address(changeset) do
-    import Ecto.Changeset
-
     changeset
     |> validate_length(:address, min: 1, max: 253)
     |> validate_not_an_ip_address()
@@ -148,8 +142,6 @@ defmodule Domain.Resource do
   end
 
   defp validate_not_an_ip_address(changeset) do
-    import Ecto.Changeset
-
     changeset
     |> validate_change(:address, fn field, address ->
       cond do
@@ -169,8 +161,6 @@ defmodule Domain.Resource do
   end
 
   defp validate_contains_only_valid_dns_characters(changeset) do
-    import Ecto.Changeset
-
     changeset
     |> validate_format(
       :address,
@@ -181,8 +171,6 @@ defmodule Domain.Resource do
   end
 
   defp validate_dns_parts(changeset) do
-    import Ecto.Changeset
-
     changeset
     |> validate_change(:address, fn field, dns_address ->
       parts = String.split(dns_address, ".")
@@ -222,9 +210,6 @@ defmodule Domain.Resource do
   end
 
   defp validate_cidr_address(changeset, account) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
-
     internet_resource_message =
       if Domain.Account.internet_resource_enabled?(account) do
         "the Internet Resource is already created in your account. Define a Policy for it instead"
@@ -254,9 +239,6 @@ defmodule Domain.Resource do
   end
 
   defp validate_ip_address(changeset) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
-
     changeset
     |> validate_and_normalize_ip(:address)
     |> validate_not_in_cidr(:address, %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 32},
@@ -279,9 +261,6 @@ defmodule Domain.Resource do
   end
 
   defp validate_address_is_not_in_private_range(changeset) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
-
     cond do
       has_errors?(changeset, :address) ->
         changeset
@@ -301,9 +280,6 @@ defmodule Domain.Resource do
   end
 
   defp maybe_put_default_ip_stack(changeset) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
-
     current_type = get_field(changeset, :type)
     original_type = Map.get(changeset.data, :type, nil)
 
@@ -320,8 +296,6 @@ defmodule Domain.Resource do
   end
 
   defp filter_changeset(struct, attrs) do
-    import Ecto.Changeset
-
     struct
     |> cast(attrs, [:protocol, :ports])
     |> validate_required([:protocol])

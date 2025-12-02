@@ -4,6 +4,8 @@ defmodule API.ClientController do
   alias API.Pagination
   alias Domain.Presence.Clients
   alias __MODULE__.DB
+  import Ecto.Changeset
+  import Domain.Changeset
 
   action_fallback(API.FallbackController)
 
@@ -120,8 +122,6 @@ defmodule API.ClientController do
 
   # Verify a Client
   def verify(conn, %{"id" => id}) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
     subject = conn.assigns.subject
 
     with {:ok, client} <- DB.fetch_client_by_id(id, subject),

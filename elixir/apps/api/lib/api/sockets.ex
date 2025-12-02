@@ -35,7 +35,7 @@ defmodule API.Sockets do
 
   def handle_error(conn, %Ecto.Changeset{} = changeset) do
     Logger.error("Invalid connection request", changeset: inspect(changeset))
-    errors = Domain.Repo.Changeset.errors_to_string(changeset)
+    errors = Domain.Changeset.errors_to_string(changeset)
     Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters: #{errors}")
   end
 

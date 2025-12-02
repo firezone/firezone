@@ -1,7 +1,7 @@
 defmodule Domain.Relay do
   use Domain, :schema
   import Ecto.Changeset
-  import Domain.Repo.Changeset
+  import Domain.Changeset
 
   schema "relays" do
     field :name, :string

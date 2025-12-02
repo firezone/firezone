@@ -8,7 +8,7 @@ defmodule Domain do
     quote do
       use Ecto.Schema
       import Ecto.Changeset
-      import Domain.Repo.Changeset
+      import Domain.Changeset
 
       @primary_key {:id, :binary_id, autogenerate: true}
       @foreign_key_type :binary_id
@@ -22,7 +22,7 @@ defmodule Domain do
   def changeset do
     quote do
       import Ecto.Changeset
-      import Domain.Repo.Changeset
+      import Domain.Changeset
       import Domain.Repo, only: [valid_uuid?: 1]
     end
   end

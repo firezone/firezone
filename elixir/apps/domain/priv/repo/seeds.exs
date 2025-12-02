@@ -637,8 +637,7 @@ defmodule Domain.Repo.Seeds do
       }
     }
 
-    # Create service account token directly using Repo since context modules are removed
-    # Use changeset to properly handle secret hashing
+    # Create service account token using Auth module for proper handling
     token_attrs = %{
       name: "tok-#{Ecto.UUID.generate()}",
       type: :client,
@@ -648,18 +647,8 @@ defmodule Domain.Repo.Seeds do
       expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
     }
 
-    service_account_token =
-      %Token{}
-      |> Ecto.Changeset.cast(token_attrs, [
-        :name,
-        :type,
-        :account_id,
-        :actor_id,
-        :secret_fragment,
-        :expires_at
-      ])
-      |> Token.changeset()
-      |> Repo.insert!()
+    # Use Auth.create_token which properly sets secret_salt and secret_hash
+    {:ok, service_account_token} = Auth.create_token(token_attrs)
 
     service_account_actor_encoded_token = Auth.encode_fragment!(service_account_token)
 
@@ -871,7 +860,7 @@ defmodule Domain.Repo.Seeds do
     }
     |> Repo.insert!()
 
-    # Add unprivileged user as member of finance group directly  
+    # Add unprivileged user as member of finance group directly
     %Membership{
       group_id: finance_group.id,
       actor_id: unprivileged_subject.actor.id,
@@ -902,7 +891,7 @@ defmodule Domain.Repo.Seeds do
       "gcp-organization-admins",
       "Admins",
       "Product",
-      "Engineering",
+      "Product Engineering",
       "gcp-developers"
     ]
 
@@ -933,17 +922,14 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
-    # Create relay tokens directly
+    # Create relay tokens using Auth module for proper handling
     relay_token_attrs = %{
       type: :relay,
       secret_fragment: Crypto.random_token(32, encoder: :hex32)
     }
 
-    global_relay_token =
-      %Token{}
-      |> Ecto.Changeset.cast(relay_token_attrs, [:type, :secret_fragment])
-      |> Token.changeset()
-      |> Repo.insert!()
+    # Use Auth.create_token which properly sets secret_salt and secret_hash
+    {:ok, global_relay_token} = Auth.create_token(relay_token_attrs)
 
     global_relay_token =
       global_relay_token
@@ -1008,20 +994,15 @@ defmodule Domain.Repo.Seeds do
     IO.puts("  Relay: IPv4: #{global_relay.ipv4} IPv6: #{global_relay.ipv6}")
     IO.puts("")
 
-    # Create another relay token for testing
+    # Create another relay token for testing using Auth module for proper handling
     relay_token_attrs = %{
       type: :relay,
       secret_fragment: Crypto.random_token(32, encoder: :hex32),
       account_id: admin_subject.account.id
     }
 
-    relay_token =
-      %Token{}
-      |> Ecto.Changeset.cast(relay_token_attrs, [:type, :secret_fragment, :account_id])
-      |> Token.changeset()
-      |> Repo.insert!()
-
-    {:ok, relay_token} = {:ok, relay_token}
+    # Use Auth.create_token which properly sets secret_salt and secret_hash
+    {:ok, relay_token} = Auth.create_token(relay_token_attrs)
 
     relay_token =
       relay_token
@@ -1086,15 +1067,15 @@ defmodule Domain.Repo.Seeds do
     site =
       %Site{account: account}
       |> Ecto.Changeset.cast(%{name: "mycro-aws-gws", tokens: [%{}]}, [:name])
-      |> Domain.Repo.Changeset.trim_change([:name])
-      |> Domain.Repo.Changeset.put_default_value(:name, &NameGenerator.generate/0)
+      |> Domain.Changeset.trim_change([:name])
+      |> Domain.Changeset.put_default_value(:name, &NameGenerator.generate/0)
       |> Ecto.Changeset.validate_required([:name])
       |> Site.changeset()
-      |> Domain.Repo.Changeset.put_default_value(:managed_by, :account)
+      |> Domain.Changeset.put_default_value(:managed_by, :account)
       |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Repo.insert!()
 
-    # Create site token directly
+    # Create site token using Auth module for proper handling
     site_token_attrs = %{
       type: :site,
       secret_fragment: Crypto.random_token(32, encoder: :hex32),
@@ -1102,13 +1083,8 @@ defmodule Domain.Repo.Seeds do
       site_id: site.id
     }
 
-    site_token =
-      %Token{}
-      |> Ecto.Changeset.cast(site_token_attrs, [:type, :secret_fragment, :account_id, :site_id])
-      |> Token.changeset()
-      |> Repo.insert!()
-
-    {:ok, site_token} = {:ok, site_token}
+    # Use Auth.create_token which properly sets secret_salt and secret_hash
+    {:ok, site_token} = Auth.create_token(site_token_attrs)
 
     site_token =
       site_token

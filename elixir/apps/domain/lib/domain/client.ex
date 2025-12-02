@@ -1,6 +1,7 @@
 defmodule Domain.Client do
   use Domain, :schema
-  import Domain.Repo.Changeset
+  import Ecto.Changeset
+  import Domain.Changeset
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),

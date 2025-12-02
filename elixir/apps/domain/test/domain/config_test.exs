@@ -60,8 +60,8 @@ defmodule Domain.ConfigTest do
     defconfig(:url, :string,
       changeset: fn changeset, key ->
         changeset
-        |> Domain.Repo.Changeset.validate_uri(key)
-        |> Domain.Repo.Changeset.normalize_url(key)
+        |> Domain.Changeset.validate_uri(key)
+        |> Domain.Changeset.normalize_url(key)
       end
     )
 

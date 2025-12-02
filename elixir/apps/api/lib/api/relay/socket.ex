@@ -1,7 +1,7 @@
 defmodule API.Relay.Socket do
   use Phoenix.Socket
   import Ecto.Changeset
-  import Domain.Repo.Changeset
+  import Domain.Changeset
   alias Domain.{Safe, Auth, Version, Relay}
   require Logger
   require OpenTelemetry.Tracer

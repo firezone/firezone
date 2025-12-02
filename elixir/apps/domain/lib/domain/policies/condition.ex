@@ -1,5 +1,7 @@
 defmodule Domain.Policies.Condition do
   use Domain, :schema
+  import Ecto.Changeset
+  import Domain.Changeset
 
   @type t :: %__MODULE__{
           property:
@@ -44,9 +46,6 @@ defmodule Domain.Policies.Condition do
   # Changeset functions
 
   def changeset(%__MODULE__{} = condition, attrs, _position) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
-
     condition
     |> cast(attrs, [:property, :operator, :values])
     |> put_default_value(:property, :remote_ip_location_region)
@@ -63,9 +62,6 @@ defmodule Domain.Policies.Condition do
   def valid_operators_for_property(:client_verified), do: [:is]
 
   defp validate_operator(changeset) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
-
     case fetch_field(changeset, :property) do
       {_data_or_changes, :remote_ip_location_region} ->
         changeset
@@ -109,8 +105,6 @@ defmodule Domain.Policies.Condition do
   end
 
   def validate_day_of_week_time_ranges(changeset, field) do
-    import Ecto.Changeset
-
     validate_change(changeset, field, fn field, value ->
       case Domain.Policies.Evaluator.parse_day_of_week_time_ranges(value) do
         {:ok, _dow_time_ranges} ->

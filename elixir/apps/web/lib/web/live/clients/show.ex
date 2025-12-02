@@ -4,6 +4,8 @@ defmodule Web.Clients.Show do
   import Web.Clients.Components
   alias Domain.{Presence.Clients, ComponentVersions}
   alias __MODULE__.DB
+  import Ecto.Changeset
+  import Domain.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, client} <- DB.fetch_client_by_id(id, socket.assigns.subject) do
@@ -412,9 +414,6 @@ defmodule Web.Clients.Show do
     do: handle_live_table_event(event, params, socket)
 
   def handle_event("verify_client", _params, socket) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
-
     changeset =
       socket.assigns.client
       |> change()

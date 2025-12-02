@@ -9,6 +9,9 @@ defmodule Web.SignUp do
 
     alias Domain.Accounts
 
+    import Ecto.Changeset
+    import Domain.Changeset
+
     @primary_key false
 
     embedded_schema do
@@ -21,35 +24,31 @@ defmodule Web.SignUp do
       whitelisted_domains = Domain.Config.get_env(:domain, :sign_up_whitelisted_domains)
 
       %Registration{}
-      |> Ecto.Changeset.cast(attrs, [:email])
-      |> Ecto.Changeset.validate_required([:email])
-      |> Domain.Repo.Changeset.trim_change(:email)
-      |> Domain.Repo.Changeset.validate_email(:email)
+      |> cast(attrs, [:email])
+      |> validate_required([:email])
+      |> trim_change(:email)
+      |> validate_email(:email)
       |> validate_email_allowed(whitelisted_domains)
-      |> Ecto.Changeset.validate_confirmation(:email,
+      |> validate_confirmation(:email,
         required: true,
         message: "email does not match"
       )
-      |> Ecto.Changeset.cast_embed(:account,
+      |> cast_embed(:account,
         with: fn _account, attrs -> create_account_changeset(attrs) end
       )
-      |> Ecto.Changeset.cast_embed(:actor,
+      |> cast_embed(:actor,
         with: fn _actor, attrs -> create_actor_changeset(attrs) end
       )
     end
 
     defp create_account_changeset(attrs) do
-      import Ecto.Changeset
-
       %Domain.Account{}
       |> cast(attrs, [:name, :legal_name, :slug])
       |> Domain.Account.changeset()
-      |> Domain.Repo.Changeset.put_default_value(:config, %Accounts.Config{})
+      |> put_default_value(:config, %Accounts.Config{})
     end
 
     defp create_actor_changeset(attrs) do
-      import Ecto.Changeset
-
       %Domain.Actor{}
       |> cast(attrs, [:name])
       |> validate_required([:name])
@@ -61,7 +60,7 @@ defmodule Web.SignUp do
     end
 
     defp validate_email_allowed(changeset, whitelisted_domains) do
-      Ecto.Changeset.validate_change(changeset, :email, fn :email, email ->
+      validate_change(changeset, :email, fn :email, email ->
         if email_allowed?(email, whitelisted_domains),
           do: [],
           else: [email: "this email domain is not allowed at this time"]

@@ -5,6 +5,8 @@ defmodule API.Client.Socket do
   alias __MODULE__.DB
   require Logger
   require OpenTelemetry.Tracer
+  import Ecto.Changeset
+  import Domain.Changeset
 
   ## Channels
 
@@ -61,9 +63,6 @@ defmodule API.Client.Socket do
   def id(socket), do: Auth.socket_id(socket.assigns.subject.token_id)
 
   defp upsert_changeset(actor, subject, attrs) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
-
     required_fields = ~w[external_id name public_key]a
 
     hardware_identifiers =

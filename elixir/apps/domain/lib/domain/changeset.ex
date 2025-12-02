@@ -1,4 +1,4 @@
-defmodule Domain.Repo.Changeset do
+defmodule Domain.Changeset do
   @moduledoc """
   This module extend `Ecto.Changeset`'s with custom validations and polymorphic embeds.
   """

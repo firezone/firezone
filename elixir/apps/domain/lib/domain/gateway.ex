@@ -1,5 +1,7 @@
 defmodule Domain.Gateway do
   use Domain, :schema
+  import Ecto.Changeset
+  import Domain.Changeset
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
@@ -53,9 +55,6 @@ defmodule Domain.Gateway do
   end
 
   def changeset(changeset) do
-    import Domain.Repo.Changeset
-    import Ecto.Changeset
-
     changeset
     |> trim_change(:name)
     |> validate_length(:name, min: 1, max: 255)

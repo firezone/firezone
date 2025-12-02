@@ -1,5 +1,5 @@
 defmodule Domain.Auth do
-  use Domain, :changeset
+  import Ecto.Changeset
   require Ecto.Query
   alias Domain.{Repo, Safe, Token}
   alias Domain.Auth.{Subject, Context}
@@ -106,32 +106,23 @@ defmodule Domain.Auth do
       if subject do
         changeset
         |> put_change(:account_id, subject.account.id)
-        |> validate_inclusion(:type, [
-          :client,
-          :relay,
-          :site,
-          :api_client,
-          :service_account_client
-        ])
       else
-        validate_inclusion(changeset, :type, [:email, :browser, :client, :relay, :api_client])
+        changeset
       end
 
     changeset
     |> put_change(:secret_salt, Domain.Crypto.random_token(16))
     |> validate_format(:secret_nonce, ~r/^[^\.]{0,128}$/)
     |> validate_required(:secret_fragment)
-    |> put_hash(:secret_fragment, :sha3_256,
+    |> Domain.Changeset.put_hash(:secret_fragment, :sha3_256,
       with_nonce: :secret_nonce,
       with_salt: :secret_salt,
       to: :secret_hash
     )
     |> delete_change(:secret_nonce)
-    |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
+    |> Domain.Changeset.validate_datetime(:expires_at, greater_than: DateTime.utc_now())
     |> validate_required(~w[secret_salt secret_hash]a)
     |> validate_required_assocs()
-    |> assoc_constraint(:account)
-    |> assoc_constraint(:actor)
   end
 
   defp validate_required_assocs(changeset) do

@@ -1,5 +1,7 @@
 defmodule Domain.Google.Directory do
   use Domain, :schema
+  import Ecto.Changeset
+  import Domain.Changeset
 
   @primary_key false
   schema "google_directories" do
@@ -29,7 +31,7 @@ defmodule Domain.Google.Directory do
   def changeset(changeset) do
     changeset
     |> validate_required([:domain, :is_verified, :name, :impersonation_email])
-    |> Domain.Repo.Changeset.validate_email(:impersonation_email)
+    |> validate_email(:impersonation_email)
     |> validate_length(:domain, min: 1, max: 255)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)

@@ -57,6 +57,7 @@ defmodule Domain.Token do
     |> assoc_constraint(:actor)
     |> assoc_constraint(:auth_provider)
     |> assoc_constraint(:site)
+    |> check_constraint(:type, name: :type_must_be_valid)
     |> unique_constraint(:secret_hash)
   end
 end

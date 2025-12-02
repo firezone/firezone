@@ -160,8 +160,8 @@ defmodule Domain.Config.Definitions do
     default: nil,
     changeset: fn changeset, key ->
       changeset
-      |> Domain.Repo.Changeset.validate_uri(key, require_trailing_slash: true)
-      |> Domain.Repo.Changeset.normalize_url(key)
+      |> Domain.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Domain.Changeset.normalize_url(key)
     end
   )
 
@@ -175,8 +175,8 @@ defmodule Domain.Config.Definitions do
     default: nil,
     changeset: fn changeset, key ->
       changeset
-      |> Domain.Repo.Changeset.validate_uri(key, require_trailing_slash: true)
-      |> Domain.Repo.Changeset.normalize_url(key)
+      |> Domain.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Domain.Changeset.normalize_url(key)
     end
   )
 
@@ -448,7 +448,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:tokens_key_base, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   @doc """
@@ -456,7 +456,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:tokens_salt, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   @doc """
@@ -464,7 +464,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:secret_key_base, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   @doc """
@@ -472,7 +472,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:live_view_signing_salt, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   @doc """
@@ -480,7 +480,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:cookie_signing_salt, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   @doc """
@@ -488,7 +488,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:cookie_encryption_salt, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   ##############################################
@@ -624,8 +624,8 @@ defmodule Domain.Config.Definitions do
     sensitive: true,
     changeset: fn changeset, key ->
       changeset
-      |> Domain.Repo.Changeset.trim_change(key)
-      |> Domain.Repo.Changeset.validate_email(key)
+      |> Domain.Changeset.trim_change(key)
+      |> Domain.Changeset.validate_email(key)
     end
   )
 
@@ -717,7 +717,7 @@ defmodule Domain.Config.Definitions do
     changeset: fn changeset, key ->
       changeset
       |> Ecto.Changeset.validate_required(key)
-      |> Domain.Repo.Changeset.validate_fqdn(key)
+      |> Domain.Changeset.validate_fqdn(key)
     end
   )
 

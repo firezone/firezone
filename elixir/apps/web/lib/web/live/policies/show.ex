@@ -3,6 +3,8 @@ defmodule Web.Policies.Show do
   import Web.Policies.Components
   alias Domain.{PubSub, Policy, Safe, Auth}
   alias Web.Policies.Components.DB
+  import Ecto.Changeset
+  import Domain.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <- fetch_policy_by_id(id, socket.assigns.subject) do
@@ -311,9 +313,6 @@ defmodule Web.Policies.Show do
   end
 
   defp disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
-    import Ecto.Changeset
-    import Domain.Repo.Changeset
-
     changeset =
       policy
       |> change()
