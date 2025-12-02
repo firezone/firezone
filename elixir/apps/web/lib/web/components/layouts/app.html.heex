@@ -99,6 +99,14 @@
 </.sidebar>
 
 <main class="lg:ml-64 h-auto pt-14">
+  <% banner = Domain.Repo.one(Domain.Banner) %>
+  <div
+    :if={banner}
+    id="banner"
+    class="bg-yellow-100 border-b border-yellow-400 text-neutral-900 px-4 py-3 text-center -mt-14 mb-4"
+  >
+    {Phoenix.HTML.raw(banner.message)}
+  </div>
   <.flash :if={@account.warning} kind={:warning} class="m-1">
     {@account.warning}.
     <span :if={Domain.Billing.account_provisioned?(@account)}>
