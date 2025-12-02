@@ -148,7 +148,24 @@ defmodule Web.Clients.Index do
     alias Domain.Client
 
     def list_clients(subject, opts \\ []) do
-      from(c in Client, as: :clients)
+      base_query = from(c in Client, as: :clients)
+
+      # Check if we need to prefilter by presence
+      base_query =
+        case get_in(opts, [:filter, :presence]) do
+          "online" ->
+            ids = Clients.online_client_ids(subject.account.id)
+            where(base_query, [clients: c], c.id in ^ids)
+
+          "offline" ->
+            ids = Clients.online_client_ids(subject.account.id)
+            where(base_query, [clients: c], c.id not in ^ids)
+
+          _ ->
+            base_query
+        end
+
+      base_query
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -184,6 +201,16 @@ defmodule Web.Clients.Index do
             {"Not Verified", "not_verified"}
           ],
           fun: &filter_by_verification/2
+        },
+        %Domain.Repo.Filter{
+          name: :presence,
+          title: "Presence",
+          type: :string,
+          values: [
+            {"Online", "online"},
+            {"Offline", "offline"}
+          ],
+          fun: &filter_by_presence/2
         }
       ]
     end
@@ -198,6 +225,12 @@ defmodule Web.Clients.Index do
 
     def filter_by_verification(queryable, "not_verified") do
       {queryable, dynamic([clients: clients], is_nil(clients.verified_at))}
+    end
+
+    def filter_by_presence(queryable, _presence) do
+      # This is handled as a prefilter in list_clients
+      # Return the queryable unchanged since actual filtering happens above
+      {queryable, true}
     end
   end
 end
