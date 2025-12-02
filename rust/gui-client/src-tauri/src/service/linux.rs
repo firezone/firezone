@@ -17,10 +17,13 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
+    let (_sender, mut receiver) = crate::power_events::channel();
+
     rt.block_on(super::ipc_listen(
         dns_control,
         &log_filter_reloader,
         &mut signals,
+        &mut receiver,
     ))
     .inspect_err(|e| tracing::error!("IPC service failed: {e:#}"))?;
 
