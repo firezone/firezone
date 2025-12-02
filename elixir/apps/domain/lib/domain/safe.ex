@@ -399,10 +399,6 @@ defmodule Domain.Safe do
         |> apply_schema_changeset(schema)
         |> Repo.delete()
       end)
-      |> case do
-        {:ok, result} -> result
-        {:error, _} = error -> error
-      end
     end
   end
 
@@ -419,10 +415,6 @@ defmodule Domain.Safe do
 
         Repo.delete(struct)
       end)
-      |> case do
-        {:ok, result} -> result
-        {:error, _} = error -> error
-      end
     end
   end
 

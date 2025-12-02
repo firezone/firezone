@@ -1,4 +1,4 @@
-import { initCopyClipboards, initTabs, Popover } from "flowbite";
+import { initTabs, Popover } from "flowbite";
 
 let Hooks = {};
 
@@ -95,7 +95,7 @@ Hooks.Modal = {
   },
 
   beforeUpdate() {
-    this.focusedElement = document.activeElement
+    this.focusedElement = document.activeElement;
   },
 
   // When LiveView re-renders the modal, it closes, so we need to re-open it
@@ -104,9 +104,9 @@ Hooks.Modal = {
     if (!this.el.open) this.el.showModal();
 
     if (this.focusedElement) {
-      this.focusedElement.focus()
+      this.focusedElement.focus();
     }
-  }
+  },
 };
 
 Hooks.ConfirmDialog = {
@@ -134,8 +134,10 @@ Hooks.Popover = {
       $triggerEl.getAttribute("data-popover-target-id")
     );
 
-    const placement = $triggerEl.getAttribute("data-popover-placement") || "top";
-    const triggerType = $triggerEl.getAttribute("data-popover-trigger") || "hover";
+    const placement =
+      $triggerEl.getAttribute("data-popover-placement") || "top";
+    const triggerType =
+      $triggerEl.getAttribute("data-popover-trigger") || "hover";
 
     const options = {
       placement: placement,
@@ -155,9 +157,9 @@ Hooks.Popover = {
       };
 
       // Find the actual button element inside the trigger
-      const button = $triggerEl.querySelector('button');
+      const button = $triggerEl.querySelector("button");
       if (button) {
-        button.addEventListener('click', this.clickHandler);
+        button.addEventListener("click", this.clickHandler);
       }
     }
   },
@@ -166,12 +168,13 @@ Hooks.Popover = {
     // Clean up old event listeners and popover
     if (this.popover) {
       const $triggerEl = this.el;
-      const triggerType = $triggerEl.getAttribute("data-popover-trigger") || "hover";
+      const triggerType =
+        $triggerEl.getAttribute("data-popover-trigger") || "hover";
 
       if (triggerType === "click" && this.clickHandler) {
-        const button = $triggerEl.querySelector('button');
+        const button = $triggerEl.querySelector("button");
         if (button) {
-          button.removeEventListener('click', this.clickHandler);
+          button.removeEventListener("click", this.clickHandler);
         }
       }
 
@@ -187,54 +190,85 @@ Hooks.Popover = {
     // Clean up event listeners and popover instance
     if (this.popover) {
       const $triggerEl = this.el;
-      const triggerType = $triggerEl.getAttribute("data-popover-trigger") || "hover";
+      const triggerType =
+        $triggerEl.getAttribute("data-popover-trigger") || "hover";
 
       if (triggerType === "click" && this.clickHandler) {
-        const button = $triggerEl.querySelector('button');
+        const button = $triggerEl.querySelector("button");
         if (button) {
-          button.removeEventListener('click', this.clickHandler);
+          button.removeEventListener("click", this.clickHandler);
         }
       }
 
       this.popover.hide();
       this.popover.destroyAndRemoveInstance();
     }
-  }
+  },
 };
 
 Hooks.CopyClipboard = {
   mounted() {
-    initCopyClipboards();
-
-    const id = this.el.id;
-    const clipboard = FlowbiteInstances.getInstance('CopyClipboard', `${id}-code`);
-
-    const $defaultMessage = document.getElementById(`${id}-default-message`);
-    const $successMessage = document.getElementById(`${id}-success-message`);
-
-    clipboard.updateOnCopyCallback((clipboard) => {
-        showSuccess();
-
-        // reset to default state
-        setTimeout(() => {
-            resetToDefault();
-        }, 2000);
-    })
-
-    const showSuccess = () => {
-        $defaultMessage.classList.add('hidden');
-        $successMessage.classList.remove('hidden');
-    }
-
-    const resetToDefault = () => {
-        $defaultMessage.classList.remove('hidden');
-        $successMessage.classList.add('hidden');
-    }
+    this.setupCopyButton();
   },
 
   updated() {
-    this.mounted();
-  }
+    this.setupCopyButton();
+  },
+
+  setupCopyButton() {
+    const id = this.el.id;
+    const button = this.el.querySelector(
+      "button[data-copy-to-clipboard-target]"
+    );
+
+    if (!button) return;
+
+    // Remove any existing listeners to prevent duplicates
+    if (this.clickHandler) {
+      button.removeEventListener("click", this.clickHandler);
+    }
+
+    const targetId = button.getAttribute("data-copy-to-clipboard-target");
+    const $defaultMessage = document.getElementById(`${id}-default-message`);
+    const $successMessage = document.getElementById(`${id}-success-message`);
+
+    this.clickHandler = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const targetEl = document.getElementById(targetId);
+      if (!targetEl) return;
+
+      const textToCopy = targetEl.innerText || targetEl.textContent;
+
+      try {
+        await navigator.clipboard.writeText(textToCopy.trim());
+
+        // Show success state
+        if ($defaultMessage) $defaultMessage.classList.add("hidden");
+        if ($successMessage) $successMessage.classList.remove("hidden");
+
+        // Reset after 2 seconds
+        setTimeout(() => {
+          if ($defaultMessage) $defaultMessage.classList.remove("hidden");
+          if ($successMessage) $successMessage.classList.add("hidden");
+        }, 2000);
+      } catch (err) {
+        console.error("Failed to copy:", err);
+      }
+    };
+
+    button.addEventListener("click", this.clickHandler);
+  },
+
+  destroyed() {
+    const button = this.el.querySelector(
+      "button[data-copy-to-clipboard-target]"
+    );
+    if (button && this.clickHandler) {
+      button.removeEventListener("click", this.clickHandler);
+    }
+  },
 };
 
 Hooks.OpenURL = {
@@ -242,7 +276,7 @@ Hooks.OpenURL = {
     this.handleEvent("open_url", ({ url }) => {
       window.open(url, "_blank");
     });
-  }
+  },
 };
 
 Hooks.FormatJSON = {
@@ -255,7 +289,7 @@ Hooks.FormatJSON = {
   },
 
   formatJSON() {
-    const code = this.el.querySelector('code');
+    const code = this.el.querySelector("code");
     if (code && code.textContent.trim()) {
       try {
         const json = JSON.parse(code.textContent);
@@ -264,53 +298,55 @@ Hooks.FormatJSON = {
         // If parsing fails, leave the content as is
       }
     }
-  }
+  },
 };
 
 Hooks.Toast = {
   mounted() {
     const autoshow = this.el.dataset.autoshow !== "false";
-    
+
     // Extract the flash key from the element's class (e.g., "flash-success" -> "success")
     const flashKey = this.el.className.match(/flash-(\w+)/)?.[1];
 
     // Position the toast in the top-right corner with equal margins
-    this.el.style.position = 'fixed';
-    this.el.style.top = '1rem';
-    this.el.style.right = '1rem';
-    this.el.style.left = 'auto';
-    this.el.style.margin = '0';
-    this.el.style.maxWidth = '400px';
-    this.el.style.minWidth = '300px';
-    this.el.style.zIndex = '2147483647'; // Maximum z-index value to appear above everything
+    this.el.style.position = "fixed";
+    this.el.style.top = "1rem";
+    this.el.style.right = "1rem";
+    this.el.style.left = "auto";
+    this.el.style.margin = "0";
+    this.el.style.maxWidth = "400px";
+    this.el.style.minWidth = "300px";
+    this.el.style.zIndex = "2147483647"; // Maximum z-index value to appear above everything
 
     // Add transition styles
-    this.el.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
-    this.el.style.transform = 'translateX(calc(100% + 1rem))';
-    this.el.style.opacity = '0';
+    this.el.style.transition = "transform 0.3s ease-out, opacity 0.3s ease-out";
+    this.el.style.transform = "translateX(calc(100% + 1rem))";
+    this.el.style.opacity = "0";
 
     // Create and add progress bar
-    const progressBar = document.createElement('div');
-    progressBar.className = 'toast-progress';
-    progressBar.style.position = 'absolute';
-    progressBar.style.bottom = '0';
-    progressBar.style.left = '0';
-    progressBar.style.height = '3px';
-    progressBar.style.width = '100%';
-    progressBar.style.backgroundColor = 'currentColor';
-    progressBar.style.opacity = '0.3';
-    progressBar.style.transformOrigin = 'left';
-    progressBar.style.transition = 'transform 5s linear';
-    progressBar.style.transform = 'scaleX(1)';
-    this.el.style.position = 'relative';
+    const progressBar = document.createElement("div");
+    progressBar.className = "toast-progress";
+    progressBar.style.position = "absolute";
+    progressBar.style.bottom = "0";
+    progressBar.style.left = "0";
+    progressBar.style.height = "3px";
+    progressBar.style.width = "100%";
+    progressBar.style.backgroundColor = "currentColor";
+    progressBar.style.opacity = "0.3";
+    progressBar.style.transformOrigin = "left";
+    progressBar.style.transition = "transform 5s linear";
+    progressBar.style.transform = "scaleX(1)";
+    this.el.style.position = "relative";
     this.el.appendChild(progressBar);
     this.progressBar = progressBar;
-    
+
     // Add click handler to the close button to clear flash
-    const closeButton = this.el.querySelector('button[popovertargetaction="hide"]');
+    const closeButton = this.el.querySelector(
+      'button[popovertargetaction="hide"]'
+    );
     if (closeButton && flashKey) {
-      closeButton.addEventListener('click', () => {
-        this.pushEvent("lv:clear-flash", {key: flashKey});
+      closeButton.addEventListener("click", () => {
+        this.pushEvent("lv:clear-flash", { key: flashKey });
       });
     }
 
@@ -322,12 +358,12 @@ Hooks.Toast = {
         // Slide in after a tiny delay to trigger the transition
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            this.el.style.transform = 'translateX(0)';
-            this.el.style.opacity = '1';
+            this.el.style.transform = "translateX(0)";
+            this.el.style.opacity = "1";
 
             // Start progress bar animation
             requestAnimationFrame(() => {
-              this.progressBar.style.transform = 'scaleX(0)';
+              this.progressBar.style.transform = "scaleX(0)";
             });
           });
         });
@@ -337,16 +373,16 @@ Hooks.Toast = {
 
       // Auto-hide after 5 seconds
       this.timeout = setTimeout(() => {
-        if (this.el.matches(':popover-open')) {
+        if (this.el.matches(":popover-open")) {
           // Slide out before hiding
-          this.el.style.transform = 'translateX(calc(100% + 1rem))';
-          this.el.style.opacity = '0';
+          this.el.style.transform = "translateX(calc(100% + 1rem))";
+          this.el.style.opacity = "0";
 
           setTimeout(() => {
             this.el.hidePopover();
             // Clear the flash after auto-hide
             if (flashKey) {
-              this.pushEvent("lv:clear-flash", {key: flashKey});
+              this.pushEvent("lv:clear-flash", { key: flashKey });
             }
           }, 300); // Wait for transition to complete
         }
@@ -359,7 +395,7 @@ Hooks.Toast = {
     if (this.timeout) {
       clearTimeout(this.timeout);
     }
-  }
+  },
 };
 
 export default Hooks;

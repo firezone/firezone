@@ -1,7 +1,7 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{PubSub, Policy, Safe, Auth}
+  alias Domain.{Policy, Safe, Auth}
   alias Web.Policies.Components.DB
   import Ecto.Changeset
   import Domain.Changeset
@@ -12,10 +12,6 @@ defmodule Web.Policies.Show do
 
       providers =
         DB.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
-
-      if connected?(socket) do
-        :ok = PubSub.Account.subscribe(policy.account_id)
-      end
 
       socket =
         assign(socket,
@@ -241,23 +237,6 @@ defmodule Web.Policies.Show do
     """
   end
 
-  # TODO: Do we really want to update the view in place?
-  def handle_info(
-        {_action, _old_policy, %Domain.Policy{id: policy_id}},
-        %{assigns: %{policy: %{id: id}}} = socket
-      )
-      when policy_id == id do
-    {:ok, policy} =
-      fetch_policy_by_id(
-        socket.assigns.policy.id,
-        socket.assigns.subject
-      )
-
-    policy = Domain.Repo.preload(policy, group: [], resource: [])
-
-    {:noreply, assign(socket, policy: policy)}
-  end
-
   def handle_info(_, socket) do
     {:noreply, socket}
   end
@@ -274,7 +253,10 @@ defmodule Web.Policies.Show do
         resource: socket.assigns.policy.resource
     }
 
-    {:noreply, assign(socket, policy: policy)}
+    {:noreply,
+     socket
+     |> put_flash(:success, "Policy disabled successfully.")
+     |> assign(policy: policy)}
   end
 
   def handle_event("enable", _params, socket) do
@@ -286,12 +268,19 @@ defmodule Web.Policies.Show do
         resource: socket.assigns.policy.resource
     }
 
-    {:noreply, assign(socket, policy: policy)}
+    {:noreply,
+     socket
+     |> put_flash(:success, "Policy enabled successfully.")
+     |> assign(policy: policy)}
   end
 
   def handle_event("delete", _params, socket) do
     {:ok, _deleted_policy} = delete_policy(socket.assigns.policy, socket.assigns.subject)
-    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies")}
+
+    {:noreply,
+     socket
+     |> put_flash(:success, "Policy deleted successfully.")
+     |> push_navigate(to: ~p"/#{socket.assigns.account}/policies")}
   end
 
   # Inline functions from Domain.Policies

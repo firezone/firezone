@@ -447,8 +447,11 @@ defmodule Web.Sites.NewToken do
         attrs
         |> Map.put("type", :site)
         |> Map.put("site_id", site.id)
+        |> Map.put("secret_fragment", Domain.Crypto.random_token(32, encoder: :hex32))
 
-      Domain.Auth.create_token(attrs, subject)
+      with {:ok, token} <- Domain.Auth.create_token(attrs, subject) do
+        {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Domain.Auth.encode_fragment!(token)}
+      end
     end
   end
 end

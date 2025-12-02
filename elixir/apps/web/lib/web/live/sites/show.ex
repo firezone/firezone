@@ -40,18 +40,8 @@ defmodule Web.Sites.Show do
           ],
           callback: &handle_gateways_update!/2
         )
-        |> assign_live_table("flows",
-          query_module: DB.FlowQuery,
-          sortable_fields: [],
-          callback: &handle_flows_update!/2
-        )
         |> assign_live_table("policies",
           query_module: DB.PolicyQuery,
-          hide_filters: [
-            :group_id,
-            :resource_name,
-            :group_or_resource_name
-          ],
           enforce_filters: [
             {:resource_id, resource.id}
           ],
@@ -139,24 +129,6 @@ defmodule Web.Sites.Show do
        assign(socket,
          policies: policies,
          policies_metadata: metadata
-       )}
-    end
-  end
-
-  def handle_flows_update!(socket, list_opts) do
-    list_opts =
-      Keyword.put(list_opts, :preload,
-        client: [:actor],
-        gateway: [:site],
-        policy: [:resource, :actor_site]
-      )
-
-    with {:ok, flows, metadata} <-
-           DB.list_flows_for(socket.assigns.resource, socket.assigns.subject, list_opts) do
-      {:ok,
-       assign(socket,
-         flows: flows,
-         flows_metadata: metadata
        )}
     end
   end
@@ -591,7 +563,7 @@ defmodule Web.Sites.Show do
     def fetch_internet_resource(subject) do
       result =
         from(r in Domain.Resource, as: :resources)
-        |> where([resources: r], r.address == "0.0.0.0/0" or r.address == "::/0")
+        |> where([resources: r], r.type == :internet)
         |> limit(1)
         |> Safe.scoped(subject)
         |> Safe.one()
@@ -644,45 +616,6 @@ defmodule Web.Sites.Show do
       from(p in Domain.Policy, as: :policies)
       |> Safe.scoped(subject)
       |> Safe.list(DB.PolicyQuery, opts)
-    end
-
-    # Inline functions from Domain.Flows
-    def list_flows_for(assoc, subject, opts \\ [])
-
-    def list_flows_for(%Domain.Policy{} = policy, %Domain.Auth.Subject{} = subject, opts) do
-      DB.FlowQuery.all()
-      |> DB.FlowQuery.by_policy_id(policy.id)
-      |> list_flows(subject, opts)
-    end
-
-    def list_flows_for(%Domain.Resource{} = resource, %Domain.Auth.Subject{} = subject, opts) do
-      DB.FlowQuery.all()
-      |> DB.FlowQuery.by_resource_id(resource.id)
-      |> list_flows(subject, opts)
-    end
-
-    def list_flows_for(%Domain.Client{} = client, %Domain.Auth.Subject{} = subject, opts) do
-      DB.FlowQuery.all()
-      |> DB.FlowQuery.by_client_id(client.id)
-      |> list_flows(subject, opts)
-    end
-
-    def list_flows_for(%Domain.Actor{} = actor, %Domain.Auth.Subject{} = subject, opts) do
-      DB.FlowQuery.all()
-      |> DB.FlowQuery.by_actor_id(actor.id)
-      |> list_flows(subject, opts)
-    end
-
-    def list_flows_for(%Domain.Gateway{} = gateway, %Domain.Auth.Subject{} = subject, opts) do
-      DB.FlowQuery.all()
-      |> DB.FlowQuery.by_gateway_id(gateway.id)
-      |> list_flows(subject, opts)
-    end
-
-    defp list_flows(queryable, subject, opts) do
-      queryable
-      |> Domain.Safe.scoped(subject)
-      |> Domain.Safe.list(DB.FlowQuery, opts)
     end
   end
 
@@ -765,134 +698,26 @@ defmodule Web.Sites.Show do
   end
 
   defmodule DB.PolicyQuery do
+    import Ecto.Query
+
     def cursor_fields,
       do: [
         {:policies, :asc, :inserted_at},
         {:policies, :asc, :id}
       ]
 
-    def filters, do: []
-  end
-
-  defmodule DB.FlowQuery do
-    use Domain, :query
-
-    def all do
-      from(flows in Domain.Flow, as: :flows)
-    end
-
-    def expired(queryable) do
-      now = DateTime.utc_now()
-      where(queryable, [flows: flows], flows.expires_at <= ^now)
-    end
-
-    def not_expired(queryable) do
-      now = DateTime.utc_now()
-      where(queryable, [flows: flows], flows.expires_at > ^now)
-    end
-
-    def by_id(queryable, id) do
-      where(queryable, [flows: flows], flows.id == ^id)
-    end
-
-    def by_account_id(queryable, account_id) do
-      where(queryable, [flows: flows], flows.account_id == ^account_id)
-    end
-
-    def by_token_id(queryable, token_id) do
-      where(queryable, [flows: flows], flows.token_id == ^token_id)
-    end
-
-    def by_policy_id(queryable, policy_id) do
-      where(queryable, [flows: flows], flows.policy_id == ^policy_id)
-    end
-
-    def for_cache(queryable) do
-      queryable
-      |> select(
-        [flows: flows],
-        {{flows.client_id, flows.resource_id}, {flows.id, flows.expires_at}}
-      )
-    end
-
-    def by_policy_group_id(queryable, group_id) do
-      queryable
-      |> with_joined_policy()
-      |> where([policy: policy], policy.group_id == ^group_id)
-    end
-
-    def by_membership_id(queryable, membership_id) do
-      where(queryable, [flows: flows], flows.membership_id == ^membership_id)
-    end
-
-    def by_site_id(queryable, site_id) do
-      queryable
-      |> with_joined_site()
-      |> where([site: site], site.id == ^site_id)
-    end
-
-    def by_resource_id(queryable, resource_id) do
-      where(queryable, [flows: flows], flows.resource_id == ^resource_id)
-    end
-
-    def by_not_in_resource_ids(queryable, resource_ids) do
-      where(queryable, [flows: flows], flows.resource_id not in ^resource_ids)
-    end
-
-    def by_client_id(queryable, client_id) do
-      where(queryable, [flows: flows], flows.client_id == ^client_id)
-    end
-
-    def by_actor_id(queryable, actor_id) do
-      queryable
-      |> with_joined_client()
-      |> where([client: client], client.actor_id == ^actor_id)
-    end
-
-    def by_gateway_id(queryable, gateway_id) do
-      where(queryable, [flows: flows], flows.gateway_id == ^gateway_id)
-    end
-
-    def with_joined_policy(queryable) do
-      with_flow_named_binding(queryable, :policy, fn queryable, binding ->
-        join(queryable, :inner, [flows: flows], policy in assoc(flows, ^binding), as: ^binding)
-      end)
-    end
-
-    def with_joined_client(queryable) do
-      with_flow_named_binding(queryable, :client, fn queryable, binding ->
-        join(queryable, :inner, [flows: flows], client in assoc(flows, ^binding), as: ^binding)
-      end)
-    end
-
-    def with_joined_site(queryable) do
-      queryable
-      |> with_joined_gateway()
-      |> with_flow_named_binding(:site, fn queryable, binding ->
-        join(queryable, :inner, [gateway: gateway], site in assoc(gateway, :site), as: ^binding)
-      end)
-    end
-
-    def with_joined_gateway(queryable) do
-      with_flow_named_binding(queryable, :gateway, fn queryable, binding ->
-        join(queryable, :inner, [flows: flows], gateway in assoc(flows, ^binding), as: ^binding)
-      end)
-    end
-
-    def with_flow_named_binding(queryable, binding, fun) do
-      if has_named_binding?(queryable, binding) do
-        queryable
-      else
-        fun.(queryable, binding)
-      end
-    end
-
-    # Pagination
-    @impl Domain.Repo.Query
-    def cursor_fields,
-      do: [
-        {:flows, :desc, :inserted_at},
-        {:flows, :asc, :id}
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :resource_id,
+          type: {:string, :uuid},
+          fun: &filter_by_resource_id/2
+        }
       ]
+    end
+
+    def filter_by_resource_id(queryable, resource_id) do
+      {queryable, dynamic([policies: p], p.resource_id == ^resource_id)}
+    end
   end
 end

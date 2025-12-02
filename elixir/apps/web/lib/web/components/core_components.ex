@@ -115,8 +115,6 @@ defmodule Web.CoreComponents do
         <button
           type="button"
           data-copy-to-clipboard-target={"#{@id}-code"}
-          data-copy-to-clipboard-content-type="innerHTML"
-          data-copy-to-clipboard-html-entities="true"
           class={~w[
             absolute end-1 top-1 text-gray-900 hover:bg-gray-100
             rounded py-2 px-2.5 inline-flex items-center justify-center
@@ -157,14 +155,12 @@ defmodule Web.CoreComponents do
 
   def copy(assigns) do
     ~H"""
-    <div id={@id} class={@class} {@rest}>
+    <div id={@id} class={@class} phx-hook="CopyClipboard" {@rest}>
       <code id={"#{@id}-code"} phx-no-format><%= render_slot(@inner_block) %></code>
       <button
         type="button"
         class={~w[text-neutral-400 cursor-pointer rounded]}
         data-copy-to-clipboard-target={"#{@id}-code"}
-        data-copy-to-clipboard-content-type="innerHTML"
-        data-copy-to-clipboard-html-entities="true"
         title="Copy to clipboard"
       >
         <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />

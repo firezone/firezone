@@ -706,7 +706,6 @@ defmodule Web.Actors do
           <div
             id="created-token-display"
             class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4"
-            phx-hook="CopyClipboard"
           >
             <div class="flex items-start gap-3">
               <.icon name="hero-check-circle" class="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
@@ -715,25 +714,25 @@ defmodule Web.Actors do
                 <p class="text-sm text-green-800 mb-3">
                   Save this token now. You won't be able to see it again!
                 </p>
-                <div class="relative">
+                <div id="created-token-copy-container" class="relative" phx-hook="CopyClipboard">
                   <code
-                    id="created-token-display-code"
+                    id="created-token-copy-container-code"
                     class="block bg-white border border-green-300 rounded px-3 py-2 pr-24 text-sm font-mono text-neutral-900 break-all"
                   >
                     {@created_token}
                   </code>
                   <button
                     type="button"
-                    data-copy-to-clipboard-target="created-token-display-code"
+                    data-copy-to-clipboard-target="created-token-copy-container-code"
                     data-copy-to-clipboard-content-type="innerHTML"
                     data-copy-to-clipboard-html-entities="true"
                     class="absolute top-1 right-1 px-3 py-1.5 text-sm font-medium text-green-700 bg-white border border-green-300 hover:bg-green-50 rounded inline-flex items-center"
                   >
-                    <span id="created-token-display-default-message" class="inline-flex items-center">
+                    <span id="created-token-copy-container-default-message" class="inline-flex items-center">
                       <.icon name="hero-clipboard-document" class="w-4 h-4" />
                     </span>
                     <span
-                      id="created-token-display-success-message"
+                      id="created-token-copy-container-success-message"
                       class="inline-flex items-center hidden"
                     >
                       <.icon name="hero-check" class="w-4 h-4 text-green-700" />
@@ -1300,28 +1299,16 @@ defmodule Web.Actors do
         # Generate a random token fragment
         secret_fragment = Domain.Crypto.random_token(32, encoder: :hex32)
 
-        # Build the token changeset with view-specific validations
-        changeset =
-          %Token{}
-          |> cast(
-            %{
-              type: :client,
-              actor_id: actor.id,
-              account_id: subject.account.id,
-              expires_at: expires_at,
-              secret_fragment: secret_fragment
-            },
-            [
-              :type,
-              :actor_id,
-              :account_id,
-              :expires_at,
-              :secret_fragment
-            ]
-          )
-          |> validate_required([:type, :actor_id, :expires_at, :secret_fragment])
+        # Build the token attributes
+        attrs = %{
+          "type" => :client,
+          "actor_id" => actor.id,
+          "account_id" => subject.account.id,
+          "expires_at" => expires_at,
+          "secret_fragment" => secret_fragment
+        }
 
-        case DB.create(changeset, subject) do
+        case Domain.Auth.create_token(attrs, subject) do
           {:ok, token} ->
             encoded_token = Domain.Auth.encode_fragment!(token)
             {:ok, {token, encoded_token}}
@@ -1417,7 +1404,7 @@ defmodule Web.Actors do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Token, ExternalIdentity}
+    alias Domain.{Safe, ExternalIdentity}
     alias Domain.Directory
     alias Domain.Repo.Filter
 
