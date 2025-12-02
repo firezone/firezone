@@ -1,5 +1,4 @@
 defmodule Domain.Ops do
-  import Ecto.Changeset
   alias __MODULE__.DB
   alias Domain.Banner
 
@@ -123,7 +122,10 @@ defmodule Domain.Ops do
   end
 
   def set_banner(message) do
-    cast(%Banner{}, %{message: message}, [:message])
+    clear_banner()
+
+    %Banner{}
+    |> Banner.changeset(message: message)
     |> DB.insert()
   end
 
