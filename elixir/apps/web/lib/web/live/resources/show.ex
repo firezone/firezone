@@ -233,9 +233,13 @@ defmodule Web.Resources.Show do
           </:col>
           <:col :let={policy} label="status">
             <%= if is_nil(policy.disabled_at) do %>
-              Active
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                Active
+              </span>
             <% else %>
-              Disabled
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                Disabled
+              </span>
             <% end %>
           </:col>
           <:empty>

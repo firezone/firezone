@@ -841,7 +841,7 @@ defmodule Domain.Repo.Seeds do
       },
       %{
         id: Ecto.UUID.generate(),
-        name: "Group:Synced Group with long name",
+        name: "Synced Group with long name",
         type: :static,
         account_id: account.id,
         inserted_at: now,
@@ -897,13 +897,13 @@ defmodule Domain.Repo.Seeds do
     synced_group = synced_group
 
     extra_group_names = [
-      "Group:gcp-logging-viewers",
-      "Group:gcp-security-admins",
-      "Group:gcp-organization-admins",
-      "OU:Admins",
-      "OU:Product",
-      "Group:Engineering",
-      "Group:gcp-developers"
+      "gcp-logging-viewers",
+      "gcp-security-admins",
+      "gcp-organization-admins",
+      "Admins",
+      "Product",
+      "Engineering",
+      "gcp-developers"
     ]
 
     extra_group_values =

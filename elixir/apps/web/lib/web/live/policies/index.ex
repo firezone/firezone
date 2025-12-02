@@ -91,9 +91,13 @@ defmodule Web.Policies.Index do
           </:col>
           <:col :let={policy} label="status">
             <%= if is_nil(policy.disabled_at) do %>
-              Active
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                Active
+              </span>
             <% else %>
-              <span class="text-red-800">Disabled</span>
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                Disabled
+              </span>
             <% end %>
           </:col>
           <:empty>
@@ -131,6 +135,7 @@ defmodule Web.Policies.Index do
 
   defmodule DB do
     import Ecto.Query
+    import Domain.Repo.Query
     alias Domain.{Safe, Policy}
 
     def list_policies(subject, opts \\ []) do
@@ -146,6 +151,98 @@ defmodule Web.Policies.Index do
         {:policies, :asc, :id}
       ]
 
-    def filters, do: []
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :resource_id,
+          title: "Resource",
+          type: {:string, :uuid},
+          fun: &filter_by_resource_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_id,
+          title: "Group",
+          type: {:string, :uuid},
+          fun: &filter_by_group_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_name,
+          title: "Group Name",
+          type: {:string, :websearch},
+          fun: &filter_by_group_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :resource_name,
+          title: "Resource Name",
+          type: {:string, :websearch},
+          fun: &filter_by_resource_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_or_resource_name,
+          title: "Group Name or Resource Name",
+          type: {:string, :websearch},
+          fun: &filter_by_group_or_resource_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :status,
+          title: "Status",
+          type: :string,
+          values: [
+            {"Active", "active"},
+            {"Disabled", "disabled"}
+          ],
+          fun: &filter_by_status/2
+        }
+      ]
+    end
+
+    def filter_by_resource_id(queryable, resource_id) do
+      {queryable, dynamic([policies: p], p.resource_id == ^resource_id)}
+    end
+
+    def filter_by_group_id(queryable, group_id) do
+      {queryable, dynamic([policies: p], p.group_id == ^group_id)}
+    end
+
+    def filter_by_group_name(queryable, name) do
+      queryable = with_joined_group(queryable)
+      {queryable, dynamic([group: g], fulltext_search(g.name, ^name))}
+    end
+
+    def filter_by_resource_name(queryable, name) do
+      queryable = with_joined_resource(queryable)
+      {queryable, dynamic([resource: r], fulltext_search(r.name, ^name))}
+    end
+
+    def filter_by_group_or_resource_name(queryable, name) do
+      queryable = queryable |> with_joined_group() |> with_joined_resource()
+      {queryable, dynamic([group: g, resource: r],
+        fulltext_search(g.name, ^name) or fulltext_search(r.name, ^name)
+      )}
+    end
+
+    def filter_by_status(queryable, "active") do
+      {queryable, dynamic([policies: p], is_nil(p.disabled_at))}
+    end
+
+    def filter_by_status(queryable, "disabled") do
+      {queryable, dynamic([policies: p], not is_nil(p.disabled_at))}
+    end
+
+    defp with_joined_group(queryable) do
+      if has_named_binding?(queryable, :group) do
+        queryable
+      else
+        join(queryable, :inner, [policies: p], g in assoc(p, :group), as: :group)
+      end
+    end
+
+    defp with_joined_resource(queryable) do
+      if has_named_binding?(queryable, :resource) do
+        queryable
+      else
+        join(queryable, :inner, [policies: p], r in assoc(p, :resource), as: :resource)
+      end
+    end
   end
 end
