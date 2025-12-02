@@ -620,13 +620,15 @@ defmodule Web.Sites.Show do
         |> Safe.scoped(subject)
         |> Safe.all()
         |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-        |> Map.new(fn {resource_id, groups} ->
-          {resource_id, Enum.take(groups, limit)}
-        end)
 
       peek =
         Enum.into(resources, %{}, fn resource ->
-          {resource.id, Map.get(groups_by_resource, resource.id, [])}
+          all_groups = Map.get(groups_by_resource, resource.id, [])
+          peek_groups = Enum.take(all_groups, limit)
+          {resource.id, %{
+            items: peek_groups,
+            count: length(all_groups)
+          }}
         end)
 
       {:ok, peek}
@@ -634,7 +636,6 @@ defmodule Web.Sites.Show do
 
     def list_policies(subject, opts \\ []) do
       from(p in Domain.Policy, as: :policies)
-      |> where([policies: p], is_nil(p.deleted_at))
       |> Safe.scoped(subject)
       |> Safe.list(DB.PolicyQuery, opts)
     end

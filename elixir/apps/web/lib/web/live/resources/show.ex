@@ -410,7 +410,8 @@ defmodule Web.Resources.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Resource, Repo, Policy}
+    import Domain.Repo.Query
+    alias Domain.{Safe, Resource, Policy}
 
     def fetch_resource_by_id(id, subject) do
       result =
@@ -441,90 +442,34 @@ defmodule Web.Resources.Show do
     end
 
     def peek_resource_groups(resources, limit, subject) do
-      ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
+      resource_ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
-      {:ok, peek} =
-        all()
-        |> by_id({:in, ids})
-        |> preload_few_groups_for_each_resource(limit)
-        |> where(account_id: ^subject.account.id)
-        |> Repo.peek(resources)
-
-      group_by_ids =
-        Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
-        |> Enum.map(&{&1.id, &1})
-        |> Enum.into(%{})
+      groups_by_resource =
+        from(p in Policy, as: :policies)
+        |> join(:inner, [policies: p], g in Domain.Group,
+          on: g.id == p.group_id,
+          as: :groups
+        )
+        |> where([policies: p], p.resource_id in ^resource_ids)
+        |> where([policies: p], is_nil(p.disabled_at))
+        |> select([policies: p, groups: g], {p.resource_id, g})
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
       peek =
-        for {id, %{items: items} = map} <- peek, into: %{} do
-          {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
-        end
+        Enum.into(resources, %{}, fn resource ->
+          all_groups = Map.get(groups_by_resource, resource.id, [])
+          peek_groups = Enum.take(all_groups, limit)
+          {resource.id, %{
+            items: peek_groups,
+            count: length(all_groups)
+          }}
+        end)
 
       {:ok, peek}
     end
 
-    def all do
-      from(resources in Resource, as: :resources)
-    end
-
-    def by_id(queryable, {:in, ids}) do
-      where(queryable, [resources: resources], resources.id in ^ids)
-    end
-
-    def preload_few_groups_for_each_resource(queryable, limit) do
-      queryable
-      |> with_joined_groups(limit)
-      |> with_joined_policies_counts()
-      |> select(
-        [resources: resources, groups: groups, policies_counts: policies_counts],
-        %{
-          id: resources.id,
-          count: policies_counts.count,
-          item: groups
-        }
-      )
-    end
-
-    def with_joined_groups(queryable, limit) do
-      policies_subquery =
-        from(p in Policy, as: :policies)
-        |> where([policies: p], is_nil(p.disabled_at))
-        |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
-        |> select([policies: policies], policies.group_id)
-        |> limit(^limit)
-
-      groups_subquery =
-        from(g in Domain.Group, as: :groups)
-        |> where([groups: groups], groups.id in subquery(policies_subquery))
-
-      join(
-        queryable,
-        :cross_lateral,
-        [resources: resources],
-        groups in subquery(groups_subquery),
-        as: :groups
-      )
-    end
-
-    def with_joined_policies_counts(queryable) do
-      subquery =
-        from(p in Policy, as: :policies)
-        |> where([policies: p], is_nil(p.disabled_at))
-        |> group_by([policies: policies], policies.resource_id)
-        |> select([policies: policies], %{
-          resource_id: policies.resource_id,
-          count: count(policies.id)
-        })
-        |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
-
-      join(
-        queryable,
-        :cross_lateral,
-        [resources: resources],
-        policies_counts in subquery(subquery),
-        as: :policies_counts
-      )
-    end
 
     def delete_resource(resource, subject) do
       Safe.scoped(resource, subject)
@@ -533,9 +478,8 @@ defmodule Web.Resources.Show do
 
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)
-      |> where([policies: p], is_nil(p.deleted_at))
       |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      |> Safe.list(DB, opts)
     end
 
     # Pagination support for policies
@@ -545,7 +489,101 @@ defmodule Web.Resources.Show do
         {:policies, :asc, :id}
       ]
 
-    def filters, do: []
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :resource_id,
+          title: "Resource",
+          type: {:string, :uuid},
+          fun: &filter_by_resource_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_id,
+          title: "Group",
+          type: {:string, :uuid},
+          fun: &filter_by_group_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_name,
+          title: "Group Name",
+          type: {:string, :websearch},
+          fun: &filter_by_group_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :resource_name,
+          title: "Resource Name",
+          type: {:string, :websearch},
+          fun: &filter_by_resource_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_or_resource_name,
+          title: "Group Name or Resource Name",
+          type: {:string, :websearch},
+          fun: &filter_by_group_or_resource_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :status,
+          title: "Status",
+          type: :string,
+          values: [
+            {"Active", "active"},
+            {"Disabled", "disabled"}
+          ],
+          fun: &filter_by_status/2
+        }
+      ]
+    end
+
+    def filter_by_resource_id(queryable, resource_id) do
+      {queryable, dynamic([policies: p], p.resource_id == ^resource_id)}
+    end
+
+    def filter_by_group_id(queryable, group_id) do
+      {queryable, dynamic([policies: p], p.group_id == ^group_id)}
+    end
+
+    def filter_by_group_name(queryable, name) do
+      queryable = with_joined_group(queryable)
+      {queryable, dynamic([group: g], fulltext_search(g.name, ^name))}
+    end
+
+    def filter_by_resource_name(queryable, name) do
+      queryable = with_joined_resource(queryable)
+      {queryable, dynamic([resource: r], fulltext_search(r.name, ^name))}
+    end
+
+    def filter_by_group_or_resource_name(queryable, name) do
+      queryable = queryable |> with_joined_group() |> with_joined_resource()
+      {queryable, dynamic([group: g, resource: r],
+        fulltext_search(g.name, ^name) or fulltext_search(r.name, ^name)
+      )}
+    end
+
+    def filter_by_status(queryable, "active") do
+      {queryable, dynamic([policies: p], is_nil(p.disabled_at))}
+    end
+
+    def filter_by_status(queryable, "disabled") do
+      {queryable, dynamic([policies: p], not is_nil(p.disabled_at))}
+    end
+
+    defp with_joined_group(queryable) do
+      if has_named_binding?(queryable, :group) do
+        queryable
+      else
+        join(queryable, :inner, [policies: p], g in assoc(p, :group), as: :group)
+      end
+    end
+
+    defp with_joined_resource(queryable) do
+      if has_named_binding?(queryable, :resource) do
+        queryable
+      else
+        join(queryable, :inner, [policies: p], r in assoc(p, :resource), as: :resource)
+      end
+    end
+
+    def preloads, do: []
 
     # Inline functions from Domain.Flows
     def list_flows_for(assoc, subject, opts \\ [])
@@ -588,7 +626,7 @@ defmodule Web.Resources.Show do
   end
 
   defmodule DB.FlowQuery do
-    use Domain, :query
+    import Ecto.Query
 
     def all do
       from(flows in Domain.Flow, as: :flows)
@@ -701,11 +739,14 @@ defmodule Web.Resources.Show do
     end
 
     # Pagination
-    @impl Domain.Repo.Query
     def cursor_fields,
       do: [
         {:flows, :desc, :inserted_at},
         {:flows, :asc, :id}
       ]
+
+    def filters, do: []
+
+    def preloads, do: []
   end
 end

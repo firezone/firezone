@@ -5,7 +5,7 @@ defmodule Domain.Billing.Stripe.ProcessedEvents do
   """
 
   import Ecto.Query, warn: false
-  alias Domain.Repo
+  alias Domain.Safe
   alias Domain.Billing.Stripe.ProcessedEvents.ProcessedEvent
 
   @doc """
@@ -14,7 +14,8 @@ defmodule Domain.Billing.Stripe.ProcessedEvents do
   def event_processed?(stripe_event_id) do
     ProcessedEvent.Query.all()
     |> ProcessedEvent.Query.by_event_id(stripe_event_id)
-    |> Repo.exists?()
+    |> Safe.unscoped()
+    |> Safe.exists?()
   end
 
   @doc """
@@ -23,7 +24,8 @@ defmodule Domain.Billing.Stripe.ProcessedEvents do
   def get_by_stripe_event_id(stripe_event_id) do
     ProcessedEvent.Query.all()
     |> ProcessedEvent.Query.by_event_id(stripe_event_id)
-    |> Repo.one()
+    |> Safe.unscoped()
+    |> Safe.one()
   end
 
   @doc """
@@ -32,7 +34,8 @@ defmodule Domain.Billing.Stripe.ProcessedEvents do
   def create_processed_event(attrs \\ %{}) do
     %ProcessedEvent{}
     |> ProcessedEvent.Changeset.changeset(attrs)
-    |> Repo.insert()
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   @doc """
@@ -43,7 +46,8 @@ defmodule Domain.Billing.Stripe.ProcessedEvents do
   def get_latest_for_stripe_customer(stripe_customer_id) do
     ProcessedEvent.Query.all()
     |> ProcessedEvent.Query.by_latest_event(stripe_customer_id)
-    |> Repo.one()
+    |> Safe.unscoped()
+    |> Safe.one()
   end
 
   @doc """
@@ -54,7 +58,8 @@ defmodule Domain.Billing.Stripe.ProcessedEvents do
   def get_latest_for_stripe_customer(customer_id, event_type) do
     ProcessedEvent.Query.all()
     |> ProcessedEvent.Query.by_latest_event_type(customer_id, event_type)
-    |> Repo.one()
+    |> Safe.unscoped()
+    |> Safe.one()
   end
 
   @doc """
@@ -66,7 +71,8 @@ defmodule Domain.Billing.Stripe.ProcessedEvents do
     {count, _} =
       ProcessedEvent.Query.all()
       |> ProcessedEvent.Query.by_cutoff_date(cutoff_date)
-      |> Repo.delete_all()
+      |> Safe.unscoped()
+      |> Safe.delete_all()
 
     {:ok, count}
   end

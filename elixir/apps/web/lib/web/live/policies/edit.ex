@@ -248,7 +248,6 @@ defmodule Web.Policies.Edit do
     result =
       from(p in Policy, as: :policies)
       |> where([policies: p], p.id == ^id)
-      |> where([policies: p], is_nil(p.deleted_at))
       |> Safe.scoped(subject)
       |> Safe.one()
 
