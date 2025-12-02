@@ -1500,10 +1500,16 @@ defmodule Web.CoreComponents do
 
   @doc """
   Helper function to get provider type from identity
-  Identities now have directory_type field that indicates the provider
+  Determines provider type based on the issuer URL
   """
-  def provider_type_from_identity(%{directory_type: type}) when not is_nil(type),
-    do: to_string(type)
+  def provider_type_from_identity(%{issuer: issuer}) when is_binary(issuer) do
+    cond do
+      String.contains?(issuer, "okta.com") -> "okta"
+      String.contains?(issuer, "google.com") -> "google"
+      String.contains?(issuer, "microsoftonline.com") -> "entra"
+      true -> "oidc"
+    end
+  end
 
   def provider_type_from_identity(_), do: "firezone"
 

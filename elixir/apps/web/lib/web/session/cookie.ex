@@ -48,7 +48,7 @@ defmodule Web.Session.Cookie do
   """
   def fetch_account_cookie(conn, account_id) do
     cookie_name = cookie_name(account_id)
-    conn = Plug.Conn.fetch_cookies(conn, signed: [cookie_name], encrypted: [cookie_name])
+    conn = Plug.Conn.fetch_cookies(conn, encrypted: [cookie_name])
 
     case Map.get(conn.cookies, cookie_name) do
       %{"token" => token} ->

@@ -7,7 +7,7 @@ defmodule Web.Auth do
   @client_auth_cookie_options [
     sign: true,
     max_age: 2 * 60,
-    same_site: "Strict",
+    same_site: "Lax",
     secure: true,
     http_only: true
   ]
@@ -18,7 +18,7 @@ defmodule Web.Auth do
   @recent_accounts_cookie_options [
     sign: true,
     max_age: 365 * 24 * 60 * 60,
-    same_site: "Strict",
+    same_site: "Lax",
     secure: true,
     http_only: true
   ]

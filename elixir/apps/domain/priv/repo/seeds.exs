@@ -462,7 +462,7 @@ defmodule Domain.Repo.Seeds do
         actor_id: admin_actor.id,
         account_id: account.id,
         issuer: "https://common.auth0.com",
-        idp_id: "oidc:#{admin_actor_email}",
+        idp_id: admin_actor_email,
         name: "Firezone Admin"
       })
 
@@ -490,7 +490,7 @@ defmodule Domain.Repo.Seeds do
           actor_id: actor.id,
           account_id: account.id,
           issuer: "https://common.auth0.com",
-          idp_id: "oidc:#{email}",
+          idp_id: email,
           name: actor.name
         })
 

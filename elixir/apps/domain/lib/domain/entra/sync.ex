@@ -827,45 +827,91 @@ defmodule Domain.Entra.Sync do
       do: {:ok, %{upserted_groups: 0}}
 
     def batch_upsert_groups(account_id, directory_id, last_synced_at, group_attrs) do
-      values =
-        Enum.map(group_attrs, fn attrs ->
-          %{
-            id: Ecto.UUID.generate(),
-            name: attrs.name,
-            directory_id: directory_id,
-            idp_id: attrs.idp_id,
-            account_id: account_id,
-            inserted_at: last_synced_at,
-            updated_at: last_synced_at,
-            type: :static,
-            last_synced_at: last_synced_at
-          }
+      # Convert to raw SQL to support conditional updates based on last_synced_at
+      query = build_group_upsert_query(length(group_attrs))
+
+      params = build_group_upsert_params(account_id, directory_id, last_synced_at, group_attrs)
+
+      case Safe.unscoped() |> Safe.query(query, params) do
+        {:ok, %Postgrex.Result{num_rows: num_rows}} ->
+          {:ok, %{upserted_groups: num_rows}}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+
+    defp build_group_upsert_query(count) do
+      # Each group has 2 fields: idp_id, name
+      values_clause =
+        for i <- 1..count, base = (i - 1) * 2 do
+          "($#{base + 1}, $#{base + 2})"
+        end
+        |> Enum.join(", ")
+
+      offset = count * 2
+      account_id = offset + 1
+      directory_id = offset + 2
+      last_synced_at = offset + 3
+
+      """
+      WITH input_data (idp_id, name) AS (
+        VALUES #{values_clause}
+      )
+      INSERT INTO groups (
+        id, name, directory_id, idp_id, account_id, 
+        inserted_at, updated_at, type, last_synced_at
+      )
+      SELECT 
+        uuid_generate_v4(),
+        id.name,
+        $#{directory_id},
+        id.idp_id,
+        $#{account_id},
+        $#{last_synced_at},
+        $#{last_synced_at},
+        'static',
+        $#{last_synced_at}
+      FROM input_data id
+      ON CONFLICT (account_id, idp_id) WHERE idp_id IS NOT NULL
+      DO UPDATE SET
+        name = CASE 
+          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at 
+          THEN EXCLUDED.name 
+          ELSE groups.name 
+        END,
+        directory_id = CASE 
+          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at 
+          THEN EXCLUDED.directory_id 
+          ELSE groups.directory_id 
+        END,
+        last_synced_at = CASE 
+          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at 
+          THEN EXCLUDED.last_synced_at 
+          ELSE groups.last_synced_at 
+        END,
+        updated_at = CASE 
+          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at 
+          THEN EXCLUDED.updated_at 
+          ELSE groups.updated_at 
+        END
+      """
+    end
+
+    defp build_group_upsert_params(account_id, directory_id, last_synced_at, group_attrs) do
+      group_params =
+        group_attrs
+        |> Enum.flat_map(fn attrs ->
+          [attrs.idp_id, attrs.name]
         end)
 
-      {count, _} =
-        Safe.unscoped()
-        |> Safe.insert_all(Domain.Group, values,
-          on_conflict: [
-            set: [
-              name:
-                {:fragment,
-                 "CASE WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.name ELSE groups.name END"},
-              directory_id:
-                {:fragment,
-                 "CASE WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.directory_id ELSE groups.directory_id END"},
-              last_synced_at:
-                {:fragment,
-                 "CASE WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.last_synced_at ELSE groups.last_synced_at END"},
-              updated_at:
-                {:fragment,
-                 "CASE WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at THEN EXCLUDED.updated_at ELSE groups.updated_at END"}
-            ]
-          ],
-          conflict_target: {:unsafe_fragment, ~s[(account_id, idp_id) WHERE idp_id IS NOT NULL]},
-          returning: false
-        )
-
-      {:ok, %{upserted_groups: count}}
+      # Properly cast UUIDs to binary
+      group_params ++
+        [
+          Ecto.UUID.dump!(account_id),
+          Ecto.UUID.dump!(directory_id),
+          last_synced_at
+        ]
     end
 
     def batch_upsert_memberships(_account_id, _issuer, _directory_id, _last_synced_at, []),

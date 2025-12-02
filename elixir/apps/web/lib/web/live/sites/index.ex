@@ -320,5 +320,19 @@ defmodule Web.Sites.Index do
           online?: &Presence.Gateways.preload_gateways_presence/1
         ]
       ]
+
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :managed_by,
+          type: :string,
+          fun: &filter_managed_by/2
+        }
+      ]
+    end
+
+    def filter_managed_by(queryable, value) do
+      {queryable, dynamic([sites: sites], sites.managed_by == ^value)}
+    end
   end
 end

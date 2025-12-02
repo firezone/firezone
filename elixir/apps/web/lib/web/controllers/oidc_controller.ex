@@ -174,6 +174,7 @@ defmodule Web.OIDCController do
   defp extract_profile_attrs(claims, userinfo) do
     Map.merge(claims, userinfo)
     |> Map.take([
+      "email",
       "name",
       "given_name",
       "family_name",
@@ -325,7 +326,7 @@ defmodule Web.OIDCController do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      Safe.unscoped() |> Safe.one(query)
+      query |> Safe.unscoped() |> Safe.one()
     end
 
     def fetch_provider(account_id, type, id) do

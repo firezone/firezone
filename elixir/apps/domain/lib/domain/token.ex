@@ -53,16 +53,6 @@ defmodule Domain.Token do
     changeset
     |> validate_length(:name, max: 255)
     |> trim_change(:name)
-    |> put_change(:secret_salt, Domain.Crypto.random_token(16))
-    |> validate_format(:secret_nonce, ~r/^[^\.]{0,128}$/)
-    |> validate_required(:secret_fragment)
-    |> put_hash(:secret_fragment, :sha3_256,
-      with_nonce: :secret_nonce,
-      with_salt: :secret_salt,
-      to: :secret_hash
-    )
-    |> delete_change(:secret_nonce)
-    |> validate_required(~w[secret_salt secret_hash]a)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
     |> assoc_constraint(:auth_provider)

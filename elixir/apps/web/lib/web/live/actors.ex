@@ -1417,7 +1417,7 @@ defmodule Web.Actors do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Token}
+    alias Domain.{Safe, Token, ExternalIdentity}
     alias Domain.Directory
     alias Domain.Repo.Filter
 
@@ -1521,13 +1521,28 @@ defmodule Web.Actors do
     end
 
     def filter_by_directory(queryable, "firezone") do
-      # Firezone directory - actors created without a directory
-      {queryable, dynamic([actors: actors], is_nil(actors.created_by_directory_id))}
+      # Firezone directory - actors with no directory-linked identities
+      # (either no identities, or identities without directory_id)
+      identity_subquery =
+        from(i in ExternalIdentity,
+          where: not is_nil(i.directory_id),
+          select: i.actor_id,
+          distinct: true
+        )
+
+      {queryable, dynamic([actors: actors], actors.id not in subquery(identity_subquery))}
     end
 
     def filter_by_directory(queryable, directory_id) do
-      # Filter for actors created by a specific directory
-      {queryable, dynamic([actors: actors], actors.created_by_directory_id == ^directory_id)}
+      # Filter for actors that have identities from a specific directory
+      identity_subquery =
+        from(i in ExternalIdentity,
+          where: i.directory_id == ^directory_id,
+          select: i.actor_id,
+          distinct: true
+        )
+
+      {queryable, dynamic([actors: actors], actors.id in subquery(identity_subquery))}
     end
 
     def filter_by_name_or_email(queryable, search_term) do
@@ -1588,8 +1603,7 @@ defmodule Web.Actors do
               gd.name,
               ed.name,
               od.name
-            ),
-          directory_type: d.type
+            )
         }
       )
       |> order_by([identities: i], desc: i.inserted_at)

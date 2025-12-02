@@ -176,60 +176,28 @@ defmodule Web.Clients.Index do
           fun: &filter_by_name_fts/2
         },
         %Domain.Repo.Filter{
-          name: :actor_id,
-          title: "Actor",
-          type: {:string, :uuid},
-          fun: &filter_by_actor_id/2
-        },
-        %Domain.Repo.Filter{
-          name: :last_seen,
-          title: "Last Seen",
-          type: {:string, :datetime},
-          fun: &filter_by_last_seen/2
-        },
-        %Domain.Repo.Filter{
-          name: :actor_type,
-          title: "Actor Type",
+          name: :verification,
+          title: "Verification Status",
           type: :string,
           values: [
-            {"Users", :account_user},
-            {"Admins", :account_admin_user},
-            {"Service Accounts", :service_account}
+            {"Verified", "verified"},
+            {"Not Verified", "not_verified"}
           ],
-          fun: &filter_by_actor_type/2
+          fun: &filter_by_verification/2
         }
       ]
     end
 
     def filter_by_name_fts(queryable, name) do
-      {queryable, dynamic([clients: c], fulltext_search(c.name, ^name))}
+      {queryable, dynamic([clients: clients], fulltext_search(clients.name, ^name))}
     end
 
-    def filter_by_actor_id(queryable, actor_id) do
-      {queryable, dynamic([clients: c], c.actor_id == ^actor_id)}
+    def filter_by_verification(queryable, "verified") do
+      {queryable, dynamic([clients: clients], not is_nil(clients.verified_at))}
     end
 
-    def filter_by_last_seen(queryable, last_seen) do
-      {queryable, dynamic([clients: c], c.last_seen_at > ^last_seen)}
-    end
-
-    def filter_by_actor_type(queryable, actor_type) do
-      queryable = with_joined_actor(queryable)
-      {queryable, dynamic([actor: a], a.type == ^actor_type)}
-    end
-
-    defp with_joined_actor(queryable) do
-      ensure_named_binding(queryable, :actor, fn queryable, binding ->
-        join(queryable, :inner, [clients: c], a in assoc(c, ^binding), as: ^binding)
-      end)
-    end
-
-    defp ensure_named_binding(queryable, binding, fun) do
-      if has_named_binding?(queryable, binding) do
-        queryable
-      else
-        fun.(queryable, binding)
-      end
+    def filter_by_verification(queryable, "not_verified") do
+      {queryable, dynamic([clients: clients], is_nil(clients.verified_at))}
     end
   end
 end

@@ -16,6 +16,7 @@ defmodule Domain.Group do
     field :member_count, :integer, virtual: true
     field :count, :integer, virtual: true
     field :directory_name, :string, virtual: true
+    field :directory_type, :string, virtual: true
 
     has_many :actors, through: [:memberships, :actor]
 

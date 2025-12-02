@@ -251,12 +251,13 @@ defmodule Web.OIDC do
   end
 
   defp callback_url, do: url(~p"/auth/oidc/callback")
-  defp callback_url(%{is_legacy: false}), do: url(~p"/auth/oidc/callback")
 
   # Maintain existing callback URL for legacy providers
   defp callback_url(%{is_legacy: true} = provider) do
     url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
   end
+
+  defp callback_url(_provider), do: url(~p"/auth/oidc/callback")
 
   # TODO: This can be refactored to reduce duplication with config_for_provider/1
 

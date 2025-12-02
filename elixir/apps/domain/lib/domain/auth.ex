@@ -80,15 +80,17 @@ defmodule Domain.Auth do
   def create_token(attrs) do
     changeset = create_token_changeset(%Token{}, attrs, nil)
 
-    Safe.unscoped()
-    |> Safe.insert(changeset)
+    changeset
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   def create_token(attrs, %Subject{} = subject) do
     changeset = create_token_changeset(%Token{}, attrs, subject)
 
-    Safe.unscoped()
-    |> Safe.insert(changeset)
+    changeset
+    |> Safe.unscoped()
+    |> Safe.insert()
   end
 
   defp create_token_changeset(token, attrs, subject) do
@@ -172,7 +174,7 @@ defmodule Domain.Auth do
          {:ok, token} <- fetch_token_for_use(id, account_id, context.type),
          :ok <- verify_secret_hash(token, fragment),
          changeset = use_token_changeset(token, context),
-         {:ok, token} <- Safe.unscoped() |> Safe.update(changeset) do
+         {:ok, token} <- changeset |> Safe.unscoped() |> Safe.update() do
       {:ok, token}
     else
       _ -> {:error, :invalid_or_expired_token}
@@ -193,21 +195,28 @@ defmodule Domain.Auth do
   defp fetch_token_for_use(id, account_id, context_type) do
     import Ecto.Query
 
-    from(tokens in Token, as: :tokens)
-    |> where(
-      [tokens: tokens],
-      tokens.expires_at > ^DateTime.utc_now() or is_nil(tokens.expires_at)
-    )
-    |> where([tokens: tokens], tokens.id == ^id)
-    |> where([tokens: tokens], tokens.account_id == ^account_id)
-    |> where([tokens: tokens], tokens.type == ^context_type)
-    |> update([tokens: tokens],
-      set: [
-        last_seen_at: ^DateTime.utc_now()
-      ]
-    )
-    |> select([tokens: tokens], tokens)
-    |> Repo.one()
+    # First fetch the token
+    query =
+      from(tokens in Token, as: :tokens)
+      |> where(
+        [tokens: tokens],
+        tokens.expires_at > ^DateTime.utc_now() or is_nil(tokens.expires_at)
+      )
+      |> where([tokens: tokens], tokens.id == ^id)
+      |> where([tokens: tokens], tokens.account_id == ^account_id)
+      |> where([tokens: tokens], tokens.type == ^context_type)
+
+    case Repo.one(query) do
+      nil ->
+        {:error, :not_found}
+
+      token ->
+        # Update last_seen_at
+        from(t in Token, where: t.id == ^token.id)
+        |> Repo.update_all(set: [last_seen_at: DateTime.utc_now()])
+
+        {:ok, token}
+    end
   end
 
   defp use_token_changeset(%Token{} = token, %Context{} = context) do
@@ -234,9 +243,7 @@ defmodule Domain.Auth do
   end
 
   defp token_secret_hash(token, fragment) do
-    :sha3_256
-    |> Domain.Crypto.hash(fragment <> token.secret_salt)
-    |> Base.encode16(case: :lower)
+    Domain.Crypto.hash(:sha3_256, fragment <> token.secret_salt)
   end
 
   def socket_id(id) when is_binary(id) do
@@ -251,10 +258,17 @@ defmodule Domain.Auth do
          {:ok, subject} <- build_subject(token, context) do
       {:ok, subject}
     else
-      {:error, :invalid_or_expired_token} -> {:error, :unauthorized}
-      {:error, :invalid_user_agent} -> {:error, :unauthorized}
-      {:error, :not_found} -> {:error, :unauthorized}
-      {:error, changeset} -> {:error, changeset}
+      {:error, :invalid_or_expired_token} ->
+        {:error, :unauthorized}
+
+      {:error, :invalid_user_agent} ->
+        {:error, :unauthorized}
+
+      {:error, :not_found} ->
+        {:error, :unauthorized}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
