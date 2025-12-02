@@ -457,7 +457,7 @@ defmodule Web.Resources.Components do
     def list_resources(subject, opts \\ []) do
       from(r in Resource, as: :resources)
       |> Safe.scoped(subject)
-      |> Safe.list(ListQuery, opts)
+      |> Safe.list(DB.ListQuery, opts)
     end
   end
 

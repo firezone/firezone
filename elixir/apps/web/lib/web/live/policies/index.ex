@@ -216,9 +216,12 @@ defmodule Web.Policies.Index do
 
     def filter_by_group_or_resource_name(queryable, name) do
       queryable = queryable |> with_joined_group() |> with_joined_resource()
-      {queryable, dynamic([group: g, resource: r],
-        fulltext_search(g.name, ^name) or fulltext_search(r.name, ^name)
-      )}
+
+      {queryable,
+       dynamic(
+         [group: g, resource: r],
+         fulltext_search(g.name, ^name) or fulltext_search(r.name, ^name)
+       )}
     end
 
     def filter_by_status(queryable, "active") do

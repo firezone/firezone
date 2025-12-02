@@ -242,7 +242,14 @@ defmodule Domain.Safe do
 
     case permit(:insert_all, schema, subject) do
       :ok ->
-        Repo.insert_all(schema_or_source, entries, opts)
+        {:ok, result} =
+          Repo.transact(fn ->
+            emit_subject_message(subject, :insert_all, schema)
+
+            {:ok, Repo.insert_all(schema_or_source, entries, opts)}
+          end)
+
+        result
 
       {:error, :unauthorized} ->
         {:error, :unauthorized}
@@ -269,14 +276,13 @@ defmodule Domain.Safe do
     schema = get_schema_module(changeset.data)
 
     with :ok <- permit(:insert, schema, subject) do
-      Repo.transaction(fn ->
-        # Emit subject info to the replication stream
+      Repo.transact(fn ->
         emit_subject_message(subject, :insert, schema)
 
         changeset
         |> put_change(:account_id, subject.account.id)
         |> apply_schema_changeset(schema)
-        |> Repo.insert!()
+        |> Repo.insert()
       end)
     end
   end
@@ -313,13 +319,12 @@ defmodule Domain.Safe do
     schema = get_schema_module(changeset.data)
 
     with :ok <- permit(:update, schema, subject) do
-      Repo.transaction(fn ->
-        # Emit subject info to the replication stream
+      Repo.transact(fn ->
         emit_subject_message(subject, :update, schema)
 
         changeset
         |> apply_schema_changeset(schema)
-        |> Repo.update!()
+        |> Repo.update()
       end)
     end
   end
@@ -352,12 +357,14 @@ defmodule Domain.Safe do
 
     case permit(:update_all, schema, subject) do
       :ok ->
-        Repo.transaction(fn ->
-          # Emit subject info to the replication stream
-          emit_subject_message(subject, :update_all, schema)
+        {:ok, result} =
+          Repo.transact(fn ->
+            emit_subject_message(subject, :update_all, schema)
 
-          Repo.update_all(queryable, updates)
-        end)
+            {:ok, Repo.update_all(queryable, updates)}
+          end)
+
+        result
 
       {:error, :unauthorized} ->
         {:error, :unauthorized}
@@ -385,8 +392,7 @@ defmodule Domain.Safe do
     schema = get_schema_module(changeset.data)
 
     with :ok <- permit(:delete, schema, subject) do
-      Repo.transaction(fn ->
-        # Emit subject info to the replication stream
+      Repo.transact(fn ->
         emit_subject_message(subject, :delete, schema)
 
         changeset
@@ -408,8 +414,7 @@ defmodule Domain.Safe do
     schema = get_schema_module(struct)
 
     with :ok <- permit(:delete, schema, subject) do
-      Repo.transaction(fn ->
-        # Emit subject info to the replication stream
+      Repo.transact(fn ->
         emit_subject_message(subject, :delete, schema)
 
         Repo.delete(struct)
@@ -460,17 +465,14 @@ defmodule Domain.Safe do
 
     case permit(:delete_all, schema, subject) do
       :ok ->
-        Repo.transaction(fn ->
-          # Emit subject info to the replication stream
-          emit_subject_message(subject, :delete_all, schema)
+        {:ok, result} =
+          Repo.transact(fn ->
+            emit_subject_message(subject, :delete_all, schema)
 
-          {deleted_count, result} = Repo.delete_all(queryable, opts)
-          {deleted_count, result}
-        end)
-        |> case do
-          {:ok, result} -> result
-          {:error, _} = error -> error
-        end
+            {:ok, Repo.delete_all(queryable, opts)}
+          end)
+
+        result
 
       {:error, :unauthorized} ->
         {:error, :unauthorized}

@@ -306,8 +306,7 @@ defmodule Web.Resources.New do
     # TODO: Keep all changeset logic out of the DB module
     def new_resource(account, attrs \\ %{}) do
       %Resource{connections: []}
-      |> cast(attrs, [:name, :address, :address_description, :type])
-      |> cast_embed(:filters)
+      |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack])
       |> validate_required([:name, :address])
       |> put_change(:account_id, account.id)
       |> Resource.changeset()

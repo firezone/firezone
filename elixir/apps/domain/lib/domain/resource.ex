@@ -68,7 +68,10 @@ defmodule Domain.Resource do
     )
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
-    |> unique_constraint(:type, name: :unique_internet_resource_per_account)
+    |> unique_constraint(:type,
+      name: :unique_internet_resource_per_account,
+      message: "Internet resource already exists for this account"
+    )
   end
 
   def validate_address(changeset, account) do

@@ -629,10 +629,12 @@ defmodule Web.Sites.Show do
         Enum.into(resources, %{}, fn resource ->
           all_groups = Map.get(groups_by_resource, resource.id, [])
           peek_groups = Enum.take(all_groups, limit)
-          {resource.id, %{
-            items: peek_groups,
-            count: length(all_groups)
-          }}
+
+          {resource.id,
+           %{
+             items: peek_groups,
+             count: length(all_groups)
+           }}
         end)
 
       {:ok, peek}

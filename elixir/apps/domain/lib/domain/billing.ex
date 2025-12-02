@@ -288,15 +288,39 @@ defmodule Domain.Billing do
     false
   end
 
+  defp ensure_internet_site_and_resource_exist(%Domain.Account{} = account) do
+    # Ensure Internet site exists
+    site =
+      case DB.fetch_internet_site(account) do
+        {:ok, site} ->
+          site
+
+        {:error, :not_found} ->
+          {:ok, site} = DB.create_internet_site(account)
+          site
+      end
+
+    # Ensure Internet resource exists
+    case DB.fetch_internet_resource(account) do
+      {:ok, _resource} ->
+        {:ok, account}
+
+      {:error, :not_found} ->
+        {:ok, _resource} = DB.create_internet_resource(account, site)
+        {:ok, account}
+    end
+  end
+
   def provision_account(%Domain.Account{} = account) do
     with true <- enabled?(),
          true <- not account_provisioned?(account),
+         {:ok, account} <- ensure_internet_site_and_resource_exist(account),
          {:ok, account} <- create_customer(account),
          {:ok, account} <- create_subscription(account) do
       {:ok, account}
     else
       false ->
-        {:ok, account}
+        ensure_internet_site_and_resource_exist(account)
 
       {:error, reason} ->
         {:error, reason}
@@ -422,6 +446,63 @@ defmodule Domain.Billing do
       )
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
+    end
+
+    def fetch_internet_site(%Account{} = account) do
+      result =
+        from(s in Domain.Site,
+          where: s.account_id == ^account.id,
+          where: s.name == "Internet",
+          where: s.managed_by == :system
+        )
+        |> Safe.unscoped()
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        site -> {:ok, site}
+      end
+    end
+
+    def create_internet_site(%Account{} = account) do
+      %Domain.Site{
+        account_id: account.id,
+        name: "Internet",
+        managed_by: :system
+      }
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_internet_resource(%Account{} = account) do
+      result =
+        from(r in Domain.Resource,
+          where: r.account_id == ^account.id,
+          where: r.type == :internet
+        )
+        |> Safe.unscoped()
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        resource -> {:ok, resource}
+      end
+    end
+
+    def create_internet_resource(%Account{} = account, %Domain.Site{} = site) do
+      %Domain.Resource{
+        account_id: account.id,
+        name: "Internet",
+        type: :internet,
+        connections: [
+          %Domain.Resources.Connection{
+            account_id: account.id,
+            site_id: site.id
+          }
+        ]
+      }
+      |> Safe.unscoped()
+      |> Safe.insert()
     end
   end
 end

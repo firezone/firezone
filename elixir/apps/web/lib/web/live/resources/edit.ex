@@ -281,7 +281,6 @@ defmodule Web.Resources.Edit do
 
     resource
     |> Ecto.Changeset.cast(attrs, update_fields)
-    |> Ecto.Changeset.cast_embed(:filters)
     |> Ecto.Changeset.validate_required(required_fields)
     |> Domain.Resource.validate_address(subject.account)
     |> Domain.Resource.changeset()
@@ -299,7 +298,6 @@ defmodule Web.Resources.Edit do
     resource
     |> Domain.Repo.preload(:connections)
     |> Ecto.Changeset.cast(attrs, update_fields)
-    |> Ecto.Changeset.cast_embed(:filters)
     |> Ecto.Changeset.validate_required(required_fields)
     |> Domain.Resource.validate_address(subject.account)
     |> Domain.Resource.changeset()

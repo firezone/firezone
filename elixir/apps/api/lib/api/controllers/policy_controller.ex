@@ -58,7 +58,11 @@ defmodule API.PolicyController do
 
   # Create a new Policy
   def create(conn, %{"policy" => params}) do
-    with {:ok, policy} <- DB.create_policy(params, conn.assigns.subject) do
+    subject = conn.assigns.subject
+
+    # Check if this is for an internet resource
+    with :ok <- DB.validate_internet_resource_policy(params, subject),
+         {:ok, policy} <- DB.create_policy(params, subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/policies/#{policy}")
@@ -91,7 +95,9 @@ defmodule API.PolicyController do
     subject = conn.assigns.subject
     policy = DB.fetch_policy(subject, id)
 
-    with {:ok, policy} <- DB.update_policy(policy, params, subject) do
+    # Check if this is for an internet resource
+    with :ok <- DB.validate_internet_resource_policy(params, subject),
+         {:ok, policy} <- DB.update_policy(policy, params, subject) do
       render(conn, :show, policy: policy)
     end
   end
@@ -146,6 +152,36 @@ defmodule API.PolicyController do
       |> changeset(attrs)
       |> Safe.scoped(subject)
       |> Safe.update()
+    end
+
+    def validate_internet_resource_policy(attrs, %Auth.Subject{} = subject) do
+      resource_id = attrs["resource_id"]
+
+      if resource_id do
+        # Fetch the resource to check its type
+        resource =
+          from(r in Domain.Resource, where: r.id == ^resource_id)
+          |> Safe.scoped(subject)
+          |> Safe.one()
+
+        case resource do
+          nil ->
+            {:error, :not_found}
+
+          %{type: :internet} ->
+            # Check if internet resource is enabled for the account
+            if Domain.Account.internet_resource_enabled?(subject.account) do
+              :ok
+            else
+              {:error, {:forbidden, "Internet resource is not enabled for this account"}}
+            end
+
+          _ ->
+            :ok
+        end
+      else
+        :ok
+      end
     end
 
     def create_policy(attrs, %Auth.Subject{} = subject) do

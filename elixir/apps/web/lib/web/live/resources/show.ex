@@ -465,15 +465,16 @@ defmodule Web.Resources.Show do
         Enum.into(resources, %{}, fn resource ->
           all_groups = Map.get(groups_by_resource, resource.id, [])
           peek_groups = Enum.take(all_groups, limit)
-          {resource.id, %{
-            items: peek_groups,
-            count: length(all_groups)
-          }}
+
+          {resource.id,
+           %{
+             items: peek_groups,
+             count: length(all_groups)
+           }}
         end)
 
       {:ok, peek}
     end
-
 
     def delete_resource(resource, subject) do
       Safe.scoped(resource, subject)
@@ -558,9 +559,12 @@ defmodule Web.Resources.Show do
 
     def filter_by_group_or_resource_name(queryable, name) do
       queryable = queryable |> with_joined_group() |> with_joined_resource()
-      {queryable, dynamic([group: g, resource: r],
-        fulltext_search(g.name, ^name) or fulltext_search(r.name, ^name)
-      )}
+
+      {queryable,
+       dynamic(
+         [group: g, resource: r],
+         fulltext_search(g.name, ^name) or fulltext_search(r.name, ^name)
+       )}
     end
 
     def filter_by_status(queryable, "active") do

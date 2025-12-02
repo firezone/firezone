@@ -92,8 +92,13 @@ defmodule API.ResourceController do
     attrs = set_param_defaults(params)
     resource = DB.fetch_resource(subject, id)
 
-    with {:ok, updated_resource} <- DB.update_resource(resource, attrs, subject) do
-      render(conn, :show, resource: updated_resource)
+    # Prevent updates to Internet resource
+    if resource.type == :internet do
+      {:error, {:forbidden, "Internet resource cannot be updated"}}
+    else
+      with {:ok, updated_resource} <- DB.update_resource(resource, attrs, subject) do
+        render(conn, :show, resource: updated_resource)
+      end
     end
   end
 
@@ -119,8 +124,13 @@ defmodule API.ResourceController do
     subject = conn.assigns.subject
     resource = DB.fetch_resource(subject, id)
 
-    with {:ok, resource} <- DB.delete_resource(resource, subject) do
-      render(conn, :show, resource: resource)
+    # Prevent deletion of Internet resource
+    if resource.type == :internet do
+      {:error, {:forbidden, "Internet resource cannot be deleted"}}
+    else
+      with {:ok, resource} <- DB.delete_resource(resource, subject) do
+        render(conn, :show, resource: resource)
+      end
     end
   end
 
