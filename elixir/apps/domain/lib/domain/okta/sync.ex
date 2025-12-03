@@ -32,7 +32,6 @@ defmodule Domain.Okta.Sync do
         )
 
       {:ok, directory} ->
-        # Perform the sync
         sync(directory)
     end
 
@@ -131,14 +130,14 @@ defmodule Domain.Okta.Sync do
     end
   end
 
-  # Process all apps, syncing users and groups for each app
+  # Process all okta apps, syncing users and groups for each app
   defp sync_all_apps!(apps, client, token, directory, synced_at) do
     Enum.each(apps, fn app ->
       sync_single_app!(app, client, token, directory, synced_at)
     end)
   end
 
-  # Sync a single app's users and groups in batches
+  # Sync a single okta app's users and groups in batches
   defp sync_single_app!(app, client, token, directory, synced_at) do
     app_id = app["id"]
 
@@ -295,7 +294,6 @@ defmodule Domain.Okta.Sync do
     end
   end
 
-  # Sync memberships for all groups after all apps have been processed
   defp sync_all_memberships!(client, token, directory, synced_at) do
     account_id = directory.account_id
     issuer = issuer(directory)
@@ -303,7 +301,6 @@ defmodule Domain.Okta.Sync do
 
     Logger.debug("Syncing group memberships", okta_directory_id: directory.id)
 
-    # Get all groups that were just synced
     group_idp_ids = DB.get_synced_group_idp_ids(account_id, directory_id, synced_at)
 
     Logger.debug("Found synced groups",
@@ -479,7 +476,7 @@ defmodule Domain.Okta.Sync do
     end
 
     def get_synced_group_idp_ids(account_id, directory_id, synced_at) do
-      from(g in Domain.Actors.Group,
+      from(g in Domain.Group,
         where: g.account_id == ^account_id,
         where: g.directory_id == ^directory_id,
         where: g.last_synced_at == ^synced_at,
@@ -490,7 +487,6 @@ defmodule Domain.Okta.Sync do
       |> Safe.all()
     end
 
-    # Identity batch upsert with raw SQL (Entra pattern)
     def batch_upsert_identities(
           _account_id,
           _issuer,
@@ -656,7 +652,6 @@ defmodule Domain.Okta.Sync do
         ]
     end
 
-    # Group batch upsert with raw SQL (Entra pattern)
     def batch_upsert_groups(_account_id, _directory_id, _last_synced_at, []),
       do: {:ok, %{upserted_groups: 0}}
 
@@ -678,7 +673,7 @@ defmodule Domain.Okta.Sync do
 
       {count, _} =
         Safe.unscoped()
-        |> Safe.insert_all(Domain.Actors.Group, values,
+        |> Safe.insert_all(Domain.Group, values,
           on_conflict: {:replace, [:name, :directory_id, :last_synced_at, :updated_at]},
           conflict_target: {:unsafe_fragment, ~s[(account_id, idp_id) WHERE idp_id IS NOT NULL]},
           returning: false
@@ -687,7 +682,6 @@ defmodule Domain.Okta.Sync do
       {:ok, %{upserted_groups: count}}
     end
 
-    # Membership batch upsert with raw SQL (Entra pattern)
     def batch_upsert_memberships(_account_id, _issuer, _directory_id, _last_synced_at, []),
       do: {:ok, %{upserted_memberships: 0}}
 
@@ -730,12 +724,12 @@ defmodule Domain.Okta.Sync do
           AND ei.account_id = $#{account_id}
           AND ei.issuer = $#{issuer}
         )
-        JOIN actor_groups ag ON (
+        JOIN groups ag ON (
           ag.idp_id = mi.group_idp_id
           AND ag.account_id = $#{account_id}
         )
       )
-      INSERT INTO actor_group_memberships (id, actor_id, group_id, account_id, last_synced_at)
+      INSERT INTO memberships (id, actor_id, group_id, account_id, last_synced_at)
       SELECT
         uuid_generate_v4(),
         rm.actor_id,
@@ -758,10 +752,10 @@ defmodule Domain.Okta.Sync do
       params ++ [Ecto.UUID.dump!(account_id), issuer, last_synced_at]
     end
 
-    # Cleanup functions (Entra pattern)
+    # Cleanup functions
     def delete_unsynced_groups(account_id, directory_id, synced_at) do
       query =
-        from(g in Domain.Actors.Group,
+        from(g in Domain.Group,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,
           where: g.last_synced_at != ^synced_at or is_nil(g.last_synced_at)
@@ -784,8 +778,8 @@ defmodule Domain.Okta.Sync do
     def delete_unsynced_memberships(account_id, directory_id, synced_at) do
       # Delete memberships for groups in this directory that haven't been synced
       query =
-        from(m in Domain.Actors.Membership,
-          join: g in Domain.Actors.Group,
+        from(m in Domain.Membership,
+          join: g in Domain.Group,
           on: m.group_id == g.id,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,
@@ -799,7 +793,7 @@ defmodule Domain.Okta.Sync do
       # Delete actors that no longer have any identities
       # Only delete actors created by this specific directory
       query =
-        from(a in Domain.Actors.Actor,
+        from(a in Domain.Actor,
           where: a.account_id == ^account_id,
           where: a.created_by_directory_id == ^directory_id,
           where:

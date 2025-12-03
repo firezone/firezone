@@ -339,7 +339,7 @@ defmodule Web.OIDCController do
       |> Safe.one()
     end
 
-    def upsert_identity(account_id, email, email_verified, issuer, idp_id, profile_attrs) do
+    def upsert_identity(account_id, email, email_verified, issuer, idp_id, %{} = profile_attrs) do
       now = DateTime.utc_now()
 
       profile_fields = [
@@ -362,9 +362,6 @@ defmodule Web.OIDCController do
           # string UUID -> dump to binary
           _ -> Ecto.UUID.dump!(account_id)
         end
-
-      # Ensure profile_attrs is at least an empty map
-      profile_attrs = profile_attrs || %{}
 
       # Precompute profile values outside the query
       profile_values = %{
@@ -451,18 +448,6 @@ defmodule Web.OIDCController do
 
         {_, [%ExternalIdentity{} = identity]} ->
           {:ok, Safe.preload(identity, [:actor, :account])}
-
-        # Fallback for environments where insert_all returns maps
-        {_, [row]} when is_map(row) ->
-          identity =
-            struct(ExternalIdentity, row)
-            |> Safe.preload([:actor, :account])
-
-          {:ok, identity}
-
-        # Defensive fallback; shouldn't happen with returning: true when count > 0
-        {_, []} ->
-          {:error, :actor_not_found}
       end
     end
   end

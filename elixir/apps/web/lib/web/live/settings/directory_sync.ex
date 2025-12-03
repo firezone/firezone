@@ -330,16 +330,6 @@ defmodule Web.Settings.DirectorySync do
     end
   end
 
-  def handle_event("sync_directory", %{"id" => _id, "type" => type}, socket)
-      when type in ["entra", "google"] do
-    # TODO: Implement directory sync functionality for Entra and Google
-    {:noreply, put_flash(socket, :info, "Directory sync for #{type} coming soon.")}
-  end
-
-  def handle_event("sync_directory", %{"id" => _id, "type" => _type}, socket) do
-    {:noreply, put_flash(socket, :error, "Unknown directory type.")}
-  end
-
   def handle_info(:do_verification, socket) do
     start_verification(socket)
   end
