@@ -108,7 +108,7 @@ config :domain, Domain.Changes.ReplicationConnection,
     accounts
     memberships
     clients
-    flows
+    policy_authorizations
     gateways
     sites
     policies

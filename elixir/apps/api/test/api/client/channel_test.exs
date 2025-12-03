@@ -2208,7 +2208,7 @@ defmodule API.Client.ChannelTest do
 
       gateway_id = gateway.id
 
-      assert_receive {{:authorize_flow, ^gateway_id}, {_channel_pid, _socket_ref}, payload}
+      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, payload}
 
       assert %{
                client: received_client,
@@ -2267,7 +2267,7 @@ defmodule API.Client.ChannelTest do
 
       gateway_id = gateway.id
 
-      assert_receive {{:authorize_flow, ^gateway_id}, {_channel_pid, _socket_ref}, payload}
+      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, payload}
 
       assert %{
                client: recv_client,
@@ -2317,7 +2317,7 @@ defmodule API.Client.ChannelTest do
 
       gateway_id = gateway.id
 
-      assert_receive {{:authorize_flow, ^gateway_id}, {channel_pid, socket_ref}, payload}
+      assert_receive {{:authorize_policy, ^gateway_id}, {channel_pid, socket_ref}, payload}
 
       assert %{
                client: recv_client,
@@ -2330,12 +2330,17 @@ defmodule API.Client.ChannelTest do
       client_id = recv_client.id
       resource_id = recv_resource.id
 
-      assert flow = Repo.get_by(Domain.Flows.Flow, client_id: client.id, resource_id: resource.id)
-      assert flow.client_id == client_id
-      assert flow.resource_id == Ecto.UUID.load!(resource_id)
-      assert flow.gateway_id == gateway.id
-      assert flow.policy_id == policy.id
-      assert flow.token_id == subject.token_id
+      assert policy_authorization =
+               Repo.get_by(Domain.PolicyAuthorization,
+                 client_id: client.id,
+                 resource_id: resource.id
+               )
+
+      assert policy_authorization.client_id == client_id
+      assert policy_authorization.resource_id == Ecto.UUID.load!(resource_id)
+      assert policy_authorization.gateway_id == gateway.id
+      assert policy_authorization.policy_id == policy.id
+      assert policy_authorization.token_id == subject.token_id
 
       assert client_id == client.id
       assert Ecto.UUID.load!(resource_id) == resource.id
@@ -2429,7 +2434,7 @@ defmodule API.Client.ChannelTest do
 
       gateway_id = gateway.id
 
-      assert_receive {{:authorize_flow, ^gateway_id}, {_channel_pid, _socket_ref}, _payload}
+      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, _payload}
     end
 
     test "selects compatible gateway versions", %{
@@ -2530,7 +2535,7 @@ defmodule API.Client.ChannelTest do
 
       gateway_id = gateway.id
 
-      assert_receive {{:authorize_flow, ^gateway_id}, {_channel_pid, _socket_ref}, _payload}
+      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, _payload}
     end
 
     test "selects already connected gateway", %{
@@ -2581,9 +2586,9 @@ defmodule API.Client.ChannelTest do
 
       gateway_id = gateway2.id
 
-      assert_receive {{:authorize_flow, ^gateway_id}, {_channel_pid, _socket_ref}, %{}}
+      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, %{}}
 
-      assert Repo.get_by(Domain.Flows.Flow,
+      assert Repo.get_by(Domain.PolicyAuthorization,
                resource_id: resource.id,
                gateway_id: gateway2.id,
                account_id: account.id
@@ -2596,9 +2601,9 @@ defmodule API.Client.ChannelTest do
 
       gateway_id = gateway1.id
 
-      assert_receive {{:authorize_flow, ^gateway_id}, {_channel_pid, _socket_ref}, %{}}
+      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, %{}}
 
-      assert Repo.get_by(Domain.Flows.Flow,
+      assert Repo.get_by(Domain.PolicyAuthorization,
                resource_id: resource.id,
                gateway_id: gateway1.id,
                account_id: account.id

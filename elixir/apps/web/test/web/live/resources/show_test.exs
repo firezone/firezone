@@ -294,14 +294,18 @@ defmodule Web.Live.Resources.ShowTest do
     resource: resource,
     conn: conn
   } do
-    flow =
-      Fixtures.Flows.create_flow(
+    policy_authorization =
+      Fixtures.PolicyAuthorizations.create_policy_authorization(
         account: account,
         resource: resource
       )
 
-    flow =
-      Repo.preload(flow, client: [:actor], gateway: [:site], policy: [:group, :resource])
+    policy_authorization =
+      Repo.preload(policy_authorization,
+        client: [:actor],
+        gateway: [:site],
+        policy: [:group, :resource]
+      )
 
     {:ok, lv, _html} =
       conn
@@ -310,20 +314,20 @@ defmodule Web.Live.Resources.ShowTest do
 
     [row] =
       lv
-      |> element("#flows")
+      |> element("#policy_authorizations")
       |> render()
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["policy"] =~ flow.policy.group.name
-    assert row["policy"] =~ flow.policy.resource.name
+    assert row["policy"] =~ policy_authorization.policy.group.name
+    assert row["policy"] =~ policy_authorization.policy.resource.name
 
     assert row["gateway"] ==
-             "#{flow.gateway.site.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+             "#{policy_authorization.gateway.site.name}-#{policy_authorization.gateway.name} #{policy_authorization.gateway.last_seen_remote_ip}"
 
-    assert row["client, actor"] =~ flow.client.name
-    assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"
-    assert row["client, actor"] =~ to_string(flow.client_remote_ip)
+    assert row["client, actor"] =~ policy_authorization.client.name
+    assert row["client, actor"] =~ "owned by #{policy_authorization.client.actor.name}"
+    assert row["client, actor"] =~ to_string(policy_authorization.client_remote_ip)
   end
 
   test "allows deleting resource", %{

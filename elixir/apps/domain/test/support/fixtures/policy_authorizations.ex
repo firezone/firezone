@@ -1,8 +1,8 @@
-defmodule Domain.Fixtures.Flows do
+defmodule Domain.Fixtures.PolicyAuthorizations do
   use Domain.Fixture
-  alias Domain.Flows
+  alias Domain.PolicyAuthorizations
 
-  def create_flow(attrs \\ %{}) do
+  def create_policy_authorization(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
     {account, attrs} =
@@ -82,7 +82,7 @@ defmodule Domain.Fixtures.Flows do
 
     expires_at = Map.get(attrs, :expires_at, subject.expires_at)
 
-    Flows.Flow.Changeset.create(%{
+    PolicyAuthorizations.PolicyAuthorization.Changeset.create(%{
       token_id: token_id,
       policy_id: policy_id,
       client_id: client.id,

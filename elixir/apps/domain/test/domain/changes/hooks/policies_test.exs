@@ -28,7 +28,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
   end
 
   describe "update/2" do
-    test "disable policy broadcasts deleted policy and deletes flows" do
+    test "disable policy broadcasts deleted policy and deletes policy_authorizations" do
       account = Fixtures.Accounts.create_account()
       resource = Fixtures.Resources.create_resource(account: account)
       policy = Fixtures.Policies.create_policy(account: account, resource: resource)
@@ -44,8 +44,13 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "disabled_at", "2023-10-01T00:00:00Z")
 
-      # Create a flow that should be deleted
-      flow = Fixtures.Flows.create_flow(policy: policy, resource: resource, account: account)
+      # Create a policy authorization that should be deleted
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
+          policy: policy,
+          resource: resource,
+          account: account
+        )
 
       assert :ok == on_update(0, old_data, data)
 
@@ -58,8 +63,8 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       assert broadcasted_policy.id == data["id"]
       assert broadcasted_policy.account_id == data["account_id"]
 
-      # Verify flow was deleted
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+      # Verify policy authorization was deleted
+      refute Repo.get_by(Domain.PolicyAuthorization, id: policy_authorization.id)
     end
 
     test "enable policy broadcasts created policy" do
@@ -118,7 +123,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       assert new_policy.resource_id == old_data["resource_id"]
     end
 
-    test "breaking update deletes flows" do
+    test "breaking update deletes policy authorizations" do
       account = Fixtures.Accounts.create_account()
       policy = Fixtures.Policies.create_policy(account: account)
 
@@ -131,17 +136,17 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "resource_id", "00000000-0000-0000-0000-000000000001")
 
-      assert flow =
-               Fixtures.Flows.create_flow(
+      assert policy_authorization =
+               Fixtures.PolicyAuthorizations.create_policy_authorization(
                  policy: policy,
                  account: account
                )
 
       assert :ok = on_update(0, old_data, data)
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+      refute Repo.get_by(Domain.PolicyAuthorization, id: policy_authorization.id)
     end
 
-    test "breaking update on group_id deletes flows" do
+    test "breaking update on group_id deletes policy authorizations" do
       account = Fixtures.Accounts.create_account()
       policy = Fixtures.Policies.create_policy(account: account)
 
@@ -154,13 +159,17 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "group_id", "00000000-0000-0000-0000-000000000001")
 
-      assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)
+      assert policy_authorization =
+               Fixtures.PolicyAuthorizations.create_policy_authorization(
+                 policy: policy,
+                 account: account
+               )
 
       assert :ok = on_update(0, old_data, data)
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+      refute Repo.get_by(Domain.PolicyAuthorization, id: policy_authorization.id)
     end
 
-    test "breaking update on conditions deletes flows" do
+    test "breaking update on conditions deletes policy authorizations" do
       account = Fixtures.Accounts.create_account()
       policy = Fixtures.Policies.create_policy(account: account)
 
@@ -179,10 +188,14 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
           %{"property" => "remote_ip", "operator" => "is_in", "values" => ["10.0.0.2"]}
         ])
 
-      assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)
+      assert policy_authorization =
+               Fixtures.PolicyAuthorizations.create_policy_authorization(
+                 policy: policy,
+                 account: account
+               )
 
       assert :ok = on_update(0, old_data, data)
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+      refute Repo.get_by(Domain.PolicyAuthorization, id: policy_authorization.id)
     end
   end
 

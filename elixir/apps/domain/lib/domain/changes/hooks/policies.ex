@@ -19,7 +19,7 @@ defmodule Domain.Changes.Hooks.Policies do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
     policy = struct_from_params(Policy, old_data)
-    delete_flows_for(policy)
+    delete_policy_authorizations_for(policy)
 
     on_delete(lsn, old_data)
   end
@@ -37,13 +37,13 @@ defmodule Domain.Changes.Hooks.Policies do
     change = %Change{lsn: lsn, op: :update, old_struct: old_policy, struct: policy}
 
     # Breaking updates
-    # This is a special case - we need to delete related flows because connectivity has changed
-    # The Gateway PID will receive flow deletion messages and process them to potentially reject
+    # This is a special case - we need to delete related policy_authorizations because connectivity has changed
+    # The Gateway PID will receive policy_authorization deletion messages and process them to potentially reject
     # access. The client PID (if connected) will toggle the resource deleted/created.
     if old_policy.conditions != policy.conditions or
          old_policy.group_id != policy.group_id or
          old_policy.resource_id != policy.resource_id do
-      delete_flows_for(old_policy)
+      delete_policy_authorizations_for(old_policy)
     end
 
     PubSub.Account.broadcast(policy.account_id, change)
@@ -57,13 +57,13 @@ defmodule Domain.Changes.Hooks.Policies do
     PubSub.Account.broadcast(policy.account_id, change)
   end
 
-  # Inline function from Domain.Flows
-  defp delete_flows_for(%Policy{} = policy) do
+  # Inline function from Domain.PolicyAuthorizations
+  defp delete_policy_authorizations_for(%Policy{} = policy) do
     import Ecto.Query
 
-    from(f in Domain.Flow, as: :flows)
-    |> where([flows: f], f.account_id == ^policy.account_id)
-    |> where([flows: f], f.policy_id == ^policy.id)
+    from(f in Domain.PolicyAuthorization, as: :policy_authorizations)
+    |> where([policy_authorizations: f], f.account_id == ^policy.account_id)
+    |> where([policy_authorizations: f], f.policy_id == ^policy.id)
     |> Domain.Safe.unscoped()
     |> Domain.Safe.delete_all()
   end

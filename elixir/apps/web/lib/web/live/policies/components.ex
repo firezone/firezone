@@ -988,84 +988,131 @@ defmodule Web.Policies.Components do
     defp group_synced?(group), do: not is_nil(group.directory_id)
     defp group_managed?(group), do: group.type == :managed
 
-    # Inline functions from Domain.Flows
-    def list_flows_for(assoc, subject, opts \\ [])
+    # Inline functions from Domain.PolicyAuthorizations
+    def list_policy_authorizations_for(assoc, subject, opts \\ [])
 
-    def list_flows_for(%Domain.Policy{} = policy, %Domain.Auth.Subject{} = subject, opts) do
-      DB.FlowQuery.all()
-      |> DB.FlowQuery.by_policy_id(policy.id)
-      |> list_flows(subject, opts)
+    def list_policy_authorizations_for(
+          %Domain.Policy{} = policy,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_policy_id(policy.id)
+      |> list_policy_authorizations(subject, opts)
     end
 
-    def list_flows_for(%Domain.Resource{} = resource, %Domain.Auth.Subject{} = subject, opts) do
-      DB.FlowQuery.all()
-      |> DB.FlowQuery.by_resource_id(resource.id)
-      |> list_flows(subject, opts)
+    def list_policy_authorizations_for(
+          %Domain.Resource{} = resource,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_resource_id(resource.id)
+      |> list_policy_authorizations(subject, opts)
     end
 
-    def list_flows_for(%Domain.Client{} = client, %Domain.Auth.Subject{} = subject, opts) do
-      DB.FlowQuery.all()
-      |> DB.FlowQuery.by_client_id(client.id)
-      |> list_flows(subject, opts)
+    def list_policy_authorizations_for(
+          %Domain.Client{} = client,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_client_id(client.id)
+      |> list_policy_authorizations(subject, opts)
     end
 
-    def list_flows_for(%Domain.Actor{} = actor, %Domain.Auth.Subject{} = subject, opts) do
-      DB.FlowQuery.all()
-      |> DB.FlowQuery.by_actor_id(actor.id)
-      |> list_flows(subject, opts)
+    def list_policy_authorizations_for(
+          %Domain.Actor{} = actor,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_actor_id(actor.id)
+      |> list_policy_authorizations(subject, opts)
     end
 
-    def list_flows_for(%Domain.Gateway{} = gateway, %Domain.Auth.Subject{} = subject, opts) do
-      DB.FlowQuery.all()
-      |> DB.FlowQuery.by_gateway_id(gateway.id)
-      |> list_flows(subject, opts)
+    def list_policy_authorizations_for(
+          %Domain.Gateway{} = gateway,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
+      |> list_policy_authorizations(subject, opts)
     end
 
-    defp list_flows(queryable, subject, opts) do
+    defp list_policy_authorizations(queryable, subject, opts) do
       queryable
       |> Domain.Safe.scoped(subject)
-      |> Domain.Safe.list(DB.FlowQuery, opts)
+      |> Domain.Safe.list(DB.PolicyAuthorizationQuery, opts)
     end
   end
 
-  defmodule DB.FlowQuery do
+  defmodule DB.PolicyAuthorizationQuery do
     use Domain, :query
 
     def all do
-      from(flows in Domain.Flow, as: :flows)
+      from(policy_authorizations in Domain.PolicyAuthorization, as: :policy_authorizations)
     end
 
     def expired(queryable) do
       now = DateTime.utc_now()
-      where(queryable, [flows: flows], flows.expires_at <= ^now)
+
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.expires_at <= ^now
+      )
     end
 
     def not_expired(queryable) do
       now = DateTime.utc_now()
-      where(queryable, [flows: flows], flows.expires_at > ^now)
+
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.expires_at > ^now
+      )
     end
 
     def by_id(queryable, id) do
-      where(queryable, [flows: flows], flows.id == ^id)
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.id == ^id
+      )
     end
 
     def by_account_id(queryable, account_id) do
-      where(queryable, [flows: flows], flows.account_id == ^account_id)
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.account_id == ^account_id
+      )
     end
 
     def by_token_id(queryable, token_id) do
-      where(queryable, [flows: flows], flows.token_id == ^token_id)
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.token_id == ^token_id
+      )
     end
 
     def by_policy_id(queryable, policy_id) do
-      where(queryable, [flows: flows], flows.policy_id == ^policy_id)
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.policy_id == ^policy_id
+      )
     end
 
     def for_cache(queryable) do
       queryable
       |> select(
-        [flows: flows],
-        {{flows.client_id, flows.resource_id}, {flows.id, flows.expires_at}}
+        [policy_authorizations: policy_authorizations],
+        {{policy_authorizations.client_id, policy_authorizations.resource_id},
+         {policy_authorizations.id, policy_authorizations.expires_at}}
       )
     end
 
@@ -1076,7 +1123,11 @@ defmodule Web.Policies.Components do
     end
 
     def by_membership_id(queryable, membership_id) do
-      where(queryable, [flows: flows], flows.membership_id == ^membership_id)
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.membership_id == ^membership_id
+      )
     end
 
     def by_site_id(queryable, site_id) do
@@ -1086,15 +1137,27 @@ defmodule Web.Policies.Components do
     end
 
     def by_resource_id(queryable, resource_id) do
-      where(queryable, [flows: flows], flows.resource_id == ^resource_id)
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.resource_id == ^resource_id
+      )
     end
 
     def by_not_in_resource_ids(queryable, resource_ids) do
-      where(queryable, [flows: flows], flows.resource_id not in ^resource_ids)
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.resource_id not in ^resource_ids
+      )
     end
 
     def by_client_id(queryable, client_id) do
-      where(queryable, [flows: flows], flows.client_id == ^client_id)
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.client_id == ^client_id
+      )
     end
 
     def by_actor_id(queryable, actor_id) do
@@ -1104,36 +1167,58 @@ defmodule Web.Policies.Components do
     end
 
     def by_gateway_id(queryable, gateway_id) do
-      where(queryable, [flows: flows], flows.gateway_id == ^gateway_id)
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.gateway_id == ^gateway_id
+      )
     end
 
     def with_joined_policy(queryable) do
-      with_flow_named_binding(queryable, :policy, fn queryable, binding ->
-        join(queryable, :inner, [flows: flows], policy in assoc(flows, ^binding), as: ^binding)
+      with_policy_authorization_named_binding(queryable, :policy, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          policy in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
       end)
     end
 
     def with_joined_client(queryable) do
-      with_flow_named_binding(queryable, :client, fn queryable, binding ->
-        join(queryable, :inner, [flows: flows], client in assoc(flows, ^binding), as: ^binding)
+      with_policy_authorization_named_binding(queryable, :client, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          client in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
       end)
     end
 
     def with_joined_site(queryable) do
       queryable
       |> with_joined_gateway()
-      |> with_flow_named_binding(:site, fn queryable, binding ->
+      |> with_policy_authorization_named_binding(:site, fn queryable, binding ->
         join(queryable, :inner, [gateway: gateway], site in assoc(gateway, :site), as: ^binding)
       end)
     end
 
     def with_joined_gateway(queryable) do
-      with_flow_named_binding(queryable, :gateway, fn queryable, binding ->
-        join(queryable, :inner, [flows: flows], gateway in assoc(flows, ^binding), as: ^binding)
+      with_policy_authorization_named_binding(queryable, :gateway, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          gateway in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
       end)
     end
 
-    def with_flow_named_binding(queryable, binding, fun) do
+    def with_policy_authorization_named_binding(queryable, binding, fun) do
       if has_named_binding?(queryable, binding) do
         queryable
       else
@@ -1145,8 +1230,8 @@ defmodule Web.Policies.Components do
     @impl Domain.Repo.Query
     def cursor_fields,
       do: [
-        {:flows, :desc, :inserted_at},
-        {:flows, :asc, :id}
+        {:policy_authorizations, :desc, :inserted_at},
+        {:policy_authorizations, :asc, :id}
       ]
   end
 end

@@ -19,11 +19,11 @@ defmodule Web.Policies.Show do
           policy: policy,
           providers: providers
         )
-        |> assign_live_table("flows",
-          query_module: DB.FlowQuery,
+        |> assign_live_table("policy_authorizations",
+          query_module: DB.PolicyAuthorizationQuery,
           sortable_fields: [],
           hide_filters: [:expiration],
-          callback: &handle_flows_update!/2
+          callback: &handle_policy_authorizations_update!/2
         )
 
       {:ok, socket}
@@ -37,19 +37,23 @@ defmodule Web.Policies.Show do
     {:noreply, socket}
   end
 
-  def handle_flows_update!(socket, list_opts) do
+  def handle_policy_authorizations_update!(socket, list_opts) do
     list_opts =
       Keyword.put(list_opts, :preload,
         client: [:actor],
         gateway: [:site]
       )
 
-    with {:ok, flows, metadata} <-
-           DB.list_flows_for(socket.assigns.policy, socket.assigns.subject, list_opts) do
+    with {:ok, policy_authorizations, metadata} <-
+           DB.list_policy_authorizations_for(
+             socket.assigns.policy,
+             socket.assigns.subject,
+             list_opts
+           ) do
       {:ok,
        assign(socket,
-         flows: flows,
-         flows_metadata: metadata
+         policy_authorizations: policy_authorizations,
+         policy_authorizations_metadata: metadata
        )}
     end
   end
@@ -173,36 +177,44 @@ defmodule Web.Policies.Show do
       </:help>
       <:content>
         <.live_table
-          id="flows"
-          rows={@flows}
-          row_id={&"flows-#{&1.id}"}
-          filters={@filters_by_table_id["flows"]}
-          filter={@filter_form_by_table_id["flows"]}
-          ordered_by={@order_by_table_id["flows"]}
-          metadata={@flows_metadata}
+          id="policy_authorizations"
+          rows={@policy_authorizations}
+          row_id={&"policy_authorizations-#{&1.id}"}
+          filters={@filters_by_table_id["policy_authorizations"]}
+          filter={@filter_form_by_table_id["policy_authorizations"]}
+          ordered_by={@order_by_table_id["policy_authorizations"]}
+          metadata={@policy_authorizations_metadata}
         >
-          <:col :let={flow} label="authorized">
-            <.relative_datetime datetime={flow.inserted_at} />
+          <:col :let={policy_authorization} label="authorized">
+            <.relative_datetime datetime={policy_authorization.inserted_at} />
           </:col>
-          <:col :let={flow} label="client, actor" class="w-3/12">
-            <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={link_style()}>
-              {flow.client.name}
+          <:col :let={policy_authorization} label="client, actor" class="w-3/12">
+            <.link
+              navigate={~p"/#{@account}/clients/#{policy_authorization.client_id}"}
+              class={link_style()}
+            >
+              {policy_authorization.client.name}
             </.link>
             owned by
             <.link
-              navigate={~p"/#{@account}/actors/#{flow.client.actor_id}?#{[return_to: @current_path]}"}
+              navigate={
+                ~p"/#{@account}/actors/#{policy_authorization.client.actor_id}?#{[return_to: @current_path]}"
+              }
               class={link_style()}
             >
-              {flow.client.actor.name}
+              {policy_authorization.client.actor.name}
             </.link>
-            {flow.client_remote_ip}
+            {policy_authorization.client_remote_ip}
           </:col>
-          <:col :let={flow} label="gateway" class="w-3/12">
-            <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={link_style()}>
-              {flow.gateway.site.name}-{flow.gateway.name}
+          <:col :let={policy_authorization} label="gateway" class="w-3/12">
+            <.link
+              navigate={~p"/#{@account}/gateways/#{policy_authorization.gateway_id}"}
+              class={link_style()}
+            >
+              {policy_authorization.gateway.site.name}-{policy_authorization.gateway.name}
             </.link>
             <br />
-            <code class="text-xs">{flow.gateway_remote_ip}</code>
+            <code class="text-xs">{policy_authorization.gateway_remote_ip}</code>
           </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No activity to display.</div>

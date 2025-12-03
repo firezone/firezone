@@ -44,7 +44,7 @@ defmodule Domain.Cache.Client do
         }
 
 
-      For 1,000 policies, 500 resources, 100 memberships, 100 flows (per connected client):
+      For 1,000 policies, 500 resources, 100 memberships, 100 policy_authorizations (per connected client):
 
         513,400 bytes, 280,700 bytes, 24,640 bytes, 24,640 bytes
 
@@ -83,7 +83,7 @@ defmodule Domain.Cache.Client do
         }
 
   @doc """
-    Authorizes a new flow for the given client and resource or returns a list of violated properties if
+    Authorizes a new policy_authorization for the given client and resource or returns a list of violated properties if
     the resource is not authorized for the client.
   """
 

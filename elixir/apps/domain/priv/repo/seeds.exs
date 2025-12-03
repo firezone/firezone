@@ -15,7 +15,7 @@ defmodule Domain.Repo.Seeds do
     EmailOTP,
     Entra,
     ExternalIdentity,
-    Flow,
+    PolicyAuthorization,
     Gateway,
     Google,
     Group,
@@ -596,7 +596,7 @@ defmodule Domain.Repo.Seeds do
       remote_ip_location_lon: 30.5167
     }
 
-    # Create client token for unprivileged actor so flows can reference it
+    # Create client token for unprivileged actor so policy authorizations can reference it
     {:ok, unprivileged_client_token} =
       Repo.insert(%Token{
         type: :client,
@@ -1486,9 +1486,9 @@ defmodule Domain.Repo.Seeds do
         actor_id: unprivileged_actor.id
       )
 
-    # Create flow directly without context module
-    _flow =
-      %Flow{
+    # Create policy_authorization directly without context module
+    _policy_authorization =
+      %PolicyAuthorization{
         client_id: user_iphone.id,
         gateway_id: gateway1.id,
         resource_id: cidr_resource.id,

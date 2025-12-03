@@ -19,19 +19,19 @@ defmodule Domain.Changes.Hooks.ResourceConnections do
     connection = struct_from_params(Domain.Resources.Connection, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: connection}
 
-    delete_flows_for(connection)
+    delete_policy_authorizations_for(connection)
 
     PubSub.Account.broadcast(connection.account_id, change)
   end
 
-  # Inline function from Domain.Flows
-  defp delete_flows_for(%Domain.Resources.Connection{} = connection) do
+  # Inline function from Domain.PolicyAuthorizations
+  defp delete_policy_authorizations_for(%Domain.Resources.Connection{} = connection) do
     import Ecto.Query
 
-    from(f in Domain.Flow, as: :flows)
-    |> where([flows: f], f.account_id == ^connection.account_id)
-    |> where([flows: f], f.resource_id == ^connection.resource_id)
-    |> join(:inner, [flows: f], g in Domain.Gateway,
+    from(f in Domain.PolicyAuthorization, as: :policy_authorizations)
+    |> where([policy_authorizations: f], f.account_id == ^connection.account_id)
+    |> where([policy_authorizations: f], f.resource_id == ^connection.resource_id)
+    |> join(:inner, [policy_authorizations: f], g in Domain.Gateway,
       on: f.gateway_id == g.id,
       as: :gateway
     )

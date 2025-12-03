@@ -19,17 +19,17 @@ defmodule Domain.Changes.Hooks.Resources do
 
     # Breaking updates
 
-    # This is a special case - we need to delete related flows because connectivity has changed
-    # Gateway _does_ handle resource filter changes so we don't need to delete flows
+    # This is a special case - we need to delete related policy_authorizations because connectivity has changed
+    # Gateway _does_ handle resource filter changes so we don't need to delete policy_authorizations
     # for those changes - they're processed by the Gateway channel pid.
 
-    # The Gateway channel will process these flow deletions and re-authorize the flow.
+    # The Gateway channel will process these policy_authorization deletions and re-authorize the policy_authorization.
     # However, the gateway will also react to the resource update and send reject_access
-    # so that the Gateway's state is updated correctly, and the client can create a new flow.
+    # so that the Gateway's state is updated correctly, and the client can create a new policy_authorization.
     if old_resource.ip_stack != resource.ip_stack or
          old_resource.type != resource.type or
          old_resource.address != resource.address do
-      delete_flows_for(resource)
+      delete_policy_authorizations_for(resource)
     end
 
     PubSub.Account.broadcast(resource.account_id, change)
@@ -43,13 +43,13 @@ defmodule Domain.Changes.Hooks.Resources do
     PubSub.Account.broadcast(resource.account_id, change)
   end
 
-  # Inline function from Domain.Flows
-  defp delete_flows_for(%Domain.Resource{} = resource) do
+  # Inline function from Domain.PolicyAuthorizations
+  defp delete_policy_authorizations_for(%Domain.Resource{} = resource) do
     import Ecto.Query
 
-    from(f in Domain.Flow, as: :flows)
-    |> where([flows: f], f.account_id == ^resource.account_id)
-    |> where([flows: f], f.resource_id == ^resource.id)
+    from(f in Domain.PolicyAuthorization, as: :policy_authorizations)
+    |> where([policy_authorizations: f], f.account_id == ^resource.account_id)
+    |> where([policy_authorizations: f], f.resource_id == ^resource.id)
     |> Domain.Safe.unscoped()
     |> Domain.Safe.delete_all()
   end

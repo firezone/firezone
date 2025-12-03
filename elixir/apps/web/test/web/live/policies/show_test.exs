@@ -206,14 +206,14 @@ defmodule Web.Live.Policies.ShowTest do
     policy: policy,
     conn: conn
   } do
-    flow =
-      Fixtures.Flows.create_flow(
+    policy_authorization =
+      Fixtures.PolicyAuthorizations.create_policy_authorization(
         account: account,
         resource: resource,
         policy: policy
       )
 
-    flow = Repo.preload(flow, client: [:actor], gateway: [:site])
+    policy_authorization = Repo.preload(policy_authorization, client: [:actor], gateway: [:site])
 
     {:ok, lv, _html} =
       conn
@@ -222,17 +222,17 @@ defmodule Web.Live.Policies.ShowTest do
 
     [row] =
       lv
-      |> element("#flows")
+      |> element("#policy_authorizations")
       |> render()
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["client, actor"] =~ flow.client.name
-    assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"
-    assert row["client, actor"] =~ to_string(flow.client_remote_ip)
+    assert row["client, actor"] =~ policy_authorization.client.name
+    assert row["client, actor"] =~ "owned by #{policy_authorization.client.actor.name}"
+    assert row["client, actor"] =~ to_string(policy_authorization.client_remote_ip)
 
     assert row["gateway"] =~
-             "#{flow.gateway.site.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+             "#{policy_authorization.gateway.site.name}-#{policy_authorization.gateway.name} #{policy_authorization.gateway.last_seen_remote_ip}"
   end
 
   test "allows deleting policy", %{

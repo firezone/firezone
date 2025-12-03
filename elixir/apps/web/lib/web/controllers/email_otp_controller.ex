@@ -18,11 +18,12 @@ defmodule Web.EmailOTPController do
   require Logger
 
   # For persisting state across the email OTP flow
-  @cookie_key "email_otp"
+  @cookie_key "_email_otp_"
   @cookie_options [
     sign: true,
+    encrypt: true,
     max_age: 30 * 60,
-    same_site: "Lax",
+    same_site: "Strict",
     secure: true,
     http_only: true
   ]

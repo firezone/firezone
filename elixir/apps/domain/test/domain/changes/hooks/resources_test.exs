@@ -1,7 +1,7 @@
 defmodule Domain.Changes.Hooks.ResourcesTest do
   use Domain.DataCase, async: true
   import Domain.Changes.Hooks.Resources
-  alias Domain.{Changes.Change, Flows, Resources, PubSub}
+  alias Domain.{Changes.Change, PolicyAuthorizations, Resources, PubSub}
 
   describe "insert/1" do
     test "broadcasts created resource" do
@@ -77,7 +77,7 @@ defmodule Domain.Changes.Hooks.ResourcesTest do
       assert updated_resource.address_description == resource.address_description
     end
 
-    test "breaking update deletes flows" do
+    test "breaking update deletes policy authorizations" do
       account = Fixtures.Accounts.create_account()
       filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
       resource = Fixtures.Resources.create_resource(account: account, filters: filters)
@@ -94,9 +94,14 @@ defmodule Domain.Changes.Hooks.ResourcesTest do
 
       data = Map.put(old_data, "type", "cidr")
 
-      assert flow = Fixtures.Flows.create_flow(resource: resource, account: account)
+      assert policy_authorization =
+               Fixtures.PolicyAuthorizations.create_policy_authorization(
+                 resource: resource,
+                 account: account
+               )
+
       assert :ok = on_update(0, old_data, data)
-      refute Repo.get_by(Flows.Flow, id: flow.id)
+      refute Repo.get_by(PolicyAuthorizations.PolicyAuthorization, id: policy_authorization.id)
     end
   end
 

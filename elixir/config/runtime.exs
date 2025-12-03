@@ -154,8 +154,8 @@ if config_env() == :prod do
       # Periodic jobs
       {Oban.Plugins.Cron,
        crontab: [
-         # Delete expired flows every minute
-         {"* * * * *", Domain.Workers.DeleteExpiredFlows},
+         # Delete expired policy_authorizations every minute
+         {"* * * * *", Domain.Workers.DeleteExpiredPolicyAuthorizations},
 
          # Schedule Entra directory sync every 2 hours
          {"0 */2 * * *", Domain.Entra.Scheduler},

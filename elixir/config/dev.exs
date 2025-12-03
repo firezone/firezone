@@ -43,7 +43,7 @@ config :domain, Oban,
     # Periodic jobs
     {Oban.Plugins.Cron,
      crontab: [
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredFlows},
+       {worker_dev_schedule, Domain.Workers.DeleteExpiredPolicyAuthorizations},
        {worker_dev_schedule, Domain.Entra.Scheduler},
        {worker_dev_schedule, Domain.Google.Scheduler},
        {worker_dev_schedule, Domain.Telemetry.SyncErrorNotification,

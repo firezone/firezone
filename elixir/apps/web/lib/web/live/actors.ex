@@ -728,7 +728,10 @@ defmodule Web.Actors do
                     data-copy-to-clipboard-html-entities="true"
                     class="absolute top-1 right-1 px-3 py-1.5 text-sm font-medium text-green-700 bg-white border border-green-300 hover:bg-green-50 rounded inline-flex items-center"
                   >
-                    <span id="created-token-copy-container-default-message" class="inline-flex items-center">
+                    <span
+                      id="created-token-copy-container-default-message"
+                      class="inline-flex items-center"
+                    >
                       <.icon name="hero-clipboard-document" class="w-4 h-4" />
                     </span>
                     <span

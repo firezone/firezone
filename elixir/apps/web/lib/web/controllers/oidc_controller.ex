@@ -15,6 +15,7 @@ defmodule Web.OIDCController do
   # For persisting state across the IdP redirect
   @cookie_prefix "_oidc_"
   @cookie_options [
+    encrypt: true,
     sign: true,
     max_age: 30 * 60,
     same_site: "Lax",

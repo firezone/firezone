@@ -185,19 +185,20 @@ defmodule Web.Live.Clients.ShowTest do
            |> Map.fetch!("owner") =~ actor.name
   end
 
-  test "renders flows table", %{
+  test "renders policy_authorizations table", %{
     account: account,
     identity: identity,
     client: client,
     conn: conn
   } do
-    flow =
-      Fixtures.Flows.create_flow(
+    policy_authorization =
+      Fixtures.PolicyAuthorizations.create_policy_authorization(
         account: account,
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:group, :resource]])
+    policy_authorization =
+      Repo.preload(policy_authorization, [:client, gateway: [:site], policy: [:group, :resource]])
 
     {:ok, lv, _html} =
       conn
@@ -206,33 +207,35 @@ defmodule Web.Live.Clients.ShowTest do
 
     [row] =
       lv
-      |> element("#flows")
+      |> element("#policy_authorizations")
       |> render()
       |> table_to_map()
 
     assert row["authorized"]
     assert row["remote ip"] == to_string(client.last_seen_remote_ip)
-    assert row["policy"] =~ flow.policy.group.name
-    assert row["policy"] =~ flow.policy.resource.name
+    assert row["policy"] =~ policy_authorization.policy.group.name
+    assert row["policy"] =~ policy_authorization.policy.resource.name
 
     assert row["gateway"] ==
-             "#{flow.gateway.site.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+             "#{policy_authorization.gateway.site.name}-#{policy_authorization.gateway.name} #{policy_authorization.gateway.last_seen_remote_ip}"
   end
 
-  test "does not render flows for deleted policies", %{
+  test "does not render policy_authorizations for deleted policies", %{
     account: account,
     identity: identity,
     client: client,
     conn: conn
   } do
-    flow =
-      Fixtures.Flows.create_flow(
+    policy_authorization =
+      Fixtures.PolicyAuthorizations.create_policy_authorization(
         account: account,
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:group, :resource]])
-    Fixtures.Policies.delete_policy(flow.policy)
+    policy_authorization =
+      Repo.preload(policy_authorization, [:client, gateway: [:site], policy: [:group, :resource]])
+
+    Fixtures.Policies.delete_policy(policy_authorization.policy)
 
     {:ok, lv, _html} =
       conn
@@ -241,26 +244,28 @@ defmodule Web.Live.Clients.ShowTest do
 
     assert [] =
              lv
-             |> element("#flows")
+             |> element("#policy_authorizations")
              |> render()
              |> table_to_map()
   end
 
-  test "does not render flows for deleted policy assocs", %{
+  test "does not render policy_authorizations for deleted policy assocs", %{
     account: account,
     identity: identity,
     client: client,
     conn: conn
   } do
-    flow =
-      Fixtures.Flows.create_flow(
+    policy_authorization =
+      Fixtures.PolicyAuthorizations.create_policy_authorization(
         account: account,
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:site], policy: [:group, :resource]])
-    Fixtures.Actors.delete_group(flow.policy.group)
-    Fixtures.Resources.delete_resource(flow.policy.resource)
+    policy_authorization =
+      Repo.preload(policy_authorization, [:client, gateway: [:site], policy: [:group, :resource]])
+
+    Fixtures.Actors.delete_group(policy_authorization.policy.group)
+    Fixtures.Resources.delete_resource(policy_authorization.policy.resource)
 
     {:ok, lv, _html} =
       conn
@@ -269,7 +274,7 @@ defmodule Web.Live.Clients.ShowTest do
 
     assert [] ==
              lv
-             |> element("#flows")
+             |> element("#policy_authorizations")
              |> render()
              |> table_to_map()
   end

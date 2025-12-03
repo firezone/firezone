@@ -450,7 +450,8 @@ defmodule Web.Sites.NewToken do
         |> Map.put("secret_fragment", Domain.Crypto.random_token(32, encoder: :hex32))
 
       with {:ok, token} <- Domain.Auth.create_token(attrs, subject) do
-        {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Domain.Auth.encode_fragment!(token)}
+        {:ok, %{token | secret_nonce: nil, secret_fragment: nil},
+         Domain.Auth.encode_fragment!(token)}
       end
     end
   end

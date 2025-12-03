@@ -38,9 +38,6 @@ defmodule Domain.Changes.Hooks.ResourceConnectionsTest do
   end
 
   describe "delete/1" do
-    test "deletes flows for resource and site" do
-    end
-
     test "broadcasts deleted connection" do
       account = Fixtures.Accounts.create_account()
       resource = Fixtures.Resources.create_resource(account: account)

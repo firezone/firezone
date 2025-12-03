@@ -3,22 +3,22 @@ defmodule Web.Auth do
   require Logger
 
   # This cookie is used for client login.
-  @client_auth_cookie_name "fz_client_auth"
+  @client_auth_cookie_name "_client_auth"
   @client_auth_cookie_options [
     sign: true,
     max_age: 2 * 60,
-    same_site: "Lax",
+    same_site: "Strict",
     secure: true,
     http_only: true
   ]
 
   # This is the cookie which will store recent account ids
   # that the user has signed in to.
-  @recent_accounts_cookie_name "fz_recent_account_ids"
+  @recent_accounts_cookie_name "_recent_account_ids"
   @recent_accounts_cookie_options [
     sign: true,
     max_age: 365 * 24 * 60 * 60,
-    same_site: "Lax",
+    same_site: "Strict",
     secure: true,
     http_only: true
   ]

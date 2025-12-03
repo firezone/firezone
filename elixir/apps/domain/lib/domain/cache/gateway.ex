@@ -1,6 +1,6 @@
 defmodule Domain.Cache.Gateway do
   @moduledoc """
-    This cache is used in the gateway channel processes to maintain a materialized view of the gateway flow state.
+    This cache is used in the gateway channel processes to maintain a materialized view of the gateway policy_authorization state.
     The cache is updated via WAL messages streamed from the Domain.Changes.ReplicationConnection module.
 
     We use basic data structures and binary representations instead of full Ecto schema structs
@@ -9,9 +9,9 @@ defmodule Domain.Cache.Gateway do
 
     Data structure:
 
-      %{{client_id:uuidv4:16, resource_id:uuidv4:16}:16 => %{flow_id:uuidv4:16 => expires_at:integer:8}:40}:(num_keys * 1.8 * 8 - large map)
+      %{{client_id:uuidv4:16, resource_id:uuidv4:16}:16 => %{policy_authorization_id:uuidv4:16 => expires_at:integer:8}:40}:(num_keys * 1.8 * 8 - large map)
 
-    For 10,000 client/resource entries, consisting of 10 flows each:
+    For 10,000 client/resource entries, consisting of 10 policy_authorizations each:
 
       10,000 keys, 100,000 values
       480,000 bytes (outer map keys), 6,400,000 bytes (inner map), 144,000 bytes (outer map overhead)
@@ -29,46 +29,52 @@ defmodule Domain.Cache.Gateway do
   @type client_resource_key ::
           {client_id :: Cache.Cacheable.uuid_binary(),
            resource_id :: Cache.Cacheable.uuid_binary()}
-  @type flow_map :: %{
-          (flow_id :: Cache.Cacheable.uuid_binary()) => expires_at_unix :: non_neg_integer
+  @type policy_authorization_map :: %{
+          (policy_authorization_id :: Cache.Cacheable.uuid_binary()) =>
+            expires_at_unix :: non_neg_integer
         }
-  @type t :: %{client_resource_key() => flow_map()}
+  @type t :: %{client_resource_key() => policy_authorization_map()}
 
   @doc """
-    Fetches relevant flows from the DB and transforms them into the cache format.
+    Fetches relevant policy_authorizations from the DB and transforms them into the cache format.
   """
   @spec hydrate(Gateways.Gateway.t()) :: t()
   def hydrate(gateway) do
-    OpenTelemetry.Tracer.with_span "Domain.Cache.hydrate_flows",
+    OpenTelemetry.Tracer.with_span "Domain.Cache.hydrate_policy_authorizations",
       attributes: %{
         gateway_id: gateway.id,
         account_id: gateway.account_id
       } do
-      all_gateway_flows_for_cache!(gateway)
-      |> Enum.reduce(%{}, fn {{client_id, resource_id}, {flow_id, expires_at}}, acc ->
+      all_gateway_policy_authorizations_for_cache!(gateway)
+      |> Enum.reduce(%{}, fn {{client_id, resource_id}, {policy_authorization_id, expires_at}},
+                             acc ->
         cid_bytes = dump!(client_id)
         rid_bytes = dump!(resource_id)
-        fid_bytes = dump!(flow_id)
+        paid_bytes = dump!(policy_authorization_id)
         expires_at_unix = DateTime.to_unix(expires_at, :second)
 
-        flow_id_map = Map.get(acc, {cid_bytes, rid_bytes}, %{})
+        policy_authorization_id_map = Map.get(acc, {cid_bytes, rid_bytes}, %{})
 
-        Map.put(acc, {cid_bytes, rid_bytes}, Map.put(flow_id_map, fid_bytes, expires_at_unix))
+        Map.put(
+          acc,
+          {cid_bytes, rid_bytes},
+          Map.put(policy_authorization_id_map, paid_bytes, expires_at_unix)
+        )
       end)
     end
   end
 
   @doc """
-    Removes expired flows from the cache.
+    Removes expired policy_authorizations from the cache.
   """
   @spec prune(t()) :: t()
   def prune(cache) do
     now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 
-    # 1. Remove individual flows older than 14 days, then remove access entry if no flows left
-    for {tuple, flow_id_map} <- cache,
+    # 1. Remove individual policy_authorizations older than 14 days, then remove access entry if no policy_authorizations left
+    for {tuple, policy_authorization_id_map} <- cache,
         filtered =
-          Map.reject(flow_id_map, fn {_fid_bytes, expires_at_unix} ->
+          Map.reject(policy_authorization_id_map, fn {_fid_bytes, expires_at_unix} ->
             expires_at_unix < now_unix
           end),
         map_size(filtered) > 0,
@@ -88,85 +94,93 @@ defmodule Domain.Cache.Gateway do
       nil ->
         nil
 
-      flow_id_map ->
+      policy_authorization_id_map ->
         # Use longest expiration to minimize unnecessary access churn
-        flow_id_map
+        policy_authorization_id_map
         |> Map.values()
         |> Enum.max()
     end
   end
 
   @doc """
-    Add a flow to the cache. Returns the updated cache.
+    Add a policy_authorization to the cache. Returns the updated cache.
   """
   @spec put(t(), Ecto.UUID.t(), Cache.Cacheable.uuid_binary(), Ecto.UUID.t(), DateTime.t()) :: t()
-  def put(%{} = cache, client_id, rid_bytes, flow_id, %DateTime{} = expires_at) do
+  def put(%{} = cache, client_id, rid_bytes, policy_authorization_id, %DateTime{} = expires_at) do
     tuple = {dump!(client_id), rid_bytes}
 
-    flow_id_map =
+    policy_authorization_id_map =
       Map.get(cache, tuple, %{})
-      |> Map.put(dump!(flow_id), DateTime.to_unix(expires_at, :second))
+      |> Map.put(dump!(policy_authorization_id), DateTime.to_unix(expires_at, :second))
 
-    Map.put(cache, tuple, flow_id_map)
+    Map.put(cache, tuple, policy_authorization_id_map)
   end
 
   @doc """
-    Delete a flow from the cache. If another flow exists for the same client/resource,
+    Delete a policy_authorization from the cache. If another policy_authorization exists for the same client/resource,
     we return the max expiration for that resource.
-    If not, we optimistically try to reauthorize access by creating a new flow. This prevents
+    If not, we optimistically try to reauthorize access by creating a new policy_authorization. This prevents
     removal of access on the Gateway but not the client, which would cause connectivity issues.
     If we can't create a new authorization, we send unauthorized so that access is removed.
   """
-  @spec reauthorize_deleted_flow(t(), Domain.Flow.t()) ::
+  @spec reauthorize_deleted_policy_authorization(t(), Domain.PolicyAuthorization.t()) ::
           {:ok, non_neg_integer(), t()} | {:error, :unauthorized, t()} | {:error, :not_found}
-  def reauthorize_deleted_flow(cache, %Domain.Flow{} = flow) do
-    key = flow_key(flow)
-    flow_id = dump!(flow.id)
+  def reauthorize_deleted_policy_authorization(
+        cache,
+        %Domain.PolicyAuthorization{} = policy_authorization
+      ) do
+    key = policy_authorization_key(policy_authorization)
+    policy_authorization_id = dump!(policy_authorization.id)
 
-    case get_and_remove_flow(cache, key, flow_id) do
+    case get_and_remove_policy_authorization(cache, key, policy_authorization_id) do
       {:not_found, _cache} ->
         {:error, :not_found}
 
-      {:last_flow_removed, cache} ->
-        handle_last_flow_removal(cache, key, flow)
+      {:last_policy_authorization_removed, cache} ->
+        handle_last_policy_authorization_removal(cache, key, policy_authorization)
 
-      {:flow_removed, remaining_flows, cache} ->
-        max_expiration = remaining_flows |> Map.values() |> Enum.max()
+      {:policy_authorization_removed, remaining_policy_authorizations, cache} ->
+        max_expiration = remaining_policy_authorizations |> Map.values() |> Enum.max()
         {:ok, max_expiration, cache}
     end
   end
 
-  defp flow_key(%Domain.Flow{client_id: client_id, resource_id: resource_id}) do
+  defp policy_authorization_key(%Domain.PolicyAuthorization{
+         client_id: client_id,
+         resource_id: resource_id
+       }) do
     {dump!(client_id), dump!(resource_id)}
   end
 
-  defp get_and_remove_flow(cache, key, flow_id) do
+  defp get_and_remove_policy_authorization(cache, key, policy_authorization_id) do
     case Map.fetch(cache, key) do
       :error ->
         {:not_found, cache}
 
-      {:ok, flow_map} ->
-        case Map.pop(flow_map, flow_id) do
+      {:ok, policy_authorization_map} ->
+        case Map.pop(policy_authorization_map, policy_authorization_id) do
           {nil, _} ->
             {:not_found, cache}
 
-          {_expiration, remaining_flows} when remaining_flows == %{} ->
-            {:last_flow_removed, Map.delete(cache, key)}
+          {_expiration, remaining_policy_authorizations}
+          when remaining_policy_authorizations == %{} ->
+            {:last_policy_authorization_removed, Map.delete(cache, key)}
 
-          {_expiration, remaining_flows} ->
-            {:flow_removed, remaining_flows, Map.put(cache, key, remaining_flows)}
+          {_expiration, remaining_policy_authorizations} ->
+            {:policy_authorization_removed, remaining_policy_authorizations,
+             Map.put(cache, key, remaining_policy_authorizations)}
         end
     end
   end
 
-  defp handle_last_flow_removal(cache, key, flow) do
-    case reauthorize_flow(flow) do
-      {:ok, new_flow} ->
-        new_flow_id = dump!(new_flow.id)
-        expires_at_unix = DateTime.to_unix(new_flow.expires_at, :second)
-        new_flow_map = %{new_flow_id => expires_at_unix}
+  defp handle_last_policy_authorization_removal(cache, key, policy_authorization) do
+    case reauthorize_policy_authorization(policy_authorization) do
+      {:ok, new_policy_authorization} ->
+        new_policy_authorization_id = dump!(new_policy_authorization.id)
+        expires_at_unix = DateTime.to_unix(new_policy_authorization.expires_at, :second)
+        new_policy_authorization_map = %{new_policy_authorization_id => expires_at_unix}
 
-        {:ok, expires_at_unix, Map.put(cache, key, new_flow_map)}
+        {:ok, expires_at_unix, Map.put(cache, key, new_policy_authorization_map)}
 
       :error ->
         {:error, :unauthorized, cache}
@@ -200,73 +214,78 @@ defmodule Domain.Cache.Gateway do
     |> Enum.map(fn {{cid, _}, _} -> {load!(cid), resource_id} end)
   end
 
-  # Inline functions from Domain.Flows
+  # Inline functions from Domain.PolicyAuthorizations
 
-  defp all_gateway_flows_for_cache!(%Domain.Gateway{} = gateway) do
+  defp all_gateway_policy_authorizations_for_cache!(%Domain.Gateway{} = gateway) do
     import Ecto.Query
 
     now = DateTime.utc_now()
 
-    from(f in Domain.Flow, as: :flows)
-    |> where([flows: f], f.account_id == ^gateway.account_id)
-    |> where([flows: f], f.gateway_id == ^gateway.id)
-    |> where([flows: f], f.expires_at > ^now)
+    from(f in Domain.PolicyAuthorization, as: :policy_authorizations)
+    |> where([policy_authorizations: f], f.account_id == ^gateway.account_id)
+    |> where([policy_authorizations: f], f.gateway_id == ^gateway.id)
+    |> where([policy_authorizations: f], f.expires_at > ^now)
     |> select(
-      [flows: f],
+      [policy_authorizations: f],
       {{f.client_id, f.resource_id}, {f.id, f.expires_at}}
     )
     |> Domain.Safe.unscoped()
     |> Domain.Safe.all()
   end
 
-  defp reauthorize_flow(%Domain.Flow{} = flow) do
+  defp reauthorize_policy_authorization(%Domain.PolicyAuthorization{} = policy_authorization) do
     require Logger
 
-    with client when not is_nil(client) <- fetch_client_by_id!(flow.client_id),
-         {:ok, token} <- fetch_token_by_id(flow.token_id),
-         {:ok, gateway} <- fetch_gateway_by_id(flow.gateway_id),
+    with client when not is_nil(client) <- fetch_client_by_id!(policy_authorization.client_id),
+         {:ok, token} <- fetch_token_by_id(policy_authorization.token_id),
+         {:ok, gateway} <- fetch_gateway_by_id(policy_authorization.gateway_id),
          # We only want to reauthorize the resource for this gateway if the resource is still connected to its
          # site.
          policies when policies != [] <-
            all_policies_in_site_for_resource_id_and_actor_id!(
-             flow.account_id,
+             policy_authorization.account_id,
              gateway.site_id,
-             flow.resource_id,
+             policy_authorization.resource_id,
              client.actor_id
            ),
          {:ok, policy, expires_at} <-
-           longest_conforming_policy_for_client(policies, client, token, flow.expires_at),
+           longest_conforming_policy_for_client(
+             policies,
+             client,
+             token,
+             policy_authorization.expires_at
+           ),
          {:ok, membership} <-
            fetch_membership_by_actor_id_and_group_id(
              client.actor_id,
              policy.group_id
            ),
-         {:ok, new_flow} <-
-           create_flow_changeset(%{
-             token_id: flow.token_id,
+         {:ok, new_policy_authorization} <-
+           create_policy_authorization_changeset(%{
+             token_id: policy_authorization.token_id,
              policy_id: policy.id,
-             client_id: flow.client_id,
-             gateway_id: flow.gateway_id,
-             resource_id: flow.resource_id,
+             client_id: policy_authorization.client_id,
+             gateway_id: policy_authorization.gateway_id,
+             resource_id: policy_authorization.resource_id,
              membership_id: membership.id,
-             account_id: flow.account_id,
+             account_id: policy_authorization.account_id,
              client_remote_ip: client.last_seen_remote_ip,
              client_user_agent: client.last_seen_user_agent,
-             gateway_remote_ip: flow.gateway_remote_ip,
+             gateway_remote_ip: policy_authorization.gateway_remote_ip,
              expires_at: expires_at
            })
            |> Domain.Safe.unscoped()
            |> Domain.Safe.insert() do
-      Logger.info("Reauthorized flow",
-        old_flow: inspect(flow),
-        new_flow: inspect(new_flow)
+      Logger.info("Reauthorized policy_authorization",
+        old_policy_authorization: inspect(policy_authorization),
+        new_policy_authorization: inspect(new_policy_authorization)
       )
 
-      {:ok, new_flow}
+      {:ok, new_policy_authorization}
     else
       reason ->
-        Logger.info("Failed to reauthorize flow",
-          old_flow: inspect(flow),
+        Logger.info("Failed to reauthorize policy_authorization",
+          old_policy_authorization: inspect(policy_authorization),
           reason: inspect(reason)
         )
 
@@ -274,7 +293,7 @@ defmodule Domain.Cache.Gateway do
     end
   end
 
-  # Database helper functions for reauthorize_flow
+  # Database helper functions for reauthorize_policy_authorization
 
   defp fetch_client_by_id!(id, _opts \\ []) do
     import Ecto.Query
@@ -432,8 +451,8 @@ defmodule Domain.Cache.Gateway do
     end
   end
 
-  # Private changeset function for flow creation
-  defp create_flow_changeset(attrs) do
+  # Private changeset function for policy_authorization creation
+  defp create_policy_authorization_changeset(attrs) do
     import Ecto.Changeset
 
     fields = ~w[token_id policy_id client_id gateway_id resource_id membership_id
@@ -442,9 +461,9 @@ defmodule Domain.Cache.Gateway do
                 client_remote_ip client_user_agent
                 gateway_remote_ip]a
 
-    %Domain.Flow{}
+    %Domain.PolicyAuthorization{}
     |> cast(attrs, fields)
     |> validate_required(fields)
-    |> Domain.Flow.changeset()
+    |> Domain.PolicyAuthorization.changeset()
   end
 end

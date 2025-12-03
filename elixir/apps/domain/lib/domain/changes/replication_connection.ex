@@ -6,7 +6,7 @@ defmodule Domain.Changes.ReplicationConnection do
     "accounts" => Hooks.Accounts,
     "memberships" => Hooks.Memberships,
     "clients" => Hooks.Clients,
-    "flows" => Hooks.Flows,
+    "policy_authorizations" => Hooks.PolicyAuthorizations,
     "gateways" => Hooks.Gateways,
     "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,

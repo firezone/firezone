@@ -111,7 +111,7 @@ defmodule API.Gateway.ChannelTest do
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
     end
 
-    test ":prune_cache removes key completely when all flows are expired", %{
+    test ":prune_cache removes key completely when all policy authorizations are expired", %{
       account: account,
       client: client,
       resource: resource,
@@ -119,8 +119,8 @@ defmodule API.Gateway.ChannelTest do
       gateway: gateway,
       subject: subject
     } do
-      expired_flow =
-        Fixtures.Flows.create_flow(
+      expired_policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource,
@@ -139,11 +139,11 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
+        {{:authorize_policy, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: expired_flow.id,
+           policy_authorization_id: expired_policy_authorization.id,
            authorization_expires_at: expired_expiration,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
@@ -159,7 +159,7 @@ defmodule API.Gateway.ChannelTest do
       assert %{
                assigns: %{
                  cache: %{
-                   {^cid_bytes, ^rid_bytes} => _flows
+                   {^cid_bytes, ^rid_bytes} => _policy_authorizations
                  }
                }
              } = :sys.get_state(socket.channel_pid)
@@ -173,7 +173,7 @@ defmodule API.Gateway.ChannelTest do
              } = :sys.get_state(socket.channel_pid)
     end
 
-    test ":prune_cache prunes only expired flows from the cache", %{
+    test ":prune_cache prunes only expired policy authorizations from the cache", %{
       account: account,
       client: client,
       resource: resource,
@@ -181,16 +181,16 @@ defmodule API.Gateway.ChannelTest do
       gateway: gateway,
       subject: subject
     } do
-      expired_flow =
-        Fixtures.Flows.create_flow(
+      expired_policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource,
           gateway: gateway
         )
 
-      unexpired_flow =
-        Fixtures.Flows.create_flow(
+      unexpired_policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource,
@@ -211,11 +211,11 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
+        {{:authorize_policy, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: expired_flow.id,
+           policy_authorization_id: expired_policy_authorization.id,
            authorization_expires_at: expired_expiration,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
@@ -227,11 +227,11 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
+        {{:authorize_policy, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: unexpired_flow.id,
+           policy_authorization_id: unexpired_policy_authorization.id,
            authorization_expires_at: unexpired_expiration,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
@@ -245,14 +245,15 @@ defmodule API.Gateway.ChannelTest do
       assert %{
                assigns: %{
                  cache: %{
-                   {^cid_bytes, ^rid_bytes} => flows
+                   {^cid_bytes, ^rid_bytes} => authorizations
                  }
                }
              } = :sys.get_state(socket.channel_pid)
 
-      assert flows == %{
-               Ecto.UUID.dump!(expired_flow.id) => DateTime.to_unix(expired_expiration, :second),
-               Ecto.UUID.dump!(unexpired_flow.id) =>
+      assert authorizations == %{
+               Ecto.UUID.dump!(expired_policy_authorization.id) =>
+                 DateTime.to_unix(expired_expiration, :second),
+               Ecto.UUID.dump!(unexpired_policy_authorization.id) =>
                  DateTime.to_unix(unexpired_expiration, :second)
              }
 
@@ -261,13 +262,13 @@ defmodule API.Gateway.ChannelTest do
       assert %{
                assigns: %{
                  cache: %{
-                   {^cid_bytes, ^rid_bytes} => flows
+                   {^cid_bytes, ^rid_bytes} => authorizations
                  }
                }
              } = :sys.get_state(socket.channel_pid)
 
-      assert flows == %{
-               Ecto.UUID.dump!(unexpired_flow.id) =>
+      assert authorizations == %{
+               Ecto.UUID.dump!(unexpired_policy_authorization.id) =>
                  DateTime.to_unix(unexpired_expiration, :second)
              }
     end
@@ -356,8 +357,8 @@ defmodule API.Gateway.ChannelTest do
       relay: relay,
       socket: socket
     } do
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource
@@ -379,7 +380,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -422,8 +423,8 @@ defmodule API.Gateway.ChannelTest do
           connections: [%{site_id: internet_site.id}]
         )
 
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource
@@ -445,7 +446,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -465,7 +466,7 @@ defmodule API.Gateway.ChannelTest do
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
 
-    test "does not send reject_access if another flow is granting access to the same client and resource",
+    test "does not send reject_access if another policy authorization is granting access to the same client and resource",
          %{
            account: account,
            client: client,
@@ -483,8 +484,8 @@ defmodule API.Gateway.ChannelTest do
 
       :ok = PubSub.Account.subscribe(account.id)
 
-      flow1 =
-        Fixtures.Flows.create_flow(
+      policy_authorization1 =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           subject: subject,
           client: client,
@@ -493,8 +494,8 @@ defmodule API.Gateway.ChannelTest do
           expires_at: in_one_hour
         )
 
-      flow2 =
-        Fixtures.Flows.create_flow(
+      policy_authorization2 =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           subject: subject,
           client: client,
@@ -509,8 +510,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow1.id,
-           authorization_expires_at: flow1.expires_at,
+           policy_authorization_id: policy_authorization1.id,
+           authorization_expires_at: policy_authorization1.expires_at,
            client_payload: client_payload
          }}
       )
@@ -523,8 +524,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow2.id,
-           authorization_expires_at: flow2.expires_at,
+           policy_authorization_id: policy_authorization2.id,
+           authorization_expires_at: policy_authorization2.expires_at,
            client_payload: client_payload
          }}
       )
@@ -532,24 +533,24 @@ defmodule API.Gateway.ChannelTest do
       assert_push "allow_access", %{}
 
       data = %{
-        "id" => flow1.id,
+        "id" => policy_authorization1.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
         "account_id" => account.id,
-        "token_id" => flow1.token_id,
+        "token_id" => policy_authorization1.token_id,
         "gateway_id" => gateway.id,
-        "policy_id" => flow1.policy_id,
-        "membership_id" => flow1.group_membership_id,
-        "expires_at" => flow1.expires_at
+        "policy_id" => policy_authorization1.policy_id,
+        "membership_id" => policy_authorization1.group_membership_id,
+        "expires_at" => policy_authorization1.expires_at
       }
 
-      Changes.Hooks.Flows.on_delete(100, data)
+      Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
 
-      flow_id = flow1.id
+      policy_authorization_id = policy_authorization1.id
 
       assert_receive %Changes.Change{
         lsn: 100,
-        old_struct: %Domain.Flows.Flow{id: ^flow_id}
+        old_struct: %Domain.PolicyAuthorization{id: ^policy_authorization_id}
       }
 
       refute_push "allow_access", _payload
@@ -560,11 +561,11 @@ defmodule API.Gateway.ChannelTest do
       assert payload == %{
                client_id: client.id,
                resource_id: resource.id,
-               expires_at: DateTime.to_unix(flow2.expires_at, :second)
+               expires_at: DateTime.to_unix(policy_authorization2.expires_at, :second)
              }
     end
 
-    test "handles flow deletion event when access is removed", %{
+    test "handles policy authorization deletion event when access is removed", %{
       account: account,
       client: client,
       resource: resource,
@@ -583,8 +584,8 @@ defmodule API.Gateway.ChannelTest do
       relay_token = Fixtures.Relays.create_token(account: account)
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           subject: subject,
           client: client,
@@ -593,15 +594,15 @@ defmodule API.Gateway.ChannelTest do
         )
 
       data = %{
-        "id" => flow.id,
+        "id" => policy_authorization.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
         "account_id" => account.id,
         "gateway_id" => gateway.id,
-        "token_id" => flow.token_id,
-        "membership_id" => flow.group_membership_id,
-        "policy_id" => flow.policy_id,
-        "expires_at" => flow.expires_at
+        "token_id" => policy_authorization.token_id,
+        "membership_id" => policy_authorization.group_membership_id,
+        "policy_id" => policy_authorization.policy_id,
+        "expires_at" => policy_authorization.expires_at
       }
 
       send(
@@ -610,7 +611,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -618,7 +619,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      Changes.Hooks.Flows.on_delete(100, data)
+      Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -629,7 +630,7 @@ defmodule API.Gateway.ChannelTest do
       assert resource_id == resource.id
     end
 
-    test "ignores flow deletion for other flows",
+    test "ignores policy authorization deletion for other policy authorizations",
          %{
            account: account,
            client: client,
@@ -649,8 +650,8 @@ defmodule API.Gateway.ChannelTest do
       relay_token = Fixtures.Relays.create_token(account: account)
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           subject: subject,
           client: client,
@@ -666,8 +667,8 @@ defmodule API.Gateway.ChannelTest do
           connections: [%{site_id: gateway.site_id}]
         )
 
-      other_flow1 =
-        Fixtures.Flows.create_flow(
+      other_policy_authorization1 =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           subject: subject,
           client: other_client,
@@ -675,8 +676,8 @@ defmodule API.Gateway.ChannelTest do
           gateway: gateway
         )
 
-      other_flow2 =
-        Fixtures.Flows.create_flow(
+      other_policy_authorization2 =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           subject: subject,
           client: client,
@@ -684,14 +685,14 @@ defmodule API.Gateway.ChannelTest do
           gateway: gateway
         )
 
-      # Build up flow cache
+      # Build up policy authorization cache
       send(
         socket.channel_pid,
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -705,7 +706,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: other_client,
            resource: to_cache(resource),
-           flow_id: other_flow1.id,
+           policy_authorization_id: other_policy_authorization1.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -719,7 +720,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(other_resource),
-           flow_id: other_flow2.id,
+           policy_authorization_id: other_policy_authorization2.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -732,29 +733,31 @@ defmodule API.Gateway.ChannelTest do
 
       assert cache == %{
                {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)} => %{
-                 Ecto.UUID.dump!(flow.id) => DateTime.to_unix(expires_at, :second)
+                 Ecto.UUID.dump!(policy_authorization.id) => DateTime.to_unix(expires_at, :second)
                },
                {Ecto.UUID.dump!(other_client.id), Ecto.UUID.dump!(resource.id)} => %{
-                 Ecto.UUID.dump!(other_flow1.id) => DateTime.to_unix(expires_at, :second)
+                 Ecto.UUID.dump!(other_policy_authorization1.id) =>
+                   DateTime.to_unix(expires_at, :second)
                },
                {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(other_resource.id)} => %{
-                 Ecto.UUID.dump!(other_flow2.id) => DateTime.to_unix(expires_at, :second)
+                 Ecto.UUID.dump!(other_policy_authorization2.id) =>
+                   DateTime.to_unix(expires_at, :second)
                }
              }
 
       data = %{
-        "id" => other_flow1.id,
-        "client_id" => other_flow1.client_id,
-        "resource_id" => other_flow1.resource_id,
-        "account_id" => other_flow1.account_id,
-        "gateway_id" => other_flow1.gateway_id,
-        "token_id" => other_flow1.token_id,
-        "policy_id" => other_flow1.policy_id,
-        "membership_id" => other_flow1.group_membership_id,
-        "expires_at" => other_flow1.expires_at
+        "id" => other_policy_authorization1.id,
+        "client_id" => other_policy_authorization1.client_id,
+        "resource_id" => other_policy_authorization1.resource_id,
+        "account_id" => other_policy_authorization1.account_id,
+        "gateway_id" => other_policy_authorization1.gateway_id,
+        "token_id" => other_policy_authorization1.token_id,
+        "policy_id" => other_policy_authorization1.policy_id,
+        "membership_id" => other_policy_authorization1.group_membership_id,
+        "expires_at" => other_policy_authorization1.expires_at
       }
 
-      Changes.Hooks.Flows.on_delete(100, data)
+      Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -765,18 +768,18 @@ defmodule API.Gateway.ChannelTest do
       assert resource_id == resource.id
 
       data = %{
-        "id" => other_flow2.id,
-        "client_id" => other_flow2.client_id,
-        "resource_id" => other_flow2.resource_id,
-        "account_id" => other_flow2.account_id,
-        "gateway_id" => other_flow2.gateway_id,
-        "token_id" => other_flow2.token_id,
-        "policy_id" => other_flow2.policy_id,
-        "membership_id" => other_flow2.group_membership_id,
-        "expires_at" => other_flow2.expires_at
+        "id" => other_policy_authorization2.id,
+        "client_id" => other_policy_authorization2.client_id,
+        "resource_id" => other_policy_authorization2.resource_id,
+        "account_id" => other_policy_authorization2.account_id,
+        "gateway_id" => other_policy_authorization2.gateway_id,
+        "token_id" => other_policy_authorization2.token_id,
+        "policy_id" => other_policy_authorization2.policy_id,
+        "membership_id" => other_policy_authorization2.group_membership_id,
+        "expires_at" => other_policy_authorization2.expires_at
       }
 
-      Changes.Hooks.Flows.on_delete(200, data)
+      Changes.Hooks.PolicyAuthorizations.on_delete(200, data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -797,8 +800,8 @@ defmodule API.Gateway.ChannelTest do
       relay: relay,
       socket: socket
     } do
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource
@@ -819,7 +822,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -839,12 +842,12 @@ defmodule API.Gateway.ChannelTest do
 
       cid_bytes = Ecto.UUID.dump!(client.id)
       rid_bytes = Ecto.UUID.dump!(resource.id)
-      fid_bytes = Ecto.UUID.dump!(flow.id)
+      paid_bytes = Ecto.UUID.dump!(policy_authorization.id)
       expires_at_unix = DateTime.to_unix(expires_at, :second)
 
       assert %{
                assigns: %{
-                 cache: %{{^cid_bytes, ^rid_bytes} => %{^fid_bytes => ^expires_at_unix}}
+                 cache: %{{^cid_bytes, ^rid_bytes} => %{^paid_bytes => ^expires_at_unix}}
                }
              } = :sys.get_state(socket.channel_pid)
 
@@ -863,8 +866,8 @@ defmodule API.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
 
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource,
@@ -879,7 +882,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -932,8 +935,8 @@ defmodule API.Gateway.ChannelTest do
       resource: resource,
       socket: socket
     } do
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource
@@ -950,7 +953,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -998,7 +1001,7 @@ defmodule API.Gateway.ChannelTest do
       resource: resource
     } do
       # The resource is already connected to the gateway via the setup
-      # No flows exist yet, so the resource isn't in the cache
+      # No policy authorizations exist yet, so the resource isn't in the cache
 
       old_data = %{
         "id" => resource.id,
@@ -1354,8 +1357,8 @@ defmodule API.Gateway.ChannelTest do
       global_relay: relay,
       socket: socket
     } do
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource
@@ -1378,7 +1381,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload,
            client_preshared_key: preshared_key
@@ -1418,15 +1421,16 @@ defmodule API.Gateway.ChannelTest do
                DateTime.truncate(expires_at, :second)
     end
 
-    test "request_connection tracks flow and sends reject_access when flow is deleted", %{
-      account: account,
-      client: client,
-      gateway: gateway,
-      resource: resource,
-      relay: relay,
-      socket: socket,
-      subject: subject
-    } do
+    test "request_connection tracks policy authorization and sends reject_access when policy authorization is deleted",
+         %{
+           account: account,
+           client: client,
+           gateway: gateway,
+           resource: resource,
+           relay: relay,
+           socket: socket,
+           subject: subject
+         } do
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -1438,8 +1442,8 @@ defmodule API.Gateway.ChannelTest do
       relay_token = Fixtures.Relays.create_token(account: account)
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           subject: subject,
           client: client,
@@ -1453,7 +1457,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload,
            client_preshared_key: preshared_key
@@ -1463,18 +1467,18 @@ defmodule API.Gateway.ChannelTest do
       assert_push "request_connection", %{}
 
       data = %{
-        "id" => flow.id,
+        "id" => policy_authorization.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
         "account_id" => account.id,
         "gateway_id" => gateway.id,
-        "token_id" => flow.token_id,
-        "membership_id" => flow.group_membership_id,
-        "policy_id" => flow.policy_id,
-        "expires_at" => flow.expires_at
+        "token_id" => policy_authorization.token_id,
+        "membership_id" => policy_authorization.group_membership_id,
+        "policy_id" => policy_authorization.policy_id,
+        "expires_at" => policy_authorization.expires_at
       }
 
-      Changes.Hooks.Flows.on_delete(100, data)
+      Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -1493,8 +1497,8 @@ defmodule API.Gateway.ChannelTest do
       socket: socket,
       subject: subject
     } do
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource
@@ -1512,11 +1516,11 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
+        {{:authorize_policy, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
@@ -1571,14 +1575,15 @@ defmodule API.Gateway.ChannelTest do
                DateTime.truncate(expires_at, :second)
     end
 
-    test "authorize_flow tracks flow and sends reject_access when flow is deleted", %{
-      account: account,
-      client: client,
-      gateway: gateway,
-      resource: resource,
-      socket: socket,
-      subject: subject
-    } do
+    test "authorize_flow tracks policy authorization and sends reject_access when policy authorization is deleted",
+         %{
+           account: account,
+           client: client,
+           gateway: gateway,
+           resource: resource,
+           socket: socket,
+           subject: subject
+         } do
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -1589,8 +1594,8 @@ defmodule API.Gateway.ChannelTest do
         gateway: %{username: "C", password: "D"}
       }
 
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           subject: subject,
           client: client,
@@ -1600,11 +1605,11 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
+        {{:authorize_policy, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
@@ -1615,18 +1620,18 @@ defmodule API.Gateway.ChannelTest do
       assert_push "authorize_flow", %{}
 
       data = %{
-        "id" => flow.id,
+        "id" => policy_authorization.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
         "account_id" => account.id,
         "gateway_id" => gateway.id,
-        "token_id" => flow.token_id,
-        "membership_id" => flow.group_membership_id,
-        "policy_id" => flow.policy_id,
-        "expires_at" => flow.expires_at
+        "token_id" => policy_authorization.token_id,
+        "membership_id" => policy_authorization.group_membership_id,
+        "policy_id" => policy_authorization.policy_id,
+        "expires_at" => policy_authorization.expires_at
       }
 
-      Changes.Hooks.Flows.on_delete(100, data)
+      Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -1652,8 +1657,8 @@ defmodule API.Gateway.ChannelTest do
       socket: socket,
       subject: subject
     } do
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource
@@ -1677,11 +1682,11 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
+        {{:authorize_policy, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
@@ -1727,8 +1732,8 @@ defmodule API.Gateway.ChannelTest do
       gateway: gateway,
       socket: socket
     } do
-      flow =
-        Fixtures.Flows.create_flow(
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(
           account: account,
           client: client,
           resource: resource
@@ -1752,7 +1757,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: to_cache(resource),
-           flow_id: flow.id,
+           policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at,
            client_payload: payload,
            client_preshared_key: preshared_key

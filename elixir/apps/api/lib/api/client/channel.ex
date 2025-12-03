@@ -65,8 +65,8 @@ defmodule API.Client.Channel do
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
 
-    # Delete any stale flows for resources we may not have access to anymore based on policy conditions
-    delete_stale_flows_on_connect(
+    # Delete any stale policy_authorizations for resources we may not have access to anymore based on policy conditions
+    delete_stale_policy_authorizations_on_connect(
       socket.assigns.client,
       Enum.map(resources, &Ecto.UUID.load!(&1.id))
     )
@@ -369,8 +369,8 @@ defmodule API.Client.Channel do
 
       # TODO: Optimization
       # Move this to a Task.start that completes after broadcasting authorize_flow
-      {:ok, flow} =
-        create_flow(
+      {:ok, policy_authorization} =
+        create_policy_authorization(
           socket.assigns.client,
           gateway,
           resource_id,
@@ -386,11 +386,11 @@ defmodule API.Client.Channel do
       :ok =
         PubSub.Account.broadcast(
           socket.assigns.client.account_id,
-          {{:authorize_flow, gateway.id}, {self(), socket_ref(socket)},
+          {{:authorize_policy, gateway.id}, {self(), socket_ref(socket)},
            %{
              client: socket.assigns.client,
              resource: resource,
-             flow_id: flow.id,
+             policy_authorization_id: policy_authorization.id,
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key,
@@ -516,8 +516,8 @@ defmodule API.Client.Channel do
            end),
          true <- gateway.online? do
       # TODO: Optimization
-      {:ok, flow} =
-        create_flow(
+      {:ok, policy_authorization} =
+        create_policy_authorization(
           socket.assigns.client,
           gateway,
           resource_id,
@@ -534,7 +534,7 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
-             flow_id: flow.id,
+             policy_authorization_id: policy_authorization.id,
              authorization_expires_at: expires_at,
              client_payload: payload
            }}
@@ -590,8 +590,8 @@ defmodule API.Client.Channel do
            end),
          true <- gateway.online? do
       # TODO: Optimization
-      {:ok, flow} =
-        create_flow(
+      {:ok, policy_authorization} =
+        create_policy_authorization(
           socket.assigns.client,
           gateway,
           resource_id,
@@ -608,7 +608,7 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
-             flow_id: flow.id,
+             policy_authorization_id: policy_authorization.id,
              authorization_expires_at: expires_at,
              client_payload: client_payload,
              client_preshared_key: preshared_key
@@ -1095,21 +1095,21 @@ defmodule API.Client.Channel do
     |> Enum.map(&Enum.random(elem(&1, 1)))
   end
 
-  # Inline functions from Domain.Flows
+  # Inline functions from Domain.PolicyAuthorizations
 
-  defp delete_stale_flows_on_connect(%Domain.Client{} = client, resource_ids)
+  defp delete_stale_policy_authorizations_on_connect(%Domain.Client{} = client, resource_ids)
        when is_list(resource_ids) do
     import Ecto.Query
 
-    from(f in Domain.Flow, as: :flows)
-    |> where([flows: f], f.account_id == ^client.account_id)
-    |> where([flows: f], f.client_id == ^client.id)
-    |> where([flows: f], f.resource_id not in ^resource_ids)
+    from(pa in Domain.PolicyAuthorization, as: :policy_authorizations)
+    |> where([policy_authorizations: pa], pa.account_id == ^client.account_id)
+    |> where([policy_authorizations: pa], pa.client_id == ^client.id)
+    |> where([policy_authorizations: pa], pa.resource_id not in ^resource_ids)
     |> Domain.Safe.unscoped()
     |> Domain.Safe.delete_all()
   end
 
-  defp create_flow(
+  defp create_policy_authorization(
          %Domain.Client{
            id: client_id,
            account_id: account_id,
@@ -1135,7 +1135,7 @@ defmodule API.Client.Channel do
          expires_at
        ) do
     changeset =
-      create_flow_changeset(%{
+      create_policy_authorization_changeset(%{
         token_id: token_id,
         policy_id: policy_id,
         client_id: client_id,
@@ -1153,7 +1153,7 @@ defmodule API.Client.Channel do
     |> Domain.Safe.insert()
   end
 
-  defp create_flow_changeset(attrs) do
+  defp create_policy_authorization_changeset(attrs) do
     import Ecto.Changeset
 
     fields = ~w[token_id policy_id client_id gateway_id resource_id membership_id
@@ -1162,9 +1162,9 @@ defmodule API.Client.Channel do
                 client_remote_ip client_user_agent
                 gateway_remote_ip]a
 
-    %Domain.Flow{}
+    %Domain.PolicyAuthorization{}
     |> cast(attrs, fields)
     |> validate_required(fields)
-    |> Domain.Flow.changeset()
+    |> Domain.PolicyAuthorization.changeset()
   end
 end

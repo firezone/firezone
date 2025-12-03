@@ -20,7 +20,7 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
     "email_otp_auth_providers" => Domain.EmailOTP.AuthProvider,
     "entra_auth_providers" => Domain.Entra.AuthProvider,
     "entra_directories" => Domain.Entra.Directory,
-    "flows" => Domain.Flow,
+    "policy_authorizations" => Domain.PolicyAuthorization,
     "gateways" => Domain.Gateway,
     "google_auth_providers" => Domain.Google.AuthProvider,
     "google_directories" => Domain.Google.Directory,

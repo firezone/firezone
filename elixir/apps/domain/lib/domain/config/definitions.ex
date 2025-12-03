@@ -714,11 +714,6 @@ defmodule Domain.Config.Definitions do
   defconfig(:feature_idp_sync_enabled, :boolean, default: true)
 
   @doc """
-  Boolean flag to turn UI flow activities on/off for all accounts.
-  """
-  defconfig(:feature_flow_activities_enabled, :boolean, default: false)
-
-  @doc """
   Boolean flag to turn Policy Conditions functionality on/off for all accounts.
   """
   defconfig(:feature_policy_conditions_enabled, :boolean, default: false)

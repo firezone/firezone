@@ -2316,7 +2316,9 @@ defmodule Domain.AuthTest do
         |> Fixtures.Auth.add_permission(Authorizer.manage_own_identities_permission())
         |> Fixtures.Auth.add_permission(Authorizer.manage_identities_permission())
         |> Fixtures.Auth.add_permission(Tokens.Authorizer.manage_tokens_permission())
-        |> Fixtures.Auth.add_permission(Domain.Flows.Authorizer.create_flows_permission())
+        |> Fixtures.Auth.add_permission(
+          Domain.PolicyAuthorizations.Authorizer.create_policy_authorizations_permission()
+        )
 
       assert {:ok, deleted_identity} = delete_identity(identity, subject)
 

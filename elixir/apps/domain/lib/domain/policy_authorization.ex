@@ -1,4 +1,4 @@
-defmodule Domain.Flow do
+defmodule Domain.PolicyAuthorization do
   use Domain, :schema
 
   @type t :: %__MODULE__{
@@ -17,7 +17,7 @@ defmodule Domain.Flow do
           inserted_at: DateTime.t()
         }
 
-  schema "flows" do
+  schema "policy_authorizations" do
     belongs_to :policy, Domain.Policy
     belongs_to :client, Domain.Client
     belongs_to :gateway, Domain.Gateway
