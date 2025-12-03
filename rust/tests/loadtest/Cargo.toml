@@ -1,0 +1,19 @@
+[package]
+name = "firezone-loadtest"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+description = "HTTP load testing CLI for Firezone VPN"
+
+[[bin]]
+name = "firezone-loadtest"
+path = "src/main.rs"
+
+[dependencies]
+goose = "0.18"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true
