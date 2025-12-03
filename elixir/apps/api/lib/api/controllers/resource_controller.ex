@@ -141,16 +141,12 @@ defmodule API.ResourceController do
   defp create_changeset(attrs, subject) do
     account = subject.account
 
-    %Domain.Resource{connections: []}
-    |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack]a)
+    %Domain.Resource{}
+    |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack site_id]a)
     |> Domain.Resource.changeset()
-    |> Ecto.Changeset.validate_required(~w[name type]a)
+    |> Ecto.Changeset.validate_required(~w[name type site_id]a)
     |> Ecto.Changeset.put_change(:account_id, account.id)
     |> Domain.Resource.validate_address(account)
-    |> Ecto.Changeset.cast_assoc(:connections,
-      with: &Domain.Resources.Connection.Changeset.changeset(account.id, &1, &2, subject),
-      required: true
-    )
   end
 
   defmodule DB do
@@ -188,19 +184,14 @@ defmodule API.ResourceController do
     end
 
     defp changeset(resource, attrs, subject) do
-      update_fields = ~w[address address_description name type ip_stack]a
-      required_fields = ~w[name type]a
+      update_fields = ~w[address address_description name type ip_stack site_id]a
+      required_fields = ~w[name type site_id]a
 
       resource
       |> Ecto.Changeset.cast(attrs, update_fields)
       |> Ecto.Changeset.validate_required(required_fields)
       |> Domain.Resource.validate_address(subject.account)
       |> Domain.Resource.changeset()
-      |> Ecto.Changeset.cast_assoc(:connections,
-        with:
-          &Domain.Resources.Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
-        required: true
-      )
     end
 
     def cursor_fields do

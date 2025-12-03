@@ -2,6 +2,7 @@ defmodule Web.Sites.New do
   use Web, :live_view
   alias Domain.Billing
   alias __MODULE__.DB
+  import Ecto.Changeset
 
   def mount(_params, _session, socket) do
     changeset = new_site()
@@ -54,8 +55,7 @@ defmodule Web.Sites.New do
     attrs = Map.put(attrs, "tokens", [%{}])
 
     with true <- Billing.can_create_sites?(socket.assigns.subject.account),
-         changeset =
-           create_changeset(socket.assigns.subject.account, attrs, socket.assigns.subject),
+         changeset = create_changeset(socket.assigns.subject.account, attrs),
          {:ok, site} <- DB.create_site(changeset, socket.assigns.subject) do
       socket =
         socket
@@ -89,38 +89,13 @@ defmodule Web.Sites.New do
   end
 
   defp change_site(site, attrs) do
-    import Ecto.Changeset
-
     site
-    |> Domain.Repo.preload(:account)
     |> cast(attrs, [:name])
-    |> validate_required([:name])
-    |> Domain.Site.changeset()
   end
 
-  defp create_changeset(account, attrs, subject) do
-    import Ecto.Changeset
-
-    %Domain.Site{}
+  defp create_changeset(account, attrs) do
+    %Domain.Site{account_id: account.id}
     |> cast(attrs, [:name])
-    |> validate_required([:name])
-    |> Domain.Site.changeset()
-    |> put_change(:account_id, account.id)
-    |> put_change(:managed_by, :account)
-    |> cast_assoc(:tokens,
-      required: false,
-      with: fn struct, attrs ->
-        import Ecto.Changeset
-
-        struct
-        |> cast(attrs, [:name, :expires_at])
-        |> put_change(:type, :site)
-        |> put_change(:account_id, subject.account.id)
-        |> put_change(:created_by, :identity)
-        |> put_change(:created_by_identity_id, subject.identity.id)
-        |> Domain.Token.changeset()
-      end
-    )
   end
 
   defmodule DB do

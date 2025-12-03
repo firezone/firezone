@@ -473,12 +473,8 @@ defmodule Domain.Safe do
 
   @spec delete_all(Unscoped.t(), Keyword.t()) ::
           {integer(), nil | [term()]}
-  def delete_all(%Unscoped{queryable: queryable}, opts) when not is_nil(queryable) do
-    Repo.delete_all(queryable, opts)
-  end
 
-  # Overloaded version for when Unscoped has nil queryable
-  def delete_all(%Unscoped{queryable: nil}, queryable, opts) do
+  def delete_all(%Unscoped{queryable: queryable}, opts) do
     Repo.delete_all(queryable, opts)
   end
 

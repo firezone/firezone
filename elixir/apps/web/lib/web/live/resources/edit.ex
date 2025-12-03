@@ -5,8 +5,8 @@ defmodule Web.Resources.Edit do
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <- DB.fetch_resource_by_id(id, socket.assigns.subject) do
-      resource = Domain.Repo.preload(resource, :sites)
-      sites = DB.all_groups!(socket.assigns.subject)
+      resource = Domain.Repo.preload(resource, :site)
+      sites = DB.all_sites(socket.assigns.subject)
       form = change_resource(resource, socket.assigns.subject) |> to_form()
 
       socket =
@@ -205,13 +205,9 @@ defmodule Web.Resources.Edit do
               form={@form[:filters]}
             />
 
-            <.connections_form
+            <.site_form
               :if={is_nil(@params["site_id"])}
-              id="connections_form"
-              multiple={Domain.Account.multi_site_resources_enabled?(@account)}
-              form={@form[:connections]}
-              account={@account}
-              resource={@resource}
+              form={@form}
               sites={@sites}
             />
 
@@ -229,8 +225,7 @@ defmodule Web.Resources.Edit do
     attrs =
       attrs
       |> map_filters_form_attrs(socket.assigns.account)
-      |> map_connections_form_attrs()
-      |> maybe_delete_connections(socket.assigns.params)
+      |> maybe_update_site_id(socket.assigns.params)
 
     changeset =
       change_resource(socket.assigns.resource, attrs, socket.assigns.subject)
@@ -243,8 +238,7 @@ defmodule Web.Resources.Edit do
     attrs =
       attrs
       |> map_filters_form_attrs(socket.assigns.account)
-      |> map_connections_form_attrs()
-      |> maybe_delete_connections(socket.assigns.params)
+      |> maybe_update_site_id(socket.assigns.params)
 
     changeset = update_changeset(socket.assigns.resource, attrs, socket.assigns.subject)
 
@@ -267,53 +261,43 @@ defmodule Web.Resources.Edit do
     end
   end
 
-  defp maybe_delete_connections(attrs, params) do
-    if params["site_id"] do
-      Map.delete(attrs, "connections")
+  defp maybe_update_site_id(attrs, params) do
+    if site_id = params["site_id"] do
+      Map.put(attrs, "site_id", site_id)
     else
       attrs
     end
   end
 
   defp change_resource(resource, attrs \\ %{}, subject) do
-    update_fields = ~w[address address_description name type ip_stack]a
-    required_fields = ~w[name type]a
+    update_fields = ~w[address address_description name type ip_stack site_id]a
+    required_fields = ~w[name type site_id]a
 
     resource
     |> Ecto.Changeset.cast(attrs, update_fields)
     |> Ecto.Changeset.validate_required(required_fields)
     |> Domain.Resource.validate_address(subject.account)
     |> Domain.Resource.changeset()
-    |> Ecto.Changeset.cast_assoc(:connections,
-      with:
-        &Domain.Resources.Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
-      required: true
-    )
   end
 
   defp update_changeset(resource, attrs, subject) do
-    update_fields = ~w[address address_description name type ip_stack]a
-    required_fields = ~w[name type]a
+    update_fields = ~w[address address_description name type ip_stack site_id]a
+    required_fields = ~w[name type site_id]a
 
     resource
-    |> Domain.Repo.preload(:connections)
     |> Ecto.Changeset.cast(attrs, update_fields)
     |> Ecto.Changeset.validate_required(required_fields)
     |> Domain.Resource.validate_address(subject.account)
     |> Domain.Resource.changeset()
-    |> Ecto.Changeset.cast_assoc(:connections,
-      with:
-        &Domain.Resources.Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
-      required: true
-    )
   end
 
   defmodule DB do
     import Ecto.Query
     alias Domain.{Safe, Resource}
 
-    def all_groups!(subject) do
-      from(g in Domain.Site, as: :groups)
+    def all_sites(subject) do
+      from(s in Domain.Site, as: :sites)
+      |> where([sites: s], s.managed_by != :system)
       |> Safe.scoped(subject)
       |> Safe.all()
     end

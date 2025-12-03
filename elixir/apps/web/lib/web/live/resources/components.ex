@@ -310,117 +310,26 @@ defmodule Web.Resources.Components do
   defp pretty_print_ports([]), do: "All ports allowed"
   defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
 
-  def map_connections_form_attrs(attrs) do
-    Map.update(attrs, "connections", [], fn connections ->
-      for {id, connection_attrs} <- connections,
-          connection_attrs["enabled"] == "true",
-          into: %{} do
-        {id, connection_attrs}
-      end
-    end)
-  end
-
   attr :form, :any, required: true
-  attr :account, :any, required: true
   attr :sites, :list, required: true
-  attr :resource, :any, default: nil
-  attr :multiple, :boolean, required: true
   attr :rest, :global
 
-  def connections_form(%{multiple: false} = assigns) do
+  def site_form(assigns) do
     ~H"""
-    <% connected_site_id = @form |> connected_site_ids() |> List.first() %>
-
-    <.input type="hidden" name={"#{@form.name}[0][enabled]"} value="true" />
-    <.input :if={@resource} type="hidden" name={"#{@form.name}[0][resource_id]"} value={@resource.id} />
-
     <.input
+      field={@form[:site_id]}
       type="select"
       label="Site"
-      name={"#{@form.name}[0][site_id]"}
       options={
         Enum.map(@sites, fn site ->
           {site.name, site.id}
         end)
       }
-      value={connected_site_id}
       placeholder="Select a Site"
       required
+      {@rest}
     />
     """
-  end
-
-  def connections_form(%{multiple: true} = assigns) do
-    assigns = assign(assigns, :errors, Enum.map(assigns.form.errors, &translate_error(&1)))
-
-    ~H"""
-    <fieldset class="flex flex-col gap-2" {@rest}>
-      <legend class="text-xl mb-4">Sites</legend>
-
-      <p class="text-sm text-neutral-500">
-        When multiple sites are selected, the client will automatically connect to the closest one based on its geographical location.
-      </p>
-
-      <.error :for={error <- @errors} data-validation-error-for="connections">
-        {error}
-      </.error>
-      <div :for={site <- @sites}>
-        <% connected_site_ids = connected_site_ids(@form) %>
-
-        <.input
-          type="hidden"
-          name={"#{@form.name}[#{site.id}][site_id]"}
-          value={site.id}
-        />
-
-        <.input
-          :if={@resource}
-          type="hidden"
-          name={"#{@form.name}[#{site.id}][resource_id]"}
-          value={@resource.id}
-        />
-
-        <div class="flex gap-4 items-end py-4 text-sm border-b">
-          <div class="w-8">
-            <.input
-              type="checkbox"
-              name={"#{@form.name}[#{site.id}][enabled]"}
-              checked={site.id in connected_site_ids}
-            />
-          </div>
-
-          <div class="w-64 no-grow text-neutral-500">
-            <.link
-              navigate={~p"/#{@account}/sites/#{site}"}
-              class="font-medium text-accent-500 hover:underline"
-              target="_blank"
-            >
-              {site.name}
-            </.link>
-          </div>
-        </div>
-      </div>
-    </fieldset>
-    """
-  end
-
-  def connected_site_ids(form) do
-    Enum.flat_map(form.value, fn
-      %Ecto.Changeset{action: :delete} ->
-        []
-
-      %Ecto.Changeset{action: :replace} ->
-        []
-
-      %Ecto.Changeset{} = changeset ->
-        [Ecto.Changeset.apply_changes(changeset).site_id]
-
-      %Domain.Resources.Connection{} = connection ->
-        [connection.site_id]
-
-      {_, %{"site_id" => id}} ->
-        [id]
-    end)
   end
 
   @known_recommendations %{

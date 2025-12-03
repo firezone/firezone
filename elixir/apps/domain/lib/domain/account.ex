@@ -40,7 +40,6 @@ defmodule Domain.Account do
     has_many :policy_authorizations, Domain.PolicyAuthorization
 
     has_many :resources, Domain.Resource
-    has_many :resource_connections, Domain.Resources.Connection
 
     has_many :clients, Domain.Client
 

@@ -221,7 +221,7 @@ defmodule Web.Live.Sites.ShowTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       {:ok, lv, _html} =
@@ -251,7 +251,7 @@ defmodule Web.Live.Sites.ShowTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       policies =
@@ -457,7 +457,7 @@ defmodule Web.Live.Sites.ShowTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       {:ok, lv, _html} =
@@ -487,7 +487,7 @@ defmodule Web.Live.Sites.ShowTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       policies =

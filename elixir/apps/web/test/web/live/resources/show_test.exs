@@ -16,7 +16,7 @@ defmodule Web.Live.Resources.ShowTest do
         account: account,
         subject: subject,
         ip_stack: :ipv4_only,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     %{
@@ -56,7 +56,7 @@ defmodule Web.Live.Resources.ShowTest do
     resource =
       Fixtures.Resources.create_internet_resource(
         account: account,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     {:ok, _lv, html} =

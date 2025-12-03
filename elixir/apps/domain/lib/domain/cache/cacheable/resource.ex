@@ -7,7 +7,7 @@ defmodule Domain.Cache.Cacheable.Resource do
     :address_description,
     :ip_stack,
     :filters,
-    :sites
+    :site
   ]
 
   @type filter :: %{
@@ -23,6 +23,6 @@ defmodule Domain.Cache.Cacheable.Resource do
           address_description: String.t(),
           ip_stack: atom(),
           filters: [filter()],
-          sites: [Domain.Cache.Cacheable.Site.t()]
+          site: Domain.Cache.Cacheable.Site.t() | nil
         }
 end

@@ -500,23 +500,12 @@ defmodule Web.SignUp do
 
     attrs = %{
       type: :internet,
-      name: "Internet",
-      connections: %{
-        site.id => %{
-          site_id: site.id,
-          enabled: true
-        }
-      }
+      name: "Internet"
     }
 
-    %Domain.Resource{connections: []}
+    %Domain.Resource{account_id: account.id, site_id: site.id}
     |> cast(attrs, [:type, :name])
     |> validate_required([:name, :type])
-    |> put_change(:account_id, account.id)
-    |> Domain.Resource.changeset()
-    |> cast_assoc(:connections,
-      with: &Domain.Resources.Connection.Changeset.changeset(account.id, &1, &2)
-    )
   end
 
   defmodule DB do

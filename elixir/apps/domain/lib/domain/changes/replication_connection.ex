@@ -10,7 +10,6 @@ defmodule Domain.Changes.ReplicationConnection do
     "gateways" => Hooks.Gateways,
     "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,
-    "resource_connections" => Hooks.ResourceConnections,
     "resources" => Hooks.Resources,
     "tokens" => Hooks.Tokens,
     "google_auth_providers" => Hooks.AuthProviders,

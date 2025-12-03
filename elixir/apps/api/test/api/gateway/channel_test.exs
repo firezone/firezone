@@ -16,7 +16,7 @@ defmodule API.Gateway.ChannelTest do
     resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{site_id: gateway.site_id}]
+        site_id: gateway.site_id
       )
 
     token =
@@ -420,7 +420,7 @@ defmodule API.Gateway.ChannelTest do
       resource =
         Fixtures.Resources.create_internet_resource(
           account: account,
-          connections: [%{site_id: internet_site.id}]
+          site_id: internet_site.id
         )
 
       policy_authorization =
@@ -664,7 +664,7 @@ defmodule API.Gateway.ChannelTest do
       other_resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: gateway.site_id}]
+          site_id: gateway.site_id
         )
 
       other_policy_authorization1 =
@@ -1146,7 +1146,7 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           type: :dns,
           address: "**.example.com",
-          connections: [%{site_id: socket.assigns.gateway.site_id}]
+          site_id: socket.assigns.gateway.site_id
         )
 
       old_data = %{

@@ -176,7 +176,7 @@ defmodule Web.Live.Policies.NewTest do
     resource =
       Fixtures.Resources.create_internet_resource(
         account: account,
-        connections: [%{site_id: internet_site.id}]
+        site_id: internet_site.id
       )
 
     {:ok, lv, _html} =

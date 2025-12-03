@@ -87,7 +87,7 @@ defmodule Web.Live.Resources.IndexTest do
     resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     {:ok, lv, _html} =
@@ -157,7 +157,7 @@ defmodule Web.Live.Resources.IndexTest do
     resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     policies =
@@ -225,7 +225,7 @@ defmodule Web.Live.Resources.IndexTest do
 
     Fixtures.Resources.create_internet_resource(
       account: account,
-      connections: [%{site_id: site.id}]
+      site_id: site.id
     )
 
     {:ok, lv, _html} =
@@ -250,7 +250,7 @@ defmodule Web.Live.Resources.IndexTest do
 
     Fixtures.Resources.create_internet_resource(
       account: account,
-      connections: [%{site_id: site.id}]
+      site_id: site.id
     )
 
     {:ok, _lv, html} =

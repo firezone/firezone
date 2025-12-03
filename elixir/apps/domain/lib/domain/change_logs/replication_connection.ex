@@ -28,7 +28,6 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
     "okta_auth_providers" => Domain.Okta.AuthProvider,
     "okta_directories" => Domain.Okta.Directory,
     "policies" => Domain.Policy,
-    "resource_connections" => Domain.Resources.Connection,
     "resources" => Domain.Resource,
     "sites" => Domain.Site,
     "tokens" => Domain.Token,

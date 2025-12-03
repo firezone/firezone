@@ -25,7 +25,6 @@ defmodule Domain.Repo.Seeds do
     Policy,
     Relay,
     Resource,
-    Resources,
     Site,
     Token,
     Userpass
@@ -81,21 +80,10 @@ defmodule Domain.Repo.Seeds do
         name: attrs[:name] || attrs["name"],
         address: attrs[:address] || attrs["address"],
         address_description: attrs[:address_description] || attrs["address_description"],
-        filters: attrs[:filters] || attrs["filters"] || []
+        filters: attrs[:filters] || attrs["filters"] || [],
+        site_id: attrs[:site_id] || attrs["site_id"]
       }
       |> Repo.insert!()
-
-    # Create connections if provided
-    connections = attrs[:connections] || attrs["connections"] || []
-
-    for conn <- connections do
-      %Resources.Connection{
-        resource_id: resource.id,
-        site_id: conn[:site_id] || conn["site_id"],
-        account_id: subject.account.id
-      }
-      |> Repo.insert!()
-    end
 
     {:ok, resource}
   end
@@ -279,12 +267,7 @@ defmodule Domain.Repo.Seeds do
         account_id: account.id,
         name: "Internet",
         type: :internet,
-        connections: [
-          %Resources.Connection{
-            site_id: internet_site.id,
-            account_id: account.id
-          }
-        ]
+        site_id: internet_site.id
       }
       |> Repo.insert!()
 
@@ -293,12 +276,7 @@ defmodule Domain.Repo.Seeds do
         account_id: other_account.id,
         name: "Internet",
         type: :internet,
-        connections: [
-          %Resources.Connection{
-            site_id: other_internet_site.id,
-            account_id: other_account.id
-          }
-        ]
+        site_id: other_internet_site.id
       }
       |> Repo.insert!()
 
@@ -1173,7 +1151,7 @@ defmodule Domain.Repo.Seeds do
           name: "foobar.com",
           address: "foobar.com",
           address_description: "https://foobar.com/",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
@@ -1186,7 +1164,7 @@ defmodule Domain.Repo.Seeds do
           name: "**.firez.one",
           address: "**.firez.one",
           address_description: "https://firez.one/",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
@@ -1199,7 +1177,7 @@ defmodule Domain.Repo.Seeds do
           name: "*.firezone.dev",
           address: "*.firezone.dev",
           address_description: "https://firezone.dev/",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
@@ -1212,7 +1190,7 @@ defmodule Domain.Repo.Seeds do
           name: "example.com",
           address: "example.com",
           address_description: "https://example.com:1234/",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
@@ -1225,7 +1203,7 @@ defmodule Domain.Repo.Seeds do
           name: "ip6only",
           address: "ip6only.me",
           address_description: "https://ip6only.me/",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
@@ -1237,7 +1215,7 @@ defmodule Domain.Repo.Seeds do
           type: :dns,
           name: "Example",
           address: "*.example.com",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
@@ -1250,7 +1228,7 @@ defmodule Domain.Repo.Seeds do
           name: "gitlab.mycorp.com",
           address: "gitlab.mycorp.com",
           address_description: "https://gitlab.mycorp.com/",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -1267,7 +1245,7 @@ defmodule Domain.Repo.Seeds do
           name: "Public DNS",
           address: "1.2.3.4",
           address_description: "http://1.2.3.4:3000/",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -1284,7 +1262,7 @@ defmodule Domain.Repo.Seeds do
           name: "MyCorp Network",
           address: "172.20.0.1/16",
           address_description: "172.20.0.1/16",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
@@ -1297,7 +1275,7 @@ defmodule Domain.Repo.Seeds do
           name: "MyCorp Network (IPv6)",
           address: "172:20:0::1/64",
           address_description: "172:20:0::1/64",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
@@ -1310,7 +1288,7 @@ defmodule Domain.Repo.Seeds do
           name: "**.httpbin",
           address: "**.httpbin",
           address_description: "http://httpbin/",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -1327,7 +1305,7 @@ defmodule Domain.Repo.Seeds do
           name: "**.httpbin.search.test",
           address: "**.httpbin.search.test",
           address_description: "http://httpbin/",
-          connections: [%{site_id: site.id}],
+          site_id: site.id,
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},

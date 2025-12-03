@@ -2,7 +2,6 @@ defmodule Web.Plugs.FetchSubject do
   @behaviour Plug
 
   import Plug.Conn
-  import Phoenix.Controller
   alias Domain.Account
   alias Domain.Auth
 

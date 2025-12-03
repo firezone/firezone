@@ -9,39 +9,13 @@ defmodule Web.Sites.Index do
       :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
     end
 
-    {:ok, managed_sites, _metadata} =
-      DB.list_sites(socket.assigns.subject,
-        preload: [
-          gateways: [:online?]
-        ],
-        filter: [
-          managed_by: "system"
-        ]
-      )
-
-    {internet_resource, existing_site_name} =
-      with {:ok, internet_resource} <-
-             DB.fetch_internet_resource(socket.assigns.subject),
-           internet_resource =
-             Domain.Repo.preload(internet_resource, connections: :site),
-           connection when not is_nil(connection) <-
-             Enum.find(internet_resource.connections, fn connection ->
-               connection.site.name != "Internet" &&
-                 connection.site.managed_by != "system"
-             end) do
-        {internet_resource, connection.site.name}
-      else
-        _ -> {nil, nil}
-      end
-
-    internet_site = Enum.find(managed_sites, fn site -> site.name == "Internet" end)
+    internet_resource = DB.get_internet_resource(socket.assigns.subject)
 
     socket =
       socket
       |> assign(page_title: "Sites")
       |> assign(internet_resource: internet_resource)
-      |> assign(existing_internet_resource_site_name: existing_site_name)
-      |> assign(internet_site: internet_site)
+      |> assign(internet_site: internet_resource.site)
       |> assign_live_table("sites",
         query_module: DB,
         sortable_fields: [
@@ -62,15 +36,10 @@ defmodule Web.Sites.Index do
   end
 
   def handle_sites_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, gateways: [:online?], connections: [:resource])
+    list_opts = Keyword.put(list_opts, :preload, gateways: [:online?], resources: [])
 
-    with {:ok, sites, metadata} <-
-           DB.list_sites(socket.assigns.subject, list_opts) do
-      {:ok,
-       assign(socket,
-         sites: sites,
-         sites_metadata: metadata
-       )}
+    with {:ok, sites, metadata} <- DB.list_sites(socket.assigns.subject, list_opts) do
+      {:ok, assign(socket, sites: sites, sites_metadata: metadata)}
     end
   end
 
@@ -116,8 +85,7 @@ defmodule Web.Sites.Index do
           </:col>
 
           <:col :let={site} label="resources">
-            <% connections = Enum.reject(site.connections, &is_nil(&1.resource))
-            peek = %{count: length(connections), items: Enum.take(connections, 5)} %>
+            <% peek = %{count: length(site.resources), items: site.resources} %>
             <.peek peek={peek}>
               <:empty>
                 None
@@ -127,14 +95,12 @@ defmodule Web.Sites.Index do
                 <span class="pr-1">,</span>
               </:separator>
 
-              <:item :let={connection}>
+              <:item :let={resource}>
                 <.link
-                  navigate={
-                    ~p"/#{@account}/resources/#{connection.resource}?site_id=#{connection.site_id}"
-                  }
+                  navigate={~p"/#{@account}/resources/#{resource}?site_id=#{site.id}"}
                   class={["inline-block", link_style()]}
                   phx-no-format
-                ><%= connection.resource.name %></.link>
+                ><%= resource.name %></.link>
               </:item>
 
               <:tail :let={count}>
@@ -252,28 +218,12 @@ defmodule Web.Sites.Index do
         %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},
         socket
       ) do
-    {:ok, managed_sites, _metadata} =
-      DB.list_sites(socket.assigns.subject,
-        preload: [
-          gateways: [:online?]
-        ],
-        filter: [
-          managed_by: "system"
-        ]
-      )
-
-    internet_resource =
-      case DB.fetch_internet_resource(socket.assigns.subject) do
-        {:ok, internet_resource} -> Domain.Repo.preload(internet_resource, :connections)
-        _ -> nil
-      end
-
-    internet_site = Enum.find(managed_sites, fn site -> site.name == "Internet" end)
+    internet_resource = DB.get_internet_resource(socket.assigns.subject)
 
     socket =
       socket
       |> assign(internet_resource: internet_resource)
-      |> assign(internet_site: internet_site)
+      |> assign(internet_site: internet_resource.site)
       |> reload_live_table!("sites")
 
     {:noreply, socket}
@@ -284,28 +234,21 @@ defmodule Web.Sites.Index do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Site
-    alias Domain.Resource
+    alias Domain.{Safe, Site, Resource}
 
     def list_sites(subject, opts \\ []) do
       from(g in Site, as: :sites)
+      |> where([sites: s], s.managed_by != :system)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
-    def fetch_internet_resource(subject) do
-      result =
-        from(r in Resource, as: :resources)
-        |> where([resources: r], r.type == :internet)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        resource -> {:ok, resource}
-      end
+    def get_internet_resource(subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.type == :internet)
+      |> preload(site: [gateways: :online?])
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def cursor_fields,

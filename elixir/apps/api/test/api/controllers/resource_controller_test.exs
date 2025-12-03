@@ -145,7 +145,7 @@ defmodule API.ResourceControllerTest do
                  "error" => %{
                    "reason" => "Unprocessable Entity",
                    "validation_errors" => %{
-                     "connections" => ["can't be blank"],
+                     "site_id" => ["can't be blank"],
                      "name" => ["can't be blank"],
                      "type" => ["can't be blank"]
                    }
@@ -161,9 +161,7 @@ defmodule API.ResourceControllerTest do
         "name" => "Google",
         "type" => "dns",
         "ip_stack" => "ipv6_only",
-        "connections" => [
-          %{"site_id" => site.id}
-        ]
+        "site_id" => site.id
       }
 
       conn =

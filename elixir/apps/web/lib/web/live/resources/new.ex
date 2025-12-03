@@ -191,11 +191,9 @@ defmodule Web.Resources.New do
 
             <.filters_form account={@account} form={@form[:filters]} />
 
-            <.connections_form
+            <.site_form
               :if={is_nil(@params["site_id"])}
-              multiple={Domain.Account.multi_site_resources_enabled?(@account)}
-              form={@form[:connections]}
-              account={@account}
+              form={@form}
               sites={@sites}
             />
 
@@ -222,8 +220,7 @@ defmodule Web.Resources.New do
       attrs
       |> maybe_put_default_name(name_changed?)
       |> map_filters_form_attrs(socket.assigns.account)
-      |> map_connections_form_attrs()
-      |> maybe_put_connections(socket.assigns.params)
+      |> maybe_put_site_id(socket.assigns.params)
 
     changeset =
       DB.new_resource(socket.assigns.account, attrs)
@@ -244,8 +241,7 @@ defmodule Web.Resources.New do
       attrs
       |> maybe_put_default_name()
       |> map_filters_form_attrs(socket.assigns.account)
-      |> map_connections_form_attrs()
-      |> maybe_put_connections(socket.assigns.params)
+      |> maybe_put_site_id(socket.assigns.params)
 
     case DB.create_resource(attrs, socket.assigns.subject) do
       {:ok, resource} ->
@@ -282,11 +278,9 @@ defmodule Web.Resources.New do
     Map.put(attrs, "name", attrs["address"])
   end
 
-  defp maybe_put_connections(attrs, params) do
+  defp maybe_put_site_id(attrs, params) do
     if site_id = params["site_id"] do
-      Map.put(attrs, "connections", %{
-        "#{site_id}" => %{"site_id" => site_id, "enabled" => "true"}
-      })
+      Map.put(attrs, "site_id", site_id)
     else
       attrs
     end
@@ -299,14 +293,15 @@ defmodule Web.Resources.New do
 
     def all_sites(subject) do
       from(g in Domain.Site, as: :sites)
+      |> where([sites: s], s.managed_by != :system)
       |> Safe.scoped(subject)
       |> Safe.all()
     end
 
     # TODO: Keep all changeset logic out of the DB module
     def new_resource(account, attrs \\ %{}) do
-      %Resource{connections: []}
-      |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack])
+      %Resource{}
+      |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack, :site_id])
       |> validate_required([:name, :address])
       |> put_change(:account_id, account.id)
       |> Resource.changeset()
@@ -315,23 +310,7 @@ defmodule Web.Resources.New do
     def create_resource(attrs, subject) do
       changeset =
         new_resource(subject.account, attrs)
-        |> cast_assoc(:connections,
-          with: fn struct, attrs ->
-            import Ecto.Changeset
-
-            struct
-            |> cast(attrs, [:site_id])
-            |> validate_required([:site_id])
-            |> assoc_constraint(:resource)
-            |> assoc_constraint(:site)
-            |> assoc_constraint(:account)
-            |> check_constraint(:resource,
-              name: :internet_resource_in_internet_site,
-              message: "type must be 'internet' for the Internet site"
-            )
-            |> put_change(:account_id, subject.account.id)
-          end
-        )
+        |> validate_required([:site_id])
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()

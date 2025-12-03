@@ -281,7 +281,6 @@ defmodule Domain.Changes.ReplicationConnectionTest do
         "sites" => Domain.Changes.Hooks.Sites,
         "gateways" => Domain.Changes.Hooks.Gateways,
         "policies" => Domain.Changes.Hooks.Policies,
-        "resource_connections" => Domain.Changes.Hooks.ResourceConnections,
         "resources" => Domain.Changes.Hooks.Resources,
         "tokens" => Domain.Changes.Hooks.Tokens
       }
@@ -296,7 +295,6 @@ defmodule Domain.Changes.ReplicationConnectionTest do
                  "sites",
                  "gateways",
                  "policies",
-                 "resource_connections",
                  "resources",
                  "tokens"
                ]

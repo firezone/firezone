@@ -34,7 +34,7 @@ defmodule Web.Resources.Index do
   end
 
   def handle_resources_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:sites])
+    list_opts = Keyword.put(list_opts, :preload, [:site])
 
     with {:ok, resources, metadata} <-
            DB.list_resources(socket.assigns.subject, list_opts),
@@ -97,14 +97,14 @@ defmodule Web.Resources.Index do
               <code>0.0.0.0/0</code>, <code>::/0 </code>
             </span>
           </:col>
-          <:col :let={resource} label="sites">
+          <:col :let={resource} label="site">
             <.link
-              :for={site <- resource.sites}
-              navigate={~p"/#{@account}/sites/#{site}"}
+              :if={resource.site}
+              navigate={~p"/#{@account}/sites/#{resource.site}"}
               class={link_style()}
             >
               <.badge type="info">
-                {site.name}
+                {resource.site.name}
               </.badge>
             </.link>
           </:col>
@@ -327,8 +327,7 @@ defmodule Web.Resources.Index do
     end
 
     def filter_by_site_id(queryable, site_id) do
-      {with_joined_connections(queryable),
-       dynamic([connections: connections], connections.site_id == ^site_id)}
+      {queryable, dynamic([resources: r], r.site_id == ^site_id)}
     end
 
     def filter_by_type(queryable, {:not_in, types}) do
@@ -337,27 +336,6 @@ defmodule Web.Resources.Index do
 
     def filter_by_type(queryable, types) do
       {queryable, dynamic([resources: resources], resources.type in ^types)}
-    end
-
-    def with_joined_connections(queryable) do
-      ensure_named_binding(queryable, :connections, fn queryable, binding ->
-        queryable
-        |> join(
-          :inner,
-          [resources: resources],
-          connections in ^Domain.Resources.Connection.Query.all(),
-          on: connections.resource_id == resources.id,
-          as: ^binding
-        )
-      end)
-    end
-
-    def ensure_named_binding(queryable, binding, fun) do
-      if has_named_binding?(queryable, binding) do
-        queryable
-      else
-        fun.(queryable, binding)
-      end
     end
   end
 end

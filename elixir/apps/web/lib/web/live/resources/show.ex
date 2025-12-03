@@ -167,21 +167,20 @@ defmodule Web.Resources.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>
-              Connected Sites
+              Site
             </:label>
             <:value>
               <.link
-                :for={site <- @resource.sites}
-                :if={@resource.sites != []}
-                navigate={~p"/#{@account}/sites/#{site}"}
+                :if={@resource.site}
+                navigate={~p"/#{@account}/sites/#{@resource.site}"}
                 class={[link_style()]}
               >
                 <.badge type="info">
-                  {site.name}
+                  {@resource.site.name}
                 </.badge>
               </.link>
-              <span :if={@resource.sites == []}>
-                No linked Sites to display
+              <span :if={is_nil(@resource.site)}>
+                Not linked to a site
               </span>
             </:value>
           </.vertical_table_row>
@@ -370,7 +369,7 @@ defmodule Web.Resources.Show do
     {:ok, resource} =
       DB.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject)
 
-    resource = Domain.Safe.preload(resource, [:sites, :policies])
+    resource = Domain.Safe.preload(resource, [:site, :policies])
 
     {:noreply, assign(socket, resource: resource)}
   end
@@ -410,7 +409,7 @@ defmodule Web.Resources.Show do
   defp fetch_resource("internet", subject) do
     DB.fetch_internet_resource(subject)
     |> case do
-      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :sites)}
+      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :site)}
       error -> error
     end
   end
@@ -418,7 +417,7 @@ defmodule Web.Resources.Show do
   defp fetch_resource(id, subject) do
     DB.fetch_resource_by_id(id, subject)
     |> case do
-      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :sites)}
+      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :site)}
       error -> error
     end
   end

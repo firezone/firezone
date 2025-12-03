@@ -17,6 +17,7 @@ defmodule Domain.Resource do
           ip_stack: :ipv4_only | :ipv6_only | :dual,
           filters: [filter()],
           account_id: Ecto.UUID.t(),
+          site_id: Ecto.UUID.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -35,8 +36,7 @@ defmodule Domain.Resource do
     end
 
     belongs_to :account, Domain.Account
-    has_many :connections, Domain.Resources.Connection, on_replace: :delete
-    has_many :sites, through: [:connections, :site]
+    belongs_to :site, Domain.Site
 
     has_many :policies, Domain.Policy
     has_many :groups, through: [:policies, :group]
@@ -49,7 +49,7 @@ defmodule Domain.Resource do
   end
 
   def changeset(changeset) do
-    fields = ~w[address address_description name type ip_stack]a
+    fields = ~w[address address_description name type ip_stack site_id]a
 
     changeset
     |> trim_change(fields)
@@ -62,6 +62,7 @@ defmodule Domain.Resource do
         "IP stack must be one of 'dual', 'ipv4_only', 'ipv6_only' for DNS resources or NULL for others"
     )
     |> cast_embed(:filters, with: &filter_changeset/2)
+    |> assoc_constraint(:site)
     |> unique_constraint(:name,
       name: :resources_account_id_name_index,
       message: "resource with this name already exists"

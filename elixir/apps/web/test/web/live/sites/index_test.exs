@@ -64,7 +64,7 @@ defmodule Web.Live.Sites.IndexTest do
     resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     {:ok, lv, _html} =

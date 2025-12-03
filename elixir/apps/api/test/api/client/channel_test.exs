@@ -48,7 +48,7 @@ defmodule API.Client.ChannelTest do
       Fixtures.Resources.create_resource(
         account: account,
         ip_stack: :ipv4_only,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     cidr_resource =
@@ -56,7 +56,7 @@ defmodule API.Client.ChannelTest do
         type: :cidr,
         address: "192.168.1.1/28",
         account: account,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     ip_resource =
@@ -64,30 +64,30 @@ defmodule API.Client.ChannelTest do
         type: :ip,
         address: "192.168.100.1",
         account: account,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     internet_resource =
       Fixtures.Resources.create_internet_resource(
         account: account,
-        connections: [%{site_id: internet_site.id}]
+        site_id: internet_site.id
       )
 
     unauthorized_resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     nonconforming_resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     offline_resource =
       Fixtures.Resources.create_resource(account: account)
-      |> Ecto.Changeset.change(connections: [])
+      |> Ecto.Changeset.change(site_id: nil)
       |> Repo.update!()
 
     dns_resource_policy =
@@ -409,35 +409,35 @@ defmodule API.Client.ChannelTest do
         Fixtures.Resources.create_resource(
           address: "**.glob-example.com",
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       question_mark_mapped_resource =
         Fixtures.Resources.create_resource(
           address: "*.question-example.com",
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       mid_question_mark_mapped_resource =
         Fixtures.Resources.create_resource(
           address: "foo.*.example.com",
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       mid_star_mapped_resource =
         Fixtures.Resources.create_resource(
           address: "foo.**.glob-example.com",
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       mid_single_char_mapped_resource =
         Fixtures.Resources.create_resource(
           address: "us-east?-d.glob-example.com",
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       for resource <- [
@@ -663,7 +663,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       # Create a policy that becomes valid in one second
@@ -939,7 +939,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       Fixtures.Policies.create_policy(
@@ -995,11 +995,7 @@ defmodule API.Client.ChannelTest do
         struct: membership
       })
 
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{site_id: Fixtures.Sites.create_site(account: account).id}]
-        )
+      resource = Fixtures.Resources.create_resource(account: account)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 200,
@@ -1074,11 +1070,7 @@ defmodule API.Client.ChannelTest do
       })
 
       # Create a resource accessible by both groups
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{site_id: Fixtures.Sites.create_site(account: account).id}]
-        )
+      resource = Fixtures.Resources.create_resource(account: account)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 200,
@@ -1232,7 +1224,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       Fixtures.Policies.create_policy(
@@ -1290,7 +1282,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       membership =
@@ -1340,7 +1332,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       policy =
@@ -1431,7 +1423,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       policy =
@@ -1484,7 +1476,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       policy =
@@ -1540,7 +1532,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       Fixtures.Policies.create_policy(
@@ -1575,9 +1567,7 @@ defmodule API.Client.ChannelTest do
 
       new_site = Fixtures.Sites.create_site(account: account)
 
-      Fixtures.Resources.update_resource(resource,
-        connections: [%{site_id: new_site.id}]
-      )
+      Fixtures.Resources.update_resource(resource, site_id: new_site.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 150,
@@ -1625,7 +1615,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site_1.id}]
+          site_id: site_1.id
         )
 
       Fixtures.Policies.create_policy(
@@ -1669,122 +1659,6 @@ defmodule API.Client.ChannelTest do
       assert length(payload.sites) == 2
     end
 
-    test "for resource_connection delete removes site but keeps resource if other sites exist",
-         %{
-           socket: socket,
-           account: account,
-           actor: actor
-         } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
-
-      site_1 = Fixtures.Sites.create_site(account: account)
-      site_2 = Fixtures.Sites.create_site(account: account)
-
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [
-            %{site_id: site_1.id},
-            %{site_id: site_2.id}
-          ]
-        )
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        group: group,
-        resource: resource
-      )
-
-      membership =
-        Fixtures.Actors.create_membership(
-          account: account,
-          actor: actor,
-          group: group
-        )
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 100,
-        op: :insert,
-        struct: membership
-      })
-
-      assert_push "resource_created_or_updated", payload
-      assert length(payload.sites) == 2
-
-      # Remove one site
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 200,
-        op: :delete,
-        old_struct: %Resources.Connection{
-          resource_id: resource.id,
-          site_id: site_1.id
-        }
-      })
-
-      # Resource should be toggled (deleted then created) with one less site
-      assert_push "resource_deleted", deleted_id
-      assert deleted_id == resource.id
-
-      assert_push "resource_created_or_updated", payload
-      assert payload.id == resource.id
-      assert length(payload.sites) == 1
-    end
-
-    test "for resource_connection delete removes resource when last site is removed", %{
-      socket: socket,
-      account: account,
-      actor: actor
-    } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
-
-      site = Fixtures.Sites.create_site(account: account)
-
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{site_id: site.id}]
-        )
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        group: group,
-        resource: resource
-      )
-
-      membership =
-        Fixtures.Actors.create_membership(
-          account: account,
-          actor: actor,
-          group: group
-        )
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 100,
-        op: :insert,
-        struct: membership
-      })
-
-      assert_push "resource_created_or_updated", _payload
-
-      # Remove the only site
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 200,
-        op: :delete,
-        old_struct: %Resources.Connection{
-          resource_id: resource.id,
-          site_id: site.id
-        }
-      })
-
-      # Resource should be deleted and not re-created
-      assert_push "resource_deleted", deleted_id
-      assert deleted_id == resource.id
-
-      refute_push "resource_created_or_updated", _payload
-    end
-
     test "for multiple policies with different conditions on same resource applies most permissive",
          %{
            socket: socket,
@@ -1800,7 +1674,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       # Create restrictive policy with client verification requirement
@@ -1895,7 +1769,7 @@ defmodule API.Client.ChannelTest do
           type: :ip,
           address: "192.168.1.1",
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       Fixtures.Policies.create_policy(
@@ -1948,7 +1822,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       Fixtures.Policies.create_policy(
@@ -2104,7 +1978,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -2741,7 +2615,7 @@ defmodule API.Client.ChannelTest do
         Fixtures.Resources.create_resource(
           address: "foo.*.example.com",
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       policy =
@@ -3035,7 +2909,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       policy =
@@ -3306,7 +3180,7 @@ defmodule API.Client.ChannelTest do
       resource =
         Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{site_id: site.id}]
+          site_id: site.id
         )
 
       policy =

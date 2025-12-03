@@ -485,8 +485,7 @@ defmodule Domain.Billing.EventHandler do
 
     %Domain.Site{
       account_id: account.id,
-      managed_by: :system,
-      tokens: []
+      managed_by: :system
     }
     |> cast(%{name: "Internet", managed_by: :system}, [:name, :managed_by])
     |> validate_required([:name, :managed_by])
@@ -499,23 +498,12 @@ defmodule Domain.Billing.EventHandler do
 
     attrs = %{
       type: :internet,
-      name: "Internet",
-      connections: %{
-        site.id => %{
-          site_id: site.id,
-          enabled: true
-        }
-      }
+      name: "Internet"
     }
 
-    %Domain.Resource{connections: []}
+    %Domain.Resource{site_id: site.id, account_id: account.id}
     |> cast(attrs, [:type, :name])
     |> validate_required([:name, :type])
-    |> put_change(:account_id, account.id)
-    |> Domain.Resource.changeset()
-    |> cast_assoc(:connections,
-      with: &Domain.Resources.Connection.Changeset.changeset(account.id, &1, &2)
-    )
   end
 
   # Account Updates

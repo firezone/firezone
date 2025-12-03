@@ -69,7 +69,6 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     sites
     gateways
     policies
-    resource_connections
     resources
     tokens
   ],
@@ -112,7 +111,6 @@ config :domain, Domain.Changes.ReplicationConnection,
     gateways
     sites
     policies
-    resource_connections
     resources
     tokens
     google_auth_providers

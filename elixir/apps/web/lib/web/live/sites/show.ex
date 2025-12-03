@@ -157,7 +157,7 @@ defmodule Web.Sites.Show do
         Use this Site to manage secure, private access to the public internet for your workforce.
       </:help>
 
-      <:content :if={@site.managed_by != :system and @site.name != "Internet"}>
+      <:content :if={@site.managed_by != :system}>
         <.vertical_table id="site">
           <.vertical_table_row>
             <:label>Name</:label>
@@ -192,7 +192,8 @@ defmodule Web.Sites.Show do
           <:dialog_title>Confirm revocation of all tokens</:dialog_title>
           <:dialog_content>
             Are you sure you want to revoke all tokens for this Site?
-            This will <strong>immediately</strong> disconnect all associated Gateways.
+            This will <strong>immediately</strong>
+            disconnect all associated Gateways and delete all linked Resources.
           </:dialog_content>
           <:dialog_confirm_button>
             Revoke All
@@ -663,8 +664,7 @@ defmodule Web.Sites.Show do
     end
 
     def filter_by_site_id(queryable, site_id) do
-      {with_joined_connections(queryable),
-       dynamic([connections: connections], connections.site_id == ^site_id)}
+      {queryable, dynamic([resources: resources], resources.site_id == ^site_id)}
     end
 
     def filter_by_type(queryable, {:not_in, types}) do
@@ -673,27 +673,6 @@ defmodule Web.Sites.Show do
 
     def filter_by_type(queryable, types) do
       {queryable, dynamic([resources: resources], resources.type in ^types)}
-    end
-
-    def with_joined_connections(queryable) do
-      ensure_named_binding(queryable, :connections, fn queryable, binding ->
-        queryable
-        |> join(
-          :inner,
-          [resources: resources],
-          connections in ^Domain.Resources.Connection.Query.all(),
-          on: connections.resource_id == resources.id,
-          as: ^binding
-        )
-      end)
-    end
-
-    def ensure_named_binding(queryable, binding, fun) do
-      if has_named_binding?(queryable, binding) do
-        queryable
-      else
-        fun.(queryable, binding)
-      end
     end
   end
 

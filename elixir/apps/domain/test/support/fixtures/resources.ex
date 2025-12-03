@@ -26,12 +26,9 @@ defmodule Domain.Fixtures.Resources do
         Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
-    {connections, attrs} =
-      Map.pop_lazy(attrs, :connections, fn ->
-        Enum.map(1..2, fn _ ->
-          gateway = Fixtures.Gateways.create_gateway(account: account)
-          %{site_id: gateway.site_id}
-        end)
+    {site, attrs} =
+      pop_assoc_fixture(attrs, :site, fn assoc_attrs ->
+        Fixtures.Sites.create_site(assoc_attrs)
       end)
 
     {subject, attrs} =
@@ -43,7 +40,6 @@ defmodule Domain.Fixtures.Resources do
 
     {:ok, resource} =
       attrs
-      |> Map.put(:connections, connections)
       |> Domain.Resources.create_resource(subject)
 
     resource

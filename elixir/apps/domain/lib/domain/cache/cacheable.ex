@@ -6,6 +6,8 @@ defprotocol Domain.Cache.Cacheable do
 end
 
 defimpl Domain.Cache.Cacheable, for: Domain.Site do
+  def to_cache(nil), do: nil
+
   def to_cache(%Domain.Site{} = site) do
     %Domain.Cache.Cacheable.Site{
       id: Ecto.UUID.dump!(site.id),
@@ -16,6 +18,13 @@ end
 
 defimpl Domain.Cache.Cacheable, for: Domain.Resource do
   def to_cache(%Domain.Resource{} = resource) do
+    site =
+      if is_struct(resource.site, Domain.Site) do
+        Domain.Cache.Cacheable.to_cache(resource.site)
+      else
+        nil
+      end
+
     %Domain.Cache.Cacheable.Resource{
       id: Ecto.UUID.dump!(resource.id),
       type: resource.type,
@@ -24,11 +33,7 @@ defimpl Domain.Cache.Cacheable, for: Domain.Resource do
       address_description: resource.address_description,
       ip_stack: resource.ip_stack,
       filters: Enum.map(resource.filters, &Map.from_struct/1),
-      sites:
-        if(is_list(resource.sites),
-          do: Enum.map(resource.sites, &Domain.Cache.Cacheable.to_cache/1),
-          else: []
-        )
+      site: site
     }
   end
 end

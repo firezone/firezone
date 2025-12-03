@@ -367,11 +367,7 @@ defmodule Domain.Cache.Gateway do
     |> where([policies: p], p.resource_id == ^resource_id)
     |> join(:inner, [policies: p], ag in assoc(p, :group), as: :group)
     |> join(:inner, [policies: p], r in assoc(p, :resource), as: :resource)
-    |> join(:inner, [resource: r], rc in Domain.Resources.Connection,
-      on: rc.resource_id == r.id,
-      as: :resource_connections
-    )
-    |> where([resource_connections: rc], rc.site_id == ^site_id)
+    |> where([resource: r], r.site_id == ^site_id)
     |> join(:inner, [], actor in Domain.Actor, on: actor.id == ^actor_id, as: :actor)
     |> join(:left, [group: ag], m in assoc(ag, :memberships), as: :memberships)
     |> where(
@@ -382,7 +378,7 @@ defmodule Domain.Cache.Gateway do
            ag.name == "Everyone" and
            ag.account_id == a.account_id)
     )
-    |> preload(resource: :sites)
+    |> preload(resource: :site)
     |> Domain.Safe.unscoped()
     |> Domain.Safe.all()
   end

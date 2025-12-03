@@ -6,7 +6,6 @@ defmodule API.Client.Channel do
     Cache,
     Changes.Change,
     PubSub,
-    Resources,
     Gateway,
     Presence,
     Auth
@@ -827,7 +826,7 @@ defmodule API.Client.Channel do
     {:stop, :shutdown, socket}
   end
 
-  # siteS
+  # SITES
 
   defp handle_change(
          %Change{
@@ -916,40 +915,6 @@ defmodule API.Client.Channel do
     Cache.Client.delete_policy(
       socket.assigns.cache,
       policy,
-      socket.assigns.client,
-      socket.assigns.subject
-    )
-    |> push_resource_updates(socket)
-  end
-
-  # RESOURCE_CONNECTIONS
-
-  defp handle_change(
-         %Change{
-           op: :insert,
-           struct: %Resources.Connection{} = connection
-         },
-         socket
-       ) do
-    Cache.Client.add_resource_connection(
-      socket.assigns.cache,
-      connection,
-      socket.assigns.client,
-      socket.assigns.subject
-    )
-    |> push_resource_updates(socket)
-  end
-
-  defp handle_change(
-         %Change{
-           op: :delete,
-           old_struct: %Resources.Connection{} = connection
-         },
-         socket
-       ) do
-    Cache.Client.delete_resource_connection(
-      socket.assigns.cache,
-      connection,
       socket.assigns.client,
       socket.assigns.subject
     )

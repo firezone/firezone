@@ -494,12 +494,7 @@ defmodule Domain.Billing do
         account_id: account.id,
         name: "Internet",
         type: :internet,
-        connections: [
-          %Domain.Resources.Connection{
-            account_id: account.id,
-            site_id: site.id
-          }
-        ]
+        site_id: site.id
       }
       |> Safe.unscoped()
       |> Safe.insert()

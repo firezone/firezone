@@ -28,7 +28,7 @@ defmodule Domain.PolicyAuthorizationsTest do
     resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{site_id: site.id}]
+        site_id: site.id
       )
 
     policy =

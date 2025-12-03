@@ -96,8 +96,6 @@ defmodule API.SiteController do
         |> cast(attrs, [:name, :expires_at])
         |> put_change(:type, :site)
         |> put_change(:account_id, subject.account.id)
-        |> put_change(:created_by, :identity)
-        |> put_change(:created_by_identity_id, subject.identity.id)
         |> Domain.Token.changeset()
       end
     )
