@@ -2,6 +2,7 @@ defmodule Web.Plugs.FetchSubject do
   @behaviour Plug
 
   import Plug.Conn
+  import Phoenix.Controller
   alias Domain.Account
   alias Domain.Auth
 
@@ -24,10 +25,8 @@ defmodule Web.Plugs.FetchSubject do
       |> assign(:subject, subject)
     else
       {:error, :unauthorized} ->
-        delete_account_session(conn, account)
-
-      _ ->
         conn
+        |> delete_account_session(account)
     end
   end
 

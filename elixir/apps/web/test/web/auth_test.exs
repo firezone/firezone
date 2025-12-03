@@ -184,11 +184,11 @@ defmodule Web.AuthTest do
         signed_in(conn, provider, identity, context, "foo", %{})
         |> fetch_cookies()
 
-      fz_recent_account_ids =
-        conn.cookies["fz_recent_account_ids"]
+      recent_account_ids =
+        conn.cookies["recent_account_ids"]
         |> :erlang.binary_to_term()
 
-      assert fz_recent_account_ids == [account.id]
+      assert recent_account_ids == [account.id]
     end
 
     test "persists the token in session", %{

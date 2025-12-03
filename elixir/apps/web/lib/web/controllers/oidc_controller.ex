@@ -12,12 +12,11 @@ defmodule Web.OIDCController do
 
   require Logger
 
-  # For persisting state across the IdP redirect
-  @cookie_prefix "_oidc_"
+  @cookie_prefix "oidc"
   @cookie_options [
     encrypt: true,
-    sign: true,
     max_age: 30 * 60,
+    # For persisting state across the IdP redirect
     same_site: "Lax",
     secure: true,
     http_only: true
@@ -53,7 +52,7 @@ defmodule Web.OIDCController do
 
   defp handle_authentication_callback(conn, state, code, params) do
     cookie_key = cookie_key(state)
-    conn = fetch_cookies(conn, signed: [cookie_key])
+    conn = fetch_cookies(conn, encrypted: [cookie_key])
     context_type = context_type(params)
 
     with {:ok, cookie} <- Map.fetch(conn.cookies, cookie_key),

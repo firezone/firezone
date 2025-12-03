@@ -18,12 +18,11 @@ defmodule Web.EmailOTPController do
   require Logger
 
   # For persisting state across the email OTP flow
-  @cookie_key "_email_otp_"
+  @cookie_key "email_otp"
   @cookie_options [
-    sign: true,
     encrypt: true,
     max_age: 30 * 60,
-    same_site: "Strict",
+    same_site: "Lax",
     secure: true,
     http_only: true
   ]
@@ -79,7 +78,7 @@ defmodule Web.EmailOTPController do
         } = params
       ) do
     cookie_key = state_cookie_key(auth_provider_id)
-    conn = fetch_cookies(conn, signed: [cookie_key])
+    conn = fetch_cookies(conn, encrypted: [cookie_key])
     context_type = context_type(params)
 
     with {:ok, cookie_binary} <- Map.fetch(conn.cookies, cookie_key),
@@ -253,9 +252,11 @@ defmodule Web.EmailOTPController do
   end
 
   defp verify_secret(actor, encoded_token, conn) do
+    # Email tokens are always of type :email
     context = auth_context(conn, :browser)
+    email_context = %{context | type: :email}
 
-    with {:ok, token} <- Auth.use_token(encoded_token, %{context | type: :email}),
+    with {:ok, token} <- Auth.use_token(encoded_token, email_context),
          true <- token.actor_id == actor.id do
       {:ok, _count} = delete_all_email_tokens_for_actor(actor)
       {:ok, actor, nil}
@@ -354,7 +355,7 @@ defmodule Web.EmailOTPController do
 
   defp handle_error(conn, {:error, :invalid_secret}, params) do
     cookie_key = state_cookie_key(params["auth_provider_id"])
-    conn = fetch_cookies(conn, signed: [cookie_key])
+    conn = fetch_cookies(conn, encrypted: [cookie_key])
 
     {_fragment, email, _stored_params} =
       case Map.get(conn.cookies, cookie_key) do

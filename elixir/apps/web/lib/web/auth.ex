@@ -3,20 +3,20 @@ defmodule Web.Auth do
   require Logger
 
   # This cookie is used for client login.
-  @client_auth_cookie_name "_client_auth"
+  @client_auth_cookie_name "client_auth"
   @client_auth_cookie_options [
-    sign: true,
+    encrypt: true,
     max_age: 2 * 60,
-    same_site: "Strict",
+    same_site: "Lax",
     secure: true,
     http_only: true
   ]
 
   # This is the cookie which will store recent account ids
   # that the user has signed in to.
-  @recent_accounts_cookie_name "_recent_account_ids"
+  @recent_accounts_cookie_name "recent_account_ids"
   @recent_accounts_cookie_options [
-    sign: true,
+    encrypt: true,
     max_age: 365 * 24 * 60 * 60,
     same_site: "Strict",
     secure: true,
@@ -29,7 +29,7 @@ defmodule Web.Auth do
   ###########################
 
   def recent_account_ids(conn) do
-    conn = Plug.Conn.fetch_cookies(conn, signed: [@recent_accounts_cookie_name])
+    conn = Plug.Conn.fetch_cookies(conn, encrypted: [@recent_accounts_cookie_name])
     Map.get(conn.cookies, @recent_accounts_cookie_name, [])
   end
 
@@ -58,7 +58,7 @@ defmodule Web.Auth do
   end
 
   def get_client_auth_data_from_cookie(%Plug.Conn{} = conn) do
-    conn = Plug.Conn.fetch_cookies(conn, signed: [@client_auth_cookie_name])
+    conn = Plug.Conn.fetch_cookies(conn, encrypted: [@client_auth_cookie_name])
 
     case conn.cookies[@client_auth_cookie_name] do
       %{actor_name: _, fragment: _, identity_provider_identifier: _, state: _} = client_auth_data ->

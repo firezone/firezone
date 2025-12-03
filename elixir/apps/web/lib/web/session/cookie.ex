@@ -20,7 +20,7 @@ defmodule Web.Session.Cookie do
     [
       encrypt: true,
       max_age: @max_cookie_age,
-      same_site: "Strict",
+      same_site: "Lax",
       secure: cookie_secure(),
       http_only: true,
       signing_salt: signing_salt(),

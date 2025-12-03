@@ -7,9 +7,8 @@ defmodule Web.Endpoint do
   @session_cookie [
     store: :cookie,
     key: "_firezone_key",
-    same_site: "Lax",
+    same_site: "Strict",
     max_age: 8 * 60 * 60,
-    sign: true,
     encrypt: true,
     secure: {__MODULE__, :cookie_secure, []},
     signing_salt: {__MODULE__, :cookie_signing_salt, []},

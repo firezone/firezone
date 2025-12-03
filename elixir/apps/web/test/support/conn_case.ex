@@ -104,7 +104,7 @@ defmodule Web.ConnCase do
       get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", params)
 
     cookie_key = "fz_auth_state_#{provider.id}"
-    redirected_conn = Plug.Conn.fetch_cookies(redirected_conn, signed: [cookie_key])
+    redirected_conn = Plug.Conn.fetch_cookies(redirected_conn, encrypted: [cookie_key])
 
     {_params, state, verifier} =
       redirected_conn.cookies[cookie_key]

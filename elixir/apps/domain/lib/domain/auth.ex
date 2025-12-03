@@ -161,9 +161,10 @@ defmodule Domain.Auth do
 
   def use_token(encoded_token, %Context{} = context)
       when is_binary(encoded_token) do
-    with {:ok, {account_id, id, fragment}} <- decode_token_with_context(encoded_token, context),
+    with {:ok, {nonce, account_id, id, fragment}} <-
+           decode_token_with_context(encoded_token, context),
          {:ok, token} <- fetch_token_for_use(id, account_id, context.type),
-         :ok <- verify_secret_hash(token, fragment),
+         :ok <- verify_secret_hash(token, nonce, fragment),
          changeset = use_token_changeset(token, context),
          {:ok, token} <- changeset |> Safe.unscoped() |> Safe.update() do
       {:ok, token}
@@ -173,11 +174,15 @@ defmodule Domain.Auth do
   end
 
   defp decode_token_with_context(encoded_token, %Context{} = context) do
-    with [_nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2) do
+    with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2) do
       config = fetch_config!()
       key_base = Keyword.fetch!(config, :key_base)
       salt = Keyword.fetch!(config, :salt) <> to_string(context.type)
-      Plug.Crypto.verify(key_base, salt, encoded_fragment, max_age: :infinity)
+
+      case Plug.Crypto.verify(key_base, salt, encoded_fragment, max_age: :infinity) do
+        {:ok, {account_id, id, fragment}} -> {:ok, {nonce, account_id, id, fragment}}
+        _ -> {:error, :invalid_token}
+      end
     else
       _ -> {:error, :invalid_token}
     end
@@ -223,8 +228,8 @@ defmodule Domain.Auth do
     |> validate_required(~w[last_seen_user_agent last_seen_remote_ip]a)
   end
 
-  defp verify_secret_hash(token, fragment) do
-    expected_hash = token_secret_hash(token, fragment)
+  defp verify_secret_hash(token, nonce, fragment) do
+    expected_hash = token_secret_hash(token, nonce, fragment)
 
     if Plug.Crypto.secure_compare(expected_hash, token.secret_hash) do
       :ok
@@ -233,8 +238,8 @@ defmodule Domain.Auth do
     end
   end
 
-  defp token_secret_hash(token, fragment) do
-    Domain.Crypto.hash(:sha3_256, fragment <> token.secret_salt)
+  defp token_secret_hash(token, nonce, fragment) do
+    Domain.Crypto.hash(:sha3_256, nonce <> fragment <> token.secret_salt)
   end
 
   def socket_id(id) when is_binary(id) do
