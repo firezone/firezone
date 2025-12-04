@@ -1,4 +1,7 @@
-#![expect(clippy::print_stdout, reason = "CLI tool outputs JSON metrics to stdout")]
+#![expect(
+    clippy::print_stdout,
+    reason = "CLI tool outputs JSON metrics to stdout"
+)]
 
 //! Load testing CLI for Firezone VPN.
 //!
@@ -44,7 +47,10 @@ struct LoadTestSummary {
 }
 
 impl LoadTestSummary {
-    #[expect(clippy::disallowed_methods, reason = "Iterating to find our single endpoint")]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Iterating to find our single endpoint"
+    )]
     fn from_metrics(metrics: &GooseMetrics) -> Self {
         // We only have one endpoint ("GET /"), so grab its data directly
         let (total_requests, successful_requests, failed_requests, min_time, max_time, avg_time) =
