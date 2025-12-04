@@ -21,6 +21,7 @@ defmodule Domain.Cache.Gateway do
   """
 
   alias Domain.{Cache, Gateways}
+  alias __MODULE__.DB
   import Ecto.UUID, only: [dump!: 1, load!: 1]
 
   require OpenTelemetry.Tracer
@@ -45,7 +46,7 @@ defmodule Domain.Cache.Gateway do
         gateway_id: gateway.id,
         account_id: gateway.account_id
       } do
-      all_gateway_policy_authorizations_for_cache!(gateway)
+      DB.all_gateway_policy_authorizations_for_cache!(gateway)
       |> Enum.reduce(%{}, fn {{client_id, resource_id}, {policy_authorization_id, expires_at}},
                              acc ->
         cid_bytes = dump!(client_id)
@@ -174,7 +175,7 @@ defmodule Domain.Cache.Gateway do
   end
 
   defp handle_last_policy_authorization_removal(cache, key, policy_authorization) do
-    case reauthorize_policy_authorization(policy_authorization) do
+    case DB.reauthorize_policy_authorization(policy_authorization) do
       {:ok, new_policy_authorization} ->
         new_policy_authorization_id = dump!(new_policy_authorization.id)
         expires_at_unix = DateTime.to_unix(new_policy_authorization.expires_at, :second)
@@ -214,252 +215,246 @@ defmodule Domain.Cache.Gateway do
     |> Enum.map(fn {{cid, _}, _} -> {load!(cid), resource_id} end)
   end
 
-  # Inline functions from Domain.PolicyAuthorizations
+  # Inline functions from Domain.PolicyAuthorizations - moved to DB module
 
-  defp all_gateway_policy_authorizations_for_cache!(%Domain.Gateway{} = gateway) do
+  defmodule DB do
+    alias Domain.Safe
     import Ecto.Query
-
-    now = DateTime.utc_now()
-
-    from(f in Domain.PolicyAuthorization, as: :policy_authorizations)
-    |> where([policy_authorizations: f], f.account_id == ^gateway.account_id)
-    |> where([policy_authorizations: f], f.gateway_id == ^gateway.id)
-    |> where([policy_authorizations: f], f.expires_at > ^now)
-    |> select(
-      [policy_authorizations: f],
-      {{f.client_id, f.resource_id}, {f.id, f.expires_at}}
-    )
-    |> Domain.Safe.unscoped()
-    |> Domain.Safe.all()
-  end
-
-  defp reauthorize_policy_authorization(%Domain.PolicyAuthorization{} = policy_authorization) do
+    import Ecto.Changeset
     require Logger
 
-    with client when not is_nil(client) <- fetch_client_by_id!(policy_authorization.client_id),
-         {:ok, token} <- fetch_token_by_id(policy_authorization.token_id),
-         {:ok, gateway} <- fetch_gateway_by_id(policy_authorization.gateway_id),
-         # We only want to reauthorize the resource for this gateway if the resource is still connected to its
-         # site.
-         policies when policies != [] <-
-           all_policies_in_site_for_resource_id_and_actor_id!(
-             policy_authorization.account_id,
-             gateway.site_id,
-             policy_authorization.resource_id,
-             client.actor_id
-           ),
-         {:ok, policy, expires_at} <-
-           longest_conforming_policy_for_client(
-             policies,
-             client,
-             token,
-             policy_authorization.expires_at
-           ),
-         {:ok, membership} <-
-           fetch_membership_by_actor_id_and_group_id(
-             client.actor_id,
-             policy.group_id
-           ),
-         {:ok, new_policy_authorization} <-
-           create_policy_authorization_changeset(%{
-             token_id: policy_authorization.token_id,
-             policy_id: policy.id,
-             client_id: policy_authorization.client_id,
-             gateway_id: policy_authorization.gateway_id,
-             resource_id: policy_authorization.resource_id,
-             membership_id: membership.id,
-             account_id: policy_authorization.account_id,
-             client_remote_ip: client.last_seen_remote_ip,
-             client_user_agent: client.last_seen_user_agent,
-             gateway_remote_ip: policy_authorization.gateway_remote_ip,
-             expires_at: expires_at
-           })
-           |> Domain.Safe.unscoped()
-           |> Domain.Safe.insert() do
-      Logger.info("Reauthorized policy_authorization",
-        old_policy_authorization: inspect(policy_authorization),
-        new_policy_authorization: inspect(new_policy_authorization)
-      )
+    @infinity ~U[9999-12-31 23:59:59.999999Z]
 
-      {:ok, new_policy_authorization}
-    else
-      reason ->
-        Logger.info("Failed to reauthorize policy_authorization",
+    def all_gateway_policy_authorizations_for_cache!(%Domain.Gateway{} = gateway) do
+      now = DateTime.utc_now()
+
+      from(f in Domain.PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: f], f.account_id == ^gateway.account_id)
+      |> where([policy_authorizations: f], f.gateway_id == ^gateway.id)
+      |> where([policy_authorizations: f], f.expires_at > ^now)
+      |> select(
+        [policy_authorizations: f],
+        {{f.client_id, f.resource_id}, {f.id, f.expires_at}}
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def fetch_client_by_id!(id, _opts \\ []) do
+      from(c in Domain.Client, as: :clients)
+      |> where([clients: c], c.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def fetch_gateway_by_id(id) do
+      result =
+        from(g in Domain.Gateway, as: :gateways)
+        |> where([gateways: g], g.id == ^id)
+        |> Safe.unscoped()
+        |> Safe.one()
+
+      if result do
+        {:ok, result}
+      else
+        {:error, :not_found}
+      end
+    end
+
+    def fetch_token_by_id(id) do
+      result =
+        from(t in Domain.Token,
+          where: t.id == ^id,
+          where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
+        )
+        |> Safe.unscoped()
+        |> Safe.one()
+
+      if result do
+        {:ok, result}
+      else
+        {:error, :not_found}
+      end
+    end
+
+    def fetch_membership_by_actor_id_and_group_id(actor_id, group_id) do
+      from(m in Domain.Membership,
+        where: m.actor_id == ^actor_id,
+        where: m.group_id == ^group_id
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        membership -> {:ok, membership}
+      end
+    end
+
+    def all_policies_in_site_for_resource_id_and_actor_id!(
+          account_id,
+          site_id,
+          resource_id,
+          actor_id
+        ) do
+      from(p in Domain.Policy, as: :policies)
+      |> where([policies: p], is_nil(p.disabled_at))
+      |> where([policies: p], p.account_id == ^account_id)
+      |> where([policies: p], p.resource_id == ^resource_id)
+      |> join(:inner, [policies: p], ag in assoc(p, :group), as: :group)
+      |> join(:inner, [policies: p], r in assoc(p, :resource), as: :resource)
+      |> where([resource: r], r.site_id == ^site_id)
+      |> join(:inner, [], actor in Domain.Actor, on: actor.id == ^actor_id, as: :actor)
+      |> join(:left, [group: ag], m in assoc(ag, :memberships), as: :memberships)
+      |> where(
+        [memberships: m, group: ag, actor: a],
+        m.actor_id == ^actor_id or
+          (ag.type == :managed and
+             is_nil(ag.idp_id) and
+             ag.name == "Everyone" and
+             ag.account_id == a.account_id)
+      )
+      |> preload(resource: :site)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def insert_policy_authorization(changeset) do
+      changeset
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def reauthorize_policy_authorization(%Domain.PolicyAuthorization{} = policy_authorization) do
+      with client when not is_nil(client) <- fetch_client_by_id!(policy_authorization.client_id),
+           {:ok, token} <- fetch_token_by_id(policy_authorization.token_id),
+           {:ok, gateway} <- fetch_gateway_by_id(policy_authorization.gateway_id),
+           # We only want to reauthorize the resource for this gateway if the resource is still connected to its
+           # site.
+           policies when policies != [] <-
+             all_policies_in_site_for_resource_id_and_actor_id!(
+               policy_authorization.account_id,
+               gateway.site_id,
+               policy_authorization.resource_id,
+               client.actor_id
+             ),
+           {:ok, policy, expires_at} <-
+             longest_conforming_policy_for_client(
+               policies,
+               client,
+               token,
+               policy_authorization.expires_at
+             ),
+           {:ok, membership} <-
+             fetch_membership_by_actor_id_and_group_id(
+               client.actor_id,
+               policy.group_id
+             ),
+           {:ok, new_policy_authorization} <-
+             create_policy_authorization_changeset(%{
+               token_id: policy_authorization.token_id,
+               policy_id: policy.id,
+               client_id: policy_authorization.client_id,
+               gateway_id: policy_authorization.gateway_id,
+               resource_id: policy_authorization.resource_id,
+               membership_id: membership.id,
+               account_id: policy_authorization.account_id,
+               client_remote_ip: client.last_seen_remote_ip,
+               client_user_agent: client.last_seen_user_agent,
+               gateway_remote_ip: policy_authorization.gateway_remote_ip,
+               expires_at: expires_at
+             })
+             |> Safe.unscoped()
+             |> Safe.insert() do
+        Logger.info("Reauthorized policy_authorization",
           old_policy_authorization: inspect(policy_authorization),
-          reason: inspect(reason)
+          new_policy_authorization: inspect(new_policy_authorization)
         )
 
-        :error
-    end
-  end
+        {:ok, new_policy_authorization}
+      else
+        reason ->
+          Logger.info("Failed to reauthorize policy_authorization",
+            old_policy_authorization: inspect(policy_authorization),
+            reason: inspect(reason)
+          )
 
-  # Database helper functions for reauthorize_policy_authorization
-
-  defp fetch_client_by_id!(id, _opts \\ []) do
-    import Ecto.Query
-
-    from(c in Domain.Client, as: :clients)
-    |> where([clients: c], c.id == ^id)
-    |> Domain.Safe.unscoped()
-    |> Domain.Safe.one()
-  end
-
-  defp fetch_gateway_by_id(id) do
-    import Ecto.Query
-
-    result =
-      from(g in Domain.Gateway, as: :gateways)
-      |> where([gateways: g], g.id == ^id)
-      |> Domain.Safe.unscoped()
-      |> Domain.Safe.one()
-
-    case result do
-      nil -> {:error, :not_found}
-      {:error, :unauthorized} -> {:error, :unauthorized}
-      gateway -> {:ok, gateway}
-    end
-  end
-
-  defp fetch_token_by_id(id) do
-    import Ecto.Query
-
-    result =
-      from(t in Domain.Token,
-        where: t.id == ^id,
-        where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
-      )
-      |> Domain.Safe.unscoped()
-      |> Domain.Safe.one()
-
-    case result do
-      nil -> {:error, :not_found}
-      {:error, :unauthorized} -> {:error, :unauthorized}
-      token -> {:ok, token}
-    end
-  end
-
-  defp fetch_membership_by_actor_id_and_group_id(actor_id, group_id) do
-    import Ecto.Query
-
-    from(m in Domain.Membership,
-      where: m.actor_id == ^actor_id,
-      where: m.group_id == ^group_id
-    )
-    |> Domain.Safe.unscoped()
-    |> Domain.Safe.one()
-    |> case do
-      nil -> {:error, :not_found}
-      membership -> {:ok, membership}
-    end
-  end
-
-  defp all_policies_in_site_for_resource_id_and_actor_id!(
-         account_id,
-         site_id,
-         resource_id,
-         actor_id
-       ) do
-    import Ecto.Query
-
-    from(p in Domain.Policy, as: :policies)
-    |> where([policies: p], is_nil(p.disabled_at))
-    |> where([policies: p], p.account_id == ^account_id)
-    |> where([policies: p], p.resource_id == ^resource_id)
-    |> join(:inner, [policies: p], ag in assoc(p, :group), as: :group)
-    |> join(:inner, [policies: p], r in assoc(p, :resource), as: :resource)
-    |> where([resource: r], r.site_id == ^site_id)
-    |> join(:inner, [], actor in Domain.Actor, on: actor.id == ^actor_id, as: :actor)
-    |> join(:left, [group: ag], m in assoc(ag, :memberships), as: :memberships)
-    |> where(
-      [memberships: m, group: ag, actor: a],
-      m.actor_id == ^actor_id or
-        (ag.type == :managed and
-           is_nil(ag.idp_id) and
-           ag.name == "Everyone" and
-           ag.account_id == a.account_id)
-    )
-    |> preload(resource: :site)
-    |> Domain.Safe.unscoped()
-    |> Domain.Safe.all()
-  end
-
-  @infinity ~U[9999-12-31 23:59:59.999999Z]
-
-  defp longest_conforming_policy_for_client(policies, client, auth_provider_id, expires_at) do
-    policies
-    |> Enum.reduce(%{failed: [], succeeded: []}, fn policy, acc ->
-      case ensure_client_conforms_policy_conditions(policy, client, auth_provider_id) do
-        {:ok, expires_at} ->
-          %{acc | succeeded: [{expires_at, policy} | acc.succeeded]}
-
-        {:error, {:forbidden, violated_properties: violated_properties}} ->
-          %{acc | failed: acc.failed ++ violated_properties}
+          :error
       end
-    end)
-    |> case do
-      %{succeeded: [], failed: failed} ->
-        {:error, {:forbidden, violated_properties: Enum.uniq(failed)}}
-
-      %{succeeded: succeeded} ->
-        {condition_expires_at, policy} =
-          succeeded |> Enum.max_by(fn {exp, _policy} -> exp || @infinity end)
-
-        {:ok, policy, min_expires_at(condition_expires_at, expires_at)}
     end
-  end
 
-  defp ensure_client_conforms_policy_conditions(
-         %Domain.Policy{} = policy,
-         %Domain.Client{} = client,
-         auth_provider_id
-       ) do
-    ensure_client_conforms_policy_conditions(
-      Domain.Cache.Cacheable.to_cache(policy),
-      client,
-      auth_provider_id
-    )
-  end
+    defp longest_conforming_policy_for_client(policies, client, auth_provider_id, expires_at) do
+      policies
+      |> Enum.reduce(%{failed: [], succeeded: []}, fn policy, acc ->
+        case ensure_client_conforms_policy_conditions(policy, client, auth_provider_id) do
+          {:ok, expires_at} ->
+            %{acc | succeeded: [{expires_at, policy} | acc.succeeded]}
 
-  defp ensure_client_conforms_policy_conditions(
-         %Domain.Cache.Cacheable.Policy{} = policy,
-         %Domain.Client{} = client,
-         auth_provider_id
-       ) do
-    case Domain.Policies.Evaluator.ensure_conforms(policy.conditions, client, auth_provider_id) do
-      {:ok, expires_at} ->
-        {:ok, expires_at}
+          {:error, {:forbidden, violated_properties: violated_properties}} ->
+            %{acc | failed: acc.failed ++ violated_properties}
+        end
+      end)
+      |> case do
+        %{succeeded: [], failed: failed} ->
+          {:error, {:forbidden, violated_properties: Enum.uniq(failed)}}
 
-      {:error, violated_properties} ->
-        {:error, {:forbidden, violated_properties: violated_properties}}
+        %{succeeded: succeeded} ->
+          {condition_expires_at, policy} =
+            succeeded |> Enum.max_by(fn {exp, _policy} -> exp || @infinity end)
+
+          {:ok, policy, min_expires_at(condition_expires_at, expires_at)}
+      end
     end
-  end
 
-  defp min_expires_at(nil, nil),
-    do: raise("Both policy_expires_at and token_expires_at cannot be nil")
-
-  defp min_expires_at(nil, token_expires_at), do: token_expires_at
-
-  defp min_expires_at(%DateTime{} = policy_expires_at, %DateTime{} = token_expires_at) do
-    if DateTime.compare(policy_expires_at, token_expires_at) == :lt do
-      policy_expires_at
-    else
-      token_expires_at
+    defp ensure_client_conforms_policy_conditions(
+           %Domain.Policy{} = policy,
+           %Domain.Client{} = client,
+           auth_provider_id
+         ) do
+      ensure_client_conforms_policy_conditions(
+        Domain.Cache.Cacheable.to_cache(policy),
+        client,
+        auth_provider_id
+      )
     end
-  end
 
-  # Private changeset function for policy_authorization creation
-  defp create_policy_authorization_changeset(attrs) do
-    import Ecto.Changeset
+    defp ensure_client_conforms_policy_conditions(
+           %Domain.Cache.Cacheable.Policy{} = policy,
+           %Domain.Client{} = client,
+           auth_provider_id
+         ) do
+      case Domain.Policies.Evaluator.ensure_conforms(policy.conditions, client, auth_provider_id) do
+        {:ok, expires_at} ->
+          {:ok, expires_at}
 
-    fields = ~w[token_id policy_id client_id gateway_id resource_id membership_id
-                account_id
-                expires_at
-                client_remote_ip client_user_agent
-                gateway_remote_ip]a
+        {:error, violated_properties} ->
+          {:error, {:forbidden, violated_properties: violated_properties}}
+      end
+    end
 
-    %Domain.PolicyAuthorization{}
-    |> cast(attrs, fields)
-    |> validate_required(fields)
-    |> Domain.PolicyAuthorization.changeset()
+    defp min_expires_at(nil, nil),
+      do: raise("Both policy_expires_at and token_expires_at cannot be nil")
+
+    defp min_expires_at(nil, token_expires_at), do: token_expires_at
+
+    defp min_expires_at(%DateTime{} = policy_expires_at, %DateTime{} = token_expires_at) do
+      if DateTime.compare(policy_expires_at, token_expires_at) == :lt do
+        policy_expires_at
+      else
+        token_expires_at
+      end
+    end
+
+    defp create_policy_authorization_changeset(attrs) do
+      fields = ~w[token_id policy_id client_id gateway_id resource_id membership_id
+                  account_id
+                  expires_at
+                  client_remote_ip client_user_agent
+                  gateway_remote_ip]a
+
+      %Domain.PolicyAuthorization{}
+      |> cast(attrs, fields)
+      |> validate_required(fields)
+      |> Domain.PolicyAuthorization.changeset()
+    end
   end
 end
