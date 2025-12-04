@@ -30,6 +30,7 @@ src/**/*.js
 
 # Vite output
 dist
+!dist/.gitkeep
 
 # Some new generated files in Tauri v2
 src-tauri/gen
