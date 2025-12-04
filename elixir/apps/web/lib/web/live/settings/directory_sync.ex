@@ -595,10 +595,7 @@ defmodule Web.Settings.DirectorySync do
                   <.icon name="hero-trash" class="w-4 h-4" /> Delete
                   <:dialog_title>Delete Directory</:dialog_title>
                   <:dialog_content>
-                    Are you sure you want to delete <strong>{@directory.name}</strong>? This will delete
-                    <strong>ALL</strong>
-                    associated entities attached to this directory and cannot be undone:
-                    <.deletion_stats directory={@directory} />
+                    <.deletion_stats directory={@directory} subject={@subject} />
                   </:dialog_content>
                   <:dialog_confirm_button>Delete</:dialog_confirm_button>
                   <:dialog_cancel_button>Cancel</:dialog_cancel_button>
@@ -728,19 +725,36 @@ defmodule Web.Settings.DirectorySync do
   end
 
   attr :directory, :any, required: true
+  attr :subject, :any, required: true
 
   defp deletion_stats(assigns) do
-    # TODO: Count associated entities and display counts
-    # actors.created_by_directory_id
-    # external_identities.directory_id
-    # groups.directory_id
-    # policies.group_id
+    stats = DB.count_deletion_stats(assigns.directory, assigns.subject)
+    total = stats.actors + stats.identities + stats.groups + stats.policies
+    assigns = assign(assigns, stats: stats, total: total)
+
     ~H"""
-    <ul class="list-disc list-inside mt-2 text-sm text-neutral-700">
-      <li>Actors created by this directory</li>
-      <li>Groups synced from this directory</li>
-      <li>Access policies using groups from this directory</li>
-    </ul>
+    <div>
+      Are you sure you want to delete <strong>{@directory.name}</strong>?
+      <%= if @total > 0 do %>
+        This will delete <strong>ALL</strong> associated entities and cannot be undone:
+        <ul class="list-disc list-inside mt-2 text-sm text-neutral-700">
+          <li :if={@stats.actors > 0}>
+            {@stats.actors} {ngettext("actor", "actors", @stats.actors)} created by this directory
+          </li>
+          <li :if={@stats.identities > 0}>
+            {@stats.identities} external {ngettext("identity", "identities", @stats.identities)}
+          </li>
+          <li :if={@stats.groups > 0}>
+            {@stats.groups} {ngettext("group", "groups", @stats.groups)} synced from this directory
+          </li>
+          <li :if={@stats.policies > 0}>
+            {@stats.policies} access {ngettext("policy", "policies", @stats.policies)} using these groups
+          </li>
+        </ul>
+      <% else %>
+        This action cannot be undone.
+      <% end %>
+    </div>
     """
   end
 
@@ -1555,6 +1569,47 @@ defmodule Web.Settings.DirectorySync do
 
     def delete_directory(directory, subject) do
       directory |> Safe.scoped(subject) |> Safe.delete()
+    end
+
+    def count_deletion_stats(directory, subject) do
+      directory_id = directory.id
+
+      actors_count =
+        from(a in Domain.Actor,
+          where: a.created_by_directory_id == ^directory_id
+        )
+        |> Safe.scoped(subject)
+        |> Safe.aggregate(:count)
+
+      identities_count =
+        from(ei in Domain.ExternalIdentity,
+          where: ei.directory_id == ^directory_id
+        )
+        |> Safe.scoped(subject)
+        |> Safe.aggregate(:count)
+
+      groups_count =
+        from(g in Domain.Group,
+          where: g.directory_id == ^directory_id
+        )
+        |> Safe.scoped(subject)
+        |> Safe.aggregate(:count)
+
+      policies_count =
+        from(p in Domain.Policy,
+          join: g in Domain.Group,
+          on: p.group_id == g.id,
+          where: g.directory_id == ^directory_id
+        )
+        |> Safe.scoped(subject)
+        |> Safe.aggregate(:count)
+
+      %{
+        actors: actors_count,
+        identities: identities_count,
+        groups: groups_count,
+        policies: policies_count
+      }
     end
 
     def reload(nil, _subject), do: nil

@@ -217,6 +217,19 @@ defmodule Domain.Safe do
   @spec stream(Domain.Repo, Ecto.Queryable.t(), Keyword.t()) :: Enum.t()
   def stream(repo, queryable, opts) when repo == Repo, do: Repo.stream(queryable, opts)
 
+  @spec aggregate(Scoped.t(), atom()) :: term() | {:error, :unauthorized}
+  def aggregate(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}, aggregate) do
+    schema = get_schema_module(queryable)
+
+    with :ok <- permit(:read, schema, subject) do
+      safe_repo(fn ->
+        queryable
+        |> apply_account_filter(schema, account_id)
+        |> Repo.aggregate(aggregate)
+      end) || 0
+    end
+  end
+
   @spec aggregate(Unscoped.t(), atom()) :: term()
   def aggregate(%Unscoped{queryable: queryable}, aggregate),
     do: safe_repo(fn -> Repo.aggregate(queryable, aggregate) end) || 0
