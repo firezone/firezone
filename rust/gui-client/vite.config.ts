@@ -1,9 +1,22 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, Plugin } from "vite";
 import flowbiteReact from "flowbite-react/plugin/vite";
 import typescript from "vite-plugin-typescript";
 import { execSync } from "child_process";
+import { writeFileSync } from "fs";
+import { join } from "path";
+
+// Plugin to recreate .gitkeep after build (Vite's emptyOutDir deletes it)
+function preserveGitkeep(): Plugin {
+  return {
+    name: "preserve-gitkeep",
+    writeBundle(options) {
+      const outDir = options.dir ?? "dist";
+      writeFileSync(join(outDir, ".gitkeep"), "");
+    },
+  };
+}
 
 const host = process.env.TAURI_DEV_HOST;
 const gitVersion =
@@ -11,7 +24,13 @@ const gitVersion =
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), flowbiteReact(), tailwindcss(), typescript()],
+  plugins: [
+    react(),
+    flowbiteReact(),
+    tailwindcss(),
+    typescript(),
+    preserveGitkeep(),
+  ],
 
   define: {
     // mark:next-gui-version
