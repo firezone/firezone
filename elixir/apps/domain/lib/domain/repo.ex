@@ -7,15 +7,6 @@ defmodule Domain.Repo do
   require Ecto.Query
 
   @doc """
-  Returns `true` when binary representation of `Ecto.UUID` is valid, otherwise - `false`.
-  """
-  def valid_uuid?(binary) when is_binary(binary),
-    do: match?(<<_::64, ?-, _::32, ?-, _::32, ?-, _::32, ?-, _::96>>, binary)
-
-  def valid_uuid?(_binary),
-    do: false
-
-  @doc """
   Similar to `Ecto.Repo.one/2`, fetches a single result from the query
   but supports custom preloads and filters.
 

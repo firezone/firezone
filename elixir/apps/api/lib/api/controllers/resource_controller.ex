@@ -42,8 +42,9 @@ defmodule API.ResourceController do
     ]
 
   def show(conn, %{"id" => id}) do
-    resource = DB.fetch_resource(conn.assigns.subject, id)
-    render(conn, :show, resource: resource)
+    with {:ok, resource} <- DB.fetch_resource(id, conn.assigns.subject) do
+      render(conn, :show, resource: resource)
+    end
   end
 
   operation :create,
@@ -90,14 +91,15 @@ defmodule API.ResourceController do
   def update(conn, %{"id" => id, "resource" => params}) do
     subject = conn.assigns.subject
     attrs = set_param_defaults(params)
-    resource = DB.fetch_resource(subject, id)
 
-    # Prevent updates to Internet resource
-    if resource.type == :internet do
-      {:error, {:forbidden, "Internet resource cannot be updated"}}
-    else
-      with {:ok, updated_resource} <- DB.update_resource(resource, attrs, subject) do
-        render(conn, :show, resource: updated_resource)
+    with {:ok, resource} <- DB.fetch_resource(id, subject) do
+      # Prevent updates to Internet resource
+      if resource.type == :internet do
+        {:error, {:forbidden, "Internet resource cannot be updated"}}
+      else
+        with {:ok, updated_resource} <- DB.update_resource(resource, attrs, subject) do
+          render(conn, :show, resource: updated_resource)
+        end
       end
     end
   end
@@ -122,14 +124,15 @@ defmodule API.ResourceController do
 
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
-    resource = DB.fetch_resource(subject, id)
 
-    # Prevent deletion of Internet resource
-    if resource.type == :internet do
-      {:error, {:forbidden, "Internet resource cannot be deleted"}}
-    else
-      with {:ok, resource} <- DB.delete_resource(resource, subject) do
-        render(conn, :show, resource: resource)
+    with {:ok, resource} <- DB.fetch_resource(id, subject) do
+      # Prevent deletion of Internet resource
+      if resource.type == :internet do
+        {:error, {:forbidden, "Internet resource cannot be deleted"}}
+      else
+        with {:ok, resource} <- DB.delete_resource(resource, subject) do
+          render(conn, :show, resource: resource)
+        end
       end
     end
   end
@@ -159,10 +162,17 @@ defmodule API.ResourceController do
       |> Safe.list(__MODULE__, opts)
     end
 
-    def fetch_resource(subject, id) do
-      from(r in Domain.Resource, where: r.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+    def fetch_resource(id, subject) do
+      result =
+        from(r in Domain.Resource, where: r.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        resource -> {:ok, resource}
+      end
     end
 
     def update_resource(resource, attrs, subject) do

@@ -5,23 +5,21 @@ defmodule Web.Settings.ApiClients.Show do
 
   def mount(%{"id" => id}, _session, socket) do
     if Domain.Account.rest_api_enabled?(socket.assigns.account) do
-      with {:ok, actor} <- DB.fetch_api_client(id, socket.assigns.subject) do
-        socket =
-          socket
-          |> assign(
-            actor: actor,
-            page_title: "API Client #{actor.name}"
-          )
-          |> assign_live_table("tokens",
-            query_module: DB,
-            sortable_fields: [],
-            callback: &handle_tokens_update!/2
-          )
+      actor = DB.get_api_client!(id, socket.assigns.subject)
 
-        {:ok, socket}
-      else
-        {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-      end
+      socket =
+        socket
+        |> assign(
+          actor: actor,
+          page_title: "API Client #{actor.name}"
+        )
+        |> assign_live_table("tokens",
+          query_module: DB,
+          sortable_fields: [],
+          callback: &handle_tokens_update!/2
+        )
+
+      {:ok, socket}
     else
       {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
     end
@@ -73,7 +71,7 @@ defmodule Web.Settings.ApiClients.Show do
         >
           <:dialog_title>Confirm disabling the API Client</:dialog_title>
           <:dialog_content>
-            Are you sure want to disable this API Client and revoke all its tokens?
+            Are you sure want to disable this API Client? It will no longer be able to authenticate.
           </:dialog_content>
           <:dialog_confirm_button>
             Disable
@@ -307,14 +305,13 @@ defmodule Web.Settings.ApiClients.Show do
     import Ecto.Query
     alias Domain.Safe
 
-    def fetch_api_client(id, subject) do
-      from(a in Domain.Actor, where: a.id == ^id, where: a.type == :api_client)
+    def get_api_client!(id, subject) do
+      from(a in Domain.Actor,
+        where: a.id == ^id,
+        where: a.type == :api_client
+      )
       |> Safe.scoped(subject)
-      |> Safe.one()
-      |> case do
-        nil -> {:error, :not_found}
-        actor -> {:ok, actor}
-      end
+      |> Safe.one!()
     end
 
     def update_actor(changeset, subject) do

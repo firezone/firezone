@@ -56,7 +56,7 @@ defmodule API.ClientController do
 
   # Show a specific Client
   def show(conn, %{"id" => id}) do
-    with {:ok, client} <- DB.fetch_client_by_id(id, conn.assigns.subject) do
+    with {:ok, client} <- DB.fetch_client(id, conn.assigns.subject) do
       client = Clients.preload_clients_presence([client]) |> List.first()
       render(conn, :show, client: client)
     end
@@ -83,7 +83,7 @@ defmodule API.ClientController do
   def update(conn, %{"id" => id, "client" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- DB.fetch_client_by_id(id, subject),
+    with {:ok, client} <- DB.fetch_client(id, subject),
          changeset = update_changeset(client, params),
          {:ok, client} <- DB.update_client(changeset, subject) do
       render(conn, :show, client: client)
@@ -124,7 +124,7 @@ defmodule API.ClientController do
   def verify(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- DB.fetch_client_by_id(id, subject),
+    with {:ok, client} <- DB.fetch_client(id, subject),
          changeset = client |> change() |> put_default_value(:verified_at, DateTime.utc_now()),
          {:ok, client} <- DB.verify_client(changeset, subject) do
       render(conn, :show, client: client)
@@ -151,7 +151,7 @@ defmodule API.ClientController do
     import Ecto.Changeset
     subject = conn.assigns.subject
 
-    with {:ok, client} <- DB.fetch_client_by_id(id, subject),
+    with {:ok, client} <- DB.fetch_client(id, subject),
          changeset = client |> change() |> put_change(:verified_at, nil),
          {:ok, client} <- DB.remove_client_verification(changeset, subject) do
       render(conn, :show, client: client)
@@ -177,7 +177,7 @@ defmodule API.ClientController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- DB.fetch_client_by_id(id, subject),
+    with {:ok, client} <- DB.fetch_client(id, subject),
          {:ok, client} <- DB.delete_client(client, subject) do
       render(conn, :show, client: client)
     end
@@ -201,7 +201,7 @@ defmodule API.ClientController do
       ]
     end
 
-    def fetch_client_by_id(id, subject) do
+    def fetch_client(id, subject) do
       result =
         from(c in Client, as: :clients)
         |> where([clients: c], c.id == ^id)
@@ -226,32 +226,22 @@ defmodule API.ClientController do
     end
 
     def verify_client(changeset, subject) do
-      # Only account_admin_user can verify clients
-      if subject.actor.type == :account_admin_user do
-        case Safe.scoped(changeset, subject) |> Safe.update() do
-          {:ok, updated_client} ->
-            {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+      case Safe.scoped(changeset, subject) |> Safe.update() do
+        {:ok, updated_client} ->
+          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
-          {:error, reason} ->
-            {:error, reason}
-        end
-      else
-        {:error, :unauthorized}
+        {:error, reason} ->
+          {:error, reason}
       end
     end
 
     def remove_client_verification(changeset, subject) do
-      # Only account_admin_user can remove client verification
-      if subject.actor.type == :account_admin_user do
-        case Safe.scoped(changeset, subject) |> Safe.update() do
-          {:ok, updated_client} ->
-            {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+      case Safe.scoped(changeset, subject) |> Safe.update() do
+        {:ok, updated_client} ->
+          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
-          {:error, reason} ->
-            {:error, reason}
-        end
-      else
-        {:error, :unauthorized}
+        {:error, reason} ->
+          {:error, reason}
       end
     end
 

@@ -6,45 +6,42 @@ defmodule Web.Resources.Show do
   alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
-    with {:ok, resource} <- fetch_resource(id, socket.assigns.subject),
-         {:ok, groups_peek} <-
-           DB.peek_resource_groups([resource], 3, socket.assigns.subject) do
-      if connected?(socket) do
-        :ok = PubSub.Account.subscribe(resource.account_id)
-      end
+    resource = get_resource!(id, socket.assigns.subject)
+    {:ok, groups_peek} = DB.peek_resource_groups([resource], 3, socket.assigns.subject)
 
-      socket =
-        assign(
-          socket,
-          page_title: "Resource #{resource.name}",
-          resource: resource,
-          groups_peek: Map.fetch!(groups_peek, resource.id),
-          params: Map.take(params, ["site_id"])
-        )
-        |> assign_live_table("policy_authorizations",
-          query_module: DB.PolicyAuthorizationQuery,
-          sortable_fields: [],
-          hide_filters: [:expiration],
-          callback: &handle_policy_authorizations_update!/2
-        )
-        |> assign_live_table("policies",
-          query_module: DB,
-          hide_filters: [
-            :group_id,
-            :resource_name,
-            :group_or_resource_name
-          ],
-          enforce_filters: [
-            {:resource_id, resource.id}
-          ],
-          sortable_fields: [],
-          callback: &handle_policies_update!/2
-        )
-
-      {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    if connected?(socket) do
+      :ok = PubSub.Account.subscribe(resource.account_id)
     end
+
+    socket =
+      assign(
+        socket,
+        page_title: "Resource #{resource.name}",
+        resource: resource,
+        groups_peek: Map.fetch!(groups_peek, resource.id),
+        params: Map.take(params, ["site_id"])
+      )
+      |> assign_live_table("policy_authorizations",
+        query_module: DB.PolicyAuthorizationQuery,
+        sortable_fields: [],
+        hide_filters: [:expiration],
+        callback: &handle_policy_authorizations_update!/2
+      )
+      |> assign_live_table("policies",
+        query_module: DB,
+        hide_filters: [
+          :group_id,
+          :resource_name,
+          :group_or_resource_name
+        ],
+        enforce_filters: [
+          {:resource_id, resource.id}
+        ],
+        sortable_fields: [],
+        callback: &handle_policies_update!/2
+      )
+
+    {:ok, socket}
   end
 
   def handle_params(params, uri, socket) do
@@ -366,10 +363,7 @@ defmodule Web.Resources.Show do
         %{assigns: %{resource: %{id: id}}} = socket
       )
       when resource_id == id do
-    {:ok, resource} =
-      DB.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject)
-
-    resource = Domain.Safe.preload(resource, [:site, :policies])
+    resource = DB.get_resource!(socket.assigns.resource.id, socket.assigns.subject)
 
     {:noreply, assign(socket, resource: resource)}
   end
@@ -406,20 +400,12 @@ defmodule Web.Resources.Show do
     end
   end
 
-  defp fetch_resource("internet", subject) do
-    DB.fetch_internet_resource(subject)
-    |> case do
-      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :site)}
-      error -> error
-    end
+  defp get_resource!("internet", subject) do
+    DB.get_internet_resource!(subject)
   end
 
-  defp fetch_resource(id, subject) do
-    DB.fetch_resource_by_id(id, subject)
-    |> case do
-      {:ok, resource} -> {:ok, Domain.Safe.preload(resource, :site)}
-      error -> error
-    end
+  defp get_resource!(id, subject) do
+    DB.get_resource!(id, subject)
   end
 
   defp format_ip_stack(:dual), do: "Dual-stack (IPv4 and IPv6)"
@@ -431,32 +417,20 @@ defmodule Web.Resources.Show do
     import Domain.Repo.Query
     alias Domain.{Safe, Resource, Policy}
 
-    def fetch_resource_by_id(id, subject) do
-      result =
-        from(r in Resource, as: :resources)
-        |> where([resources: r], r.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        resource -> {:ok, resource}
-      end
+    def get_resource!(id, subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.id == ^id)
+      |> preload([:site, :policies])
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
-    def fetch_internet_resource(subject) do
-      result =
-        from(r in Resource, as: :resources)
-        |> where([resources: r], r.type == :internet)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        resource -> {:ok, resource}
-      end
+    def get_internet_resource!(subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.type == :internet)
+      |> preload([:site, :policies])
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def peek_resource_groups(resources, limit, subject) do

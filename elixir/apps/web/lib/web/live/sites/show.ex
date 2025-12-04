@@ -4,55 +4,48 @@ defmodule Web.Sites.Show do
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, site} <-
-           DB.fetch_site(id, socket.assigns.subject) do
-      if connected?(socket) do
-        :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
-      end
+    site = DB.get_site!(id, socket.assigns.subject)
 
-      socket =
-        socket
-        |> assign(
-          page_title: "Site #{site.name}",
-          site: site
-        )
-
-      mount_page(socket, site)
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    if connected?(socket) do
+      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
     end
+
+    socket =
+      socket
+      |> assign(
+        page_title: "Site #{site.name}",
+        site: site
+      )
+
+    mount_page(socket, site)
   end
 
   defp mount_page(socket, %{managed_by: :system, name: "Internet"} = site) do
-    with {:ok, resource} <- DB.fetch_internet_resource(socket.assigns.subject) do
-      resource = Domain.Repo.preload(resource, :sites)
+    resource = DB.get_internet_resource!(socket.assigns.subject)
 
-      socket =
-        socket
-        |> assign(resource: resource)
-        |> assign_live_table("gateways",
-          query_module: DB,
-          enforce_filters: [
-            {:site_id, site.id}
-          ],
-          sortable_fields: [
-            {:gateways, :last_seen_at}
-          ],
-          callback: &handle_gateways_update!/2
-        )
-        |> assign_live_table("policies",
-          query_module: DB.PolicyQuery,
-          enforce_filters: [
-            {:resource_id, resource.id}
-          ],
-          sortable_fields: [],
-          callback: &handle_policies_update!/2
-        )
+    socket =
+      socket
+      |> assign(resource: resource)
+      |> assign_live_table("gateways",
+        query_module: DB,
+        enforce_filters: [
+          {:site_id, site.id}
+        ],
+        sortable_fields: [
+          {:gateways, :last_seen_at}
+        ],
+        callback: &handle_gateways_update!/2
+      )
+      |> assign_live_table("policies",
+        query_module: DB.PolicyQuery,
+        enforce_filters: [
+          {:resource_id, resource.id}
+        ],
+        sortable_fields: [],
+        callback: &handle_policies_update!/2
+      )
 
-      {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket}
   end
 
   defp mount_page(socket, site) do
@@ -498,18 +491,11 @@ defmodule Web.Sites.Show do
     alias Domain.Safe
     alias Domain.Gateway
 
-    def fetch_site(id, subject) do
-      result =
-        from(g in Domain.Site, as: :sites)
-        |> where([sites: g], g.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        site -> {:ok, site}
-      end
+    def get_site!(id, subject) do
+      from(s in Domain.Site, as: :sites)
+      |> where([sites: s], s.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def list_gateways(subject, opts \\ []) do
@@ -561,19 +547,12 @@ defmodule Web.Sites.Show do
       |> Safe.delete()
     end
 
-    def fetch_internet_resource(subject) do
-      result =
-        from(r in Domain.Resource, as: :resources)
-        |> where([resources: r], r.type == :internet)
-        |> limit(1)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        resource -> {:ok, resource}
-      end
+    def get_internet_resource!(subject) do
+      from(r in Domain.Resource, as: :resources)
+      |> where([resources: r], r.type == :internet)
+      |> limit(1)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def list_resources(subject, opts \\ []) do

@@ -7,20 +7,17 @@ defmodule Web.Settings.ApiClients.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     if Domain.Account.rest_api_enabled?(socket.assigns.account) do
-      with {:ok, actor} <- DB.fetch_api_client(id, socket.assigns.subject) do
-        changeset = changeset(actor, %{})
+      actor = DB.get_api_client!(id, socket.assigns.subject)
+      changeset = changeset(actor, %{})
 
-        socket =
-          assign(socket,
-            actor: actor,
-            form: to_form(changeset),
-            page_title: "Edit #{actor.name}"
-          )
+      socket =
+        assign(socket,
+          actor: actor,
+          form: to_form(changeset),
+          page_title: "Edit #{actor.name}"
+        )
 
-        {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-      else
-        _other -> raise Web.LiveErrors.NotFoundError
-      end
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
     end
@@ -91,14 +88,13 @@ defmodule Web.Settings.ApiClients.Edit do
     import Ecto.Query
     alias Domain.Safe
 
-    def fetch_api_client(id, subject) do
-      from(a in Domain.Actor, where: a.id == ^id, where: a.type == :api_client)
+    def get_api_client!(id, subject) do
+      from(a in Domain.Actor,
+        where: a.id == ^id,
+        where: a.type == :api_client
+      )
       |> Safe.scoped(subject)
-      |> Safe.one()
-      |> case do
-        nil -> {:error, :not_found}
-        actor -> {:ok, actor}
-      end
+      |> Safe.one!()
     end
 
     def update_api_client(changeset, subject) do

@@ -49,8 +49,9 @@ defmodule API.SiteController do
 
   # Show a specific Site
   def show(conn, %{"id" => id}) do
-    site = DB.fetch_site(conn.assigns.subject, id)
-    render(conn, :show, site: site)
+    with {:ok, site} <- DB.fetch_site(id, conn.assigns.subject) do
+      render(conn, :show, site: site)
+    end
   end
 
   operation :create,
@@ -120,9 +121,9 @@ defmodule API.SiteController do
   # Update a Site
   def update(conn, %{"id" => id, "site" => params}) do
     subject = conn.assigns.subject
-    site = DB.fetch_site(subject, id)
 
-    with {:ok, site} <- DB.update_site(site, params, subject) do
+    with {:ok, site} <- DB.fetch_site(id, subject),
+         {:ok, site} <- DB.update_site(site, params, subject) do
       render(conn, :show, site: site)
     end
   end
@@ -148,9 +149,9 @@ defmodule API.SiteController do
   # Delete a Site
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
-    site = DB.fetch_site(subject, id)
 
-    with {:ok, site} <- DB.delete_site(site, subject) do
+    with {:ok, site} <- DB.fetch_site(id, subject),
+         {:ok, site} <- DB.delete_site(site, subject) do
       render(conn, :show, site: site)
     end
   end
@@ -173,7 +174,7 @@ defmodule API.SiteController do
   def create_token(conn, %{"site_id" => site_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, site} <- DB.fetch_site_by_id(site_id, subject),
+    with {:ok, site} <- DB.fetch_site(site_id, subject),
          {:ok, token, encoded_token} <-
            DB.create_token(site, %{}, subject) do
       conn
@@ -206,8 +207,8 @@ defmodule API.SiteController do
   def delete_token(conn, %{"site_id" => _site_id, "id" => token_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, token} <- DB.fetch_token_by_id(token_id, subject),
-         {:ok, deleted_token} <- Safe.scoped(token, subject) |> Safe.delete() do
+    with {:ok, token} <- DB.fetch_token(token_id, subject),
+         {:ok, deleted_token} <- DB.delete_token(token, subject) do
       render(conn, :deleted_token, token: deleted_token)
     end
   end
@@ -229,18 +230,8 @@ defmodule API.SiteController do
   def delete_all_tokens(conn, %{"site_id" => site_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, site} <- DB.fetch_site_by_id(site_id, subject) do
-      # Only account admins can delete site tokens
-      deleted_count =
-        if subject.actor.type == :account_admin_user do
-          import Ecto.Query
-          query = from(t in Domain.Token, where: t.site_id == ^site.id)
-          {count, _} = Safe.scoped(subject) |> Safe.delete_all(query)
-          count
-        else
-          0
-        end
-
+    with {:ok, site} <- DB.fetch_site(site_id, subject),
+         {deleted_count, _} <- DB.delete_all_site_tokens(site, subject) do
       render(conn, :deleted_tokens, %{count: deleted_count})
     end
   end
@@ -256,16 +247,10 @@ defmodule API.SiteController do
       |> Safe.list(__MODULE__, opts)
     end
 
-    def fetch_site(subject, id) do
-      from(g in Site, where: g.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
-    end
-
-    def fetch_site_by_id(id, subject) do
+    def fetch_site(id, subject) do
       result =
-        from(g in Site, as: :sites)
-        |> where([sites: g], g.id == ^id)
+        from(s in Site, as: :sites)
+        |> where([sites: s], s.id == ^id)
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -313,7 +298,7 @@ defmodule API.SiteController do
       end
     end
 
-    def fetch_token_by_id(id, subject) do
+    def fetch_token(id, subject) do
       result =
         from(t in Token,
           where: t.id == ^id,
@@ -327,6 +312,18 @@ defmodule API.SiteController do
         {:error, :unauthorized} -> {:error, :unauthorized}
         token -> {:ok, token}
       end
+    end
+
+    def delete_token(token, subject) do
+      token
+      |> Safe.scoped(subject)
+      |> Safe.delete()
+    end
+
+    def delete_all_site_tokens(site, subject) do
+      import Ecto.Query
+      query = from(t in Token, where: t.site_id == ^site.id)
+      Safe.scoped(query, subject) |> Safe.delete_all()
     end
 
     defp changeset(site, attrs, _subject) do

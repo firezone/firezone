@@ -17,8 +17,9 @@ defmodule API.AccountController do
   def show(conn, _params) do
     account_id = conn.assigns.subject.account.id
 
-    account = DB.get_account_by_id!(account_id, conn.assigns.subject)
-    render(conn, :show, account: account)
+    with {:ok, account} <- DB.fetch_account(account_id, conn.assigns.subject) do
+      render(conn, :show, account: account)
+    end
   end
 
   defmodule DB do
@@ -26,10 +27,17 @@ defmodule API.AccountController do
     alias Domain.Safe
     alias Domain.Account
 
-    def get_account_by_id!(id, subject) do
-      from(a in Account, where: a.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+    def fetch_account(id, subject) do
+      result =
+        from(a in Account, where: a.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        account -> {:ok, account}
+      end
     end
   end
 end

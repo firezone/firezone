@@ -8,33 +8,27 @@ defmodule Web.Clients.Show do
   import Domain.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, client} <- DB.fetch_client_by_id(id, socket.assigns.subject) do
-      client =
-        client
-        |> Domain.Repo.preload(:actor)
-        |> then(fn c -> Clients.preload_clients_presence([c]) |> List.first() end)
+    client = DB.get_client!(id, socket.assigns.subject)
+    client = Clients.preload_clients_presence([client]) |> List.first()
 
-      if connected?(socket) do
-        :ok = Clients.Actor.subscribe(client.actor_id)
-      end
-
-      socket =
-        assign(
-          socket,
-          client: client,
-          page_title: "Client #{client.name}"
-        )
-        |> assign_live_table("policy_authorizations",
-          query_module: DB.PolicyAuthorizationQuery,
-          sortable_fields: [],
-          hide_filters: [:expiration],
-          callback: &handle_policy_authorizations_update!/2
-        )
-
-      {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    if connected?(socket) do
+      :ok = Clients.Actor.subscribe(client.actor_id)
     end
+
+    socket =
+      assign(
+        socket,
+        client: client,
+        page_title: "Client #{client.name}"
+      )
+      |> assign_live_table("policy_authorizations",
+        query_module: DB.PolicyAuthorizationQuery,
+        sortable_fields: [],
+        hide_filters: [:expiration],
+        callback: &handle_policy_authorizations_update!/2
+      )
+
+    {:ok, socket}
   end
 
   def handle_params(params, uri, socket) do
@@ -404,10 +398,7 @@ defmodule Web.Clients.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, client.id) ->
-          {:ok, client} =
-            DB.fetch_client_by_id(client.id, socket.assigns.subject)
-            |> then(fn {:ok, c} -> {:ok, Domain.Repo.preload(c, :actor)} end)
-
+          client = DB.get_client!(client.id, socket.assigns.subject)
           assign(socket, client: %{client | online?: true})
 
         Map.has_key?(payload.leaves, client.id) ->
@@ -475,18 +466,12 @@ defmodule Web.Clients.Show do
     alias Domain.{Presence.Clients, Safe}
     alias Domain.Client
 
-    def fetch_client_by_id(id, subject) do
-      result =
-        from(c in Client, as: :clients)
-        |> where([clients: c], c.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        client -> {:ok, client}
-      end
+    def get_client!(id, subject) do
+      from(c in Client, as: :clients)
+      |> where([clients: c], c.id == ^id)
+      |> preload(:actor)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def verify_client(changeset, subject) do

@@ -36,8 +36,9 @@ defmodule API.EntraDirectoryController do
     ]
 
   def show(conn, %{"id" => id}) do
-    directory = DB.fetch_directory(conn.assigns.subject, id)
-    render(conn, :show, directory: directory)
+    with {:ok, directory} <- DB.fetch_directory(id, conn.assigns.subject) do
+      render(conn, :show, directory: directory)
+    end
   end
 
   defmodule DB do
@@ -50,10 +51,17 @@ defmodule API.EntraDirectoryController do
       |> Safe.all()
     end
 
-    def fetch_directory(subject, id) do
-      from(d in Entra.Directory, where: d.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+    def fetch_directory(id, subject) do
+      result =
+        from(d in Entra.Directory, where: d.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        directory -> {:ok, directory}
+      end
     end
   end
 end

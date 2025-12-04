@@ -3,33 +3,31 @@ defmodule Web.Sites.Gateways.Index do
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, site} <- DB.fetch_site_by_id(id, socket.assigns.subject) do
-      if connected?(socket) do
-        :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
-      end
+    site = DB.get_site!(id, socket.assigns.subject)
 
-      socket =
-        socket
-        |> assign(
-          page_title: "Site Gateways",
-          site: site
-        )
-        |> assign_live_table("gateways",
-          query_module: DB,
-          enforce_filters: [
-            {:site_id, site.id}
-          ],
-          sortable_fields: [
-            {:gateways, :name},
-            {:gateways, :last_seen_at}
-          ],
-          callback: &handle_gateways_update!/2
-        )
-
-      {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    if connected?(socket) do
+      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
     end
+
+    socket =
+      socket
+      |> assign(
+        page_title: "Site Gateways",
+        site: site
+      )
+      |> assign_live_table("gateways",
+        query_module: DB,
+        enforce_filters: [
+          {:site_id, site.id}
+        ],
+        sortable_fields: [
+          {:gateways, :name},
+          {:gateways, :last_seen_at}
+        ],
+        callback: &handle_gateways_update!/2
+      )
+
+    {:ok, socket}
   end
 
   def handle_params(params, uri, socket) do
@@ -143,18 +141,11 @@ defmodule Web.Sites.Gateways.Index do
     import Ecto.Query
     alias Domain.{Safe, Gateway}
 
-    def fetch_site_by_id(id, subject) do
-      result =
-        from(g in Domain.Site, as: :sites)
-        |> where([sites: g], g.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        site -> {:ok, site}
-      end
+    def get_site!(id, subject) do
+      from(s in Domain.Site, as: :sites)
+      |> where([sites: s], s.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def list_gateways(subject, opts \\ []) do

@@ -43,8 +43,9 @@ defmodule API.PolicyController do
 
   # Show a specific Policy
   def show(conn, %{"id" => id}) do
-    policy = DB.fetch_policy(conn.assigns.subject, id)
-    render(conn, :show, policy: policy)
+    with {:ok, policy} <- DB.fetch_policy(id, conn.assigns.subject) do
+      render(conn, :show, policy: policy)
+    end
   end
 
   operation :create,
@@ -93,10 +94,9 @@ defmodule API.PolicyController do
   # Update a Policy
   def update(conn, %{"id" => id, "policy" => params}) do
     subject = conn.assigns.subject
-    policy = DB.fetch_policy(subject, id)
 
-    # Check if this is for an internet resource
-    with :ok <- DB.validate_internet_resource_policy(params, subject),
+    with {:ok, policy} <- DB.fetch_policy(id, subject),
+         :ok <- DB.validate_internet_resource_policy(params, subject),
          {:ok, policy} <- DB.update_policy(policy, params, subject) do
       render(conn, :show, policy: policy)
     end
@@ -123,9 +123,9 @@ defmodule API.PolicyController do
   # Delete a Policy
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
-    policy = DB.fetch_policy(subject, id)
 
-    with {:ok, policy} <- DB.delete_policy(policy, subject) do
+    with {:ok, policy} <- DB.fetch_policy(id, subject),
+         {:ok, policy} <- DB.delete_policy(policy, subject) do
       render(conn, :show, policy: policy)
     end
   end
@@ -141,10 +141,17 @@ defmodule API.PolicyController do
       |> Safe.list(__MODULE__, opts)
     end
 
-    def fetch_policy(subject, id) do
-      from(p in Policy, where: p.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+    def fetch_policy(id, subject) do
+      result =
+        from(p in Policy, where: p.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        policy -> {:ok, policy}
+      end
     end
 
     def update_policy(policy, attrs, subject) do

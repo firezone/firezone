@@ -7,29 +7,25 @@ defmodule Web.Policies.Show do
   import Domain.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, policy} <- fetch_policy_by_id(id, socket.assigns.subject) do
-      policy = Domain.Repo.preload(policy, group: [], resource: [])
+    policy = get_policy!(id, socket.assigns.subject)
 
-      providers =
-        DB.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
+    providers =
+      DB.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
 
-      socket =
-        assign(socket,
-          page_title: "Policy #{policy.id}",
-          policy: policy,
-          providers: providers
-        )
-        |> assign_live_table("policy_authorizations",
-          query_module: DB.PolicyAuthorizationQuery,
-          sortable_fields: [],
-          hide_filters: [:expiration],
-          callback: &handle_policy_authorizations_update!/2
-        )
+    socket =
+      assign(socket,
+        page_title: "Policy #{policy.id}",
+        policy: policy,
+        providers: providers
+      )
+      |> assign_live_table("policy_authorizations",
+        query_module: DB.PolicyAuthorizationQuery,
+        sortable_fields: [],
+        hide_filters: [:expiration],
+        callback: &handle_policy_authorizations_update!/2
+      )
 
-      {:ok, socket}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket}
   end
 
   def handle_params(params, uri, socket) do
@@ -297,20 +293,14 @@ defmodule Web.Policies.Show do
 
   # Inline functions from Domain.Policies
 
-  defp fetch_policy_by_id(id, %Auth.Subject{} = subject) do
+  defp get_policy!(id, %Auth.Subject{} = subject) do
     import Ecto.Query
 
-    result =
-      from(p in Policy, as: :policies)
-      |> where([policies: p], p.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
-
-    case result do
-      nil -> {:error, :not_found}
-      {:error, :unauthorized} -> {:error, :unauthorized}
-      policy -> {:ok, policy}
-    end
+    from(p in Policy, as: :policies)
+    |> where([policies: p], p.id == ^id)
+    |> preload(group: [], resource: [])
+    |> Safe.scoped(subject)
+    |> Safe.one!()
   end
 
   defp disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do

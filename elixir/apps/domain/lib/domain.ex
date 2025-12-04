@@ -23,7 +23,6 @@ defmodule Domain do
     quote do
       import Ecto.Changeset
       import Domain.Changeset
-      import Domain.Repo, only: [valid_uuid?: 1]
     end
   end
 

@@ -3,20 +3,17 @@ defmodule Web.Sites.Edit do
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, site} <- DB.fetch_site(id, socket.assigns.subject) do
-      changeset = change_site(site)
+    site = DB.get_site!(id, socket.assigns.subject)
+    changeset = change_site(site)
 
-      socket =
-        assign(socket,
-          page_title: "Edit #{site.name}",
-          site: site,
-          form: to_form(changeset)
-        )
+    socket =
+      assign(socket,
+        page_title: "Edit #{site.name}",
+        site: site,
+        form: to_form(changeset)
+      )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
@@ -95,18 +92,11 @@ defmodule Web.Sites.Edit do
     import Ecto.Query
     alias Domain.Safe
 
-    def fetch_site(id, subject) do
-      result =
-        from(g in Domain.Site, as: :site)
-        |> where([site: g], g.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        site -> {:ok, site}
-      end
+    def get_site!(id, subject) do
+      from(s in Domain.Site, as: :site)
+      |> where([site: s], s.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def update_site(changeset, subject) do

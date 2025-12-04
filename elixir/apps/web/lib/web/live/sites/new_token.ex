@@ -3,28 +3,25 @@ defmodule Web.Sites.NewToken do
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, site} <-
-           DB.fetch_site_by_id(id, socket.assigns.subject) do
-      {site, token, env} =
-        if connected?(socket) do
-          {:ok, token, encoded_token} = DB.create_token(site, %{}, socket.assigns.subject)
-          :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
-          {site, token, env(encoded_token)}
-        else
-          {site, nil, nil}
-        end
+    site = DB.get_site!(id, socket.assigns.subject)
 
-      {:ok,
-       assign(socket,
-         page_title: "New Site Gateway",
-         site: site,
-         token: token,
-         env: env,
-         connected?: false
-       )}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-    end
+    {site, token, env} =
+      if connected?(socket) do
+        {:ok, token, encoded_token} = DB.create_token(site, %{}, socket.assigns.subject)
+        :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
+        {site, token, env(encoded_token)}
+      else
+        {site, nil, nil}
+      end
+
+    {:ok,
+     assign(socket,
+       page_title: "New Site Gateway",
+       site: site,
+       token: token,
+       env: env,
+       connected?: false
+     )}
   end
 
   def handle_params(params, uri, socket) do
@@ -428,18 +425,11 @@ defmodule Web.Sites.NewToken do
     import Ecto.Query
     alias Domain.Safe
 
-    def fetch_site_by_id(id, subject) do
-      result =
-        from(g in Domain.Site, as: :sites)
-        |> where([sites: g], g.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        site -> {:ok, site}
-      end
+    def get_site!(id, subject) do
+      from(s in Domain.Site, as: :sites)
+      |> where([sites: s], s.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def create_token(site, attrs, subject) do

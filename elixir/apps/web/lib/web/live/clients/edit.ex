@@ -4,20 +4,17 @@ defmodule Web.Clients.Edit do
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, client} <- DB.fetch_client_by_id(id, socket.assigns.subject) do
-      changeset = update_changeset(client, %{})
+    client = DB.get_client!(id, socket.assigns.subject)
+    changeset = update_changeset(client, %{})
 
-      socket =
-        assign(socket,
-          client: client,
-          form: to_form(changeset),
-          page_title: "Edit Client #{client.name}"
-        )
+    socket =
+      assign(socket,
+        client: client,
+        form: to_form(changeset),
+        page_title: "Edit Client #{client.name}"
+      )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
@@ -90,18 +87,12 @@ defmodule Web.Clients.Edit do
     alias Domain.{Presence.Clients, Safe}
     alias Domain.Client
 
-    def fetch_client_by_id(id, subject) do
-      result =
-        from(c in Client, as: :clients)
-        |> where([clients: c], c.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        client -> {:ok, client}
-      end
+    def get_client!(id, subject) do
+      from(c in Client, as: :clients)
+      |> where([clients: c], c.id == ^id)
+      |> preload(:actor)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def update_client(changeset, subject) do

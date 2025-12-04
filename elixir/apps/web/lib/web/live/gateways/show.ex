@@ -4,27 +4,21 @@ defmodule Web.Gateways.Show do
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, gateway} <- DB.fetch_gateway_by_id(id, socket.assigns.subject) do
-      gateway =
-        gateway
-        |> Domain.Repo.preload(:site)
-        |> then(fn gw -> DB.preload_gateways_presence([gw]) |> List.first() end)
+    gateway = DB.get_gateway!(id, socket.assigns.subject)
+    gateway = DB.preload_gateways_presence([gateway]) |> List.first()
 
-      if connected?(socket) do
-        :ok = Presence.Gateways.Site.subscribe(gateway.site_id)
-      end
-
-      socket =
-        socket
-        |> assign(
-          page_title: "Gateway #{gateway.name}",
-          gateway: gateway
-        )
-
-      {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    if connected?(socket) do
+      :ok = Presence.Gateways.Site.subscribe(gateway.site_id)
     end
+
+    socket =
+      socket
+      |> assign(
+        page_title: "Gateway #{gateway.name}",
+        gateway: gateway
+      )
+
+    {:ok, socket}
   end
 
   def render(assigns) do
@@ -155,10 +149,7 @@ defmodule Web.Gateways.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, gateway.id) ->
-          {:ok, gateway} =
-            DB.fetch_gateway_by_id(gateway.id, socket.assigns.subject)
-            |> then(fn {:ok, gw} -> {:ok, Domain.Repo.preload(gw, :site)} end)
-
+          gateway = DB.get_gateway!(gateway.id, socket.assigns.subject)
           assign(socket, gateway: %{gateway | online?: true})
 
         Map.has_key?(payload.leaves, gateway.id) ->
@@ -187,18 +178,12 @@ defmodule Web.Gateways.Show do
     alias Domain.Safe
     alias Domain.Gateway
 
-    def fetch_gateway_by_id(id, subject) do
-      result =
-        from(g in Gateway, as: :gateways)
-        |> where([gateways: g], g.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        gateway -> {:ok, gateway}
-      end
+    def get_gateway!(id, subject) do
+      from(g in Gateway, as: :gateways)
+      |> where([gateways: g], g.id == ^id)
+      |> preload(:site)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def delete_gateway(gateway, subject) do

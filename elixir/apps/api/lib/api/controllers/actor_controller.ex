@@ -45,7 +45,7 @@ defmodule API.ActorController do
 
   # Show a specific Actor
   def show(conn, %{"id" => id}) do
-    with {:ok, actor} <- DB.fetch_actor_by_id(id, conn.assigns.subject) do
+    with {:ok, actor} <- DB.fetch_actor(id, conn.assigns.subject) do
       render(conn, :show, actor: actor)
     end
   end
@@ -95,7 +95,7 @@ defmodule API.ActorController do
   def update(conn, %{"id" => id, "actor" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- DB.fetch_actor_by_id(id, subject),
+    with {:ok, actor} <- DB.fetch_actor(id, subject),
          changeset <- actor_changeset(actor, params),
          {:ok, actor} <- DB.update_actor(changeset, subject) do
       render(conn, :show, actor: actor)
@@ -124,7 +124,7 @@ defmodule API.ActorController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- DB.fetch_actor_by_id(id, subject),
+    with {:ok, actor} <- DB.fetch_actor(id, subject),
          {:ok, actor} <- DB.delete_actor(actor, subject) do
       render(conn, :show, actor: actor)
     end
@@ -159,12 +159,13 @@ defmodule API.ActorController do
       ]
     end
 
-    def fetch_actor_by_id(id, subject) do
+    def fetch_actor(id, subject) do
       from(a in Domain.Actor, where: a.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
         nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
         actor -> {:ok, actor}
       end
     end

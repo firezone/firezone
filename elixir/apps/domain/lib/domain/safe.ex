@@ -5,6 +5,7 @@ defmodule Domain.Safe do
 
   import Ecto.Query, warn: false
   import Ecto.Changeset
+  require Logger
 
   alias Domain.{Auth.Subject, Repo}
 
@@ -70,57 +71,94 @@ defmodule Domain.Safe do
     %Unscoped{queryable: queryable}
   end
 
+  defp safe_repo(fun) when is_function(fun, 0) do
+    fun.()
+  rescue
+    error in Ecto.Query.CastError ->
+      Logger.error("Query cast error", error: error)
+      nil
+
+    error in Ecto.CastError ->
+      Logger.error("Cast error", error: error)
+      nil
+
+    error in ArgumentError ->
+      Logger.error("Argument error", error: error)
+      nil
+  end
+
+  defp safe_repo!(fun, queryable) when is_function(fun, 0) do
+    fun.()
+  rescue
+    error in Ecto.Query.CastError ->
+      Logger.error("Query cast error", error: error)
+      raise Ecto.NoResultsError, queryable: queryable
+
+    error in Ecto.CastError ->
+      Logger.error("Cast error", error: error)
+      raise Ecto.NoResultsError, queryable: queryable
+
+    error in ArgumentError ->
+      Logger.error("Argument error", error: error)
+      raise Ecto.NoResultsError, queryable: queryable
+  end
+
   # Query operations
   @spec one(Scoped.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
   def one(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      queryable
-      |> apply_account_filter(schema, account_id)
-      |> Repo.one()
+      safe_repo(fn ->
+        queryable
+        |> apply_account_filter(schema, account_id)
+        |> Repo.one()
+      end)
     end
   end
 
   @spec one(Unscoped.t()) :: Ecto.Schema.t() | nil
-  def one(%Unscoped{queryable: queryable}), do: Repo.one(queryable)
+  def one(%Unscoped{queryable: queryable}), do: safe_repo(fn -> Repo.one(queryable) end)
 
   @spec one(Domain.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | nil
-  def one(repo, queryable) when repo == Repo, do: Repo.one(queryable)
+  def one(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.one(queryable) end)
 
   @spec one!(Scoped.t()) :: Ecto.Schema.t() | no_return()
   def one!(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      queryable
-      |> apply_account_filter(schema, account_id)
-      |> Repo.one!()
+      filtered_query = apply_account_filter(queryable, schema, account_id)
+      safe_repo!(fn -> Repo.one!(filtered_query) end, filtered_query)
     end
   end
 
   @spec one!(Unscoped.t()) :: Ecto.Schema.t() | no_return()
-  def one!(%Unscoped{queryable: queryable}), do: Repo.one!(queryable)
+  def one!(%Unscoped{queryable: queryable}),
+    do: safe_repo!(fn -> Repo.one!(queryable) end, queryable)
 
   @spec one!(Domain.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | no_return()
-  def one!(repo, queryable) when repo == Repo, do: Repo.one!(queryable)
+  def one!(repo, queryable) when repo == Repo,
+    do: safe_repo!(fn -> Repo.one!(queryable) end, queryable)
 
   @spec all(Scoped.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
   def all(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      queryable
-      |> apply_account_filter(schema, account_id)
-      |> Repo.all()
+      safe_repo(fn ->
+        queryable
+        |> apply_account_filter(schema, account_id)
+        |> Repo.all()
+      end) || []
     end
   end
 
   @spec all(Unscoped.t()) :: [Ecto.Schema.t()]
-  def all(%Unscoped{queryable: queryable}), do: Repo.all(queryable)
+  def all(%Unscoped{queryable: queryable}), do: safe_repo(fn -> Repo.all(queryable) end) || []
 
   @spec all(Domain.Repo, Ecto.Queryable.t()) :: [Ecto.Schema.t()]
-  def all(repo, queryable) when repo == Repo, do: Repo.all(queryable)
+  def all(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.all(queryable) end) || []
 
   @spec exists?(Scoped.t()) :: boolean() | {:error, :unauthorized}
   def exists?(%Scoped{
@@ -130,17 +168,21 @@ defmodule Domain.Safe do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      queryable
-      |> apply_account_filter(schema, account_id)
-      |> Repo.exists?()
+      safe_repo(fn ->
+        queryable
+        |> apply_account_filter(schema, account_id)
+        |> Repo.exists?()
+      end) || false
     end
   end
 
   @spec exists?(Unscoped.t()) :: boolean()
-  def exists?(%Unscoped{queryable: queryable}), do: Repo.exists?(queryable)
+  def exists?(%Unscoped{queryable: queryable}),
+    do: safe_repo(fn -> Repo.exists?(queryable) end) || false
 
   @spec exists?(Domain.Repo, Ecto.Queryable.t()) :: boolean()
-  def exists?(repo, queryable) when repo == Repo, do: Repo.exists?(queryable)
+  def exists?(repo, queryable) when repo == Repo,
+    do: safe_repo(fn -> Repo.exists?(queryable) end) || false
 
   @doc """
   Lists records with pagination support.
@@ -161,9 +203,11 @@ defmodule Domain.Safe do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      queryable
-      |> apply_account_filter(schema, account_id)
-      |> Repo.list(query_module, opts)
+      safe_repo(fn ->
+        queryable
+        |> apply_account_filter(schema, account_id)
+        |> Repo.list(query_module, opts)
+      end) || {:ok, [], %{}}
     end
   end
 
@@ -175,11 +219,11 @@ defmodule Domain.Safe do
 
   @spec aggregate(Unscoped.t(), atom()) :: term()
   def aggregate(%Unscoped{queryable: queryable}, aggregate),
-    do: Repo.aggregate(queryable, aggregate)
+    do: safe_repo(fn -> Repo.aggregate(queryable, aggregate) end) || 0
 
   @spec aggregate(Unscoped.t(), atom(), atom()) :: term()
   def aggregate(%Unscoped{queryable: queryable}, aggregate, field),
-    do: Repo.aggregate(queryable, aggregate, field)
+    do: safe_repo(fn -> Repo.aggregate(queryable, aggregate, field) end) || 0
 
   @spec load(module(), {list(), list()}) :: Ecto.Schema.t()
   def load(schema, data) when is_atom(schema), do: Repo.load(schema, data)
@@ -507,28 +551,46 @@ defmodule Domain.Safe do
     permit(action, schema, subject.actor.type)
   end
 
+  # Account permissions
   def permit(_action, Domain.Account, :account_admin_user), do: :ok
+  def permit(_action, Domain.Account, :api_client), do: :ok
   def permit(:read, Domain.Account, :account_user), do: :ok
   def permit(:read, Domain.Account, :service_account), do: :ok
-  def permit(:read, Domain.Account, :api_client), do: :ok
+  # Admin-only permissions (both account_admin_user and api_client)
   def permit(_action, Domain.Actor, :account_admin_user), do: :ok
+  def permit(_action, Domain.Actor, :api_client), do: :ok
   def permit(_action, Domain.Group, :account_admin_user), do: :ok
+  def permit(_action, Domain.Group, :api_client), do: :ok
   def permit(_action, Domain.ExternalIdentity, :account_admin_user), do: :ok
+  def permit(_action, Domain.ExternalIdentity, :api_client), do: :ok
   def permit(_action, Domain.Token, :account_admin_user), do: :ok
+  def permit(_action, Domain.Token, :api_client), do: :ok
   def permit(_action, Domain.Directory, :account_admin_user), do: :ok
+  def permit(_action, Domain.Directory, :api_client), do: :ok
   def permit(_action, Domain.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.Entra.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.Entra.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.Google.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.Google.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.Okta.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.Okta.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.OIDC.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.OIDC.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.EmailOTP.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.EmailOTP.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.Userpass.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.Userpass.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.Entra.Directory, :account_admin_user), do: :ok
+  def permit(_action, Domain.Entra.Directory, :api_client), do: :ok
   def permit(_action, Domain.Google.Directory, :account_admin_user), do: :ok
+  def permit(_action, Domain.Google.Directory, :api_client), do: :ok
   def permit(_action, Domain.Okta.Directory, :account_admin_user), do: :ok
+  def permit(_action, Domain.Okta.Directory, :api_client), do: :ok
 
   # Client permissions
   def permit(_action, Domain.Client, :account_admin_user), do: :ok
+  def permit(_action, Domain.Client, :api_client), do: :ok
   def permit(:read, Domain.Client, :account_user), do: :ok
   def permit(:update, Domain.Client, :account_user), do: :ok
   def permit(:read, Domain.Client, :service_account), do: :ok
@@ -539,28 +601,35 @@ defmodule Domain.Safe do
   def permit(:insert, Domain.PolicyAuthorization, _), do: :ok
   # Only admin can manage/delete policy_authorizations
   def permit(_action, Domain.PolicyAuthorization, :account_admin_user), do: :ok
+  def permit(_action, Domain.PolicyAuthorization, :api_client), do: :ok
 
   # Gateway permissions
   def permit(_action, Domain.Gateway, :account_admin_user), do: :ok
+  def permit(_action, Domain.Gateway, :api_client), do: :ok
   def permit(:read, Domain.Gateway, _), do: :ok
 
   # Site permissions
   def permit(_action, Domain.Site, :account_admin_user), do: :ok
+  def permit(_action, Domain.Site, :api_client), do: :ok
   def permit(:read, Domain.Site, _), do: :ok
 
   # Resource permissions
   def permit(_action, Domain.Resource, :account_admin_user), do: :ok
+  def permit(_action, Domain.Resource, :api_client), do: :ok
   def permit(:read, Domain.Resource, _), do: :ok
 
   # Resource Connection permissions
   def permit(_action, Domain.Resources.Connection, :account_admin_user), do: :ok
+  def permit(_action, Domain.Resources.Connection, :api_client), do: :ok
 
   # Policy permissions
   def permit(_action, Domain.Policy, :account_admin_user), do: :ok
+  def permit(_action, Domain.Policy, :api_client), do: :ok
   def permit(:read, Domain.Policy, _), do: :ok
 
   # Relay permissions
   def permit(_action, Domain.Relay, :account_admin_user), do: :ok
+  def permit(_action, Domain.Relay, :api_client), do: :ok
   def permit(:read, Domain.Relay, _), do: :ok
 
   def permit(_action, _struct, _type), do: {:error, :unauthorized}

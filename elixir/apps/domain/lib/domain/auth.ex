@@ -21,13 +21,8 @@ defmodule Domain.Auth do
         "actor_id" => actor.id
       })
 
-    # Only account admins can create service account tokens
-    if subject.actor.type == :account_admin_user do
-      with {:ok, token} <- create_token(attrs, subject) do
-        {:ok, encode_fragment!(token)}
-      end
-    else
-      {:error, :unauthorized}
+    with {:ok, token} <- create_token(attrs, subject) do
+      {:ok, encode_fragment!(token)}
     end
   end
 
@@ -44,13 +39,8 @@ defmodule Domain.Auth do
         "actor_id" => actor.id
       })
 
-    # Only account admins can create API client tokens
-    if subject.actor.type == :account_admin_user do
-      with {:ok, token} <- create_token(attrs, subject) do
-        {:ok, encode_fragment!(token)}
-      end
-    else
-      {:error, :unauthorized}
+    with {:ok, token} <- create_token(attrs, subject) do
+      {:ok, encode_fragment!(token)}
     end
   end
 

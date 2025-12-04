@@ -39,8 +39,9 @@ defmodule API.EmailOTPAuthProviderController do
     ]
 
   def show(conn, %{"id" => id}) do
-    provider = DB.fetch_provider(conn.assigns.subject, id)
-    render(conn, :show, provider: provider)
+    with {:ok, provider} <- DB.fetch_provider(id, conn.assigns.subject) do
+      render(conn, :show, provider: provider)
+    end
   end
 
   defmodule DB do
@@ -53,10 +54,17 @@ defmodule API.EmailOTPAuthProviderController do
       |> Safe.all()
     end
 
-    def fetch_provider(subject, id) do
-      from(p in EmailOTP.AuthProvider, where: p.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+    def fetch_provider(id, subject) do
+      result =
+        from(p in EmailOTP.AuthProvider, where: p.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        provider -> {:ok, provider}
+      end
     end
   end
 end

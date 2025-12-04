@@ -62,7 +62,7 @@ defmodule API.MembershipController do
       ) do
     subject = conn.assigns.subject
 
-    with {:ok, group} <- DB.fetch_group_by_id(group_id, subject),
+    with {:ok, group} <- DB.fetch_group(group_id, subject),
          true <- is_nil(group.directory_id) and group.type == :static,
          changeset <- update_group_memberships_changeset(group, attrs),
          {:ok, group} <- DB.update_group(changeset, subject) do
@@ -102,7 +102,7 @@ defmodule API.MembershipController do
     remove = Map.get(params, "remove", [])
     subject = conn.assigns.subject
 
-    with {:ok, group} <- DB.fetch_group_by_id(group_id, subject),
+    with {:ok, group} <- DB.fetch_group(group_id, subject),
          true <- is_nil(group.directory_id) and group.type == :static,
          membership_attrs <- prepare_membership_attrs(group, add, remove),
          changeset <- update_group_memberships_changeset(group, membership_attrs),
@@ -148,13 +148,14 @@ defmodule API.MembershipController do
       |> Safe.list(__MODULE__, opts)
     end
 
-    def fetch_group_by_id(id, subject) do
+    def fetch_group(id, subject) do
       from(g in Domain.Group, where: g.id == ^id)
       |> preload(:memberships)
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
         nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
         group -> {:ok, group}
       end
     end

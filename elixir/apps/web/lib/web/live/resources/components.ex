@@ -10,7 +10,7 @@ defmodule Web.Resources.Components do
   }
 
   def fetch_resource_option(id, subject) do
-    {:ok, resource} = DB.fetch_resource_by_id(id, subject)
+    resource = DB.get_resource!(id, subject)
     {:ok, resource_option(resource)}
   end
 
@@ -349,18 +349,11 @@ defmodule Web.Resources.Components do
     import Ecto.Query
     alias Domain.{Safe, Resource}
 
-    def fetch_resource_by_id(id, subject) do
-      result =
-        from(r in Resource, as: :resources)
-        |> where([resources: r], r.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        resource -> {:ok, resource}
-      end
+    def get_resource!(id, subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def list_resources(subject, opts \\ []) do

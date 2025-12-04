@@ -4,25 +4,21 @@ defmodule Web.Resources.Edit do
   alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
-    with {:ok, resource} <- DB.fetch_resource_by_id(id, socket.assigns.subject) do
-      resource = Domain.Repo.preload(resource, :site)
-      sites = DB.all_sites(socket.assigns.subject)
-      form = change_resource(resource, socket.assigns.subject) |> to_form()
+    resource = DB.get_resource!(id, socket.assigns.subject)
+    sites = DB.all_sites(socket.assigns.subject)
+    form = change_resource(resource, socket.assigns.subject) |> to_form()
 
-      socket =
-        assign(
-          socket,
-          resource: resource,
-          sites: sites,
-          form: form,
-          params: Map.take(params, ["site_id"]),
-          page_title: "Edit #{resource.name}"
-        )
+    socket =
+      assign(
+        socket,
+        resource: resource,
+        sites: sites,
+        form: form,
+        params: Map.take(params, ["site_id"]),
+        page_title: "Edit #{resource.name}"
+      )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
@@ -302,18 +298,12 @@ defmodule Web.Resources.Edit do
       |> Safe.all()
     end
 
-    def fetch_resource_by_id(id, subject) do
-      result =
-        from(r in Resource, as: :resources)
-        |> where([resources: r], r.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        resource -> {:ok, resource}
-      end
+    def get_resource!(id, subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.id == ^id)
+      |> preload(:site)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def update_resource(changeset, subject) do

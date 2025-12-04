@@ -9,22 +9,18 @@ defmodule Web.Settings.ApiClients.NewToken do
     unless Domain.Config.global_feature_enabled?(:rest_api),
       do: raise(Web.LiveErrors.NotFoundError)
 
-    with {:ok, %{type: :api_client} = actor} <-
-           DB.fetch_api_client(id, socket.assigns.subject) do
-      changeset = build_token_changeset(%{})
+    %{type: :api_client} = actor = DB.get_api_client!(id, socket.assigns.subject)
+    changeset = build_token_changeset(%{})
 
-      socket =
-        assign(socket,
-          actor: actor,
-          encoded_token: nil,
-          form: to_form(changeset),
-          page_title: "New API Token"
-        )
+    socket =
+      assign(socket,
+        actor: actor,
+        encoded_token: nil,
+        form: to_form(changeset),
+        page_title: "New API Token"
+      )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
@@ -110,14 +106,13 @@ defmodule Web.Settings.ApiClients.NewToken do
     import Ecto.Query
     alias Domain.Safe
 
-    def fetch_api_client(id, subject) do
-      from(a in Domain.Actor, where: a.id == ^id, where: a.type == :api_client)
+    def get_api_client!(id, subject) do
+      from(a in Domain.Actor,
+        where: a.id == ^id,
+        where: a.type == :api_client
+      )
       |> Safe.scoped(subject)
-      |> Safe.one()
-      |> case do
-        nil -> {:error, :not_found}
-        actor -> {:ok, actor}
-      end
+      |> Safe.one!()
     end
   end
 end

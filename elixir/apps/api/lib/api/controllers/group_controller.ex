@@ -45,8 +45,9 @@ defmodule API.GroupController do
 
   # Show a specific Group
   def show(conn, %{"id" => id}) do
-    group = DB.fetch_group(conn.assigns.subject, id)
-    render(conn, :show, group: group)
+    with {:ok, group} <- DB.fetch_group(id, conn.assigns.subject) do
+      render(conn, :show, group: group)
+    end
   end
 
   operation :create,
@@ -100,9 +101,9 @@ defmodule API.GroupController do
   # Update an Group
   def update(conn, %{"id" => id, "group" => params}) do
     subject = conn.assigns.subject
-    group = DB.fetch_group(subject, id)
 
-    with {:changeset, changeset} <- update_group_changeset(group, params),
+    with {:ok, group} <- DB.fetch_group(id, subject),
+         {:changeset, changeset} <- update_group_changeset(group, params),
          {:ok, group} <- DB.update_group(changeset, subject) do
       render(conn, :show, group: group)
     end
@@ -146,9 +147,9 @@ defmodule API.GroupController do
   # Delete an Group
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
-    group = DB.fetch_group(subject, id)
 
-    with {:ok, group} <- DB.delete_group(group, subject) do
+    with {:ok, group} <- DB.fetch_group(id, subject),
+         {:ok, group} <- DB.delete_group(group, subject) do
       render(conn, :show, group: group)
     end
   end
@@ -167,13 +168,20 @@ defmodule API.GroupController do
       |> Safe.list(__MODULE__, opts)
     end
 
-    def fetch_group(subject, id) do
-      from(g in Group,
-        where: g.id == ^id,
-        where: not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-      )
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+    def fetch_group(id, subject) do
+      result =
+        from(g in Group,
+          where: g.id == ^id,
+          where: g.type != :managed
+        )
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        group -> {:ok, group}
+      end
     end
 
     def insert_group(changeset, subject) do

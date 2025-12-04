@@ -21,14 +21,7 @@ defmodule API.ExternalIdentityController do
 
   # List External Identities
   def index(conn, %{"actor_id" => actor_id}) do
-    external_identities =
-      from(ei in ExternalIdentity,
-        where: ei.actor_id == ^actor_id,
-        order_by: [desc: ei.inserted_at]
-      )
-      |> Safe.scoped(conn.assigns.subject)
-      |> Safe.all()
-
+    external_identities = DB.list_external_identities(actor_id, conn.assigns.subject)
     render(conn, :index, external_identities: external_identities)
   end
 
@@ -54,12 +47,9 @@ defmodule API.ExternalIdentityController do
 
   # Show a specific External Identity
   def show(conn, %{"id" => id}) do
-    external_identity =
-      from(ei in ExternalIdentity, where: ei.id == ^id)
-      |> Safe.scoped(conn.assigns.subject)
-      |> Safe.one!()
-
-    render(conn, :show, external_identity: external_identity)
+    with {:ok, external_identity} <- DB.fetch_external_identity(id, conn.assigns.subject) do
+      render(conn, :show, external_identity: external_identity)
+    end
   end
 
   operation :delete,
@@ -84,14 +74,43 @@ defmodule API.ExternalIdentityController do
 
   # Delete an External Identity
   def delete(conn, %{"id" => id}) do
-    external_identity =
-      from(ei in ExternalIdentity, where: ei.id == ^id)
-      |> Safe.scoped(conn.assigns.subject)
-      |> Safe.one!()
+    with {:ok, external_identity} <- DB.fetch_external_identity(id, conn.assigns.subject),
+         {:ok, deleted_external_identity} <-
+           DB.delete_external_identity(external_identity, conn.assigns.subject) do
+      render(conn, :show, external_identity: deleted_external_identity)
+    end
+  end
 
-    {:ok, deleted_external_identity} =
-      external_identity |> Safe.scoped(conn.assigns.subject) |> Safe.delete()
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{ExternalIdentity, Safe}
 
-    render(conn, :show, external_identity: deleted_external_identity)
+    def list_external_identities(actor_id, subject) do
+      from(ei in ExternalIdentity,
+        where: ei.actor_id == ^actor_id,
+        order_by: [desc: ei.inserted_at]
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    def fetch_external_identity(id, subject) do
+      result =
+        from(ei in ExternalIdentity, where: ei.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        external_identity -> {:ok, external_identity}
+      end
+    end
+
+    def delete_external_identity(external_identity, subject) do
+      external_identity
+      |> Safe.scoped(subject)
+      |> Safe.delete()
+    end
   end
 end
