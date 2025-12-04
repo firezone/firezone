@@ -1,8 +1,8 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Policy, Safe, Auth}
-  alias Web.Policies.Components.DB
+  alias Domain.{Policy, Auth}
+  alias __MODULE__.DB
   import Ecto.Changeset
   import Domain.Changeset
 
@@ -294,13 +294,7 @@ defmodule Web.Policies.Show do
   # Inline functions from Domain.Policies
 
   defp get_policy!(id, %Auth.Subject{} = subject) do
-    import Ecto.Query
-
-    from(p in Policy, as: :policies)
-    |> where([policies: p], p.id == ^id)
-    |> preload(group: [], resource: [])
-    |> Safe.scoped(subject)
-    |> Safe.one!()
+    DB.get_policy!(id, subject)
   end
 
   defp disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
@@ -309,24 +303,92 @@ defmodule Web.Policies.Show do
       |> change()
       |> put_default_value(:disabled_at, DateTime.utc_now())
 
-    Safe.scoped(changeset, subject)
-    |> Safe.update()
+    DB.update_policy(changeset, subject)
   end
 
   defp enable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
-    import Ecto.Changeset
-
     changeset =
       policy
       |> change()
       |> put_change(:disabled_at, nil)
 
-    Safe.scoped(changeset, subject)
-    |> Safe.update()
+    DB.update_policy(changeset, subject)
   end
 
   defp delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
-    Safe.scoped(policy, subject)
-    |> Safe.delete()
+    DB.delete_policy(policy, subject)
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
+    alias Domain.Auth
+
+    def get_policy!(id, %Auth.Subject{} = subject) do
+      from(p in Policy, as: :policies)
+      |> where([policies: p], p.id == ^id)
+      |> preload(group: [], resource: [])
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def update_policy(changeset, %Auth.Subject{} = subject) do
+      Safe.scoped(changeset, subject)
+      |> Safe.update()
+    end
+
+    def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+      Safe.scoped(policy, subject)
+      |> Safe.delete()
+    end
+
+    def all_active_providers_for_account(_account, subject) do
+      [
+        Userpass.AuthProvider,
+        EmailOTP.AuthProvider,
+        OIDC.AuthProvider,
+        Google.AuthProvider,
+        Entra.AuthProvider,
+        Okta.AuthProvider
+      ]
+      |> Enum.flat_map(fn schema ->
+        from(p in schema, where: not p.is_disabled)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+      end)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Policy{} = policy,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_policy_id(policy.id)
+      |> Safe.scoped(subject)
+      |> Safe.list(DB.PolicyAuthorizationQuery, opts)
+    end
+  end
+
+  defmodule DB.PolicyAuthorizationQuery do
+    import Ecto.Query
+
+    def all do
+      from(policy_authorizations in Domain.PolicyAuthorization, as: :policy_authorizations)
+    end
+
+    def by_policy_id(queryable, policy_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.policy_id == ^policy_id
+      )
+    end
+
+    def cursor_fields,
+      do: [
+        {:policy_authorizations, :desc, :inserted_at},
+        {:policy_authorizations, :asc, :id}
+      ]
   end
 end
