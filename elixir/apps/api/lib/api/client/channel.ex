@@ -982,7 +982,7 @@ defmodule API.Client.Channel do
           resource,
           subject
         ) do
-      resource_id = Ecto.UUID.load!(resource.id)
+      resource_site_id = Ecto.UUID.load!(resource.site_id)
 
       connected_gateway_ids =
         Presence.Gateways.Account.list(subject.account.id)
@@ -990,12 +990,7 @@ defmodule API.Client.Channel do
 
       gateways =
         from(g in Gateway, as: :gateways)
-        |> where([gateways: g], g.id in ^connected_gateway_ids)
-        |> join(:inner, [gateways: g], rc in Domain.Resources.Connection,
-          on: rc.site_id == g.group_id,
-          as: :rc
-        )
-        |> where([gateways: g, rc: rc], rc.resource_id == ^resource_id)
+        |> where([gateways: g], g.id in ^connected_gateway_ids and g.site_id == ^resource_site_id)
         |> Safe.scoped(subject)
         |> Safe.all()
         |> case do

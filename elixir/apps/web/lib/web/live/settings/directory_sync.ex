@@ -6,10 +6,10 @@ defmodule Web.Settings.DirectorySync do
     Entra,
     Google,
     Okta,
-    Safe,
-    PubSub,
-    Repo
+    PubSub
   }
+
+  alias __MODULE__.DB
 
   import Ecto.Changeset
 
@@ -41,16 +41,7 @@ defmodule Web.Settings.DirectorySync do
 
   defp init(socket, opts \\ []) do
     new = Keyword.get(opts, :new, false)
-    subject = socket.assigns.subject
-
-    directories =
-      [
-        Entra.Directory |> Safe.scoped(subject) |> Safe.all(),
-        Google.Directory |> Safe.scoped(subject) |> Safe.all(),
-        Okta.Directory |> Safe.scoped(subject) |> Safe.all()
-      ]
-      |> List.flatten()
-      |> enrich_with_job_status()
+    directories = DB.list_all_directories(socket.assigns.subject)
 
     if new do
       socket
@@ -87,7 +78,7 @@ defmodule Web.Settings.DirectorySync do
       )
       when type in @types do
     schema = Map.get(@modules, type)
-    directory = get_directory!(schema, id, socket.assigns.subject)
+    directory = DB.get_directory!(schema, id, socket.assigns.subject)
     changeset = changeset(directory, %{})
 
     # Extract public key if this is an Okta directory with a keypair
@@ -188,7 +179,7 @@ defmodule Web.Settings.DirectorySync do
   def handle_event("delete_directory", %{"id" => id}, socket) do
     directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end)
 
-    case delete_directory(directory, socket.assigns.subject) do
+    case DB.delete_directory(directory, socket.assigns.subject) do
       {:ok, _directory} ->
         {:noreply,
          socket
@@ -245,7 +236,7 @@ defmodule Web.Settings.DirectorySync do
           end
         end
 
-      case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
+      case DB.update_directory(changeset, socket.assigns.subject) do
         {:ok, _directory} ->
           action = if new_disabled_state, do: "disabled", else: "enabled"
 
@@ -262,7 +253,10 @@ defmodule Web.Settings.DirectorySync do
   end
 
   def handle_event("sync_directory", %{"id" => id, "type" => "entra"}, socket) do
-    directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end) |> Repo.reload()
+    directory =
+      socket.assigns.directories
+      |> Enum.find(fn d -> d.id == id end)
+      |> DB.reload(socket.assigns.subject)
 
     if is_nil(directory) do
       {:noreply, socket |> init()}
@@ -270,8 +264,7 @@ defmodule Web.Settings.DirectorySync do
       with {:ok, _job} <- Entra.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
            {:ok, _directory} <-
              changeset(directory, %{error_message: nil})
-             |> Safe.scoped(socket.assigns.subject)
-             |> Safe.update() do
+             |> DB.update_directory(socket.assigns.subject) do
         {:noreply, socket |> init()}
       else
         {:error, reason} ->
@@ -281,8 +274,7 @@ defmodule Web.Settings.DirectorySync do
           )
 
           case changeset(directory, %{error_message: "Failed to schedule directory sync."})
-               |> Safe.scoped(socket.assigns.subject)
-               |> Safe.update() do
+               |> DB.update_directory(socket.assigns.subject) do
             {:ok, _directory} -> {:noreply, socket |> init()}
             {:error, _} -> {:noreply, socket |> init()}
           end
@@ -291,7 +283,10 @@ defmodule Web.Settings.DirectorySync do
   end
 
   def handle_event("sync_directory", %{"id" => id, "type" => "google"}, socket) do
-    directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end) |> Repo.reload()
+    directory =
+      socket.assigns.directories
+      |> Enum.find(fn d -> d.id == id end)
+      |> DB.reload(socket.assigns.subject)
 
     if is_nil(directory) do
       {:noreply, socket |> init()}
@@ -299,8 +294,7 @@ defmodule Web.Settings.DirectorySync do
       with {:ok, _job} <- Google.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
            {:ok, _directory} <-
              changeset(directory, %{error_message: nil})
-             |> Safe.scoped(socket.assigns.subject)
-             |> Safe.update() do
+             |> DB.update_directory(socket.assigns.subject) do
         {:noreply, socket |> init()}
       else
         {:error, reason} ->
@@ -310,8 +304,7 @@ defmodule Web.Settings.DirectorySync do
           )
 
           case changeset(directory, %{error_message: "Failed to schedule directory sync."})
-               |> Safe.scoped(socket.assigns.subject)
-               |> Safe.update() do
+               |> DB.update_directory(socket.assigns.subject) do
             {:ok, _directory} -> {:noreply, socket |> init()}
             {:error, _} -> {:noreply, socket |> init()}
           end
@@ -1111,8 +1104,7 @@ defmodule Web.Settings.DirectorySync do
     changeset = put_directory_assoc(changeset, socket)
 
     changeset
-    |> Safe.scoped(socket.assigns.subject)
-    |> Safe.insert()
+    |> DB.insert_directory(socket.assigns.subject)
     |> handle_submit(socket)
   end
 
@@ -1134,8 +1126,7 @@ defmodule Web.Settings.DirectorySync do
       end
 
     changeset
-    |> Safe.scoped(socket.assigns.subject)
-    |> Safe.update()
+    |> DB.update_directory(socket.assigns.subject)
     |> handle_submit(socket)
   end
 
@@ -1159,18 +1150,6 @@ defmodule Web.Settings.DirectorySync do
     end)
     |> Enum.map(fn {_field, {message, _opts}} -> message end)
     |> Enum.join(" ")
-  end
-
-  defp delete_directory(directory, subject) do
-    directory |> Safe.scoped(subject) |> Safe.delete()
-  end
-
-  defp get_directory!(schema, id, subject) do
-    import Ecto.Query
-
-    from(d in schema, where: d.id == ^id)
-    |> Safe.scoped(subject)
-    |> Safe.one!()
   end
 
   defp start_verification(%{assigns: %{type: "google"}} = socket) do
@@ -1523,29 +1502,76 @@ defmodule Web.Settings.DirectorySync do
     directory.okta_domain
   end
 
-  defp enrich_with_job_status(directories) do
+  defmodule DB do
+    alias Domain.{Entra, Google, Okta, Safe}
     import Ecto.Query
 
-    # Get all directory IDs
-    directory_ids = Enum.map(directories, & &1.id)
+    def list_all_directories(subject) do
+      [
+        Entra.Directory |> Safe.scoped(subject) |> Safe.all(),
+        Google.Directory |> Safe.scoped(subject) |> Safe.all(),
+        Okta.Directory |> Safe.scoped(subject) |> Safe.all()
+      ]
+      |> List.flatten()
+      |> enrich_with_job_status(subject)
+    end
 
-    # Query for active sync jobs for all directory types
-    active_jobs =
-      from(j in Oban.Job,
-        where: j.worker in ["Domain.Entra.Sync", "Domain.Google.Sync", "Domain.Okta.Sync"],
-        where: j.state in ["available", "executing", "scheduled"],
-        where: fragment("?->>'directory_id'", j.args) in ^directory_ids
-      )
-      |> Repo.all()
-      |> Enum.map(fn job ->
-        directory_id = job.args["directory_id"]
-        {directory_id, job.id}
+    def get_directory!(schema, id, subject) do
+      from(d in schema, where: d.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def insert_directory(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+    end
+
+    def update_directory(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def delete_directory(directory, subject) do
+      directory |> Safe.scoped(subject) |> Safe.delete()
+    end
+
+    def reload(nil, _subject), do: nil
+
+    def reload(directory, subject) do
+      # Reload the directory with fresh data
+      schema = directory.__struct__
+
+      from(d in schema, where: d.id == ^directory.id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    defp enrich_with_job_status(directories, subject) do
+      # Get all directory IDs
+      directory_ids = Enum.map(directories, & &1.id)
+
+      # Query for active sync jobs for all directory types
+      active_jobs =
+        from(j in Oban.Job,
+          where: j.worker in ["Domain.Entra.Sync", "Domain.Google.Sync", "Domain.Okta.Sync"],
+          where: j.state in ["available", "executing", "scheduled"],
+          where: fragment("?->>'directory_id'", j.args) in ^directory_ids
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.map(fn job ->
+          directory_id = job.args["directory_id"]
+          {directory_id, job.id}
+        end)
+        |> Map.new()
+
+      # Add has_active_job field to each directory
+      Enum.map(directories, fn dir ->
+        Map.put(dir, :has_active_job, Map.has_key?(active_jobs, dir.id))
       end)
-      |> Map.new()
-
-    # Add has_active_job field to each directory
-    Enum.map(directories, fn dir ->
-      Map.put(dir, :has_active_job, Map.has_key?(active_jobs, dir.id))
-    end)
+    end
   end
 end

@@ -553,7 +553,7 @@ defmodule Domain.Safe do
 
   # Account permissions
   def permit(_action, Domain.Account, :account_admin_user), do: :ok
-  def permit(_action, Domain.Account, :api_client), do: :ok
+  def permit(:read, Domain.Account, :api_client), do: :ok
   def permit(:read, Domain.Account, :account_user), do: :ok
   def permit(:read, Domain.Account, :service_account), do: :ok
   # Admin-only permissions (both account_admin_user and api_client)
@@ -566,27 +566,30 @@ defmodule Domain.Safe do
   def permit(_action, Domain.Token, :account_admin_user), do: :ok
   def permit(_action, Domain.Token, :api_client), do: :ok
   def permit(_action, Domain.Directory, :account_admin_user), do: :ok
-  def permit(_action, Domain.Directory, :api_client), do: :ok
+  def permit(:read, Domain.Directory, :api_client), do: :ok
   def permit(_action, Domain.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Domain.AuthProvider, :api_client), do: :ok
+  def permit(:read, Domain.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.Entra.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Domain.Entra.AuthProvider, :api_client), do: :ok
+  def permit(:read, Domain.Entra.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.Google.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Domain.Google.AuthProvider, :api_client), do: :ok
+  def permit(:read, Domain.Google.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.Okta.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Domain.Okta.AuthProvider, :api_client), do: :ok
+  def permit(:read, Domain.Okta.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.OIDC.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Domain.OIDC.AuthProvider, :api_client), do: :ok
+  def permit(:read, Domain.OIDC.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.EmailOTP.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Domain.EmailOTP.AuthProvider, :api_client), do: :ok
+  def permit(:read, Domain.EmailOTP.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.Userpass.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Domain.Userpass.AuthProvider, :api_client), do: :ok
+  def permit(:read, Domain.Userpass.AuthProvider, :api_client), do: :ok
   def permit(_action, Domain.Entra.Directory, :account_admin_user), do: :ok
-  def permit(_action, Domain.Entra.Directory, :api_client), do: :ok
+  def permit(:read, Domain.Entra.Directory, :api_client), do: :ok
   def permit(_action, Domain.Google.Directory, :account_admin_user), do: :ok
-  def permit(_action, Domain.Google.Directory, :api_client), do: :ok
+  def permit(:read, Domain.Google.Directory, :api_client), do: :ok
   def permit(_action, Domain.Okta.Directory, :account_admin_user), do: :ok
-  def permit(_action, Domain.Okta.Directory, :api_client), do: :ok
+  def permit(:read, Domain.Okta.Directory, :api_client), do: :ok
+
+  # Oban.Job permissions - admin only
+  def permit(:read, Oban.Job, :account_admin_user), do: :ok
 
   # Client permissions
   def permit(_action, Domain.Client, :account_admin_user), do: :ok
@@ -599,9 +602,8 @@ defmodule Domain.Safe do
   # PolicyAuthorization permissions - all actor types can read and create policy_authorizations
   def permit(:read, Domain.PolicyAuthorization, _), do: :ok
   def permit(:insert, Domain.PolicyAuthorization, _), do: :ok
-  # Only admin can manage/delete policy_authorizations
+  # Only admin can delete policy_authorizations
   def permit(_action, Domain.PolicyAuthorization, :account_admin_user), do: :ok
-  def permit(_action, Domain.PolicyAuthorization, :api_client), do: :ok
 
   # Gateway permissions
   def permit(_action, Domain.Gateway, :account_admin_user), do: :ok
@@ -618,10 +620,6 @@ defmodule Domain.Safe do
   def permit(_action, Domain.Resource, :api_client), do: :ok
   def permit(:read, Domain.Resource, _), do: :ok
 
-  # Resource Connection permissions
-  def permit(_action, Domain.Resources.Connection, :account_admin_user), do: :ok
-  def permit(_action, Domain.Resources.Connection, :api_client), do: :ok
-
   # Policy permissions
   def permit(_action, Domain.Policy, :account_admin_user), do: :ok
   def permit(_action, Domain.Policy, :api_client), do: :ok
@@ -629,7 +627,6 @@ defmodule Domain.Safe do
 
   # Relay permissions
   def permit(_action, Domain.Relay, :account_admin_user), do: :ok
-  def permit(_action, Domain.Relay, :api_client), do: :ok
   def permit(:read, Domain.Relay, _), do: :ok
 
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
