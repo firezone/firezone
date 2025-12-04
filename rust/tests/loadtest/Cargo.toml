@@ -10,7 +10,7 @@ name = "firezone-loadtest"
 path = "src/main.rs"
 
 [dependencies]
-goose = "0.18"
+goose = { version = "0.18", default-features = false, features = ["rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

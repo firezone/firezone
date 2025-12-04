@@ -1,6 +1,6 @@
 #![expect(clippy::print_stdout, reason = "CLI tool outputs JSON metrics to stdout")]
 
-//! HTTP load testing CLI for Firezone VPN.
+//! Load testing CLI for Firezone VPN.
 //!
 //! This tool uses Goose to perform load testing through the VPN tunnel.
 //! It assumes the Firezone client is already connected.
