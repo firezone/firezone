@@ -8,9 +8,10 @@ defmodule Web.Settings.Authentication do
     OIDC,
     Entra,
     Google,
-    Okta,
-    Safe
+    Okta
   }
+
+  alias __MODULE__.DB
 
   import Ecto.Changeset
 
@@ -66,7 +67,7 @@ defmodule Web.Settings.Authentication do
       )
       when type in @edit_types do
     schema = AuthProvider.module!(type)
-    provider = get_provider!(schema, id, socket.assigns.subject)
+    provider = DB.get_provider!(schema, id, socket.assigns.subject)
     changeset = changeset(provider, %{is_verified: true}, socket)
 
     {:noreply, assign(socket, provider_name: provider.name, type: type, form: to_form(changeset))}
@@ -170,8 +171,8 @@ defmodule Web.Settings.Authentication do
     # Load providers again to ensure we have the latest state
     socket = init(socket)
 
-    if other_active_providers_exist?(provider, socket.assigns.subject) do
-      case delete_provider!(provider, socket.assigns.subject) do
+    if DB.other_active_providers_exist?(provider, socket.assigns.subject) do
+      case DB.delete_provider!(provider, socket.assigns.subject) do
         {:ok, _provider} ->
           {:noreply,
            socket
@@ -195,7 +196,7 @@ defmodule Web.Settings.Authentication do
 
     # Check if we're trying to disable the last active provider
     can_disable =
-      not new_disabled_state or other_active_providers_exist?(provider, socket.assigns.subject)
+      not new_disabled_state or DB.other_active_providers_exist?(provider, socket.assigns.subject)
 
     changeset =
       if can_disable do
@@ -208,7 +209,7 @@ defmodule Web.Settings.Authentication do
         |> add_error(:is_disabled, "Cannot disable the last active authentication provider")
       end
 
-    case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
+    case DB.update_provider(changeset, socket.assigns.subject) do
       {:ok, _provider} ->
         action = if new_disabled_state, do: "disabled", else: "enabled"
 
@@ -333,18 +334,7 @@ defmodule Web.Settings.Authentication do
   end
 
   defp init(socket) do
-    subject = socket.assigns.subject
-
-    providers =
-      [
-        EmailOTP.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Userpass.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Google.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Entra.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Okta.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        OIDC.AuthProvider |> Safe.scoped(subject) |> Safe.all()
-      ]
-      |> List.flatten()
+    providers = DB.list_all_providers(socket.assigns.subject)
 
     assign(socket,
       providers: providers,
@@ -933,16 +923,12 @@ defmodule Web.Settings.Authentication do
   end
 
   defp submit_provider(%{assigns: %{live_action: :new, form: %{source: changeset}}} = socket) do
-    changeset
-    |> Safe.scoped(socket.assigns.subject)
-    |> Safe.insert()
+    DB.insert_provider(changeset, socket.assigns.subject)
     |> handle_submit(socket)
   end
 
   defp submit_provider(%{assigns: %{live_action: :edit, form: %{source: changeset}}} = socket) do
-    changeset
-    |> Safe.scoped(socket.assigns.subject)
-    |> Safe.update()
+    DB.update_provider(changeset, socket.assigns.subject)
     |> handle_submit(socket)
   end
 
@@ -1033,53 +1019,8 @@ defmodule Web.Settings.Authentication do
     end
   end
 
-  defp get_provider!(schema, id, subject) do
-    import Ecto.Query
-
-    from(p in schema, where: p.id == ^id)
-    |> Safe.scoped(subject)
-    |> Safe.one!()
-  end
-
-  defp delete_provider!(provider, subject) do
-    # Delete the parent auth_provider, which will CASCADE delete the child and tokens
-    import Ecto.Query
-
-    parent =
-      from(p in AuthProvider, where: p.id == ^provider.id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
-
-    parent |> Safe.scoped(subject) |> Safe.delete()
-  end
-
   defp verified?(form) do
     get_field(form.source, :is_verified) == true
-  end
-
-  defp other_active_providers_exist?(provider, subject) do
-    import Ecto.Query
-
-    # List of all provider schema modules
-    provider_schemas = [
-      EmailOTP.AuthProvider,
-      Userpass.AuthProvider,
-      Google.AuthProvider,
-      Entra.AuthProvider,
-      Okta.AuthProvider,
-      OIDC.AuthProvider
-    ]
-
-    # Check if any other active provider exists across all schemas
-    Enum.any?(provider_schemas, fn schema ->
-      query =
-        from(p in schema,
-          where:
-            p.account_id == ^provider.account_id and p.id != ^provider.id and not p.is_disabled
-        )
-
-      query |> Safe.scoped(subject) |> Safe.exists?()
-    end)
   end
 
   defp handle_verification_setup_error(
@@ -1129,28 +1070,7 @@ defmodule Web.Settings.Authentication do
       |> Enum.find(fn provider -> provider.id == provider_id end)
 
     with true <- provider_type(provider) not in ["email_otp", "userpass"],
-         {:ok, _result} <-
-           Domain.Repo.transaction(fn ->
-             # First, clear is_default on all providers that have the field
-             Enum.each(socket.assigns.providers, fn p ->
-               if Map.has_key?(p, :is_default) && p.is_default do
-                 changeset = change(p, is_default: false)
-
-                 case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
-                   {:ok, _} -> :ok
-                   {:error, reason} -> Domain.Repo.rollback(reason)
-                 end
-               end
-             end)
-
-             # Then set is_default on the selected provider
-             changeset = change(provider, is_default: true)
-
-             case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
-               {:ok, updated} -> updated
-               {:error, reason} -> Domain.Repo.rollback(reason)
-             end
-           end) do
+         {:ok, _result} <- DB.set_default_provider(provider, socket.assigns) do
       socket =
         socket
         |> put_flash(:success, "Default authentication provider set to #{provider.name}")
@@ -1182,20 +1102,7 @@ defmodule Web.Settings.Authentication do
   end
 
   defp clear_default_provider(socket) do
-    with {:ok, _result} <-
-           Domain.Repo.transaction(fn ->
-             # Clear is_default on all providers that have the field
-             Enum.each(socket.assigns.providers, fn p ->
-               if Map.has_key?(p, :is_default) && p.is_default do
-                 changeset = change(p, is_default: false)
-
-                 case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
-                   {:ok, _} -> :ok
-                   {:error, reason} -> Domain.Repo.rollback(reason)
-                 end
-               end
-             end)
-           end) do
+    with {:ok, _result} <- DB.clear_default_provider(socket.assigns) do
       socket =
         socket
         |> put_flash(:success, "Default authentication provider cleared")
@@ -1234,5 +1141,108 @@ defmodule Web.Settings.Authentication do
   defp format_duration(seconds) do
     days = div(seconds, 86_400)
     "#{days}d"
+  end
+
+  defmodule DB do
+    alias Domain.{AuthProvider, EmailOTP, Userpass, OIDC, Entra, Google, Okta, Safe}
+    import Ecto.Query
+    import Ecto.Changeset
+
+    def list_all_providers(subject) do
+      [
+        EmailOTP.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Userpass.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Google.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Entra.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Okta.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        OIDC.AuthProvider |> Safe.scoped(subject) |> Safe.all()
+      ]
+      |> List.flatten()
+    end
+
+    def get_provider!(schema, id, subject) do
+      from(p in schema, where: p.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def insert_provider(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+    end
+
+    def update_provider(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def delete_provider!(provider, subject) do
+      # Delete the parent auth_provider, which will CASCADE delete the child and tokens
+      parent =
+        from(p in AuthProvider, where: p.id == ^provider.id)
+        |> Safe.scoped(subject)
+        |> Safe.one!()
+
+      parent |> Safe.scoped(subject) |> Safe.delete()
+    end
+
+    def other_active_providers_exist?(provider, subject) do
+      # List of all provider schema modules
+      provider_schemas = [
+        EmailOTP.AuthProvider,
+        Userpass.AuthProvider,
+        Google.AuthProvider,
+        Entra.AuthProvider,
+        Okta.AuthProvider,
+        OIDC.AuthProvider
+      ]
+
+      # Check if any other active provider exists across all schemas
+      Enum.any?(provider_schemas, fn schema ->
+        query =
+          from(p in schema,
+            where:
+              p.account_id == ^provider.account_id and p.id != ^provider.id and not p.is_disabled
+          )
+
+        query |> Safe.scoped(subject) |> Safe.exists?()
+      end)
+    end
+
+    def set_default_provider(provider, assigns) do
+      Safe.transact(fn ->
+        with :ok <- clear_all_defaults(assigns.providers, assigns.subject) do
+          # Then set is_default on the selected provider
+          changeset = change(provider, is_default: true)
+          changeset |> Safe.scoped(assigns.subject) |> Safe.update()
+        end
+      end)
+    end
+
+    def clear_default_provider(assigns) do
+      Safe.transact(fn ->
+        case clear_all_defaults(assigns.providers, assigns.subject) do
+          :ok -> {:ok, :cleared}
+          error -> error
+        end
+      end)
+    end
+
+    defp clear_all_defaults(providers, subject) do
+      Enum.reduce_while(providers, :ok, fn p, _acc ->
+        if Map.has_key?(p, :is_default) && p.is_default do
+          changeset = change(p, is_default: false)
+
+          case changeset |> Safe.scoped(subject) |> Safe.update() do
+            {:ok, _} -> {:cont, :ok}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+        else
+          {:cont, :ok}
+        end
+      end)
+    end
   end
 end

@@ -2,6 +2,7 @@ defmodule API.ExternalIdentityController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias Domain.{ExternalIdentity, Safe}
+  alias __MODULE__.DB
   import Ecto.Query
 
   action_fallback API.FallbackController
