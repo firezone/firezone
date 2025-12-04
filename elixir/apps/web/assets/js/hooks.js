@@ -303,97 +303,144 @@ Hooks.FormatJSON = {
 
 Hooks.Toast = {
   mounted() {
-    const autoshow = this.el.dataset.autoshow !== "false";
+    this.flashKey = this.el.className.match(/flash-(\w+)/)?.[1];
+    this.lastContent = this.el.textContent;
 
-    // Extract the flash key from the element's class (e.g., "flash-success" -> "success")
-    const flashKey = this.el.className.match(/flash-(\w+)/)?.[1];
+    this.applyBaseStyles();
+    this.resetPosition();
+    this.ensureProgressBar();
 
-    // Position the toast in the top-right corner with equal margins
-    this.el.style.position = "fixed";
-    this.el.style.top = "1rem";
-    this.el.style.right = "1rem";
-    this.el.style.left = "auto";
-    this.el.style.margin = "0";
-    this.el.style.maxWidth = "400px";
-    this.el.style.minWidth = "300px";
-    this.el.style.zIndex = "2147483647"; // Maximum z-index value to appear above everything
-
-    // Add transition styles
-    this.el.style.transition = "transform 0.3s ease-out, opacity 0.3s ease-out";
-    this.el.style.transform = "translateX(calc(100% + 1rem))";
-    this.el.style.opacity = "0";
-
-    // Create and add progress bar
-    const progressBar = document.createElement("div");
-    progressBar.className = "toast-progress";
-    progressBar.style.position = "absolute";
-    progressBar.style.bottom = "0";
-    progressBar.style.left = "0";
-    progressBar.style.height = "3px";
-    progressBar.style.width = "100%";
-    progressBar.style.backgroundColor = "currentColor";
-    progressBar.style.opacity = "0.3";
-    progressBar.style.transformOrigin = "left";
-    progressBar.style.transition = "transform 5s linear";
-    progressBar.style.transform = "scaleX(1)";
-    this.el.style.position = "relative";
-    this.el.appendChild(progressBar);
-    this.progressBar = progressBar;
-
-    // Add click handler to the close button to clear flash
+    // Add click handler to clear flash
     const closeButton = this.el.querySelector(
       'button[popovertargetaction="hide"]'
     );
-    if (closeButton && flashKey) {
+    if (closeButton && this.flashKey) {
       closeButton.addEventListener("click", () => {
-        this.pushEvent("lv:clear-flash", { key: flashKey });
+        this.pushEvent("lv:clear-flash", { key: this.flashKey });
       });
     }
 
-    if (autoshow) {
-      // Auto-show the toast popover when mounted
-      try {
-        this.el.showPopover();
+    if (this.shouldAutoShow()) {
+      this.show();
+    }
+  },
 
-        // Slide in after a tiny delay to trigger the transition
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            this.el.style.transform = "translateX(0)";
-            this.el.style.opacity = "1";
+  updated() {
+    this.applyBaseStyles();
 
-            // Start progress bar animation
-            requestAnimationFrame(() => {
-              this.progressBar.style.transform = "scaleX(0)";
-            });
-          });
-        });
-      } catch (error) {
-        console.error("showPopover error:", error);
-      }
-
-      // Auto-hide after 5 seconds
-      this.timeout = setTimeout(() => {
-        if (this.el.matches(":popover-open")) {
-          // Slide out before hiding
-          this.el.style.transform = "translateX(calc(100% + 1rem))";
-          this.el.style.opacity = "0";
-
-          setTimeout(() => {
-            this.el.hidePopover();
-            // Clear the flash after auto-hide
-            if (flashKey) {
-              this.pushEvent("lv:clear-flash", { key: flashKey });
-            }
-          }, 300); // Wait for transition to complete
-        }
-      }, 5000);
+    // Only re-show if content actually changed and autoshow is enabled
+    const currentContent = this.el.textContent;
+    if (currentContent !== this.lastContent && this.shouldAutoShow()) {
+      this.lastContent = currentContent;
+      this.clearTimeout();
+      this.resetPosition();
+      this.ensureProgressBar();
+      this.resetProgressBar();
+      this.show();
     }
   },
 
   destroyed() {
-    // Clear timeout on cleanup
+    this.clearTimeout();
+  },
+
+  // Helpers
+  applyBaseStyles() {
+    Object.assign(this.el.style, {
+      position: "fixed",
+      top: "1rem",
+      right: "1rem",
+      left: "auto",
+      margin: "0",
+      maxWidth: "400px",
+      minWidth: "300px",
+      zIndex: "2147483647",
+      transition: "transform 0.3s ease-out, opacity 0.3s ease-out",
+    });
+  },
+
+  shouldAutoShow() {
+    return this.el.dataset.autoshow !== "false";
+  },
+
+  resetPosition() {
+    this.el.style.transform = "translateX(calc(100% + 1rem))";
+    this.el.style.opacity = "0";
+  },
+
+  ensureProgressBar() {
+    if (this.progressBar && this.el.contains(this.progressBar)) return;
+
+    const bar = document.createElement("div");
+    Object.assign(bar.style, {
+      position: "absolute",
+      bottom: "0",
+      left: "0",
+      height: "3px",
+      width: "100%",
+      backgroundColor: "currentColor",
+      opacity: "0.3",
+      transformOrigin: "left",
+      transition: "transform 5s linear",
+      transform: "scaleX(1)",
+    });
+    this.el.appendChild(bar);
+    this.progressBar = bar;
+  },
+
+  resetProgressBar() {
+    if (!this.progressBar) return;
+    this.progressBar.style.transition = "none";
+    this.progressBar.style.transform = "scaleX(1)";
+  },
+
+  show() {
+    try {
+      if (!this.el.matches(":popover-open")) {
+        this.el.showPopover();
+      }
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          this.el.style.transform = "translateX(0)";
+          this.el.style.opacity = "1";
+
+          if (this.progressBar) {
+            this.progressBar.style.transition = "transform 5s linear";
+            requestAnimationFrame(() => {
+              this.progressBar.style.transform = "scaleX(0)";
+            });
+          }
+        });
+      });
+    } catch (error) {
+      console.error("showPopover error:", error);
+    }
+
+    this.scheduleHide();
+  },
+
+  scheduleHide() {
+    this.clearTimeout();
+    this.timeout = setTimeout(() => {
+      if (!this.el.matches(":popover-open")) return;
+
+      this.el.style.transform = "translateX(calc(100% + 1rem))";
+      this.el.style.opacity = "0";
+
+      setTimeout(() => {
+        this.el.hidePopover();
+        if (this.flashKey) {
+          this.pushEvent("lv:clear-flash", { key: this.flashKey });
+        }
+      }, 300);
+    }, 5000);
+  },
+
+  clearTimeout() {
     if (this.timeout) {
       clearTimeout(this.timeout);
+      this.timeout = null;
     }
   },
 };

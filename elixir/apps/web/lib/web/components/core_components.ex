@@ -373,7 +373,7 @@ defmodule Web.CoreComponents do
       ]}
       role="alert"
       phx-hook={if @style == "toast", do: "Toast", else: nil}
-      data-autoshow={if @style == "toast", do: @autoshow, else: nil}
+      data-autoshow={if @style == "toast", do: to_string(@autoshow), else: nil}
       {@rest}
     >
       <div class={[@style == "toast" && "flex items-start gap-3"]}>
