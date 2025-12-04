@@ -49,6 +49,11 @@ defmodule Web.FormComponents do
     doc: "whether to display errors inline instead of below the input"
 
   attr :checked, :boolean, doc: "the checked flag for checkbox and radio inputs"
+
+  attr :unchecked_value, :any,
+    default: "false",
+    doc: "the value to send when checkbox is unchecked"
+
   attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
   attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
   attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
@@ -150,12 +155,13 @@ defmodule Web.FormComponents do
 
     ~H"""
     <div>
+      <input :if={@unchecked_value} type="hidden" name={@name} value={@unchecked_value} />
       <label class="flex items-center gap-4 text-sm leading-6 text-neutral-600">
         <input
           type="checkbox"
           id={@id}
           name={@name}
-          value="true"
+          value={@value || "true"}
           checked={@checked}
           class={[
             "bg-neutral-50",

@@ -540,6 +540,22 @@ BEGIN
     DELETE FROM legacy_auth_providers
     WHERE account_id = v_account_id;
 
+    -- ============================================================================
+    -- STEP 10: SET allow_email_otp_sign_in BASED ON EMAIL IDENTITIES
+    -- ============================================================================
+    RAISE NOTICE 'Step 10: Setting allow_email_otp_sign_in for actors in account %', v_account_id;
+    
+    -- Set to true for actors that had email identities, false for all others
+    UPDATE actors a
+    SET allow_email_otp_sign_in = EXISTS(
+      SELECT 1 
+      FROM external_identities i
+      JOIN legacy_auth_providers p ON i.provider_id = p.id
+      WHERE i.actor_id = a.id 
+        AND p.adapter = 'email'
+    )
+    WHERE a.account_id = v_account_id;
+
     RAISE NOTICE 'Completed migration for account: %', v_account_id;
 
   END LOOP;

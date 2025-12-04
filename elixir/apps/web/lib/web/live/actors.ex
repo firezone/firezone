@@ -629,6 +629,13 @@ defmodule Web.Actors do
               ]}
               required
             />
+
+            <.input
+              :if={@form[:type].value != :service_account}
+              field={@form[:allow_email_otp_sign_in]}
+              label="Allow Email OTP Sign In"
+              type="checkbox"
+            />
           </div>
         </.form>
       </:body>
@@ -772,6 +779,20 @@ defmodule Web.Actors do
                   <p class="text-sm text-neutral-900">
                     <.relative_datetime datetime={@actor.updated_at} />
                   </p>
+                </div>
+                <div :if={@actor.type != :service_account} class="col-span-2">
+                  <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Email OTP Sign In</p>
+                  <div class="flex items-center gap-2">
+                    <%= if @actor.allow_email_otp_sign_in do %>
+                      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                        <.icon name="hero-check-circle" class="w-3.5 h-3.5 mr-1" /> Allowed
+                      </span>
+                    <% else %>
+                      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-600">
+                        <.icon name="hero-x-circle" class="w-3.5 h-3.5 mr-1" /> Not Allowed
+                      </span>
+                    <% end %>
+                  </div>
                 </div>
               </div>
               <.popover placement="bottom-end" trigger="click">
@@ -1127,6 +1148,13 @@ defmodule Web.Actors do
                 Cannot change role. At least one admin must remain in the account.
               </p>
             </div>
+
+            <.input
+              :if={@form[:type].value != :service_account}
+              field={@form[:allow_email_otp_sign_in]}
+              label="Allow Email OTP Sign In"
+              type="checkbox"
+            />
           </div>
         </.form>
       </:body>
@@ -1275,7 +1303,7 @@ defmodule Web.Actors do
   # Changesets
   defp changeset(actor, attrs) do
     actor
-    |> cast(attrs, [:name, :email, :type])
+    |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in])
   end
 
   # Helper functions

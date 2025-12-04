@@ -181,8 +181,13 @@ defmodule Web.EmailOTPController do
     import Ecto.Query
 
     # Fetch actor by email and account_id, ensuring the actor is not disabled
+    # and has email OTP sign in allowed
     from(a in Actor,
-      where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at),
+      where:
+        a.email == ^email and
+          a.account_id == ^account.id and
+          is_nil(a.disabled_at) and
+          a.allow_email_otp_sign_in == true,
       preload: [:account]
     )
     |> Safe.unscoped()

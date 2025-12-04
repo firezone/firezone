@@ -8,6 +8,7 @@ defmodule Domain.Actor do
 
     field :email, :string
     field :password_hash, :string, redact: true
+    field :allow_email_otp_sign_in, :boolean, default: false
 
     field :name, :string
 

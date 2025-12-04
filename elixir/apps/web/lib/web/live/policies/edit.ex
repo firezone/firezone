@@ -131,14 +131,14 @@ defmodule Web.Policies.Edit do
                       {resource.name}
                     <% end %>
 
-                    <span :if={resource.sites == []} class="text-red-800">
-                      (not connected to any Site)
+                    <span :if={is_nil(resource.site_id)} class="text-red-800">
+                      (not connected to a Site)
                     </span>
                     <span
-                      :if={length(resource.sites) > 0}
+                      :if={resource.site_id}
                       class="text-neutral-500 inline-flex"
                     >
-                      (<.resource_sites sites={resource.sites} />)
+                      ({resource.site.name})
                     </span>
                   </:option>
 

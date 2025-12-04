@@ -658,6 +658,7 @@ defmodule Web.Policies.Components do
             disabled={@disabled}
             checked={List.first(List.wrap(condition_form[:values].value)) == "true"}
             value="true"
+            unchecked_value={nil}
           />
         </div>
       </div>
@@ -803,17 +804,6 @@ defmodule Web.Policies.Components do
 
   def options_form(assigns) do
     ~H"""
-    """
-  end
-
-  def resource_sites(assigns) do
-    ~H"""
-    <.intersperse :let={site} enum={@sites}>
-      <:separator>
-        <span class="mr-1">,</span>
-      </:separator>
-      <span>{site.name}</span>
-    </.intersperse>
     """
   end
 

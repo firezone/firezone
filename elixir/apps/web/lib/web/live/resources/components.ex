@@ -22,7 +22,7 @@ defmodule Web.Resources.Components do
 
     {:ok, resources, metadata} =
       DB.list_resources(subject,
-        preload: [:sites],
+        preload: [:site],
         limit: 25,
         filter: filter
       )

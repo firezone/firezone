@@ -18,6 +18,7 @@ defmodule Domain.Mailer do
   end
 
   def deliver_with_rate_limit(email, config \\ []) do
+    dbg(email)
     {key, config} = Keyword.pop(config, :rate_limit_key, {email.to, email.subject})
     {rate_limit, config} = Keyword.pop(config, :rate_limit, 10)
     {rate_limit_interval, config} = Keyword.pop(config, :rate_limit_interval, :timer.minutes(2))

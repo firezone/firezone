@@ -132,13 +132,13 @@ defmodule API.ActorController do
 
   defp create_actor_changeset(account, attrs) do
     %Domain.Actor{account_id: account.id}
-    |> cast(attrs, [:name, :email, :type])
+    |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in])
     |> validate_required([:name, :type])
   end
 
   defp actor_changeset(actor, attrs) do
     actor
-    |> cast(attrs, [:name, :email, :type])
+    |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in])
     |> validate_required([:name, :type])
   end
 
