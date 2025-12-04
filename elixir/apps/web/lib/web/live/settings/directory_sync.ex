@@ -1271,6 +1271,25 @@ defmodule Web.Settings.DirectorySync do
     |> schema.changeset()
   end
 
+  defp parse_google_verification_error({:ok, %Req.Response{status: 400, body: body}}) do
+    error_type = body["error"]
+    error_description = body["error_description"]
+
+    case {error_type, error_description} do
+      {"invalid_grant", "Invalid email or User ID"} ->
+        "Invalid service account email or user ID. Please check your service account configuration and ensure the email address is correct."
+
+      {"invalid_grant", description} when is_binary(description) ->
+        "Authentication failed: #{description}"
+
+      {_, description} when is_binary(description) ->
+        description
+
+      _ ->
+        "HTTP 400 Bad Request. Please check your configuration."
+    end
+  end
+
   defp parse_google_verification_error({:ok, %Req.Response{status: 401, body: body}}) do
     body["error_description"] ||
       "HTTP 401 error during verification. Ensure all scopes are granted for the service account."
@@ -1279,6 +1298,16 @@ defmodule Web.Settings.DirectorySync do
   defp parse_google_verification_error({:ok, %Req.Response{status: 403, body: body}}) do
     get_in(body, ["error", "message"]) ||
       "HTTP 403 error during verification. Ensure the service account has admin privileges and the admin SDK API is enabled."
+  end
+
+  defp parse_google_verification_error({:ok, %Req.Response{status: 404, body: body}}) do
+    error_message = get_in(body, ["error", "message"])
+
+    if error_message do
+      "Resource not found: #{error_message}"
+    else
+      "HTTP 404 Not Found. The requested Google API resource or endpoint was not found. Please verify your configuration."
+    end
   end
 
   defp parse_google_verification_error({:ok, %Req.Response{status: status}})
@@ -1292,17 +1321,79 @@ defmodule Web.Settings.DirectorySync do
     "Unknown error during verification. Please try again. If the problem persists, contact support."
   end
 
-  defp parse_entra_verification_error({:ok, %Req.Response{status: 401, body: body}}) do
-    # OAuth token endpoint error format
-    error_description = body["error_description"] || body["error"] || "Unauthorized"
+  defp parse_entra_verification_error({:ok, %Req.Response{status: 400, body: body}}) do
+    error = body["error"]
+    error_description = body["error_description"]
+    error_message = get_in(body, ["error", "message"])
 
-    "HTTP 401 error during verification: #{error_description}. Ensure the client credentials are correct."
+    cond do
+      error == "invalid_request" && error_description ->
+        "Invalid request: #{error_description}. Please check your Entra configuration."
+
+      error == "invalid_client" ->
+        "Invalid client credentials. Please verify your Application (client) ID and client secret are correct."
+
+      error == "invalid_scope" ->
+        "Invalid or insufficient permissions. Ensure the application has User.Read.All and Group.Read.All API permissions granted."
+
+      error_message ->
+        "Configuration error: #{error_message}"
+
+      error_description ->
+        error_description
+
+      true ->
+        "HTTP 400 Bad Request. Please check your Entra configuration."
+    end
+  end
+
+  defp parse_entra_verification_error({:ok, %Req.Response{status: 401, body: body}}) do
+    error = body["error"]
+    error_description = body["error_description"]
+    error_codes = body["error_codes"] || []
+
+    cond do
+      70002 in error_codes || error == "invalid_client" ->
+        "Invalid client credentials. The Application (client) ID or client secret is incorrect."
+
+      7_000_218 in error_codes ->
+        "Invalid client secret. The secret may have expired or been entered incorrectly."
+
+      90002 in error_codes || error == "invalid_tenant" ->
+        "Tenant not found. Please verify your Tenant ID is correct."
+
+      error_description ->
+        "Authentication failed: #{error_description}"
+
+      true ->
+        "HTTP 401 Unauthorized. Please check your client credentials and tenant ID."
+    end
   end
 
   defp parse_entra_verification_error({:ok, %Req.Response{status: 403, body: body}}) do
-    # Microsoft Graph API error format
+    error_code = get_in(body, ["error", "code"])
     error_message = get_in(body, ["error", "message"]) || "Forbidden"
-    "HTTP 403 error during verification: #{error_message}"
+
+    case error_code do
+      "Authorization_RequestDenied" ->
+        "Permission denied. Ensure the application has been granted admin consent for User.Read.All and Group.Read.All permissions."
+
+      "Forbidden" ->
+        "Access forbidden. The application may not have the required permissions or admin consent."
+
+      _ ->
+        "Access denied: #{error_message}. Ensure proper API permissions are configured and admin consent is granted."
+    end
+  end
+
+  defp parse_entra_verification_error({:ok, %Req.Response{status: 404, body: body}}) do
+    error_message = get_in(body, ["error", "message"])
+
+    if error_message do
+      "Resource not found: #{error_message}. Please verify your Tenant ID and API endpoints are correct."
+    else
+      "HTTP 404 Not Found. Please verify your Tenant ID is correct and the Microsoft Graph API is accessible."
+    end
   end
 
   defp parse_entra_verification_error({:ok, %Req.Response{status: status}})
@@ -1317,21 +1408,85 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defp parse_okta_verification_error({:error, %Req.Response{status: 400, body: body}}) do
-    error_message = body["errorSummary"] || body["error"] || "Bad Request."
+    error_code = body["errorCode"]
+    error_summary = body["errorSummary"]
 
-    "HTTP 400 error during verification: #{error_message} Ensure the Client ID and Okta Domain are correct."
+    cond do
+      error_code == "E0000021" ->
+        "Bad request to Okta API. Please verify your Okta domain and API configuration."
+
+      error_code == "E0000001" ->
+        "API validation failed: #{error_summary || "Invalid request parameters"}"
+
+      error_code == "E0000003" ->
+        "The request body was invalid. Please check your configuration."
+
+      error_code == "invalid_client" ->
+        "Invalid client application. Please verify your Client ID is correct."
+
+      error_summary ->
+        "Configuration error: #{error_summary}"
+
+      true ->
+        "HTTP 400 Bad Request. Please verify your Okta domain and Client ID."
+    end
   end
 
   defp parse_okta_verification_error({:error, %Req.Response{status: 401, body: body}}) do
-    error_message = body["errorSummary"] || body["error"] || "Unauthorized."
+    error_code = body["errorCode"]
+    error_summary = body["errorSummary"]
 
-    "HTTP 401 error during verification: #{error_message} Ensure the Client ID and Public Key are correct."
+    cond do
+      error_code == "E0000011" ->
+        "Invalid token. Please ensure your Client ID and private key are correct and the JWT is properly signed."
+
+      error_code == "E0000061" ->
+        "Access denied. The client application is not authorized to use this API."
+
+      error_code == "invalid_client" ->
+        "Client authentication failed. Please verify your Client ID and ensure the public key is registered in Okta."
+
+      error_summary ->
+        "Authentication failed: #{error_summary}"
+
+      true ->
+        "HTTP 401 Unauthorized. Please check your Client ID and ensure the public key matches your private key."
+    end
   end
 
   defp parse_okta_verification_error({:error, %Req.Response{status: 403, body: body}}) do
-    error_message = body["errorSummary"] || body["error"] || "Forbidden."
+    error_code = body["errorCode"]
+    error_summary = body["errorSummary"]
 
-    "HTTP 403 error during verification: #{error_message} Ensure the application has the required scopes."
+    cond do
+      error_code == "E0000006" ->
+        "Access denied. You do not have permission to perform this action. Ensure the API service app has the required scopes."
+
+      error_code == "E0000022" ->
+        "API access denied. The feature may not be available for your Okta organization."
+
+      error_summary ->
+        "Permission denied: #{error_summary}"
+
+      true ->
+        "HTTP 403 Forbidden. Ensure the application has okta.users.read and okta.groups.read scopes granted."
+    end
+  end
+
+  defp parse_okta_verification_error({:error, %Req.Response{status: 404, body: body}}) do
+    error_code = body["errorCode"]
+    error_summary = body["errorSummary"]
+
+    cond do
+      error_code == "E0000007" ->
+        "Resource not found. The API endpoint or resource doesn't exist. Please verify your Okta domain."
+
+      error_summary ->
+        "Not found: #{error_summary}"
+
+      true ->
+        "HTTP 404 Not Found. Please verify your Okta domain (e.g., your-domain.okta.com) is correct."
+    end
   end
 
   defp parse_okta_verification_error({:error, %Req.Response{status: status}})

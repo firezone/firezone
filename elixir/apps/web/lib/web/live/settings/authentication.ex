@@ -992,7 +992,7 @@ defmodule Web.Settings.Authentication do
     if is_nil(get_field(changeset, :id)) do
       id = Ecto.UUID.generate()
       # Get the type based on the schema module
-      type = AuthProvider.type!(changeset.data.__struct__)
+      type = AuthProvider.type!(changeset.data.__struct__) |> String.to_existing_atom()
 
       changeset
       |> put_change(:id, id)
