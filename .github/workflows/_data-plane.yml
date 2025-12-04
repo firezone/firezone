@@ -238,6 +238,9 @@ jobs:
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
+          - package: firezone-loadtest
+            artifact: firezone-loadtest
+            image_name: loadtest
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
       SENTRY_ENVIRONMENT: "production"
@@ -301,6 +304,25 @@ jobs:
             "${{ matrix.name.package }}".sha256sum.txt \
             gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
 
+          az storage blob upload \
+            --container-name binaries \
+            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}" \
+            --file "${{ matrix.name.package }}" \
+            --overwrite true \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+
+          az storage blob upload \
+            --container-name binaries \
+            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt" \
+            --file "${{ matrix.name.package }}.sha256sum.txt" \
+            --overwrite true \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+      - name: Copy loadtest to Azure Storage
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-loadtest' }}
+        run: |
+          set -e
           az storage blob upload \
             --container-name binaries \
             --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}" \
