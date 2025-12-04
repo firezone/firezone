@@ -1,6 +1,7 @@
 defmodule Domain.Changes.Hooks.Policies do
   @behaviour Domain.Changes.Hooks
   alias Domain.{Changes.Change, Policy, PubSub}
+  alias __MODULE__.DB
   import Domain.SchemaHelpers
 
   @impl true
@@ -19,7 +20,7 @@ defmodule Domain.Changes.Hooks.Policies do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
     policy = struct_from_params(Policy, old_data)
-    delete_policy_authorizations_for(policy)
+    DB.delete_policy_authorizations_for_policy(policy)
 
     on_delete(lsn, old_data)
   end
@@ -43,7 +44,7 @@ defmodule Domain.Changes.Hooks.Policies do
     if old_policy.conditions != policy.conditions or
          old_policy.group_id != policy.group_id or
          old_policy.resource_id != policy.resource_id do
-      delete_policy_authorizations_for(old_policy)
+      DB.delete_policy_authorizations_for_policy(old_policy)
     end
 
     PubSub.Account.broadcast(policy.account_id, change)
@@ -57,14 +58,16 @@ defmodule Domain.Changes.Hooks.Policies do
     PubSub.Account.broadcast(policy.account_id, change)
   end
 
-  # Inline function from Domain.PolicyAuthorizations
-  defp delete_policy_authorizations_for(%Policy{} = policy) do
+  defmodule DB do
     import Ecto.Query
+    alias Domain.{Safe, Policy, PolicyAuthorization}
 
-    from(f in Domain.PolicyAuthorization, as: :policy_authorizations)
-    |> where([policy_authorizations: f], f.account_id == ^policy.account_id)
-    |> where([policy_authorizations: f], f.policy_id == ^policy.id)
-    |> Domain.Safe.unscoped()
-    |> Domain.Safe.delete_all()
+    def delete_policy_authorizations_for_policy(%Policy{} = policy) do
+      from(f in PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: f], f.account_id == ^policy.account_id)
+      |> where([policy_authorizations: f], f.policy_id == ^policy.id)
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
   end
 end

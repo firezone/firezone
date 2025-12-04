@@ -37,13 +37,13 @@ defmodule Web.Resources.Index do
     list_opts = Keyword.put(list_opts, :preload, [:site])
 
     with {:ok, resources, metadata} <-
-           DB.list_resources(socket.assigns.subject, list_opts),
-         {:ok, resource_groups_peek} <-
-           DB.peek_resource_groups(resources, 3, socket.assigns.subject) do
+           DB.list_resources(socket.assigns.subject, list_opts) do
+      resource_policy_counts = DB.count_policies_for_resources(resources, socket.assigns.subject)
+
       {:ok,
        assign(socket,
          resources: resources,
-         resource_groups_peek: resource_groups_peek,
+         resource_policy_counts: resource_policy_counts,
          resources_metadata: metadata
        )}
     end
@@ -108,29 +108,23 @@ defmodule Web.Resources.Index do
               </.badge>
             </.link>
           </:col>
-          <:col :let={resource} label="Authorized groups" class="w-4/12">
-            <.peek peek={Map.fetch!(@resource_groups_peek, resource.id)}>
-              <:empty>
-                None -
-                <.link
-                  class={["px-1", link_style()]}
-                  navigate={~p"/#{@account}/policies/new?resource_id=#{resource}"}
-                >
-                  Create a Policy
-                </.link>
-                to grant access.
-              </:empty>
-
-              <:item :let={group}>
-                <.group_badge account={@account} group={group} class="mr-2" return_to={@current_path} />
-              </:item>
-
-              <:tail :let={count}>
-                <span class="inline-block whitespace-nowrap">
-                  and {count} more.
-                </span>
-              </:tail>
-            </.peek>
+          <:col :let={resource} label="Policies" class="w-2/12">
+            <% count = Map.get(@resource_policy_counts, resource.id, 0) %>
+            <%= if count == 0 do %>
+              <.link
+                class={link_style()}
+                navigate={~p"/#{@account}/policies/new?resource_id=#{resource}"}
+              >
+                Create a Policy
+              </.link>
+            <% else %>
+              <.link
+                class={link_style()}
+                navigate={~p"/#{@account}/policies?resource_id=#{resource.id}"}
+              >
+                {count} {ngettext("policy", "policies", count)}
+              </.link>
+            <% end %>
           </:col>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -184,7 +178,7 @@ defmodule Web.Resources.Index do
   defmodule DB do
     import Ecto.Query
     import Domain.Repo.Query
-    alias Domain.{Safe, Resource, Repo, Policy}
+    alias Domain.{Safe, Resource, Policy}
 
     def list_resources(subject, opts \\ []) do
       all()
@@ -205,86 +199,20 @@ defmodule Web.Resources.Index do
       end
     end
 
-    def peek_resource_groups(resources, limit, subject) do
+    def count_policies_for_resources(resources, subject) do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
-      {:ok, peek} =
-        all()
-        |> by_id({:in, ids})
-        |> preload_few_groups_for_each_resource(limit)
-        |> where(account_id: ^subject.account.id)
-        |> Repo.peek(resources)
-
-      group_by_ids =
-        Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
-        |> Enum.map(&{&1.id, &1})
-        |> Enum.into(%{})
-
-      peek =
-        for {id, %{items: items} = map} <- peek, into: %{} do
-          {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
-        end
-
-      {:ok, peek}
-    end
-
-    def by_id(queryable, {:in, ids}) do
-      where(queryable, [resources: resources], resources.id in ^ids)
-    end
-
-    def preload_few_groups_for_each_resource(queryable, limit) do
-      queryable
-      |> with_joined_groups(limit)
-      |> with_joined_policies_counts()
-      |> select(
-        [resources: resources, groups: groups, policies_counts: policies_counts],
-        %{
-          id: resources.id,
-          count: policies_counts.count,
-          item: groups
-        }
-      )
-    end
-
-    def with_joined_groups(queryable, limit) do
-      policies_subquery =
-        from(p in Policy, as: :policies)
-        |> where([policies: p], is_nil(p.disabled_at))
-        |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
-        |> select([policies: policies], policies.group_id)
-        |> limit(^limit)
-
-      groups_subquery =
-        from(g in Domain.Group, as: :groups)
-        |> where([groups: groups], groups.id in subquery(policies_subquery))
-
-      join(
-        queryable,
-        :cross_lateral,
-        [resources: resources],
-        groups in subquery(groups_subquery),
-        as: :groups
-      )
-    end
-
-    def with_joined_policies_counts(queryable) do
-      subquery =
-        from(p in Policy, as: :policies)
-        |> where([policies: p], is_nil(p.disabled_at))
-        |> group_by([policies: policies], policies.resource_id)
-        |> select([policies: policies], %{
-          resource_id: policies.resource_id,
-          count: count(policies.id)
-        })
-        |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
-
-      join(
-        queryable,
-        :cross_lateral,
-        [resources: resources],
-        policies_counts in subquery(subquery),
-        as: :policies_counts
-      )
+      from(p in Policy, as: :policies)
+      |> where([policies: p], p.resource_id in ^ids)
+      |> where([policies: p], is_nil(p.disabled_at))
+      |> group_by([policies: p], p.resource_id)
+      |> select([policies: p], {p.resource_id, count(p.id)})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> %{}
+        counts -> Map.new(counts)
+      end
     end
 
     def cursor_fields do

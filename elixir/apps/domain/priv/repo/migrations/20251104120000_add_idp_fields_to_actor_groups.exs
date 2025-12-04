@@ -9,7 +9,7 @@ defmodule Domain.Repo.Migrations.AddIdpFieldsToActorGroups do
     end
 
     create(
-      index(:actor_groups, [:directory_id],
+      index(:actor_groups, [:account_id, :directory_id],
         name: :actor_groups_directory_id_index,
         where: "directory_id IS NOT NULL"
       )
@@ -27,7 +27,7 @@ defmodule Domain.Repo.Migrations.AddIdpFieldsToActorGroups do
       ADD CONSTRAINT actor_groups_directory_id_fkey
       FOREIGN KEY (account_id, directory_id)
       REFERENCES directories(account_id, id)
-      ON DELETE SET NULL
+      ON DELETE CASCADE
       """,
       """
       ALTER TABLE actor_groups

@@ -1,6 +1,7 @@
 defmodule Domain.Changes.Hooks.Accounts do
   @behaviour Domain.Changes.Hooks
   alias Domain.{Billing, Changes.Change, PubSub}
+  alias __MODULE__.DB
   import Domain.SchemaHelpers
   require Logger
 
@@ -21,7 +22,7 @@ defmodule Domain.Changes.Hooks.Accounts do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
     account = struct_from_params(Domain.Account, old_data)
-    delete_policy_authorizations_for(account)
+    DB.delete_policy_authorizations_for_account(account)
 
     on_delete(lsn, old_data)
   end
@@ -50,13 +51,15 @@ defmodule Domain.Changes.Hooks.Accounts do
     PubSub.Account.broadcast(account.id, change)
   end
 
-  # Inline function from Domain.PolicyAuthorizations
-  defp delete_policy_authorizations_for(%Domain.Account{} = account) do
+  defmodule DB do
     import Ecto.Query
+    alias Domain.{Safe, PolicyAuthorization}
 
-    from(f in Domain.PolicyAuthorization, as: :policy_authorizations)
-    |> where([policy_authorizations: f], f.account_id == ^account.id)
-    |> Domain.Safe.unscoped()
-    |> Domain.Safe.delete_all()
+    def delete_policy_authorizations_for_account(%Domain.Account{} = account) do
+      from(f in PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: f], f.account_id == ^account.id)
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
   end
 end

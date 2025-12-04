@@ -200,12 +200,12 @@ defmodule Web.Actors do
     token_expiration = Map.get(params, "token_expiration")
 
     result =
-      Domain.Repo.transact(fn ->
-        with {:ok, actor} <- DB.create(changeset, socket.assigns.subject),
-             token_result <- create_actor_token(actor, token_expiration, socket.assigns.subject) do
-          {:ok, {actor, token_result}}
-        end
-      end)
+      DB.create_service_account_with_token(
+        changeset,
+        token_expiration,
+        socket.assigns.subject,
+        &create_actor_token/3
+      )
 
     case result do
       {:ok, {actor, {:ok, nil}}} ->
@@ -1733,6 +1733,15 @@ defmodule Web.Actors do
       changeset
       |> Safe.scoped(subject)
       |> Safe.insert()
+    end
+
+    def create_service_account_with_token(changeset, token_expiration, subject, token_creator_fn) do
+      Safe.transact(fn ->
+        with {:ok, actor} <- create(changeset, subject),
+             token_result <- token_creator_fn.(actor, token_expiration, subject) do
+          {:ok, {actor, token_result}}
+        end
+      end)
     end
 
     def update(changeset, subject) do

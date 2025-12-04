@@ -238,7 +238,7 @@ defmodule API.SiteController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Repo, Billing, Token}
+    alias Domain.{Safe, Billing, Token}
     alias Domain.Site
 
     def list_sites(subject, opts \\ []) do
@@ -272,7 +272,7 @@ defmodule API.SiteController do
 
     def update_site(site, attrs, subject) do
       site
-      |> Repo.preload(:account)
+      |> Safe.preload(:account)
       |> changeset(attrs, subject)
       |> Safe.scoped(subject)
       |> Safe.update()

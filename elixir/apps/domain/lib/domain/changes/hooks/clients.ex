@@ -1,6 +1,7 @@
 defmodule Domain.Changes.Hooks.Clients do
   @behaviour Domain.Changes.Hooks
   alias Domain.{Changes.Change, PubSub}
+  alias __MODULE__.DB
   import Domain.SchemaHelpers
 
   @impl true
@@ -16,7 +17,7 @@ defmodule Domain.Changes.Hooks.Clients do
     # This is a special case - we need to delete associated policy_authorizations when unverifying a client since
     # it could affect connectivity if any policies are based on the verified status.
     if not is_nil(old_client.verified_at) and is_nil(client.verified_at) do
-      delete_policy_authorizations_for(client)
+      DB.delete_policy_authorizations_for_client(client)
     end
 
     PubSub.Account.broadcast(client.account_id, change)
@@ -30,14 +31,16 @@ defmodule Domain.Changes.Hooks.Clients do
     PubSub.Account.broadcast(client.account_id, change)
   end
 
-  # Inline function from Domain.PolicyAuthorizations
-  defp delete_policy_authorizations_for(%Domain.Client{} = client) do
+  defmodule DB do
     import Ecto.Query
+    alias Domain.{Safe, PolicyAuthorization}
 
-    from(f in Domain.PolicyAuthorization, as: :policy_authorizations)
-    |> where([policy_authorizations: f], f.account_id == ^client.account_id)
-    |> where([policy_authorizations: f], f.client_id == ^client.id)
-    |> Domain.Safe.unscoped()
-    |> Domain.Safe.delete_all()
+    def delete_policy_authorizations_for_client(%Domain.Client{} = client) do
+      from(f in PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: f], f.account_id == ^client.account_id)
+      |> where([policy_authorizations: f], f.client_id == ^client.id)
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
   end
 end

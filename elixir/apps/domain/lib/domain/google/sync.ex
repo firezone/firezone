@@ -7,7 +7,7 @@ defmodule Domain.Google.Sync do
     queue: :google_sync,
     max_attempts: 1
 
-  alias Domain.{Safe, Google}
+  alias Domain.Google
   alias __MODULE__.DB
   require Logger
 
@@ -18,7 +18,7 @@ defmodule Domain.Google.Sync do
       timestamp: DateTime.utc_now()
     )
 
-    case DB.get_directory(directory_id) |> Safe.unscoped() |> Safe.one() do
+    case DB.get_directory(directory_id) do
       nil ->
         Logger.info("Google directory deleted or sync disabled, skipping",
           google_directory_id: directory_id
@@ -44,7 +44,7 @@ defmodule Domain.Google.Sync do
         :is_verified
       ])
 
-    {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
+    {:ok, _directory} = DB.update_directory(changeset)
   end
 
   defp sync(%Google.Directory{} = directory) do
@@ -402,6 +402,12 @@ defmodule Domain.Google.Sync do
       from(d in Google.Directory, as: :directories)
       |> where([directories: d], d.id == ^id)
       |> where([directories: d], d.is_disabled == false)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def update_directory(changeset) do
+      changeset |> Safe.unscoped() |> Safe.update()
     end
 
     def batch_upsert_identities(_account_id, _directory_id, _last_synced_at, []),

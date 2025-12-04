@@ -12,7 +12,7 @@ defmodule Domain.Okta.Sync do
       keys: [:directory_id]
     ]
 
-  alias Domain.{Safe, Okta}
+  alias Domain.Okta
   alias __MODULE__.DB
 
   require Logger
@@ -52,7 +52,7 @@ defmodule Domain.Okta.Sync do
         :is_verified
       ])
 
-    {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
+    {:ok, _directory} = DB.update_directory(changeset)
   end
 
   defp sync(%Okta.Directory{} = directory) do
@@ -473,6 +473,10 @@ defmodule Domain.Okta.Sync do
         nil -> {:error, :not_found}
         directory -> {:ok, directory}
       end
+    end
+
+    def update_directory(changeset) do
+      changeset |> Safe.unscoped() |> Safe.update()
     end
 
     def get_synced_group_idp_ids(account_id, directory_id, synced_at) do

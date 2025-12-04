@@ -290,7 +290,7 @@ defmodule Web.Settings.Billing do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Repo}
+    alias Domain.Safe
     alias Domain.Account
     alias Domain.Actor
     alias Domain.Client
@@ -334,7 +334,8 @@ defmodule Web.Settings.Billing do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
-      |> Repo.aggregate(:count)
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
     end
 
     def count_groups_for_account(account) do

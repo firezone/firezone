@@ -103,24 +103,24 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Repo, Safe}
+    alias Domain.Safe
     alias Domain.Client
 
     def all_accounts_pending_notification! do
-      Domain.Repo.all(
-        from a in Domain.Account,
-          where:
-            fragment("?->'notifications'->'outdated_gateway'->>'enabled' = 'true'", a.config),
-          where:
+      from(a in Domain.Account,
+        where: fragment("?->'notifications'->'outdated_gateway'->>'enabled' = 'true'", a.config),
+        where:
+          fragment(
+            "?->'notifications'->'outdated_gateway'->>'last_notified' IS NULL",
+            a.config
+          ) or
             fragment(
-              "?->'notifications'->'outdated_gateway'->>'last_notified' IS NULL",
+              "(?->'notifications'->'outdated_gateway'->>'last_notified')::timestamp < timezone('UTC', NOW()) - interval '24 hours'",
               a.config
-            ) or
-              fragment(
-                "(?->'notifications'->'outdated_gateway'->>'last_notified')::timestamp < timezone('UTC', NOW()) - interval '24 hours'",
-                a.config
-              )
+            )
       )
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     def all_admins_for_account!(account) do
@@ -152,7 +152,8 @@ defmodule Domain.Notifications.Workers.OutdatedGateways do
       )
       |> join(:inner, [clients: c], a in Domain.Actor, on: c.actor_id == a.id, as: :actor)
       |> where([actor: a], is_nil(a.disabled_at))
-      |> Repo.aggregate(:count)
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
     end
 
     def all_gateways_for_account!(account) do

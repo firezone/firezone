@@ -595,8 +595,10 @@ defmodule Web.Settings.DirectorySync do
                   <.icon name="hero-trash" class="w-4 h-4" /> Delete
                   <:dialog_title>Delete Directory</:dialog_title>
                   <:dialog_content>
-                    Are you sure you want to delete <strong>{@directory.name}</strong>?
-                    This action cannot be undone.
+                    Are you sure you want to delete <strong>{@directory.name}</strong>? This will delete
+                    <strong>ALL</strong>
+                    associated entities attached to this directory and cannot be undone:
+                    <.deletion_stats directory={@directory} />
                   </:dialog_content>
                   <:dialog_confirm_button>Delete</:dialog_confirm_button>
                   <:dialog_cancel_button>Cancel</:dialog_cancel_button>
@@ -722,6 +724,23 @@ defmodule Web.Settings.DirectorySync do
         </div>
       </div>
     </div>
+    """
+  end
+
+  attr :directory, :any, required: true
+
+  defp deletion_stats(assigns) do
+    # TODO: Count associated entities and display counts
+    # actors.created_by_directory_id
+    # external_identities.directory_id
+    # groups.directory_id
+    # policies.group_id
+    ~H"""
+    <ul class="list-disc list-inside mt-2 text-sm text-neutral-700">
+      <li>Actors created by this directory</li>
+      <li>Groups synced from this directory</li>
+      <li>Access policies using groups from this directory</li>
+    </ul>
     """
   end
 

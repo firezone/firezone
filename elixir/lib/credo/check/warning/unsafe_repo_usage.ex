@@ -27,6 +27,10 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
       String.ends_with?(file_path, "domain/lib/domain/safe.ex") ->
         []
 
+      # Allow in Domain.Repo itself and its submodules (Preloader, Paginator, Filter, Query)
+      String.contains?(file_path, "domain/lib/domain/repo") ->
+        []
+
       # Allow in seeds.exs files
       String.ends_with?(file_path, "seeds.exs") ->
         []

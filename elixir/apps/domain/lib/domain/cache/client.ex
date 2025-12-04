@@ -322,7 +322,7 @@ defmodule Domain.Cache.Client do
         else
           # Need to fetch the resource from the DB
           {:ok, resource} = DB.fetch_resource_by_id(resource_id, subject)
-          resource = Domain.Repo.preload(resource, :site)
+          resource = DB.preload_site(resource)
 
           resource = Domain.Cache.Cacheable.to_cache(resource)
 
@@ -598,6 +598,10 @@ defmodule Domain.Cache.Client do
         {:error, :unauthorized} -> {:error, :unauthorized}
         resource -> {:ok, resource}
       end
+    end
+
+    def preload_site(resource) do
+      Safe.preload(resource, :site)
     end
 
     def get_site(nil, _subject), do: nil

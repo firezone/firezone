@@ -8,7 +8,6 @@ defmodule Web.EmailOTPController do
     Actor,
     Auth,
     EmailOTP,
-    Safe,
     Token
   }
 
@@ -42,7 +41,7 @@ defmodule Web.EmailOTPController do
     email = email_params["email"]
 
     with %Domain.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
-         %EmailOTP.AuthProvider{} <- fetch_provider(account, auth_provider_id) do
+         %EmailOTP.AuthProvider{} <- DB.get_provider(account, auth_provider_id) do
       conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id)
 
       signed_email =
@@ -85,8 +84,8 @@ defmodule Web.EmailOTPController do
          {fragment, email, _stored_params} <- :erlang.binary_to_term(cookie_binary),
          conn = delete_resp_cookie(conn, cookie_key),
          %Domain.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
-         %EmailOTP.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
-         %Domain.Actor{} = actor <- fetch_actor(account, email),
+         %EmailOTP.AuthProvider{} = provider <- DB.get_provider(account, auth_provider_id),
+         %Domain.Actor{} = actor <- DB.get_actor(account, email),
          :ok <- check_admin(actor, context_type),
          secret = String.downcase(nonce) <> fragment,
          {:ok, actor, _expires_at} <- verify_secret(actor, secret, conn),
@@ -111,7 +110,7 @@ defmodule Web.EmailOTPController do
     {fragment, error} =
       Web.Auth.execute_with_constant_time(
         fn ->
-          with %Domain.Actor{} = actor <- fetch_actor(account, email),
+          with %Domain.Actor{} = actor <- DB.get_actor(account, email),
                {:ok, actor, fragment, nonce} <- request_sign_in_token(actor, context),
                {:ok, fragment} <-
                  send_email_otp(conn, actor, fragment, nonce, auth_provider_id, params) do
@@ -166,34 +165,6 @@ defmodule Web.EmailOTPController do
     end
   end
 
-  defp fetch_provider(account, id) do
-    import Ecto.Query
-
-    # Fetch the email OTP auth provider by account and id, ensuring it is not disabled
-    from(p in EmailOTP.AuthProvider,
-      where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
-    )
-    |> Safe.unscoped()
-    |> Safe.one()
-  end
-
-  defp fetch_actor(account, email) do
-    import Ecto.Query
-
-    # Fetch actor by email and account_id, ensuring the actor is not disabled
-    # and has email OTP sign in allowed
-    from(a in Actor,
-      where:
-        a.email == ^email and
-          a.account_id == ^account.id and
-          is_nil(a.disabled_at) and
-          a.allow_email_otp_sign_in == true,
-      preload: [:account]
-    )
-    |> Safe.unscoped()
-    |> Safe.one()
-  end
-
   defp request_sign_in_token(actor, _context) do
     # Token expiration: 30 minutes
     sign_in_token_expiration_seconds = 30 * 60
@@ -204,7 +175,7 @@ defmodule Web.EmailOTPController do
     expires_at = DateTime.utc_now() |> DateTime.add(sign_in_token_expiration_seconds, :second)
 
     # Delete all existing email tokens for this actor
-    {:ok, _count} = delete_all_email_tokens_for_actor(actor)
+    {:ok, _count} = DB.delete_all_email_tokens_for_actor(actor)
 
     {:ok, token} =
       Auth.create_token(%{
@@ -220,19 +191,6 @@ defmodule Web.EmailOTPController do
     fragment = Auth.encode_fragment!(token)
 
     {:ok, actor, fragment, nonce}
-  end
-
-  defp delete_all_email_tokens_for_actor(actor) do
-    import Ecto.Query
-
-    query =
-      from(t in Domain.Token,
-        where: t.type == :email and t.account_id == ^actor.account_id and t.actor_id == ^actor.id
-      )
-
-    {num_deleted, _} = query |> Safe.unscoped() |> Safe.delete_all()
-
-    {:ok, num_deleted}
   end
 
   defp send_email_otp(conn, actor, fragment, nonce, auth_provider_id, params) do
@@ -263,7 +221,7 @@ defmodule Web.EmailOTPController do
 
     with {:ok, token} <- Auth.use_token(encoded_token, email_context),
          true <- token.actor_id == actor.id do
-      {:ok, _count} = delete_all_email_tokens_for_actor(actor)
+      {:ok, _count} = DB.delete_all_email_tokens_for_actor(actor)
       {:ok, actor, nil}
     else
       {:error, :invalid_or_expired_token} -> {:error, :invalid_secret}
@@ -433,7 +391,7 @@ defmodule Web.EmailOTPController do
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
-    alias Domain.Account
+    alias Domain.{Account, Actor, EmailOTP, Token}
 
     def get_account_by_id_or_slug(id_or_slug) do
       query =
@@ -442,6 +400,39 @@ defmodule Web.EmailOTPController do
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
       query |> Safe.unscoped() |> Safe.one()
+    end
+
+    def get_provider(account, id) do
+      from(p in EmailOTP.AuthProvider,
+        where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def get_actor(account, email) do
+      from(a in Actor,
+        where:
+          a.email == ^email and
+            a.account_id == ^account.id and
+            is_nil(a.disabled_at) and
+            a.allow_email_otp_sign_in == true,
+        preload: [:account]
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def delete_all_email_tokens_for_actor(actor) do
+      query =
+        from(t in Token,
+          where:
+            t.type == :email and t.account_id == ^actor.account_id and t.actor_id == ^actor.id
+        )
+
+      {num_deleted, _} = query |> Safe.unscoped() |> Safe.delete_all()
+
+      {:ok, num_deleted}
     end
   end
 end

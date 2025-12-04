@@ -115,7 +115,7 @@ defmodule API.Gateway.Socket do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Repo, Network, Safe, Auth}
+    alias Domain.{Network, Safe, Auth}
     alias Domain.Gateway
     alias Domain.Site
 
@@ -133,7 +133,8 @@ defmodule API.Gateway.Socket do
     defp fetch_site(id) do
       result =
         from(s in Site, where: s.id == ^id)
-        |> Repo.one()
+        |> Safe.unscoped()
+        |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}

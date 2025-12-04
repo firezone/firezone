@@ -8,24 +8,28 @@ defmodule Domain.Workers.DeleteExpiredTokens do
     max_attempts: 3,
     unique: [period: :infinity]
 
+  alias __MODULE__.DB
+
   require Logger
 
   @impl Oban.Worker
   def perform(_job) do
-    {count, _} = delete_expired_tokens()
+    {count, _} = DB.delete_expired_tokens()
 
     Logger.info("Deleted #{count} expired tokens")
 
     :ok
   end
 
-  # Inline function from Domain.Tokens
-  defp delete_expired_tokens do
+  defmodule DB do
     import Ecto.Query
+    alias Domain.{Safe, Token}
 
-    from(t in Domain.Token, as: :tokens)
-    |> where([tokens: t], t.expires_at <= ^DateTime.utc_now())
-    |> Domain.Safe.unscoped()
-    |> Domain.Safe.delete_all()
+    def delete_expired_tokens do
+      from(t in Token, as: :tokens)
+      |> where([tokens: t], t.expires_at <= ^DateTime.utc_now())
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
   end
 end

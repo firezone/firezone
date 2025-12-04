@@ -4,10 +4,7 @@ defmodule Web.UserpassController do
   """
   use Web, :controller
 
-  alias Domain.{
-    Repo,
-    Userpass
-  }
+  alias Domain.Userpass
 
   alias __MODULE__.DB
   alias Web.Session.Redirector
@@ -120,23 +117,11 @@ defmodule Web.UserpassController do
   end
 
   defp fetch_provider(account, id) do
-    import Ecto.Query
-
-    # Fetch the email OTP auth provider by account and id, ensuring it is not disabled
-    from(p in Userpass.AuthProvider,
-      where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
-    )
-    |> Repo.one()
+    DB.get_provider(account, id)
   end
 
   defp fetch_actor(account, email) do
-    import Ecto.Query
-
-    # Fetch actor by email and account_id, ensuring the actor is not disabled
-    from(a in Domain.Actor,
-      where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at)
-    )
-    |> Repo.one()
+    DB.get_actor_by_email(account, email)
   end
 
   defp handle_error(conn, {:error, :not_found}, params) do
@@ -184,6 +169,7 @@ defmodule Web.UserpassController do
     import Ecto.Query
     alias Domain.Safe
     alias Domain.Account
+    alias Domain.Userpass
 
     def get_account_by_id_or_slug(id_or_slug) do
       query =
@@ -192,6 +178,22 @@ defmodule Web.UserpassController do
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
       query |> Safe.unscoped() |> Safe.one()
+    end
+
+    def get_provider(account, id) do
+      from(p in Userpass.AuthProvider,
+        where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def get_actor_by_email(account, email) do
+      from(a in Domain.Actor,
+        where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at)
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
     end
   end
 end

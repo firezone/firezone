@@ -22,7 +22,7 @@ defmodule Domain.Ops do
   """
   def delete_disabled_account(id) do
     DB.get_disabled_account!(id)
-    |> Domain.Repo.delete(timeout: :infinity)
+    |> DB.delete()
 
     :ok
   end
@@ -62,6 +62,12 @@ defmodule Domain.Ops do
       from(s in schema)
       |> Safe.unscoped()
       |> Safe.delete_all()
+    end
+
+    def delete(record) do
+      record
+      |> Safe.unscoped()
+      |> Safe.delete()
     end
   end
 end

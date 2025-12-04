@@ -2,7 +2,8 @@ defmodule API.Relay.Socket do
   use Phoenix.Socket
   import Ecto.Changeset
   import Domain.Changeset
-  alias Domain.{Safe, Auth, Version, Relay}
+  alias Domain.{Auth, Version, Relay}
+  alias __MODULE__.DB
   require Logger
   require OpenTelemetry.Tracer
 
@@ -67,21 +68,7 @@ defmodule API.Relay.Socket do
 
   defp upsert_relay(attrs, %Auth.Context{} = context) do
     changeset = upsert_changeset(attrs, context)
-
-    conflict_target = upsert_conflict_target()
-    on_conflict = upsert_on_conflict()
-
-    Ecto.Multi.new()
-    |> Ecto.Multi.insert(:relay, changeset,
-      conflict_target: conflict_target,
-      on_conflict: on_conflict,
-      returning: true
-    )
-    |> Safe.transact()
-    |> case do
-      {:ok, %{relay: relay}} -> {:ok, relay}
-      {:error, :relay, changeset, _effects_so_far} -> {:error, changeset}
-    end
+    DB.upsert_relay(changeset)
   end
 
   defp upsert_changeset(attrs, %Auth.Context{} = context) do
@@ -125,21 +112,37 @@ defmodule API.Relay.Socket do
     end
   end
 
-  defp upsert_conflict_target do
-    {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6), port)/}
-  end
+  defmodule DB do
+    alias Domain.Safe
 
-  defp upsert_on_conflict do
-    conflict_replace_fields = ~w[ipv4 ipv6 port name
-                                 last_seen_user_agent
-                                 last_seen_remote_ip
-                                 last_seen_remote_ip_location_region
-                                 last_seen_remote_ip_location_city
-                                 last_seen_remote_ip_location_lat
-                                 last_seen_remote_ip_location_lon
-                                 last_seen_version
-                                 last_seen_at
-                                 updated_at]a
-    {:replace, conflict_replace_fields}
+    def upsert_relay(changeset) do
+      conflict_target = {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6), port)/}
+
+      conflict_replace_fields =
+        ~w[ipv4 ipv6 port name
+         last_seen_user_agent
+         last_seen_remote_ip
+         last_seen_remote_ip_location_region
+         last_seen_remote_ip_location_city
+         last_seen_remote_ip_location_lat
+         last_seen_remote_ip_location_lon
+         last_seen_version
+         last_seen_at
+         updated_at]a
+
+      on_conflict = {:replace, conflict_replace_fields}
+
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:relay, changeset,
+        conflict_target: conflict_target,
+        on_conflict: on_conflict,
+        returning: true
+      )
+      |> Safe.transact()
+      |> case do
+        {:ok, %{relay: relay}} -> {:ok, relay}
+        {:error, :relay, changeset, _effects_so_far} -> {:error, changeset}
+      end
+    end
   end
 end

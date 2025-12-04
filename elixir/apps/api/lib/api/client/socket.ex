@@ -130,7 +130,7 @@ defmodule API.Client.Socket do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Repo, Network}
+    alias Domain.{Safe, Network}
     alias Domain.Client
 
     def upsert_client(changeset, _subject) do
@@ -146,7 +146,7 @@ defmodule API.Client.Socket do
         %{client: %Client{} = client, ipv4: ipv4, ipv6: ipv6} ->
           API.Client.Socket.finalize_upsert(client, ipv4, ipv6)
       end)
-      |> Repo.transaction()
+      |> Safe.transact()
       |> case do
         {:ok, %{client_with_address: client}} -> {:ok, client}
         {:error, :client, changeset, _effects_so_far} -> {:error, changeset}

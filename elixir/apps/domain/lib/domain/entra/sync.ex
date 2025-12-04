@@ -7,7 +7,7 @@ defmodule Domain.Entra.Sync do
     queue: :entra_sync,
     max_attempts: 1
 
-  alias Domain.{Safe, Entra}
+  alias Domain.Entra
   alias __MODULE__.DB
   require Logger
 
@@ -18,7 +18,7 @@ defmodule Domain.Entra.Sync do
       timestamp: DateTime.utc_now()
     )
 
-    case DB.get_directory(directory_id) |> Safe.unscoped() |> Safe.one() do
+    case DB.get_directory(directory_id) do
       nil ->
         Logger.info("Entra directory deleted or sync disabled, skipping",
           entra_directory_id: directory_id
@@ -44,7 +44,7 @@ defmodule Domain.Entra.Sync do
         :is_verified
       ])
 
-    {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
+    {:ok, _directory} = DB.update_directory(changeset)
   end
 
   defp sync(%Entra.Directory{} = directory) do
@@ -648,6 +648,12 @@ defmodule Domain.Entra.Sync do
       from(d in Entra.Directory, as: :directories)
       |> where([directories: d], d.id == ^id)
       |> where([directories: d], d.is_disabled == false)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def update_directory(changeset) do
+      changeset |> Safe.unscoped() |> Safe.update()
     end
 
     def batch_upsert_identities(

@@ -7,7 +7,7 @@ defmodule Domain.Repo.Migrations.AddCreatedByDirectoryIdToActors do
     end
 
     create(
-      index(:actors, [:created_by_directory_id],
+      index(:actors, [:account_id, :created_by_directory_id],
         name: :actors_created_by_directory_id_index,
         where: "created_by_directory_id IS NOT NULL"
       )
@@ -19,7 +19,7 @@ defmodule Domain.Repo.Migrations.AddCreatedByDirectoryIdToActors do
       ADD CONSTRAINT actors_created_by_directory_id_fkey
       FOREIGN KEY (account_id, created_by_directory_id)
       REFERENCES directories(account_id, id)
-      ON DELETE SET NULL
+      ON DELETE CASCADE
       """,
       """
       ALTER TABLE actors

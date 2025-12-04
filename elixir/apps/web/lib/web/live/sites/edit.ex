@@ -72,7 +72,6 @@ defmodule Web.Sites.Edit do
     import Ecto.Changeset
 
     site
-    |> Domain.Repo.preload(:account)
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> Domain.Site.changeset()
@@ -82,7 +81,6 @@ defmodule Web.Sites.Edit do
     import Ecto.Changeset
 
     site
-    |> Domain.Repo.preload(:account)
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> Domain.Site.changeset()
@@ -95,6 +93,7 @@ defmodule Web.Sites.Edit do
     def get_site!(id, subject) do
       from(s in Domain.Site, as: :site)
       |> where([site: s], s.id == ^id)
+      |> preload(:account)
       |> Safe.scoped(subject)
       |> Safe.one!()
     end

@@ -10,7 +10,7 @@ defmodule Domain.Repo.Migrations.AddIdpFieldsToExternalIdentities do
     end
 
     create(
-      index(:external_identities, [:directory_id],
+      index(:external_identities, [:account_id, :directory_id],
         name: :external_identities_directory_id_index,
         where: "directory_id IS NOT NULL"
       )
@@ -22,7 +22,7 @@ defmodule Domain.Repo.Migrations.AddIdpFieldsToExternalIdentities do
       ADD CONSTRAINT external_identities_directory_id_fkey
       FOREIGN KEY (account_id, directory_id)
       REFERENCES directories(account_id, id)
-      ON DELETE SET NULL
+      ON DELETE CASCADE
       """,
       """
       ALTER TABLE external_identities

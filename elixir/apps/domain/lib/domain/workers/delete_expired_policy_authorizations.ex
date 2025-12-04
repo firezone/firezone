@@ -8,24 +8,28 @@ defmodule Domain.Workers.DeleteExpiredPolicyAuthorizations do
     max_attempts: 3,
     unique: [period: :infinity]
 
+  alias __MODULE__.DB
+
   require Logger
 
   @impl Oban.Worker
   def perform(_args) do
-    {count, nil} = delete_expired_policy_authorizations()
+    {count, nil} = DB.delete_expired_policy_authorizations()
 
     Logger.info("Deleted #{count} expired policy authorizations")
 
     :ok
   end
 
-  # Inline function from Domain.PolicyAuthorizations
-  defp delete_expired_policy_authorizations do
+  defmodule DB do
     import Ecto.Query
+    alias Domain.{Safe, PolicyAuthorization}
 
-    from(pa in Domain.PolicyAuthorization, as: :policy_authorizations)
-    |> where([policy_authorizations: pa], pa.expires_at <= ^DateTime.utc_now())
-    |> Domain.Safe.unscoped()
-    |> Domain.Safe.delete_all()
+    def delete_expired_policy_authorizations do
+      from(pa in PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: pa], pa.expires_at <= ^DateTime.utc_now())
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
   end
 end

@@ -3,7 +3,6 @@ defmodule Domain.Billing.EventHandler do
   Handles Stripe webhook events for billing and subscription management.
   """
 
-  alias Domain.Repo
   alias Domain.Accounts
   alias Domain.Billing
   alias Domain.Billing.Stripe.ProcessedEvents
@@ -18,10 +17,8 @@ defmodule Domain.Billing.EventHandler do
 
   defp process_event_with_lock(event) do
     customer_id = extract_customer_id(event)
-    hashed_id = :erlang.phash2(customer_id)
 
-    Repo.transact(fn ->
-      Repo.query!("SELECT pg_advisory_xact_lock($1)", [hashed_id])
+    DB.with_customer_lock(customer_id, fn ->
       process_event(event, customer_id)
     end)
   end
@@ -409,9 +406,8 @@ defmodule Domain.Billing.EventHandler do
 
   defp generate_unique_slug do
     slug_candidate = Domain.NameGenerator.generate_slug()
-    queryable = DB.slug_query(slug_candidate)
 
-    if queryable |> Domain.Safe.unscoped() |> Domain.Safe.exists?() do
+    if DB.slug_exists?(slug_candidate) do
       generate_unique_slug()
     else
       slug_candidate
@@ -594,8 +590,19 @@ defmodule Domain.Billing.EventHandler do
       Safe
     }
 
-    def slug_query(slug) do
+    def with_customer_lock(customer_id, fun) do
+      hashed_id = :erlang.phash2(customer_id)
+
+      Safe.transact(fn ->
+        {:ok, _} = Safe.unscoped() |> Safe.query("SELECT pg_advisory_xact_lock($1)", [hashed_id])
+        fun.()
+      end)
+    end
+
+    def slug_exists?(slug) do
       from(a in Domain.Account, where: a.slug == ^slug)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
 
     def create_email_provider(account) do

@@ -291,14 +291,10 @@ defmodule Web.SignIn do
   end
 
   defp auth_providers(account, module) do
-    import Ecto.Query
-
-    queryable = from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
-
     if module in [EmailOTP.AuthProvider, Userpass.AuthProvider] do
-      queryable |> Safe.unscoped() |> Safe.one()
+      DB.get_auth_provider(account, module)
     else
-      queryable |> Safe.unscoped() |> Safe.all()
+      DB.list_auth_providers(account, module)
     end
   end
 
@@ -314,6 +310,18 @@ defmodule Web.SignIn do
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
       query |> Safe.unscoped() |> Safe.one!()
+    end
+
+    def get_auth_provider(account, module) do
+      from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def list_auth_providers(account, module) do
+      from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
+      |> Safe.unscoped()
+      |> Safe.all()
     end
   end
 end

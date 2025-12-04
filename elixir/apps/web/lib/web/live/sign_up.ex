@@ -401,72 +401,16 @@ defmodule Web.SignUp do
   end
 
   defp register_account(socket, registration) do
-    Ecto.Multi.new()
-    |> Ecto.Multi.run(
-      :account,
-      fn _repo, _changes ->
-        %{
-          name: registration.account.name,
-          metadata: %{stripe: %{billing_email: registration.email}}
-        }
-        |> create_account_changeset()
-        |> DB.insert()
-      end
+    DB.register_account(
+      registration,
+      &create_account_changeset/1,
+      &create_everyone_group_changeset/1,
+      &create_site_changeset/2,
+      &create_internet_site_changeset/1,
+      &create_internet_resource_changeset/2,
+      socket.assigns.user_agent,
+      socket.assigns.real_ip
     )
-    |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
-      create_everyone_group_changeset(account)
-      |> DB.insert()
-    end)
-    |> Ecto.Multi.run(
-      :provider,
-      fn _repo, %{account: account} ->
-        DB.create_email_provider(account)
-      end
-    )
-    |> Ecto.Multi.run(
-      :actor,
-      fn _repo, %{account: account} ->
-        DB.create_admin(account, registration.email, registration.actor.name)
-      end
-    )
-    |> Ecto.Multi.run(
-      :default_site,
-      fn _repo, %{account: account} ->
-        changeset = create_site_changeset(account, %{name: "Default Site"})
-        DB.insert(changeset)
-      end
-    )
-    |> Ecto.Multi.run(
-      :internet_site,
-      fn _repo, %{account: account} ->
-        changeset = create_internet_site_changeset(account)
-        DB.insert(changeset)
-      end
-    )
-    |> Ecto.Multi.run(
-      :internet_resource,
-      fn _repo, %{account: account, internet_site: internet_site} ->
-        changeset = create_internet_resource_changeset(account, internet_site)
-        DB.insert(changeset)
-      end
-    )
-    |> Ecto.Multi.run(
-      :send_email,
-      fn _repo, %{account: account, identity: identity} ->
-        Domain.Mailer.AuthEmail.sign_up_link_email(
-          account,
-          identity,
-          socket.assigns.user_agent,
-          socket.assigns.real_ip
-        )
-        |> Domain.Mailer.deliver_with_rate_limit(
-          rate_limit_key: {:sign_up_link, String.downcase(identity.provider_identifier)},
-          rate_limit: 3,
-          rate_limit_interval: :timer.minutes(30)
-        )
-      end
-    )
-    |> Domain.Repo.transaction()
   end
 
   defp create_site_changeset(account, attrs) do
@@ -517,6 +461,59 @@ defmodule Web.SignUp do
       EmailOTP,
       Safe
     }
+
+    def register_account(
+          registration,
+          account_changeset_fn,
+          everyone_group_changeset_fn,
+          site_changeset_fn,
+          internet_site_changeset_fn,
+          internet_resource_changeset_fn,
+          user_agent,
+          real_ip
+        ) do
+      Ecto.Multi.new()
+      |> Ecto.Multi.run(:account, fn _repo, _changes ->
+        %{
+          name: registration.account.name,
+          metadata: %{stripe: %{billing_email: registration.email}}
+        }
+        |> account_changeset_fn.()
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
+        everyone_group_changeset_fn.(account)
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:provider, fn _repo, %{account: account} ->
+        create_email_provider(account)
+      end)
+      |> Ecto.Multi.run(:actor, fn _repo, %{account: account} ->
+        create_admin(account, registration.email, registration.actor.name)
+      end)
+      |> Ecto.Multi.run(:default_site, fn _repo, %{account: account} ->
+        site_changeset_fn.(account, %{name: "Default Site"})
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:internet_site, fn _repo, %{account: account} ->
+        internet_site_changeset_fn.(account)
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:internet_resource, fn _repo,
+                                               %{account: account, internet_site: internet_site} ->
+        internet_resource_changeset_fn.(account, internet_site)
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:send_email, fn _repo, %{account: account, identity: identity} ->
+        Domain.Mailer.AuthEmail.sign_up_link_email(account, identity, user_agent, real_ip)
+        |> Domain.Mailer.deliver_with_rate_limit(
+          rate_limit_key: {:sign_up_link, String.downcase(identity.provider_identifier)},
+          rate_limit: 3,
+          rate_limit_interval: :timer.minutes(30)
+        )
+      end)
+      |> Safe.transact()
+    end
 
     def create_email_provider(account) do
       id = Ecto.UUID.generate()

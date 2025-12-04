@@ -169,11 +169,11 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   end
 
   defmodule DB do
-    alias Domain.{Repo, ChangeLog}
+    alias Domain.{Safe, ChangeLog}
 
     def bulk_insert(list_of_attrs) do
-      ChangeLog
-      |> Repo.insert_all(list_of_attrs,
+      Safe.unscoped()
+      |> Safe.insert_all(ChangeLog, list_of_attrs,
         on_conflict: :nothing,
         conflict_target: [:lsn]
       )
