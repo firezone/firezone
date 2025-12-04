@@ -4,6 +4,8 @@
 //! [Tunnel] is the main entry-point for this crate.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
+#![cfg_attr(test, allow(clippy::print_stdout))]
+#![cfg_attr(test, allow(clippy::print_stderr))]
 
 use anyhow::{Context as _, ErrorExt as _, Result};
 use chrono::Utc;

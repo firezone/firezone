@@ -109,6 +109,14 @@
     Attempting to reconnect <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
   </.flash>
 
+  <% banner = Domain.Repo.one(Domain.Banner) %>
+  <div
+    :if={banner}
+    id="banner"
+    class="bg-yellow-100 text-neutral-900 px-4 py-3 text-center"
+  >
+    {Phoenix.HTML.raw(banner.message)}
+  </div>
   <.flash :if={@account.warning} kind={:warning} class="m-1">
     {@account.warning}.
     <span :if={Domain.Billing.account_provisioned?(@account)}>
