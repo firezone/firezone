@@ -34,6 +34,7 @@ members = [
     "tests/fuzz",
     "tests/gui-smoke-test",
     "tests/http-test-server",
+    "tests/loadtest",
     "tools/uniffi-bindgen",
 ]
 
