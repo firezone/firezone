@@ -5,9 +5,9 @@ defmodule Domain.Telemetry.Reporter.Oban do
   A simple module for reporting Oban job exceptions to Sentry.
 
   This reporter handles all Oban job failures and sends them to Sentry with
-  contextual information. For wrapper exceptions like Domain.Entra.SyncError
-  and Domain.Google.SyncError, the original exception/error is extracted and
-  reported with additional attributes from the wrapper.
+  contextual information. For wrapper exceptions like Domain.Entra.SyncError,
+  Domain.Google.SyncError,and Domain.Okta.SyncError the original exception/error
+  is extracted and reported with additional attributes from the wrapper.
 
   Additionally, this module handles sync errors intelligently by:
   - Disabling directories on 4xx API errors
@@ -50,6 +50,23 @@ defmodule Domain.Telemetry.Reporter.Oban do
   # Build extra context for Domain.Google.SyncError
   defp build_extra(
          %Domain.Google.SyncError{
+           reason: reason,
+           cause: cause,
+           directory_id: directory_id,
+           step: step
+         },
+         job
+       ) do
+    job
+    |> Map.take([:id, :args, :meta, :queue, :worker])
+    |> Map.put(:directory_id, directory_id)
+    |> Map.put(:step, step)
+    |> Map.put(:reason, reason)
+    |> Map.put(:cause, cause)
+  end
+
+  defp build_extra(
+         %Domain.Okta.SyncError{
            reason: reason,
            cause: cause,
            directory_id: directory_id,
@@ -109,6 +126,25 @@ defmodule Domain.Telemetry.Reporter.Oban do
     handle_5xx_error(:google, directory_id, error_message)
   end
 
+  # Handle Okta sync errors with 4xx/5xx logic
+  defp handle_sync_error(
+         %Domain.Okta.SyncError{},
+         %{cause: %Req.Response{status: status} = response, directory_id: directory_id}
+       )
+       when status >= 400 and status < 500 do
+    error_message = extract_okta_error_message(response)
+    handle_4xx_error(:okta, directory_id, error_message)
+  end
+
+  defp handle_sync_error(
+         %Domain.Okta.SyncError{},
+         %{cause: %Req.Response{status: status} = response, directory_id: directory_id}
+       )
+       when status >= 500 do
+    error_message = extract_okta_error_message(response)
+    handle_5xx_error(:okta, directory_id, error_message)
+  end
+
   # Handle any other sync errors (non-HTTP errors)
   defp handle_sync_error(
          %Domain.Entra.SyncError{reason: reason},
@@ -122,6 +158,13 @@ defmodule Domain.Telemetry.Reporter.Oban do
          %{directory_id: directory_id}
        ) do
     handle_5xx_error(:google, directory_id, to_string(reason))
+  end
+
+  defp handle_sync_error(
+         %Domain.Okta.SyncError{reason: reason},
+         %{directory_id: directory_id}
+       ) do
+    handle_5xx_error(:okta, directory_id, to_string(reason))
   end
 
   # No special handling for other errors
@@ -192,6 +235,33 @@ defmodule Domain.Telemetry.Reporter.Oban do
     "Google API returned HTTP #{status}"
   end
 
+  # Extract error message from Okta API response
+  # Okta API format: { "errorCode": "...", "errorSummary": "...", "errorLink": "...", "errorId": "..." }
+  defp extract_okta_error_message(%Req.Response{
+         status: status,
+         body: %{"errorCode" => error_code, "errorSummary" => error_summary}
+       }) do
+    parts =
+      [
+        "HTTP #{status}",
+        if(error_code, do: "Code: #{error_code}"),
+        if(error_summary, do: error_summary)
+      ]
+      |> Enum.filter(& &1)
+
+    Enum.join(parts, " - ")
+  end
+
+  # Handle Okta OAuth token errors where body might be different
+  defp extract_okta_error_message(%Req.Response{status: status, body: body})
+       when is_binary(body) do
+    "HTTP #{status} - #{body}"
+  end
+
+  defp extract_okta_error_message(%Req.Response{status: status}) do
+    "Okta API returned HTTP #{status}"
+  end
+
   # Handle 4xx errors - disable directory immediately
   defp handle_4xx_error(provider, directory_id, error_message) do
     now = DateTime.utc_now()
@@ -251,7 +321,7 @@ defmodule Domain.Telemetry.Reporter.Oban do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Entra, Google}
+    alias Domain.{Safe, Entra, Google, Okta}
 
     def get_directory(:entra, directory_id) do
       from(d in Entra.Directory, where: d.id == ^directory_id)
@@ -261,6 +331,12 @@ defmodule Domain.Telemetry.Reporter.Oban do
 
     def get_directory(:google, directory_id) do
       from(d in Google.Directory, where: d.id == ^directory_id)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def get_directory(:okta, directory_id) do
+      from(d in Okta.Directory, where: d.id == ^directory_id)
       |> Safe.unscoped()
       |> Safe.one()
     end

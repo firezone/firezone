@@ -728,7 +728,7 @@ defmodule Domain.Repo.Seeds do
 
     # Create groups in chunks and collect their IDs
     group_ids =
-      1..10_000
+      1..20
       # Process in chunks to manage memory
       |> Enum.chunk_every(1000)
       |> Enum.flat_map(fn chunk ->

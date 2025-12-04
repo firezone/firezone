@@ -23,7 +23,7 @@ defmodule Web.Settings.DirectorySync do
 
   @types Map.keys(@modules)
 
-  @common_fields ~w[name is_verified error_message]a
+  @common_fields ~w[name is_disabled disabled_reason is_verified error_message]a
 
   @fields %{
     Entra.Directory => @common_fields ++ ~w[tenant_id sync_all_groups]a,
@@ -316,6 +316,17 @@ defmodule Web.Settings.DirectorySync do
             {:error, _} -> {:noreply, socket |> init()}
           end
       end
+    end
+  end
+
+  def handle_event("sync_directory", %{"id" => id, "type" => "okta"}, socket) do
+    case Oban.insert(Domain.Okta.Sync.new(%{"directory_id" => id})) do
+      {:ok, _job} ->
+        {:noreply, put_flash(socket, :info, "Directory sync has been queued successfully.")}
+
+      {:error, reason} ->
+        Logger.error("Failed to enqueue Okta sync job", id: id, reason: inspect(reason))
+        {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
     end
   end
 
