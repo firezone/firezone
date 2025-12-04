@@ -32,9 +32,9 @@ members = [
     "relay/ebpf-turn-router",
     "relay/server",
     "tests/fuzz",
-    "tests/loadtest",
     "tests/gui-smoke-test",
     "tests/http-test-server",
+    "tests/loadtest",
     "tools/uniffi-bindgen",
 ]
 
