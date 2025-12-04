@@ -2,10 +2,14 @@ defmodule Domain.Google.Sync do
   @moduledoc """
   Oban worker for syncing users, groups, and memberships from Google Workspace.
   """
-  # Retries and uniqueness are handled by the scheduler
   use Oban.Worker,
     queue: :google_sync,
-    max_attempts: 1
+    max_attempts: 1,
+    unique: [
+      period: :infinity,
+      states: [:available, :scheduled, :executing],
+      keys: [:directory_id]
+    ]
 
   alias Domain.Google
   alias __MODULE__.DB
@@ -20,7 +24,7 @@ defmodule Domain.Google.Sync do
 
     case DB.get_directory(directory_id) do
       nil ->
-        Logger.info("Google directory deleted or sync disabled, skipping",
+        Logger.info("Google directory not found, disabled, or account disabled, skipping",
           google_directory_id: directory_id
         )
 
@@ -399,9 +403,13 @@ defmodule Domain.Google.Sync do
     @issuer "https://accounts.google.com"
 
     def get_directory(id) do
-      from(d in Google.Directory, as: :directories)
-      |> where([directories: d], d.id == ^id)
-      |> where([directories: d], d.is_disabled == false)
+      from(d in Google.Directory,
+        join: a in Domain.Account,
+        on: a.id == d.account_id,
+        where: d.id == ^id,
+        where: d.is_disabled == false,
+        where: is_nil(a.disabled_at)
+      )
       |> Safe.unscoped()
       |> Safe.one()
     end

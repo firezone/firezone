@@ -10,28 +10,30 @@ defmodule Domain.Okta.Scheduler do
   def perform(%Oban.Job{}) do
     Logger.debug("Scheduling Okta directory sync jobs")
 
-    DB.stream_directories_to_sync(fn directory ->
-      args = %{directory_id: directory.id}
-      {:ok, _job} = Domain.Okta.Sync.new(args) |> Oban.insert()
-    end)
-
-    :ok
+    DB.queue_sync_jobs()
   end
 
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
 
-    def stream_directories_to_sync(callback) do
+    def queue_sync_jobs do
       Safe.transact(fn ->
         from(d in Domain.Okta.Directory,
-          as: :directories,
-          where: d.is_disabled == false
+          join: a in Domain.Account,
+          on: a.id == d.account_id,
+          where: d.is_disabled == false,
+          where: is_nil(a.disabled_at)
         )
         |> Safe.unscoped()
         |> Safe.stream()
-        |> Stream.each(callback)
+        |> Stream.each(fn directory ->
+          args = %{directory_id: directory.id}
+          {:ok, _job} = Domain.Okta.Sync.new(args) |> Oban.insert()
+        end)
         |> Stream.run()
+
+        {:ok, :scheduled}
       end)
     end
   end

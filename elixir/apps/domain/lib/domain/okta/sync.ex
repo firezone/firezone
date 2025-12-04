@@ -8,7 +8,6 @@ defmodule Domain.Okta.Sync do
     unique: [
       period: :infinity,
       states: [:available, :scheduled, :executing],
-      fields: [:args, :queue],
       keys: [:directory_id]
     ]
 
@@ -26,12 +25,12 @@ defmodule Domain.Okta.Sync do
     )
 
     case DB.get_directory(directory_id) do
-      {:error, :not_found} ->
-        Logger.info("Okta directory deleted or sync disabled, skipping",
+      nil ->
+        Logger.info("Okta directory not found, disabled, or account disabled, skipping",
           okta_directory_id: directory_id
         )
 
-      {:ok, directory} ->
+      directory ->
         sync(directory)
     end
 
@@ -464,15 +463,15 @@ defmodule Domain.Okta.Sync do
     alias Domain.Safe
 
     def get_directory(id) do
-      from(d in Okta.Directory, as: :directories)
-      |> where([directories: d], d.id == ^id)
-      |> where([directories: d], d.is_disabled == false)
+      from(d in Okta.Directory,
+        join: a in Domain.Account,
+        on: a.id == d.account_id,
+        where: d.id == ^id,
+        where: d.is_disabled == false,
+        where: is_nil(a.disabled_at)
+      )
       |> Safe.unscoped()
       |> Safe.one()
-      |> case do
-        nil -> {:error, :not_found}
-        directory -> {:ok, directory}
-      end
     end
 
     def update_directory(changeset) do

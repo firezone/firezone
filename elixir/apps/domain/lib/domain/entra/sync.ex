@@ -2,10 +2,14 @@ defmodule Domain.Entra.Sync do
   @moduledoc """
   Oban worker for syncing users, groups, and memberships from Entra ID.
   """
-  # Retries and uniqueness are handled by the scheduler
   use Oban.Worker,
     queue: :entra_sync,
-    max_attempts: 1
+    max_attempts: 1,
+    unique: [
+      period: :infinity,
+      states: [:available, :scheduled, :executing],
+      keys: [:directory_id]
+    ]
 
   alias Domain.Entra
   alias __MODULE__.DB
@@ -20,7 +24,7 @@ defmodule Domain.Entra.Sync do
 
     case DB.get_directory(directory_id) do
       nil ->
-        Logger.info("Entra directory deleted or sync disabled, skipping",
+        Logger.info("Entra directory not found, disabled, or account disabled, skipping",
           entra_directory_id: directory_id
         )
 
@@ -645,9 +649,13 @@ defmodule Domain.Entra.Sync do
     alias Domain.Safe
 
     def get_directory(id) do
-      from(d in Entra.Directory, as: :directories)
-      |> where([directories: d], d.id == ^id)
-      |> where([directories: d], d.is_disabled == false)
+      from(d in Entra.Directory,
+        join: a in Domain.Account,
+        on: a.id == d.account_id,
+        where: d.id == ^id,
+        where: d.is_disabled == false,
+        where: is_nil(a.disabled_at)
+      )
       |> Safe.unscoped()
       |> Safe.one()
     end
