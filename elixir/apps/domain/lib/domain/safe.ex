@@ -304,7 +304,7 @@ defmodule Domain.Safe do
       :ok ->
         {:ok, result} =
           Repo.transact(fn ->
-            emit_subject_message(subject, :insert_all, schema)
+            emit_subject_message(subject)
 
             {:ok, Repo.insert_all(schema_or_source, entries, opts)}
           end)
@@ -337,7 +337,7 @@ defmodule Domain.Safe do
 
     with :ok <- permit(:insert, schema, subject) do
       Repo.transact(fn ->
-        emit_subject_message(subject, :insert, schema)
+        emit_subject_message(subject)
 
         changeset
         |> put_change(:account_id, subject.account.id)
@@ -380,7 +380,7 @@ defmodule Domain.Safe do
 
     with :ok <- permit(:update, schema, subject) do
       Repo.transact(fn ->
-        emit_subject_message(subject, :update, schema)
+        emit_subject_message(subject)
 
         changeset
         |> apply_schema_changeset(schema)
@@ -419,7 +419,7 @@ defmodule Domain.Safe do
       :ok ->
         {:ok, result} =
           Repo.transact(fn ->
-            emit_subject_message(subject, :update_all, schema)
+            emit_subject_message(subject)
 
             {:ok, Repo.update_all(queryable, updates)}
           end)
@@ -453,7 +453,7 @@ defmodule Domain.Safe do
 
     with :ok <- permit(:delete, schema, subject) do
       Repo.transact(fn ->
-        emit_subject_message(subject, :delete, schema)
+        emit_subject_message(subject)
 
         changeset
         |> apply_schema_changeset(schema)
@@ -471,7 +471,7 @@ defmodule Domain.Safe do
 
     with :ok <- permit(:delete, schema, subject) do
       Repo.transact(fn ->
-        emit_subject_message(subject, :delete, schema)
+        emit_subject_message(subject)
 
         Repo.delete(struct)
       end)
@@ -519,7 +519,7 @@ defmodule Domain.Safe do
       :ok ->
         {:ok, result} =
           Repo.transact(fn ->
-            emit_subject_message(subject, :delete_all, schema)
+            emit_subject_message(subject)
 
             {:ok, Repo.delete_all(queryable, opts)}
           end)
@@ -648,7 +648,7 @@ defmodule Domain.Safe do
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 
   # Helper function to emit subject information to the replication stream
-  defp emit_subject_message(%Subject{} = subject, _operation, _schema) do
+  defp emit_subject_message(%Subject{} = subject) do
     subject_info = %{
       "ip" => to_string(:inet.ntoa(subject.context.remote_ip)),
       "ip_region" => subject.context.remote_ip_location_region,

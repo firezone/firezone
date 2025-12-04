@@ -123,7 +123,6 @@ defmodule Domain.Auth do
       {_data_or_changes, :api_client} ->
         changeset
         |> validate_required(:actor_id)
-        |> validate_required(:name)
 
       {_data_or_changes, :relay} ->
         changeset

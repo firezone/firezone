@@ -99,7 +99,6 @@ defmodule Web.Settings.ApiClients.NewToken do
   defp build_token_changeset(attrs) do
     %Token{}
     |> cast(attrs, [:name, :expires_at])
-    |> validate_required([:name])
   end
 
   defmodule DB do
