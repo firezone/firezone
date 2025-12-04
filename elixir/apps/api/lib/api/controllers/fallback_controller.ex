@@ -66,6 +66,20 @@ defmodule API.FallbackController do
     |> render(:error, reason: "Admins Limit Reached")
   end
 
+  def call(conn, {:error, :update_managed_group}) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> put_view(json: API.ErrorJSON)
+    |> render(:error, reason: "Cannot update a managed group")
+  end
+
+  def call(conn, {:error, :update_synced_group}) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> put_view(json: API.ErrorJSON)
+    |> render(:error, reason: "Cannot update a synced group")
+  end
+
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
     conn
     |> put_status(:unprocessable_entity)

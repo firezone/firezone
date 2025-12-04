@@ -2,9 +2,12 @@ defmodule API.ActorControllerTest do
   use API.ConnCase, async: true
   alias Domain.Actor
 
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    account = account_fixture()
+    actor = actor_fixture(type: :api_client, account: account)
 
     %{
       account: account,
@@ -19,7 +22,7 @@ defmodule API.ActorControllerTest do
     end
 
     test "lists all actors", %{conn: conn, account: account, actor: actor} do
-      actors = for _ <- 1..3, do: Fixtures.Actors.create_actor(%{account: account})
+      actors = for _ <- 1..3, do: actor_fixture(account: account)
 
       conn =
         conn
@@ -49,7 +52,7 @@ defmodule API.ActorControllerTest do
     end
 
     test "lists actors with limit", %{conn: conn, account: account, actor: actor} do
-      actors = for _ <- 1..3, do: Fixtures.Actors.create_actor(%{account: account})
+      actors = for _ <- 1..3, do: actor_fixture(account: account)
 
       conn =
         conn
@@ -81,13 +84,13 @@ defmodule API.ActorControllerTest do
 
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      actor = Fixtures.Actors.create_actor(%{account: account})
+      actor = actor_fixture(account: account)
       conn = get(conn, "/actors/#{actor.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns a single actor", %{conn: conn, account: account, actor: api_actor} do
-      actor = Fixtures.Actors.create_actor(%{account: account})
+      actor = actor_with_email_fixture(account: account)
 
       conn =
         conn
@@ -99,7 +102,14 @@ defmodule API.ActorControllerTest do
                "data" => %{
                  "id" => actor.id,
                  "name" => actor.name,
-                 "type" => Atom.to_string(actor.type)
+                 "type" => Atom.to_string(actor.type),
+                 "allow_email_otp_sign_in" => actor.allow_email_otp_sign_in,
+                 "created_by_directory_id" => actor.created_by_directory_id,
+                 "disabled_at" => iso8601(actor.disabled_at),
+                 "email" => actor.email,
+                 "inserted_at" => iso8601(actor.inserted_at),
+                 "last_seen_at" => iso8601(actor.last_seen_at),
+                 "updated_at" => iso8601(actor.updated_at)
                }
              }
     end
@@ -145,19 +155,19 @@ defmodule API.ActorControllerTest do
                }
     end
 
-    test "returns error when user seat limit hit", %{
+    test "returns error when users limit hit", %{
       conn: conn,
       account: account,
       actor: api_actor
     } do
-      Domain.Accounts.update_account(account, %{
-        limits: %{users_count: 1}
-      })
+      Ecto.Changeset.change(account, limits: %Domain.Accounts.Limits{users_count: 1})
+      |> Repo.update!()
 
-      Fixtures.Actors.create_actor(type: :account_user, account: account)
+      actor_with_email_fixture(type: :account_user, account: account)
 
       attrs = %{
         "name" => "Test User",
+        "email" => "new_actor@example.com",
         "type" => "account_user"
       }
 
@@ -168,19 +178,18 @@ defmodule API.ActorControllerTest do
         |> post("/actors", actor: attrs)
 
       assert resp = json_response(conn, 422)
-      assert resp == %{"error" => %{"reason" => "Seat Limit Reached"}}
+      assert resp == %{"error" => %{"reason" => "Users Limit Reached"}}
     end
 
-    test "returns error when service account seat limit hit", %{
+    test "returns error when service accounts limit hit", %{
       conn: conn,
       account: account,
       actor: api_actor
     } do
-      Domain.Accounts.update_account(account, %{
-        limits: %{service_accounts_count: 1}
-      })
+      Ecto.Changeset.change(account, limits: %Domain.Accounts.Limits{service_accounts_count: 1})
+      |> Repo.update!()
 
-      Fixtures.Actors.create_actor(type: :service_account, account: account)
+      service_account_fixture(type: :service_account, account: account)
 
       attrs = %{
         "name" => "Test Service Account",
@@ -201,6 +210,7 @@ defmodule API.ActorControllerTest do
       # TODO: At the moment, API clients aren't allowed to create admin users
       attrs = %{
         "name" => "Test User",
+        "email" => "test_user@example.com",
         "type" => "account_user"
       }
 
@@ -213,19 +223,20 @@ defmodule API.ActorControllerTest do
       assert resp = json_response(conn, 201)
 
       assert resp["data"]["name"] == attrs["name"]
+      assert resp["data"]["email"] == attrs["email"]
       assert resp["data"]["type"] == attrs["type"]
     end
   end
 
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      actor = Fixtures.Actors.create_actor(%{account: account})
+      actor = actor_fixture(account: account)
       conn = put(conn, "/actors/#{actor.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: api_actor} do
-      actor = Fixtures.Actors.create_actor(%{account: account, type: :account_admin_user})
+      actor = actor_fixture(account: account, type: :account_admin_user)
 
       conn =
         conn
@@ -238,8 +249,8 @@ defmodule API.ActorControllerTest do
     end
 
     test "updates an actor", %{conn: conn, account: account, actor: api_actor} do
-      actor = Fixtures.Actors.create_actor(%{account: account, type: :account_admin_user})
-      _other_admin = Fixtures.Actors.create_actor(%{account: account, type: :account_admin_user})
+      actor = actor_fixture(account: account, type: :account_admin_user)
+      _other_admin = actor_fixture(account: account, type: :account_admin_user)
 
       attrs = %{"type" => "account_user"}
 
@@ -259,13 +270,13 @@ defmodule API.ActorControllerTest do
 
   describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      actor = Fixtures.Actors.create_actor(%{account: account})
+      actor = actor_fixture(account: account)
       conn = delete(conn, "/actors/#{actor.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes a resource", %{conn: conn, account: account, actor: api_actor} do
-      actor = Fixtures.Actors.create_actor(%{account: account})
+      actor = actor_fixture(account: account)
 
       conn =
         conn
@@ -277,11 +288,24 @@ defmodule API.ActorControllerTest do
                "data" => %{
                  "id" => actor.id,
                  "name" => actor.name,
-                 "type" => Atom.to_string(actor.type)
+                 "type" => Atom.to_string(actor.type),
+                 "allow_email_otp_sign_in" => actor.allow_email_otp_sign_in,
+                 "created_by_directory_id" => actor.created_by_directory_id,
+                 "disabled_at" => iso8601(actor.disabled_at),
+                 "email" => actor.email,
+                 "inserted_at" => iso8601(actor.inserted_at),
+                 "last_seen_at" => iso8601(actor.last_seen_at),
+                 "updated_at" => iso8601(actor.updated_at)
                }
              }
 
-      refute Repo.get(Actor, actor.id)
+      refute Repo.get_by(Actor, id: actor.id, account_id: actor.account_id)
     end
   end
+
+  defp iso8601(%DateTime{} = dt) do
+    DateTime.to_iso8601(dt)
+  end
+
+  defp iso8601(_), do: nil
 end

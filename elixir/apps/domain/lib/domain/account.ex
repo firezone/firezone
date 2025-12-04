@@ -96,3 +96,39 @@ defmodule Domain.Account do
     Map.fetch!(account.features || %Domain.Accounts.Features{}, feature)
   end
 end
+
+defmodule Domain.Account.Metadata do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  embedded_schema do
+    embeds_one :stripe, Domain.Account.Metadata.Stripe, on_replace: :update
+  end
+
+  def changeset(metadata \\ %__MODULE__{}, attrs) do
+    metadata
+    |> cast(attrs, [])
+    |> cast_embed(:stripe, with: &Domain.Account.Metadata.Stripe.changeset/2)
+  end
+end
+
+defmodule Domain.Account.Metadata.Stripe do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  embedded_schema do
+    field :customer_id, :string
+    field :subscription_id, :string
+    field :product_name, :string
+    field :billing_email, :string
+    field :trial_ends_at, :utc_datetime_usec
+    field :support_type, :string
+  end
+
+  def changeset(stripe \\ %__MODULE__{}, attrs) do
+    stripe
+    |> cast(attrs, [:customer_id, :subscription_id, :product_name, :billing_email, :trial_ends_at, :support_type])
+  end
+end

@@ -17,7 +17,7 @@ defmodule API.Schemas.Actor do
           pattern: ~r/[a-zA-Z][a-zA-Z0-9_]+/
         },
         type: %Schema{type: :string, description: "Actor Type"},
-        email: %Schema{type: :string, description: "Actor Email", nullable: true},
+        email: %Schema{type: :string, description: "Actor Email"},
         allow_email_otp_sign_in: %Schema{
           type: :boolean,
           description: "Allow Email OTP Sign In",
@@ -51,7 +51,7 @@ defmodule API.Schemas.Actor do
           description: "When the actor was last updated"
         }
       },
-      required: [:name, :type],
+      required: [:name, :email, :type],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "John Doe",

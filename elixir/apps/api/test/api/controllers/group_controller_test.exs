@@ -2,9 +2,13 @@ defmodule API.GroupControllerTest do
   use API.ConnCase, async: true
   alias Domain.Group
 
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.GroupFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    account = account_fixture()
+    actor = api_client_fixture(account: account)
 
     %{
       account: account,
@@ -19,7 +23,7 @@ defmodule API.GroupControllerTest do
     end
 
     test "lists all groups", %{conn: conn, account: account, actor: actor} do
-      groups = for _ <- 1..3, do: Fixtures.Actors.create_group(%{account: account})
+      groups = for _ <- 1..3, do: group_fixture(account: account)
 
       conn =
         conn
@@ -49,7 +53,7 @@ defmodule API.GroupControllerTest do
     end
 
     test "lists groups with limit", %{conn: conn, account: account, actor: actor} do
-      groups = for _ <- 1..3, do: Fixtures.Actors.create_group(%{account: account})
+      groups = for _ <- 1..3, do: group_fixture(account: account)
 
       conn =
         conn
@@ -81,13 +85,13 @@ defmodule API.GroupControllerTest do
 
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
       conn = get(conn, "/groups/#{group.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns a single actor group", %{conn: conn, account: account, actor: actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
 
       conn =
         conn
@@ -141,7 +145,7 @@ defmodule API.GroupControllerTest do
                }
     end
 
-    test "creates an actor group  with valid attrs", %{conn: conn, actor: actor} do
+    test "creates an actor group with valid attrs", %{conn: conn, actor: actor} do
       attrs = %{
         "name" => "Test Group"
       }
@@ -160,13 +164,13 @@ defmodule API.GroupControllerTest do
 
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
       conn = put(conn, "/groups/#{group.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
 
       conn =
         conn
@@ -178,8 +182,25 @@ defmodule API.GroupControllerTest do
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
     end
 
+    test "returns error on when attempting to edit a synced group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = synced_group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{group.id}")
+
+      assert resp = json_response(conn, 422)
+      assert resp == %{"error" => %{"reason" => "Cannot update a synced group"}}
+    end
+
     test "updates an actor group", %{conn: conn, account: account, actor: actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
 
       attrs = %{"name" => "Updated Group"}
 
@@ -198,13 +219,13 @@ defmodule API.GroupControllerTest do
 
   describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
       conn = delete(conn, "/groups/#{group.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes an actor group", %{conn: conn, account: account, actor: actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
 
       conn =
         conn
@@ -219,7 +240,7 @@ defmodule API.GroupControllerTest do
                }
              }
 
-      refute Repo.get(Group, group.id)
+      refute Repo.get_by(Group, id: group.id, account_id: group.account_id)
     end
   end
 end

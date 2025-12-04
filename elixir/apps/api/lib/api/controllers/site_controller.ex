@@ -85,7 +85,6 @@ defmodule API.SiteController do
     %Domain.Site{}
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> Domain.Site.changeset()
     |> put_change(:account_id, account.id)
     |> put_change(:managed_by, :account)
     |> cast_assoc(:tokens,

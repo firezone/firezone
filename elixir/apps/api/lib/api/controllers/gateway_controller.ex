@@ -121,6 +121,29 @@ defmodule API.GatewayController do
       ]
     end
 
+    def preloads do
+      [
+        online?: &Presence.Gateways.preload_gateways_presence/1
+      ]
+    end
+
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :site_id,
+          title: "Site",
+          type: {:string, :uuid},
+          values: &Domain.Sites.all_sites!/1,
+          fun: &filter_by_site_id/2
+        }
+      ]
+    end
+
+    defp filter_by_site_id(queryable, site_id) do
+      dynamic = dynamic([gateways: g], g.site_id == ^site_id)
+      {queryable, dynamic}
+    end
+
     def fetch_gateway(id, subject) do
       result =
         from(g in Gateway, as: :gateways)

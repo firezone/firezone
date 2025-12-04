@@ -78,7 +78,7 @@ defmodule API.GroupController do
 
   defp create_group_changeset(account, attrs) do
     %Group{account_id: account.id}
-    |> cast(attrs, [:name, :type, :description])
+    |> cast(attrs, [:name, :type])
     |> validate_required([:name, :type])
   end
 
@@ -109,25 +109,34 @@ defmodule API.GroupController do
     end
   end
 
+  def update(conn, %{"id" => id}) do
+    subject = conn.assigns.subject
+
+    with {:ok, group} <- DB.fetch_group(id, subject),
+         {:changeset, _changeset} <- update_group_changeset(group, %{}) do
+      {:error, :bad_request}
+    end
+  end
+
   def update(_conn, _params) do
     {:error, :bad_request}
   end
 
   defp update_group_changeset(%Group{type: :managed}, _attrs) do
-    {:error, :managed_group}
+    {:error, :update_managed_group}
   end
 
-  defp update_group_changeset(%Group{directory: "firezone"} = group, attrs) do
+  defp update_group_changeset(%Group{type: :static, directory_id: nil} = group, attrs) do
     changeset =
       group
-      |> cast(attrs, [:name, :description])
+      |> cast(attrs, [:name])
       |> validate_required([:name])
 
     {:changeset, changeset}
   end
 
   defp update_group_changeset(%Group{}, _attrs) do
-    {:error, :synced_group}
+    {:error, :update_synced_group}
   end
 
   operation :delete,

@@ -1,11 +1,15 @@
 defmodule API.ExternalIdentityJSON do
+  alias API.Pagination
   alias Domain.ExternalIdentity
 
   @doc """
   Renders a list of External Identities.
   """
-  def index(%{external_identities: external_identities}) do
-    %{data: Enum.map(external_identities, &data/1)}
+  def index(%{external_identities: external_identities, metadata: metadata}) do
+    %{
+      data: Enum.map(external_identities, &data/1),
+      metadata: Pagination.metadata(metadata)
+    }
   end
 
   @doc """
@@ -22,6 +26,7 @@ defmodule API.ExternalIdentityJSON do
       account_id: external_identity.account_id,
       issuer: external_identity.issuer,
       directory_id: external_identity.directory_id,
+      email: external_identity.email || external_identity.idp_id,
       idp_id: extract_idp_id(external_identity.idp_id),
       name: external_identity.name,
       given_name: external_identity.given_name,

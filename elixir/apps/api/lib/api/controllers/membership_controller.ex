@@ -119,9 +119,23 @@ defmodule API.MembershipController do
   end
 
   defp update_group_memberships_changeset(group, attrs) do
+    # Ensure all membership attrs include the account_id from the group
+    attrs_with_account =
+      Enum.map(attrs, fn membership_attrs ->
+        Map.put_new(membership_attrs, "account_id", group.account_id)
+      end)
+
     group
-    |> cast(%{memberships: attrs}, [])
-    |> cast_assoc(:memberships)
+    |> cast(%{memberships: attrs_with_account}, [])
+    |> cast_assoc(:memberships, with: &membership_changeset/2)
+  end
+
+  defp membership_changeset(membership, attrs) do
+    import Ecto.Changeset
+
+    membership
+    |> cast(attrs, [:actor_id, :group_id, :account_id, :last_synced_at])
+    |> Domain.Membership.changeset()
   end
 
   defp prepare_membership_attrs(group, add, remove) do
@@ -135,7 +149,7 @@ defmodule API.MembershipController do
 
     if MapSet.size(membership_ids) == 0,
       do: [],
-      else: Enum.map(membership_ids, &%{actor_id: &1})
+      else: Enum.map(membership_ids, &%{"actor_id" => &1, "account_id" => group.account_id})
   end
 
   defmodule DB do
@@ -171,6 +185,33 @@ defmodule API.MembershipController do
         {:actors, :asc, :inserted_at},
         {:actors, :asc, :id}
       ]
+    end
+
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :group_id,
+          title: "Group",
+          type: {:string, :uuid},
+          values: &Domain.Groups.all_groups!/1,
+          fun: &filter_by_group_id/2
+        }
+      ]
+    end
+
+    defp filter_by_group_id(queryable, group_id) do
+      dynamic =
+        dynamic(
+          [actors: a],
+          a.id in subquery(
+            from(m in Domain.Membership,
+              where: m.group_id == ^group_id,
+              select: m.actor_id
+            )
+          )
+        )
+
+      {queryable, dynamic}
     end
   end
 end
