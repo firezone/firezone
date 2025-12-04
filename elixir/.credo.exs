@@ -45,7 +45,12 @@
       # If you create your own checks, you must specify the source files for
       # them here, so they can be loaded by Credo before running the analysis.
       #
-      requires: [],
+      requires: [
+        "lib/credo/check/warning/unsafe_repo_usage.ex",
+        "lib/credo/check/warning/safe_calls_outside_db_module.ex",
+        "lib/credo/check/warning/missing_db_alias.ex",
+        "lib/credo/check/warning/cross_module_db_call.ex"
+      ],
       #
       # If you want to enforce a style guide and need a more traditional linting
       # experience, you can change `strict` to `true` below:
@@ -157,6 +162,12 @@
           {Credo.Check.Warning.UnusedStringOperation, []},
           {Credo.Check.Warning.UnusedTupleOperation, []},
           {Credo.Check.Warning.UnsafeExec, []},
+
+          # Custom Checks for Domain conventions
+          {Credo.Check.Warning.UnsafeRepoUsage, []},
+          {Credo.Check.Warning.SafeCallsOutsideDBModule, []},
+          {Credo.Check.Warning.MissingDBAlias, []},
+          {Credo.Check.Warning.CrossModuleDBCall, []},
 
           # Code Organization Checks
           {Credo.Check.Readability.StrictModuleLayout, []},
