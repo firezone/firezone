@@ -218,7 +218,10 @@ defmodule Domain.Safe do
   def stream(repo, queryable, opts) when repo == Repo, do: Repo.stream(queryable, opts)
 
   @spec aggregate(Scoped.t(), atom()) :: term() | {:error, :unauthorized}
-  def aggregate(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}, aggregate) do
+  def aggregate(
+        %Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable},
+        aggregate
+      ) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do

@@ -417,6 +417,7 @@ defmodule Web.Settings.DirectorySync do
               type={directory_type(directory)}
               account={@account}
               directory={directory}
+              subject={@subject}
             />
           <% end %>
         </div>
@@ -519,6 +520,11 @@ defmodule Web.Settings.DirectorySync do
     </.modal>
     """
   end
+
+  attr :type, :string, required: true
+  attr :account, :any, required: true
+  attr :directory, :any, required: true
+  attr :subject, :any, required: true
 
   defp directory_card(assigns) do
     # Determine if toggle should be disabled (when directory is disabled and account lacks feature)
@@ -734,25 +740,33 @@ defmodule Web.Settings.DirectorySync do
 
     ~H"""
     <div>
-      Are you sure you want to delete <strong>{@directory.name}</strong>?
+      <p class="text-neutral-700">
+        Are you sure you want to delete <strong>{@directory.name}</strong>?
+      </p>
       <%= if @total > 0 do %>
-        This will delete <strong>ALL</strong> associated entities and cannot be undone:
-        <ul class="list-disc list-inside mt-2 text-sm text-neutral-700">
+        <p class="mt-3 text-neutral-700">
+          This will permanently delete:
+        </p>
+        <ul class="list-disc list-inside mt-2 text-neutral-700 space-y-1">
           <li :if={@stats.actors > 0}>
-            {@stats.actors} {ngettext("actor", "actors", @stats.actors)} created by this directory
+            <strong>{@stats.actors}</strong> {ngettext("actor", "actors", @stats.actors)}
           </li>
           <li :if={@stats.identities > 0}>
-            {@stats.identities} external {ngettext("identity", "identities", @stats.identities)}
+            <strong>{@stats.identities}</strong> {ngettext(
+              "identity",
+              "identities",
+              @stats.identities
+            )}
           </li>
           <li :if={@stats.groups > 0}>
-            {@stats.groups} {ngettext("group", "groups", @stats.groups)} synced from this directory
+            <strong>{@stats.groups}</strong> {ngettext("group", "groups", @stats.groups)}
           </li>
           <li :if={@stats.policies > 0}>
-            {@stats.policies} access {ngettext("policy", "policies", @stats.policies)} using these groups
+            <strong>{@stats.policies}</strong> {ngettext("policy", "policies", @stats.policies)}
           </li>
         </ul>
       <% else %>
-        This action cannot be undone.
+        <p class="mt-2 text-neutral-600">This action cannot be undone.</p>
       <% end %>
     </div>
     """
@@ -1546,7 +1560,7 @@ defmodule Web.Settings.DirectorySync do
         Okta.Directory |> Safe.scoped(subject) |> Safe.all()
       ]
       |> List.flatten()
-      |> enrich_with_job_status(subject)
+      |> enrich_with_job_status()
     end
 
     def get_directory!(schema, id, subject) do
@@ -1568,7 +1582,13 @@ defmodule Web.Settings.DirectorySync do
     end
 
     def delete_directory(directory, subject) do
-      directory |> Safe.scoped(subject) |> Safe.delete()
+      # Delete the parent Domain.Directory, which will CASCADE delete the child
+      parent =
+        from(d in Domain.Directory, where: d.id == ^directory.id)
+        |> Safe.scoped(subject)
+        |> Safe.one!()
+
+      parent |> Safe.scoped(subject) |> Safe.delete()
     end
 
     def count_deletion_stats(directory, subject) do
@@ -1623,18 +1643,20 @@ defmodule Web.Settings.DirectorySync do
       |> Safe.one()
     end
 
-    defp enrich_with_job_status(directories, subject) do
+    defp enrich_with_job_status(directories) do
       # Get all directory IDs
       directory_ids = Enum.map(directories, & &1.id)
 
       # Query for active sync jobs for all directory types
+      # Note: Oban.Job doesn't have account_id - security is ensured by
+      # filtering on directory_ids which are already scoped to the account
       active_jobs =
         from(j in Oban.Job,
           where: j.worker in ["Domain.Entra.Sync", "Domain.Google.Sync", "Domain.Okta.Sync"],
           where: j.state in ["available", "executing", "scheduled"],
           where: fragment("?->>'directory_id'", j.args) in ^directory_ids
         )
-        |> Safe.scoped(subject)
+        |> Safe.unscoped()
         |> Safe.all()
         |> Enum.map(fn job ->
           directory_id = job.args["directory_id"]

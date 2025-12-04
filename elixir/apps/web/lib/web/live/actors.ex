@@ -789,7 +789,7 @@ defmodule Web.Actors do
                       </span>
                     <% else %>
                       <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-600">
-                        <.icon name="hero-x-circle" class="w-3.5 h-3.5 mr-1" /> Not Allowed
+                        <.icon name="hero-no-symbol" class="w-3.5 h-3.5 mr-1" /> Not Allowed
                       </span>
                     <% end %>
                   </div>

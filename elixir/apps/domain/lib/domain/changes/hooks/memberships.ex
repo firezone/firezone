@@ -16,7 +16,7 @@ defmodule Domain.Changes.Hooks.Memberships do
 
   @impl true
   def on_delete(lsn, old_data) do
-    membership = struct_from_params(Membership, old_data)
+    membership = struct_from_params(Domain.Membership, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: membership}
 
     PubSub.Account.broadcast(membership.account_id, change)
