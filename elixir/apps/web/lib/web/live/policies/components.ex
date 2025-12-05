@@ -193,7 +193,10 @@ defmodule Web.Policies.Components do
         <:separator>,</:separator>
 
         <:item :for={provider <- @providers}>
-          <.link navigate={"/providers/#{provider.id}"} class={[link_style(), "font-medium"]}>
+          <.link
+            navigate={~p"/#{@account}/settings/authentication"}
+            class={[link_style(), "font-medium"]}
+          >
             {provider.name}
           </.link>
         </:item>
