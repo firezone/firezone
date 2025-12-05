@@ -1,34 +1,53 @@
-use anyhow::{Result, bail};
-use futures::task::{Context, Poll};
+use anyhow::Result;
+use futures::{
+    future::poll_fn,
+    task::{Context, Poll},
+};
+use tokio::signal::unix::{Signal, SignalKind, signal};
 
-pub struct Terminate {}
+pub struct Terminate {
+    /// For Ctrl+C from a terminal
+    sigint: Signal,
+    /// For systemd service stopping
+    sigterm: Signal,
+}
 
-pub struct Hangup {}
+pub struct Hangup {
+    /// For reloading settings in the standalone Client
+    sighup: Signal,
+}
 
 impl Terminate {
     pub fn new() -> Result<Self> {
-        bail!("Not implemented")
+        let sigint = signal(SignalKind::interrupt())?;
+        let sigterm = signal(SignalKind::terminate())?;
+
+        Ok(Self { sigint, sigterm })
     }
 
-    pub fn poll_recv(&mut self, _cx: &mut Context<'_>) -> Poll<()> {
-        Poll::Pending
+    pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        if self.sigint.poll_recv(cx).is_ready() || self.sigterm.poll_recv(cx).is_ready() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
     }
 
-    #[expect(
-        clippy::unused_async,
-        reason = "Signture must match other operating systems"
-    )]
-    pub async fn recv(&mut self) {}
+    /// Waits for SIGINT or SIGTERM
+    pub async fn recv(&mut self) {
+        poll_fn(|cx| self.poll_recv(cx)).await
+    }
 }
 
 impl Hangup {
     pub fn new() -> Result<Self> {
-        bail!("Not implemented")
+        let sighup = signal(SignalKind::hangup())?;
+
+        Ok(Self { sighup })
     }
 
-    #[expect(
-        clippy::unused_async,
-        reason = "Signture must match other operating systems"
-    )]
-    pub async fn recv(&mut self) {}
+    /// Waits for SIGHUP
+    pub async fn recv(&mut self) {
+        self.sighup.recv().await;
+    }
 }
