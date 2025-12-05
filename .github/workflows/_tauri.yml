@@ -222,7 +222,7 @@ jobs:
         run: |
           az storage blob upload \
             --container-name binaries \
-            --name "windows-gui-client/preview/${{ matrix.arch.shortname }}" \
+            --name "windows-gui-client/preview/${{ matrix.arch }}" \
             --file "${{ env.ARTIFACT_SRC }}.msi" \
             --overwrite true \
             --no-progress \
