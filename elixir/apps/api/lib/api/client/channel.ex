@@ -975,7 +975,7 @@ defmodule API.Client.Channel do
           resource,
           subject
         ) do
-      resource_site_id = Ecto.UUID.load!(resource.site_id)
+      resource_site_id = site_id_from_resource(resource)
 
       connected_gateway_ids =
         Presence.Gateways.Account.list(subject.account.id)
@@ -1019,6 +1019,12 @@ defmodule API.Client.Channel do
         :error ->
           []
       end
+    end
+
+    defp site_id_from_resource(%Domain.Cache.Cacheable.Resource{site: nil}), do: nil
+
+    defp site_id_from_resource(%Domain.Cache.Cacheable.Resource{site: site}) do
+      Ecto.UUID.load!(site.id)
     end
   end
 
