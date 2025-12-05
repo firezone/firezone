@@ -1,5 +1,5 @@
 defmodule Domain.Accounts.Limits.Changeset do
-  use Domain, :changeset
+  import Ecto.Changeset
   alias Domain.Accounts.Limits
 
   @fields ~w[users_count

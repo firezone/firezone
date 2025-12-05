@@ -575,7 +575,7 @@ defmodule Web.Clients.Show do
   end
 
   defmodule DB.PolicyAuthorizationQuery do
-    use Domain, :query
+    import Ecto.Query
 
     def all do
       from(policy_authorizations in Domain.PolicyAuthorization, as: :policy_authorizations)
@@ -753,7 +753,6 @@ defmodule Web.Clients.Show do
     end
 
     # Pagination
-    @impl Domain.Repo.Query
     def cursor_fields,
       do: [
         {:policy_authorizations, :desc, :inserted_at},

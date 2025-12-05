@@ -5,14 +5,15 @@ defmodule Web.SignUp do
   alias __MODULE__.DB
 
   defmodule Registration do
-    use Domain, :schema
+    use Ecto.Schema
+    @primary_key false
+    @foreign_key_type :binary_id
+    @timestamps_opts [type: :utc_datetime_usec]
 
     alias Domain.Accounts
 
     import Ecto.Changeset
     import Domain.Changeset
-
-    @primary_key false
 
     embedded_schema do
       field(:email, :string)

@@ -1,7 +1,6 @@
 defmodule Domain.Accounts.Features do
-  use Domain, :schema
+  use Ecto.Schema
 
-  @primary_key false
   embedded_schema do
     field :policy_conditions, :boolean
     field :multi_site_resources, :boolean

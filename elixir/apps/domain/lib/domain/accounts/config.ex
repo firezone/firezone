@@ -1,8 +1,7 @@
 defmodule Domain.Accounts.Config do
-  use Domain, :schema
+  use Ecto.Schema
   import Ecto.Changeset
 
-  @primary_key false
   embedded_schema do
     field :search_domain, :string
 

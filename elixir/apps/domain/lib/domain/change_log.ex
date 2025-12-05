@@ -1,7 +1,10 @@
 defmodule Domain.ChangeLog do
-  use Domain, :schema
+  use Ecto.Schema
 
   @primary_key false
+  @foreign_key_type :binary_id
+  @timestamps_opts [type: :utc_datetime_usec]
+
   schema "change_logs" do
     belongs_to :account, Domain.Account
 
@@ -13,6 +16,6 @@ defmodule Domain.ChangeLog do
     field :subject, :map
     field :vsn, :integer
 
-    timestamps(type: :utc_datetime_usec, updated_at: false)
+    timestamps(updated_at: false)
   end
 end

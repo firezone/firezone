@@ -1,5 +1,5 @@
 defmodule Domain.Billing.Stripe.ProcessedEvents.ProcessedEvent.Changeset do
-  use Domain, :changeset
+  import Ecto.Changeset
 
   @required_fields [
     :stripe_event_id,

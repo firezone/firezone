@@ -1,5 +1,10 @@
 defmodule Domain.ExternalIdentity do
-  use Domain, :schema
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+  @timestamps_opts [type: :utc_datetime_usec]
 
   schema "external_identities" do
     belongs_to :actor, Domain.Actor, on_replace: :update

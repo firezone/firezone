@@ -1,5 +1,10 @@
 defmodule Domain.AuthProvider do
-  use Domain, :schema
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  @foreign_key_type :binary_id
+  @timestamps_opts [type: :utc_datetime_usec]
 
   @provider_types %{
     "google" => Domain.Google.AuthProvider,
@@ -10,7 +15,6 @@ defmodule Domain.AuthProvider do
     "userpass" => Domain.Userpass.AuthProvider
   }
 
-  @primary_key false
   schema "auth_providers" do
     belongs_to :account, Domain.Account, primary_key: true
     field :id, :binary_id, primary_key: true

@@ -1,6 +1,11 @@
 defmodule Domain.Actor do
-  use Domain, :schema
+  use Ecto.Schema
+  import Ecto.Changeset
   import Domain.Changeset
+
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+  @timestamps_opts [type: :utc_datetime_usec]
 
   schema "actors" do
     field :type, Ecto.Enum,

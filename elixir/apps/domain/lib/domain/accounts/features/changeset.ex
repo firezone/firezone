@@ -1,5 +1,5 @@
 defmodule Domain.Accounts.Features.Changeset do
-  use Domain, :changeset
+  import Ecto.Changeset
   alias Domain.Accounts.Features
 
   @fields ~w[

@@ -1,5 +1,10 @@
 defmodule Domain.Entra.AuthProvider do
-  use Domain, :schema
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  @foreign_key_type :binary_id
+  @timestamps_opts [type: :utc_datetime_usec]
 
   @portal_session_lifetime_min 300
   @portal_session_lifetime_max 86_400
@@ -9,7 +14,6 @@ defmodule Domain.Entra.AuthProvider do
   @client_session_lifetime_max 7_776_000
   @default_client_session_lifetime_secs 604_800
 
-  @primary_key false
   schema "entra_auth_providers" do
     # Allows setting the ID manually in changesets
     field :id, :binary_id, primary_key: true

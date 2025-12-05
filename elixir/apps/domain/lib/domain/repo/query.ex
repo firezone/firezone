@@ -2,41 +2,9 @@ defmodule Domain.Repo.Query do
   alias Domain.Repo.Filter
   import Ecto.Query
 
-  @type direction :: :after | :before
-
-  @type preload_fun ::
-          ([Ecto.Schema.t()] -> [Ecto.Schema.t()]) | Ecto.Queryable.t() | (-> Ecto.Queryable.t())
-  @type preload_funs :: [{atom(), preload_fun()} | {atom(), {preload_fun(), preload_funs()}}]
-
   @type cursor_fields :: [
           {binding :: atom(), :asc | :desc, field :: atom()}
         ]
-
-  @doc """
-  Returns list of fields that are used for cursor based pagination.
-  """
-  @callback cursor_fields() :: cursor_fields()
-
-  @doc """
-  Allows to define custom preloads for the schema.
-
-  Each preload is defined as a function that overrides `Repo.preload/2` default behavior for a key.
-
-  The function either accepts a list of schemas and returns either a list of schemas,
-  or no arguments and returns a queryable that will be used to preload the association.
-  """
-  @callback preloads() :: preload_funs()
-
-  @doc """
-  Defines available user-facing filters for the schema.
-  """
-  @callback filters() :: [Domain.Repo.Filter.t()]
-
-  @optional_callbacks [
-    cursor_fields: 0,
-    preloads: 0,
-    filters: 0
-  ]
 
   # Callback helpers
 

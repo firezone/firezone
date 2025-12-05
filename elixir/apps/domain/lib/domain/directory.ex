@@ -1,7 +1,11 @@
 defmodule Domain.Directory do
-  use Domain, :schema
+  use Ecto.Schema
+  import Ecto.Changeset
 
   @primary_key false
+  @foreign_key_type :binary_id
+  @timestamps_opts [type: :utc_datetime_usec]
+
   schema "directories" do
     belongs_to :account, Domain.Account, primary_key: true
     field :id, :binary_id, primary_key: true

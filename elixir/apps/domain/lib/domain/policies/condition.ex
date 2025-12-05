@@ -1,5 +1,5 @@
 defmodule Domain.Policies.Condition do
-  use Domain, :schema
+  use Ecto.Schema
   import Ecto.Changeset
   import Domain.Changeset
 
@@ -22,7 +22,6 @@ defmodule Domain.Policies.Condition do
           values: [String.t()]
         }
 
-  @primary_key false
   embedded_schema do
     field :property, Ecto.Enum, values: ~w[
         remote_ip_location_region

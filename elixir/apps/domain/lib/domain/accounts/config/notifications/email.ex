@@ -1,7 +1,5 @@
 defmodule Domain.Accounts.Config.Notifications.Email do
-  use Domain, :schema
-
-  @primary_key false
+  use Ecto.Schema
 
   embedded_schema do
     field :enabled, :boolean, default: true

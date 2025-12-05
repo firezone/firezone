@@ -1,7 +1,11 @@
 defmodule Domain.Gateway do
-  use Domain, :schema
+  use Ecto.Schema
   import Ecto.Changeset
   import Domain.Changeset
+
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+  @timestamps_opts [type: :utc_datetime_usec]
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
