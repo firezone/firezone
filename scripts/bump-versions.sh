@@ -100,8 +100,8 @@ function update_version_variables() {
 # 6. Run `scripts/bump-versions.sh apple` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function apple() {
-    current_apple_client_version="1.5.9"
-    next_apple_client_version="1.5.10"
+    current_apple_client_version="1.5.10"
+    next_apple_client_version="1.5.11"
 
     update_changelog "website/src/components/Changelog/Apple.tsx" "$current_apple_client_version"
     update_version_marker "mark:current-apple-version" "$current_apple_client_version"
@@ -134,8 +134,8 @@ function apple() {
 # 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function android() {
-    current_android_client_version="1.5.6"
-    next_android_client_version="1.5.7"
+    current_android_client_version="1.5.7"
+    next_android_client_version="1.5.8"
 
     update_changelog "website/src/components/Changelog/Android.tsx" "$current_android_client_version"
     update_version_marker "mark:current-android-version" "$current_android_client_version"

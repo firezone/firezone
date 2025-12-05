@@ -10,14 +10,14 @@ module.exports = [
     source: "/dl/firezone-client-macos/latest",
     destination:
       // mark:current-apple-version
-      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.9/firezone-macos-client-1.5.9.dmg",
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.10/firezone-macos-client-1.5.10.dmg",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-macos/pkg/latest",
     destination:
       // mark:current-apple-version
-      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.9/firezone-macos-client-1.5.9.pkg",
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.10/firezone-macos-client-1.5.10.pkg",
     permanent: false,
   },
   /*
@@ -29,7 +29,7 @@ module.exports = [
     source: "/dl/firezone-client-android/latest",
     destination:
       // mark:current-android-version
-      "https://www.github.com/firezone/firezone/releases/download/android-client-1.5.6/firezone-android-client-1.5.6.apk",
+      "https://www.github.com/firezone/firezone/releases/download/android-client-1.5.7/firezone-android-client-1.5.7.apk",
     permanent: false,
   },
   /*
