@@ -391,38 +391,125 @@ defmodule Web.Settings.DirectorySync do
         Directory Sync Settings
       </.breadcrumb>
     </.breadcrumbs>
-    <.section>
-      <:title>Directories</:title>
-      <:action><.docs_action path="/guides/settings/directory-sync" /></:action>
-      <:action>
-        <%= if @account.features.idp_sync do %>
+
+    <%= if Domain.Account.idp_sync_enabled?(@account) do %>
+      <.section>
+        <:title>Directories</:title>
+        <:action><.docs_action path="/guides/settings/directory-sync" /></:action>
+        <:action>
           <.add_button patch={~p"/#{@account}/settings/directory_sync/select_type"}>
             Add Directory
           </.add_button>
-        <% else %>
-          <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
-            <.badge type="primary" title="Feature available on a higher pricing plan">
-              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
-            </.badge>
-          </.link>
-        <% end %>
-      </:action>
-      <:help>
-        Directories sync users and groups from an external source.
-      </:help>
-      <:content>
-        <div class="flex flex-wrap gap-4">
-          <%= for directory <- @directories do %>
-            <.directory_card
-              type={directory_type(directory)}
-              account={@account}
-              directory={directory}
-              subject={@subject}
-            />
-          <% end %>
-        </div>
-      </:content>
-    </.section>
+        </:action>
+        <:help>
+          Directories sync users and groups from an external source.
+        </:help>
+        <:content>
+          <div class="flex flex-wrap gap-4">
+            <%= for directory <- @directories do %>
+              <.directory_card
+                type={directory_type(directory)}
+                account={@account}
+                directory={directory}
+                subject={@subject}
+              />
+            <% end %>
+          </div>
+        </:content>
+      </.section>
+    <% else %>
+      <.section>
+        <:title>Directories</:title>
+        <:action><.docs_action path="/guides/settings/directory-sync" /></:action>
+        <:content>
+          <div class="relative">
+            <!-- Blurred preview content -->
+            <div class="blur-sm pointer-events-none select-none opacity-60">
+              <div class="flex flex-wrap gap-4">
+                <div class="flex flex-col bg-neutral-50 rounded-lg p-4" style="width: 28rem;">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center flex-1 min-w-0">
+                      <.provider_icon type="google" class="w-7 h-7 mr-2 flex-shrink-0" />
+                      <div class="flex flex-col min-w-0">
+                        <span class="font-medium text-xl truncate">Google Workspace</span>
+                        <span class="text-xs text-neutral-500 font-mono">Example directory</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mt-auto bg-white rounded-lg p-3 space-y-3 text-sm text-neutral-600">
+                    <div class="flex items-center gap-2">
+                      <.icon name="hero-user-group" class="w-5 h-5 flex-shrink-0" />
+                      <span class="font-medium">42 users synced</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <.icon name="hero-arrow-path" class="w-5 h-5 flex-shrink-0" />
+                      <span class="font-medium">Auto-syncs every hour</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex flex-col bg-neutral-50 rounded-lg p-4" style="width: 28rem;">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center flex-1 min-w-0">
+                      <.provider_icon type="entra" class="w-7 h-7 mr-2 flex-shrink-0" />
+                      <div class="flex flex-col min-w-0">
+                        <span class="font-medium text-xl truncate">Microsoft Entra</span>
+                        <span class="text-xs text-neutral-500 font-mono">Example directory</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mt-auto bg-white rounded-lg p-3 space-y-3 text-sm text-neutral-600">
+                    <div class="flex items-center gap-2">
+                      <.icon name="hero-user-group" class="w-5 h-5 flex-shrink-0" />
+                      <span class="font-medium">128 users synced</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <.icon name="hero-arrow-path" class="w-5 h-5 flex-shrink-0" />
+                      <span class="font-medium">Auto-syncs every hour</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+    <!-- Marketing overlay -->
+            <div class="absolute inset-0 flex items-center justify-center">
+              <div class="bg-white rounded-xl shadow-lg p-6 max-w-md text-center border border-neutral-200">
+                <div class="mb-4">
+                  <.icon name="hero-arrow-path" class="w-10 h-10 text-accent-500 mx-auto" />
+                </div>
+                <h3 class="text-xl font-semibold text-neutral-900 mb-2">
+                  Automate User & Group Management
+                </h3>
+                <p class="text-base text-neutral-600 mb-4">
+                  Connect your identity provider to automatically sync users and groups.
+                </p>
+                <ul class="text-left text-base text-neutral-700 mb-4 space-y-2">
+                  <li class="flex items-center gap-2">
+                    <.icon name="hero-check-circle" class="w-5 h-5 text-green-500 flex-shrink-0" />
+                    Sync from Google, Entra, or Okta
+                  </li>
+                  <li class="flex items-center gap-2">
+                    <.icon name="hero-check-circle" class="w-5 h-5 text-green-500 flex-shrink-0" />
+                    Automatic hourly synchronization
+                  </li>
+                  <li class="flex items-center gap-2">
+                    <.icon name="hero-check-circle" class="w-5 h-5 text-green-500 flex-shrink-0" />
+                    Instant deprovisioning
+                  </li>
+                </ul>
+                <.button
+                  style="primary"
+                  icon="hero-sparkles-solid"
+                  navigate={~p"/#{@account}/settings/billing"}
+                >
+                  Upgrade to Unlock
+                </.button>
+              </div>
+            </div>
+          </div>
+        </:content>
+      </.section>
+    <% end %>
 
     <!-- Select Directory Type Modal -->
     <.modal :if={@live_action == :select_type} id="select-directory-type-modal" on_close="close_modal">

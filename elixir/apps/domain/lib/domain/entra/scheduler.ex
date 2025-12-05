@@ -24,7 +24,8 @@ defmodule Domain.Entra.Scheduler do
           join: a in Domain.Account,
           on: a.id == d.account_id,
           where: d.is_disabled == false,
-          where: is_nil(a.disabled_at)
+          where: is_nil(a.disabled_at),
+          where: fragment("(?)->>'idp_sync' = 'true'", a.features)
         )
         |> Safe.unscoped()
         |> Safe.stream()
