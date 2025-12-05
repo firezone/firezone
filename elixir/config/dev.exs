@@ -34,11 +34,10 @@ config :domain, Oban,
     # Keep the last 90 days of completed, cancelled, and discarded jobs
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90},
 
-    # Rescue jobs that may have failed due to transient errors like deploys
-    # or network issues. It's not guaranteed that the job won't be executed
-    # twice, so for now we disable it since all of our Oban jobs can be retried
-    # without loss.
-    # {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)}
+    # Rescue jobs that have been stuck in executing state due to node crashes,
+    # deploys, or other issues. Jobs will be moved back to available state
+    # after the timeout.
+    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(1)},
 
     # Periodic jobs
     {Oban.Plugins.Cron,
