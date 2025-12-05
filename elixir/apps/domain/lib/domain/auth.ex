@@ -278,8 +278,15 @@ defmodule Domain.Auth do
           tokens.expires_at > ^DateTime.utc_now() or is_nil(tokens.expires_at)
         )
         |> where([tokens: tokens], tokens.id == ^id)
-        |> where([tokens: tokens], tokens.account_id == ^account_id)
         |> where([tokens: tokens], tokens.type == ^context_type)
+
+      # Relay tokens don't have account scope
+      query =
+        if context_type == :relay do
+          query
+        else
+          where(query, [tokens: tokens], tokens.account_id == ^account_id)
+        end
 
       case query |> Safe.unscoped() |> Safe.one() do
         nil ->
