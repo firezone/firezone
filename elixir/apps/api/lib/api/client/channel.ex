@@ -52,7 +52,7 @@ defmodule API.Client.Channel do
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
-    :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe/1)
+    :ok = Enum.each(relays, fn relay -> Presence.Relays.Relay.subscribe(relay.id) end)
     :ok = maybe_subscribe_for_relays_presence(relays)
 
     # Initialize debouncer for flappy relays
@@ -173,8 +173,8 @@ defmodule API.Client.Channel do
       :ok =
         Enum.each(relays, fn relay ->
           # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Presence.Relays.Relay.unsubscribe(relay)
-          :ok = Presence.Relays.Relay.subscribe(relay)
+          :ok = Presence.Relays.Relay.unsubscribe(relay.id)
+          :ok = Presence.Relays.Relay.subscribe(relay.id)
         end)
 
       payload = %{
@@ -210,8 +210,8 @@ defmodule API.Client.Channel do
         :ok =
           Enum.each(relays, fn relay ->
             # TODO: Why are we unsubscribing and subscribing again?
-            :ok = Presence.Relays.Relay.unsubscribe(relay)
-            :ok = Presence.Relays.Relay.subscribe(relay)
+            :ok = Presence.Relays.Relay.unsubscribe(relay.id)
+            :ok = Presence.Relays.Relay.subscribe(relay.id)
           end)
 
         # Cache new stamp secrets

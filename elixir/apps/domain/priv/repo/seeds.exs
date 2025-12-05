@@ -1190,8 +1190,8 @@ defmodule Domain.Repo.Seeds do
         %{
           type: :cidr,
           name: "MyCorp Network",
-          address: "172.20.0.1/16",
-          address_description: "172.20.0.1/16",
+          address: "172.20.0.0/16",
+          address_description: "172.20.0.0/16",
           site_id: site.id,
           filters: []
         },
@@ -1203,8 +1203,8 @@ defmodule Domain.Repo.Seeds do
         %{
           type: :cidr,
           name: "MyCorp Network (IPv6)",
-          address: "172:20:0::1/64",
-          address_description: "172:20:0::1/64",
+          address: "172:20::/64",
+          address_description: "172:20::/64",
           site_id: site.id,
           filters: []
         },

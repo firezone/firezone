@@ -397,27 +397,35 @@ defmodule Domain.Cache.Client do
   @spec update_resource(t(), Domain.Resource.t(), Domain.Client.t(), Auth.Subject.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def update_resource(cache, resource, client, subject) do
-    resource = Domain.Cache.Cacheable.to_cache(resource)
+  def update_resource(cache, %Domain.Resource{} = changed_resource, client, subject) do
+    resource = Domain.Cache.Cacheable.to_cache(changed_resource)
 
     if Map.has_key?(cache.resources, resource.id) do
       cached_resource = Map.get(cache.resources, resource.id)
-      site_changed? = cached_resource.site != resource.site
+      site_id = Ecto.UUID.dump!(changed_resource.site_id)
+      site_changed? = cached_resource.site.id != site_id
 
       # We need to hydrate the new site name if the site has changed
-      resource =
+      site =
         if site_changed? do
-          new_site = DB.get_site(resource.site, subject) |> Domain.Cache.Cacheable.to_cache()
-          %{resource | site: new_site}
+          case DB.get_site_by_id(site_id, subject) do
+            %Domain.Site{} = site -> Domain.Cache.Cacheable.to_cache(site)
+            nil -> nil
+          end
         else
-          %{resource | site: cached_resource.site}
+          cached_resource.site
         end
+
+      resource = %{resource | site: site}
 
       # Update the cache
       resources = %{cache.resources | resource.id => resource}
       cache = %{cache | resources: resources}
 
-      recompute_connectable_resources(cache, client, subject, toggle: site_changed?)
+      # Determine if we need to toggle the resource (delete then add) based on site change and client version
+      toggle = Version.resource_cannot_change_sites_on_client?(client) and site_changed?
+
+      recompute_connectable_resources(cache, client, subject, toggle: toggle)
     else
       {:ok, [], [], cache}
     end
@@ -608,6 +616,14 @@ defmodule Domain.Cache.Client do
 
     def get_site(%Domain.Cache.Cacheable.Site{} = site, subject) do
       id = Ecto.UUID.load!(site.id)
+
+      from(s in Domain.Site, where: s.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    def get_site_by_id(site_id, subject) when is_binary(site_id) do
+      id = Ecto.UUID.load!(site_id)
 
       from(s in Domain.Site, where: s.id == ^id)
       |> Safe.scoped(subject)
