@@ -278,9 +278,10 @@ defmodule Web.EmailOTPController do
 
   # Context: :client
   # Store a cookie and redirect to client handler which redirects to the final URL based on platform
-  defp signed_in(conn, :client, _account, actor, token, params) do
+  defp signed_in(conn, :client, account, actor, token, params) do
     Redirector.client_signed_in(
       conn,
+      account,
       actor.name,
       actor.email,
       token,

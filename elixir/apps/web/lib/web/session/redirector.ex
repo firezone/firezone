@@ -55,7 +55,7 @@ defmodule Web.Session.Redirector do
   Sets a cookie with client auth data and renders the client_redirect.html page
   which handles the platform-specific redirect.
   """
-  def client_signed_in(%Plug.Conn{} = conn, actor_name, identifier, fragment, state) do
+  def client_signed_in(%Plug.Conn{} = conn, account, actor_name, identifier, fragment, state) do
     client_auth_data = %{
       actor_name: actor_name,
       fragment: fragment,
@@ -63,15 +63,16 @@ defmodule Web.Session.Redirector do
       state: state
     }
 
-    redirect_url = ~p"/#{conn.assigns.account.slug}/sign_in/client_redirect"
+    redirect_url = ~p"/#{account.slug}/sign_in/client_redirect"
 
     conn
     |> Web.Auth.put_client_auth_data_to_cookie(client_auth_data)
-    |> Web.Auth.prepend_recent_account_id(conn.assigns.account.id)
+    |> Web.Auth.prepend_recent_account_id(account.id)
     |> Phoenix.Controller.put_root_layout(false)
     |> Phoenix.Controller.put_view(Web.SignInHTML)
     |> Phoenix.Controller.render("client_redirect.html",
       redirect_url: redirect_url,
+      account: account,
       layout: false
     )
   end

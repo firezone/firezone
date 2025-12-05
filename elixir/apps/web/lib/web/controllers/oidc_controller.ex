@@ -53,11 +53,11 @@ defmodule Web.OIDCController do
   defp handle_authentication_callback(conn, state, code, params) do
     cookie_key = cookie_key(state)
     conn = fetch_cookies(conn, encrypted: [cookie_key])
-    context_type = context_type(params)
 
     with {:ok, cookie} <- Map.fetch(conn.cookies, cookie_key),
          conn = delete_resp_cookie(conn, cookie_key),
          true = Plug.Crypto.secure_compare(cookie["state"], state),
+         context_type = context_type(cookie["params"]),
          %Domain.Account{} = account <- DB.get_account_by_id_or_slug(cookie["account_id"]),
          provider when not is_nil(provider) <- fetch_provider(account, cookie),
          :ok <- validate_context(provider, context_type),
@@ -266,11 +266,12 @@ defmodule Web.OIDCController do
 
   # Context: :client
   # Store a cookie and redirect to client handler which redirects to the final URL based on platform
-  defp signed_in(conn, :client, _account, identity, token, _provider, _tokens, params) do
+  defp signed_in(conn, :client, account, identity, token, _provider, _tokens, params) do
     Redirector.client_signed_in(
       conn,
+      account,
       identity.actor.name,
-      identity.provider_identifier,
+      identity.email || identity.actor.email,
       token,
       params["state"]
     )
@@ -280,34 +281,42 @@ defmodule Web.OIDCController do
   defp context_type(_), do: :browser
 
   defp handle_error(conn, {:error, :not_admin}, params) do
-    account_id = get_in(conn.cookies, [cookie_key(params["state"]), "account_id"]) || ""
+    cookie = conn.cookies[cookie_key(params["state"])] || %{}
+    account_id = cookie["account_id"] || ""
+    original_params = cookie["params"] || %{}
     error = "This action requires admin privileges."
-    path = ~p"/#{account_id}?#{sanitize(params)}"
+    path = ~p"/#{account_id}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)
   end
 
   defp handle_error(conn, {:error, :actor_not_found}, params) do
-    account_id = get_in(conn.cookies, [cookie_key(params["state"]), "account_id"]) || ""
+    cookie = conn.cookies[cookie_key(params["state"])] || %{}
+    account_id = cookie["account_id"] || ""
+    original_params = cookie["params"] || %{}
     error = "Unable to sign you in. Please contact your administrator."
-    path = ~p"/#{account_id}?#{sanitize(params)}"
+    path = ~p"/#{account_id}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)
   end
 
   defp handle_error(conn, {:error, :email_not_verified}, params) do
-    account_id = get_in(conn.cookies, [cookie_key(params["state"]), "account_id"]) || ""
+    cookie = conn.cookies[cookie_key(params["state"])] || %{}
+    account_id = cookie["account_id"] || ""
+    original_params = cookie["params"] || %{}
     error = "Your email address must be verified before signing in."
-    path = ~p"/#{account_id}?#{sanitize(params)}"
+    path = ~p"/#{account_id}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)
   end
 
   defp handle_error(conn, error, params) do
     Logger.warning("OIDC sign-in error: #{inspect(error)}")
-    account_id = get_in(conn.cookies, [cookie_key(params["state"]), "account_id"]) || ""
+    cookie = conn.cookies[cookie_key(params["state"])] || %{}
+    account_id = cookie["account_id"] || ""
+    original_params = cookie["params"] || %{}
     error = "An unexpected error occurred while signing you in. Please try again."
-    path = ~p"/#{account_id}?#{sanitize(params)}"
+    path = ~p"/#{account_id}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)
   end

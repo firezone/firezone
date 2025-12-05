@@ -23,7 +23,7 @@ defmodule API.Client.Views.Resource do
       # android: >= 1.5.8
       # gui: >= 1.5.10
       # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
-      gateway_groups: Views.Site.render_many(resource.sites),
+      gateway_groups: [Views.Site.render(resource.site)],
       can_be_disabled: true
     }
   end
@@ -45,7 +45,7 @@ defmodule API.Client.Views.Resource do
       # android: >= 1.5.8
       # gui: >= 1.5.10
       # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
-      gateway_groups: Views.Site.render_many(resource.sites),
+      gateway_groups: [Views.Site.render(resource.site)],
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
   end
@@ -63,7 +63,7 @@ defmodule API.Client.Views.Resource do
       # android: >= 1.5.8
       # gui: >= 1.5.10
       # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
-      gateway_groups: Views.Site.render_many(resource.sites),
+      gateway_groups: [Views.Site.render(resource.site)],
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
     |> maybe_put_ip_stack(resource)

@@ -92,43 +92,22 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
     def get_default_provider_for_account(account) do
       account_id = account.id
 
-      # Check each provider type for is_default = true
-      # OIDC providers
-      oidc_query =
-        from(p in OIDC.AuthProvider,
+      # Query each provider type separately to find the default
+      providers = [
+        {OIDC.AuthProvider, :oidc},
+        {Google.AuthProvider, :google},
+        {Entra.AuthProvider, :entra},
+        {Okta.AuthProvider, :okta}
+      ]
+
+      Enum.find_value(providers, fn {schema, _type} ->
+        from(p in schema,
           where: p.account_id == ^account_id and p.is_default == true and p.is_disabled == false,
           limit: 1
         )
-
-      # Google providers
-      google_query =
-        from(p in Google.AuthProvider,
-          where: p.account_id == ^account_id and p.is_default == true and p.is_disabled == false,
-          limit: 1
-        )
-
-      # Entra providers
-      entra_query =
-        from(p in Entra.AuthProvider,
-          where: p.account_id == ^account_id and p.is_default == true and p.is_disabled == false,
-          limit: 1
-        )
-
-      # Okta providers
-      okta_query =
-        from(p in Okta.AuthProvider,
-          where: p.account_id == ^account_id and p.is_default == true and p.is_disabled == false,
-          limit: 1
-        )
-
-      # Union all queries to find the default provider across all types
-      from(q in subquery(oidc_query), select: q)
-      |> union(^from(q in subquery(google_query), select: q))
-      |> union(^from(q in subquery(entra_query), select: q))
-      |> union(^from(q in subquery(okta_query), select: q))
-      |> limit(1)
-      |> Safe.unscoped()
-      |> Safe.one()
+        |> Safe.unscoped()
+        |> Safe.one()
+      end)
     end
   end
 end

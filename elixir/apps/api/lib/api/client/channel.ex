@@ -509,10 +509,7 @@ defmodule API.Client.Channel do
              error ->
                error
            end),
-         %Cache.Cacheable.Site{} <-
-           Enum.find(resource.sites, {:error, :not_found}, fn g ->
-             g.id == Ecto.UUID.dump!(gateway.site_id)
-           end),
+         true <- resource.site_id == Ecto.UUID.dump!(gateway.site_id),
          true <- gateway.online? do
       # TODO: Optimization
       {:ok, policy_authorization} =
@@ -583,10 +580,7 @@ defmodule API.Client.Channel do
              error ->
                error
            end),
-         %Cache.Cacheable.Site{} <-
-           Enum.find(resource.sites, {:error, :not_found}, fn g ->
-             g.id == Ecto.UUID.dump!(gateway.site_id)
-           end),
+         true <- resource.site_id == Ecto.UUID.dump!(gateway.site_id),
          true <- gateway.online? do
       # TODO: Optimization
       {:ok, policy_authorization} =
@@ -943,7 +937,6 @@ defmodule API.Client.Channel do
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 
   defp push_resource_updates({:ok, added_resources, removed_ids, cache}, socket) do
-    # TODO: Multi-site resources
     # Currently, connlib doesn't handle resources changing sites, so we need to delete then create.
     # We handle that scenario by sending resource_deleted then resource_created_or_updated, so it's
     # important that deletions are processed first here.

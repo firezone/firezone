@@ -641,6 +641,11 @@ defmodule Domain.Safe do
   def permit(_action, Domain.Policy, :api_client), do: :ok
   def permit(:read, Domain.Policy, _), do: :ok
 
+  # Membership permissions
+  def permit(_action, Domain.Membership, :account_admin_user), do: :ok
+  def permit(_action, Domain.Membership, :api_client), do: :ok
+  def permit(:read, Domain.Membership, _), do: :ok
+
   # Relay permissions
   def permit(_action, Domain.Relay, :account_admin_user), do: :ok
   def permit(:read, Domain.Relay, _), do: :ok
