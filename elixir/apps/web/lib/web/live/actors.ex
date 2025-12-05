@@ -231,7 +231,6 @@ defmodule Web.Actors do
 
           socket =
             socket
-            |> put_flash(:success, "Service account created successfully")
             |> reload_live_table!("actors")
             |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
@@ -242,7 +241,6 @@ defmodule Web.Actors do
 
           socket =
             socket
-            |> put_flash(:success, "Service account created successfully")
             |> reload_live_table!("actors")
             |> assign(created_token: encoded_token)
             |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")

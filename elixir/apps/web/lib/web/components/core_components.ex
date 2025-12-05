@@ -111,16 +111,15 @@ defmodule Web.CoreComponents do
         ><%= render_slot(@inner_block) %></code>
       </div>
 
-      <div class="absolute top-1 end-1">
-        <button
-          type="button"
-          data-copy-to-clipboard-target={"#{@id}-code"}
-          class={~w[
-            absolute end-1 top-1 text-gray-900 hover:bg-gray-100
-            rounded py-2 px-2.5 inline-flex items-center justify-center
-            bg-white border-gray-200 border h-8
-          ]}
-        >
+      <button
+        type="button"
+        data-copy-to-clipboard-target={"#{@id}-code"}
+        class={~w[
+          absolute end-1 top-1 text-gray-900 hover:bg-gray-100
+          rounded py-2 px-2.5 inline-flex items-center justify-center
+          bg-white border-gray-200 border h-8
+        ]}
+      >
           <span id={"#{@id}-default-message"} class="inline-flex items-center">
             <span class="inline-flex items-center">
               <.icon name="hero-clipboard" data-icon class="h-4 w-4 me-1.5" />
@@ -134,7 +133,6 @@ defmodule Web.CoreComponents do
             </span>
           </span>
         </button>
-      </div>
     </div>
     """
   end

@@ -225,25 +225,23 @@ Hooks.CopyClipboard = {
 
     // Remove any existing listeners to prevent duplicates
     if (this.clickHandler) {
-      button.removeEventListener("click", this.clickHandler);
+      button.removeEventListener("click", this.clickHandler, { capture: true });
     }
 
     const targetId = button.getAttribute("data-copy-to-clipboard-target");
     const $defaultMessage = document.getElementById(`${id}-default-message`);
     const $successMessage = document.getElementById(`${id}-success-message`);
 
-    this.clickHandler = async (e) => {
+    this.clickHandler = (e) => {
       e.preventDefault();
       e.stopPropagation();
 
       const targetEl = document.getElementById(targetId);
       if (!targetEl) return;
 
-      const textToCopy = targetEl.innerText || targetEl.textContent;
+      const textToCopy = (targetEl.innerText || targetEl.textContent).trim();
 
-      try {
-        await navigator.clipboard.writeText(textToCopy.trim());
-
+      navigator.clipboard.writeText(textToCopy).then(() => {
         // Show success state
         if ($defaultMessage) $defaultMessage.classList.add("hidden");
         if ($successMessage) $successMessage.classList.remove("hidden");
@@ -253,12 +251,12 @@ Hooks.CopyClipboard = {
           if ($defaultMessage) $defaultMessage.classList.remove("hidden");
           if ($successMessage) $successMessage.classList.add("hidden");
         }, 2000);
-      } catch (err) {
+      }).catch((err) => {
         console.error("Failed to copy:", err);
-      }
+      });
     };
 
-    button.addEventListener("click", this.clickHandler);
+    button.addEventListener("click", this.clickHandler, { capture: true });
   },
 
   destroyed() {
@@ -266,7 +264,7 @@ Hooks.CopyClipboard = {
       "button[data-copy-to-clipboard-target]"
     );
     if (button && this.clickHandler) {
-      button.removeEventListener("click", this.clickHandler);
+      button.removeEventListener("click", this.clickHandler, { capture: true });
     }
   },
 };
