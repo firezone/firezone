@@ -174,65 +174,84 @@ defmodule Web.Actors do
   end
 
   def handle_event("create_user", %{"actor" => attrs}, socket) do
-    attrs = Map.put(attrs, "type", "account_user")
     changeset = changeset(%Domain.Actor{}, attrs)
+    actor_type = get_change(changeset, :type) || :account_user
+    account = socket.assigns.account
 
-    case DB.create(changeset, socket.assigns.subject) do
-      {:ok, actor} ->
-        params = query_params(socket.assigns.uri)
+    # Check billing limits
+    cond do
+      not Domain.Billing.can_create_users?(account) ->
+        {:noreply, put_flash(socket, :error_inline, "User limit reached for your account")}
 
-        socket =
-          socket
-          |> put_flash(:success, "User created successfully")
-          |> reload_live_table!("actors")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+      actor_type == :account_admin_user and not Domain.Billing.can_create_admin_users?(account) ->
+        {:noreply, put_flash(socket, :error_inline, "Admin user limit reached for your account")}
 
-        {:noreply, socket}
+      true ->
+        case DB.create(changeset, socket.assigns.subject) do
+          {:ok, actor} ->
+            params = query_params(socket.assigns.uri)
 
-      {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+            socket =
+              socket
+              |> put_flash(:success, "User created successfully")
+              |> reload_live_table!("actors")
+              |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            {:noreply, assign(socket, form: to_form(changeset))}
+        end
     end
   end
 
   def handle_event("create_service_account", %{"actor" => attrs} = params, socket) do
-    attrs = Map.put(attrs, "type", "service_account")
-    changeset = changeset(%Domain.Actor{type: :service_account}, attrs)
-    token_expiration = Map.get(params, "token_expiration")
+    account = socket.assigns.account
 
-    result =
-      DB.create_service_account_with_token(
-        changeset,
-        token_expiration,
-        socket.assigns.subject,
-        &create_actor_token/3
-      )
+    # Check billing limits
+    if not Domain.Billing.can_create_service_accounts?(account) do
+      {:noreply,
+       put_flash(socket, :error_inline, "Service account limit reached for your account")}
+    else
+      attrs = Map.put(attrs, "type", "service_account")
+      changeset = changeset(%Domain.Actor{type: :service_account}, attrs)
+      token_expiration = Map.get(params, "token_expiration")
 
-    case result do
-      {:ok, {actor, {:ok, nil}}} ->
-        params = query_params(socket.assigns.uri)
+      result =
+        DB.create_service_account_with_token(
+          changeset,
+          token_expiration,
+          socket.assigns.subject,
+          &create_actor_token/3
+        )
 
-        socket =
-          socket
-          |> put_flash(:success, "Service account created successfully")
-          |> reload_live_table!("actors")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+      case result do
+        {:ok, {actor, {:ok, nil}}} ->
+          params = query_params(socket.assigns.uri)
 
-        {:noreply, socket}
+          socket =
+            socket
+            |> put_flash(:success, "Service account created successfully")
+            |> reload_live_table!("actors")
+            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
-      {:ok, {actor, {:ok, {_token, encoded_token}}}} ->
-        params = query_params(socket.assigns.uri)
+          {:noreply, socket}
 
-        socket =
-          socket
-          |> put_flash(:success, "Service account created successfully")
-          |> reload_live_table!("actors")
-          |> assign(created_token: encoded_token)
-          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+        {:ok, {actor, {:ok, {_token, encoded_token}}}} ->
+          params = query_params(socket.assigns.uri)
 
-        {:noreply, socket}
+          socket =
+            socket
+            |> put_flash(:success, "Service account created successfully")
+            |> reload_live_table!("actors")
+            |> assign(created_token: encoded_token)
+            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
-      {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          {:noreply, assign(socket, form: to_form(changeset))}
+      end
     end
   end
 
@@ -596,6 +615,7 @@ defmodule Web.Actors do
     >
       <:title>Add User</:title>
       <:body>
+        <.flash kind={:error_inline} style="inline" flash={@flash} />
         <.form id="user-form" for={@form} phx-change="validate" phx-submit="create_user">
           <div class="space-y-6">
             <.input
@@ -630,12 +650,17 @@ defmodule Web.Actors do
               required
             />
 
-            <.input
+            <div
               :if={@form[:type].value != :service_account}
-              field={@form[:allow_email_otp_sign_in]}
-              label="Allow Email OTP Sign In"
-              type="checkbox"
-            />
+              id="allow-email-otp-checkbox"
+              phx-update="ignore"
+            >
+              <.input
+                field={@form[:allow_email_otp_sign_in]}
+                label="Allow Email OTP Sign In"
+                type="checkbox"
+              />
+            </div>
           </div>
         </.form>
       </:body>
@@ -651,6 +676,7 @@ defmodule Web.Actors do
     >
       <:title>Add Service Account</:title>
       <:body>
+        <.flash kind={:error_inline} style="inline" flash={@flash} />
         <.form
           id="service-account-form"
           for={@form}
@@ -1149,12 +1175,17 @@ defmodule Web.Actors do
               </p>
             </div>
 
-            <.input
+            <div
               :if={@form[:type].value != :service_account}
-              field={@form[:allow_email_otp_sign_in]}
-              label="Allow Email OTP Sign In"
-              type="checkbox"
-            />
+              id="edit-allow-email-otp-checkbox"
+              phx-update="ignore"
+            >
+              <.input
+                field={@form[:allow_email_otp_sign_in]}
+                label="Allow Email OTP Sign In"
+                type="checkbox"
+              />
+            </div>
           </div>
         </.form>
       </:body>

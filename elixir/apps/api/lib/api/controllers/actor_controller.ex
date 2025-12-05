@@ -61,8 +61,12 @@ defmodule API.ActorController do
   # Create a new Actor
   def create(conn, %{"actor" => params}) do
     subject = conn.assigns.subject
+    account = subject.account
+    actor_type = normalize_actor_type(params["type"])
 
-    with changeset <- create_actor_changeset(subject.account, params),
+    # Check billing limits based on actor type
+    with :ok <- check_billing_limits(account, actor_type),
+         changeset <- create_actor_changeset(account, params),
          {:ok, actor} <- DB.insert_actor(changeset, subject) do
       conn
       |> put_status(:created)
@@ -74,6 +78,42 @@ defmodule API.ActorController do
   def create(_conn, _params) do
     {:error, :bad_request}
   end
+
+  defp normalize_actor_type("service_account"), do: :service_account
+  defp normalize_actor_type("account_admin_user"), do: :account_admin_user
+  defp normalize_actor_type("account_user"), do: :account_user
+  defp normalize_actor_type(_), do: nil
+
+  defp check_billing_limits(account, :service_account) do
+    if Domain.Billing.can_create_service_accounts?(account) do
+      :ok
+    else
+      {:error, :service_accounts_limit_reached}
+    end
+  end
+
+  defp check_billing_limits(account, :account_admin_user) do
+    cond do
+      not Domain.Billing.can_create_users?(account) ->
+        {:error, :users_limit_reached}
+
+      not Domain.Billing.can_create_admin_users?(account) ->
+        {:error, :admins_limit_reached}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp check_billing_limits(account, :account_user) do
+    if Domain.Billing.can_create_users?(account) do
+      :ok
+    else
+      {:error, :users_limit_reached}
+    end
+  end
+
+  defp check_billing_limits(_account, _type), do: :ok
 
   operation :update,
     summary: "Update an Actor",
