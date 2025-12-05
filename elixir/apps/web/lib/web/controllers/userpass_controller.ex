@@ -125,12 +125,6 @@ defmodule Web.UserpassController do
     DB.get_actor_by_email(account, email)
   end
 
-  defp handle_error(conn, {:error, :not_found}, params) do
-    error = "You may not use this method to sign in."
-    path = ~p"/#{params["account_id_or_slug"]}"
-    redirect_for_error(conn, error, path)
-  end
-
   defp handle_error(conn, {:error, :invalid_secret}, _params) do
     error = "Invalid username or password."
     path = conn.request_path

@@ -227,7 +227,7 @@ defmodule Domain.Cache.Client do
     Removes all policies, resources, and memberships associated with the given group_id from the cache.
   """
 
-  @spec delete_membership(t(), Membership.t(), Domain.Client.t(), Auth.Subject.t()) ::
+  @spec delete_membership(t(), Domain.Membership.t(), Domain.Client.t(), Auth.Subject.t()) ::
           {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def delete_membership(cache, membership, client, subject) do
@@ -266,7 +266,7 @@ defmodule Domain.Cache.Client do
 
   @spec update_resources_with_site_name(
           t(),
-          Site.t(),
+          Domain.Site.t(),
           Domain.Client.t(),
           Auth.Subject.t()
         ) ::

@@ -295,7 +295,12 @@ defmodule Domain.Safe do
   """
   def insert_all(first_arg, schema_or_source, entries, opts \\ [])
 
-  @spec insert_all(Scoped.t(), atom() | Ecto.Schema.t(), [map() | Keyword.t()], Keyword.t()) ::
+  @spec insert_all(
+          Scoped.t(),
+          atom() | Ecto.Schema.t(),
+          [map() | Keyword.t()] | Ecto.Query.t(),
+          Keyword.t()
+        ) ::
           {integer(), nil | [term()]} | {:error, :unauthorized}
   def insert_all(%Scoped{subject: subject}, schema_or_source, entries, opts) do
     schema = if is_atom(schema_or_source), do: schema_or_source, else: schema_or_source.__struct__
@@ -316,7 +321,12 @@ defmodule Domain.Safe do
     end
   end
 
-  @spec insert_all(Unscoped.t(), atom() | Ecto.Schema.t(), [map() | Keyword.t()], Keyword.t()) ::
+  @spec insert_all(
+          Unscoped.t(),
+          atom() | Ecto.Schema.t(),
+          [map() | Keyword.t()] | Ecto.Query.t(),
+          Keyword.t()
+        ) ::
           {integer(), nil | [term()]}
   def insert_all(%Unscoped{}, schema_or_source, entries, opts) do
     Repo.insert_all(schema_or_source, entries, opts)

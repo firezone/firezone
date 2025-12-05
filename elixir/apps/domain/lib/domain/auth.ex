@@ -61,10 +61,6 @@ defmodule Domain.Auth do
     "." <> Plug.Crypto.sign(key_base, salt <> to_string(type), body)
   end
 
-  defp fetch_config! do
-    Domain.Config.fetch_env!(:domain, Domain.Tokens)
-  end
-
   # Token Management
 
   def create_token(attrs) do
@@ -213,14 +209,8 @@ defmodule Domain.Auth do
       {:error, :invalid_or_expired_token} ->
         {:error, :unauthorized}
 
-      {:error, :invalid_user_agent} ->
-        {:error, :unauthorized}
-
       {:error, :not_found} ->
         {:error, :unauthorized}
-
-      {:error, changeset} ->
-        {:error, changeset}
     end
   end
 
@@ -239,6 +229,10 @@ defmodule Domain.Auth do
          auth_provider_id: token.auth_provider_id
        }}
     end
+  end
+
+  defp fetch_config! do
+    Domain.Config.fetch_env!(:domain, Domain.Tokens)
   end
 
   defmodule DB do

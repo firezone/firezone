@@ -175,8 +175,6 @@ defmodule Domain.Billing.EventHandler do
     case update_account_by_stripe_customer_id(customer_id, attrs) do
       {:ok, _account} -> :ok
       {:error, :customer_not_provisioned} -> create_account_from_stripe_customer(customer_data)
-      # TODO: Find out when this would happen and why
-      {:error, :not_found} -> :ok
       {:error, reason} -> log_and_return_error("sync account from Stripe", customer_id, reason)
     end
   end
