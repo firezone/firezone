@@ -216,6 +216,18 @@ jobs:
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
 
+      - name: Upload to preview repository
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          az storage blob upload \
+            --container-name binaries \
+            --name "windows-gui-client/preview/${{ matrix.arch.shortname }}" \
+            --file "${{ env.ARTIFACT_SRC }}.msi" \
+            --overwrite true \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+
   regenerate-apt-index:
     needs: build-gui
     if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
