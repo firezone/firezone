@@ -445,17 +445,15 @@ defmodule Web.Groups do
                   <.relative_datetime datetime={@group.last_synced_at} />
                 </p>
               </div>
-              <%= if @group.idp_id && get_idp_id(@group.idp_id) do %>
-                <div class="col-span-2">
-                  <p class="text-xs font-medium text-neutral-500 uppercase">Identity Provider ID</p>
-                  <p
-                    class="text-sm text-neutral-900 font-mono truncate"
-                    title={get_idp_id(@group.idp_id)}
-                  >
-                    {get_idp_id(@group.idp_id)}
-                  </p>
-                </div>
-              <% end %>
+              <div :if={@group.idp_id && get_idp_id(@group.idp_id)}>
+                <p class="text-xs font-medium text-neutral-500 uppercase">Identity Provider ID</p>
+                <p
+                  class="text-sm text-neutral-900 font-mono truncate"
+                  title={get_idp_id(@group.idp_id)}
+                >
+                  {get_idp_id(@group.idp_id)}
+                </p>
+              </div>
             </div>
           </div>
 

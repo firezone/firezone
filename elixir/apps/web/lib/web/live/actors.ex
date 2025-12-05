@@ -810,18 +810,21 @@ defmodule Web.Actors do
                     <.relative_datetime datetime={@actor.updated_at} />
                   </p>
                 </div>
-                <div :if={@actor.type != :service_account} class="col-span-2">
+                <div :if={@actor.type != :service_account}>
                   <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Email OTP Sign In</p>
                   <div class="flex items-center gap-2">
-                    <%= if @actor.allow_email_otp_sign_in do %>
-                      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                        <.icon name="hero-check-circle" class="w-3.5 h-3.5 mr-1" /> Allowed
-                      </span>
-                    <% else %>
-                      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-600">
-                        <.icon name="hero-no-symbol" class="w-3.5 h-3.5 mr-1" /> Not Allowed
-                      </span>
-                    <% end %>
+                    <span
+                      :if={@actor.allow_email_otp_sign_in}
+                      class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800"
+                    >
+                      <.icon name="hero-check-circle" class="w-3.5 h-3.5 mr-1" /> Allowed
+                    </span>
+                    <span
+                      :if={!@actor.allow_email_otp_sign_in}
+                      class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-600"
+                    >
+                      <.icon name="hero-no-symbol" class="w-3.5 h-3.5 mr-1" /> Not Allowed
+                    </span>
                   </div>
                 </div>
               </div>
@@ -964,91 +967,80 @@ defmodule Web.Actors do
                             </div>
                           </div>
 
-                          <%= if identity.email do %>
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">Email</span>
-                              <div class="text-neutral-900 truncate" title={identity.email}>
-                                {identity.email}
-                              </div>
+                          <div :if={identity.email}>
+                            <span class="text-xs uppercase text-neutral-500">Email</span>
+                            <div class="text-neutral-900 truncate" title={identity.email}>
+                              {identity.email}
                             </div>
-                          <% end %>
+                          </div>
 
-                          <%= if identity.name do %>
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">Name</span>
-                              <div class="text-neutral-900 truncate" title={identity.name}>
-                                {identity.name}
-                              </div>
+                          <div :if={identity.name}>
+                            <span class="text-xs uppercase text-neutral-500">Name</span>
+                            <div class="text-neutral-900 truncate" title={identity.name}>
+                              {identity.name}
                             </div>
-                          <% end %>
+                          </div>
 
-                          <%= if identity.given_name do %>
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">Given Name</span>
-                              <div class="text-neutral-900 truncate" title={identity.given_name}>
-                                {identity.given_name}
-                              </div>
+                          <div :if={identity.given_name}>
+                            <span class="text-xs uppercase text-neutral-500">Given Name</span>
+                            <div class="text-neutral-900 truncate" title={identity.given_name}>
+                              {identity.given_name}
                             </div>
-                          <% end %>
+                          </div>
 
-                          <%= if identity.family_name do %>
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">Family Name</span>
-                              <div class="text-neutral-900 truncate" title={identity.family_name}>
-                                {identity.family_name}
-                              </div>
+                          <div :if={identity.family_name}>
+                            <span class="text-xs uppercase text-neutral-500">Family Name</span>
+                            <div class="text-neutral-900 truncate" title={identity.family_name}>
+                              {identity.family_name}
                             </div>
-                          <% end %>
+                          </div>
 
-                          <%= if identity.middle_name do %>
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">Middle Name</span>
-                              <div class="text-neutral-900 truncate" title={identity.middle_name}>
-                                {identity.middle_name}
-                              </div>
+                          <div :if={identity.middle_name}>
+                            <span class="text-xs uppercase text-neutral-500">Middle Name</span>
+                            <div class="text-neutral-900 truncate" title={identity.middle_name}>
+                              {identity.middle_name}
                             </div>
-                          <% end %>
+                          </div>
 
-                          <%= if identity.nickname do %>
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">Nickname</span>
-                              <div class="text-neutral-900 truncate" title={identity.nickname}>
-                                {identity.nickname}
-                              </div>
+                          <div :if={identity.nickname}>
+                            <span class="text-xs uppercase text-neutral-500">Nickname</span>
+                            <div class="text-neutral-900 truncate" title={identity.nickname}>
+                              {identity.nickname}
                             </div>
-                          <% end %>
+                          </div>
 
-                          <%= if identity.preferred_username do %>
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">
-                                Preferred Username
-                              </span>
-                              <div
-                                class="text-neutral-900 truncate"
-                                title={identity.preferred_username}
-                              >
-                                {identity.preferred_username}
-                              </div>
+                          <div :if={identity.preferred_username}>
+                            <span class="text-xs uppercase text-neutral-500">
+                              Preferred Username
+                            </span>
+                            <div
+                              class="text-neutral-900 truncate"
+                              title={identity.preferred_username}
+                            >
+                              {identity.preferred_username}
                             </div>
-                          <% end %>
+                          </div>
 
-                          <%= if identity.profile do %>
-                            <div class="col-span-2">
-                              <span class="text-xs uppercase text-neutral-500">Profile</span>
-                              <div class="text-neutral-900 truncate" title={identity.profile}>
-                                {identity.profile}
-                              </div>
+                          <div :if={identity.profile}>
+                            <span class="text-xs uppercase text-neutral-500">Profile</span>
+                            <div class="text-neutral-900 truncate" title={identity.profile}>
+                              {identity.profile}
                             </div>
-                          <% end %>
+                          </div>
 
-                          <%= if identity.last_synced_at do %>
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">Last Synced</span>
-                              <div class="text-neutral-900">
-                                <.relative_datetime datetime={identity.last_synced_at} />
-                              </div>
+                          <div :if={identity.last_synced_at}>
+                            <span class="text-xs uppercase text-neutral-500">Last Synced</span>
+                            <div class="text-neutral-900">
+                              <.relative_datetime datetime={identity.last_synced_at} />
                             </div>
-                          <% end %>
+                          </div>
+
+                          <div :if={identity.updated_at}>
+                            <span class="text-xs uppercase text-neutral-500">Updated</span>
+                            <div class="text-neutral-900">
+                              <.relative_datetime datetime={identity.updated_at} />
+                            </div>
+                          </div>
                         </div>
                       </div>
 

@@ -596,7 +596,7 @@ defmodule Domain.Okta.Sync do
       )
       INSERT INTO external_identities (
         id, actor_id, issuer, idp_id, directory_id, email, name, given_name, family_name, preferred_username,
-        last_synced_at, account_id, inserted_at
+        last_synced_at, account_id, inserted_at, updated_at
       )
       SELECT
         COALESCE(ei.id, uuid_generate_v4()),
@@ -611,6 +611,7 @@ defmodule Domain.Okta.Sync do
         aam.preferred_username,
         $#{last_synced_at},
         $#{account_id},
+        $#{last_synced_at},
         $#{last_synced_at}
       FROM all_actor_mappings aam
       LEFT JOIN existing_identities ei ON ei.idp_id = aam.idp_id
@@ -622,7 +623,8 @@ defmodule Domain.Okta.Sync do
         given_name = EXCLUDED.given_name,
         family_name = EXCLUDED.family_name,
         preferred_username = EXCLUDED.preferred_username,
-        last_synced_at = EXCLUDED.last_synced_at
+        last_synced_at = EXCLUDED.last_synced_at,
+        updated_at = EXCLUDED.updated_at
       WHERE external_identities.last_synced_at IS NULL
         OR external_identities.last_synced_at < EXCLUDED.last_synced_at
       RETURNING 1

@@ -29,7 +29,7 @@ defmodule Domain.ExternalIdentity do
     belongs_to :account, Domain.Account
     belongs_to :directory, Domain.Directory
 
-    timestamps(updated_at: false)
+    timestamps()
   end
 
   def changeset(changeset) do

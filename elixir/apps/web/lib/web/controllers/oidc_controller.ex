@@ -143,9 +143,11 @@ defmodule Web.OIDCController do
       |> Map.put("issuer", issuer)
       |> Map.put("idp_id", idp_id)
 
-    with %{valid?: true} <- validate_upsert_attrs(attrs) do
-      DB.upsert_identity(account.id, email, email_verified, issuer, idp_id, profile_attrs)
+    with true <- email_verified,
+         %{valid?: true} <- validate_upsert_attrs(attrs) do
+      DB.upsert_identity(account.id, email, issuer, idp_id, profile_attrs)
     else
+      false -> {:error, :email_not_verified}
       changeset -> {:error, changeset}
     end
   end
@@ -293,6 +295,14 @@ defmodule Web.OIDCController do
     redirect_for_error(conn, error, path)
   end
 
+  defp handle_error(conn, {:error, :email_not_verified}, params) do
+    account_id = get_in(conn.cookies, [cookie_key(params["state"]), "account_id"]) || ""
+    error = "Your email address must be verified before signing in."
+    path = ~p"/#{account_id}?#{sanitize(params)}"
+
+    redirect_for_error(conn, error, path)
+  end
+
   defp handle_error(conn, error, params) do
     Logger.warning("OIDC sign-in error: #{inspect(error)}")
     account_id = get_in(conn.cookies, [cookie_key(params["state"]), "account_id"]) || ""
@@ -339,7 +349,7 @@ defmodule Web.OIDCController do
       |> Safe.one()
     end
 
-    def upsert_identity(account_id, email, email_verified, issuer, idp_id, %{} = profile_attrs) do
+    def upsert_identity(account_id, email, issuer, idp_id, %{} = profile_attrs) do
       now = DateTime.utc_now()
 
       profile_fields = [
@@ -351,7 +361,8 @@ defmodule Web.OIDCController do
         :nickname,
         :preferred_username,
         :profile,
-        :picture
+        :picture,
+        :updated_at
       ]
 
       # Convert account_id to the DB (binary) format expected by uuid/binary_id columns
@@ -381,8 +392,7 @@ defmodule Web.OIDCController do
           where:
             a.account_id == ^account_id_db and
               a.email == ^email and
-              is_nil(a.disabled_at) and
-              ^email_verified == true,
+              is_nil(a.disabled_at),
           select: %{id: a.id},
           limit: 1
         )
@@ -422,7 +432,8 @@ defmodule Web.OIDCController do
             preferred_username: ^profile_values.preferred_username,
             profile: ^profile_values.profile,
             picture: ^profile_values.picture,
-            inserted_at: ^now
+            inserted_at: ^now,
+            updated_at: ^now
           }
         )
 

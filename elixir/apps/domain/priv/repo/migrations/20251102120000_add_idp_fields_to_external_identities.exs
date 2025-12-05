@@ -7,6 +7,7 @@ defmodule Domain.Repo.Migrations.AddIdpFieldsToExternalIdentities do
       add(:directory_id, :binary_id)
       add(:idp_id, :text)
       add(:last_synced_at, :utc_datetime_usec)
+      add(:updated_at, :utc_datetime_usec)
     end
 
     create(
