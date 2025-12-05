@@ -1,4 +1,4 @@
-defmodule Domain.Telemetry.SyncErrorNotification do
+defmodule Domain.Workers.SyncErrorNotification do
   @moduledoc """
   Oban workers for sending directory sync error notifications.
 

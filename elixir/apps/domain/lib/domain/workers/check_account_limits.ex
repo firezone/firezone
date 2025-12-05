@@ -1,7 +1,7 @@
-defmodule Domain.Billing.Workers.CheckAccountLimits do
+defmodule Domain.Workers.CheckAccountLimits do
   @moduledoc """
   Oban worker that checks account limits and updates warning messages.
-  Runs every 5 minutes.
+  Runs every 30 minutes.
   """
 
   use Oban.Worker,
@@ -12,49 +12,60 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
   alias Domain.Billing
   alias __MODULE__.DB
 
+  @batch_size 100
+
   @impl Oban.Worker
   def perform(_job) do
-    DB.all_active_accounts()
-    |> Enum.each(fn account ->
-      # TODO: Slow DB queries
-      # These can be slow if an index-only scan is not possible.
-      # Consider using a trigger function and counter fields to maintain an accurate
-      # count of account limits.
-      if Billing.enabled?() and Billing.account_provisioned?(account) do
-        []
-        |> check_users_limit(account)
-        |> check_seats_limit(account)
-        |> check_service_accounts_limit(account)
-        |> check_sites_limit(account)
-        |> check_admin_limit(account)
-        |> case do
-          [] ->
-            {:ok, _account} =
-              update_account_warning(account, %{
-                warning: nil,
-                warning_delivery_attempts: 0,
-                warning_last_sent_at: nil
-              })
+    process_accounts_in_batches(nil)
+  end
 
-            :ok
-
-          limits_exceeded ->
-            warning =
-              "You have exceeded the following limits: #{Enum.join(limits_exceeded, ", ")}"
-
-            {:ok, _account} =
-              update_account_warning(account, %{
-                warning: warning,
-                warning_delivery_attempts: 0,
-                warning_last_sent_at: DateTime.utc_now()
-              })
-
-            :ok
-        end
-      else
+  defp process_accounts_in_batches(cursor) do
+    case DB.fetch_active_accounts_batch(cursor, @batch_size) do
+      [] ->
         :ok
+
+      accounts ->
+        Enum.each(accounts, &check_account_limits/1)
+        last_account = List.last(accounts)
+        process_accounts_in_batches(last_account.id)
+    end
+  end
+
+  defp check_account_limits(account) do
+    if Billing.account_provisioned?(account) do
+      []
+      |> check_users_limit(account)
+      |> check_seats_limit(account)
+      |> check_service_accounts_limit(account)
+      |> check_sites_limit(account)
+      |> check_admin_limit(account)
+      |> case do
+        [] ->
+          {:ok, _account} =
+            update_account_warning(account, %{
+              warning: nil,
+              warning_delivery_attempts: 0,
+              warning_last_sent_at: nil
+            })
+
+          :ok
+
+        limits_exceeded ->
+          warning =
+            "You have exceeded the following limits: #{Enum.join(limits_exceeded, ", ")}"
+
+          {:ok, _account} =
+            update_account_warning(account, %{
+              warning: warning,
+              warning_delivery_attempts: 0,
+              warning_last_sent_at: DateTime.utc_now()
+            })
+
+          :ok
       end
-    end)
+    else
+      :ok
+    end
   end
 
   defp check_users_limit(limits_exceeded, account) do
@@ -122,11 +133,19 @@ defmodule Domain.Billing.Workers.CheckAccountLimits do
     alias Domain.Actor
     alias Domain.Client
 
-    def all_active_accounts do
-      from(a in Account, where: is_nil(a.disabled_at))
+    def fetch_active_accounts_batch(cursor, limit) do
+      from(a in Account,
+        where: is_nil(a.disabled_at),
+        order_by: [asc: a.id],
+        limit: ^limit
+      )
+      |> maybe_after_cursor(cursor)
       |> Safe.unscoped()
       |> Safe.all()
     end
+
+    defp maybe_after_cursor(query, nil), do: query
+    defp maybe_after_cursor(query, cursor), do: where(query, [a], a.id > ^cursor)
 
     def update(changeset) do
       changeset

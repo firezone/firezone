@@ -14,6 +14,7 @@ defmodule Domain.Billing do
 
   def init(_opts) do
     children = [
+      # TODO: Use Req and remove this Supervisor
       APIClient
     ]
 

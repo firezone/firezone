@@ -167,34 +167,34 @@ if config_env() == :prod do
          {"0 */2 * * *", Domain.Okta.Scheduler},
 
          # Directory sync error notifications - daily check for low error count
-         {"0 9 * * *", Domain.Telemetry.SyncErrorNotification,
+         {"0 9 * * *", Domain.Workers.SyncErrorNotification,
           args: %{provider: "entra", frequency: "daily"}},
-         {"0 9 * * *", Domain.Telemetry.SyncErrorNotification,
+         {"0 9 * * *", Domain.Workers.SyncErrorNotification,
           args: %{provider: "google", frequency: "daily"}},
-         {"0 9 * * *", Domain.Telemetry.SyncErrorNotification,
+         {"0 9 * * *", Domain.Workers.SyncErrorNotification,
           args: %{provider: "okta", frequency: "daily"}},
 
          # Directory sync error notifications - every 3 days for medium error count
-         {"0 9 */3 * *", Domain.Telemetry.SyncErrorNotification,
+         {"0 9 */3 * *", Domain.Workers.SyncErrorNotification,
           args: %{provider: "entra", frequency: "three_days"}},
-         {"0 9 */3 * *", Domain.Telemetry.SyncErrorNotification,
+         {"0 9 */3 * *", Domain.Workers.SyncErrorNotification,
           args: %{provider: "google", frequency: "three_days"}},
-         {"0 9 */3 * *", Domain.Telemetry.SyncErrorNotification,
+         {"0 9 */3 * *", Domain.Workers.SyncErrorNotification,
           args: %{provider: "okta", frequency: "three_days"}},
 
          # Directory sync error notifications - weekly for high error count
-         {"0 9 * * 1", Domain.Telemetry.SyncErrorNotification,
+         {"0 9 * * 1", Domain.Workers.SyncErrorNotification,
           args: %{provider: "entra", frequency: "weekly"}},
-         {"0 9 * * 1", Domain.Telemetry.SyncErrorNotification,
+         {"0 9 * * 1", Domain.Workers.SyncErrorNotification,
           args: %{provider: "google", frequency: "weekly"}},
-         {"0 9 * * 1", Domain.Telemetry.SyncErrorNotification,
+         {"0 9 * * 1", Domain.Workers.SyncErrorNotification,
           args: %{provider: "okta", frequency: "weekly"}},
 
          # Check account limits every 30 minutes
-         {"*/30 * * * *", Domain.Billing.Workers.CheckAccountLimits},
+         {"*/30 * * * *", Domain.Workers.CheckAccountLimits},
 
          # Check for outdated gateways - Sundays at 9am
-         {"0 9 * * 0", Domain.Notifications.Workers.OutdatedGateways},
+         {"0 9 * * 0", Domain.Workers.OutdatedGateways},
 
          # Delete expired tokens every 5 minutes
          {"*/5 * * * *", Domain.Workers.DeleteExpiredTokens}

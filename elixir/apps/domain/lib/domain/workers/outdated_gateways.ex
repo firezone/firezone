@@ -1,4 +1,4 @@
-defmodule Domain.Notifications.Workers.OutdatedGateways do
+defmodule Domain.Workers.OutdatedGateways do
   @moduledoc """
   Oban worker that checks for outdated gateways and sends notifications.
   Scheduled via cron: every minute in dev, Sundays at 9am in prod.
