@@ -413,10 +413,9 @@ defmodule Web.Sites.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Confirm deletion of Site</:dialog_title>
+          <:dialog_title>Delete Site</:dialog_title>
           <:dialog_content>
-            Are you sure you want to delete this Site? This will <strong>immediately</strong>
-            disconnect all associated Gateways.
+            <.deletion_stats site={@site} subject={@subject} />
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Site
@@ -477,6 +476,36 @@ defmodule Web.Sites.Show do
       class="w-4 h-4 text-primary-500"
       title="New version available"
     />
+    """
+  end
+
+  defp deletion_stats(assigns) do
+    stats = DB.count_site_deletion_stats(assigns.site, assigns.subject)
+    total = stats.gateways + stats.tokens + stats.resources
+    assigns = assign(assigns, stats: stats, total: total)
+
+    ~H"""
+    <div>
+      <p class="text-neutral-700">
+        Are you sure you want to delete <strong>{@site.name}</strong>?
+      </p>
+      <%= if @total > 0 do %>
+        <p class="mt-3 text-neutral-700">
+          This will permanently delete:
+        </p>
+        <ul class="list-disc list-inside mt-2 text-neutral-700 space-y-1">
+          <li :if={@stats.gateways > 0}>
+            <strong>{@stats.gateways}</strong> {ngettext("gateway", "gateways", @stats.gateways)}
+          </li>
+          <li :if={@stats.tokens > 0}>
+            <strong>{@stats.tokens}</strong> {ngettext("token", "tokens", @stats.tokens)}
+          </li>
+          <li :if={@stats.resources > 0}>
+            <strong>{@stats.resources}</strong> {ngettext("resource", "resources", @stats.resources)}
+          </li>
+        </ul>
+      <% end %>
+    </div>
     """
   end
 
@@ -545,6 +574,25 @@ defmodule Web.Sites.Show do
     def delete_site(site, subject) do
       Safe.scoped(site, subject)
       |> Safe.delete()
+    end
+
+    def count_site_deletion_stats(site, subject) do
+      gateways =
+        from(g in Gateway, where: g.site_id == ^site.id)
+        |> Safe.scoped(subject)
+        |> Safe.aggregate(:count)
+
+      tokens =
+        from(t in Domain.Token, where: t.site_id == ^site.id)
+        |> Safe.scoped(subject)
+        |> Safe.aggregate(:count)
+
+      resources =
+        from(r in Domain.Resource, where: r.site_id == ^site.id)
+        |> Safe.scoped(subject)
+        |> Safe.aggregate(:count)
+
+      %{gateways: gateways, tokens: tokens, resources: resources}
     end
 
     def get_internet_resource!(subject) do

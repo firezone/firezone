@@ -788,11 +788,15 @@ defmodule Web.Actors do
               <div class="grid grid-cols-2 gap-4 text-sm flex-1">
                 <div>
                   <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Actor ID</p>
-                  <p class="text-sm text-neutral-900 font-mono break-all">{@actor.id}</p>
+                  <p class="text-sm text-neutral-900 font-mono truncate" title={@actor.id}>
+                    {@actor.id}
+                  </p>
                 </div>
                 <div :if={@actor.email}>
                   <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Email</p>
-                  <p class="text-sm text-neutral-900 break-all">{@actor.email}</p>
+                  <p class="text-sm text-neutral-900 truncate" title={@actor.email}>
+                    {@actor.email}
+                  </p>
                 </div>
                 <div>
                   <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Created</p>
@@ -927,12 +931,15 @@ defmodule Web.Actors do
                   <div :for={identity <- @identities} class="p-4 hover:bg-neutral-50">
                     <div class="flex items-start justify-between gap-4">
                       <div class="flex-1 space-y-3">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 min-w-0">
                           <.provider_icon
                             type={provider_type_from_identity(identity)}
-                            class="w-5 h-5"
+                            class="w-5 h-5 flex-shrink-0"
                           />
-                          <div class="font-medium text-sm text-neutral-900">
+                          <div
+                            class="font-medium text-sm text-neutral-900 truncate"
+                            title={identity.issuer}
+                          >
                             {identity.issuer}
                           </div>
                         </div>
@@ -940,55 +947,74 @@ defmodule Web.Actors do
                         <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                           <div :if={identity.directory_id}>
                             <span class="text-xs uppercase text-neutral-500">Directory</span>
-                            <div class="text-neutral-900">{identity.directory_name}</div>
+                            <div class="text-neutral-900 truncate" title={identity.directory_name}>
+                              {identity.directory_name}
+                            </div>
                           </div>
 
                           <div>
                             <span class="text-xs uppercase text-neutral-500">
                               Identity Provider ID
                             </span>
-                            <div class="text-neutral-900">{extract_idp_id(identity.idp_id)}</div>
+                            <div
+                              class="text-neutral-900 truncate"
+                              title={extract_idp_id(identity.idp_id)}
+                            >
+                              {extract_idp_id(identity.idp_id)}
+                            </div>
                           </div>
 
                           <%= if identity.email do %>
                             <div>
                               <span class="text-xs uppercase text-neutral-500">Email</span>
-                              <div class="text-neutral-900">{identity.email}</div>
+                              <div class="text-neutral-900 truncate" title={identity.email}>
+                                {identity.email}
+                              </div>
                             </div>
                           <% end %>
 
                           <%= if identity.name do %>
                             <div>
                               <span class="text-xs uppercase text-neutral-500">Name</span>
-                              <div class="text-neutral-900">{identity.name}</div>
+                              <div class="text-neutral-900 truncate" title={identity.name}>
+                                {identity.name}
+                              </div>
                             </div>
                           <% end %>
 
                           <%= if identity.given_name do %>
                             <div>
                               <span class="text-xs uppercase text-neutral-500">Given Name</span>
-                              <div class="text-neutral-900">{identity.given_name}</div>
+                              <div class="text-neutral-900 truncate" title={identity.given_name}>
+                                {identity.given_name}
+                              </div>
                             </div>
                           <% end %>
 
                           <%= if identity.family_name do %>
                             <div>
                               <span class="text-xs uppercase text-neutral-500">Family Name</span>
-                              <div class="text-neutral-900">{identity.family_name}</div>
+                              <div class="text-neutral-900 truncate" title={identity.family_name}>
+                                {identity.family_name}
+                              </div>
                             </div>
                           <% end %>
 
                           <%= if identity.middle_name do %>
                             <div>
                               <span class="text-xs uppercase text-neutral-500">Middle Name</span>
-                              <div class="text-neutral-900">{identity.middle_name}</div>
+                              <div class="text-neutral-900 truncate" title={identity.middle_name}>
+                                {identity.middle_name}
+                              </div>
                             </div>
                           <% end %>
 
                           <%= if identity.nickname do %>
                             <div>
                               <span class="text-xs uppercase text-neutral-500">Nickname</span>
-                              <div class="text-neutral-900">{identity.nickname}</div>
+                              <div class="text-neutral-900 truncate" title={identity.nickname}>
+                                {identity.nickname}
+                              </div>
                             </div>
                           <% end %>
 
@@ -997,14 +1023,21 @@ defmodule Web.Actors do
                               <span class="text-xs uppercase text-neutral-500">
                                 Preferred Username
                               </span>
-                              <div class="text-neutral-900">{identity.preferred_username}</div>
+                              <div
+                                class="text-neutral-900 truncate"
+                                title={identity.preferred_username}
+                              >
+                                {identity.preferred_username}
+                              </div>
                             </div>
                           <% end %>
 
                           <%= if identity.profile do %>
                             <div class="col-span-2">
                               <span class="text-xs uppercase text-neutral-500">Profile</span>
-                              <div class="text-neutral-900 break-all">{identity.profile}</div>
+                              <div class="text-neutral-900 truncate" title={identity.profile}>
+                                {identity.profile}
+                              </div>
                             </div>
                           <% end %>
 
@@ -1061,9 +1094,15 @@ defmodule Web.Actors do
                       <div class="flex items-start justify-between gap-4">
                         <div class="flex-1 space-y-3">
                           <%= if token.auth_provider_name do %>
-                            <div class="flex items-center gap-2">
-                              <.provider_icon type={token.auth_provider_type} class="w-5 h-5" />
-                              <div class="font-medium text-sm text-neutral-900">
+                            <div class="flex items-center gap-2 min-w-0">
+                              <.provider_icon
+                                type={token.auth_provider_type}
+                                class="w-5 h-5 flex-shrink-0"
+                              />
+                              <div
+                                class="font-medium text-sm text-neutral-900 truncate"
+                                title={token.auth_provider_name}
+                              >
                                 {token.auth_provider_name}
                               </div>
                             </div>
@@ -1083,13 +1122,15 @@ defmodule Web.Actors do
 
                             <div>
                               <span class="text-xs uppercase text-neutral-500">Location</span>
-                              <div class="text-neutral-900 flex items-center gap-2">
+                              <div class="text-neutral-900 flex items-center gap-2 min-w-0">
                                 <%= if token_location(token) do %>
                                   <.icon
                                     name={token_user_agent_icon(token.last_seen_user_agent)}
                                     class="w-4 h-4 flex-shrink-0"
                                   />
-                                  <span>{token_location(token)}</span>
+                                  <span class="truncate" title={token_location(token)}>
+                                    {token_location(token)}
+                                  </span>
                                 <% else %>
                                   -
                                 <% end %>

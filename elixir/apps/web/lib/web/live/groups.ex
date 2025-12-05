@@ -417,7 +417,9 @@ defmodule Web.Groups do
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <p class="text-xs font-medium text-neutral-500 uppercase">ID</p>
-                <p class="text-sm text-neutral-900 font-mono">{@group.id}</p>
+                <p class="text-sm text-neutral-900 font-mono truncate" title={@group.id}>
+                  {@group.id}
+                </p>
               </div>
               <div>
                 <p class="text-xs font-medium text-neutral-500 uppercase">Created</p>
@@ -427,7 +429,7 @@ defmodule Web.Groups do
               </div>
               <div>
                 <p class="text-xs font-medium text-neutral-500 uppercase">Directory</p>
-                <p class="text-sm text-neutral-900">
+                <p class="text-sm text-neutral-900 truncate" title={@group.directory_name}>
                   {@group.directory_name}
                 </p>
               </div>
@@ -446,7 +448,10 @@ defmodule Web.Groups do
               <%= if @group.idp_id && get_idp_id(@group.idp_id) do %>
                 <div class="col-span-2">
                   <p class="text-xs font-medium text-neutral-500 uppercase">Identity Provider ID</p>
-                  <p class="text-sm text-neutral-900 font-mono break-all">
+                  <p
+                    class="text-sm text-neutral-900 font-mono truncate"
+                    title={get_idp_id(@group.idp_id)}
+                  >
                     {get_idp_id(@group.idp_id)}
                   </p>
                 </div>
