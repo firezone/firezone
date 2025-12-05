@@ -823,7 +823,7 @@ impl ClientState {
         let trigger_name = trigger.name();
 
         if !self.resources_by_id.contains_key(&rid) {
-            tracing::debug!("Resource not found, skipping connection intent");
+            tracing::debug!(%rid, "Resource not found, skipping connection intent");
             return;
         }
 
