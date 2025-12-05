@@ -290,6 +290,33 @@ defmodule Domain.Cache.Gateway do
       end
     end
 
+    def is_everyone_group?(group_id, account_id) do
+      from(g in Domain.Group,
+        where:
+          g.id == ^group_id and
+            g.type == :managed and
+            is_nil(g.idp_id) and
+            g.name == "Everyone" and
+            g.account_id == ^account_id
+      )
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
+
+    def fetch_membership_id_or_nil_for_everyone(actor_id, group_id, account_id) do
+      case fetch_membership_by_actor_id_and_group_id(actor_id, group_id) do
+        {:ok, membership} ->
+          {:ok, membership.id}
+
+        {:error, :not_found} ->
+          if is_everyone_group?(group_id, account_id) do
+            {:ok, nil}
+          else
+            {:error, :membership_not_found}
+          end
+      end
+    end
+
     def all_policies_in_site_for_resource_id_and_actor_id!(
           account_id,
           site_id,
@@ -344,10 +371,12 @@ defmodule Domain.Cache.Gateway do
                token,
                policy_authorization.expires_at
              ),
-           {:ok, membership} <-
-             fetch_membership_by_actor_id_and_group_id(
+           # Membership is optional only for "Everyone" group policies
+           {:ok, membership_id} <-
+             fetch_membership_id_or_nil_for_everyone(
                client.actor_id,
-               policy.group_id
+               policy.group_id,
+               policy_authorization.account_id
              ),
            {:ok, new_policy_authorization} <-
              create_policy_authorization_changeset(%{
@@ -356,7 +385,7 @@ defmodule Domain.Cache.Gateway do
                client_id: policy_authorization.client_id,
                gateway_id: policy_authorization.gateway_id,
                resource_id: policy_authorization.resource_id,
-               membership_id: membership.id,
+               membership_id: membership_id,
                account_id: policy_authorization.account_id,
                client_remote_ip: client.last_seen_remote_ip,
                client_user_agent: client.last_seen_user_agent,
@@ -453,7 +482,7 @@ defmodule Domain.Cache.Gateway do
 
       %Domain.PolicyAuthorization{}
       |> cast(attrs, fields)
-      |> validate_required(fields)
+      |> validate_required(fields -- [:membership_id])
       |> Domain.PolicyAuthorization.changeset()
     end
   end

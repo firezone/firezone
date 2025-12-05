@@ -122,7 +122,8 @@ defmodule Domain.Policies.Evaluator do
           operator: :is,
           values: ["true"]
         },
-        %Client{verified_at: verified_at}
+        %Client{verified_at: verified_at},
+        _auth_provider_id
       ) do
     if is_nil(verified_at) do
       :error
@@ -137,7 +138,8 @@ defmodule Domain.Policies.Evaluator do
           operator: :is,
           values: _other
         },
-        %Client{}
+        %Client{},
+        _auth_provider_id
       ) do
     {:ok, nil}
   end
@@ -148,7 +150,8 @@ defmodule Domain.Policies.Evaluator do
           operator: :is_in_day_of_week_time_ranges,
           values: values
         },
-        %Client{}
+        %Client{},
+        _auth_provider_id
       ) do
     case find_day_of_the_week_time_range(values, DateTime.utc_now()) do
       nil -> :error

@@ -38,14 +38,23 @@ defmodule API.Gateway.Channel do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
-    :ok = Presence.Gateways.connect(socket.assigns.gateway, socket.assigns.token_id)
+    gateway = socket.assigns.gateway
+
+    Logger.debug("Tracking gateway presence",
+      gateway_id: gateway.id,
+      site_id: gateway.site_id,
+      account_id: gateway.account_id,
+      token_id: socket.assigns.token_id
+    )
+
+    :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id)
 
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.gateway.account_id)
 
     # Return all connected relays for the account
     {:ok, relays} = select_relays(socket)
-    :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe/1)
+    :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe(&1.id))
     :ok = maybe_subscribe_for_relays_presence(relays)
 
     account = DB.get_account_by_id!(socket.assigns.gateway.account_id)
@@ -118,8 +127,8 @@ defmodule API.Gateway.Channel do
       :ok =
         Enum.each(relays, fn relay ->
           # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Presence.Relays.Relay.unsubscribe(relay)
-          :ok = Presence.Relays.Relay.subscribe(relay)
+          :ok = Presence.Relays.Relay.unsubscribe(relay.id)
+          :ok = Presence.Relays.Relay.subscribe(relay.id)
         end)
 
       payload = %{

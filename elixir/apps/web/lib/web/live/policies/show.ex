@@ -151,7 +151,7 @@ defmodule Web.Policies.Show do
               Conditions
             </:label>
             <:value>
-              <.conditions providers={@providers} conditions={@policy.conditions} />
+              <.conditions account={@account} providers={@providers} conditions={@policy.conditions} />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row :if={@policy.description}>

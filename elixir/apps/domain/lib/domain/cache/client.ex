@@ -107,7 +107,7 @@ defmodule Domain.Cache.Client do
     with %Cache.Cacheable.Resource{} <- resource,
          {:ok, policy, expires_at} <- policy,
          {:ok, mid_bytes} <- Map.fetch(cache.memberships, policy.group_id) do
-      membership_id = load!(mid_bytes)
+      membership_id = if mid_bytes, do: load!(mid_bytes), else: nil
       policy_id = load!(policy.id)
       {:ok, resource, membership_id, policy_id, expires_at}
     else
@@ -180,22 +180,6 @@ defmodule Domain.Cache.Client do
     cache = %{cache | connectable_resources: connectable_resources}
 
     {:ok, added, removed_ids, cache}
-  end
-
-  @doc """
-    Fetches a membership id by an group_id.
-  """
-
-  @spec fetch_membership_id(t(), Cache.Cacheable.uuid_binary()) ::
-          {:ok, Ecto.UUID.t()} | {:error, :not_found}
-
-  def fetch_membership_id(cache, gid_bytes) do
-    cache.memberships
-    |> Map.fetch(gid_bytes)
-    |> case do
-      {:ok, mid_bytes} -> {:ok, load!(mid_bytes)}
-      :error -> {:error, :not_found}
-    end
   end
 
   @doc """
@@ -449,9 +433,11 @@ defmodule Domain.Cache.Client do
         end)
 
       memberships =
-        for memberships <- DB.all_memberships_for_actor_id!(client.actor_id, subject),
-            do: {dump!(memberships.group_id), dump!(memberships.id)},
-            into: %{}
+        for membership <- DB.all_memberships_for_actor_id!(client.actor_id, subject),
+            into: %{} do
+          mid = if membership.id, do: dump!(membership.id), else: nil
+          {dump!(membership.group_id), mid}
+        end
 
       cache
       |> Map.put(:memberships, memberships)
@@ -590,9 +576,32 @@ defmodule Domain.Cache.Client do
     end
 
     def all_memberships_for_actor_id!(actor_id, subject) do
-      from(m in Domain.Membership, where: m.actor_id == ^actor_id)
-      |> Safe.scoped(subject)
-      |> Safe.all()
+      # Get real memberships
+      memberships =
+        from(m in Domain.Membership, where: m.actor_id == ^actor_id)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+
+      # Get the Everyone group for this account (if it exists)
+      everyone_group =
+        from(g in Domain.Group,
+          where:
+            g.type == :managed and
+              is_nil(g.idp_id) and
+              g.name == "Everyone" and
+              g.account_id == ^subject.account.id
+        )
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      # Append a synthetic membership for the Everyone group
+      case everyone_group do
+        nil ->
+          memberships
+
+        group ->
+          memberships ++ [%{group_id: group.id, id: nil}]
+      end
     end
 
     def fetch_resource_by_id(id, subject) do

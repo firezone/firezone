@@ -8,7 +8,8 @@ defmodule Domain.PolicyAuthorization do
           gateway_id: Ecto.UUID.t(),
           resource_id: Ecto.UUID.t(),
           token_id: Ecto.UUID.t(),
-          membership_id: Ecto.UUID.t(),
+          # nil for "Everyone" group policies which have no explicit membership
+          membership_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           client_remote_ip: Domain.Types.IP.t(),
           client_user_agent: String.t(),

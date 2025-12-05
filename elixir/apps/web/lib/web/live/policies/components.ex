@@ -138,6 +138,7 @@ defmodule Web.Policies.Components do
       <span class="mr-1">This policy can be used</span>
       <.condition
         :for={condition <- @conditions}
+        account={@account}
         providers={@providers}
         property={condition.property}
         operator={condition.operator}

@@ -52,7 +52,7 @@ defmodule API.Client.Channel do
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
-    :ok = Enum.each(relays, fn relay -> Presence.Relays.Relay.subscribe(relay.id) end)
+    :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe(&1.id))
     :ok = maybe_subscribe_for_relays_presence(relays)
 
     # Initialize debouncer for flappy relays
@@ -1123,7 +1123,7 @@ defmodule API.Client.Channel do
 
     %Domain.PolicyAuthorization{}
     |> cast(attrs, fields)
-    |> validate_required(fields)
+    |> validate_required(fields -- [:membership_id])
     |> Domain.PolicyAuthorization.changeset()
   end
 end
