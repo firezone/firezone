@@ -1,9 +1,14 @@
 defmodule API.MembershipControllerTest do
   use API.ConnCase, async: true
 
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.GroupFixtures
+  import Domain.MembershipFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    account = account_fixture()
+    actor = api_client_fixture(account: account)
 
     %{
       account: account,
@@ -13,17 +18,17 @@ defmodule API.MembershipControllerTest do
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
       conn = get(conn, "/groups/#{group.id}/memberships")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "lists all memberships", %{conn: conn, account: account, actor: api_actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
 
       memberships =
         for _ <- 1..3,
-            do: Fixtures.Actors.create_membership(%{account: account, group: group})
+            do: membership_fixture(account: account, group: group)
 
       conn =
         conn
@@ -53,11 +58,11 @@ defmodule API.MembershipControllerTest do
     end
 
     test "lists identity providers with limit", %{conn: conn, account: account, actor: actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
 
       memberships =
         for _ <- 1..3,
-            do: Fixtures.Actors.create_membership(%{account: account, group: group})
+            do: membership_fixture(account: account, group: group)
 
       conn =
         conn
@@ -92,8 +97,8 @@ defmodule API.MembershipControllerTest do
 
   describe "update_patch/2" do
     test "adds actor to group", %{conn: conn, account: account, actor: api_actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
-      actor = Fixtures.Actors.create_actor(%{account: account})
+      group = group_fixture(account: account)
+      actor = actor_fixture(account: account)
       attrs = %{"add" => [actor.id]}
 
       conn =
@@ -107,7 +112,7 @@ defmodule API.MembershipControllerTest do
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: api_actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
 
       conn =
         conn
@@ -135,7 +140,7 @@ defmodule API.MembershipControllerTest do
     end
 
     test "returns error on invalid actor id", %{conn: conn, account: account, actor: api_actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
       attrs = %{"add" => ["00000000-0000-0000-0000-000000000000"]}
 
       conn =
@@ -145,15 +150,17 @@ defmodule API.MembershipControllerTest do
         |> patch("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert resp = json_response(conn, 422)
-      assert resp == %{"error" => %{"reason" => "Invalid payload"}}
+      assert %{"error" => %{"reason" => "Unprocessable Entity"}} = resp
+      assert %{"error" => %{"validation_errors" => %{"memberships" => memberships}}} = resp
+      assert [%{"actor" => ["does not exist"]}] = memberships
     end
 
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
-      actor1 = Fixtures.Actors.create_actor(%{account: account})
-      actor2 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: group})
+      group = group_fixture(account: account)
+      actor1 = actor_fixture(account: account)
+      actor2 = actor_fixture(account: account)
+      membership_fixture(account: account, actor: actor1, group: group)
+      membership_fixture(account: account, actor: actor2, group: group)
 
       attrs = %{"remove" => [actor2.id]}
 
@@ -168,12 +175,12 @@ defmodule API.MembershipControllerTest do
     end
 
     test "adds and removes actors from group", %{conn: conn, account: account, actor: api_actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
-      actor1 = Fixtures.Actors.create_actor(%{account: account})
-      actor2 = Fixtures.Actors.create_actor(%{account: account})
-      actor3 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: group})
+      group = group_fixture(account: account)
+      actor1 = actor_fixture(account: account)
+      actor2 = actor_fixture(account: account)
+      actor3 = actor_fixture(account: account)
+      membership_fixture(account: account, actor: actor1, group: group)
+      membership_fixture(account: account, actor: actor2, group: group)
 
       attrs = %{"add" => [actor3.id], "remove" => [actor2.id]}
 
@@ -192,11 +199,11 @@ defmodule API.MembershipControllerTest do
       account: account,
       actor: api_actor
     } do
-      group = Fixtures.Actors.create_group(%{account: account})
-      actor1 = Fixtures.Actors.create_actor(%{account: account})
-      actor2 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: group})
+      group = group_fixture(account: account)
+      actor1 = actor_fixture(account: account)
+      actor2 = actor_fixture(account: account)
+      membership_fixture(account: account, actor: actor1, group: group)
+      membership_fixture(account: account, actor: actor2, group: group)
 
       attrs = %{}
 
@@ -213,8 +220,8 @@ defmodule API.MembershipControllerTest do
 
   describe "update_put/2" do
     test "adds actor to group", %{conn: conn, account: account, actor: api_actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
-      actor = Fixtures.Actors.create_actor(%{account: account})
+      group = group_fixture(account: account)
+      actor = actor_fixture(account: account)
       attrs = [%{"actor_id" => actor.id}]
 
       conn =
@@ -228,7 +235,7 @@ defmodule API.MembershipControllerTest do
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: api_actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
+      group = group_fixture(account: account)
 
       conn =
         conn
@@ -241,11 +248,11 @@ defmodule API.MembershipControllerTest do
     end
 
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
-      actor1 = Fixtures.Actors.create_actor(%{account: account})
-      actor2 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: group})
+      group = group_fixture(account: account)
+      actor1 = actor_fixture(account: account)
+      actor2 = actor_fixture(account: account)
+      membership_fixture(account: account, actor: actor1, group: group)
+      membership_fixture(account: account, actor: actor2, group: group)
 
       attrs = [%{"actor_id" => actor1.id}]
 
@@ -260,12 +267,12 @@ defmodule API.MembershipControllerTest do
     end
 
     test "adds and removes actors from group", %{conn: conn, account: account, actor: api_actor} do
-      group = Fixtures.Actors.create_group(%{account: account})
-      actor1 = Fixtures.Actors.create_actor(%{account: account})
-      actor2 = Fixtures.Actors.create_actor(%{account: account})
-      actor3 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: group})
+      group = group_fixture(account: account)
+      actor1 = actor_fixture(account: account)
+      actor2 = actor_fixture(account: account)
+      actor3 = actor_fixture(account: account)
+      membership_fixture(account: account, actor: actor1, group: group)
+      membership_fixture(account: account, actor: actor2, group: group)
 
       attrs = [%{"actor_id" => actor1.id}, %{"actor_id" => actor3.id}]
 

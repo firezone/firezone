@@ -1,10 +1,14 @@
 defmodule API.IdentityControllerTest do
   use API.ConnCase, async: true
-  alias Domain.ExternalIdentity
+
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.IdentityFixtures
+  import Domain.DirectoryFixtures
 
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    account = account_fixture()
+    actor = api_client_fixture(account: account)
 
     %{
       account: account,
@@ -14,19 +18,19 @@ defmodule API.IdentityControllerTest do
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn, actor: actor} do
-      conn = get(conn, "/actors/#{actor.id}/identities")
+      conn = get(conn, "/actors/#{actor.id}/external_identities")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "lists all identities for actor", %{conn: conn, account: account, actor: actor} do
       identities =
-        for _ <- 1..3, do: Fixtures.Auth.create_identity(%{account: account, actor: actor})
+        for _ <- 1..3, do: identity_fixture(account: account, actor: actor)
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/actors/#{actor.id}/identities")
+        |> get("/actors/#{actor.id}/external_identities")
 
       assert %{
                "data" => data,
@@ -51,13 +55,19 @@ defmodule API.IdentityControllerTest do
 
     test "lists identities with limit", %{conn: conn, account: account, actor: actor} do
       identities =
-        for _ <- 1..3, do: Fixtures.Auth.create_identity(%{account: account, actor: actor})
+        for _ <- 1..3,
+            do:
+              synced_identity_fixture(
+                account: account,
+                actor: actor,
+                email: "testuser@example.com"
+              )
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/actors/#{actor.id}/identities", limit: "2")
+        |> get("/actors/#{actor.id}/external_identities", limit: "2")
 
       assert %{
                "data" => data,
@@ -83,8 +93,8 @@ defmodule API.IdentityControllerTest do
 
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account, actor: actor} do
-      identity = Fixtures.Auth.create_identity(%{account: account, actor: actor})
-      conn = get(conn, "/actors/#{actor.id}/identities/#{identity.id}")
+      identity = identity_fixture(account: account, actor: actor)
+      conn = get(conn, "/actors/#{actor.id}/external_identities/#{identity.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -93,220 +103,75 @@ defmodule API.IdentityControllerTest do
       account: account,
       actor: actor
     } do
+      directory = google_directory_fixture(account: account)
+
       identity =
-        Fixtures.Auth.create_identity(%{
+        synced_identity_fixture(%{
           account: account,
+          directory: directory,
           actor: actor,
-          provider_identifier: "172836495673",
-          email: "foo@bar.com"
+          idp_id: "172836495673"
         })
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/actors/#{actor.id}/identities/#{identity.id}")
+        |> get("/actors/#{actor.id}/external_identities/#{identity.id}")
 
-      assert json_response(conn, 200) == %{
-               "data" => %{
-                 "id" => identity.id,
-                 "actor_id" => actor.id,
-                 "provider_id" => identity.provider_id,
-                 "provider_identifier" => identity.provider_identifier,
-                 "email" => identity.email
-               }
-             }
-    end
+      assert %{"data" => data} = json_response(conn, 200)
 
-    test "returns a single identity with populated email field from provider_identifier", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      identity =
-        Fixtures.Auth.create_identity(%{
-          account: account,
-          actor: actor,
-          provider_identifier: "foo@bar.com"
-        })
+      assert data["id"] == identity.id
+      assert data["actor_id"] == actor.id
+      assert data["account_id"] == identity.account_id
+      assert data["directory_id"] == directory.id
+      assert data["idp_id"] == identity.idp_id
+      assert data["email"] == identity.email
+      assert data["issuer"] == identity.issuer
+      assert data["name"] == identity.name
+      assert data["given_name"] == identity.given_name
+      assert data["family_name"] == identity.family_name
+      assert data["middle_name"] == identity.middle_name
+      assert data["nickname"] == identity.nickname
+      assert data["preferred_username"] == identity.preferred_username
+      assert data["profile"] == identity.profile
+      assert data["picture"] == identity.picture
+      assert data["firezone_avatar_url"] == identity.firezone_avatar_url
 
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> get("/actors/#{actor.id}/identities/#{identity.id}")
+      assert data["last_synced_at"] ==
+               identity.last_synced_at |> DateTime.to_iso8601()
 
-      assert json_response(conn, 200) == %{
-               "data" => %{
-                 "id" => identity.id,
-                 "actor_id" => actor.id,
-                 "provider_id" => identity.provider_id,
-                 "provider_identifier" => identity.provider_identifier,
-                 "email" => identity.provider_identifier
-               }
-             }
-    end
-  end
-
-  describe "create/2" do
-    test "returns error when not authorized", %{conn: conn, account: account, actor: actor} do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      conn = post(conn, "/actors/#{actor.id}/providers/#{oidc_provider.id}/identities", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
-    end
-
-    test "returns error on empty params/body", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      actor = Fixtures.Actors.create_actor(account: account)
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities")
-
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
-    end
-
-    test "returns error on invalid identity provider", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      actor = Fixtures.Actors.create_actor(account: account)
-
-      attrs = %{}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/1234/identities",
-          identity: attrs
-        )
-
-      assert resp = json_response(conn, 404)
-      assert resp == %{"error" => %{"reason" => "Not Found"}}
-    end
-
-    test "returns error on empty identity attrs", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      actor = Fixtures.Actors.create_actor(account: account)
-
-      attrs = %{}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
-          identity: attrs
-        )
-
-      assert resp = json_response(conn, 422)
-
-      assert resp ==
-               %{
-                 "error" => %{
-                   "reason" => "Unprocessable Entity",
-                   "validation_errors" => %{"provider_identifier" => ["can't be blank"]}
-                 }
-               }
-    end
-
-    test "creates an identity with provider_identifier attr that is not an email address", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      actor = Fixtures.Actors.create_actor(account: account)
-
-      attrs = %{"provider_identifier" => "128asdf92qrh9joqwefoiu23"}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
-          identity: attrs
-        )
-
-      assert resp = json_response(conn, 201)
-      assert resp["data"]["provider_identifier"] == attrs["provider_identifier"]
-      assert resp["data"]["email"] == nil
-    end
-
-    test "creates an identity with provider_identifier attr that is an email address", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      actor = Fixtures.Actors.create_actor(account: account)
-
-      attrs = %{"provider_identifier" => "foo@localhost.local"}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
-          identity: attrs
-        )
-
-      assert resp = json_response(conn, 201)
-      assert resp["data"]["provider_identifier"] == attrs["provider_identifier"]
-      assert resp["data"]["email"] == attrs["provider_identifier"]
+      assert data["inserted_at"] ==
+               identity.inserted_at
+               |> DateTime.from_naive!("Etc/UTC")
+               |> DateTime.to_iso8601()
     end
   end
 
   describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account, actor: actor} do
-      identity = Fixtures.Auth.create_identity(%{account: account, actor: actor})
-      conn = delete(conn, "/actors/#{actor.id}/identities/#{identity.id}")
+      identity = synced_identity_fixture(account: account, actor: actor)
+      conn = delete(conn, "/actors/#{actor.id}/external_identities/#{identity.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes an identity", %{conn: conn, account: account, actor: actor} do
-      identity = Fixtures.Auth.create_identity(%{account: account, actor: actor})
+      identity = synced_identity_fixture(account: account, actor: actor)
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> delete("/actors/#{actor.id}/identities/#{identity.id}")
+        |> delete("/actors/#{actor.id}/external_identities/#{identity.id}")
 
-      assert json_response(conn, 200) == %{
-               "data" => %{
-                 "id" => identity.id,
-                 "actor_id" => actor.id,
-                 "provider_id" => identity.provider_id,
-                 "provider_identifier" => identity.provider_identifier,
-                 "email" => identity.email
-               }
-             }
+      assert %{"data" => data} = json_response(conn, 200)
 
-      refute Repo.get(Identity, identity.id)
+      assert data["id"] == identity.id
+      assert data["actor_id"] == actor.id
+      assert data["idp_id"] == identity.idp_id
+      assert data["email"] == identity.email
+
+      refute Repo.get_by(Domain.ExternalIdentity, id: identity.id)
     end
   end
 end

@@ -25,10 +25,11 @@ defmodule API.Integrations.Stripe.WebhookControllerTest do
       customer_id = "cus_xxx"
       account = Fixtures.Accounts.create_account()
 
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
-          metadata: %{stripe: %{customer_id: customer_id}}
-        })
+      account =
+        account
+        |> Ecto.Changeset.change()
+        |> Ecto.Changeset.put_change(:metadata, %{stripe: %{customer_id: customer_id}})
+        |> Domain.Repo.update!()
 
       Bypass.open()
       |> Mocks.Stripe.mock_fetch_customer_endpoint(account)

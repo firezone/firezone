@@ -1,19 +1,22 @@
 defmodule API.ClientControllerTest do
   use API.ConnCase, async: true
-  alias Domain.Clients.Client
+  alias Domain.Client
+
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.ClientFixtures
+  import Domain.SubjectFixtures
 
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
-    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    client = Fixtures.Clients.create_client(account: account)
-    subject = Fixtures.Auth.create_subject(identity: identity)
+    account = account_fixture()
+    actor = api_client_fixture(account: account)
+    client = client_fixture(account: account)
+    subject = subject_fixture(account: account, actor: actor)
 
     %{
       account: account,
       actor: actor,
       client: client,
-      identity: identity,
       subject: subject
     }
   end
@@ -32,7 +35,7 @@ defmodule API.ClientControllerTest do
     } do
       clients =
         for _ <- 1..3,
-            do: Fixtures.Clients.create_client(%{account: account})
+            do: client_fixture(account: account)
 
       clients = [client | clients]
 
@@ -72,7 +75,7 @@ defmodule API.ClientControllerTest do
     } do
       clients =
         for _ <- 1..3,
-            do: Fixtures.Clients.create_client(%{account: account})
+            do: client_fixture(account: account)
 
       clients = [client | clients]
 
@@ -119,6 +122,8 @@ defmodule API.ClientControllerTest do
       actor: actor,
       client: client
     } do
+      client = %{client | online?: false}
+
       conn =
         conn
         |> authorize_conn(actor)
@@ -129,8 +134,8 @@ defmodule API.ClientControllerTest do
                "data" => %{
                  "id" => client.id,
                  "name" => client.name,
-                 "ipv4" => "#{client.ipv4}",
-                 "ipv6" => "#{client.ipv6}",
+                 "ipv4" => client.ipv4,
+                 "ipv6" => client.ipv6,
                  "actor_id" => client.actor_id,
                  "created_at" => client.inserted_at && DateTime.to_iso8601(client.inserted_at),
                  "device_serial" => client.device_serial,
@@ -253,8 +258,8 @@ defmodule API.ClientControllerTest do
                "data" => %{
                  "id" => client.id,
                  "name" => client.name,
-                 "ipv4" => "#{client.ipv4}",
-                 "ipv6" => "#{client.ipv6}",
+                 "ipv4" => client.ipv4,
+                 "ipv6" => client.ipv6,
                  "actor_id" => client.actor_id,
                  "created_at" => client.inserted_at && DateTime.to_iso8601(client.inserted_at),
                  "device_serial" => client.device_serial,
@@ -278,7 +283,7 @@ defmodule API.ClientControllerTest do
                }
              }
 
-      refute Repo.get(Client, client.id)
+      refute Repo.get_by(Client, id: client.id, account_id: client.account_id)
     end
   end
 end

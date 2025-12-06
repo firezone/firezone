@@ -1,6 +1,7 @@
 defmodule API.ExternalIdentityController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
+  alias API.Pagination
   alias Domain.{ExternalIdentity, Safe}
   alias __MODULE__.DB
   import Ecto.Query
@@ -12,7 +13,9 @@ defmodule API.ExternalIdentityController do
   operation :index,
     summary: "List External Identities for an Actor",
     parameters: [
-      actor_id: [in: :path, description: "Actor ID", type: :string]
+      actor_id: [in: :path, description: "Actor ID", type: :string],
+      limit: [in: :query, description: "Limit External Identities returned", type: :integer],
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
       ok:
@@ -21,9 +24,13 @@ defmodule API.ExternalIdentityController do
     ]
 
   # List External Identities
-  def index(conn, %{"actor_id" => actor_id}) do
-    external_identities = DB.list_external_identities(actor_id, conn.assigns.subject)
-    render(conn, :index, external_identities: external_identities)
+  def index(conn, %{"actor_id" => actor_id} = params) do
+    list_opts = Pagination.params_to_list_opts(params)
+
+    with {:ok, external_identities, metadata} <-
+           DB.list_external_identities(actor_id, conn.assigns.subject, list_opts) do
+      render(conn, :index, external_identities: external_identities, metadata: metadata)
+    end
   end
 
   operation :show,
@@ -86,13 +93,21 @@ defmodule API.ExternalIdentityController do
     import Ecto.Query
     alias Domain.{ExternalIdentity, Safe}
 
-    def list_external_identities(actor_id, subject) do
+    def list_external_identities(actor_id, subject, opts \\ []) do
       from(ei in ExternalIdentity,
+        as: :external_identities,
         where: ei.actor_id == ^actor_id,
         order_by: [desc: ei.inserted_at]
       )
       |> Safe.scoped(subject)
-      |> Safe.all()
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:external_identities, :desc, :inserted_at},
+        {:external_identities, :desc, :id}
+      ]
     end
 
     def fetch_external_identity(id, subject) do

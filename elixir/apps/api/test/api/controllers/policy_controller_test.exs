@@ -2,9 +2,15 @@ defmodule API.PolicyControllerTest do
   use API.ConnCase, async: true
   alias Domain.Policy
 
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.PolicyFixtures
+  import Domain.ResourceFixtures
+  import Domain.GroupFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    account = account_fixture()
+    actor = api_client_fixture(account: account)
 
     %{
       account: account,
@@ -19,7 +25,7 @@ defmodule API.PolicyControllerTest do
     end
 
     test "lists all policies", %{conn: conn, account: account, actor: actor} do
-      policies = for _ <- 1..3, do: Fixtures.Policies.create_policy(%{account: account})
+      policies = for _ <- 1..3, do: policy_fixture(account: account)
 
       conn =
         conn
@@ -49,7 +55,7 @@ defmodule API.PolicyControllerTest do
     end
 
     test "lists policies with limit", %{conn: conn, account: account, actor: actor} do
-      policies = for _ <- 1..3, do: Fixtures.Policies.create_policy(%{account: account})
+      policies = for _ <- 1..3, do: policy_fixture(account: account)
 
       conn =
         conn
@@ -81,13 +87,13 @@ defmodule API.PolicyControllerTest do
 
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      policy = Fixtures.Policies.create_policy(%{account: account})
+      policy = policy_fixture(account: account)
       conn = get(conn, "/policies/#{policy.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns a single policy", %{conn: conn, account: account, actor: actor} do
-      policy = Fixtures.Policies.create_policy(%{account: account})
+      policy = policy_fixture(account: account)
 
       conn =
         conn
@@ -147,8 +153,8 @@ defmodule API.PolicyControllerTest do
     end
 
     test "creates a policy with valid attrs", %{conn: conn, account: account, actor: actor} do
-      resource = Fixtures.Resources.create_resource(%{account: account})
-      group = Fixtures.Actors.create_group(%{account: account})
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
 
       attrs = %{
         "group_id" => group.id,
@@ -171,13 +177,13 @@ defmodule API.PolicyControllerTest do
 
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      policy = Fixtures.Policies.create_policy(%{account: account})
+      policy = policy_fixture(account: account)
       conn = put(conn, "/policies/#{policy.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: actor} do
-      policy = Fixtures.Policies.create_policy(%{account: account})
+      policy = policy_fixture(account: account)
 
       conn =
         conn
@@ -190,7 +196,7 @@ defmodule API.PolicyControllerTest do
     end
 
     test "updates a policy", %{conn: conn, account: account, actor: actor} do
-      policy = Fixtures.Policies.create_policy(%{account: account})
+      policy = policy_fixture(account: account)
 
       attrs = %{"description" => "updated policy description"}
 
@@ -208,13 +214,13 @@ defmodule API.PolicyControllerTest do
 
   describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      policy = Fixtures.Policies.create_policy(%{account: account})
+      policy = policy_fixture(account: account)
       conn = delete(conn, "/policies/#{policy.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes a policy", %{conn: conn, account: account, actor: actor} do
-      policy = Fixtures.Policies.create_policy(%{account: account})
+      policy = policy_fixture(account: account)
 
       conn =
         conn
@@ -231,7 +237,7 @@ defmodule API.PolicyControllerTest do
                }
              }
 
-      refute Repo.get(Policy, policy.id)
+      refute Repo.get_by(Policy, id: policy.id, account_id: policy.account_id)
     end
   end
 end

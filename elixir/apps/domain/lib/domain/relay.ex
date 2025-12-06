@@ -43,7 +43,9 @@ defmodule Domain.Relay do
       :last_seen_remote_ip_location_region,
       :last_seen_remote_ip_location_city,
       :last_seen_remote_ip_location_lat,
-      :last_seen_remote_ip_location_lon
+      :last_seen_remote_ip_location_lon,
+      :last_seen_version,
+      :last_seen_at
     ])
     |> validate_required_one_of(~w[ipv4 ipv6]a)
     |> validate_length(:name, min: 1, max: 255)

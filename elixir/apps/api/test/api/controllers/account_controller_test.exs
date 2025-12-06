@@ -1,10 +1,13 @@
 defmodule API.AccountControllerTest do
   use API.ConnCase, async: true
 
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+
   describe "show/2" do
     test "returns account details with limits", %{conn: conn} do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+      account = account_fixture()
+      actor = actor_fixture(type: :api_client, account: account)
 
       conn =
         conn
@@ -29,8 +32,8 @@ defmodule API.AccountControllerTest do
     end
 
     test "includes correct limit structure when limits are set", %{conn: conn} do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+      account = account_fixture()
+      actor = actor_fixture(type: :api_client, account: account)
 
       conn =
         conn

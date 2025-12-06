@@ -3,9 +3,14 @@ defmodule API.SiteControllerTest do
   alias Domain.Site
   alias Domain.Token
 
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.SiteFixtures
+  import Domain.TokenFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    account = account_fixture()
+    actor = actor_fixture(type: :api_client, account: account)
 
     %{
       account: account,
@@ -20,7 +25,7 @@ defmodule API.SiteControllerTest do
     end
 
     test "lists all sites", %{conn: conn, account: account, actor: actor} do
-      sites = for _ <- 1..3, do: Fixtures.Sites.create_site(%{account: account})
+      sites = for _ <- 1..3, do: site_fixture(account: account)
 
       conn =
         conn
@@ -50,7 +55,7 @@ defmodule API.SiteControllerTest do
     end
 
     test "lists sites with limit", %{conn: conn, account: account, actor: actor} do
-      sites = for _ <- 1..3, do: Fixtures.Sites.create_site(%{account: account})
+      sites = for _ <- 1..3, do: site_fixture(account: account)
 
       conn =
         conn
@@ -82,13 +87,13 @@ defmodule API.SiteControllerTest do
 
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(account: account)
       conn = get(conn, "/sites/#{site.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns a single site", %{conn: conn, account: account, actor: actor} do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(account: account)
 
       conn =
         conn
@@ -161,13 +166,13 @@ defmodule API.SiteControllerTest do
 
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(%{account: account})
       conn = put(conn, "/sites/#{site.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: actor} do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(%{account: account})
 
       conn =
         conn
@@ -180,7 +185,7 @@ defmodule API.SiteControllerTest do
     end
 
     test "updates a site", %{conn: conn, account: account, actor: actor} do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(%{account: account})
 
       attrs = %{"name" => "Updated Site Name"}
 
@@ -198,13 +203,13 @@ defmodule API.SiteControllerTest do
 
   describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(%{account: account})
       conn = delete(conn, "/sites/#{site.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes a site", %{conn: conn, account: account, actor: actor} do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(%{account: account})
 
       conn =
         conn
@@ -219,13 +224,13 @@ defmodule API.SiteControllerTest do
                }
              }
 
-      refute Repo.get(Site, site.id)
+      refute Repo.get_by(Site, id: site.id, account_id: site.account_id)
     end
   end
 
   describe "site token create/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(%{account: account})
       conn = post(conn, "/sites/#{site.id}/tokens")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
@@ -235,7 +240,7 @@ defmodule API.SiteControllerTest do
       account: account,
       actor: actor
     } do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(%{account: account})
 
       conn =
         conn
@@ -249,15 +254,15 @@ defmodule API.SiteControllerTest do
 
   describe "delete single gateway token" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      site = Fixtures.Sites.create_site(%{account: account})
-      token = Fixtures.Sites.create_token(%{account: account, group: site})
+      site = site_fixture(%{account: account})
+      token = site_token_fixture(account: account, site: site)
       conn = delete(conn, "/sites/#{site.id}/tokens/#{token.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes gateway token", %{conn: conn, account: account, actor: actor} do
-      site = Fixtures.Sites.create_site(%{account: account})
-      token = Fixtures.Sites.create_token(%{account: account, group: site})
+      site = site_fixture(%{account: account})
+      token = site_token_fixture(account: account, site: site)
 
       conn =
         conn
@@ -266,13 +271,13 @@ defmodule API.SiteControllerTest do
 
       assert %{"data" => %{"id" => _id}} = json_response(conn, 200)
 
-      refute Repo.get(Token, token.id)
+      refute Repo.get_by(Token, id: token.id, account_id: token.account_id)
     end
   end
 
   describe "delete all gateway tokens" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(%{account: account})
       conn = delete(conn, "/sites/#{site.id}/tokens")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
@@ -282,11 +287,11 @@ defmodule API.SiteControllerTest do
       account: account,
       actor: actor
     } do
-      site = Fixtures.Sites.create_site(%{account: account})
+      site = site_fixture(account: account)
 
       tokens =
         for _ <- 1..3,
-            do: Fixtures.Sites.create_token(%{account: account, group: site})
+            do: site_token_fixture(account: account, site: site)
 
       conn =
         conn
@@ -297,7 +302,7 @@ defmodule API.SiteControllerTest do
       assert %{"data" => %{"deleted_count" => 3}} = json_response(conn, 200)
 
       Enum.map(tokens, fn token ->
-        refute Repo.get(Token, token.id)
+        refute Repo.get_by(Token, id: token.id, account_id: token.account_id)
       end)
     end
   end
