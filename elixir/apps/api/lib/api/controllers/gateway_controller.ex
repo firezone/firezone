@@ -133,7 +133,6 @@ defmodule API.GatewayController do
           name: :site_id,
           title: "Site",
           type: {:string, :uuid},
-          values: &Domain.Sites.all_sites!/1,
           fun: &filter_by_site_id/2
         }
       ]

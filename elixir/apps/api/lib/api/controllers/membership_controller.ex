@@ -193,7 +193,6 @@ defmodule API.MembershipController do
           name: :group_id,
           title: "Group",
           type: {:string, :uuid},
-          values: &Domain.Groups.all_groups!/1,
           fun: &filter_by_group_id/2
         }
       ]
