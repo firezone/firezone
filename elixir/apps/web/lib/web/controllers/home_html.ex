@@ -20,7 +20,6 @@ defmodule Web.HomeHTML do
               <.account_button
                 :for={account <- @accounts}
                 account={account}
-                signed_in?={account.id in @signed_in_account_ids}
                 params={@params}
               />
             </div>
@@ -48,13 +47,7 @@ defmodule Web.HomeHTML do
               </.button>
             </.form>
 
-            <p
-              :if={
-                Domain.Config.sign_up_enabled?() and
-                  Web.Auth.fetch_auth_context_type!(@params) == :browser
-              }
-              class="py-2 text-center"
-            >
+            <p :if={@params["as"] != "client"} class="py-2 text-center">
               Don't have an account?
               <a href={~p"/sign_up"} class={[link_style()]}>
                 Sign up here.
@@ -77,10 +70,6 @@ defmodule Web.HomeHTML do
           hover:bg-neutral-100 hover:text-neutral-900
     ]}>
       {@account.name}
-
-      <span :if={@signed_in?} class="text-green-400 pl-1">
-        <.icon name="hero-shield-check" class="w-4 h-4" />
-      </span>
     </a>
     """
   end

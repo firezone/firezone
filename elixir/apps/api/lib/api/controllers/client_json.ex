@@ -1,6 +1,6 @@
 defmodule API.ClientJSON do
   alias API.Pagination
-  alias Domain.Clients
+  alias Domain.Client
 
   @doc """
   Renders a list of Clients.
@@ -19,7 +19,7 @@ defmodule API.ClientJSON do
     %{data: data(client)}
   end
 
-  defp data(%Clients.Client{} = client) do
+  defp data(%Client{} = client) do
     %{
       id: client.id,
       external_id: client.external_id,
@@ -41,8 +41,6 @@ defmodule API.ClientJSON do
       identifier_for_vendor: client.identifier_for_vendor,
       firebase_installation_id: client.firebase_installation_id,
       verified_at: client.verified_at,
-      verified_by: client.verified_by,
-      verified_by_subject: client.verified_by_subject,
       created_at: client.inserted_at,
       updated_at: client.updated_at
     }

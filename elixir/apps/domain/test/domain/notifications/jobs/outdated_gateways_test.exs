@@ -20,23 +20,23 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
         Fixtures.Accounts.create_account(account_attrs)
         |> Fixtures.Accounts.change_to_enterprise()
 
-      gateway_group = Fixtures.Gateways.create_group(account: account)
-      token = Fixtures.Gateways.create_token(account: account, group: gateway_group)
+      site = Fixtures.Sites.create_site(account: account)
+      token = Fixtures.Sites.create_token(account: account, site: site)
 
       %{
         account: account,
-        gateway_group: gateway_group,
+        site: site,
         token: token
       }
     end
 
     test "sends notification for outdated gateways", %{
       account: account,
-      gateway_group: gateway_group,
+      site: site,
       token: token
     } do
       # Create Gateway
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
+      gateway = Fixtures.Gateways.create_gateway(account: account, site: site)
       version = gateway.last_seen_version
 
       # Set ComponentVersions
@@ -44,8 +44,8 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
       new_config = update_component_versions_config(gateway: new_version)
       Domain.Config.put_env_override(ComponentVersions, new_config)
 
-      :ok = Gateways.Presence.Group.subscribe(gateway_group.id)
-      {:ok, _} = Gateways.Presence.Group.track(gateway.group_id, gateway.id, token.id)
+      :ok = Gateways.Presence.Site.subscribe(site.id)
+      {:ok, _} = Gateways.Presence.Site.track(gateway.site_id, gateway.id, token.id)
       {:ok, _} = Gateways.Presence.Account.track(gateway.account_id, gateway.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
@@ -59,19 +59,19 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
 
     test "does not send notification if gateway up to date", %{
       account: account,
-      gateway_group: gateway_group,
+      site: site,
       token: token
     } do
       # Create Gateway
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
+      gateway = Fixtures.Gateways.create_gateway(account: account, site: site)
       version = gateway.last_seen_version
 
       # Set ComponentVersions
       new_config = update_component_versions_config(gateway: version)
       Domain.Config.put_env_override(ComponentVersions, new_config)
 
-      :ok = Gateways.Presence.Group.subscribe(gateway_group.id)
-      {:ok, _} = Gateways.Presence.Group.track(gateway.group_id, gateway.id, token.id)
+      :ok = Gateways.Presence.Site.subscribe(site.id)
+      {:ok, _} = Gateways.Presence.Site.track(gateway.site_id, gateway.id, token.id)
       {:ok, _} = Gateways.Presence.Account.track(gateway.account_id, gateway.id)
 
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}

@@ -1,11 +1,13 @@
 defmodule Web.Settings.ApiClients.New do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
-  alias Domain.Actors
+  import Ecto.Changeset
+  alias Domain.Actor
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
-    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
-      changeset = Actors.new_actor(%{type: :api_client})
+    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
+      changeset = changeset(%{})
 
       socket =
         assign(socket,
@@ -33,7 +35,7 @@ defmodule Web.Settings.ApiClients.New do
           <h2 class="mb-4 text-xl text-neutral-900">
             API Client details
           </h2>
-          <.flash kind={:error} flash={@flash} />
+          <.flash kind={:error_inline} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <.api_client_form form={@form} type={:api_client} subject={@subject} />
@@ -51,24 +53,18 @@ defmodule Web.Settings.ApiClients.New do
   def handle_event("change", %{"actor" => attrs}, socket) do
     changeset =
       attrs
-      |> Map.put("type", :api_client)
-      |> Actors.new_actor()
+      |> changeset()
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("submit", %{"actor" => attrs}, socket) do
-    attrs =
-      attrs
-      |> Map.put("type", :api_client)
+    attrs = Map.put(attrs, "type", :api_client)
 
-    with {:ok, actor} <-
-           Actors.create_actor(
-             socket.assigns.account,
-             attrs,
-             socket.assigns.subject
-           ) do
+    changeset = changeset(attrs)
+
+    with {:ok, actor} <- DB.create_api_client(changeset, socket.assigns.subject) do
       socket =
         push_navigate(socket,
           to: ~p"/#{socket.assigns.account}/settings/api_clients/#{actor}/new_token"
@@ -78,6 +74,21 @@ defmodule Web.Settings.ApiClients.New do
     else
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  defp changeset(attrs) do
+    %Actor{type: :api_client}
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> validate_length(:name, min: 1, max: 255)
+  end
+
+  defmodule DB do
+    alias Domain.Safe
+
+    def create_api_client(changeset, subject) do
+      Safe.scoped(changeset, subject) |> Safe.insert()
     end
   end
 end

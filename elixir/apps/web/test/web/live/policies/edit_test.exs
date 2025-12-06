@@ -15,7 +15,7 @@ defmodule Web.Live.Policies.EditTest do
         description: "Test Policy"
       )
 
-    policy = Repo.preload(policy, [:actor_group, :resource])
+    policy = Repo.preload(policy, [:group, :resource])
 
     %{
       account: account,
@@ -71,7 +71,7 @@ defmodule Web.Live.Policies.EditTest do
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Policies"
-    assert breadcrumbs =~ policy.actor_group.name
+    assert breadcrumbs =~ policy.group.name
     assert breadcrumbs =~ policy.resource.name
     assert breadcrumbs =~ "Edit"
   end
@@ -90,8 +90,8 @@ defmodule Web.Live.Policies.EditTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "policy[actor_group_id]",
-             "policy[actor_group_id]_name",
+             "policy[group_id]",
+             "policy[group_id]_name",
              "policy[conditions][client_verified][operator]",
              "policy[conditions][client_verified][property]",
              "policy[conditions][client_verified][values][]",
@@ -105,9 +105,9 @@ defmodule Web.Live.Policies.EditTest do
              "policy[conditions][current_utc_datetime][values][T]",
              "policy[conditions][current_utc_datetime][values][U]",
              "policy[conditions][current_utc_datetime][values][W]",
-             "policy[conditions][provider_id][operator]",
-             "policy[conditions][provider_id][property]",
-             "policy[conditions][provider_id][values][]",
+             "policy[conditions][auth_provider_id][operator]",
+             "policy[conditions][auth_provider_id][property]",
+             "policy[conditions][auth_provider_id][values][]",
              "policy[conditions][remote_ip][operator]",
              "policy[conditions][remote_ip][property]",
              "policy[conditions][remote_ip][values][]",
@@ -117,7 +117,7 @@ defmodule Web.Live.Policies.EditTest do
              "policy[description]",
              "policy[resource_id]",
              "policy[resource_id]_name",
-             "search_query-policy_actor_group_id",
+             "search_query-policy_group_id",
              "search_query-policy_resource_id"
            ]
   end
@@ -184,7 +184,7 @@ defmodule Web.Live.Policies.EditTest do
 
     assert_redirected(lv, ~p"/#{account}/policies/#{policy}")
 
-    assert policy = Repo.get_by(Domain.Policies.Policy, id: policy.id)
+    assert policy = Repo.get_by(Domain.Policy, id: policy.id)
     assert policy.description == attrs.description
   end
 
@@ -206,7 +206,7 @@ defmodule Web.Live.Policies.EditTest do
     |> form("form", policy: attrs)
     |> render_submit()
 
-    assert updated_policy = Repo.get_by(Domain.Policies.Policy, id: policy.id)
+    assert updated_policy = Repo.get_by(Domain.Policy, id: policy.id)
 
     assert_redirected(lv, ~p"/#{account}/policies/#{updated_policy.id}")
   end

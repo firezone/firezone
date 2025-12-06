@@ -65,21 +65,21 @@
 								<tr>
 									<td class="sm-px-6 content-box" style="border-radius: 4px; background-color: #ffffff; padding: 48px; font-size: 16px; color: #4f4f4f; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05)">
 										<h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">
-											<%= @provider.name %> Sync Error!
+											<%= @directory.name %> Sync Error!
 										</h1>
 										<p style="margin: 0; line-height: 24px">
-											<%= @provider.name %> has failed to sync <%= @provider.last_syncs_failed %> time(s).
+											<%= @directory.name %> has failed to sync <%= @directory.error_email_count + 1 %> time(s).
 										</p>
 										<div role="separator" style="line-height: 16px">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">
 											Below is the last sync error message:
 											<div>
-											<pre style="margin: 0; white-space: pre; border-radius: 4px; background-color: #f3f4f6; padding: 8px 12px; line-height: 24px; color: #1f2937"><code><%= @provider.last_sync_error %></code></pre>
+											<pre style="margin: 0; white-space: pre; border-radius: 4px; background-color: #f3f4f6; padding: 8px 12px; line-height: 24px; color: #1f2937"><code><%= @directory.error_message %></code></pre>
 											</div>
 										</p>
 										<div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">
-											<span style="font-weight: 500; text-decoration-line: underline; text-underline-offset: 2px">Identity Provider Details</span>
+											<span style="font-weight: 500; text-decoration-line: underline; text-underline-offset: 2px">Directory Details</span>
 										</p>
 										<table class="rtl-text-right" style="width: 100%; text-align: left; font-size: 14px; color: #6d6d6d" cellpadding="0" cellspacing="0" role="none">
 											<tr style="border-bottom-width: 1px; background-color: #ffffff">
@@ -91,18 +91,22 @@
 												<td style="padding: 4px 24px;"><%= @account.id %></td>
 											</tr>
 											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
-												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Provider Name</th>
-												<td style="padding: 4px 24px;"><%= @provider.name %></td>
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Directory Name</th>
+												<td style="padding: 4px 24px;"><%= @directory.name %></td>
 											</tr>
 											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
-												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Provider ID</th>
-												<td style="padding: 4px 24px;"><%= @provider.id %></td>
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Directory ID</th>
+												<td style="padding: 4px 24px;"><%= @directory.id %></td>
+											</tr>
+											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Error Occurred At</th>
+												<td style="padding: 4px 24px;"><%= @directory.errored_at || "Unknown" %></td>
 											</tr>
 										</table>
 										<p></p>
 										<div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0;">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">
-											Please verify that all Identity Provider information entered in to Firezone is correct. If the problem persists, please reach out to Firezone support
+											Please verify that all Directory information entered in to Firezone is correct. If the problem persists, please reach out to Firezone support
 											using Slack or email.
 											<br>
 											<br>

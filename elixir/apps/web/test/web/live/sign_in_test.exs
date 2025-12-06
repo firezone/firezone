@@ -72,7 +72,10 @@ defmodule Web.SignInTest do
   test "renders error when account is disabled", %{conn: conn} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     account = Fixtures.Accounts.create_account()
-    {:ok, _account} = Domain.Accounts.update_account(account, %{disabled_at: DateTime.utc_now()})
+
+    {:ok, _account} =
+      Fixtures.Accounts.update_account(account, %{disabled_at: DateTime.utc_now()})
+
     Fixtures.Auth.create_email_provider(account: account)
     {:ok, _lv, html} = live(conn, ~p"/#{account}")
 

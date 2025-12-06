@@ -1,7 +1,7 @@
 defmodule Domain.Accounts.Config do
-  use Domain, :schema
+  use Ecto.Schema
+  import Ecto.Changeset
 
-  @primary_key false
   embedded_schema do
     field :search_domain, :string
 
@@ -26,8 +26,6 @@ defmodule Domain.Accounts.Config do
       on_replace: :update do
       embeds_one :outdated_gateway, Domain.Accounts.Config.Notifications.Email,
         on_replace: :update
-
-      embeds_one :idp_sync_error, Domain.Accounts.Config.Notifications.Email, on_replace: :update
     end
   end
 
@@ -67,4 +65,36 @@ defmodule Domain.Accounts.Config do
   end
 
   def ensure_defaults(nil), do: default_config()
+
+  @doc """
+  Changeset function for embedded Config
+  """
+  def changeset(config \\ %__MODULE__{}, attrs) do
+    config
+    |> cast(attrs, [:search_domain])
+    |> cast_embed(:clients_upstream_dns, with: &clients_upstream_dns_changeset/2)
+    |> cast_embed(:notifications, with: &notifications_changeset/2)
+  end
+
+  defp clients_upstream_dns_changeset(schema, attrs) do
+    schema
+    |> cast(attrs, [:type, :doh_provider])
+    |> cast_embed(:addresses, with: &address_changeset/2)
+  end
+
+  defp address_changeset(schema, attrs) do
+    schema
+    |> cast(attrs, [:address])
+  end
+
+  defp notifications_changeset(schema, attrs) do
+    schema
+    |> cast(attrs, [])
+    |> cast_embed(:outdated_gateway, with: &email_changeset/2)
+  end
+
+  defp email_changeset(schema, attrs) do
+    schema
+    |> cast(attrs, [:enabled])
+  end
 end

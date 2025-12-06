@@ -23,7 +23,7 @@ defmodule API.Relay.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join of an account relay", %{relay: relay} do
-      presence = Relays.Presence.list(Relays.account_presence_topic(relay.account_id))
+      presence = Domain.Presence.Relays.Account.list(relay.account_id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
       assert is_number(online_at)
@@ -46,7 +46,7 @@ defmodule API.Relay.ChannelTest do
         })
         |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
-      presence = Relays.Presence.list(Relays.global_groups_presence_topic())
+      presence = Domain.Presence.Relays.Global.list()
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
       assert is_number(online_at)

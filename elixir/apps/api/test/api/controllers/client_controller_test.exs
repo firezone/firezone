@@ -150,9 +150,7 @@ defmodule API.ClientControllerTest do
                  "last_seen_version" => client.last_seen_version,
                  "online" => client.online?,
                  "updated_at" => client.updated_at && DateTime.to_iso8601(client.updated_at),
-                 "verified_at" => client.verified_at && DateTime.to_iso8601(client.verified_at),
-                 "verified_by" => client.verified_by,
-                 "verified_by_subject" => client.verified_by_subject
+                 "verified_at" => client.verified_at && DateTime.to_iso8601(client.verified_at)
                }
              }
     end
@@ -208,8 +206,6 @@ defmodule API.ClientControllerTest do
 
       assert resp["data"]["id"] == client.id
       assert resp["data"]["verified_at"]
-      assert resp["data"]["verified_by"]
-      assert resp["data"]["verified_by_subject"]
     end
   end
 
@@ -230,8 +226,6 @@ defmodule API.ClientControllerTest do
 
       assert resp["data"]["id"] == client.id
       refute resp["data"]["verified_at"]
-      refute resp["data"]["verified_by"]
-      refute resp["data"]["verified_by_subject"]
     end
   end
 
@@ -280,9 +274,7 @@ defmodule API.ClientControllerTest do
                  "last_seen_version" => client.last_seen_version,
                  "online" => false,
                  "updated_at" => client.updated_at && DateTime.to_iso8601(client.updated_at),
-                 "verified_at" => client.verified_at && DateTime.to_iso8601(client.verified_at),
-                 "verified_by" => client.verified_by,
-                 "verified_by_subject" => client.verified_by_subject
+                 "verified_at" => client.verified_at && DateTime.to_iso8601(client.verified_at)
                }
              }
 

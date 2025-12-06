@@ -1,13 +1,12 @@
 defmodule Web.Settings.Account do
   use Web, :live_view
-  alias Domain.Accounts
 
   def mount(_params, _session, socket) do
     socket =
       assign(socket,
         page_title: "Account",
         delete_requested: false,
-        account_type: Accounts.type(socket.assigns.account)
+        account_type: account_type(socket.assigns.account)
       )
 
     {:ok, socket}
@@ -158,4 +157,10 @@ defmodule Web.Settings.Account do
     </.badge>
     """
   end
+
+  defp account_type(%Domain.Account{metadata: %{string: %{product_name: type}}}) do
+    type || "Starter"
+  end
+
+  defp account_type(%Domain.Account{}), do: "Starter"
 end

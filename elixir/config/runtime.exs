@@ -73,14 +73,28 @@ if config_env() == :prod do
           else: [{:hostname, env_var_to_config!(:database_host)}]
         )
 
-  config :domain, run_manual_migrations: env_var_to_config!(:run_manual_migrations)
-
   config :domain, Domain.Tokens,
     key_base: env_var_to_config!(:tokens_key_base),
     salt: env_var_to_config!(:tokens_salt)
 
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
-    finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
+  config :domain, Domain.Google.APIClient,
+    service_account_key: env_var_to_config!(:google_service_account_key),
+    token_endpoint: "https://oauth2.googleapis.com/token",
+    endpoint: "https://www.googleapis.com"
+
+  config :domain, Domain.Google.AuthProvider,
+    client_id: env_var_to_config!(:google_oidc_client_id),
+    client_secret: env_var_to_config!(:google_oidc_client_secret)
+
+  config :domain, Domain.Entra.AuthProvider,
+    client_id: env_var_to_config!(:entra_oidc_client_id),
+    client_secret: env_var_to_config!(:entra_oidc_client_secret)
+
+  config :domain, Domain.Entra.APIClient,
+    client_id: env_var_to_config!(:entra_sync_client_id),
+    client_secret: env_var_to_config!(:entra_sync_client_secret),
+    token_base_url: "https://login.microsoftonline.com",
+    endpoint: "https://graph.microsoft.com"
 
   config :domain, Domain.Billing.Stripe.APIClient,
     endpoint: "https://api.stripe.com",
@@ -102,10 +116,6 @@ if config_env() == :prod do
     adapter: env_var_to_config!(:erlang_cluster_adapter),
     adapter_config: env_var_to_config!(:erlang_cluster_adapter_config)
 
-  config :domain, Domain.Instrumentation,
-    client_logs_enabled: env_var_to_config!(:instrumentation_client_logs_enabled),
-    client_logs_bucket: env_var_to_config!(:instrumentation_client_logs_bucket)
-
   config :domain, Domain.Analytics,
     mixpanel_token: env_var_to_config!(:mixpanel_token),
     hubspot_workspace_id: env_var_to_config!(:hubspot_workspace_id)
@@ -113,7 +123,6 @@ if config_env() == :prod do
   config :domain, :enabled_features,
     idp_sync: env_var_to_config!(:feature_idp_sync_enabled),
     sign_up: env_var_to_config!(:feature_sign_up_enabled),
-    self_hosted_relays: env_var_to_config!(:feature_self_hosted_relays_enabled),
     policy_conditions: env_var_to_config!(:feature_policy_conditions_enabled),
     multi_site_resources: env_var_to_config!(:feature_multi_site_resources_enabled),
     rest_api: env_var_to_config!(:feature_rest_api_enabled),
@@ -128,40 +137,6 @@ if config_env() == :prod do
 
   config :domain, web_external_url: env_var_to_config!(:web_external_url)
 
-  # Enable background jobs only on dedicated nodes
-  config :domain, Domain.Tokens.Jobs.DeleteExpiredTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Billing.Jobs.CheckAccountLimits,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.Okta.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.Okta.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  # Enable the mock sync directory job in staging
-  config :domain, Domain.Auth.Adapters.Mock.Jobs.SyncDirectory,
-    enabled:
-      env_var_to_config!(:background_jobs_enabled) and
-        Enum.member?(env_var_to_config!(:auth_provider_adapters), :mock)
-
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
   config :domain, Oban,
@@ -170,20 +145,74 @@ if config_env() == :prod do
       # Keep the last 90 days of completed, cancelled, and discarded jobs
       {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90},
 
-      # Rescue jobs that may have failed due to transient errors like deploys
-      # or network issues. It's not guaranteed that the job won't be executed
-      # twice, so for now we disable it since all of our Oban jobs can be retried
-      # without loss.
-      # {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)}
+      # Rescue jobs that have been stuck in executing state due to node crashes,
+      # deploys, or other issues. Jobs will be moved back to available state
+      # after the timeout. This can happen after a deploy or if a node crashes.
+      {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(120)},
 
       # Periodic jobs
       {Oban.Plugins.Cron,
        crontab: [
-         # Delete expired flows every minute
-         {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+         # Delete expired policy_authorizations every minute
+         {"* * * * *", Domain.Workers.DeleteExpiredPolicyAuthorizations},
+
+         # Schedule Entra directory sync every 2 hours
+         {"0 */2 * * *", Domain.Entra.Scheduler},
+
+         # Schedule Google directory sync every 2 hours
+         {"0 */2 * * *", Domain.Google.Scheduler},
+
+         # Schedule Okta directory sync every 2 hours
+         {"0 */2 * * *", Domain.Okta.Scheduler},
+
+         # Directory sync error notifications - daily check for low error count
+         {"0 9 * * *", Domain.Workers.SyncErrorNotification,
+          args: %{provider: "entra", frequency: "daily"}},
+         {"0 9 * * *", Domain.Workers.SyncErrorNotification,
+          args: %{provider: "google", frequency: "daily"}},
+         {"0 9 * * *", Domain.Workers.SyncErrorNotification,
+          args: %{provider: "okta", frequency: "daily"}},
+
+         # Directory sync error notifications - every 3 days for medium error count
+         {"0 9 */3 * *", Domain.Workers.SyncErrorNotification,
+          args: %{provider: "entra", frequency: "three_days"}},
+         {"0 9 */3 * *", Domain.Workers.SyncErrorNotification,
+          args: %{provider: "google", frequency: "three_days"}},
+         {"0 9 */3 * *", Domain.Workers.SyncErrorNotification,
+          args: %{provider: "okta", frequency: "three_days"}},
+
+         # Directory sync error notifications - weekly for high error count
+         {"0 9 * * 1", Domain.Workers.SyncErrorNotification,
+          args: %{provider: "entra", frequency: "weekly"}},
+         {"0 9 * * 1", Domain.Workers.SyncErrorNotification,
+          args: %{provider: "google", frequency: "weekly"}},
+         {"0 9 * * 1", Domain.Workers.SyncErrorNotification,
+          args: %{provider: "okta", frequency: "weekly"}},
+
+         # Check account limits every 30 minutes
+         {"*/30 * * * *", Domain.Workers.CheckAccountLimits},
+
+         # Check for outdated gateways - Sundays at 9am
+         {"0 9 * * 0", Domain.Workers.OutdatedGateways},
+
+         # Delete expired tokens every 5 minutes
+         {"*/5 * * * *", Domain.Workers.DeleteExpiredTokens}
        ]}
     ],
-    queues: if(env_var_to_config!(:background_jobs_enabled), do: [default: 10], else: []),
+    queues:
+      if(env_var_to_config!(:background_jobs_enabled),
+        do: [
+          default: 10,
+          entra_scheduler: 1,
+          entra_sync: 5,
+          google_scheduler: 1,
+          google_sync: 5,
+          okta_scheduler: 1,
+          okta_sync: 5,
+          sync_error_notifications: 1
+        ],
+        else: []
+      ),
     engine: Oban.Engines.Basic,
     repo: Domain.Repo
 

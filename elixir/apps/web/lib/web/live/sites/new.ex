@@ -1,9 +1,11 @@
 defmodule Web.Sites.New do
   use Web, :live_view
-  alias Domain.Gateways
+  alias Domain.Billing
+  alias __MODULE__.DB
+  import Ecto.Changeset
 
   def mount(_params, _session, socket) do
-    changeset = Gateways.new_group()
+    changeset = new_site()
     socket = assign(socket, form: to_form(changeset), page_title: "New Site")
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
@@ -18,7 +20,6 @@ defmodule Web.Sites.New do
     <.section>
       <:title>{@page_title}</:title>
       <:content>
-        <.flash kind={:error} flash={@flash} />
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
@@ -41,23 +42,30 @@ defmodule Web.Sites.New do
     """
   end
 
-  def handle_event("change", %{"group" => attrs}, socket) do
+  def handle_event("change", %{"site" => attrs}, socket) do
     changeset =
-      Gateways.new_group(attrs)
+      new_site(attrs)
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
-  def handle_event("submit", %{"group" => attrs}, socket) do
+  def handle_event("submit", %{"site" => attrs}, socket) do
     attrs = Map.put(attrs, "tokens", [%{}])
 
-    with {:ok, group} <- Gateways.create_group(attrs, socket.assigns.subject) do
-      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")}
+    with true <- Billing.can_create_sites?(socket.assigns.subject.account),
+         changeset = create_changeset(socket.assigns.subject.account, attrs),
+         {:ok, site} <- DB.create_site(changeset, socket.assigns.subject) do
+      socket =
+        socket
+        |> put_flash(:success, "Site #{site.name} created successfully")
+        |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{site}")
+
+      {:noreply, socket}
     else
-      {:error, :gateway_groups_limit_reached} ->
+      false ->
         changeset =
-          Gateways.new_group(attrs)
+          new_site(attrs)
           |> Map.put(:action, :insert)
 
         socket =
@@ -72,6 +80,29 @@ defmodule Web.Sites.New do
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  defp new_site(attrs \\ %{}) do
+    change_site(%Domain.Site{}, attrs)
+  end
+
+  defp change_site(site, attrs) do
+    site
+    |> cast(attrs, [:name])
+  end
+
+  defp create_changeset(account, attrs) do
+    %Domain.Site{account_id: account.id}
+    |> cast(attrs, [:name])
+  end
+
+  defmodule DB do
+    alias Domain.Safe
+
+    def create_site(changeset, subject) do
+      Safe.scoped(changeset, subject)
+      |> Safe.insert()
     end
   end
 end

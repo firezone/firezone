@@ -1,10 +1,5 @@
 defmodule Domain.Changes.Change do
-  defstruct [
-    :lsn,
-    :op,
-    :old_struct,
-    :struct
-  ]
+  defstruct [:lsn, :op, :old_struct, :struct]
 
   @type t :: %__MODULE__{
           lsn: integer(),

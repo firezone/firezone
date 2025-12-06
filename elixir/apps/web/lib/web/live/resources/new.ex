@@ -1,16 +1,16 @@
 defmodule Web.Resources.New do
   use Web, :live_view
   import Web.Resources.Components
-  alias Domain.{Accounts, Gateways, Resources}
+  alias __MODULE__.DB
 
   def mount(params, _session, socket) do
-    gateway_groups = Gateways.all_groups!(socket.assigns.subject)
-    changeset = Resources.new_resource(socket.assigns.account)
+    sites = DB.all_sites(socket.assigns.subject)
+    changeset = DB.new_resource(socket.assigns.account)
 
     socket =
       assign(
         socket,
-        gateway_groups: gateway_groups,
+        sites: sites,
         address_description_changed?: false,
         name_changed?: false,
         form: to_form(changeset),
@@ -191,12 +191,10 @@ defmodule Web.Resources.New do
 
             <.filters_form account={@account} form={@form[:filters]} />
 
-            <.connections_form
+            <.site_form
               :if={is_nil(@params["site_id"])}
-              multiple={Accounts.multi_site_resources_enabled?(@account)}
-              form={@form[:connections]}
-              account={@account}
-              gateway_groups={@gateway_groups}
+              form={@form}
+              sites={@sites}
             />
 
             <.submit_button phx-disable-with="Creating Resource...">
@@ -222,11 +220,10 @@ defmodule Web.Resources.New do
       attrs
       |> maybe_put_default_name(name_changed?)
       |> map_filters_form_attrs(socket.assigns.account)
-      |> map_connections_form_attrs()
-      |> maybe_put_connections(socket.assigns.params)
+      |> maybe_put_site_id(socket.assigns.params)
 
     changeset =
-      Resources.new_resource(socket.assigns.account, attrs)
+      DB.new_resource(socket.assigns.account, attrs)
       |> Map.put(:action, :validate)
 
     socket =
@@ -244,12 +241,11 @@ defmodule Web.Resources.New do
       attrs
       |> maybe_put_default_name()
       |> map_filters_form_attrs(socket.assigns.account)
-      |> map_connections_form_attrs()
-      |> maybe_put_connections(socket.assigns.params)
+      |> maybe_put_site_id(socket.assigns.params)
 
-    case Resources.create_resource(attrs, socket.assigns.subject) do
+    case DB.create_resource(attrs, socket.assigns.subject) do
       {:ok, resource} ->
-        socket = put_flash(socket, :info, "Resource #{resource.name} created successfully.")
+        socket = put_flash(socket, :success, "Resource #{resource.name} created successfully")
 
         if site_id = socket.assigns.params["site_id"] do
           {:noreply,
@@ -282,13 +278,42 @@ defmodule Web.Resources.New do
     Map.put(attrs, "name", attrs["address"])
   end
 
-  defp maybe_put_connections(attrs, params) do
+  defp maybe_put_site_id(attrs, params) do
     if site_id = params["site_id"] do
-      Map.put(attrs, "connections", %{
-        "#{site_id}" => %{"gateway_group_id" => site_id, "enabled" => "true"}
-      })
+      Map.put(attrs, "site_id", site_id)
     else
       attrs
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    import Ecto.Changeset
+    alias Domain.{Safe, Resource}
+
+    def all_sites(subject) do
+      from(g in Domain.Site, as: :sites)
+      |> where([sites: s], s.managed_by != :system)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    # TODO: Keep all changeset logic out of the DB module
+    def new_resource(account, attrs \\ %{}) do
+      %Resource{}
+      |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack, :site_id])
+      |> validate_required([:name, :address])
+      |> put_change(:account_id, account.id)
+      |> Resource.changeset()
+    end
+
+    def create_resource(attrs, subject) do
+      changeset =
+        new_resource(subject.account, attrs)
+        |> validate_required([:site_id])
+
+      Safe.scoped(changeset, subject)
+      |> Safe.insert()
     end
   end
 end

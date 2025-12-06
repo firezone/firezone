@@ -1,6 +1,9 @@
 defmodule API.Relay.Socket do
   use Phoenix.Socket
-  alias Domain.{Tokens, Relays}
+  import Ecto.Changeset
+  import Domain.Changeset
+  alias Domain.{Auth, Version, Relay}
+  alias __MODULE__.DB
   require Logger
   require OpenTelemetry.Tracer
 
@@ -15,15 +18,14 @@ defmodule API.Relay.Socket do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "relay.connect" do
-      context = API.Sockets.auth_context(connect_info, :relay_group)
+      context = API.Sockets.auth_context(connect_info, :relay)
       attrs = Map.take(attrs, ~w[ipv4 ipv6 name port])
 
-      with {:ok, group, token} <- Relays.authenticate(encoded_token, context),
-           {:ok, relay} <- Relays.upsert_relay(group, attrs, context) do
+      with {:ok, token} <- authenticate_token(encoded_token, context),
+           {:ok, relay} <- upsert_relay(attrs, context) do
         OpenTelemetry.Tracer.set_attributes(%{
           token_id: token.id,
           relay_id: relay.id,
-          account_id: relay.account_id,
           version: relay.last_seen_version
         })
 
@@ -53,5 +55,94 @@ defmodule API.Relay.Socket do
   end
 
   @impl true
-  def id(socket), do: Tokens.socket_id(socket.assigns.token_id)
+  def id(socket), do: Auth.socket_id(socket.assigns.token_id)
+
+  defp authenticate_token(encoded_token, %Auth.Context{} = context)
+       when is_binary(encoded_token) do
+    with {:ok, token} <- Auth.use_token(encoded_token, context) do
+      {:ok, token}
+    else
+      {:error, :invalid_or_expired_token} -> {:error, :unauthorized}
+    end
+  end
+
+  defp upsert_relay(attrs, %Auth.Context{} = context) do
+    changeset = upsert_changeset(attrs, context)
+    DB.upsert_relay(changeset)
+  end
+
+  defp upsert_changeset(attrs, %Auth.Context{} = context) do
+    upsert_fields = ~w[ipv4 ipv6 port name
+                       last_seen_user_agent
+                       last_seen_remote_ip
+                       last_seen_remote_ip_location_region
+                       last_seen_remote_ip_location_city
+                       last_seen_remote_ip_location_lat
+                       last_seen_remote_ip_location_lon]a
+
+    %Relay{}
+    |> cast(attrs, upsert_fields)
+    |> validate_required_one_of(~w[ipv4 ipv6]a)
+    |> validate_length(:name, min: 1, max: 255)
+    |> validate_number(:port, greater_than_or_equal_to: 1, less_than_or_equal_to: 65_535)
+    |> unique_constraint(:ipv4, name: :relays_unique_address_index)
+    |> unique_constraint(:ipv6, name: :relays_unique_address_index)
+    |> unique_constraint(:port, name: :relays_unique_address_index)
+    |> unique_constraint(:ipv4, name: :global_relays_unique_address_index)
+    |> unique_constraint(:ipv6, name: :global_relays_unique_address_index)
+    |> unique_constraint(:port, name: :global_relays_unique_address_index)
+    |> put_change(:last_seen_at, DateTime.utc_now())
+    |> put_change(:last_seen_user_agent, context.user_agent)
+    |> put_change(:last_seen_remote_ip, context.remote_ip)
+    |> put_change(:last_seen_remote_ip_location_region, context.remote_ip_location_region)
+    |> put_change(:last_seen_remote_ip_location_city, context.remote_ip_location_city)
+    |> put_change(:last_seen_remote_ip_location_lat, context.remote_ip_location_lat)
+    |> put_change(:last_seen_remote_ip_location_lon, context.remote_ip_location_lon)
+    |> put_relay_version()
+  end
+
+  defp put_relay_version(changeset) do
+    with {_data_or_changes, user_agent} when not is_nil(user_agent) <-
+           fetch_field(changeset, :last_seen_user_agent),
+         {:ok, version} <- Version.fetch_version(user_agent) do
+      put_change(changeset, :last_seen_version, version)
+    else
+      {:error, :invalid_user_agent} -> add_error(changeset, :last_seen_user_agent, "is invalid")
+      _ -> changeset
+    end
+  end
+
+  defmodule DB do
+    alias Domain.Safe
+
+    def upsert_relay(changeset) do
+      conflict_target = {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6), port)/}
+
+      conflict_replace_fields =
+        ~w[ipv4 ipv6 port name
+         last_seen_user_agent
+         last_seen_remote_ip
+         last_seen_remote_ip_location_region
+         last_seen_remote_ip_location_city
+         last_seen_remote_ip_location_lat
+         last_seen_remote_ip_location_lon
+         last_seen_version
+         last_seen_at
+         updated_at]a
+
+      on_conflict = {:replace, conflict_replace_fields}
+
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:relay, changeset,
+        conflict_target: conflict_target,
+        on_conflict: on_conflict,
+        returning: true
+      )
+      |> Safe.transact()
+      |> case do
+        {:ok, %{relay: relay}} -> {:ok, relay}
+        {:error, :relay, changeset, _effects_so_far} -> {:error, changeset}
+      end
+    end
+  end
 end

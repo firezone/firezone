@@ -1,5 +1,6 @@
 defmodule Domain.Accounts.Config.Changeset do
-  use Domain, :changeset
+  import Ecto.Changeset
+  import Domain.Changeset
   alias Domain.Types.IPPort
   alias Domain.Accounts.Config
 

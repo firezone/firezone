@@ -421,7 +421,7 @@ defmodule Web.LiveTableTest do
                }
              } =
                assign_live_table(socket, "table-id",
-                 query_module: Actors.Actor.Query,
+                 query_module: Actor.Query,
                  sortable_fields: [
                    {:actors, :name}
                  ],
@@ -449,7 +449,7 @@ defmodule Web.LiveTableTest do
                }
              } =
                assign_live_table(socket, "table-id",
-                 query_module: Actors.Actor.Query,
+                 query_module: Actor.Query,
                  sortable_fields: [
                    {:actors, :name}
                  ],
@@ -474,7 +474,7 @@ defmodule Web.LiveTableTest do
           assigns: %{subject: subject, __changed__: %{}}
         }
         |> assign_live_table("table-id",
-          query_module: Actors.Actor.Query,
+          query_module: Actor.Query,
           sortable_fields: [
             {:actors, :name}
           ],
@@ -496,7 +496,7 @@ defmodule Web.LiveTableTest do
           assigns: %{subject: subject, uri: "http://foo.bar/current_uri", __changed__: %{}}
         }
         |> assign_live_table("table-id",
-          query_module: Actors.Actor.Query,
+          query_module: Actor.Query,
           sortable_fields: [
             {:actors, :name}
           ],
@@ -520,7 +520,7 @@ defmodule Web.LiveTableTest do
           assigns: %{subject: subject, __changed__: %{}}
         }
         |> assign_live_table("table-id",
-          query_module: Actors.Actor.Query,
+          query_module: Actor.Query,
           sortable_fields: [
             {:actors, :name}
           ],
@@ -597,7 +597,7 @@ defmodule Web.LiveTableTest do
           ] do
         socket =
           assign_live_table(socket, "table-id",
-            query_module: Actors.Actor.Query,
+            query_module: Actor.Query,
             sortable_fields: [
               {:actors, :name}
             ],
@@ -623,7 +623,7 @@ defmodule Web.LiveTableTest do
           ] do
         socket =
           assign_live_table(socket, "table-id",
-            query_module: Actors.Actor.Query,
+            query_module: Actor.Query,
             sortable_fields: [
               {:actors, :name}
             ],
@@ -653,7 +653,7 @@ defmodule Web.LiveTableTest do
           }
         }
         |> assign_live_table("table-id",
-          query_module: Actors.Actor.Query,
+          query_module: Actor.Query,
           sortable_fields: [
             {:actors, :name}
           ],
@@ -696,7 +696,7 @@ defmodule Web.LiveTableTest do
           }
         }
         |> assign_live_table("table-id",
-          query_module: Actors.Actor.Query,
+          query_module: Actor.Query,
           sortable_fields: [
             {:actors, :name}
           ],
@@ -747,7 +747,7 @@ defmodule Web.LiveTableTest do
           }
         }
         |> assign_live_table("table-id",
-          query_module: Actors.Actor.Query,
+          query_module: Actor.Query,
           sortable_fields: [
             {:actors, :name}
           ],

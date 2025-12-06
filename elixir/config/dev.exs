@@ -24,6 +24,9 @@ config :domain, Domain.Billing,
   webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111"),
   default_price_id: System.get_env("STRIPE_DEFAULT_PRICE_ID", "price_1OkUIcADeNU9NGxvTNA4PPq6")
 
+# For dev, we want to run things very frequently to aid development and testing.
+worker_dev_schedule = System.get_env("WORKER_DEV_SCHEDULE", "* * * * *")
+
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :domain, Oban,
@@ -31,22 +34,50 @@ config :domain, Oban,
     # Keep the last 90 days of completed, cancelled, and discarded jobs
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90},
 
-    # Rescue jobs that may have failed due to transient errors like deploys
-    # or network issues. It's not guaranteed that the job won't be executed
-    # twice, so for now we disable it since all of our Oban jobs can be retried
-    # without loss.
-    # {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)}
+    # Rescue jobs that have been stuck in executing state due to node crashes,
+    # deploys, or other issues. Jobs will be moved back to available state
+    # after the timeout.
+    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(1)},
 
     # Periodic jobs
     {Oban.Plugins.Cron,
      crontab: [
-       # Delete expired flows every minute
-       {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+       {worker_dev_schedule, Domain.Entra.Scheduler},
+       {worker_dev_schedule, Domain.Google.Scheduler},
+       {worker_dev_schedule, Domain.Okta.Scheduler},
+       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+        args: %{provider: "entra", frequency: "daily"}},
+       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+        args: %{provider: "google", frequency: "daily"}},
+       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+        args: %{provider: "entra", frequency: "three_days"}},
+       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+        args: %{provider: "google", frequency: "three_days"}},
+       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+        args: %{provider: "entra", frequency: "weekly"}},
+       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+        args: %{provider: "google", frequency: "weekly"}},
+       {worker_dev_schedule, Domain.Workers.DeleteExpiredPolicyAuthorizations},
+       {worker_dev_schedule, Domain.Workers.CheckAccountLimits},
+       {worker_dev_schedule, Domain.Workers.OutdatedGateways},
+       {worker_dev_schedule, Domain.Workers.DeleteExpiredTokens}
      ]}
   ],
-  queues: [default: 10],
+  queues: [
+    default: 10,
+    entra_scheduler: 1,
+    entra_sync: 5,
+    google_scheduler: 1,
+    google_sync: 5,
+    okta_scheduler: 1,
+    okta_sync: 5,
+    sync_error_notifications: 1
+  ],
   engine: Oban.Engines.Basic,
   repo: Domain.Repo
+
+config :domain, Domain.Okta.AuthProvider,
+  redirect_uri: "https://localhost:13443/auth/oidc/callback"
 
 ###############################
 ##### Web #####################
@@ -55,7 +86,13 @@ config :domain, Oban,
 config :web, dev_routes: true
 
 config :web, Web.Endpoint,
-  http: [port: 13_000],
+  url: [scheme: "https", host: "localhost", port: 13443],
+  https: [
+    port: 13_443,
+    cipher_suite: :strong,
+    certfile: "priv/cert/selfsigned.pem",
+    keyfile: "priv/cert/selfsigned_key.pem"
+  ],
   code_reloader: true,
   debug_errors: true,
   check_origin: [
@@ -126,8 +163,11 @@ config :api, API.Endpoint,
 ##### Third-party configs #####
 ###############################
 
-# Do not include metadata nor timestamps in development logs
-config :logger, :default_formatter, format: "[$level] $message\n"
+# Include only message and custom metadata in development logs
+# This filters out Phoenix's automatic metadata like pid, request_id, etc.
+config :logger, :default_formatter,
+  format: {Web.LogFormatter, :format},
+  metadata: :all
 
 # Disable caching for OpenAPI spec to ensure it is refreshed
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
@@ -140,9 +180,6 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :domain, Domain.Mailer, adapter: Swoosh.Adapters.Local
-
-# Enable the mock adapter for development
-config :domain, Domain.Auth.Adapters.Mock.Jobs.SyncDirectory, enabled: true
 
 config :workos, WorkOS.Client,
   api_key: System.get_env("WORKOS_API_KEY"),

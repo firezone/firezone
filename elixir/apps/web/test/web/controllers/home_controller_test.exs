@@ -29,13 +29,13 @@ defmodule Web.HomeControllerTest do
         |> Enum.map(& &1.id)
         |> :erlang.term_to_binary()
 
-      %{resp_cookies: %{"fz_recent_account_ids" => %{value: value}}} =
+      %{resp_cookies: %{"recent_account_ids" => %{value: value}}} =
         %{build_conn() | secret_key_base: Web.Endpoint.config(:secret_key_base)}
-        |> put_resp_cookie("fz_recent_account_ids", account_ids, sign: true, secure: true)
+        |> put_resp_cookie("recent_account_ids", account_ids, encrypt: true, secure: true)
 
       conn =
         build_conn()
-        |> put_req_cookie("fz_recent_account_ids", value)
+        |> put_req_cookie("recent_account_ids", value)
         |> get(~p"/")
 
       html = response(conn, 200)

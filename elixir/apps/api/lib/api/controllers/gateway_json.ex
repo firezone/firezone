@@ -1,6 +1,5 @@
 defmodule API.GatewayJSON do
   alias API.Pagination
-  alias Domain.Gateways
 
   @doc """
   Renders a list of Gateways.
@@ -19,7 +18,7 @@ defmodule API.GatewayJSON do
     %{data: data(gateway)}
   end
 
-  defp data(%Gateways.Gateway{} = gateway) do
+  defp data(%Domain.Gateway{} = gateway) do
     %{
       id: gateway.id,
       name: gateway.name,

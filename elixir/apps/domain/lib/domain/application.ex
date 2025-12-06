@@ -28,15 +28,10 @@ defmodule Domain.Application do
       Domain.Cluster,
 
       # Application
-      Domain.Tokens,
-      Domain.Auth,
-      Domain.Relays,
-      Domain.Gateways,
-      Domain.Clients,
+      Domain.Presence,
       Domain.Billing,
       Domain.Mailer,
       Domain.Mailer.RateLimiter,
-      Domain.Notifications,
       Domain.ComponentVersions,
 
       # Observability

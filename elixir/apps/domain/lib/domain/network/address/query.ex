@@ -1,5 +1,5 @@
 defmodule Domain.Network.Address.Query do
-  use Domain, :query
+  import Ecto.Query
 
   def all do
     from(addresses in Domain.Network.Address, as: :addresses)

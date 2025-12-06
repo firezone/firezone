@@ -1,5 +1,5 @@
 defmodule Domain.Billing.Stripe.ProcessedEvents.ProcessedEvent.Query do
-  use Domain, :query
+  import Ecto.Query
   alias Domain.Billing.Stripe.ProcessedEvents.ProcessedEvent
 
   def all do

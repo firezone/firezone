@@ -132,8 +132,8 @@ defmodule Domain.TokensTest do
         secret_nonce: -1,
         secret_fragment: -1,
         expires_at: DateTime.utc_now(),
-        created_by_user_agent: -1,
-        created_by_remote_ip: -1,
+        updated_by_user_agent: -1,
+        updated_by_remote_ip: -1,
         account_id: Ecto.UUID.generate()
       }
 
@@ -145,8 +145,8 @@ defmodule Domain.TokensTest do
                secret_nonce: ["is invalid"],
                secret_fragment: ["is invalid"],
                secret_hash: ["can't be blank"],
-               created_by_remote_ip: ["is invalid"],
-               created_by_user_agent: ["is invalid"]
+               updated_by_remote_ip: ["is invalid"],
+               updated_by_user_agent: ["is invalid"]
              } = errors_on(changeset)
     end
 
@@ -166,16 +166,16 @@ defmodule Domain.TokensTest do
         secret_nonce: nonce,
         secret_fragment: fragment,
         expires_at: expires_at,
-        created_by_user_agent: user_agent,
-        created_by_remote_ip: remote_ip
+        updated_by_user_agent: user_agent,
+        updated_by_remote_ip: remote_ip
       }
 
-      assert {:ok, %Tokens.Token{} = token} = create_token(attrs)
+      assert {:ok, %Token{} = token} = create_token(attrs)
 
       assert token.type == type
       assert token.expires_at == expires_at
-      assert token.created_by_user_agent == user_agent
-      assert token.created_by_remote_ip.address == remote_ip
+      assert token.updated_by_user_agent == user_agent
+      assert token.updated_by_remote_ip.address == remote_ip
 
       refute token.secret_nonce
       assert token.secret_fragment == fragment
@@ -185,7 +185,6 @@ defmodule Domain.TokensTest do
       assert token.account_id == account.id
       assert token.actor_id == actor.id
       assert token.identity_id == identity.id
-      assert token.created_by_subject == %{"name" => "System", "email" => nil}
     end
   end
 
@@ -206,8 +205,8 @@ defmodule Domain.TokensTest do
         secret_nonce: "x.o",
         secret_fragment: -1,
         expires_at: DateTime.utc_now(),
-        created_by_user_agent: -1,
-        created_by_remote_ip: -1
+        updated_by_user_agent: -1,
+        updated_by_remote_ip: -1
       }
 
       assert {:error, changeset} = create_token(attrs, subject)
@@ -218,8 +217,8 @@ defmodule Domain.TokensTest do
                secret_nonce: ["has invalid format"],
                secret_fragment: ["is invalid"],
                secret_hash: ["can't be blank"],
-               created_by_remote_ip: ["is invalid"],
-               created_by_user_agent: ["is invalid"]
+               updated_by_remote_ip: ["is invalid"],
+               updated_by_user_agent: ["is invalid"]
              } = errors_on(changeset)
     end
 
@@ -243,12 +242,12 @@ defmodule Domain.TokensTest do
         expires_at: expires_at
       }
 
-      assert {:ok, %Tokens.Token{} = token} = create_token(attrs, subject)
+      assert {:ok, %Token{} = token} = create_token(attrs, subject)
 
       assert token.type == type
       assert token.expires_at == expires_at
-      assert token.created_by_user_agent == subject.context.user_agent
-      assert token.created_by_remote_ip == subject.context.remote_ip
+      assert token.updated_by_user_agent == subject.context.user_agent
+      assert token.updated_by_remote_ip == subject.context.remote_ip
 
       assert token.secret_fragment == fragment
       refute token.secret_nonce
@@ -264,11 +263,6 @@ defmodule Domain.TokensTest do
       assert token.account_id == account.id
       assert token.actor_id == actor.id
       assert token.identity_id == identity.id
-
-      assert token.created_by_subject == %{
-               "name" => actor.name,
-               "email" => identity.email
-             }
     end
   end
 
@@ -329,7 +323,7 @@ defmodule Domain.TokensTest do
       assert use_token(nonce <> encoded_fragment, context) ==
                {:error, :invalid_or_expired_token}
 
-      token = Repo.get(Tokens.Token, token.id)
+      token = Repo.get(Token, token.id)
       assert token.remaining_attempts == 2
       refute token.expires_at
     end
@@ -351,7 +345,7 @@ defmodule Domain.TokensTest do
       assert use_token(nonce <> encoded_fragment, context) ==
                {:error, :invalid_or_expired_token}
 
-      token = Repo.get(Tokens.Token, token.id)
+      token = Repo.get(Token, token.id)
       assert token.remaining_attempts == 0
       assert token.expires_at
     end
@@ -434,14 +428,14 @@ defmodule Domain.TokensTest do
       token = Fixtures.Tokens.create_token(account: account)
 
       assert {:ok, _token} = delete_token(token, subject)
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
     test "user can delete own token", %{account: account, identity: identity, subject: subject} do
       token = Fixtures.Tokens.create_token(account: account, identity: identity)
 
       assert {:ok, _token} = delete_token(token, subject)
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
     test "user cannot delete other users token", %{
@@ -458,11 +452,11 @@ defmodule Domain.TokensTest do
                  [
                    reason: :missing_permissions,
                    missing_permissions: [
-                     %Domain.Auth.Permission{resource: Domain.Tokens.Token, action: :manage}
+                     %Domain.Auth.Permission{resource: Domain.Token, action: :manage}
                    ]
                  ]}}
 
-      assert Repo.get(Tokens.Token, token.id)
+      assert Repo.get(Token, token.id)
     end
 
     test "does not delete tokens that belong to other accounts", %{
@@ -472,7 +466,7 @@ defmodule Domain.TokensTest do
 
       assert delete_token(token, subject) == {:error, :unauthorized}
 
-      assert Repo.get(Tokens.Token, token.id)
+      assert Repo.get(Token, token.id)
     end
 
     test "returns error when subject does not have required permissions", %{
@@ -488,7 +482,7 @@ defmodule Domain.TokensTest do
                  [
                    reason: :missing_permissions,
                    missing_permissions: [
-                     %Domain.Auth.Permission{resource: Domain.Tokens.Token, action: :manage}
+                     %Domain.Auth.Permission{resource: Domain.Token, action: :manage}
                    ]
                  ]}}
     end
@@ -522,8 +516,8 @@ defmodule Domain.TokensTest do
       assert {:ok, num_deleted} = delete_token_for(subject)
       assert num_deleted == 1
 
-      refute Repo.get(Tokens.Token, subject.token_id)
-      assert Repo.get(Tokens.Token, other_token.id)
+      refute Repo.get(Token, subject.token_id)
+      assert Repo.get(Token, other_token.id)
     end
 
     test "does not delete tokens for other actors", %{account: account, subject: subject} do
@@ -531,7 +525,7 @@ defmodule Domain.TokensTest do
 
       assert {:ok, _token} = delete_token_for(subject)
 
-      assert Repo.get(Tokens.Token, token.id)
+      assert Repo.get(Token, token.id)
     end
   end
 
@@ -543,7 +537,7 @@ defmodule Domain.TokensTest do
 
       assert {:ok, _num_tokens} = delete_tokens_for(identity)
 
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
   end
 
@@ -554,7 +548,7 @@ defmodule Domain.TokensTest do
       token = Fixtures.Tokens.create_token(type: :browser, account: account, identity: identity)
 
       assert {:ok, 1} = delete_tokens_for(actor, subject)
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
     test "deletes client tokens for given actor", %{account: account, subject: subject} do
@@ -563,7 +557,7 @@ defmodule Domain.TokensTest do
       token = Fixtures.Tokens.create_token(type: :client, account: account, identity: identity)
 
       assert {:ok, 1} = delete_tokens_for(actor, subject)
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
     test "deletes client tokens for given identity", %{account: account, subject: subject} do
@@ -572,7 +566,7 @@ defmodule Domain.TokensTest do
       token = Fixtures.Tokens.create_token(type: :client, account: account, identity: identity)
 
       assert {:ok, 1} = delete_tokens_for(identity, subject)
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
     test "deletes client tokens for given provider", %{account: account, subject: subject} do
@@ -583,15 +577,15 @@ defmodule Domain.TokensTest do
       token = Fixtures.Tokens.create_token(type: :client, account: account, identity: identity)
 
       assert {:ok, _provider} = Domain.Auth.delete_provider(provider, subject)
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
-    test "deletes gateway group tokens", %{account: account, subject: subject} do
-      group = Fixtures.Gateways.create_group(account: account)
-      token = Fixtures.Gateways.create_token(account: account, group: group)
+    test "deletes site tokens", %{account: account, subject: subject} do
+      site = Fixtures.Sites.create_site(account: account)
+      token = Fixtures.Sites.create_token(account: account, site: site)
 
-      assert {:ok, _num_deleted} = delete_tokens_for(group, subject)
-      refute Repo.get(Tokens.Token, token.id)
+      assert {:ok, _num_deleted} = delete_tokens_for(site, subject)
+      refute Repo.get(Token, token.id)
     end
 
     test "deletes relay group tokens", %{account: account, subject: subject} do
@@ -599,7 +593,7 @@ defmodule Domain.TokensTest do
       token = Fixtures.Relays.create_token(account: account, group: group)
 
       assert {:ok, _relay_group} = Domain.Relays.delete_group(group, subject)
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
     test "returns error when subject does not have required permissions", %{
@@ -623,7 +617,7 @@ defmodule Domain.TokensTest do
         |> Fixtures.Tokens.expire_token()
 
       assert {:ok, 1} = delete_expired_tokens()
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
     test "does not delete non-expired tokens" do
@@ -631,7 +625,7 @@ defmodule Domain.TokensTest do
       token = Fixtures.Tokens.create_token(expires_at: in_one_minute)
 
       assert delete_expired_tokens() == {:ok, 0}
-      assert Repo.get(Tokens.Token, token.id)
+      assert Repo.get(Token, token.id)
     end
   end
 end

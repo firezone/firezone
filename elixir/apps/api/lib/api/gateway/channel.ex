@@ -1,23 +1,20 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
+  alias __MODULE__.DB
 
   alias Domain.{
-    Accounts,
     Cache,
     Changes.Change,
-    Flows,
-    Gateways,
     Auth,
     PubSub,
-    Relays,
-    Resources
+    Resource,
+    Presence
   }
 
-  alias Domain.Relays.Presence.Debouncer
   require Logger
 
-  # The interval at which the flow cache is pruned.
+  # The interval at which the policy authorization cache is pruned.
   @prune_cache_every :timer.minutes(1)
 
   # All relayed connections are dropped when this expires, so use
@@ -41,22 +38,31 @@ defmodule API.Gateway.Channel do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
-    :ok = Gateways.Presence.connect(socket.assigns.gateway, socket.assigns.token_id)
+    gateway = socket.assigns.gateway
+
+    Logger.debug("Tracking gateway presence",
+      gateway_id: gateway.id,
+      site_id: gateway.site_id,
+      account_id: gateway.account_id,
+      token_id: socket.assigns.token_id
+    )
+
+    :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id)
 
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.gateway.account_id)
 
     # Return all connected relays for the account
     {:ok, relays} = select_relays(socket)
-    :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
-    :ok = maybe_subscribe_for_relays_presence(relays, socket)
+    :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe(&1.id))
+    :ok = maybe_subscribe_for_relays_presence(relays)
 
-    account = Domain.Accounts.fetch_account_by_id!(socket.assigns.gateway.account_id)
+    account = DB.get_account_by_id!(socket.assigns.gateway.account_id)
 
     init(socket, account, relays)
 
     # Cache new stamp secrets
-    socket = Debouncer.cache_stamp_secrets(socket, relays)
+    socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
 
     {:noreply, socket}
   end
@@ -68,7 +74,14 @@ defmodule API.Gateway.Channel do
 
   # Called to actually push relays_presence with a disconnected relay to the gateway
   def handle_info({:push_leave, relay_id, stamp_secret, payload}, socket) do
-    {:noreply, Debouncer.handle_leave(socket, relay_id, stamp_secret, payload, &push/3)}
+    {:noreply,
+     Presence.Relays.Debouncer.handle_leave(
+       socket,
+       relay_id,
+       stamp_secret,
+       payload,
+       &push/3
+     )}
   end
 
   ####################################
@@ -105,17 +118,17 @@ defmodule API.Gateway.Channel do
         socket
       ) do
     if Map.has_key?(leaves, relay_id) do
-      :ok = Domain.Relays.unsubscribe_from_relay_presence(relay_id)
+      :ok = Presence.Relays.Relay.unsubscribe(relay_id)
 
       relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
       {:ok, relays} = select_relays(socket, [relay_id])
-      :ok = maybe_subscribe_for_relays_presence(relays, socket)
+      :ok = maybe_subscribe_for_relays_presence(relays)
 
       :ok =
         Enum.each(relays, fn relay ->
           # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Domain.Relays.unsubscribe_from_relay_presence(relay)
-          :ok = Domain.Relays.subscribe_to_relay_presence(relay)
+          :ok = Presence.Relays.Relay.unsubscribe(relay.id)
+          :ok = Presence.Relays.Relay.subscribe(relay.id)
         end)
 
       payload = %{
@@ -128,7 +141,7 @@ defmodule API.Gateway.Channel do
           )
       }
 
-      socket = Debouncer.queue_leave(self(), socket, relay_id, payload)
+      socket = Presence.Relays.Debouncer.queue_leave(self(), socket, relay_id, payload)
 
       {:noreply, socket}
     else
@@ -150,24 +163,23 @@ defmodule API.Gateway.Channel do
     if length(relays) > 0 do
       relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
 
-      :ok =
-        Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.gateway.account_id)
+      :ok = Presence.Relays.Global.unsubscribe()
 
       :ok =
         Enum.each(relays, fn relay ->
           # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Relays.unsubscribe_from_relay_presence(relay)
-          :ok = Relays.subscribe_to_relay_presence(relay)
+          :ok = Presence.Relays.Relay.unsubscribe(relay)
+          :ok = Presence.Relays.Relay.subscribe(relay)
         end)
 
       # Cache new stamp secrets
-      socket = Debouncer.cache_stamp_secrets(socket, relays)
+      socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
 
       # If a relay reconnects with a different stamp_secret, disconnect them immediately
       joined_ids = Map.keys(joins)
 
       {socket, disconnected_ids} =
-        Debouncer.cancel_leaves_or_disconnect_immediately(
+        Presence.Relays.Debouncer.cancel_leaves_or_disconnect_immediately(
           socket,
           joined_ids,
           socket.assigns.gateway.account_id
@@ -218,13 +230,13 @@ defmodule API.Gateway.Channel do
   end
 
   def handle_info(
-        {{:authorize_flow, gateway_id}, {channel_pid, socket_ref}, payload},
+        {{:authorize_policy, gateway_id}, {channel_pid, socket_ref}, payload},
         %{assigns: %{gateway: %{id: gateway_id}}} = socket
       ) do
     %{
       client: client,
       resource: %Cache.Cacheable.Resource{} = resource,
-      flow_id: flow_id,
+      policy_authorization_id: policy_authorization_id,
       authorization_expires_at: authorization_expires_at,
       ice_credentials: ice_credentials,
       preshared_key: preshared_key,
@@ -255,7 +267,7 @@ defmodule API.Gateway.Channel do
       |> Cache.Gateway.put(
         client.id,
         resource.id,
-        flow_id,
+        policy_authorization_id,
         authorization_expires_at
       )
 
@@ -270,12 +282,12 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: %Cache.Cacheable.Resource{} = resource,
-      flow_id: flow_id,
+      policy_authorization_id: policy_authorization_id,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload
     } = attrs
 
-    case Resources.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
         {:noreply, socket}
 
@@ -301,7 +313,7 @@ defmodule API.Gateway.Channel do
           |> Cache.Gateway.put(
             client.id,
             resource.id,
-            flow_id,
+            policy_authorization_id,
             authorization_expires_at
           )
 
@@ -317,13 +329,13 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: %Cache.Cacheable.Resource{} = resource,
-      flow_id: flow_id,
+      policy_authorization_id: policy_authorization_id,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload,
       client_preshared_key: preshared_key
     } = attrs
 
-    case Resources.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
         {:noreply, socket}
 
@@ -346,7 +358,7 @@ defmodule API.Gateway.Channel do
           |> Cache.Gateway.put(
             client.id,
             resource.id,
-            flow_id,
+            policy_authorization_id,
             authorization_expires_at
           )
 
@@ -383,7 +395,7 @@ defmodule API.Gateway.Channel do
             :connect,
             socket_ref,
             resource_id,
-            socket.assigns.gateway.group_id,
+            socket.assigns.gateway.site_id,
             socket.assigns.gateway.id,
             socket.assigns.gateway.public_key,
             socket.assigns.gateway.ipv4,
@@ -497,14 +509,14 @@ defmodule API.Gateway.Channel do
 
   defp select_relays(socket, except_ids \\ []) do
     {:ok, relays} =
-      Relays.all_connected_relays_for_account(socket.assigns.gateway.account_id, except_ids)
+      Presence.Relays.all_connected_relays(except_ids)
 
     location = {
       socket.assigns.gateway.last_seen_remote_ip_location_lat,
       socket.assigns.gateway.last_seen_remote_ip_location_lon
     }
 
-    relays = Relays.load_balance_relays(location, relays)
+    relays = load_balance_relays(location, relays)
 
     {:ok, relays}
   end
@@ -514,7 +526,7 @@ defmodule API.Gateway.Channel do
       DateTime.utc_now() |> DateTime.add(@relay_credentials_expire_in_hours, :hour)
 
     push(socket, "init", %{
-      authorizations: Views.Flow.render_many(socket.assigns.cache),
+      authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
       relays:
@@ -531,12 +543,10 @@ defmodule API.Gateway.Channel do
     })
   end
 
-  defp maybe_subscribe_for_relays_presence(relays, socket) do
-    if length(relays) > 0 do
-      :ok
-    else
-      Relays.subscribe_to_relays_presence_in_account(socket.assigns.gateway.account_id)
-    end
+  defp maybe_subscribe_for_relays_presence([]), do: :ok
+
+  defp maybe_subscribe_for_relays_presence(_relays) do
+    :ok = Presence.Relays.Global.subscribe()
   end
 
   ##########################################
@@ -549,8 +559,8 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Accounts.Account{slug: old_slug},
-           struct: %Accounts.Account{slug: slug} = account
+           old_struct: %Domain.Account{slug: old_slug},
+           struct: %Domain.Account{slug: slug} = account
          },
          socket
        )
@@ -561,50 +571,55 @@ defmodule API.Gateway.Channel do
     {:noreply, socket}
   end
 
-  # FLOWS
+  # POLICY_AUTHORIZATIONS
 
   defp handle_change(
          %Change{
            op: :delete,
            old_struct:
-             %Flows.Flow{gateway_id: gateway_id, client_id: client_id, resource_id: resource_id} =
-               flow
+             %Domain.PolicyAuthorization{
+               gateway_id: gateway_id,
+               client_id: client_id,
+               resource_id: resource_id
+             } =
+               policy_authorization
          },
          %{
            assigns: %{gateway: %{id: gateway_id}}
          } = socket
        ) do
     socket.assigns.cache
-    |> Cache.Gateway.reauthorize_deleted_flow(flow)
+    |> Cache.Gateway.reauthorize_deleted_policy_authorization(policy_authorization)
     |> case do
       {:ok, expires_at_unix, cache} ->
-        Logger.info("Updating authorization expiration for deleted flow",
-          deleted_flow: inspect(flow),
+        Logger.info("Updating authorization expiration for deleted policy authorization",
+          deleted_policy_authorization: inspect(policy_authorization),
           new_expires_at: DateTime.from_unix!(expires_at_unix, :second)
         )
 
         push(
           socket,
           "access_authorization_expiry_updated",
-          Views.Flow.render(flow, expires_at_unix)
+          Views.PolicyAuthorization.render(policy_authorization, expires_at_unix)
         )
 
         {:noreply, assign(socket, cache: cache)}
 
       {:error, :unauthorized, cache} ->
-        Logger.info("No authorizations remaining for deleted flow, revoking access",
-          deleted_flow: inspect(flow)
+        Logger.info(
+          "No authorizations remaining for deleted policy authorization, revoking access",
+          deleted_policy_authorization: inspect(policy_authorization)
         )
 
         # Note: There is an edge case here:
-        #   - Client authorizes flow for resource
+        #   - Client authorizes policy authorization for resource
         #   - Client's websocket temporarily gets cut
         #   - Admin deletes the policy
         #   - We send reject_access to the gateway
         #   - Admin recreates the same policy (same access)
         #   - Client connection resumes
         #   - Client sees exactly the same resource list
-        #   - Client now has lost the ability to recreate the flow because from its perspective, it is still connected
+        #   - Client now has lost the ability to recreate the policy authorization because from its perspective, it is still connected
         #     to this gateway.
         #   - Packets to gateway are essentially blackholed until the client signs out and back in
 
@@ -628,7 +643,7 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :delete,
-           old_struct: %Gateways.Gateway{id: gateway_id}
+           old_struct: %Domain.Gateway{id: gateway_id}
          },
          %{
            assigns: %{gateway: %{id: gateway_id}}
@@ -645,12 +660,12 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Resources.Resource{
+           old_struct: %Domain.Resource{
              address: old_address,
              ip_stack: old_ip_stack,
              type: old_type
            },
-           struct: %Resources.Resource{address: address, ip_stack: ip_stack, type: type, id: id}
+           struct: %Domain.Resource{address: address, ip_stack: ip_stack, type: type, id: id}
          },
          socket
        )
@@ -662,24 +677,24 @@ defmodule API.Gateway.Channel do
       push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
     end
 
-    # The cache will be updated by the flow deletion handler.
+    # The cache will be updated by the policy authorization deletion handler.
     {:noreply, socket}
   end
 
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Resources.Resource{filters: old_filters},
-           struct: %Resources.Resource{filters: filters} = resource
+           old_struct: %Domain.Resource{filters: old_filters},
+           struct: %Domain.Resource{filters: filters} = resource
          },
          socket
        )
        when old_filters != filters do
-    # Send regardless of cache state - if the Gateway has no flows for this resource,
+    # Send regardless of cache state - if the Gateway has no policy_authorizations for this resource,
     # it will simply ignore the message.
     resource = Cache.Cacheable.to_cache(resource)
 
-    case Resources.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
         {:noreply, socket}
 
@@ -690,4 +705,42 @@ defmodule API.Gateway.Channel do
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
+
+  defp load_balance_relays({lat, lon}, relays) when is_nil(lat) or is_nil(lon) do
+    relays
+    |> Enum.shuffle()
+    |> Enum.take(2)
+  end
+
+  defp load_balance_relays({lat, lon}, relays) do
+    relays
+    # This allows to group relays that are running at the same location so
+    # we are using at least 2 locations to build ICE candidates
+    |> Enum.group_by(fn relay ->
+      {relay.last_seen_remote_ip_location_lat, relay.last_seen_remote_ip_location_lon}
+    end)
+    |> Enum.map(fn
+      {{nil, nil}, relay} ->
+        {nil, relay}
+
+      {{relay_lat, relay_lon}, relay} ->
+        distance = Domain.Geo.distance({lat, lon}, {relay_lat, relay_lon})
+        {distance, relay}
+    end)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.take(2)
+    |> Enum.map(&Enum.random(elem(&1, 1)))
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Account
+
+    def get_account_by_id!(id) do
+      from(a in Account, where: a.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.one!()
+    end
+  end
 end

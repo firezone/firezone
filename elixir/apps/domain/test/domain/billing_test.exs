@@ -32,8 +32,8 @@ defmodule Domain.BillingTest do
 
   describe "account_provisioned?/1" do
     test "returns true when account is provisioned", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           metadata: %{stripe: %{customer_id: "cus_" <> Stripe.random_id()}}
         })
 
@@ -47,8 +47,8 @@ defmodule Domain.BillingTest do
 
   describe "users_limit_exceeded?/2" do
     test "returns false when seats limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{monthly_active_users_count: 10}
         })
 
@@ -56,8 +56,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns true when seats limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{users_count: 10}
         })
 
@@ -71,8 +71,8 @@ defmodule Domain.BillingTest do
 
   describe "seats_limit_exceeded?/2" do
     test "returns false when seats limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{monthly_active_users_count: 10}
         })
 
@@ -80,8 +80,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns true when seats limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{monthly_active_users_count: 10}
         })
 
@@ -95,8 +95,8 @@ defmodule Domain.BillingTest do
 
   describe "can_create_users?/1" do
     test "returns true when seats limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{monthly_active_users_count: 3}
         })
 
@@ -111,8 +111,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when seats limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{monthly_active_users_count: 1}
         })
 
@@ -127,8 +127,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when users limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{users_count: 1}
         })
 
@@ -139,8 +139,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when account is disabled", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           disabled_at: DateTime.utc_now(),
           disabled_reason: "Stripe subscription deleted"
         })
@@ -155,8 +155,8 @@ defmodule Domain.BillingTest do
 
   describe "service_accounts_limit_exceeded?/2" do
     test "returns false when service accounts limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{service_accounts_count: 10}
         })
 
@@ -164,8 +164,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns true when service accounts limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{service_accounts_count: 10}
         })
 
@@ -179,8 +179,8 @@ defmodule Domain.BillingTest do
 
   describe "can_create_service_accounts?/1" do
     test "returns true when service accounts limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{service_accounts_count: 3}
         })
 
@@ -195,8 +195,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when service accounts limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{service_accounts_count: 1}
         })
 
@@ -211,8 +211,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when account is disabled", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           disabled_at: DateTime.utc_now(),
           disabled_reason: "Stripe subscription deleted"
         })
@@ -225,74 +225,74 @@ defmodule Domain.BillingTest do
     end
   end
 
-  describe "gateway_groups_limit_exceeded?/2" do
-    test "returns false when gateway groups limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
-          limits: %{gateway_groups_count: 10}
+  describe "sites_limit_exceeded?/2" do
+    test "returns false when sites limit is not exceeded", %{account: account} do
+      account =
+        Fixtures.Accounts.update_account(account, %{
+          limits: %{sites_count: 10}
         })
 
-      assert gateway_groups_limit_exceeded?(account, 10) == false
+      assert sites_limit_exceeded?(account, 10) == false
     end
 
-    test "returns true when gateway groups limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
-          limits: %{gateway_groups_count: 10}
+    test "returns true when sites limit is exceeded", %{account: account} do
+      account =
+        Fixtures.Accounts.update_account(account, %{
+          limits: %{sites_count: 10}
         })
 
-      assert gateway_groups_limit_exceeded?(account, 11) == true
+      assert sites_limit_exceeded?(account, 11) == true
     end
 
-    test "returns true when gateway groups limit is not set", %{account: account} do
-      assert gateway_groups_limit_exceeded?(account, 0) == false
+    test "returns true when sites limit is not set", %{account: account} do
+      assert sites_limit_exceeded?(account, 0) == false
     end
   end
 
-  describe "can_create_gateway_groups?/1" do
-    test "returns true when gateway groups limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
-          limits: %{gateway_groups_count: 3}
+  describe "can_create_sites?/1" do
+    test "returns true when sites limit is not exceeded", %{account: account} do
+      account =
+        Fixtures.Accounts.update_account(account, %{
+          limits: %{sites_count: 3}
         })
 
-      Fixtures.Gateways.create_group(account: account)
-      Fixtures.Gateways.create_group(account: account)
-      Fixtures.Gateways.create_group()
+      Fixtures.Sites.create_site(account: account)
+      Fixtures.Sites.create_site(account: account)
+      Fixtures.Sites.create_site()
 
-      assert can_create_gateway_groups?(account) == true
+      assert can_create_sites?(account) == true
     end
 
-    test "returns false when gateway groups limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
-          limits: %{gateway_groups_count: 1}
+    test "returns false when sites limit is exceeded", %{account: account} do
+      account =
+        Fixtures.Accounts.update_account(account, %{
+          limits: %{sites_count: 1}
         })
 
-      Fixtures.Gateways.create_group(account: account)
+      Fixtures.Sites.create_site(account: account)
 
-      assert can_create_gateway_groups?(account) == false
+      assert can_create_sites?(account) == false
     end
 
     test "returns false when account is disabled", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           disabled_at: DateTime.utc_now(),
           disabled_reason: "Stripe subscription deleted"
         })
 
-      assert can_create_gateway_groups?(account) == false
+      assert can_create_sites?(account) == false
     end
 
-    test "returns true when gateway groups limit is not set", %{account: account} do
-      assert can_create_gateway_groups?(account) == true
+    test "returns true when sites limit is not set", %{account: account} do
+      assert can_create_sites?(account) == true
     end
   end
 
   describe "admins_limit_exceeded?/2" do
     test "returns false when admins limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{account_admin_users_count: 10}
         })
 
@@ -300,8 +300,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns true when admins limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{account_admin_users_count: 10}
         })
 
@@ -309,14 +309,14 @@ defmodule Domain.BillingTest do
     end
 
     test "returns true when admins limit is not set", %{account: account} do
-      assert gateway_groups_limit_exceeded?(account, 0) == false
+      assert sites_limit_exceeded?(account, 0) == false
     end
   end
 
   describe "can_create_admin_users?/1" do
     test "returns true when admins limit is not exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{account_admin_users_count: 5}
         })
 
@@ -327,8 +327,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when admins limit is exceeded", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           limits: %{account_admin_users_count: 1}
         })
 
@@ -338,8 +338,8 @@ defmodule Domain.BillingTest do
     end
 
     test "returns false when account is disabled", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           disabled_at: DateTime.utc_now(),
           disabled_reason: "Stripe subscription deleted"
         })
@@ -386,8 +386,8 @@ defmodule Domain.BillingTest do
     end
 
     test "does nothing when account is already provisioned", %{account: account} do
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           metadata: %{stripe: %{customer_id: "cus_" <> Stripe.random_id()}}
         })
 
@@ -442,13 +442,12 @@ defmodule Domain.BillingTest do
     setup %{account: account} do
       customer_id = "cus_" <> Stripe.random_id()
 
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
+      account =
+        Fixtures.Accounts.update_account(account, %{
           metadata: %{stripe: %{customer_id: customer_id}},
           features: %{
             multi_site_resources: nil,
             traffic_filters: nil,
-            self_hosted_relays: nil,
             idp_sync: nil
           },
           limits: %{
@@ -466,7 +465,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      refute Repo.get_by(Domain.Accounts.Account, name: account_name)
+      refute Repo.get_by(Domain.Account, name: account_name)
     end
 
     test "does nothing on customer.created event when metadata has account_id", %{
@@ -483,7 +482,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      refute Repo.get_by(Domain.Accounts.Account, name: "FooBarCompany")
+      refute Repo.get_by(Domain.Account, name: "FooBarCompany")
     end
 
     test "syncs an account from stripe on customer.created event" do
@@ -516,7 +515,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      assert account = Repo.get_by(Domain.Accounts.Account, slug: "bigcompany")
+      assert account = Repo.get_by(Domain.Account, slug: "bigcompany")
       assert account.name == "New Account Name"
       assert account.legal_name == "New Account Name"
       assert account.metadata.stripe.customer_id == customer_id
@@ -527,10 +526,10 @@ defmodule Domain.BillingTest do
       # from Stripe that is sent when subscription is created or updated
       refute account.metadata.stripe.product_name
 
-      assert actor = Repo.get_by(Domain.Actors.Actor, account_id: account.id)
+      assert actor = Repo.get_by(Domain.Actor, account_id: account.id)
       assert actor.name == "John Smith"
 
-      assert identity = Repo.get_by(Domain.Auth.Identity, actor_id: actor.id)
+      assert identity = Repo.get_by(Domain.ExternalIdentity, actor_id: actor.id)
       assert identity.provider_identifier == "iown@bigcompany.com"
 
       assert_receive {:bypass_request,
@@ -582,12 +581,12 @@ defmodule Domain.BillingTest do
         )
 
       assert handle_events([event]) == :ok
-      assert Repo.get_by(Domain.Accounts.Account, slug: "bigcompany")
+      assert Repo.get_by(Domain.Account, slug: "bigcompany")
 
       assert handle_events([event]) == :ok
 
-      assert Domain.Accounts.Account.Query.all()
-             |> Domain.Accounts.Account.Query.by_slug("bigcompany")
+      assert Domain.Account.Query.all()
+             |> Domain.Account.Query.by_slug("bigcompany")
              |> Repo.all()
              |> length() == 1
     end
@@ -611,7 +610,7 @@ defmodule Domain.BillingTest do
         )
 
       assert handle_events([event]) == :ok
-      assert Repo.one(Domain.Accounts.Account)
+      assert Repo.one(Domain.Account)
     end
 
     test "does nothing on customer.updated event when metadata is incomplete" do
@@ -641,7 +640,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      assert Repo.aggregate(Domain.Accounts.Account, :count) == 1
+      assert Repo.aggregate(Domain.Account, :count) == 1
     end
 
     test "creates an account from stripe on customer.updated event for new accounts" do
@@ -681,7 +680,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      assert account = Repo.get_by(Domain.Accounts.Account, slug: "bigcompany")
+      assert account = Repo.get_by(Domain.Account, slug: "bigcompany")
       assert account.name == "New Account Name"
       assert account.legal_name == "New Account Name"
       assert account.metadata.stripe.customer_id == customer_id
@@ -692,10 +691,10 @@ defmodule Domain.BillingTest do
       # from Stripe that is sent when subscription is created or updated
       refute account.metadata.stripe.product_name
 
-      assert actor = Repo.get_by(Domain.Actors.Actor, account_id: account.id)
+      assert actor = Repo.get_by(Domain.Actor, account_id: account.id)
       assert actor.name == "John Smith"
 
-      assert identity = Repo.get_by(Domain.Auth.Identity, actor_id: actor.id)
+      assert identity = Repo.get_by(Domain.ExternalIdentity, actor_id: actor.id)
       assert identity.provider_identifier == "iown@bigcompany.com"
 
       assert_receive {:bypass_request,
@@ -740,7 +739,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
       assert not is_nil(account.disabled_at)
       assert account.disabled_reason == "Stripe subscription deleted"
     end
@@ -758,7 +757,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
       assert not is_nil(account.disabled_at)
       assert account.disabled_reason == "Stripe subscription paused"
     end
@@ -793,7 +792,7 @@ defmodule Domain.BillingTest do
       assert handle_events([pause_event]) == :ok
 
       # Verify that account is disabled
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
       assert account.disabled_at
       assert account.disabled_reason == "Stripe subscription paused"
 
@@ -803,7 +802,7 @@ defmodule Domain.BillingTest do
       assert handle_events([continue_event]) == :ok
 
       # Verify that account has been re-enabled
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
       assert account.disabled_at == nil
       assert account.disabled_reason == nil
     end
@@ -817,7 +816,7 @@ defmodule Domain.BillingTest do
         Fixtures.Accounts.update_account(account, %{
           limits: %{
             account_admin_users_count: 1,
-            gateway_groups_count: 10,
+            sites_count: 10,
             service_accounts_count: 10,
             users_count: 6
           }
@@ -844,7 +843,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
 
       assert account.metadata.stripe.customer_id == customer_id
       assert account.metadata.stripe.subscription_id == subscription["id"]
@@ -853,7 +852,7 @@ defmodule Domain.BillingTest do
 
       assert account.limits == %Domain.Accounts.Limits{
                account_admin_users_count: 10,
-               gateway_groups_count: 100,
+               sites_count: 100,
                service_accounts_count: 100,
                users_count: 15
              }
@@ -896,7 +895,7 @@ defmodule Domain.BillingTest do
       assert handle_events([team_event]) == :ok
       assert Repo.all(ProcessedEvents.ProcessedEvent) |> length() == 1
 
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
 
       assert account.metadata.stripe.customer_id == customer_id
       assert account.metadata.stripe.subscription_id
@@ -905,7 +904,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([starter_event]) == :ok
 
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
 
       # Account metadata should not have been changed since starter event was in the past
       assert account.metadata.stripe.product_name == "Team"
@@ -939,7 +938,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
 
       assert is_nil(account.metadata.stripe.trial_ends_at)
     end
@@ -964,7 +963,6 @@ defmodule Domain.BillingTest do
         metadata: %{
           "name" => "Enterprise",
           "multi_site_resources" => "false",
-          "self_hosted_relays" => "false",
           "monthly_active_users_count" => "1000",
           "service_accounts_count" => "unlimited",
           "users_count" => 14,
@@ -976,7 +974,7 @@ defmodule Domain.BillingTest do
         "idp_sync" => "true",
         "multi_site_resources" => "true",
         "traffic_filters" => "true",
-        "gateway_groups_count" => 100
+        "sites_count" => 100
       }
 
       quantity = 12
@@ -996,7 +994,7 @@ defmodule Domain.BillingTest do
         )
 
       assert handle_events([event]) == :ok
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
 
       assert account.metadata.stripe.customer_id == customer_id
       assert account.metadata.stripe.subscription_id
@@ -1008,7 +1006,7 @@ defmodule Domain.BillingTest do
 
       assert account.limits == %Domain.Accounts.Limits{
                monthly_active_users_count: 1000,
-               gateway_groups_count: 100,
+               sites_count: 100,
                service_accounts_count: nil,
                users_count: 14
              }
@@ -1016,7 +1014,6 @@ defmodule Domain.BillingTest do
       assert account.features == %Domain.Accounts.Features{
                idp_sync: true,
                multi_site_resources: true,
-               self_hosted_relays: false,
                traffic_filters: true
              }
 
@@ -1024,7 +1021,7 @@ defmodule Domain.BillingTest do
         "idp_sync" => "false",
         "multi_site_resources" => "false",
         "traffic_filters" => "false",
-        "gateway_groups_count" => 1
+        "sites_count" => 1
       }
 
       quantity = 12
@@ -1040,7 +1037,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      assert account_after_expired_event = Repo.get(Domain.Accounts.Account, account.id)
+      assert account_after_expired_event = Repo.get(Domain.Account, account.id)
       assert account_after_expired_event == account
 
       event_type = "customer.subscription.pending_update_applied"
@@ -1055,7 +1052,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([event]) == :ok
 
-      assert account_after_expired_event = Repo.get(Domain.Accounts.Account, account.id)
+      assert account_after_expired_event = Repo.get(Domain.Account, account.id)
       assert account_after_expired_event == account
     end
 
@@ -1101,7 +1098,7 @@ defmodule Domain.BillingTest do
       assert handle_events([team_event]) == :ok
       assert Repo.all(ProcessedEvents.ProcessedEvent) |> length() == 1
 
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
 
       assert account.metadata.stripe.customer_id == customer_id
       assert account.metadata.stripe.subscription_id == team_subscription["id"]
@@ -1111,7 +1108,7 @@ defmodule Domain.BillingTest do
 
       assert handle_events([customer_update_event]) == :ok
 
-      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account = Repo.get(Domain.Account, account.id)
 
       assert account.metadata.stripe.product_name == "Team"
       assert account.metadata.stripe.support_type == "email"

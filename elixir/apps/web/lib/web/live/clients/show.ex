@@ -2,40 +2,33 @@ defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Clients.Components
-  alias Domain.{Clients, ComponentVersions, Flows}
+  alias Domain.{Presence.Clients, ComponentVersions}
+  alias __MODULE__.DB
+  import Ecto.Changeset
+  import Domain.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, client} <-
-           Clients.fetch_client_by_id(id, socket.assigns.subject,
-             preload: [
-               :online?,
-               :actor
-             ]
-           ) do
-      if connected?(socket) do
-        :ok = Clients.Presence.Actor.subscribe(client.actor_id)
-      end
+    client = DB.get_client!(id, socket.assigns.subject)
+    client = Clients.preload_clients_presence([client]) |> List.first()
 
-      current_token = get_current_token_from_presence(client, socket.assigns.subject)
-
-      socket =
-        assign(
-          socket,
-          client: client,
-          current_token: current_token,
-          page_title: "Client #{client.name}"
-        )
-        |> assign_live_table("flows",
-          query_module: Flows.Flow.Query,
-          sortable_fields: [],
-          hide_filters: [:expiration],
-          callback: &handle_flows_update!/2
-        )
-
-      {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    if connected?(socket) do
+      :ok = Clients.Actor.subscribe(client.actor_id)
     end
+
+    socket =
+      assign(
+        socket,
+        client: client,
+        page_title: "Client #{client.name}"
+      )
+      |> assign_live_table("policy_authorizations",
+        query_module: DB.PolicyAuthorizationQuery,
+        sortable_fields: [],
+        hide_filters: [:expiration],
+        callback: &handle_policy_authorizations_update!/2
+      )
+
+    {:ok, socket}
   end
 
   def handle_params(params, uri, socket) do
@@ -43,20 +36,24 @@ defmodule Web.Clients.Show do
     {:noreply, socket}
   end
 
-  def handle_flows_update!(socket, list_opts) do
+  def handle_policy_authorizations_update!(socket, list_opts) do
     list_opts =
       Keyword.put(list_opts, :preload,
         client: [:actor],
-        gateway: [:group],
-        policy: [:actor_group, :resource]
+        gateway: [:site],
+        policy: [:group, :resource]
       )
 
-    with {:ok, flows, metadata} <-
-           Flows.list_flows_for(socket.assigns.client, socket.assigns.subject, list_opts) do
+    with {:ok, policy_authorizations, metadata} <-
+           DB.list_policy_authorizations_for(
+             socket.assigns.client,
+             socket.assigns.subject,
+             list_opts
+           ) do
       {:ok,
        assign(socket,
-         flows: flows,
-         flows_metadata: metadata
+         policy_authorizations: policy_authorizations,
+         policy_authorizations_metadata: metadata
        )}
     end
   end
@@ -107,38 +104,12 @@ defmodule Web.Clients.Show do
           <.vertical_table_row>
             <:label>Owner</:label>
             <:value>
-              <.link navigate={~p"/#{@account}/actors/#{@client.actor.id}"} class={[link_style()]}>
+              <.link
+                navigate={~p"/#{@account}/actors/#{@client.actor.id}?#{[return_to: @current_path]}"}
+                class={[link_style()]}
+              >
                 {@client.actor.name}
               </.link>
-            </:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>Current sign in method</:label>
-            <:value>
-              <div
-                :if={@current_token && @client.actor.type != :service_account}
-                class="flex items-center"
-              >
-                <.identity_identifier account={@account} identity={@current_token.identity} />
-                <.link
-                  navigate={~p"/#{@account}/actors/#{@client.actor_id}?#tokens-#{@current_token.id}"}
-                  class={[link_style(), "text-xs"]}
-                >
-                  show tokens
-                </.link>
-              </div>
-              <div :if={@current_token && @client.actor.type == :service_account}>
-                token
-                <.link
-                  navigate={~p"/#{@account}/actors/#{@client.actor_id}?#tokens-#{@current_token.id}"}
-                  class={[link_style()]}
-                >
-                  {@current_token.name}
-                </.link>
-              </div>
-              <div :if={!@current_token} class="text-gray-500">
-                Client is offline - sign in method unavailable
-              </div>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -276,7 +247,7 @@ defmodule Web.Clients.Show do
               </.popover>
             </:label>
             <:value>
-              <.verified_by schema={@client} />
+              <.verified schema={@client} />
             </:value>
           </.vertical_table_row>
 
@@ -297,31 +268,37 @@ defmodule Web.Clients.Show do
       </:help>
       <:content>
         <.live_table
-          id="flows"
-          rows={@flows}
-          row_id={&"flows-#{&1.id}"}
-          filters={@filters_by_table_id["flows"]}
-          filter={@filter_form_by_table_id["flows"]}
-          ordered_by={@order_by_table_id["flows"]}
-          metadata={@flows_metadata}
+          id="policy_authorizations"
+          rows={@policy_authorizations}
+          row_id={&"policy_authorizations-#{&1.id}"}
+          filters={@filters_by_table_id["policy_authorizations"]}
+          filter={@filter_form_by_table_id["policy_authorizations"]}
+          ordered_by={@order_by_table_id["policy_authorizations"]}
+          metadata={@policy_authorizations_metadata}
         >
-          <:col :let={flow} label="authorized">
-            <.relative_datetime datetime={flow.inserted_at} />
+          <:col :let={policy_authorization} label="authorized">
+            <.relative_datetime datetime={policy_authorization.inserted_at} />
           </:col>
-          <:col :let={flow} label="remote ip" class="w-3/12">
-            {flow.client_remote_ip}
+          <:col :let={policy_authorization} label="remote ip" class="w-3/12">
+            {policy_authorization.client_remote_ip}
           </:col>
-          <:col :let={flow} label="policy">
-            <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
-              <.policy_name policy={flow.policy} />
+          <:col :let={policy_authorization} label="policy">
+            <.link
+              navigate={~p"/#{@account}/policies/#{policy_authorization.policy_id}"}
+              class={[link_style()]}
+            >
+              <.policy_name policy={policy_authorization.policy} />
             </.link>
           </:col>
-          <:col :let={flow} label="gateway" class="w-3/12">
-            <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              {flow.gateway.group.name}-{flow.gateway.name}
+          <:col :let={policy_authorization} label="gateway" class="w-3/12">
+            <.link
+              navigate={~p"/#{@account}/gateways/#{policy_authorization.gateway_id}"}
+              class={[link_style()]}
+            >
+              {policy_authorization.gateway.site.name}-{policy_authorization.gateway.name}
             </.link>
             <br />
-            <code class="text-xs">{flow.gateway_remote_ip}</code>
+            <code class="text-xs">{policy_authorization.gateway_remote_ip}</code>
           </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No activity to display.</div>
@@ -347,7 +324,10 @@ defmodule Web.Clients.Show do
 
             <p class="mt-2">
               To prevent the client owner from logging in again,
-              <.link navigate={~p"/#{@account}/actors/#{@client.actor_id}"} class={link_style()}>
+              <.link
+                navigate={~p"/#{@account}/actors/#{@client.actor_id}?#{[return_to: @current_path]}"}
+                class={link_style()}
+              >
                 disable the owning actor
               </.link>
               instead.
@@ -418,13 +398,7 @@ defmodule Web.Clients.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, client.id) ->
-          {:ok, client} =
-            Clients.fetch_client_by_id(client.id, socket.assigns.subject,
-              preload: [
-                :actor
-              ]
-            )
-
+          client = DB.get_client!(client.id, socket.assigns.subject)
           assign(socket, client: %{client | online?: true})
 
         Map.has_key?(payload.leaves, client.id) ->
@@ -441,7 +415,12 @@ defmodule Web.Clients.Show do
     do: handle_live_table_event(event, params, socket)
 
   def handle_event("verify_client", _params, socket) do
-    {:ok, client} = Clients.verify_client(socket.assigns.client, socket.assigns.subject)
+    changeset =
+      socket.assigns.client
+      |> change()
+      |> put_default_value(:verified_at, DateTime.utc_now())
+
+    {:ok, client} = DB.verify_client(changeset, socket.assigns.subject)
 
     client = %{
       client
@@ -453,8 +432,14 @@ defmodule Web.Clients.Show do
   end
 
   def handle_event("remove_client_verification", _params, socket) do
-    {:ok, client} =
-      Clients.remove_client_verification(socket.assigns.client, socket.assigns.subject)
+    import Ecto.Changeset
+
+    changeset =
+      socket.assigns.client
+      |> change()
+      |> put_change(:verified_at, nil)
+
+    {:ok, client} = DB.remove_client_verification(changeset, socket.assigns.subject)
 
     client = %{
       client
@@ -466,36 +451,312 @@ defmodule Web.Clients.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _deleted_client} = Clients.delete_client(socket.assigns.client, socket.assigns.subject)
+    {:ok, _deleted_client} = DB.delete_client(socket.assigns.client, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "Client was deleted.")
+      |> put_flash(:success, "Client was deleted.")
       |> push_navigate(to: ~p"/#{socket.assigns.account}/clients")
 
     {:noreply, socket}
   end
 
-  defp get_current_token_from_presence(client, subject) do
-    case Clients.Presence.Actor.get(client.actor_id, client.id) do
-      [] ->
-        nil
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Presence.Clients, Safe}
+    alias Domain.Client
 
-      presence_data ->
-        Map.get(presence_data, :metas)
-        |> fetch_token_by_metas(subject)
+    def get_client!(id, subject) do
+      from(c in Client, as: :clients)
+      |> where([clients: c], c.id == ^id)
+      |> preload(:actor)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def verify_client(changeset, subject) do
+      # Only account_admin_user can verify clients
+      if subject.actor.type == :account_admin_user do
+        case Safe.scoped(changeset, subject) |> Safe.update() do
+          {:ok, updated_client} ->
+            {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      else
+        {:error, :unauthorized}
+      end
+    end
+
+    def remove_client_verification(changeset, subject) do
+      # Only account_admin_user can remove client verification
+      if subject.actor.type == :account_admin_user do
+        case Safe.scoped(changeset, subject) |> Safe.update() do
+          {:ok, updated_client} ->
+            {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      else
+        {:error, :unauthorized}
+      end
+    end
+
+    def delete_client(client, subject) do
+      case Safe.scoped(client, subject) |> Safe.delete() do
+        {:ok, deleted_client} ->
+          {:ok, Clients.preload_clients_presence([deleted_client]) |> List.first()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+
+    # Inline functions from Domain.PolicyAuthorizations
+    def list_policy_authorizations_for(assoc, subject, opts \\ [])
+
+    def list_policy_authorizations_for(
+          %Domain.Policy{} = policy,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_policy_id(policy.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Resource{} = resource,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_resource_id(resource.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Client{} = client,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_client_id(client.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Actor{} = actor,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_actor_id(actor.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Gateway{} = gateway,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    defp list_policy_authorizations(queryable, subject, opts) do
+      queryable
+      |> Domain.Safe.scoped(subject)
+      |> Domain.Safe.list(DB.PolicyAuthorizationQuery, opts)
     end
   end
 
-  defp fetch_token_by_metas([%{token_id: token_id} | _tail], subject),
-    do: fetch_token(token_id, subject)
+  defmodule DB.PolicyAuthorizationQuery do
+    import Ecto.Query
 
-  defp fetch_token_by_metas(_metas, _subject), do: nil
-
-  defp fetch_token(token_id, subject) do
-    case Domain.Tokens.fetch_token_by_id(token_id, subject, preload: [identity: [:provider]]) do
-      {:ok, token} -> token
-      _ -> nil
+    def all do
+      from(policy_authorizations in Domain.PolicyAuthorization, as: :policy_authorizations)
     end
+
+    def expired(queryable) do
+      now = DateTime.utc_now()
+
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.expires_at <= ^now
+      )
+    end
+
+    def not_expired(queryable) do
+      now = DateTime.utc_now()
+
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.expires_at > ^now
+      )
+    end
+
+    def by_id(queryable, id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.id == ^id
+      )
+    end
+
+    def by_account_id(queryable, account_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.account_id == ^account_id
+      )
+    end
+
+    def by_token_id(queryable, token_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.token_id == ^token_id
+      )
+    end
+
+    def by_policy_id(queryable, policy_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.policy_id == ^policy_id
+      )
+    end
+
+    def for_cache(queryable) do
+      queryable
+      |> select(
+        [policy_authorizations: policy_authorizations],
+        {{policy_authorizations.client_id, policy_authorizations.resource_id},
+         {policy_authorizations.id, policy_authorizations.expires_at}}
+      )
+    end
+
+    def by_policy_group_id(queryable, group_id) do
+      queryable
+      |> with_joined_policy()
+      |> where([policy: policy], policy.group_id == ^group_id)
+    end
+
+    def by_membership_id(queryable, membership_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.membership_id == ^membership_id
+      )
+    end
+
+    def by_site_id(queryable, site_id) do
+      queryable
+      |> with_joined_site()
+      |> where([site: site], site.id == ^site_id)
+    end
+
+    def by_resource_id(queryable, resource_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.resource_id == ^resource_id
+      )
+    end
+
+    def by_not_in_resource_ids(queryable, resource_ids) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.resource_id not in ^resource_ids
+      )
+    end
+
+    def by_client_id(queryable, client_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.client_id == ^client_id
+      )
+    end
+
+    def by_actor_id(queryable, actor_id) do
+      queryable
+      |> with_joined_client()
+      |> where([client: client], client.actor_id == ^actor_id)
+    end
+
+    def by_gateway_id(queryable, gateway_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.gateway_id == ^gateway_id
+      )
+    end
+
+    def with_joined_policy(queryable) do
+      with_policy_authorization_named_binding(queryable, :policy, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          policy in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
+      end)
+    end
+
+    def with_joined_client(queryable) do
+      with_policy_authorization_named_binding(queryable, :client, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          client in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
+      end)
+    end
+
+    def with_joined_site(queryable) do
+      queryable
+      |> with_joined_gateway()
+      |> with_policy_authorization_named_binding(:site, fn queryable, binding ->
+        join(queryable, :inner, [gateway: gateway], site in assoc(gateway, :site), as: ^binding)
+      end)
+    end
+
+    def with_joined_gateway(queryable) do
+      with_policy_authorization_named_binding(queryable, :gateway, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          gateway in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
+      end)
+    end
+
+    def with_policy_authorization_named_binding(queryable, binding, fun) do
+      if has_named_binding?(queryable, binding) do
+        queryable
+      else
+        fun.(queryable, binding)
+      end
+    end
+
+    # Pagination
+    def cursor_fields,
+      do: [
+        {:policy_authorizations, :desc, :inserted_at},
+        {:policy_authorizations, :asc, :id}
+      ]
   end
 end

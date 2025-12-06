@@ -48,7 +48,7 @@ defmodule Web.NavigationComponents do
           <.dropdown id="user-menu">
             <:button>
               <span class="sr-only">Open user menu</span>
-              <.gravatar size={25} email={get_identity_email(@subject.identity)} class="rounded-full" />
+              <.avatar actor={@subject.actor} size={25} class="rounded-full" />
             </:button>
             <:dropdown>
               <.subject_dropdown subject={@subject} />
@@ -69,7 +69,7 @@ defmodule Web.NavigationComponents do
         {@subject.actor.name}
       </span>
       <span class="block text-sm text-neutral-900 truncate">
-        {@subject.identity.provider_identifier}
+        {@subject.actor.email}
       </span>
     </div>
     <ul class="py-1 text-neutral-700" aria-labelledby="user-menu-dropdown">
@@ -83,12 +83,15 @@ defmodule Web.NavigationComponents do
     </ul>
     <ul class="py-1 text-neutral-700" aria-labelledby="user-menu-dropdown">
       <li>
-        <a
-          href={~p"/#{@subject.account}/sign_out"}
-          class="block py-2 px-4 text-sm hover:bg-neutral-100"
-        >
-          Sign out
-        </a>
+        <form action={~p"/#{@subject.account}/sign_out"} method="post">
+          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+          <button
+            type="submit"
+            class="block w-full text-left py-2 px-4 text-sm hover:bg-neutral-100"
+          >
+            Sign out
+          </button>
+        </form>
       </li>
     </ul>
     """
@@ -165,14 +168,18 @@ defmodule Web.NavigationComponents do
   def sidebar_item(assigns) do
     ~H"""
     <li>
-      <.link navigate={@navigate} class={~w[
+      <.link
+        navigate={@navigate}
+        data-drawer-hide="drawer-navigation"
+        class={~w[
       flex items-center px-4 py-2
       text-base
       rounded
       #{sidebar_item_active?(@current_path, @navigate) && @active_class}
       text-neutral-700
       hover:bg-neutral-100 hover:text-neutral-900
-      ]}>
+      ]}
+      >
         <.icon name={@icon} class={~w[
           w-5 h-5
         ]} />
@@ -231,12 +238,16 @@ defmodule Web.NavigationComponents do
       </button>
       <ul id={"dropdown-#{@id}"} class={if @dropdown_hidden, do: "hidden", else: ""}>
         <li :for={item <- @item}>
-          <.link navigate={item.navigate} class={~w[
+          <.link
+            navigate={item.navigate}
+            data-drawer-hide="drawer-navigation"
+            class={~w[
               flex items-center p-2 pl-12 w-full group rounded
               text-lg text-neutral-700
               #{String.starts_with?(@current_path, item.navigate) && @active_class}
               hover:text-neutral-900
-              hover:bg-neutral-100]}>
+              hover:bg-neutral-100]}
+          >
             {render_slot(item)}
           </.link>
         </li>
@@ -261,7 +272,7 @@ defmodule Web.NavigationComponents do
       <ol class="inline-flex items-center space-x-1 md:space-x-2">
         <li class="inline-flex items-center">
           <.link
-            navigate={if @account, do: ~p"/#{@account}", else: @home_path}
+            navigate={if @account, do: ~p"/#{@account}/sites", else: @home_path}
             class="inline-flex items-center text-neutral-700 hover:text-neutral-900"
           >
             <.icon name="hero-home-solid" class="w-3.5 h-3.5 mr-2" /> Home

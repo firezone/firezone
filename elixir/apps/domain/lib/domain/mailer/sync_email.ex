@@ -6,10 +6,10 @@ defmodule Domain.Mailer.SyncEmail do
   embed_templates "sync_email/*.html", suffix: "_html"
   embed_templates "sync_email/*.text", suffix: "_text"
 
-  def sync_error_email(%Domain.Auth.Provider{} = provider, email) do
+  def sync_error_email(directory, email) do
     default_email()
-    |> subject("Firezone Identity Provider Sync Error")
+    |> subject("Directory Sync Error - #{directory.name}")
     |> to(email)
-    |> render_body(__MODULE__, :sync_error, account: provider.account, provider: provider)
+    |> render_body(__MODULE__, :sync_error, account: directory.account, directory: directory)
   end
 end

@@ -3,21 +3,15 @@ defmodule API.Client.Channel do
   alias API.Client.Views
 
   alias Domain.{
-    Accounts,
-    Clients,
     Cache,
     Changes.Change,
-    Actors,
     PubSub,
-    Resources,
-    Flows,
-    Gateways,
-    Relays,
-    Policies,
-    Flows
+    Gateway,
+    Presence,
+    Auth
   }
 
-  alias Domain.Relays.Presence.Debouncer
+  alias __MODULE__.DB
   require Logger
   require OpenTelemetry.Tracer
 
@@ -50,24 +44,28 @@ defmodule API.Client.Channel do
 
     # Get initial list of authorized resources, hydrating the cache
     {:ok, resources, [], cache} =
-      Cache.Client.recompute_connectable_resources(nil, socket.assigns.client)
+      Cache.Client.recompute_connectable_resources(
+        nil,
+        socket.assigns.client,
+        socket.assigns.subject
+      )
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
-    :ok = Enum.each(relays, &Relays.subscribe_to_relay_presence/1)
-    :ok = maybe_subscribe_for_relays_presence(relays, socket)
+    :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe(&1.id))
+    :ok = maybe_subscribe_for_relays_presence(relays)
 
     # Initialize debouncer for flappy relays
-    socket = Debouncer.cache_stamp_secrets(socket, relays)
+    socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
 
     # Track client's presence
-    :ok = Clients.Presence.connect(socket.assigns.client, socket.assigns.subject.token_id)
+    :ok = Presence.Clients.connect(socket.assigns.client, socket.assigns.subject.token_id)
 
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
 
-    # Delete any stale flows for resources we may not have access to anymore based on policy conditions
-    Flows.delete_stale_flows_on_connect(
+    # Delete any stale policy_authorizations for resources we may not have access to anymore based on policy conditions
+    delete_stale_policy_authorizations_on_connect(
       socket.assigns.client,
       Enum.map(resources, &Ecto.UUID.load!(&1.id))
     )
@@ -92,7 +90,14 @@ defmodule API.Client.Channel do
 
   # Called to actually push relays_presence with a disconnected relay to the client
   def handle_info({:push_leave, relay_id, stamp_secret, payload}, socket) do
-    {:noreply, Debouncer.handle_leave(socket, relay_id, stamp_secret, payload, &push/3)}
+    {:noreply,
+     Presence.Relays.Debouncer.handle_leave(
+       socket,
+       relay_id,
+       stamp_secret,
+       payload,
+       &push/3
+     )}
   end
 
   ####################################
@@ -130,7 +135,11 @@ defmodule API.Client.Channel do
     )
 
     {:ok, added_resources, removed_ids, cache} =
-      Cache.Client.recompute_connectable_resources(socket.assigns.cache, socket.assigns.client)
+      Cache.Client.recompute_connectable_resources(
+        socket.assigns.cache,
+        socket.assigns.client,
+        socket.assigns.subject
+      )
 
     for resource_id <- removed_ids do
       push(socket, "resource_deleted", resource_id)
@@ -156,16 +165,16 @@ defmodule API.Client.Channel do
         socket
       ) do
     if Map.has_key?(leaves, relay_id) do
-      :ok = Relays.unsubscribe_from_relay_presence(relay_id)
+      :ok = Presence.Relays.Relay.unsubscribe(relay_id)
 
       {:ok, relays} = select_relays(socket, [relay_id])
-      :ok = maybe_subscribe_for_relays_presence(relays, socket)
+      :ok = maybe_subscribe_for_relays_presence(relays)
 
       :ok =
         Enum.each(relays, fn relay ->
           # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Relays.unsubscribe_from_relay_presence(relay)
-          :ok = Relays.subscribe_to_relay_presence(relay)
+          :ok = Presence.Relays.Relay.unsubscribe(relay.id)
+          :ok = Presence.Relays.Relay.subscribe(relay.id)
         end)
 
       payload = %{
@@ -178,7 +187,7 @@ defmodule API.Client.Channel do
           )
       }
 
-      {:noreply, Debouncer.queue_leave(self(), socket, relay_id, payload)}
+      {:noreply, Presence.Relays.Debouncer.queue_leave(self(), socket, relay_id, payload)}
     else
       {:noreply, socket}
     end
@@ -196,23 +205,23 @@ defmodule API.Client.Channel do
       {:ok, relays} = select_relays(socket)
 
       if length(relays) > 0 do
-        :ok = Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.subject.account)
+        :ok = Presence.Relays.Global.unsubscribe()
 
         :ok =
           Enum.each(relays, fn relay ->
             # TODO: Why are we unsubscribing and subscribing again?
-            :ok = Relays.unsubscribe_from_relay_presence(relay)
-            :ok = Relays.subscribe_to_relay_presence(relay)
+            :ok = Presence.Relays.Relay.unsubscribe(relay.id)
+            :ok = Presence.Relays.Relay.subscribe(relay.id)
           end)
 
         # Cache new stamp secrets
-        socket = Debouncer.cache_stamp_secrets(socket, relays)
+        socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
 
         # If a relay reconnects with a different stamp_secret, disconnect them immediately
         joined_ids = Map.keys(joins)
 
         {socket, disconnected_ids} =
-          Debouncer.cancel_leaves_or_disconnect_immediately(
+          Presence.Relays.Debouncer.cancel_leaves_or_disconnect_immediately(
             socket,
             joined_ids,
             socket.assigns.client.account_id
@@ -291,15 +300,21 @@ defmodule API.Client.Channel do
   end
 
   def handle_info(
-        {:connect, _socket_ref, rid_bytes, gateway_group_id, gateway_id, gateway_public_key,
-         gateway_ipv4, gateway_ipv6, preshared_key, ice_credentials},
+        {:connect, _socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
+         gateway_ipv6, preshared_key, ice_credentials},
         socket
       ) do
     reply_payload = %{
       resource_id: Ecto.UUID.load!(rid_bytes),
       preshared_key: preshared_key,
       client_ice_credentials: ice_credentials.client,
-      gateway_group_id: gateway_group_id,
+      # TODO: conditionally rename to site_id based on client version
+      # apple: >= 1.5.11
+      # headless: >= 1.5.6
+      # android: >= 1.5.8
+      # gui: >= 1.5.10
+      # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
+      gateway_group_id: site_id,
       gateway_id: gateway_id,
       gateway_public_key: gateway_public_key,
       gateway_ipv4: gateway_ipv4,
@@ -339,7 +354,7 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           Gateways.all_compatible_gateways_for_client_and_resource(
+           DB.all_compatible_gateways_for_client_and_resource(
              socket.assigns.client,
              resource,
              socket.assigns.subject
@@ -349,12 +364,12 @@ defmodule API.Client.Channel do
         socket.assigns.client.last_seen_remote_ip_location_lon
       }
 
-      gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
+      gateway = Gateway.load_balance_gateways(location, gateways, connected_gateway_ids)
 
       # TODO: Optimization
       # Move this to a Task.start that completes after broadcasting authorize_flow
-      {:ok, flow} =
-        Flows.create_flow(
+      {:ok, policy_authorization} =
+        create_policy_authorization(
           socket.assigns.client,
           gateway,
           resource_id,
@@ -370,11 +385,11 @@ defmodule API.Client.Channel do
       :ok =
         PubSub.Account.broadcast(
           socket.assigns.client.account_id,
-          {{:authorize_flow, gateway.id}, {self(), socket_ref(socket)},
+          {{:authorize_policy, gateway.id}, {self(), socket_ref(socket)},
            %{
              client: socket.assigns.client,
              resource: resource,
-             flow_id: flow.id,
+             policy_authorization_id: policy_authorization.id,
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key,
@@ -431,7 +446,7 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           Gateways.all_compatible_gateways_for_client_and_resource(
+           DB.all_compatible_gateways_for_client_and_resource(
              socket.assigns.client,
              resource,
              socket.assigns.subject
@@ -441,13 +456,13 @@ defmodule API.Client.Channel do
         socket.assigns.client.last_seen_remote_ip_location_lon
       }
 
-      gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
+      gateway = Gateway.load_balance_gateways(location, gateways, connected_gateway_ids)
 
       reply =
         {:ok,
          %{
            resource_id: resource_id,
-           gateway_group_id: gateway.group_id,
+           site_id: gateway.site_id,
            gateway_id: gateway.id,
            gateway_remote_ip: gateway.last_seen_remote_ip
          }}
@@ -486,15 +501,19 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject, preload: :online?),
-         %Cache.Cacheable.GatewayGroup{} <-
-           Enum.find(resource.gateway_groups, {:error, :not_found}, fn g ->
-             g.id == Ecto.UUID.dump!(gateway.group_id)
+           DB.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
+           |> then(fn
+             {:ok, gw} ->
+               {:ok, Presence.Gateways.preload_gateways_presence([gw]) |> List.first()}
+
+             error ->
+               error
            end),
+         true <- resource.site_id == Ecto.UUID.dump!(gateway.site_id),
          true <- gateway.online? do
       # TODO: Optimization
-      {:ok, flow} =
-        Flows.create_flow(
+      {:ok, policy_authorization} =
+        create_policy_authorization(
           socket.assigns.client,
           gateway,
           resource_id,
@@ -511,7 +530,7 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
-             flow_id: flow.id,
+             policy_authorization_id: policy_authorization.id,
              authorization_expires_at: expires_at,
              client_payload: payload
            }}
@@ -553,15 +572,19 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject, preload: :online?),
-         %Cache.Cacheable.GatewayGroup{} <-
-           Enum.find(resource.gateway_groups, {:error, :not_found}, fn g ->
-             g.id == Ecto.UUID.dump!(gateway.group_id)
+           DB.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
+           |> then(fn
+             {:ok, gw} ->
+               {:ok, Presence.Gateways.preload_gateways_presence([gw]) |> List.first()}
+
+             error ->
+               error
            end),
+         true <- resource.site_id == Ecto.UUID.dump!(gateway.site_id),
          true <- gateway.online? do
       # TODO: Optimization
-      {:ok, flow} =
-        Flows.create_flow(
+      {:ok, policy_authorization} =
+        create_policy_authorization(
           socket.assigns.client,
           gateway,
           resource_id,
@@ -578,7 +601,7 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
-             flow_id: flow.id,
+             policy_authorization_id: policy_authorization.id,
              authorization_expires_at: expires_at,
              client_payload: client_payload,
              client_preshared_key: preshared_key
@@ -641,24 +664,22 @@ defmodule API.Client.Channel do
 
   defp select_relays(socket, except_ids \\ []) do
     {:ok, relays} =
-      Relays.all_connected_relays_for_account(socket.assigns.subject.account, except_ids)
+      Presence.Relays.all_connected_relays(except_ids)
 
     location = {
       socket.assigns.client.last_seen_remote_ip_location_lat,
       socket.assigns.client.last_seen_remote_ip_location_lon
     }
 
-    relays = Relays.load_balance_relays(location, relays)
+    relays = load_balance_relays(location, relays)
 
     {:ok, relays}
   end
 
-  defp maybe_subscribe_for_relays_presence(relays, socket) do
-    if length(relays) > 0 do
-      :ok
-    else
-      Relays.subscribe_to_relays_presence_in_account(socket.assigns.subject.account)
-    end
+  defp maybe_subscribe_for_relays_presence([]), do: :ok
+
+  defp maybe_subscribe_for_relays_presence(_relays) do
+    :ok = Presence.Relays.Global.subscribe()
   end
 
   defp generate_preshared_key(client, gateway) do
@@ -715,8 +736,8 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Accounts.Account{} = old_account,
-           struct: %Accounts.Account{} = account
+           old_struct: %Domain.Account{} = old_account,
+           struct: %Domain.Account{} = account
          },
          socket
        ) do
@@ -733,26 +754,35 @@ defmodule API.Client.Channel do
     {:noreply, socket}
   end
 
-  # ACTOR_GROUP_MEMBERSHIPS
+  # MEMBERSHIPS
 
   defp handle_change(
-         %Change{op: :insert, struct: %Actors.Membership{actor_id: actor_id}},
+         %Change{op: :insert, struct: %Domain.Membership{actor_id: actor_id}},
          %{assigns: %{client: %{actor_id: id}}} = socket
        )
        when id == actor_id do
-    Cache.Client.add_membership(socket.assigns.cache, socket.assigns.client)
+    Cache.Client.add_membership(
+      socket.assigns.cache,
+      socket.assigns.client,
+      socket.assigns.subject
+    )
     |> push_resource_updates(socket)
   end
 
   defp handle_change(
          %Change{
            op: :delete,
-           old_struct: %Actors.Membership{actor_id: actor_id} = membership
+           old_struct: %Domain.Membership{actor_id: actor_id} = membership
          },
          %{assigns: %{client: %{actor_id: id}}} = socket
        )
        when id == actor_id do
-    Cache.Client.delete_membership(socket.assigns.cache, membership, socket.assigns.client)
+    Cache.Client.delete_membership(
+      socket.assigns.cache,
+      membership,
+      socket.assigns.client,
+      socket.assigns.subject
+    )
     |> push_resource_updates(socket)
   end
 
@@ -761,19 +791,19 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Clients.Client{} = old_client,
-           struct: %Clients.Client{id: client_id} = client
+           old_struct: %Domain.Client{} = old_client,
+           struct: %Domain.Client{id: client_id} = client
          },
          %{assigns: %{client: %{id: id}}} = socket
        )
        when id == client_id do
-    # Maintain our preloaded identity
-    client = %{client | identity: socket.assigns.client.identity}
-    socket = assign(socket, client: client)
-
     # Changes in client verification can affect the list of allowed resources
     if old_client.verified_at != client.verified_at do
-      Cache.Client.recompute_connectable_resources(socket.assigns.cache, socket.assigns.client)
+      Cache.Client.recompute_connectable_resources(
+        socket.assigns.cache,
+        socket.assigns.client,
+        socket.assigns.subject
+      )
       |> push_resource_updates(socket)
     else
       {:noreply, socket}
@@ -781,7 +811,7 @@ defmodule API.Client.Channel do
   end
 
   defp handle_change(
-         %Change{op: :delete, old_struct: %Clients.Client{id: id}},
+         %Change{op: :delete, old_struct: %Domain.Client{id: id}},
          %{assigns: %{client: %{id: client_id}}} = socket
        )
        when id == client_id do
@@ -790,21 +820,22 @@ defmodule API.Client.Channel do
     {:stop, :shutdown, socket}
   end
 
-  # GATEWAY_GROUPS
+  # SITES
 
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Gateways.Group{name: old_name},
-           struct: %Gateways.Group{name: name} = group
+           old_struct: %Domain.Site{name: old_name},
+           struct: %Domain.Site{name: name} = site
          },
          socket
        )
        when old_name != name do
-    Cache.Client.update_resources_with_group_name(
+    Cache.Client.update_resources_with_site_name(
       socket.assigns.cache,
-      group,
-      socket.assigns.client
+      site,
+      socket.assigns.client,
+      socket.assigns.subject
     )
     |> push_resource_updates(socket)
   end
@@ -812,7 +843,7 @@ defmodule API.Client.Channel do
   # POLICIES
 
   defp handle_change(
-         %Change{op: :insert, struct: %Policies.Policy{} = policy},
+         %Change{op: :insert, struct: %Domain.Policy{} = policy},
          socket
        ) do
     Cache.Client.add_policy(
@@ -827,21 +858,21 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Policies.Policy{
+           old_struct: %Domain.Policy{
              resource_id: old_resource_id,
-             actor_group_id: old_actor_group_id,
+             group_id: old_group_id,
              conditions: old_conditions
            },
-           struct: %Policies.Policy{
+           struct: %Domain.Policy{
              resource_id: resource_id,
-             actor_group_id: actor_group_id,
+             group_id: group_id,
              conditions: conditions,
              disabled_at: disabled_at
            }
          } = change,
          socket
        )
-       when old_resource_id != resource_id or old_actor_group_id != actor_group_id or
+       when old_resource_id != resource_id or old_group_id != group_id or
               old_conditions != conditions do
     # TODO: Optimization
     # Breaking update - process this as a delete and then create to make our lives easier.
@@ -862,8 +893,8 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Policies.Policy{},
-           struct: %Policies.Policy{} = policy
+           old_struct: %Domain.Policy{},
+           struct: %Domain.Policy{} = policy
          },
          socket
        ) do
@@ -872,42 +903,14 @@ defmodule API.Client.Channel do
   end
 
   defp handle_change(
-         %Change{op: :delete, old_struct: %Policies.Policy{} = policy},
+         %Change{op: :delete, old_struct: %Domain.Policy{} = policy},
          socket
        ) do
-    Cache.Client.delete_policy(socket.assigns.cache, policy, socket.assigns.client)
-    |> push_resource_updates(socket)
-  end
-
-  # RESOURCE_CONNECTIONS
-
-  defp handle_change(
-         %Change{
-           op: :insert,
-           struct: %Resources.Connection{} = connection
-         },
-         socket
-       ) do
-    Cache.Client.add_resource_connection(
+    Cache.Client.delete_policy(
       socket.assigns.cache,
-      connection,
-      socket.assigns.subject,
-      socket.assigns.client
-    )
-    |> push_resource_updates(socket)
-  end
-
-  defp handle_change(
-         %Change{
-           op: :delete,
-           old_struct: %Resources.Connection{} = connection
-         },
-         socket
-       ) do
-    Cache.Client.delete_resource_connection(
-      socket.assigns.cache,
-      connection,
-      socket.assigns.client
+      policy,
+      socket.assigns.client,
+      socket.assigns.subject
     )
     |> push_resource_updates(socket)
   end
@@ -917,15 +920,16 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Resources.Resource{},
-           struct: %Resources.Resource{} = resource
+           old_struct: %Domain.Resource{},
+           struct: %Domain.Resource{} = resource
          },
          socket
        ) do
     Cache.Client.update_resource(
       socket.assigns.cache,
       resource,
-      socket.assigns.client
+      socket.assigns.client,
+      socket.assigns.subject
     )
     |> push_resource_updates(socket)
   end
@@ -933,7 +937,6 @@ defmodule API.Client.Channel do
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 
   defp push_resource_updates({:ok, added_resources, removed_ids, cache}, socket) do
-    # TODO: Multi-site resources
     # Currently, connlib doesn't handle resources changing sites, so we need to delete then create.
     # We handle that scenario by sending resource_deleted then resource_created_or_updated, so it's
     # important that deletions are processed first here.
@@ -947,5 +950,180 @@ defmodule API.Client.Channel do
     end
 
     {:noreply, assign(socket, cache: cache)}
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Gateway}
+
+    def fetch_gateway_by_id(id, subject) do
+      result =
+        from(g in Gateway, as: :gateways)
+        |> where([gateways: g], g.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        gateway -> {:ok, gateway}
+      end
+    end
+
+    def all_compatible_gateways_for_client_and_resource(
+          %Domain.Client{} = client,
+          resource,
+          subject
+        ) do
+      resource_site_id = site_id_from_resource(resource)
+
+      connected_gateway_ids =
+        Presence.Gateways.Account.list(subject.account.id)
+        |> Map.keys()
+
+      gateways =
+        from(g in Gateway, as: :gateways)
+        |> where([gateways: g], g.id in ^connected_gateway_ids and g.site_id == ^resource_site_id)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> case do
+          {:error, :unauthorized} -> []
+          gateways -> filter_compatible_gateways(gateways, resource, client.last_seen_version)
+        end
+
+      {:ok, gateways}
+    end
+
+    # Filters gateways by the resource type, gateway version, and client version.
+    defp filter_compatible_gateways(gateways, resource, client_version) do
+      case Version.parse(client_version) do
+        {:ok, version} ->
+          gateways
+          |> Enum.filter(fn gateway ->
+            case Version.parse(gateway.last_seen_version) do
+              {:ok, gateway_version} ->
+                Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
+                  Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
+                  not is_nil(
+                    Domain.Resource.adapt_resource_for_version(
+                      resource,
+                      gateway.last_seen_version
+                    )
+                  )
+
+              _ ->
+                false
+            end
+          end)
+
+        :error ->
+          []
+      end
+    end
+
+    defp site_id_from_resource(%Domain.Cache.Cacheable.Resource{site: nil}), do: nil
+
+    defp site_id_from_resource(%Domain.Cache.Cacheable.Resource{site: site}) do
+      Ecto.UUID.load!(site.id)
+    end
+  end
+
+  defp load_balance_relays({lat, lon}, relays) when is_nil(lat) or is_nil(lon) do
+    relays
+    |> Enum.shuffle()
+    |> Enum.take(2)
+  end
+
+  defp load_balance_relays({lat, lon}, relays) do
+    relays
+    # This allows to group relays that are running at the same location so
+    # we are using at least 2 locations to build ICE candidates
+    |> Enum.group_by(fn relay ->
+      {relay.last_seen_remote_ip_location_lat, relay.last_seen_remote_ip_location_lon}
+    end)
+    |> Enum.map(fn
+      {{nil, nil}, relay} ->
+        {nil, relay}
+
+      {{relay_lat, relay_lon}, relay} ->
+        distance = Domain.Geo.distance({lat, lon}, {relay_lat, relay_lon})
+        {distance, relay}
+    end)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.take(2)
+    |> Enum.map(&Enum.random(elem(&1, 1)))
+  end
+
+  # Inline functions from Domain.PolicyAuthorizations
+
+  defp delete_stale_policy_authorizations_on_connect(%Domain.Client{} = client, resource_ids)
+       when is_list(resource_ids) do
+    import Ecto.Query
+
+    from(pa in Domain.PolicyAuthorization, as: :policy_authorizations)
+    |> where([policy_authorizations: pa], pa.account_id == ^client.account_id)
+    |> where([policy_authorizations: pa], pa.client_id == ^client.id)
+    |> where([policy_authorizations: pa], pa.resource_id not in ^resource_ids)
+    |> Domain.Safe.unscoped()
+    |> Domain.Safe.delete_all()
+  end
+
+  defp create_policy_authorization(
+         %Domain.Client{
+           id: client_id,
+           account_id: account_id,
+           actor_id: actor_id
+         },
+         %Domain.Gateway{
+           id: gateway_id,
+           last_seen_remote_ip: gateway_remote_ip,
+           account_id: account_id
+         },
+         resource_id,
+         policy_id,
+         membership_id,
+         %Auth.Subject{
+           account: %{id: account_id},
+           actor: %{id: actor_id},
+           token_id: token_id,
+           context: %Auth.Context{
+             remote_ip: client_remote_ip,
+             user_agent: client_user_agent
+           }
+         } = subject,
+         expires_at
+       ) do
+    changeset =
+      create_policy_authorization_changeset(%{
+        token_id: token_id,
+        policy_id: policy_id,
+        client_id: client_id,
+        gateway_id: gateway_id,
+        resource_id: resource_id,
+        membership_id: membership_id,
+        account_id: account_id,
+        client_remote_ip: client_remote_ip,
+        client_user_agent: client_user_agent,
+        gateway_remote_ip: gateway_remote_ip,
+        expires_at: expires_at
+      })
+
+    Domain.Safe.scoped(changeset, subject)
+    |> Domain.Safe.insert()
+  end
+
+  defp create_policy_authorization_changeset(attrs) do
+    import Ecto.Changeset
+
+    fields = ~w[token_id policy_id client_id gateway_id resource_id membership_id
+                account_id
+                expires_at
+                client_remote_ip client_user_agent
+                gateway_remote_ip]a
+
+    %Domain.PolicyAuthorization{}
+    |> cast(attrs, fields)
+    |> validate_required(fields -- [:membership_id])
+    |> Domain.PolicyAuthorization.changeset()
   end
 end

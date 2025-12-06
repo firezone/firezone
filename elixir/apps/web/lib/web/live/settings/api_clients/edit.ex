@@ -1,24 +1,23 @@
 defmodule Web.Settings.ApiClients.Edit do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
-  alias Domain.Actors
+  import Ecto.Changeset
+
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
-      with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []) do
-        changeset = Actors.change_actor(actor)
+    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
+      actor = DB.get_api_client!(id, socket.assigns.subject)
+      changeset = changeset(actor, %{})
 
-        socket =
-          assign(socket,
-            actor: actor,
-            form: to_form(changeset),
-            page_title: "Edit #{actor.name}"
-          )
+      socket =
+        assign(socket,
+          actor: actor,
+          form: to_form(changeset),
+          page_title: "Edit #{actor.name}"
+        )
 
-        {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-      else
-        _other -> raise Web.LiveErrors.NotFoundError
-      end
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
     end
@@ -57,38 +56,49 @@ defmodule Web.Settings.ApiClients.Edit do
   end
 
   def handle_event("change", %{"actor" => attrs}, socket) do
-    attrs =
-      attrs
-      |> Map.put("type", :api_client)
-
     changeset =
-      Actors.change_actor(socket.assigns.actor, attrs)
-      |> Map.put(:action, :insert)
+      changeset(socket.assigns.actor, attrs)
+      |> Map.put(:action, :update)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("submit", %{"actor" => attrs}, socket) do
-    attrs =
-      attrs
-      |> Map.put("type", :api_client)
+    changeset = changeset(socket.assigns.actor, attrs)
 
-    with {:ok, actor} <- Actors.update_actor(socket.assigns.actor, attrs, socket.assigns.subject) do
+    with {:ok, actor} <- DB.update_api_client(changeset, socket.assigns.subject) do
       socket =
         push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/#{actor}")
 
       {:noreply, socket}
     else
-      {:error, :unauthorized} ->
-        {:noreply,
-         put_flash(socket, :error, "You don't have permissions to perform this action.")}
-
-      {:error, {:unauthorized, _context}} ->
-        {:noreply,
-         put_flash(socket, :error, "You don't have permissions to perform this action.")}
-
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  defp changeset(actor, attrs) do
+    actor
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> validate_length(:name, min: 1, max: 255)
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+
+    def get_api_client!(id, subject) do
+      from(a in Domain.Actor,
+        where: a.id == ^id,
+        where: a.type == :api_client
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def update_api_client(changeset, subject) do
+      Safe.scoped(changeset, subject) |> Safe.update()
     end
   end
 end

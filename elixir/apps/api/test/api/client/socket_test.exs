@@ -37,7 +37,7 @@ defmodule API.Client.SocketTest do
 
       assert {:error, changeset} = connect(Socket, attrs, connect_info: @connect_info)
 
-      errors = API.Sockets.changeset_error_to_string(changeset)
+      errors = Domain.Changeset.errors_to_string(changeset)
       assert errors =~ "public_key: can't be blank"
       assert errors =~ "external_id: can't be blank"
     end

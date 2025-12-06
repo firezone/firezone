@@ -25,8 +25,8 @@ defmodule Domain.Fixtures.Clients do
 
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
-        if relation = attrs[:actor] || attrs[:identity] do
-          Repo.get!(Domain.Accounts.Account, relation.account_id)
+        if relation = attrs[:actor] do
+          Repo.get!(Domain.Account, relation.account_id)
         else
           Fixtures.Accounts.create_account(assoc_attrs)
         end
@@ -39,19 +39,11 @@ defmodule Domain.Fixtures.Clients do
         |> Fixtures.Actors.create_actor()
       end)
 
-    {identity, attrs} =
-      pop_assoc_fixture(attrs, :identity, fn assoc_attrs ->
-        assoc_attrs
-        |> Enum.into(%{account: account, actor: actor})
-        |> Fixtures.Auth.create_identity()
-      end)
-
     {subject, attrs} =
       pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
         assoc_attrs
         |> Enum.into(%{
           account: account,
-          identity: identity,
           actor: [type: :account_admin_user]
         })
         |> Fixtures.Auth.create_subject()

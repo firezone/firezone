@@ -1,6 +1,6 @@
 defmodule API.Relay.Channel do
   use API, :channel
-  alias Domain.Relays
+  alias Domain.Presence
   require OpenTelemetry.Tracer
   require Logger
 
@@ -24,14 +24,6 @@ defmodule API.Relay.Channel do
     end
   end
 
-  def handle_info("disconnect", socket) do
-    OpenTelemetry.Tracer.with_span "relay.disconnect" do
-      push(socket, "disconnect", %{"reason" => "token_expired"})
-      send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
-      {:stop, :shutdown, socket}
-    end
-  end
-
   @impl true
   def handle_info(
         {:after_join, stamp_secret, {opentelemetry_ctx, opentelemetry_span_ctx}},
@@ -42,7 +34,12 @@ defmodule API.Relay.Channel do
 
     OpenTelemetry.Tracer.with_span "relay.after_join" do
       push(socket, "init", %{})
-      :ok = Relays.connect_relay(socket.assigns.relay, stamp_secret, socket.assigns.token_id)
+      relay = socket.assigns.relay
+      token_id = socket.assigns.token_id
+
+      # Connect the relay by tracking presence and subscribing to PubSub topics
+      :ok = Presence.Relays.connect(relay, stamp_secret, token_id)
+
       {:noreply, socket}
     end
   end

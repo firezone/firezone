@@ -36,7 +36,7 @@ defmodule API.ConnCase do
     {:ok, conn: conn, user_agent: user_agent}
   end
 
-  def authorize_conn(conn, %Domain.Actors.Actor{} = actor) do
+  def authorize_conn(conn, %Domain.Actor{} = actor) do
     expires_in = DateTime.utc_now() |> DateTime.add(300, :second)
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0)
 
@@ -46,13 +46,11 @@ defmodule API.ConnCase do
       "type" => :api_client,
       "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
       "account_id" => actor.account_id,
-      "actor_id" => actor.id,
-      "created_by_user_agent" => user_agent,
-      "created_by_remote_ip" => conn.remote_ip
+      "actor_id" => actor.id
     }
 
-    {:ok, token} = Domain.Tokens.create_token(attrs)
-    encoded_fragment = Domain.Tokens.encode_fragment!(token)
+    {:ok, token} = Domain.Auth.create_token(attrs)
+    encoded_fragment = Domain.Auth.encode_fragment!(token)
 
     Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> encoded_fragment)
   end

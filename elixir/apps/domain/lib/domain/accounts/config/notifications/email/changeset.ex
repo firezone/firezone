@@ -1,5 +1,5 @@
 defmodule Domain.Accounts.Config.Notifications.Email.Changeset do
-  use Domain, :changeset
+  import Ecto.Changeset
   alias Domain.Accounts.Config.Notifications.Email
 
   def changeset(config \\ %Email{}, attrs) do

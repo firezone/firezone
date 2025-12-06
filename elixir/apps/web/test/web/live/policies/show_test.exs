@@ -47,7 +47,7 @@ defmodule Web.Live.Policies.ShowTest do
         description: "Test Policy"
       )
 
-    policy = Repo.preload(policy, [:actor_group, :resource])
+    policy = Repo.preload(policy, [:group, :resource])
 
     %{
       account: account,
@@ -104,7 +104,7 @@ defmodule Web.Live.Policies.ShowTest do
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Policies"
-    assert breadcrumbs =~ policy.actor_group.name
+    assert breadcrumbs =~ policy.group.name
     assert breadcrumbs =~ policy.resource.name
   end
 
@@ -135,7 +135,7 @@ defmodule Web.Live.Policies.ShowTest do
   } do
     policy =
       policy
-      |> Domain.Repo.preload(:actor_group)
+      |> Domain.Repo.preload(:group)
       |> Domain.Repo.preload(:resource)
 
     {:ok, lv, _html} =
@@ -149,7 +149,7 @@ defmodule Web.Live.Policies.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["group"] =~ policy.actor_group.name
+    assert table["group"] =~ policy.group.name
     assert table["resource"] =~ policy.resource.name
     assert table["description"] =~ policy.description
     assert table["created"] =~ actor.name
@@ -179,7 +179,7 @@ defmodule Web.Live.Policies.ShowTest do
 
     policy =
       Fixtures.Policies.create_policy(account: account, subject: subject, resource: resource)
-      |> Domain.Repo.preload(:actor_group)
+      |> Domain.Repo.preload(:group)
       |> Domain.Repo.preload(:resource)
 
     {:ok, lv, _html} =
@@ -193,7 +193,7 @@ defmodule Web.Live.Policies.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["group"] =~ policy.actor_group.name
+    assert table["group"] =~ policy.group.name
     assert table["resource"] =~ policy.resource.name
     assert table["description"] =~ policy.description
     assert table["created"] =~ actor.name
@@ -206,14 +206,14 @@ defmodule Web.Live.Policies.ShowTest do
     policy: policy,
     conn: conn
   } do
-    flow =
-      Fixtures.Flows.create_flow(
+    policy_authorization =
+      Fixtures.PolicyAuthorizations.create_policy_authorization(
         account: account,
         resource: resource,
         policy: policy
       )
 
-    flow = Repo.preload(flow, client: [:actor], gateway: [:group])
+    policy_authorization = Repo.preload(policy_authorization, client: [:actor], gateway: [:site])
 
     {:ok, lv, _html} =
       conn
@@ -222,17 +222,17 @@ defmodule Web.Live.Policies.ShowTest do
 
     [row] =
       lv
-      |> element("#flows")
+      |> element("#policy_authorizations")
       |> render()
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["client, actor"] =~ flow.client.name
-    assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"
-    assert row["client, actor"] =~ to_string(flow.client_remote_ip)
+    assert row["client, actor"] =~ policy_authorization.client.name
+    assert row["client, actor"] =~ "owned by #{policy_authorization.client.actor.name}"
+    assert row["client, actor"] =~ to_string(policy_authorization.client_remote_ip)
 
     assert row["gateway"] =~
-             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+             "#{policy_authorization.gateway.site.name}-#{policy_authorization.gateway.name} #{policy_authorization.gateway.last_seen_remote_ip}"
   end
 
   test "allows deleting policy", %{
@@ -251,7 +251,7 @@ defmodule Web.Live.Policies.ShowTest do
            |> render_click() ==
              {:error, {:live_redirect, %{to: ~p"/#{account}/policies", kind: :push}}}
 
-    refute Repo.get(Domain.Policies.Policy, policy.id)
+    refute Repo.get(Domain.Policy, policy.id)
   end
 
   test "allows disabling and enabling policy", %{
@@ -269,12 +269,12 @@ defmodule Web.Live.Policies.ShowTest do
            |> element("button[type=submit]", "Disable")
            |> render_click() =~ "(disabled)"
 
-    assert Repo.get(Domain.Policies.Policy, policy.id).disabled_at
+    assert Repo.get(Domain.Policy, policy.id).disabled_at
 
     refute lv
            |> element("button[type=submit]", "Enable")
            |> render_click() =~ "(disabled)"
 
-    refute Repo.get(Domain.Policies.Policy, policy.id).disabled_at
+    refute Repo.get(Domain.Policy, policy.id).disabled_at
   end
 end

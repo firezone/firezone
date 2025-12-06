@@ -186,10 +186,10 @@ defmodule Web.Live.Actors.GroupsTest do
 
     actor = Repo.preload(actor, :groups, force: true)
 
-    actor_group_ids = Enum.map(actor.groups, & &1.id)
-    assert length(actor_group_ids) == 2
-    assert group1.id not in actor_group_ids
-    assert group2.id in actor_group_ids
-    assert group3.id in actor_group_ids
+    group_ids = Enum.map(actor.groups, & &1.id)
+    assert length(group_ids) == 2
+    assert group1.id not in group_ids
+    assert group2.id in group_ids
+    assert group3.id in group_ids
   end
 end

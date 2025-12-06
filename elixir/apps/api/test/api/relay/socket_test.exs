@@ -24,7 +24,7 @@ defmodule API.Relay.SocketTest do
 
     test "creates a new relay" do
       token = Fixtures.Relays.create_token()
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -44,7 +44,7 @@ defmodule API.Relay.SocketTest do
 
     test "creates a new named relay" do
       token = Fixtures.Relays.create_token()
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
 
       attrs =
         connect_attrs(token: encrypted_secret)
@@ -57,7 +57,7 @@ defmodule API.Relay.SocketTest do
 
     test "uses region code to put default coordinates" do
       token = Fixtures.Relays.create_token()
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -73,7 +73,7 @@ defmodule API.Relay.SocketTest do
 
     test "propagates trace context" do
       token = Fixtures.Relays.create_token()
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
       attrs = connect_attrs(token: encrypted_secret)
 
       span_ctx = OpenTelemetry.Tracer.start_span("test")
@@ -94,7 +94,7 @@ defmodule API.Relay.SocketTest do
       group = Fixtures.Relays.create_group(account: account)
       relay = Fixtures.Relays.create_relay(account: account, group: group)
       token = Fixtures.Relays.create_token(account: account, group: group)
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret, ipv4: relay.ipv4)
 

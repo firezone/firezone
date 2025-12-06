@@ -43,16 +43,10 @@ defmodule API.Schemas.Resource do
 
     properties =
       Map.merge(Resource.Schema.schema().properties, %{
-        connections: %Schema{
-          title: "Connections",
-          description: "Gateway Groups to connect the Resource to",
-          type: :array,
-          items: %Schema{
-            type: :object,
-            properties: %{
-              gateway_group_id: %Schema{type: :string, description: "Gateway Group ID"}
-            }
-          }
+        site_id: %Schema{
+          title: "Site ID",
+          description: "Site to connect the Resource to",
+          type: :string
         }
       })
 
@@ -70,11 +64,7 @@ defmodule API.Schemas.Resource do
           "address" => "10.0.0.10",
           "address_description" => "Production Database",
           "type" => "ip",
-          "connections" => [
-            %{
-              "gateway_group_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
-            }
-          ]
+          "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
         }
       }
     })

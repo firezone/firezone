@@ -2,211 +2,10 @@ defmodule Domain.RepoTest do
   use Domain.DataCase, async: true
   import Domain.Repo
 
-  describe "fetch/3" do
-    test "returns {:ok, schema} when a single result is found" do
-      account = Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-      assert fetch(queryable, query_module) == {:ok, account}
-    end
-
-    test "allows to preload deeply nested fields" do
-      account = Fixtures.Accounts.create_account()
-      Fixtures.Auth.create_userpass_provider(account: account)
-      Fixtures.Actors.create_actor(account: account)
-      Fixtures.Clients.create_client(account: account)
-      Fixtures.Policies.create_policy(account: account)
-
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-
-      assert {:ok, account} =
-               fetch(queryable, query_module,
-                 preload: [
-                   :auth_providers,
-                   policies: [],
-                   actors: [identities: :provider],
-                   clients: [:online?, :actor]
-                 ]
-               )
-
-      assert Ecto.assoc_loaded?(account.auth_providers)
-
-      assert Ecto.assoc_loaded?(account.policies)
-
-      assert Ecto.assoc_loaded?(account.actors)
-      assert Enum.all?(account.actors, &Ecto.assoc_loaded?(&1.identities))
-
-      assert Ecto.assoc_loaded?(account.clients)
-      assert Enum.all?(account.clients, &(&1.online? == false))
-      assert Enum.all?(account.clients, &Ecto.assoc_loaded?(&1.actor))
-    end
-
-    test "allows to use filters" do
-      account = Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-
-      assert {:ok, _account} = fetch(queryable, query_module, filter: [slug: account.slug])
-      assert fetch(queryable, query_module, filter: [slug: "foo"]) == {:error, :not_found}
-    end
-
-    test "raises when the query returns more than one row" do
-      Fixtures.Accounts.create_account()
-      Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-
-      assert_raise Ecto.MultipleResultsError, fn ->
-        fetch(queryable, query_module)
-      end
-    end
-
-    test "returns {:error, :not_found} when no results are found" do
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-
-      assert fetch(queryable, query_module) == {:error, :not_found}
-    end
-  end
-
-  describe "fetch_and_update/3" do
-    test "returns updated schema for a single updated record" do
-      account = Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-      new_value = Ecto.UUID.generate()
-      changeset_cb = fn account -> Ecto.Changeset.change(account, name: new_value) end
-
-      assert {:ok, updated_account} =
-               fetch_and_update(queryable, query_module, with: changeset_cb)
-
-      assert updated_account.id == account.id
-      assert updated_account.name == new_value
-    end
-
-    test "raises when the query returns more than one row" do
-      Fixtures.Accounts.create_account()
-      Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-      changeset_cb = fn account -> Ecto.Changeset.change(account, name: "foo") end
-
-      assert_raise Ecto.MultipleResultsError, fn ->
-        fetch_and_update(queryable, query_module, with: changeset_cb)
-      end
-    end
-
-    test "returns {:error, :not_found} when no results are found" do
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-      changeset_cb = fn account -> Ecto.Changeset.change(account, name: "foo") end
-      assert fetch_and_update(queryable, query_module, with: changeset_cb) == {:error, :not_found}
-    end
-
-    test "returns {:error, changeset} when changeset is invalid" do
-      Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-
-      changeset_cb = fn account ->
-        account
-        |> Ecto.Changeset.change(name: "foo")
-        |> Ecto.Changeset.add_error(:name, "is invalid")
-      end
-
-      assert {:error, %Ecto.Changeset{}} =
-               fetch_and_update(queryable, query_module, with: changeset_cb)
-    end
-
-    test "allows to execute a callback after transaction is committed" do
-      Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-
-      test_pid = self()
-
-      broadcast = fn account ->
-        send(test_pid, {:broadcast, account})
-        :ok
-      end
-
-      assert {:ok, updated_account} =
-               fetch_and_update(queryable, query_module,
-                 with: &Ecto.Changeset.change(&1, name: Ecto.UUID.generate()),
-                 after_commit: broadcast
-               )
-
-      assert_receive {:broadcast, ^updated_account}
-
-      assert {:ok, updated_account} =
-               fetch_and_update(queryable, query_module,
-                 with: &Ecto.Changeset.change(&1, name: Ecto.UUID.generate()),
-                 after_commit: fn account, _changeset -> broadcast.(account) end
-               )
-
-      assert_receive {:broadcast, ^updated_account}
-    end
-
-    test "allows to preload deeply nested fields" do
-      account = Fixtures.Accounts.create_account()
-      Fixtures.Auth.create_userpass_provider(account: account)
-      Fixtures.Actors.create_actor(account: account)
-      Fixtures.Clients.create_client(account: account)
-      Fixtures.Policies.create_policy(account: account)
-
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-      new_value = Ecto.UUID.generate()
-      changeset_cb = fn account -> Ecto.Changeset.change(account, name: new_value) end
-
-      assert {:ok, updated_account} =
-               fetch_and_update(queryable, query_module,
-                 with: changeset_cb,
-                 preload: [
-                   :auth_providers,
-                   policies: [],
-                   actors: [identities: :provider],
-                   clients: [:online?, :actor]
-                 ]
-               )
-
-      assert Ecto.assoc_loaded?(updated_account.auth_providers)
-
-      assert Ecto.assoc_loaded?(updated_account.policies)
-
-      assert Ecto.assoc_loaded?(updated_account.actors)
-      assert Enum.all?(updated_account.actors, &Ecto.assoc_loaded?(&1.identities))
-
-      assert Ecto.assoc_loaded?(updated_account.clients)
-      assert Enum.all?(updated_account.clients, &(&1.online? == false))
-      assert Enum.all?(updated_account.clients, &Ecto.assoc_loaded?(&1.actor))
-    end
-
-    test "allows to use filters" do
-      account = Fixtures.Accounts.create_account()
-      query_module = Domain.Accounts.Account.Query
-      queryable = query_module.all()
-      new_value = Ecto.UUID.generate()
-      changeset_cb = fn account -> Ecto.Changeset.change(account, name: new_value) end
-
-      assert {:ok, _updated_account} =
-               fetch_and_update(queryable, query_module,
-                 with: changeset_cb,
-                 filter: [slug: account.slug]
-               )
-
-      assert fetch_and_update(queryable, query_module,
-               with: changeset_cb,
-               filter: [slug: "foo"]
-             ) == {:error, :not_found}
-    end
-  end
-
   describe "list/2" do
     setup do
       account = Fixtures.Accounts.create_account()
-      query_module = Domain.Actors.Actor.Query
+      query_module = Domain.Actor.Query
       queryable = query_module.all()
 
       %{account: account, query_module: query_module, queryable: queryable}
@@ -242,13 +41,13 @@ defmodule Domain.RepoTest do
       Fixtures.Clients.create_client(account: account)
       Fixtures.Policies.create_policy(account: account)
 
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       assert {:ok, accounts, _metadata} =
                list(queryable, query_module,
                  preload: [
-                   :auth_providers,
+                   :legacy_auth_providers,
                    policies: [],
                    actors: [identities: :provider],
                    clients: [:online?, :actor]
@@ -256,7 +55,7 @@ defmodule Domain.RepoTest do
                )
 
       for account <- accounts do
-        assert Ecto.assoc_loaded?(account.auth_providers)
+        assert Ecto.assoc_loaded?(account.legacy_auth_providers)
 
         assert Ecto.assoc_loaded?(account.policies)
 
@@ -291,7 +90,7 @@ defmodule Domain.RepoTest do
     end
 
     test "allows to filter results" do
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       account1 = Fixtures.Accounts.create_account(name: "Josh Account")
@@ -344,7 +143,7 @@ defmodule Domain.RepoTest do
     end
 
     test "returns error on invalid filter type" do
-      query_module = Domain.Accounts.Account.Query
+      query_module = Domain.Account.Query
       queryable = query_module.all()
 
       assert list(queryable, query_module, filter: [name: 1]) ==
@@ -500,14 +299,11 @@ defmodule Domain.RepoTest do
       fixed_datetime = ~U[2000-01-01 00:00:00.000000Z]
 
       actors =
-        for i <- 1..10 do
-          last_synced_at = DateTime.add(fixed_datetime, i, :second)
-
+        for _i <- 1..10 do
           Fixtures.Actors.create_actor(account: account)
-          |> Fixtures.Actors.update(last_synced_at: last_synced_at)
         end
 
-      actors = actors |> Enum.sort_by(&{&1.last_synced_at, &1.id}) |> Enum.reverse()
+      actors = actors |> Enum.sort_by(&{&1.inserted_at, &1.id}) |> Enum.reverse()
 
       ids = Enum.map(actors, & &1.id)
       {first_page_ids, rest_ids} = Enum.split(ids, 4)
@@ -517,7 +313,7 @@ defmodule Domain.RepoTest do
       # load first page with 4 entries
       assert {:ok, actors1, metadata1} =
                list(queryable, query_module,
-                 order_by: [{:actors, :desc, :last_synced_at}],
+                 order_by: [{:actors, :desc, :inserted_at}],
                  page: [limit: 4]
                )
 
@@ -529,7 +325,7 @@ defmodule Domain.RepoTest do
       # load next page with 4 more entries
       assert {:ok, actors2, metadata2} =
                list(queryable, query_module,
-                 order_by: [{:actors, :desc, :last_synced_at}],
+                 order_by: [{:actors, :desc, :inserted_at}],
                  page: [limit: 4, cursor: metadata1.next_page_cursor]
                )
 
@@ -541,7 +337,7 @@ defmodule Domain.RepoTest do
       # load next page with 2 more entries
       assert {:ok, actors3, metadata3} =
                list(queryable, query_module,
-                 order_by: [{:actors, :desc, :last_synced_at}],
+                 order_by: [{:actors, :desc, :inserted_at}],
                  page: [limit: 4, cursor: metadata2.next_page_cursor]
                )
 
@@ -553,7 +349,7 @@ defmodule Domain.RepoTest do
       # go back to 2nd page
       assert {:ok, actors4, metadata4} =
                list(queryable, query_module,
-                 order_by: [{:actors, :desc, :last_synced_at}],
+                 order_by: [{:actors, :desc, :inserted_at}],
                  page: [limit: 4, cursor: metadata3.previous_page_cursor]
                )
 
@@ -565,7 +361,7 @@ defmodule Domain.RepoTest do
       # go back to first page
       assert {:ok, actors4, metadata4} =
                list(queryable, query_module,
-                 order_by: [{:actors, :desc, :last_synced_at}],
+                 order_by: [{:actors, :desc, :inserted_at}],
                  page: [limit: 4, cursor: metadata4.previous_page_cursor]
                )
 

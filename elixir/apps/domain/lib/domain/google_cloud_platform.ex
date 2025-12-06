@@ -1,6 +1,6 @@
 defmodule Domain.GoogleCloudPlatform do
   use Supervisor
-  alias Domain.GoogleCloudPlatform.{Instance, URLSigner}
+  alias Domain.GoogleCloudPlatform.Instance
   require Logger
 
   def start_link(opts) do
@@ -143,42 +143,6 @@ defmodule Domain.GoogleCloudPlatform do
 
       {:error, reason} ->
         {:error, reason}
-    end
-  end
-
-  @doc """
-  Signs a URL which can be used to write or read a file in Google Cloud Storage bucket
-  using HMAC (without additional network requests to Google API's).
-
-  ## Available options
-
-    * `:verb` - HTTP verb which would be used to access the resource ("PUT", "GET", "HEAD").
-    Default: `GET`.
-
-    * `:expires_in` - time in seconds after which signed URL would expire. Default - `:infinity`.
-
-    * `:headers` - Enforce any other headers, eg. `Content-Type` to make sure that signed URL requests
-    are going to have a specific `Content-Type` header (only when `:verb` is `PUT`).
-  """
-  def sign_url(bucket, filename, opts \\ []) do
-    with {:ok, service_account_access_token} <- fetch_and_cache_access_token() do
-      config = fetch_config!()
-      service_account_email = Keyword.fetch!(config, :service_account_email)
-      sign_endpoint_url = Keyword.fetch!(config, :sign_endpoint_url)
-      cloud_storage_url = Keyword.fetch!(config, :cloud_storage_url)
-
-      opts =
-        opts
-        |> Keyword.put_new(:sign_endpoint_url, sign_endpoint_url)
-        |> Keyword.put_new(:cloud_storage_url, cloud_storage_url)
-
-      URLSigner.sign_url(
-        service_account_email,
-        service_account_access_token,
-        bucket,
-        filename,
-        opts
-      )
     end
   end
 

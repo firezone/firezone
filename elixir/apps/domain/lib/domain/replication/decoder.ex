@@ -120,6 +120,17 @@ defmodule Domain.Replication.Decoder do
       defstruct [:id, :namespace, :name]
     end
 
+    defmodule LogicalMessage do
+      @moduledoc """
+      Struct representing a logical message emitted via pg_logical_emit_message.
+
+      * `transactional` - Whether this message is part of a transaction.
+      * `prefix` - The prefix string provided to pg_logical_emit_message.
+      * `content` - The content string provided to pg_logical_emit_message.
+      """
+      defstruct [:transactional, :prefix, :content]
+    end
+
     defmodule Unsupported do
       @moduledoc """
       Struct representing an unsupported message in PostgreSQL's logical decoding output.
@@ -145,6 +156,7 @@ defmodule Domain.Replication.Decoder do
     Delete,
     Truncate,
     Type,
+    LogicalMessage,
     Unsupported
   }
 
@@ -253,6 +265,18 @@ defmodule Domain.Replication.Decoder do
     %Origin{
       origin_commit_lsn: decode_lsn(lsn),
       name: name
+    }
+  end
+
+  defp decode_message_impl(<<"M", transactional::8, _lsn::binary-8, rest::binary>>) do
+    # The message format is: transactional flag, LSN, null-terminated prefix, length-prefixed content
+    [prefix, rest_after_prefix] = :binary.split(rest, <<0>>)
+    <<content_len::integer-32, content::binary-size(content_len), _::binary>> = rest_after_prefix
+
+    %LogicalMessage{
+      transactional: transactional == 1,
+      prefix: prefix,
+      content: content
     }
   end
 

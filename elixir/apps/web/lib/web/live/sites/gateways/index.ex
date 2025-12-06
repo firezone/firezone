@@ -1,35 +1,33 @@
 defmodule Web.Sites.Gateways.Index do
   use Web, :live_view
-  alias Domain.Gateways
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject) do
-      if connected?(socket) do
-        :ok = Gateways.Presence.Group.subscribe(group.id)
-      end
+    site = DB.get_site!(id, socket.assigns.subject)
 
-      socket =
-        socket
-        |> assign(
-          page_title: "Site Gateways",
-          group: group
-        )
-        |> assign_live_table("gateways",
-          query_module: Gateways.Gateway.Query,
-          enforce_filters: [
-            {:gateway_group_id, group.id}
-          ],
-          sortable_fields: [
-            {:gateways, :name},
-            {:gateways, :last_seen_at}
-          ],
-          callback: &handle_gateways_update!/2
-        )
-
-      {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    if connected?(socket) do
+      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
     end
+
+    socket =
+      socket
+      |> assign(
+        page_title: "Site Gateways",
+        site: site
+      )
+      |> assign_live_table("gateways",
+        query_module: DB,
+        enforce_filters: [
+          {:site_id, site.id}
+        ],
+        sortable_fields: [
+          {:gateways, :name},
+          {:gateways, :last_seen_at}
+        ],
+        callback: &handle_gateways_update!/2
+      )
+
+    {:ok, socket}
   end
 
   def handle_params(params, uri, socket) do
@@ -40,7 +38,7 @@ defmodule Web.Sites.Gateways.Index do
   def handle_gateways_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:online?])
 
-    with {:ok, gateways, metadata} <- Gateways.list_gateways(socket.assigns.subject, list_opts) do
+    with {:ok, gateways, metadata} <- DB.list_gateways(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          gateways: gateways,
@@ -53,23 +51,23 @@ defmodule Web.Sites.Gateways.Index do
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        {@group.name}
+      <.breadcrumb path={~p"/#{@account}/sites/#{@site}"}>
+        {@site.name}
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@group}/gateways"}>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@site}/gateways"}>
         Gateways
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Site <code>{@group.name}</code> Gateways
+        Site <code>{@site.name}</code> Gateways
       </:title>
-      <:help :if={@group.managed_by == :system and @group.name == "Internet"}>
+      <:help :if={@site.managed_by == :system and @site.name == "Internet"}>
         Gateways deployed to the Internet Site will be used for full-route tunneling
         of traffic that doesn't match a more specific Resource.
       </:help>
-      <:help :if={@group.managed_by == :account}>
+      <:help :if={@site.managed_by == :account}>
         Deploy gateways to terminate connections to your site's resources. All
         gateways deployed within a site must be able to reach all
         its resources.
@@ -103,13 +101,13 @@ defmodule Web.Sites.Gateways.Index do
             <div class="flex flex-col items-center justify-center text-center text-neutral-500 p-4">
               <div class="pb-4">
                 No gateways to display.
-                <span :if={@group.managed_by == :system and @group.name == "Internet"}>
-                  <.link class={[link_style()]} navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
+                <span :if={@site.managed_by == :system and @site.name == "Internet"}>
+                  <.link class={[link_style()]} navigate={~p"/#{@account}/sites/#{@site}/new_token"}>
                     Deploy a Gateway to the Internet Site.
                   </.link>
                 </span>
-                <span :if={@group.managed_by == :account}>
-                  <.link class={[link_style()]} navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
+                <span :if={@site.managed_by == :account}>
+                  <.link class={[link_style()]} navigate={~p"/#{@account}/sites/#{@site}/new_token"}>
                     Deploy a Gateway to connect Resources.
                   </.link>
                 </span>
@@ -123,7 +121,7 @@ defmodule Web.Sites.Gateways.Index do
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id} = event,
+        %Phoenix.Socket.Broadcast{topic: "presences:sites:" <> _site_id} = event,
         socket
       ) do
     rendered_gateway_ids = Enum.map(socket.assigns.gateways, & &1.id)
@@ -138,4 +136,52 @@ defmodule Web.Sites.Gateways.Index do
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
     do: handle_live_table_event(event, params, socket)
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Gateway}
+
+    def get_site!(id, subject) do
+      from(s in Domain.Site, as: :sites)
+      |> where([sites: s], s.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def list_gateways(subject, opts \\ []) do
+      from(g in Gateway, as: :gateways)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:gateways, :asc, :name},
+        {:gateways, :asc, :last_seen_at},
+        {:gateways, :asc, :id}
+      ]
+    end
+
+    def preloads do
+      [
+        online?: &Domain.Presence.Gateways.preload_gateways_presence/1
+      ]
+    end
+
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :site_id,
+          title: "Site",
+          type: {:string, :uuid},
+          values: [],
+          fun: &filter_by_site_id/2
+        }
+      ]
+    end
+
+    def filter_by_site_id(queryable, site_id) do
+      {queryable, dynamic([gateways: gateways], gateways.site_id == ^site_id)}
+    end
+  end
 end

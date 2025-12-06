@@ -144,7 +144,7 @@ defmodule Domain.Changes.ReplicationConnectionTest do
       old_data = %{
         "account_id" => Ecto.UUID.generate(),
         "resource_id" => Ecto.UUID.generate(),
-        "gateway_group_id" => Ecto.UUID.generate(),
+        "site_id" => Ecto.UUID.generate(),
         "id" => Ecto.UUID.generate(),
         "name" => "deleted item"
       }
@@ -275,13 +275,12 @@ defmodule Domain.Changes.ReplicationConnectionTest do
       # This test ensures our tables_to_hooks map is properly configured
       tables_to_hooks = %{
         "accounts" => Domain.Changes.Hooks.Accounts,
-        "actor_group_memberships" => Domain.Changes.Hooks.ActorGroupMemberships,
+        "memberships" => Domain.Changes.Hooks.Memberships,
         "clients" => Domain.Changes.Hooks.Clients,
-        "flows" => Domain.Changes.Hooks.Flows,
-        "gateway_groups" => Domain.Changes.Hooks.GatewayGroups,
+        "policy_authorizations" => Domain.Changes.Hooks.PolicyAuthorizations,
+        "sites" => Domain.Changes.Hooks.Sites,
         "gateways" => Domain.Changes.Hooks.Gateways,
         "policies" => Domain.Changes.Hooks.Policies,
-        "resource_connections" => Domain.Changes.Hooks.ResourceConnections,
         "resources" => Domain.Changes.Hooks.Resources,
         "tokens" => Domain.Changes.Hooks.Tokens
       }
@@ -290,13 +289,12 @@ defmodule Domain.Changes.ReplicationConnectionTest do
       assert Map.keys(tables_to_hooks) |> Enum.sort() ==
                [
                  "accounts",
-                 "actor_group_memberships",
+                 "memberships",
                  "clients",
-                 "flows",
-                 "gateway_groups",
+                 "policy_authorizations",
+                 "sites",
                  "gateways",
                  "policies",
-                 "resource_connections",
                  "resources",
                  "tokens"
                ]

@@ -1,7 +1,6 @@
 defmodule Web.Policies.Components do
   use Web, :component_library
   alias Domain.Policies.Condition
-  alias Domain.Policies
 
   @days_of_week [
     {"M", "Monday"},
@@ -16,7 +15,7 @@ defmodule Web.Policies.Components do
   @all_conditions [
     :remote_ip_location_region,
     :remote_ip,
-    :provider_id,
+    :auth_provider_id,
     :client_verified,
     :current_utc_datetime
   ]
@@ -34,11 +33,11 @@ defmodule Web.Policies.Components do
   attr(:policy, :map, required: true)
 
   def policy_name(assigns) do
-    ~H"{@policy.actor_group.name} → {@policy.resource.name}"
+    ~H"{@policy.group.name} → {@policy.resource.name}"
   end
 
   def maybe_drop_unsupported_conditions(attrs, socket) do
-    if Domain.Accounts.policy_conditions_enabled?(socket.assigns.account) do
+    if Domain.Account.policy_conditions_enabled?(socket.assigns.account) do
       attrs
     else
       Map.delete(attrs, "conditions")
@@ -139,6 +138,7 @@ defmodule Web.Policies.Components do
       <span class="mr-1">This policy can be used</span>
       <.condition
         :for={condition <- @conditions}
+        account={@account}
         providers={@providers}
         property={condition.property}
         operator={condition.operator}
@@ -170,7 +170,7 @@ defmodule Web.Policies.Components do
     """
   end
 
-  defp condition(%{property: :provider_id} = assigns) do
+  defp condition(%{property: :auth_provider_id} = assigns) do
     assigns =
       assign(
         assigns,
@@ -193,7 +193,10 @@ defmodule Web.Policies.Components do
         <:separator>,</:separator>
 
         <:item :for={provider <- @providers}>
-          <.link navigate={"/providers/#{provider.id}"} class={[link_style(), "font-medium"]}>
+          <.link
+            navigate={~p"/#{@account}/settings/authentication"}
+            class={[link_style(), "font-medium"]}
+          >
             {provider.name}
           </.link>
         </:item>
@@ -216,7 +219,7 @@ defmodule Web.Policies.Components do
   defp condition(%{property: :current_utc_datetime, values: values} = assigns) do
     assigns =
       assign_new(assigns, :tz_time_ranges_by_dow, fn ->
-        {:ok, ranges} = Policies.Condition.Evaluator.parse_days_of_week_time_ranges(values)
+        {:ok, ranges} = Domain.Policies.Evaluator.parse_days_of_week_time_ranges(values)
 
         ranges
         |> Enum.reject(fn {_dow, time_ranges} -> time_ranges == [] end)
@@ -276,7 +279,7 @@ defmodule Web.Policies.Components do
     assigns =
       assigns
       |> assign_new(:policy_conditions_enabled?, fn ->
-        Domain.Accounts.policy_conditions_enabled?(assigns.account)
+        Domain.Account.policy_conditions_enabled?(assigns.account)
       end)
       |> assign_new(:enabled_conditions, fn ->
         Map.fetch!(@conditions_by_resource_type, assigns.selected_resource.type)
@@ -312,7 +315,7 @@ defmodule Web.Policies.Components do
           disabled={@policy_conditions_enabled? == false}
         />
         <.provider_id_condition_form
-          :if={:provider_id in @enabled_conditions}
+          :if={:auth_provider_id in @enabled_conditions}
           form={@form}
           providers={@providers}
           disabled={@policy_conditions_enabled? == false}
@@ -506,38 +509,38 @@ defmodule Web.Policies.Components do
   defp provider_id_condition_form(assigns) do
     ~H"""
     <fieldset class="mb-4">
-      <% condition_form = find_condition_form(@form[:conditions], :provider_id) %>
+      <% condition_form = find_condition_form(@form[:conditions], :auth_provider_id) %>
 
       <.input
         type="hidden"
         field={condition_form[:property]}
-        name="policy[conditions][provider_id][property]"
-        id="policy_conditions_provider_id_property"
-        value="provider_id"
+        name="policy[conditions][auth_provider_id][property]"
+        id="policy_conditions_auth_provider_id_property"
+        value="auth_provider_id"
       />
 
       <div
         class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
         phx-click={
           JS.toggle_class("hidden",
-            to: "#policy_conditions_provider_id_condition"
+            to: "#policy_conditions_auth_provider_id_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
           |> JS.toggle_class("hero-chevron-down",
-            to: "#policy_conditions_provider_id_chevron"
+            to: "#policy_conditions_auth_provider_id_chevron"
           )
           |> JS.toggle_class("hero-chevron-up",
-            to: "#policy_conditions_provider_id_chevron"
+            to: "#policy_conditions_auth_provider_id_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="hero-identification" class="w-5 h-5 mr-2" /> Identity provider
+            <.icon name="hero-identification" class="w-5 h-5 mr-2" /> Authentication provider
           </span>
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
-              id="policy_conditions_provider_id_chevron"
+              id="policy_conditions_auth_provider_id_chevron"
               name="hero-chevron-down"
               class="w-5 h-5"
             />
@@ -546,23 +549,23 @@ defmodule Web.Policies.Components do
       </div>
 
       <div
-        id="policy_conditions_provider_id_condition"
+        id="policy_conditions_auth_provider_id_condition"
         class={[
           "p-4 border-neutral-200 border-l border-r border-b rounded-b",
           condition_values_empty?(condition_form) && "hidden"
         ]}
       >
         <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the IdP used to sign in meets the criteria specified below.
+          Allow access when the provider used to sign in meets the criteria specified below.
         </p>
         <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
           <.input
             type="select"
-            name="policy[conditions][provider_id][operator]"
-            id="policy_conditions_provider_id_operator"
+            name="policy[conditions][auth_provider_id][operator]"
+            id="policy_conditions_auth_provider_id_operator"
             field={condition_form[:operator]}
             disabled={@disabled}
-            options={condition_operator_options(:provider_id)}
+            options={condition_operator_options(:auth_provider_id)}
             value={get_in(condition_form, [:operator, Access.key!(:value)])}
           />
 
@@ -575,8 +578,8 @@ defmodule Web.Policies.Components do
               <.input
                 type="select"
                 field={condition_form[:values]}
-                name="policy[conditions][provider_id][values][]"
-                id={"policy_conditions_provider_id_values_#{index}"}
+                name="policy[conditions][auth_provider_id][values][]"
+                id={"policy_conditions_auth_provider_id_values_#{index}"}
                 options={[{"Select Provider", nil}] ++ Enum.map(@providers, &{&1.name, &1.id})}
                 disabled={@disabled}
                 value_index={index}
@@ -659,6 +662,7 @@ defmodule Web.Policies.Components do
             disabled={@disabled}
             checked={List.first(List.wrap(condition_form[:values].value)) == "true"}
             value="true"
+            unchecked_value={nil}
           />
         </div>
       </div>
@@ -765,7 +769,7 @@ defmodule Web.Policies.Components do
 
         condition ->
           if Map.get(condition, :property) == property do
-            to_form(Condition.Changeset.changeset(condition, %{}, 0))
+            to_form(Condition.changeset(condition, %{}, 0))
           end
       end)
 
@@ -798,7 +802,7 @@ defmodule Web.Policies.Components do
   end
 
   defp condition_operator_options(property) do
-    Domain.Policies.Condition.Changeset.valid_operators_for_property(property)
+    Domain.Policies.Condition.valid_operators_for_property(property)
     |> Enum.map(&{condition_operator_option_name(&1), &1})
   end
 
@@ -807,14 +811,420 @@ defmodule Web.Policies.Components do
     """
   end
 
-  def resource_gateway_groups(assigns) do
-    ~H"""
-    <.intersperse :let={gateway_group} enum={@gateway_groups}>
-      <:separator>
-        <span class="mr-1">,</span>
-      </:separator>
-      <span>{gateway_group.name}</span>
-    </.intersperse>
-    """
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
+
+    def all_active_providers_for_account(account, subject) do
+      # Query all auth provider types that are not disabled
+      userpass_query =
+        from(p in Userpass.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      email_otp_query =
+        from(p in EmailOTP.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      oidc_query =
+        from(p in OIDC.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      google_query =
+        from(p in Google.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      entra_query =
+        from(p in Entra.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      okta_query =
+        from(p in Okta.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      # Combine all providers from different tables using Safe
+      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (okta_query |> Safe.scoped(subject) |> Safe.all())
+    end
+
+    # Inlined from Web.Groups.Components
+    def fetch_group_option(id, subject) do
+      group =
+        from(g in Domain.Group, as: :groups)
+        |> where([groups: g], g.id == ^id)
+        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+          on: gd.id == d.id and d.type == :google,
+          as: :google_directory
+        )
+        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+          on: ed.id == d.id and d.type == :entra,
+          as: :entra_directory
+        )
+        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+          on: od.id == d.id and d.type == :okta,
+          as: :okta_directory
+        )
+        |> select_merge(
+          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+          %{
+            directory_name:
+              fragment(
+                "COALESCE(?, ?, ?, 'Firezone')",
+                gd.name,
+                ed.name,
+                od.name
+              ),
+            directory_type: d.type
+          }
+        )
+        |> Safe.scoped(subject)
+        |> Safe.one!()
+
+      {:ok, group_option(group)}
+    end
+
+    def list_group_options(search_query_or_nil, subject) do
+      query =
+        from(g in Domain.Group, as: :groups)
+        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+          on: gd.id == d.id and d.type == :google,
+          as: :google_directory
+        )
+        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+          on: ed.id == d.id and d.type == :entra,
+          as: :entra_directory
+        )
+        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+          on: od.id == d.id and d.type == :okta,
+          as: :okta_directory
+        )
+        |> select_merge(
+          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+          %{
+            directory_name:
+              fragment(
+                "COALESCE(?, ?, ?, 'Firezone')",
+                gd.name,
+                ed.name,
+                od.name
+              ),
+            directory_type: d.type
+          }
+        )
+        |> order_by([groups: g], asc: g.name)
+        |> limit(25)
+
+      query =
+        if search_query_or_nil != "" and search_query_or_nil != nil do
+          from(g in query, where: ilike(g.name, ^"%#{search_query_or_nil}%"))
+        else
+          query
+        end
+
+      groups = query |> Safe.scoped(subject) |> Safe.all()
+
+      # For metadata, we'll return a simple count
+      metadata = %{limit: 25, count: length(groups)}
+
+      {:ok, grouped_select_options(groups), metadata}
+    end
+
+    defp grouped_select_options(groups) do
+      groups
+      |> Enum.group_by(&option_groups_index_and_label/1)
+      |> Enum.sort_by(fn {{options_group_index, options_group_label}, _groups} ->
+        {options_group_index, options_group_label}
+      end)
+      |> Enum.map(fn {{_options_group_index, options_group_label}, groups} ->
+        {options_group_label, groups |> Enum.sort_by(& &1.name) |> Enum.map(&group_option/1)}
+      end)
+    end
+
+    defp option_groups_index_and_label(group) do
+      index =
+        cond do
+          group_synced?(group) -> 9
+          group_managed?(group) -> 1
+          true -> 2
+        end
+
+      label =
+        cond do
+          group_synced?(group) ->
+            "Synced from #{group.directory_name}"
+
+          group_managed?(group) ->
+            "Managed by Firezone"
+
+          true ->
+            "Manually managed"
+        end
+
+      {index, label}
+    end
+
+    defp group_option(group) do
+      {group.id, group.name, group}
+    end
+
+    # Inlined from Domain.Actors helpers
+    defp group_synced?(group), do: not is_nil(group.directory_id)
+    defp group_managed?(group), do: group.type == :managed
+
+    # Inline functions from Domain.PolicyAuthorizations
+    def list_policy_authorizations_for(assoc, subject, opts \\ [])
+
+    def list_policy_authorizations_for(
+          %Domain.Policy{} = policy,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_policy_id(policy.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Resource{} = resource,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_resource_id(resource.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Client{} = client,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_client_id(client.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Actor{} = actor,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_actor_id(actor.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Gateway{} = gateway,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    defp list_policy_authorizations(queryable, subject, opts) do
+      queryable
+      |> Domain.Safe.scoped(subject)
+      |> Domain.Safe.list(DB.PolicyAuthorizationQuery, opts)
+    end
+  end
+
+  defmodule DB.PolicyAuthorizationQuery do
+    import Ecto.Query
+
+    def all do
+      from(policy_authorizations in Domain.PolicyAuthorization, as: :policy_authorizations)
+    end
+
+    def expired(queryable) do
+      now = DateTime.utc_now()
+
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.expires_at <= ^now
+      )
+    end
+
+    def not_expired(queryable) do
+      now = DateTime.utc_now()
+
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.expires_at > ^now
+      )
+    end
+
+    def by_id(queryable, id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.id == ^id
+      )
+    end
+
+    def by_account_id(queryable, account_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.account_id == ^account_id
+      )
+    end
+
+    def by_token_id(queryable, token_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.token_id == ^token_id
+      )
+    end
+
+    def by_policy_id(queryable, policy_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.policy_id == ^policy_id
+      )
+    end
+
+    def for_cache(queryable) do
+      queryable
+      |> select(
+        [policy_authorizations: policy_authorizations],
+        {{policy_authorizations.client_id, policy_authorizations.resource_id},
+         {policy_authorizations.id, policy_authorizations.expires_at}}
+      )
+    end
+
+    def by_policy_group_id(queryable, group_id) do
+      queryable
+      |> with_joined_policy()
+      |> where([policy: policy], policy.group_id == ^group_id)
+    end
+
+    def by_membership_id(queryable, membership_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.membership_id == ^membership_id
+      )
+    end
+
+    def by_site_id(queryable, site_id) do
+      queryable
+      |> with_joined_site()
+      |> where([site: site], site.id == ^site_id)
+    end
+
+    def by_resource_id(queryable, resource_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.resource_id == ^resource_id
+      )
+    end
+
+    def by_not_in_resource_ids(queryable, resource_ids) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.resource_id not in ^resource_ids
+      )
+    end
+
+    def by_client_id(queryable, client_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.client_id == ^client_id
+      )
+    end
+
+    def by_actor_id(queryable, actor_id) do
+      queryable
+      |> with_joined_client()
+      |> where([client: client], client.actor_id == ^actor_id)
+    end
+
+    def by_gateway_id(queryable, gateway_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.gateway_id == ^gateway_id
+      )
+    end
+
+    def with_joined_policy(queryable) do
+      with_policy_authorization_named_binding(queryable, :policy, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          policy in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
+      end)
+    end
+
+    def with_joined_client(queryable) do
+      with_policy_authorization_named_binding(queryable, :client, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          client in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
+      end)
+    end
+
+    def with_joined_site(queryable) do
+      queryable
+      |> with_joined_gateway()
+      |> with_policy_authorization_named_binding(:site, fn queryable, binding ->
+        join(queryable, :inner, [gateway: gateway], site in assoc(gateway, :site), as: ^binding)
+      end)
+    end
+
+    def with_joined_gateway(queryable) do
+      with_policy_authorization_named_binding(queryable, :gateway, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          gateway in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
+      end)
+    end
+
+    def with_policy_authorization_named_binding(queryable, binding, fun) do
+      if has_named_binding?(queryable, binding) do
+        queryable
+      else
+        fun.(queryable, binding)
+      end
+    end
+
+    # Pagination
+    def cursor_fields,
+      do: [
+        {:policy_authorizations, :desc, :inserted_at},
+        {:policy_authorizations, :asc, :id}
+      ]
   end
 end
