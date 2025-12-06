@@ -18,6 +18,6 @@ defmodule Domain.Repo.Migrations.MigrateToNewAuthSystem do
   end
 
   def down do
-    raise "Irreversible migration"
+    # Irreversible migration
   end
 end

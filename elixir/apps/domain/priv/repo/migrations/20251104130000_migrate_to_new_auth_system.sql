@@ -320,12 +320,12 @@ BEGIN
     RAISE NOTICE 'Step 8: Migrating auth providers for account %', v_account_id;
 
     -- Step 8a: Migrate Email OTP provider
-    INSERT INTO auth_providers (id, account_id)
-    SELECT p.id, p.account_id
+    INSERT INTO auth_providers (id, account_id, type)
+    SELECT p.id, p.account_id, 'email_otp'
     FROM legacy_auth_providers p
     WHERE p.account_id = v_account_id
       AND p.adapter = 'email'
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (account_id, id) DO NOTHING;
 
     INSERT INTO email_otp_auth_providers (id, account_id, name, context, is_disabled, created_by, inserted_at, updated_at)
     SELECT
@@ -343,12 +343,12 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
 
     -- Step 8b: Migrate Userpass provider
-    INSERT INTO auth_providers (id, account_id)
-    SELECT p.id, p.account_id
+    INSERT INTO auth_providers (id, account_id, type)
+    SELECT p.id, p.account_id, 'userpass'
     FROM legacy_auth_providers p
     WHERE p.account_id = v_account_id
       AND p.adapter = 'userpass'
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (account_id, id) DO NOTHING;
 
     INSERT INTO userpass_auth_providers (id, account_id, name, context, is_disabled, created_by, inserted_at, updated_at)
     SELECT
@@ -366,12 +366,12 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
 
     -- Step 8c: Migrate OpenID Connect providers
-    INSERT INTO auth_providers (id, account_id)
-    SELECT p.id, p.account_id
+    INSERT INTO auth_providers (id, account_id, type)
+    SELECT p.id, p.account_id, 'oidc'
     FROM legacy_auth_providers p
     WHERE p.account_id = v_account_id
       AND p.adapter = 'openid_connect'
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (account_id, id) DO NOTHING;
 
     INSERT INTO oidc_auth_providers (
       id, account_id, name, issuer, client_id, client_secret,
@@ -435,12 +435,12 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
 
     -- Step 8d: Migrate Google Workspace providers as OIDC providers
-    INSERT INTO auth_providers (id, account_id)
-    SELECT p.id, p.account_id
+    INSERT INTO auth_providers (id, account_id, type)
+    SELECT p.id, p.account_id, 'oidc'
     FROM legacy_auth_providers p
     WHERE p.account_id = v_account_id
       AND p.adapter = 'google_workspace'
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (account_id, id) DO NOTHING;
 
     INSERT INTO oidc_auth_providers (
       id, account_id, name, issuer, client_id, client_secret,
@@ -467,12 +467,12 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
 
     -- Step 8e: Migrate Microsoft Entra providers as OIDC providers
-    INSERT INTO auth_providers (id, account_id)
-    SELECT p.id, p.account_id
+    INSERT INTO auth_providers (id, account_id, type)
+    SELECT p.id, p.account_id, 'oidc'
     FROM legacy_auth_providers p
     WHERE p.account_id = v_account_id
       AND p.adapter = 'microsoft_entra'
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (account_id, id) DO NOTHING;
 
     INSERT INTO oidc_auth_providers (
       id, account_id, name, issuer, client_id, client_secret,
@@ -500,12 +500,12 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
 
     -- Step 8f: Migrate Okta providers as OIDC providers
-    INSERT INTO auth_providers (id, account_id)
-    SELECT p.id, p.account_id
+    INSERT INTO auth_providers (id, account_id, type)
+    SELECT p.id, p.account_id, 'oidc'
     FROM legacy_auth_providers p
     WHERE p.account_id = v_account_id
       AND p.adapter = 'okta'
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (account_id, id) DO NOTHING;
 
     INSERT INTO oidc_auth_providers (
       id, account_id, name, issuer, client_id, client_secret,
@@ -544,14 +544,14 @@ BEGIN
     -- STEP 10: SET allow_email_otp_sign_in BASED ON EMAIL IDENTITIES
     -- ============================================================================
     RAISE NOTICE 'Step 10: Setting allow_email_otp_sign_in for actors in account %', v_account_id;
-    
+
     -- Set to true for actors that had email identities, false for all others
     UPDATE actors a
     SET allow_email_otp_sign_in = EXISTS(
-      SELECT 1 
+      SELECT 1
       FROM external_identities i
       JOIN legacy_auth_providers p ON i.provider_id = p.id
-      WHERE i.actor_id = a.id 
+      WHERE i.actor_id = a.id
         AND p.adapter = 'email'
     )
     WHERE a.account_id = v_account_id;
