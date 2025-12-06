@@ -129,6 +129,13 @@ defmodule Domain.Account.Metadata.Stripe do
 
   def changeset(stripe \\ %__MODULE__{}, attrs) do
     stripe
-    |> cast(attrs, [:customer_id, :subscription_id, :product_name, :billing_email, :trial_ends_at, :support_type])
+    |> cast(attrs, [
+      :customer_id,
+      :subscription_id,
+      :product_name,
+      :billing_email,
+      :trial_ends_at,
+      :support_type
+    ])
   end
 end

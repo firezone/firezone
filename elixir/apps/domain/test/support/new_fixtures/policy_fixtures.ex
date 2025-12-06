@@ -70,7 +70,13 @@ defmodule Domain.PolicyFixtures do
 
     {:ok, policy} =
       %Domain.Policy{}
-      |> Ecto.Changeset.cast(policy_attrs, [:description, :disabled_at, :account_id, :group_id, :resource_id])
+      |> Ecto.Changeset.cast(policy_attrs, [
+        :description,
+        :disabled_at,
+        :account_id,
+        :group_id,
+        :resource_id
+      ])
       |> Ecto.Changeset.cast_embed(:conditions)
       |> Domain.Policy.changeset()
       |> Domain.Repo.insert()

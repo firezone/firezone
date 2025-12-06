@@ -66,7 +66,12 @@ defmodule Domain.MembershipFixtures do
 
     {:ok, membership} =
       %Domain.Membership{}
-      |> Ecto.Changeset.cast(membership_attrs, [:last_synced_at, :account_id, :actor_id, :group_id])
+      |> Ecto.Changeset.cast(membership_attrs, [
+        :last_synced_at,
+        :account_id,
+        :actor_id,
+        :group_id
+      ])
       |> Domain.Membership.changeset()
       |> Domain.Repo.insert()
 
