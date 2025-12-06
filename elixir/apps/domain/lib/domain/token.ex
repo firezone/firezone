@@ -3,11 +3,14 @@ defmodule Domain.Token do
   import Ecto.Changeset
   import Domain.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
   schema "tokens" do
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
     field :type, Ecto.Enum,
       values: [
         :browser,
@@ -36,8 +39,6 @@ defmodule Domain.Token do
 
     # Limits how many times invalid secret can be used for a token
     field :remaining_attempts, :integer
-
-    belongs_to :account, Domain.Account
 
     field :last_seen_user_agent, :string
     field :last_seen_remote_ip, Domain.Types.IP

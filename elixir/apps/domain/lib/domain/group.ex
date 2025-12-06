@@ -3,11 +3,14 @@ defmodule Domain.Group do
   import Ecto.Changeset
   import Domain.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
   schema "groups" do
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
     field :name, :string
     field :type, Ecto.Enum, values: ~w[managed static]a, default: :static
     field :entity_type, Ecto.Enum, values: ~w[group org_unit]a, default: :group
@@ -16,9 +19,9 @@ defmodule Domain.Group do
 
     field :last_synced_at, :utc_datetime_usec
 
-    has_many :policies, Domain.Policy, foreign_key: :group_id
+    has_many :policies, Domain.Policy, references: :id
+    has_many :memberships, Domain.Membership, references: :id, on_replace: :delete
 
-    has_many :memberships, Domain.Membership, foreign_key: :group_id, on_replace: :delete
     field :member_count, :integer, virtual: true
     field :count, :integer, virtual: true
     field :directory_name, :string, virtual: true
@@ -26,7 +29,6 @@ defmodule Domain.Group do
 
     has_many :actors, through: [:memberships, :actor]
 
-    belongs_to :account, Domain.Account
     belongs_to :directory, Domain.Directory
 
     timestamps()

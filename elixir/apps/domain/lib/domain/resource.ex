@@ -3,7 +3,7 @@ defmodule Domain.Resource do
   import Ecto.Changeset
   import Domain.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
@@ -27,6 +27,9 @@ defmodule Domain.Resource do
         }
 
   schema "resources" do
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
     field :address, :string
     field :address_description, :string
     field :name, :string
@@ -39,15 +42,10 @@ defmodule Domain.Resource do
       field :ports, {:array, Domain.Types.Int4Range}, default: []
     end
 
-    belongs_to :account, Domain.Account
     belongs_to :site, Domain.Site
 
-    has_many :policies, Domain.Policy
+    has_many :policies, Domain.Policy, references: :id
     has_many :groups, through: [:policies, :group]
-
-    # Warning: do not do Repo.preload/2 for this field, it will not work intentionally,
-    # because the actual preload query should also use joins and process policy conditions
-    has_many :authorized_by_policies, Domain.Policy, where: [id: {:fragment, "FALSE"}]
 
     timestamps()
   end

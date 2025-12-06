@@ -2,7 +2,7 @@ defmodule Domain.Site do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
@@ -16,14 +16,16 @@ defmodule Domain.Site do
         }
 
   schema "sites" do
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
     field :name, :string
 
     field :managed_by, Ecto.Enum, values: ~w[account system]a, defauilt: :account
 
-    belongs_to :account, Domain.Account
-    has_many :gateways, Domain.Gateway
-    has_many :tokens, Domain.Token
-    has_many :resources, Domain.Resource
+    has_many :gateways, Domain.Gateway, references: :id
+    has_many :tokens, Domain.Token, references: :id
+    has_many :resources, Domain.Resource, references: :id
 
     timestamps()
   end

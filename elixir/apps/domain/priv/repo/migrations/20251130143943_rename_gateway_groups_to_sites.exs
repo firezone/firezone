@@ -20,6 +20,18 @@ defmodule Domain.Repo.Migrations.RenameGatewayGroupsToSites do
       "ALTER INDEX sites_account_id_name_managed_by_index RENAME TO gateway_groups_account_id_name_managed_by_index;"
     )
 
+    # Rename primary key constraints
+    execute(
+      "ALTER TABLE sites RENAME CONSTRAINT gateway_groups_pkey TO sites_pkey;",
+      "ALTER TABLE sites RENAME CONSTRAINT sites_pkey TO gateway_groups_pkey;"
+    )
+
+    # Rename our fk constraints
+    execute(
+      "ALTER TABLE sites RENAME CONSTRAINT gateway_groups_account_id_fkey TO sites_account_id_fkey;",
+      "ALTER TABLE sites RENAME CONSTRAINT sites_account_id_fkey TO gateway_groups_account_id_fkey;"
+    )
+
     execute(
       "ALTER INDEX gateways_account_id_group_id_external_id_index RENAME TO gateways_account_id_site_id_external_id_index;",
       "ALTER INDEX gateways_account_id_site_id_external_id_index RENAME TO gateways_account_id_group_id_external_id_index;"

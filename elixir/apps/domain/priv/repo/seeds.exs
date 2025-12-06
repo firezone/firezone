@@ -100,7 +100,7 @@ defmodule Domain.Repo.Seeds do
 
     # Get the site to get the account_id
     site_id = attrs["site_id"] || attrs[:site_id]
-    site = Repo.get!(Site, site_id)
+    site = Repo.get_by!(Site, id: site_id)
 
     gateway =
       %Gateway{
@@ -826,9 +826,9 @@ defmodule Domain.Repo.Seeds do
     # Reload as structs for further use
     [eng_group_id, finance_group_id, synced_group_id] = Enum.map(group_results, & &1.id)
 
-    eng_group = Repo.get!(Group, eng_group_id)
-    finance_group = Repo.get!(Group, finance_group_id)
-    synced_group = Repo.get!(Group, synced_group_id)
+    eng_group = Repo.get_by!(Group, id: eng_group_id)
+    finance_group = Repo.get_by!(Group, id: finance_group_id)
+    synced_group = Repo.get_by!(Group, id: synced_group_id)
 
     # Add admin as member of engineering group directly
     %Membership{

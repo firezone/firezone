@@ -3,11 +3,14 @@ defmodule Domain.Actor do
   import Ecto.Changeset
   import Domain.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
   schema "actors" do
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
     field :type, Ecto.Enum,
       values: [:account_user, :account_admin_user, :service_account, :api_client]
 
@@ -17,16 +20,11 @@ defmodule Domain.Actor do
 
     field :name, :string
 
-    has_many :identities, Domain.ExternalIdentity
-
-    has_many :clients, Domain.Client, preload_order: [desc: :last_seen_at]
-
-    has_many :tokens, Domain.Token
-
-    has_many :memberships, Domain.Membership, on_replace: :delete
+    has_many :identities, Domain.ExternalIdentity, references: :id
+    has_many :clients, Domain.Client, preload_order: [desc: :last_seen_at], references: :id
+    has_many :tokens, Domain.Token, references: :id
+    has_many :memberships, Domain.Membership, on_replace: :delete, references: :id
     has_many :groups, through: [:memberships, :group]
-
-    belongs_to :account, Domain.Account
 
     field :last_seen_at, :utc_datetime_usec, virtual: true
     field :identity_count, :integer, virtual: true

@@ -3,7 +3,7 @@ defmodule Domain.Client do
   import Ecto.Changeset
   import Domain.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
@@ -38,6 +38,9 @@ defmodule Domain.Client do
         }
 
   schema "clients" do
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
     field :external_id, :string
 
     field :name, :string
@@ -59,7 +62,6 @@ defmodule Domain.Client do
 
     field :online?, :boolean, virtual: true
 
-    belongs_to :account, Domain.Account
     belongs_to :actor, Domain.Actor
 
     # Hardware Identifiers
@@ -79,8 +81,12 @@ defmodule Domain.Client do
     |> trim_change(~w[name external_id]a)
     |> validate_length(:name, min: 1, max: 255)
     |> assoc_constraint(:actor)
-    |> unique_constraint([:actor_id, :public_key])
-    |> unique_constraint(:external_id)
+    |> unique_constraint([:actor_id, :public_key],
+      name: :clients_account_id_actor_id_public_key_index
+    )
+    |> unique_constraint([:actor_id, :external_id],
+      name: :clients_account_id_actor_id_external_id_index
+    )
     |> unique_constraint(:ipv4, name: :clients_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
   end

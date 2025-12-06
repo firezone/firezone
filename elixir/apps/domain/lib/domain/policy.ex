@@ -2,7 +2,7 @@ defmodule Domain.Policy do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
@@ -19,13 +19,15 @@ defmodule Domain.Policy do
         }
 
   schema "policies" do
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
     field :description, :string
 
     embeds_many :conditions, Domain.Policies.Condition, on_replace: :delete
 
     belongs_to :group, Domain.Group, foreign_key: :group_id
     belongs_to :resource, Domain.Resource
-    belongs_to :account, Domain.Account
 
     field :disabled_at, :utc_datetime_usec
 
@@ -37,7 +39,7 @@ defmodule Domain.Policy do
     |> validate_length(:description, min: 1, max: 1024)
     |> unique_constraint(
       :base,
-      name: :policies_account_id_resource_id_group_id_index,
+      name: :policies_resource_id_group_id_index,
       message: "Policy for the selected Group and Resource already exists"
     )
     |> assoc_constraint(:resource)

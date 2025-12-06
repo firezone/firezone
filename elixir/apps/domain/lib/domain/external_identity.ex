@@ -2,12 +2,15 @@ defmodule Domain.ExternalIdentity do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
   schema "external_identities" do
-    belongs_to :actor, Domain.Actor, on_replace: :update
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
+    belongs_to :actor, Domain.Actor
 
     # Identity Provider fields
     field :issuer
@@ -31,7 +34,6 @@ defmodule Domain.ExternalIdentity do
 
     field :directory_name, :string, virtual: true
 
-    belongs_to :account, Domain.Account
     belongs_to :directory, Domain.Directory
 
     timestamps()

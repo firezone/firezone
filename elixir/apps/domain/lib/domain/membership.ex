@@ -2,7 +2,7 @@ defmodule Domain.Membership do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
@@ -14,10 +14,11 @@ defmodule Domain.Membership do
         }
 
   schema "memberships" do
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
     belongs_to :group, Domain.Group
     belongs_to :actor, Domain.Actor
-
-    belongs_to :account, Domain.Account
 
     field :last_synced_at, :utc_datetime_usec
   end

@@ -3,7 +3,7 @@ defmodule Domain.Gateway do
   import Ecto.Changeset
   import Domain.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
@@ -31,6 +31,9 @@ defmodule Domain.Gateway do
         }
 
   schema "gateways" do
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
     field :external_id, :string
 
     field :name, :string
@@ -52,7 +55,6 @@ defmodule Domain.Gateway do
 
     field :online?, :boolean, virtual: true
 
-    belongs_to :account, Domain.Account
     belongs_to :site, Domain.Site
 
     timestamps()
