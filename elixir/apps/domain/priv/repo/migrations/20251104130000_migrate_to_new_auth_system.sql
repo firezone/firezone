@@ -32,97 +32,59 @@ BEGIN
     -- ============================================================================
     RAISE NOTICE 'Step 1: Populating actor emails for account %', v_account_id;
 
-    -- Step 1a: Handle duplicate identity emails by provider_id and email
-    -- Find identities with duplicate emails within the same provider
-    WITH duplicate_identities AS (
-      SELECT
-        i.id AS identity_id,
-        i.provider_id,
-        i.actor_id,
-        a.type AS actor_type,
-        a.disabled_at,
-        a.inserted_at AS actor_inserted_at,
+    -- Gather all candidate emails, deduplicate, and update in one pass
+    WITH candidate_emails AS (
+      SELECT DISTINCT ON (a.id)
+        a.id AS actor_id,
         COALESCE(
           i.email,
-          CASE
-            WHEN i.provider_identifier ~ '@' THEN i.provider_identifier
-            ELSE (i.provider_state->'userinfo'->>'email')
-          END,
-          (i.provider_state->'claims'->>'email'),
-          (i.provider_state->>'email')
-        ) AS extracted_email,
-        ROW_NUMBER() OVER (
-          PARTITION BY i.provider_id, COALESCE(
-            i.email,
-            CASE
-              WHEN i.provider_identifier ~ '@' THEN i.provider_identifier
-              ELSE (i.provider_state->'userinfo'->>'email')
-            END,
-            (i.provider_state->'claims'->>'email'),
-            (i.provider_state->>'email')
-          )
-          ORDER BY
-            CASE WHEN a.type = 'account_admin_user' THEN 0 ELSE 1 END,
-            CASE WHEN a.disabled_at IS NULL THEN 0 ELSE 1 END,
-            a.inserted_at DESC
-        ) AS rn
-      FROM external_identities i
-      JOIN actors a ON i.actor_id = a.id
-      WHERE i.account_id = v_account_id
+          CASE WHEN i.provider_identifier ~ '@' THEN i.provider_identifier ELSE NULL END,
+          i.provider_state->'userinfo'->>'email',
+          i.provider_state->'claims'->>'email',
+          i.provider_state->>'email'
+        ) AS candidate_email,
+        a.type AS actor_type,
+        a.disabled_at,
+        a.inserted_at
+      FROM actors a
+      JOIN external_identities i ON i.actor_id = a.id
+      WHERE a.account_id = v_account_id
+        AND a.email IS NULL
+        AND COALESCE(
+          i.email,
+          CASE WHEN i.provider_identifier ~ '@' THEN i.provider_identifier ELSE NULL END,
+          i.provider_state->'userinfo'->>'email',
+          i.provider_state->'claims'->>'email',
+          i.provider_state->>'email'
+        ) IS NOT NULL
+      ORDER BY a.id, i.inserted_at DESC
     ),
-    duplicates_to_fix AS (
+    ranked_candidates AS (
       SELECT
-        identity_id,
-        actor_id,
-        extracted_email,
-        rn
-      FROM duplicate_identities
-      WHERE extracted_email IS NOT NULL
-      GROUP BY provider_id, extracted_email, identity_id, actor_id, rn
-      HAVING COUNT(*) > 1 OR rn > 1
+        c.actor_id,
+        c.candidate_email,
+        ROW_NUMBER() OVER (
+          PARTITION BY LOWER(c.candidate_email)
+          ORDER BY
+            CASE WHEN c.actor_type = 'account_admin_user' THEN 0 ELSE 1 END,
+            CASE WHEN c.disabled_at IS NULL THEN 0 ELSE 1 END,
+            c.inserted_at DESC
+        ) AS rn,
+        EXISTS (
+          SELECT 1 FROM actors a2
+          WHERE a2.account_id = v_account_id
+            AND LOWER(a2.email) = LOWER(c.candidate_email)
+        ) AS email_already_taken
+      FROM candidate_emails c
     )
     UPDATE actors a
     SET email = CASE
-      WHEN d.rn = 1 THEN d.extracted_email
-      ELSE REGEXP_REPLACE(d.extracted_email, '@', '+firezone-migrated-' || (d.rn - 1) || '@')
+      WHEN r.email_already_taken OR r.rn > 1 THEN
+        REGEXP_REPLACE(r.candidate_email, '@', '+firezone-dup-' || a.id || '@')
+      ELSE r.candidate_email
     END
-    FROM duplicates_to_fix d
-    WHERE a.id = d.actor_id AND a.email IS NULL;
-
-    -- Step 1b: Set actor.email from identity.email where actor.email is null
-    UPDATE actors a
-    SET email = i.email
-    FROM external_identities i
-    WHERE a.id = i.actor_id
-      AND a.account_id = v_account_id
-      AND a.email IS NULL
-      AND i.email IS NOT NULL;
-
-    -- Step 1c: Set actor.email from identity.provider_identifier if it contains @
-    UPDATE actors a
-    SET email = i.provider_identifier
-    FROM external_identities i
-    WHERE a.id = i.actor_id
-      AND a.account_id = v_account_id
-      AND a.email IS NULL
-      AND i.provider_identifier ~ '@';
-
-    -- Step 1d: Set actor.email from identity.provider_state (various JSON paths)
-    UPDATE actors a
-    SET email = COALESCE(
-      i.provider_state->'userinfo'->>'email',
-      i.provider_state->'claims'->>'email',
-      i.provider_state->>'email'
-    )
-    FROM external_identities i
-    WHERE a.id = i.actor_id
-      AND a.account_id = v_account_id
-      AND a.email IS NULL
-      AND (
-        i.provider_state->'userinfo'->>'email' IS NOT NULL OR
-        i.provider_state->'claims'->>'email' IS NOT NULL OR
-        i.provider_state->>'email' IS NOT NULL
-      );
+    FROM ranked_candidates r
+    WHERE a.id = r.actor_id;
 
 
     -- ============================================================================
@@ -182,8 +144,7 @@ BEGIN
         i.provider_state->'claims'->>'oid',
         i.provider_state->'claims'->>'sub'
       ),
-      issuer = i.provider_state->'claims'->>'iss',
-      provider_id = NULL
+      issuer = i.provider_state->'claims'->>'iss'
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id
       AND i.provider_id = p.id
@@ -205,8 +166,7 @@ BEGIN
     SET
       name = a.name,
       idp_id = i.provider_identifier,
-      issuer = 'https://accounts.google.com',
-      provider_id = NULL
+      issuer = 'https://accounts.google.com'
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id
       AND i.provider_id = p.id
@@ -226,8 +186,7 @@ BEGIN
         i.provider_state->'claims'->>'oid',
         i.provider_identifier
       ),
-      issuer = p.adapter_state->'claims'->>'iss',
-      provider_id = NULL
+      issuer = p.adapter_state->'claims'->>'iss'
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id
       AND i.provider_id = p.id
@@ -245,8 +204,7 @@ BEGIN
     SET
       name = a.name,
       idp_id = i.provider_identifier,
-      issuer = p.adapter_state->'claims'->>'iss',
-      provider_id = NULL
+      issuer = p.adapter_state->'claims'->>'iss'
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id
       AND i.provider_id = p.id
@@ -261,10 +219,7 @@ BEGIN
 
     -- Update groups for Google Workspace
     UPDATE actor_groups g
-    SET
-      idp_id = g.provider_identifier,
-      provider_id = NULL,
-      provider_identifier = NULL
+    SET idp_id = g.provider_identifier
     FROM legacy_auth_providers p
     WHERE g.provider_id = p.id
       AND g.account_id = v_account_id
@@ -273,10 +228,7 @@ BEGIN
 
     -- Update groups for Okta
     UPDATE actor_groups g
-    SET
-      idp_id = g.provider_identifier,
-      provider_id = NULL,
-      provider_identifier = NULL
+    SET idp_id = g.provider_identifier
     FROM legacy_auth_providers p
     WHERE g.provider_id = p.id
       AND g.account_id = v_account_id
@@ -296,23 +248,12 @@ BEGIN
         WHEN g.provider_identifier LIKE 'OU:%' THEN 'org_unit'
         WHEN g.provider_identifier LIKE 'G:%' THEN 'group'
         ELSE NULL
-      END,
-      provider_id = NULL,
-      provider_identifier = NULL
+      END
     FROM legacy_auth_providers p
     WHERE g.provider_id = p.id
       AND g.account_id = v_account_id
       AND p.adapter = 'microsoft_entra'
       AND p.adapter_state->'claims'->>'tid' IS NOT NULL;
-
-    -- Update groups without provider (clear legacy fields)
-    UPDATE actor_groups
-    SET
-      idp_id = NULL,
-      provider_id = NULL,
-      provider_identifier = NULL
-    WHERE account_id = v_account_id
-      AND (provider_id IS NULL OR provider_identifier IS NULL);
 
     -- ============================================================================
     -- STEP 8: MIGRATE PROVIDERS (CREATE NEW AUTH PROVIDER RECORDS)

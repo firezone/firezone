@@ -2,6 +2,17 @@ defmodule Domain.Repo.Migrations.AddConstraintsToNewProviderFields do
   use Ecto.Migration
 
   def change do
+    # First, some actors that didn't have any identities, won't have emails, so set a dummy email for these
+    execute(
+      """
+      UPDATE actors
+      SET email = 'missing-email-' || id || '@firezone.invalid'
+      WHERE email IS NULL
+        AND type IN ('account_user', 'account_admin_user')
+      """,
+      ""
+    )
+
     # Not all actors have emails, but account users and account admin users must have one
     create(
       constraint(:actors, :type_is_valid,
