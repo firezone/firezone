@@ -139,7 +139,7 @@ defmodule Web.OIDCController do
     # In production, admins should hopefully ensure emails are verified.
     # If this does not occur regularly we might consider enforcing it in the future.
     unless email_verified do
-      Logger.warning("OIDC identity email not verified",
+      Logger.info("OIDC identity email not verified",
         account_id: account.id,
         account_slug: account.slug,
         issuer: issuer

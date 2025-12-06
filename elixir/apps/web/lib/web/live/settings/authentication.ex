@@ -815,6 +815,34 @@ defmodule Web.Settings.Authentication do
           </div>
         </div>
 
+        <div :if={@type in ["okta", "oidc"]}>
+          <label class="block text-sm text-neutral-900 mb-2">Redirect URI</label>
+          <div class="flex" id="redirect-uri" phx-hook="CopyClipboard">
+            <span id="redirect-uri-text" class="hidden">{url(~p"/auth/oidc/callback")}</span>
+            <input
+              type="text"
+              readonly
+              value={url(~p"/auth/oidc/callback")}
+              class="block w-full rounded-l-md border-0 py-1.5 text-neutral-900 shadow-sm ring-1 ring-inset ring-neutral-300 bg-neutral-50 cursor-default sm:text-sm sm:leading-6"
+            />
+            <button
+              type="button"
+              data-copy-to-clipboard-target="redirect-uri-text"
+              class="inline-flex items-center rounded-r-md border border-l-0 border-neutral-300 bg-white px-3 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700"
+            >
+              <span id="redirect-uri-default-message">
+                <.icon name="hero-clipboard-document" class="h-5 w-5" />
+              </span>
+              <span id="redirect-uri-success-message" class="hidden">
+                <.icon name="hero-check" class="h-5 w-5 text-green-600" />
+              </span>
+            </button>
+          </div>
+          <p class="mt-1 text-xs text-neutral-600">
+            Copy this URI into your {titleize(@type)} application's allowed redirect URIs.
+          </p>
+        </div>
+
         <div
           :if={@type in ["entra", "google", "okta", "oidc"]}
           class="p-4 border-2 border-accent-200 bg-accent-50 rounded-lg"

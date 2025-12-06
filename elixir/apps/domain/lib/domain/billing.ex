@@ -376,13 +376,7 @@ defmodule Domain.Billing do
 
     account
     |> cast(%{metadata: %{stripe: stripe_metadata}}, [])
-    |> cast_embed(:metadata,
-      with: fn metadata, _params ->
-        metadata
-        |> cast(%{stripe: stripe_metadata}, [])
-        |> cast_embed(:stripe)
-      end
-    )
+    |> cast_embed(:metadata)
   end
 
   defmodule DB do

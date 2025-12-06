@@ -5,6 +5,7 @@ defmodule Domain.Accounts.Config do
   alias Domain.Types.IPPort
   alias Domain.Accounts.Config
 
+  @primary_key false
   embedded_schema do
     field :search_domain, :string
 
@@ -83,7 +84,11 @@ defmodule Domain.Accounts.Config do
   defp clients_upstream_dns_changeset(schema, attrs) do
     schema
     |> cast(attrs, [:type, :doh_provider])
-    |> cast_embed(:addresses, with: &address_changeset/2)
+    |> cast_embed(:addresses,
+      with: &address_changeset/2,
+      sort_param: :addresses_sort,
+      drop_param: :addresses_drop
+    )
     |> validate_doh_provider_for_secure()
     |> validate_addresses_for_type()
     |> validate_custom_has_addresses()
@@ -92,7 +97,20 @@ defmodule Domain.Accounts.Config do
   defp address_changeset(schema, attrs) do
     schema
     |> cast(attrs, [:address])
+    |> validate_required([:address])
+    |> trim_change(:address)
+    |> validate_ip_address()
     |> validate_reserved_ip_exclusion()
+  end
+
+  defp validate_ip_address(changeset) do
+    validate_change(changeset, :address, fn :address, address ->
+      case IPPort.cast(address) do
+        {:ok, %IPPort{port: nil}} -> []
+        {:ok, %IPPort{}} -> [address: "must not include a port"]
+        _ -> [address: "must be a valid IP address"]
+      end
+    end)
   end
 
   defp notifications_changeset(schema, attrs) do
@@ -192,16 +210,6 @@ defmodule Domain.Accounts.Config do
     else
       _ -> changeset
     end
-  end
-
-  defp validate_ip_address(changeset) do
-    validate_change(changeset, :address, fn :address, address ->
-      case IPPort.cast(address) do
-        {:ok, %IPPort{port: nil}} -> []
-        {:ok, %IPPort{}} -> [address: "must not include a port"]
-        _ -> [address: "must be a valid IP address"]
-      end
-    end)
   end
 
   defp validate_reserved_ip_exclusion(changeset) do

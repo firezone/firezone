@@ -3,6 +3,8 @@ defmodule Domain.Policies.Condition do
   import Ecto.Changeset
   import Domain.Changeset
 
+  @primary_key false
+
   @type t :: %__MODULE__{
           property:
             :remote_ip_location_region

@@ -2,6 +2,7 @@ defmodule Domain.Accounts.Limits do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key false
   embedded_schema do
     field :users_count, :integer
     field :monthly_active_users_count, :integer
