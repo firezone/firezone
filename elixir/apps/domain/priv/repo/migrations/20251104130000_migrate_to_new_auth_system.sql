@@ -1,14 +1,15 @@
 -- Migration: Convert all accounts from legacy auth system to new directory-based system
 -- This migration performs the following operations for each account:
 -- 1. Populate actor emails from identities
--- 2. Migrate userpass and email identities (set issuer="firezone")
--- 3. Migrate OpenID Connect identities
--- 4. Migrate Google Workspace identities
--- 5. Migrate Microsoft Entra identities
--- 6. Migrate Okta identities
--- 7. Migrate actor groups to use directory + idp_id instead of provider_id + provider_identifier
--- 8. Create new auth providers for each legacy provider (email, userpass, OIDC, Google, Entra, Okta)
--- 9. Delete legacy auth_providers
+-- 2. Set allow_email_otp_sign_in based on email identity existence
+-- 3. Migrate userpass and email identities (set issuer="firezone")
+-- 4. Migrate OpenID Connect identities
+-- 5. Migrate Google Workspace identities
+-- 6. Migrate Microsoft Entra identities
+-- 7. Migrate Okta identities
+-- 8. Migrate actor groups to use directory + idp_id instead of provider_id + provider_identifier
+-- 9. Create new auth providers for each legacy provider (email, userpass, OIDC, Google, Entra, Okta)
+-- 10. Delete legacy auth_providers
 DO $$
 DECLARE
   v_account_id UUID;
@@ -32,7 +33,21 @@ BEGIN
     -- ============================================================================
     RAISE NOTICE 'Step 1: Populating actor emails for account %', v_account_id;
 
-    -- Gather all candidate emails, deduplicate, and update in one pass
+    -- Step 1a: First pass - populate emails from email identities (adapter = 'email')
+    -- No duplicate handling needed due to existing provider_id + provider_identifier uniqueness
+    UPDATE actors a
+    SET email = COALESCE(i.email, i.provider_identifier)
+    FROM external_identities i
+    JOIN legacy_auth_providers p ON i.provider_id = p.id
+    WHERE i.actor_id = a.id
+      AND a.account_id = v_account_id
+      AND p.account_id = v_account_id
+      AND p.adapter = 'email';
+
+    -- Step 1b: Second pass - populate emails from OIDC identities for actors without email
+    -- If email is already taken (from Step 1a) or by another OIDC actor, use +firezone-dup-{actor_id} suffix
+    -- Priority: actors who haven't signed in (empty provider_state) keep the clean email,
+    -- since actors who have signed in can authenticate via issuer/idp_id post-migration
     WITH candidate_emails AS (
       SELECT DISTINCT ON (a.id)
         a.id AS actor_id,
@@ -43,13 +58,15 @@ BEGIN
           i.provider_state->'claims'->>'email',
           i.provider_state->>'email'
         ) AS candidate_email,
-        a.type AS actor_type,
-        a.disabled_at,
-        a.inserted_at
+        -- has_signed_in = true if provider_state has claims (user completed OIDC sign-in)
+        (i.provider_state IS NOT NULL AND i.provider_state != '{}' AND i.provider_state ? 'claims') AS has_signed_in
       FROM actors a
       JOIN external_identities i ON i.actor_id = a.id
+      JOIN legacy_auth_providers p ON i.provider_id = p.id
       WHERE a.account_id = v_account_id
+        AND p.account_id = v_account_id
         AND a.email IS NULL
+        AND p.adapter IN ('google_workspace', 'okta', 'microsoft_entra', 'openid_connect')
         AND COALESCE(
           i.email,
           CASE WHEN i.provider_identifier ~ '@' THEN i.provider_identifier ELSE NULL END,
@@ -63,13 +80,14 @@ BEGIN
       SELECT
         c.actor_id,
         c.candidate_email,
+        -- Rank: actors who haven't signed in get priority for clean email
         ROW_NUMBER() OVER (
           PARTITION BY LOWER(c.candidate_email)
           ORDER BY
-            CASE WHEN c.actor_type = 'account_admin_user' THEN 0 ELSE 1 END,
-            CASE WHEN c.disabled_at IS NULL THEN 0 ELSE 1 END,
-            c.inserted_at DESC
+            CASE WHEN c.has_signed_in THEN 1 ELSE 0 END,
+            c.actor_id
         ) AS rn,
+        -- Check if email was already taken in Step 1a
         EXISTS (
           SELECT 1 FROM actors a2
           WHERE a2.account_id = v_account_id
@@ -88,11 +106,28 @@ BEGIN
 
 
     -- ============================================================================
-    -- STEP 2: MIGRATE USERPASS (password_hash) TO ACTORS AND DELETE IDENTITIES
+    -- STEP 2: SET allow_email_otp_sign_in BASED ON EMAIL IDENTITIES
+    -- (Must run BEFORE deleting email identities in Step 3)
     -- ============================================================================
-    RAISE NOTICE 'Step 2: Migrating userpass password_hash to actors for account %', v_account_id;
+    RAISE NOTICE 'Step 2: Setting allow_email_otp_sign_in for actors in account %', v_account_id;
 
-    -- Step 2a: Move password_hash from userpass identities to actors
+    -- Set to true for actors that had email identities, false for all others
+    UPDATE actors a
+    SET allow_email_otp_sign_in = EXISTS(
+      SELECT 1
+      FROM external_identities i
+      JOIN legacy_auth_providers p ON i.provider_id = p.id
+      WHERE i.actor_id = a.id
+        AND p.adapter = 'email'
+    )
+    WHERE a.account_id = v_account_id;
+
+    -- ============================================================================
+    -- STEP 3: MIGRATE USERPASS (password_hash) TO ACTORS AND DELETE IDENTITIES
+    -- ============================================================================
+    RAISE NOTICE 'Step 3: Migrating userpass password_hash to actors for account %', v_account_id;
+
+    -- Step 3a: Move password_hash from userpass identities to actors
     UPDATE actors a
     SET password_hash = (i.provider_state->>'password_hash')
     FROM external_identities i
@@ -103,14 +138,14 @@ BEGIN
       AND p.adapter = 'userpass'
       AND i.provider_state->>'password_hash' IS NOT NULL;
 
-    -- Step 2b: Delete all userpass identities (password is now on actor)
+    -- Step 3b: Delete all userpass identities (password is now on actor)
     DELETE FROM external_identities i
     USING legacy_auth_providers p
     WHERE i.provider_id = p.id
       AND p.account_id = v_account_id
       AND p.adapter = 'userpass';
 
-    -- Step 2c: Delete all email identities (no longer needed)
+    -- Step 3c: Delete all email identities (no longer needed)
     DELETE FROM external_identities i
     USING legacy_auth_providers p
     WHERE i.provider_id = p.id
@@ -118,9 +153,9 @@ BEGIN
       AND p.adapter = 'email';
 
     -- ============================================================================
-    -- STEP 3: MIGRATE OPENID_CONNECT IDENTITIES
+    -- STEP 4: MIGRATE OPENID_CONNECT IDENTITIES
     -- ============================================================================
-    RAISE NOTICE 'Step 3: Migrating OpenID Connect identities for account %', v_account_id;
+    RAISE NOTICE 'Step 4: Migrating OpenID Connect identities for account %', v_account_id;
 
     -- Delete identities that don't have issuer or idp_id (user never signed in)
     DELETE FROM external_identities i
@@ -157,9 +192,9 @@ BEGIN
       );
 
     -- ============================================================================
-    -- STEP 4: MIGRATE GOOGLE WORKSPACE IDENTITIES
+    -- STEP 5: MIGRATE GOOGLE WORKSPACE IDENTITIES
     -- ============================================================================
-    RAISE NOTICE 'Step 4: Migrating Google Workspace identities for account %', v_account_id;
+    RAISE NOTICE 'Step 5: Migrating Google Workspace identities for account %', v_account_id;
 
     -- Update Google Workspace identities
     UPDATE external_identities i
@@ -174,9 +209,9 @@ BEGIN
       AND p.adapter = 'google_workspace';
 
     -- ============================================================================
-    -- STEP 5: MIGRATE MICROSOFT ENTRA IDENTITIES
+    -- STEP 6: MIGRATE MICROSOFT ENTRA IDENTITIES
     -- ============================================================================
-    RAISE NOTICE 'Step 5: Migrating Microsoft Entra identities for account %', v_account_id;
+    RAISE NOTICE 'Step 6: Migrating Microsoft Entra identities for account %', v_account_id;
 
     -- Update Microsoft Entra identities
     UPDATE external_identities i
@@ -195,9 +230,9 @@ BEGIN
       AND p.adapter_state->'claims'->>'iss' IS NOT NULL;
 
     -- ============================================================================
-    -- STEP 6: MIGRATE OKTA IDENTITIES
+    -- STEP 7: MIGRATE OKTA IDENTITIES
     -- ============================================================================
-    RAISE NOTICE 'Step 6: Migrating Okta identities for account %', v_account_id;
+    RAISE NOTICE 'Step 7: Migrating Okta identities for account %', v_account_id;
 
     -- Update Okta identities
     UPDATE external_identities i
@@ -213,9 +248,9 @@ BEGIN
       AND p.adapter_state->'claims'->>'iss' IS NOT NULL;
 
     -- ============================================================================
-    -- STEP 7: MIGRATE ACTOR GROUPS
+    -- STEP 8: MIGRATE ACTOR GROUPS
     -- ============================================================================
-    RAISE NOTICE 'Step 7: Migrating actor groups for account %', v_account_id;
+    RAISE NOTICE 'Step 8: Migrating actor groups for account %', v_account_id;
 
     -- Update groups for Google Workspace
     UPDATE actor_groups g
@@ -256,11 +291,11 @@ BEGIN
       AND p.adapter_state->'claims'->>'tid' IS NOT NULL;
 
     -- ============================================================================
-    -- STEP 8: MIGRATE PROVIDERS (CREATE NEW AUTH PROVIDER RECORDS)
+    -- STEP 9: MIGRATE PROVIDERS (CREATE NEW AUTH PROVIDER RECORDS)
     -- ============================================================================
-    RAISE NOTICE 'Step 8: Migrating auth providers for account %', v_account_id;
+    RAISE NOTICE 'Step 9: Migrating auth providers for account %', v_account_id;
 
-    -- Step 8a: Migrate Email OTP provider
+    -- Step 9a: Migrate Email OTP provider
     INSERT INTO auth_providers (id, account_id, type)
     SELECT p.id, p.account_id, 'email_otp'
     FROM legacy_auth_providers p
@@ -283,7 +318,7 @@ BEGIN
       AND p.adapter = 'email'
     ON CONFLICT (id) DO NOTHING;
 
-    -- Step 8b: Migrate Userpass provider
+    -- Step 9b: Migrate Userpass provider
     INSERT INTO auth_providers (id, account_id, type)
     SELECT p.id, p.account_id, 'userpass'
     FROM legacy_auth_providers p
@@ -306,7 +341,7 @@ BEGIN
       AND p.adapter = 'userpass'
     ON CONFLICT (id) DO NOTHING;
 
-    -- Step 8c: Migrate OpenID Connect providers
+    -- Step 9c: Migrate OpenID Connect providers
     INSERT INTO auth_providers (id, account_id, type)
     SELECT p.id, p.account_id, 'oidc'
     FROM legacy_auth_providers p
@@ -375,7 +410,7 @@ BEGIN
       ) IS NOT NULL
     ON CONFLICT (id) DO NOTHING;
 
-    -- Step 8d: Migrate Google Workspace providers as OIDC providers
+    -- Step 9d: Migrate Google Workspace providers as OIDC providers
     INSERT INTO auth_providers (id, account_id, type)
     SELECT p.id, p.account_id, 'oidc'
     FROM legacy_auth_providers p
@@ -407,7 +442,7 @@ BEGIN
       AND p.adapter = 'google_workspace'
     ON CONFLICT (id) DO NOTHING;
 
-    -- Step 8e: Migrate Microsoft Entra providers as OIDC providers
+    -- Step 9e: Migrate Microsoft Entra providers as OIDC providers
     INSERT INTO auth_providers (id, account_id, type)
     SELECT p.id, p.account_id, 'oidc'
     FROM legacy_auth_providers p
@@ -440,7 +475,7 @@ BEGIN
       AND p.adapter_state->'claims'->>'iss' IS NOT NULL
     ON CONFLICT (id) DO NOTHING;
 
-    -- Step 8f: Migrate Okta providers as OIDC providers
+    -- Step 9f: Migrate Okta providers as OIDC providers
     INSERT INTO auth_providers (id, account_id, type)
     SELECT p.id, p.account_id, 'oidc'
     FROM legacy_auth_providers p
@@ -474,28 +509,12 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
 
     -- ============================================================================
-    -- STEP 9: DELETE LEGACY PROVIDERS
+    -- STEP 10: DELETE LEGACY PROVIDERS
     -- ============================================================================
-    RAISE NOTICE 'Step 9: Deleting legacy auth providers for account %', v_account_id;
+    RAISE NOTICE 'Step 10: Deleting legacy auth providers for account %', v_account_id;
 
     DELETE FROM legacy_auth_providers
     WHERE account_id = v_account_id;
-
-    -- ============================================================================
-    -- STEP 10: SET allow_email_otp_sign_in BASED ON EMAIL IDENTITIES
-    -- ============================================================================
-    RAISE NOTICE 'Step 10: Setting allow_email_otp_sign_in for actors in account %', v_account_id;
-
-    -- Set to true for actors that had email identities, false for all others
-    UPDATE actors a
-    SET allow_email_otp_sign_in = EXISTS(
-      SELECT 1
-      FROM external_identities i
-      JOIN legacy_auth_providers p ON i.provider_id = p.id
-      WHERE i.actor_id = a.id
-        AND p.adapter = 'email'
-    )
-    WHERE a.account_id = v_account_id;
 
     RAISE NOTICE 'Completed migration for account: %', v_account_id;
 
