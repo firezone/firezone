@@ -136,6 +136,16 @@ defmodule Web.OIDCController do
     email_verified = (claims["email_verified"] || userinfo["email_verified"]) == true
     profile_attrs = extract_profile_attrs(claims, userinfo)
 
+    # In production, admins should hopefully ensure emails are verified.
+    # If this does not occur regularly we might consider enforcing it in the future.
+    unless email_verified do
+      Logger.warning("OIDC identity email not verified",
+        account_id: account.id,
+        account_slug: account.slug,
+        issuer: issuer
+      )
+    end
+
     # Validate attributes first
     attrs =
       profile_attrs
@@ -143,11 +153,9 @@ defmodule Web.OIDCController do
       |> Map.put("issuer", issuer)
       |> Map.put("idp_id", idp_id)
 
-    with true <- email_verified,
-         %{valid?: true} <- validate_upsert_attrs(attrs) do
+    with %{valid?: true} <- validate_upsert_attrs(attrs) do
       DB.upsert_identity(account.id, email, issuer, idp_id, profile_attrs)
     else
-      false -> {:error, :email_not_verified}
       changeset -> {:error, changeset}
     end
   end
