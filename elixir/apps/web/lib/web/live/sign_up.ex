@@ -533,9 +533,15 @@ defmodule Web.SignUp do
     end
 
     def create_admin(account, email, name) do
-      attrs = %{account_id: account.id, email: email, name: name, type: :account_admin_user}
+      attrs = %{
+        account_id: account.id,
+        email: email,
+        name: name,
+        type: :account_admin_user,
+        allow_email_otp_sign_in: true
+      }
 
-      cast(%Domain.Actor{}, attrs, ~w[account_id email name type]a)
+      cast(%Domain.Actor{}, attrs, ~w[account_id email name type allow_email_otp_sign_in]a)
       |> Domain.Actor.changeset()
       |> Safe.unscoped()
       |> Safe.insert()

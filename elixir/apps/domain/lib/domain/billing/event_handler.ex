@@ -456,8 +456,16 @@ defmodule Domain.Billing.EventHandler do
 
   defp create_admin_changeset(account, email, name) do
     import Ecto.Changeset
-    attrs = %{account_id: account.id, email: email, name: name, type: :account_admin_user}
-    cast(%Domain.Actor{}, attrs, ~w[account_id email name type]a)
+
+    attrs = %{
+      account_id: account.id,
+      email: email,
+      name: name,
+      type: :account_admin_user,
+      allow_email_otp_sign_in: true
+    }
+
+    cast(%Domain.Actor{}, attrs, ~w[account_id email name type allow_email_otp_sign_in]a)
   end
 
   defp create_site_changeset(account, attrs) do
