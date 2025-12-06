@@ -1,11 +1,16 @@
 defmodule API.GatewayControllerTest do
   use API.ConnCase, async: true
-  alias Domain.Gateways.Gateway
+  alias Domain.Gateway
+
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.SiteFixtures
+  import Domain.GatewayFixtures
 
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
-    site = Fixtures.Sites.create_site(%{account: account})
+    account = account_fixture()
+    actor = api_client_fixture(account: account)
+    site = site_fixture(account: account)
 
     %{
       account: account,
@@ -28,10 +33,10 @@ defmodule API.GatewayControllerTest do
     } do
       gateways =
         for _ <- 1..3,
-            do: Fixtures.Gateways.create_gateway(%{account: account, site: site})
+            do: gateway_fixture(account: account, site: site)
 
-      other_site = Fixtures.Sites.create_site(account: account)
-      Fixtures.Gateways.create_gateway(%{account: account, site: other_site})
+      other_site = site_fixture(account: account)
+      gateway_fixture(account: account, site: other_site)
 
       conn =
         conn
@@ -68,7 +73,7 @@ defmodule API.GatewayControllerTest do
     } do
       gateways =
         for _ <- 1..3,
-            do: Fixtures.Gateways.create_gateway(%{account: account, site: site})
+            do: gateway_fixture(account: account, site: site)
 
       conn =
         conn
@@ -104,7 +109,7 @@ defmodule API.GatewayControllerTest do
       account: account,
       site: site
     } do
-      gateway = Fixtures.Gateways.create_gateway(%{account: account, site: site})
+      gateway = gateway_fixture(account: account, site: site)
       conn = get(conn, "/sites/#{site.id}/gateways/#{gateway.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
@@ -115,7 +120,7 @@ defmodule API.GatewayControllerTest do
       actor: actor,
       site: site
     } do
-      gateway = Fixtures.Gateways.create_gateway(%{account: account, site: site})
+      gateway = gateway_fixture(account: account, site: site)
 
       conn =
         conn
@@ -141,7 +146,7 @@ defmodule API.GatewayControllerTest do
       account: account,
       site: site
     } do
-      gateway = Fixtures.Gateways.create_gateway(%{account: account, site: site})
+      gateway = gateway_fixture(account: account, site: site)
       conn = delete(conn, "/sites/#{site.id}/gateways/#{gateway.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
@@ -152,7 +157,7 @@ defmodule API.GatewayControllerTest do
       actor: actor,
       site: site
     } do
-      gateway = Fixtures.Gateways.create_gateway(%{account: account, site: site})
+      gateway = gateway_fixture(account: account, site: site)
 
       conn =
         conn
@@ -170,7 +175,7 @@ defmodule API.GatewayControllerTest do
                }
              }
 
-      refute Repo.get(Gateway, gateway.id)
+      refute Repo.get_by(Gateway, id: gateway.id, account_id: gateway.account_id)
     end
   end
 end

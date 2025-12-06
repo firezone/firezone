@@ -201,6 +201,12 @@ defmodule API.ClientController do
       ]
     end
 
+    def preloads do
+      [
+        online?: &Clients.preload_clients_presence/1
+      ]
+    end
+
     def fetch_client(id, subject) do
       result =
         from(c in Client, as: :clients)
