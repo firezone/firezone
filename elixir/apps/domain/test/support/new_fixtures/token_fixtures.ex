@@ -98,8 +98,7 @@ defmodule Domain.TokenFixtures do
         changeset
       end
 
-    {:ok, token} = Domain.Repo.insert(changeset)
-    token
+    Domain.Repo.insert!(changeset)
   end
 
   @doc """
@@ -181,6 +180,93 @@ defmodule Domain.TokenFixtures do
     token_fixture(Map.put(attrs, :remaining_attempts, 0))
   end
 
+  @doc """
+  Create a token that can be encoded and verified.
+
+  Returns `{token, encoded_token}` where `encoded_token` is the full
+  token string including any nonce prefix.
+
+  ## Options
+
+    * `:type` - Token type (default: `:browser`)
+    * `:account` - Account to associate with the token
+    * `:actor` - Actor for browser/client/api_client/email tokens
+    * `:site` - Site for site tokens
+    * `:nonce` - Nonce prefix (default: "")
+    * `:expires_at` - Token expiration time
+
+  """
+  def encodable_token_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    type = Map.get(attrs, :type, :browser)
+    nonce = Map.get(attrs, :nonce, "")
+    secret_fragment = generate_secret_fragment()
+    secret_salt = generate_salt()
+    secret_hash = compute_secret_hash(nonce, secret_fragment, secret_salt)
+
+    # Get or create account (relay tokens don't have accounts)
+    account =
+      if type == :relay do
+        nil
+      else
+        Map.get(attrs, :account) || account_fixture()
+      end
+
+    # Get or create actor for types that need it
+    actor =
+      if type in [:browser, :client, :api_client, :email] do
+        Map.get(attrs, :actor) || actor_fixture(account: account)
+      else
+        nil
+      end
+
+    # Get or create site for site tokens
+    site =
+      if type == :site do
+        Map.get(attrs, :site) || site_fixture(account: account)
+      else
+        nil
+      end
+
+    # Get auth_provider_id if provided
+    auth_provider_id = Map.get(attrs, :auth_provider_id)
+
+    token_attrs = %{
+      type: type,
+      name: "Token #{System.unique_integer([:positive])}",
+      secret_salt: secret_salt,
+      secret_hash: secret_hash,
+      remaining_attempts: Map.get(attrs, :remaining_attempts, 3),
+      expires_at: Map.get(attrs, :expires_at, DateTime.add(DateTime.utc_now(), 30, :day)),
+      auth_provider_id: auth_provider_id
+    }
+
+    changeset =
+      %Domain.Token{}
+      |> Ecto.Changeset.cast(token_attrs, [
+        :type,
+        :name,
+        :secret_salt,
+        :secret_hash,
+        :remaining_attempts,
+        :expires_at,
+        :auth_provider_id
+      ])
+      |> Domain.Token.changeset()
+
+    changeset =
+      if account, do: Ecto.Changeset.put_assoc(changeset, :account, account), else: changeset
+
+    changeset = if actor, do: Ecto.Changeset.put_assoc(changeset, :actor, actor), else: changeset
+    changeset = if site, do: Ecto.Changeset.put_assoc(changeset, :site, site), else: changeset
+
+    token = Domain.Repo.insert!(changeset)
+    encoded_token = nonce <> encode_fragment(token, secret_fragment)
+
+    {token, encoded_token}
+  end
+
   # Private helpers
 
   defp generate_salt do
@@ -191,5 +277,24 @@ defmodule Domain.TokenFixtures do
   defp generate_hash do
     :crypto.strong_rand_bytes(32)
     |> Base.encode64()
+  end
+
+  defp generate_secret_fragment do
+    :crypto.strong_rand_bytes(32)
+    |> Base.hex_encode32(case: :upper, padding: true)
+  end
+
+  defp compute_secret_hash(nonce, fragment, salt) do
+    :crypto.hash(:sha3_256, nonce <> fragment <> salt)
+    |> Base.encode16(case: :lower)
+  end
+
+  defp encode_fragment(token, secret_fragment) do
+    config = Application.fetch_env!(:domain, Domain.Tokens)
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt) <> to_string(token.type)
+    body = {token.account_id, token.id, secret_fragment}
+
+    "." <> Plug.Crypto.sign(key_base, salt, body)
   end
 end
