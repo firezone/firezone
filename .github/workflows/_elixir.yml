@@ -33,11 +33,10 @@ jobs:
           CI_ASSERT_RECEIVE_TIMEOUT_MS: 250
         run: |
           # TODO: IDP REFACTOR
-          # revert
-          $mix_test apps/api/test/api/client/channel_test.exs
-          $mix_test apps/api/test/api/gateway/channel_test.exs
-          $mix_test apps/api/test/api/relay/channel_test.exs
-          $mix_test apps/api/test/api/controllers
+          mix test apps/api/test/api/client/channel_test.exs
+          mix test apps/api/test/api/gateway/channel_test.exs
+          mix test apps/api/test/api/relay/channel_test.exs
+          mix test apps/api/test/api/controllers
           # mix_test="mix test --warnings-as-errors --exclude flaky:true --exclude acceptance:true"
           # $mix_test || $mix_test --failed
       - name: Test Report
