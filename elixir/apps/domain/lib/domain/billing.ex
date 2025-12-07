@@ -118,7 +118,10 @@ defmodule Domain.Billing do
              account_slug: account.slug
            }) do
       account
-      |> update_account_metadata_changeset(%{customer_id: customer_id, billing_email: customer_email})
+      |> update_account_metadata_changeset(%{
+        customer_id: customer_id,
+        billing_email: customer_email
+      })
       |> DB.update()
     else
       {:ok, {status, body}} ->

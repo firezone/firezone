@@ -37,8 +37,8 @@ defmodule Web.EmailOTPController do
           "auth_provider_id" => auth_provider_id,
           "email" => email
         } = params
-      ) when is_binary(email) do
-
+      )
+      when is_binary(email) do
     with %Domain.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
          %EmailOTP.AuthProvider{} <- DB.get_provider(account, auth_provider_id) do
       conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id)
