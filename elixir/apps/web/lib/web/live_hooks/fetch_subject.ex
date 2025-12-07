@@ -11,9 +11,9 @@ defmodule Web.LiveHooks.FetchSubject do
         x_headers = get_connect_info(socket, :x_headers)
         context = Domain.Auth.Context.build(real_ip, user_agent, x_headers, context_type)
 
-        with {:ok, fragment} <-
-               fetch_token(session, account),
-             {:ok, subject} <- Domain.Auth.authenticate(fragment, context) do
+        with {:ok, token_id} <- Map.fetch(session, "token_id"),
+             {:ok, token} <- Domain.Auth.fetch_token(account.id, token_id, context_type),
+             {:ok, subject} <- Domain.Auth.build_subject(token, context) do
           subject
         else
           _ -> nil
@@ -29,11 +29,4 @@ defmodule Web.LiveHooks.FetchSubject do
 
   defp context_type(%{"as" => "client"}), do: :client
   defp context_type(_), do: :browser
-
-  defp fetch_token(session, _account) do
-    case session["token"] do
-      nil -> {:error, :unauthorized}
-      token -> {:ok, token}
-    end
-  end
 end

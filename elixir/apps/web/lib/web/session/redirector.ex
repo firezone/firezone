@@ -9,6 +9,7 @@ defmodule Web.Session.Redirector do
   """
   use Web, :verified_routes
 
+  alias Domain.Token
   alias __MODULE__.DB
 
   @doc """
@@ -55,7 +56,16 @@ defmodule Web.Session.Redirector do
   Sets a cookie with client auth data and renders the client_redirect.html page
   which handles the platform-specific redirect.
   """
-  def client_signed_in(%Plug.Conn{} = conn, account, actor_name, identifier, fragment, state) do
+  def client_signed_in(
+        %Plug.Conn{} = conn,
+        account,
+        actor_name,
+        identifier,
+        %Token{} = token,
+        state
+      ) do
+    fragment = Domain.Auth.encode_fragment!(token)
+
     client_auth_data = %{
       actor_name: actor_name,
       fragment: fragment,
