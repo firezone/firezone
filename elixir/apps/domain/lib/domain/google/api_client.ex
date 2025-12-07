@@ -115,52 +115,57 @@ defmodule Domain.Google.APIClient do
           {[error], nil}
 
         {current_path, current_query} ->
-          config = Domain.Config.fetch_env!(:domain, __MODULE__)
-          url = "#{config[:endpoint]}#{current_path}?#{current_query}"
-
-          case Req.get(url, headers: [Authorization: "Bearer #{access_token}"]) do
-            {:ok, %Req.Response{status: 200, body: body}} ->
-              # Use Map.fetch to ensure the key exists
-              # If the key is missing, it's an error condition (malformed response)
-              case Map.fetch(body, result_key) do
-                {:ok, list} when is_list(list) ->
-                  next_state =
-                    case Map.get(body, "nextPageToken") do
-                      nil ->
-                        nil
-
-                      next_token ->
-                        query_map = URI.decode_query(current_query)
-                        updated_query = Map.put(query_map, "pageToken", next_token)
-                        next_query = URI.encode_query(updated_query)
-                        {current_path, next_query}
-                    end
-
-                  {[list], next_state}
-
-                {:ok, _non_list} ->
-                  # Key exists but value is not a list - malformed response
-                  error = {:error, {:invalid_response, "#{result_key} is not a list", body}}
-                  {[error], nil}
-
-                :error ->
-                  # Key is missing - this is an error! Google API sometimes returns 200 with missing data
-                  # We must fail loudly to prevent false positives that could delete groups/users
-                  error =
-                    {:error,
-                     {:missing_key, "Expected key '#{result_key}' not found in response", body}}
-
-                  {[error], nil}
-              end
-
-            {:ok, %Req.Response{} = response} ->
-              {[{:error, response}], nil}
-
-            {:error, _reason} = error ->
-              {[error], nil}
-          end
+          fetch_page(current_path, current_query, access_token, result_key)
       end,
       fn _ -> :ok end
     )
+  end
+
+  defp fetch_page(current_path, current_query, access_token, result_key) do
+    config = Domain.Config.fetch_env!(:domain, __MODULE__)
+    url = "#{config[:endpoint]}#{current_path}?#{current_query}"
+
+    case Req.get(url, headers: [Authorization: "Bearer #{access_token}"]) do
+      {:ok, %Req.Response{status: 200, body: body}} ->
+        parse_page_response(body, current_path, current_query, result_key)
+
+      {:ok, %Req.Response{} = response} ->
+        {[{:error, response}], nil}
+
+      {:error, _reason} = error ->
+        {[error], nil}
+    end
+  end
+
+  defp parse_page_response(body, current_path, current_query, result_key) do
+    case Map.fetch(body, result_key) do
+      {:ok, list} when is_list(list) ->
+        next_state =
+          case Map.get(body, "nextPageToken") do
+            nil ->
+              nil
+
+            next_token ->
+              query_map = URI.decode_query(current_query)
+              updated_query = Map.put(query_map, "pageToken", next_token)
+              next_query = URI.encode_query(updated_query)
+              {current_path, next_query}
+          end
+
+        {[list], next_state}
+
+      {:ok, _non_list} ->
+        # Key exists but value is not a list - malformed response
+        error = {:error, {:invalid_response, "#{result_key} is not a list", body}}
+        {[error], nil}
+
+      :error ->
+        # Key is missing - this is an error! Google API sometimes returns 200 with missing data
+        # We must fail loudly to prevent false positives that could delete groups/users
+        error =
+          {:error, {:missing_key, "Expected key '#{result_key}' not found in response", body}}
+
+        {[error], nil}
+    end
   end
 end

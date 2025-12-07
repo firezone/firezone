@@ -41,7 +41,7 @@ defmodule Web.Settings.Authentication do
     Entra.AuthProvider => @common_fields ++ ~w[is_verified]a,
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
-      @common_fields ++ ~w[discovery_document_uri client_id client_secret is_verified]a
+      @common_fields ++ ~w[discovery_document_uri client_id client_secret is_verified is_legacy]a
   }
 
   def mount(_params, _session, socket) do
@@ -301,6 +301,7 @@ defmodule Web.Settings.Authentication do
 
           attrs = %{
             "is_verified" => true,
+            "is_legacy" => false,
             "issuer" => claims["iss"]
           }
 
@@ -976,8 +977,7 @@ defmodule Web.Settings.Authentication do
   defp verification_errors(changeset) do
     changeset.errors
     |> Enum.filter(fn {field, _error} -> field in [:issuer] end)
-    |> Enum.map(fn {_field, {message, _opts}} -> message end)
-    |> Enum.join(" ")
+    |> Enum.map_join(" ", fn {_field, {message, _opts}} -> message end)
   end
 
   defp ready_to_verify?(form) do

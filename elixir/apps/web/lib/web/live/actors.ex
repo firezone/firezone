@@ -209,10 +209,7 @@ defmodule Web.Actors do
     account = socket.assigns.account
 
     # Check billing limits
-    if not Domain.Billing.can_create_service_accounts?(account) do
-      {:noreply,
-       put_flash(socket, :error_inline, "Service account limit reached for your account")}
-    else
+    if Domain.Billing.can_create_service_accounts?(account) do
       attrs = Map.put(attrs, "type", "service_account")
       changeset = changeset(%Domain.Actor{type: :service_account}, attrs)
       token_expiration = Map.get(params, "token_expiration")
@@ -250,6 +247,9 @@ defmodule Web.Actors do
         {:error, changeset} ->
           {:noreply, assign(socket, form: to_form(changeset))}
       end
+    else
+      {:noreply,
+       put_flash(socket, :error_inline, "Service account limit reached for your account")}
     end
   end
 
@@ -1414,60 +1414,52 @@ defmodule Web.Actors do
 
   # Helper functions for token/session display
   defp token_user_agent_icon(user_agent) when is_binary(user_agent) do
-    cond do
-      # Firezone client user agents (e.g., "Windows/10.0", "Mac OS/15.0")
-      String.contains?(user_agent, "Windows/") ->
-        "os-windows"
-
-      String.contains?(user_agent, "Mac OS/") ->
-        "os-macos"
-
-      String.contains?(user_agent, "iOS/") ->
-        "os-ios"
-
-      String.contains?(user_agent, "Android/") ->
-        "os-android"
-
-      String.contains?(user_agent, "Ubuntu/") ->
-        "os-ubuntu"
-
-      String.contains?(user_agent, "Debian/") ->
-        "os-debian"
-
-      String.contains?(user_agent, "Manjaro/") ->
-        "os-manjaro"
-
-      String.contains?(user_agent, "CentOS/") ->
-        "os-linux"
-
-      String.contains?(user_agent, "Fedora/") ->
-        "os-linux"
-
-      # Browser user agents (standard Mozilla format)
-      String.contains?(user_agent, "iPhone") or String.contains?(user_agent, "iPad") ->
-        "os-ios"
-
-      String.contains?(user_agent, "Android") ->
-        "os-android"
-
-      String.contains?(user_agent, "Macintosh") or String.contains?(user_agent, "Mac OS X") ->
-        "os-macos"
-
-      String.contains?(user_agent, "Windows NT") ->
-        "os-windows"
-
-      String.contains?(user_agent, "X11") and String.contains?(user_agent, "Linux") ->
-        "os-linux"
-
-      String.contains?(user_agent, "linux") ->
-        "os-linux"
-
-      true ->
-        "hero-computer-desktop"
-    end
+    detect_os_icon(user_agent) || "hero-computer-desktop"
   end
 
   defp token_user_agent_icon(_), do: "hero-computer-desktop"
+
+  # Firezone client user agents (e.g., "Windows/10.0", "Mac OS/15.0")
+  @firezone_client_patterns [
+    {"Windows/", "os-windows"},
+    {"Mac OS/", "os-macos"},
+    {"iOS/", "os-ios"},
+    {"Android/", "os-android"},
+    {"Ubuntu/", "os-ubuntu"},
+    {"Debian/", "os-debian"},
+    {"Manjaro/", "os-manjaro"},
+    {"CentOS/", "os-linux"},
+    {"Fedora/", "os-linux"}
+  ]
+
+  # Browser user agents (standard Mozilla format)
+  @browser_patterns [
+    {"iPhone", "os-ios"},
+    {"iPad", "os-ios"},
+    {"Android", "os-android"},
+    {"Macintosh", "os-macos"},
+    {"Mac OS X", "os-macos"},
+    {"Windows NT", "os-windows"},
+    {"linux", "os-linux"}
+  ]
+
+  defp detect_os_icon(user_agent) do
+    find_matching_pattern(user_agent, @firezone_client_patterns) ||
+      find_matching_pattern(user_agent, @browser_patterns) ||
+      detect_x11_linux(user_agent)
+  end
+
+  defp find_matching_pattern(user_agent, patterns) do
+    Enum.find_value(patterns, fn {pattern, icon} ->
+      if String.contains?(user_agent, pattern), do: icon
+    end)
+  end
+
+  defp detect_x11_linux(user_agent) do
+    if String.contains?(user_agent, "X11") and String.contains?(user_agent, "Linux") do
+      "os-linux"
+    end
+  end
 
   defp token_location(token) do
     cond do

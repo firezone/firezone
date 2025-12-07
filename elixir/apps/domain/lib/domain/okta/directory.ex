@@ -6,6 +6,25 @@ defmodule Domain.Okta.Directory do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t(),
+          account_id: Ecto.UUID.t(),
+          client_id: String.t(),
+          private_key_jwk: map(),
+          kid: String.t(),
+          okta_domain: String.t(),
+          name: String.t(),
+          errored_at: DateTime.t() | nil,
+          is_disabled: boolean(),
+          disabled_reason: String.t() | nil,
+          synced_at: DateTime.t() | nil,
+          error_message: String.t() | nil,
+          error_email_count: non_neg_integer(),
+          is_verified: boolean(),
+          inserted_at: DateTime.t(),
+          updated_at: DateTime.t()
+        }
+
   schema "okta_directories" do
     belongs_to :account, Domain.Account
 

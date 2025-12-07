@@ -290,7 +290,7 @@ defmodule Domain.Cache.Gateway do
       end
     end
 
-    def is_everyone_group?(group_id, account_id) do
+    def everyone_group?(group_id, account_id) do
       from(g in Domain.Group,
         where:
           g.id == ^group_id and
@@ -309,7 +309,7 @@ defmodule Domain.Cache.Gateway do
           {:ok, membership.id}
 
         {:error, :not_found} ->
-          if is_everyone_group?(group_id, account_id) do
+          if everyone_group?(group_id, account_id) do
             {:ok, nil}
           else
             {:error, :membership_not_found}

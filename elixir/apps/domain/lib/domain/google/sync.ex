@@ -220,66 +220,71 @@ defmodule Domain.Google.Sync do
 
         # For each group, stream and sync members
         Enum.each(groups, fn group ->
-          group_key = group["id"]
-          group_name = group["name"] || group["email"]
-
-          Logger.debug("Streaming members for group",
-            google_directory_id: directory.id,
-            group_key: group_key,
-            group_name: group_name
-          )
-
-          Google.APIClient.stream_group_members(access_token, group_key)
-          |> Stream.each(fn
-            {:error, error} ->
-              Logger.error("Failed to fetch members for group",
-                group_key: group_key,
-                group_name: group_name,
-                error: inspect(error),
-                google_directory_id: directory.id
-              )
-
-              raise Google.SyncError,
-                reason: "Failed to stream group members for #{group_name}",
-                cause: error,
-                directory_id: directory.id,
-                step: :stream_group_members
-
-            members when is_list(members) ->
-              Logger.debug("Received members page",
-                google_directory_id: directory.id,
-                group_key: group_key,
-                count: length(members)
-              )
-
-              # Filter only user members (not groups or other types)
-              user_members =
-                Enum.filter(members, fn member ->
-                  member["type"] == "USER"
-                end)
-
-              # Build memberships (group_idp_id, user_idp_id) - validate required fields
-              memberships =
-                Enum.map(user_members, fn member ->
-                  unless member["id"] do
-                    raise Google.SyncError,
-                      reason: "Member missing required 'id' field in group #{group_name}",
-                      cause: member,
-                      directory_id: directory.id,
-                      step: :process_member
-                  end
-
-                  {group_key, member["id"]}
-                end)
-
-              unless Enum.empty?(memberships) do
-                batch_upsert_memberships(directory, synced_at, memberships)
-              end
-          end)
-          |> Stream.run()
+          sync_group_members(directory, access_token, synced_at, group)
         end)
     end)
     |> Stream.run()
+  end
+
+  defp sync_group_members(directory, access_token, synced_at, group) do
+    group_key = group["id"]
+    group_name = group["name"] || group["email"]
+
+    Logger.debug("Streaming members for group",
+      google_directory_id: directory.id,
+      group_key: group_key,
+      group_name: group_name
+    )
+
+    Google.APIClient.stream_group_members(access_token, group_key)
+    |> Stream.each(fn
+      {:error, error} ->
+        Logger.error("Failed to fetch members for group",
+          group_key: group_key,
+          group_name: group_name,
+          error: inspect(error),
+          google_directory_id: directory.id
+        )
+
+        raise Google.SyncError,
+          reason: "Failed to stream group members for #{group_name}",
+          cause: error,
+          directory_id: directory.id,
+          step: :stream_group_members
+
+      members when is_list(members) ->
+        process_group_members_page(directory, synced_at, group_key, group_name, members)
+    end)
+    |> Stream.run()
+  end
+
+  defp process_group_members_page(directory, synced_at, group_key, group_name, members) do
+    Logger.debug("Received members page",
+      google_directory_id: directory.id,
+      group_key: group_key,
+      count: length(members)
+    )
+
+    # Filter only user members (not groups or other types)
+    user_members = Enum.filter(members, fn member -> member["type"] == "USER" end)
+
+    # Build memberships (group_idp_id, user_idp_id) - validate required fields
+    memberships =
+      Enum.map(user_members, fn member ->
+        unless member["id"] do
+          raise Google.SyncError,
+            reason: "Member missing required 'id' field in group #{group_name}",
+            cause: member,
+            directory_id: directory.id,
+            step: :process_member
+        end
+
+        {group_key, member["id"]}
+      end)
+
+    unless Enum.empty?(memberships) do
+      batch_upsert_memberships(directory, synced_at, memberships)
+    end
   end
 
   defp batch_upsert_identities(directory, synced_at, identities) do

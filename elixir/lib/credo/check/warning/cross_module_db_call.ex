@@ -31,7 +31,7 @@ defmodule Credo.Check.Warning.CrossModuleDBCall do
   # Extract module definitions
   defp extract_info({:defmodule, _, [{:__aliases__, _, module_parts}, _]} = ast, {modules, aliases})
        when is_list(module_parts) do
-    module_name = module_parts |> Enum.map(&to_string/1) |> Enum.join(".")
+    module_name = Enum.map_join(module_parts, ".", &to_string/1)
     {ast, {[module_name | modules], aliases}}
   end
 
@@ -42,7 +42,7 @@ defmodule Credo.Check.Warning.CrossModuleDBCall do
          {modules, aliases}
        )
        when is_list(module_parts) do
-    full_module = module_parts |> Enum.map(&to_string/1) |> Enum.join(".")
+    full_module = Enum.map_join(module_parts, ".", &to_string/1)
     alias_key = to_string(alias_name)
     {ast, {modules, Map.put(aliases, alias_key, full_module)}}
   end

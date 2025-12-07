@@ -28,7 +28,7 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
 
   # Track when we enter/exit module definitions - maintain a stack of module names
   defp traverse({:defmodule, _meta, [{:__aliases__, _, module_parts}, _]} = ast, {issues, module_stack}, _issue_meta, _parent_modules) do
-    module_name = module_parts |> Enum.map(&to_string/1) |> Enum.join(".")
+    module_name = Enum.map_join(module_parts, ".", &to_string/1)
     new_stack = module_stack ++ [module_name]
     {ast, {issues, new_stack}}
   end

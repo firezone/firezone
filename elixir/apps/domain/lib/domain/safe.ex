@@ -92,15 +92,15 @@ defmodule Domain.Safe do
   rescue
     error in Ecto.Query.CastError ->
       Logger.error("Query cast error", error: error)
-      raise Ecto.NoResultsError, queryable: queryable
+      reraise Ecto.NoResultsError, [queryable: queryable], __STACKTRACE__
 
     error in Ecto.CastError ->
       Logger.error("Cast error", error: error)
-      raise Ecto.NoResultsError, queryable: queryable
+      reraise Ecto.NoResultsError, [queryable: queryable], __STACKTRACE__
 
     error in ArgumentError ->
       Logger.error("Argument error", error: error)
-      raise Ecto.NoResultsError, queryable: queryable
+      reraise Ecto.NoResultsError, [queryable: queryable], __STACKTRACE__
   end
 
   # Query operations

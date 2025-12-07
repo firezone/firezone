@@ -122,53 +122,7 @@ defmodule Domain.Entra.Sync do
   end
 
   defp sync_assigned_groups(directory, access_token, synced_at) do
-    # Get the service principal ID for the Entra Auth Provider app (not the Directory Sync app)
-    # We use app role assignments from the auth app to determine group memberships
-    config = Domain.Config.fetch_env!(:domain, Domain.Entra.AuthProvider)
-    client_id = config[:client_id]
-
-    Logger.debug("Getting service principal for Entra Auth Provider",
-      entra_directory_id: directory.id,
-      client_id: client_id
-    )
-
-    service_principal_id =
-      case Entra.APIClient.get_service_principal(access_token, client_id) do
-        {:ok, %{body: %{"value" => [%{"id" => id} | _]} = body}} ->
-          Logger.debug("Found service principal",
-            entra_directory_id: directory.id,
-            service_principal_id: id,
-            response_body: inspect(body)
-          )
-
-          id
-
-        {:ok, %{body: body} = response} ->
-          Logger.debug("Service principal not found",
-            entra_directory_id: directory.id,
-            client_id: client_id,
-            status: response.status,
-            response_body: inspect(body)
-          )
-
-          raise Entra.SyncError,
-            reason: "Service principal not found",
-            cause: response,
-            directory_id: directory.id,
-            step: :get_service_principal
-
-        {:error, error} ->
-          Logger.debug("Failed to get service principal",
-            entra_directory_id: directory.id,
-            error: inspect(error)
-          )
-
-          raise Entra.SyncError,
-            reason: "Failed to get service principal",
-            cause: error,
-            directory_id: directory.id,
-            step: :get_service_principal
-      end
+    service_principal_id = fetch_service_principal_id!(directory, access_token)
 
     # Stream and sync app role assignments page by page
     Logger.debug("Streaming app role assignments", entra_directory_id: directory.id)
@@ -188,186 +142,254 @@ defmodule Domain.Entra.Sync do
           step: :stream_app_role_assignments
 
       assignments when is_list(assignments) ->
-        Logger.debug("Received app role assignments page",
-          entra_directory_id: directory.id,
-          count: length(assignments),
-          assignments: inspect(assignments, pretty: true, limit: :infinity)
-        )
-
-        # Validate required fields in assignments before processing
-        Enum.each(assignments, fn assignment ->
-          unless assignment["principalId"] do
-            raise Entra.SyncError,
-              reason: "Assignment missing required 'principalId' field",
-              cause: assignment,
-              directory_id: directory.id,
-              step: :process_assignment
-          end
-
-          unless assignment["principalType"] do
-            raise Entra.SyncError,
-              reason: "Assignment missing required 'principalType' field",
-              cause: assignment,
-              directory_id: directory.id,
-              step: :process_assignment
-          end
-
-          unless assignment["principalDisplayName"] do
-            raise Entra.SyncError,
-              reason: "Assignment missing required 'principalDisplayName' field",
-              cause: assignment,
-              directory_id: directory.id,
-              step: :process_assignment
-          end
-        end)
-
-        # Separate users and groups
-        {user_assignments, group_assignments} =
-          Enum.split_with(assignments, fn assignment ->
-            assignment["principalType"] == "User"
-          end)
-
-        Logger.debug("Split assignments by type",
-          entra_directory_id: directory.id,
-          user_count: length(user_assignments),
-          group_count: length(group_assignments)
-        )
-
-        # Build and sync direct user identities
-        # Note: appRoleAssignedTo only gives us principalId and principalDisplayName
-        # We need to hydrate these with full user details using $batch endpoint
-        # Users in groups will get full details from transitiveMembers calls
-        unless Enum.empty?(user_assignments) do
-          Logger.debug("Processing direct user assignments",
-            entra_directory_id: directory.id,
-            count: length(user_assignments)
-          )
-
-          user_ids = Enum.map(user_assignments, & &1["principalId"])
-
-          # Batch fetch users in chunks of 20 (Microsoft Graph $batch API limit)
-          direct_identities =
-            user_ids
-            |> Enum.chunk_every(20)
-            |> Enum.flat_map(fn chunk ->
-              Logger.debug("Fetching batch of users",
-                entra_directory_id: directory.id,
-                batch_size: length(chunk)
-              )
-
-              case Entra.APIClient.batch_get_users(access_token, chunk) do
-                {:ok, users} when is_list(users) ->
-                  Logger.debug("Fetched batch of users successfully",
-                    entra_directory_id: directory.id,
-                    fetched_count: length(users)
-                  )
-
-                  Enum.map(users, fn user ->
-                    map_user_to_identity(user, directory.id)
-                  end)
-
-                {:error, error} ->
-                  raise Entra.SyncError,
-                    reason: "Failed to batch fetch users",
-                    cause: error,
-                    directory_id: directory.id,
-                    step: :batch_get_users
-              end
-            end)
-
-          unless Enum.empty?(direct_identities) do
-            batch_upsert_identities(directory, synced_at, direct_identities)
-          end
-        end
-
-        # Build and sync groups
-        groups =
-          Enum.map(group_assignments, fn assignment ->
-            %{
-              idp_id: assignment["principalId"],
-              name: assignment["principalDisplayName"]
-            }
-          end)
-
-        unless Enum.empty?(groups) do
-          Logger.debug("Upserting groups",
-            entra_directory_id: directory.id,
-            count: length(groups)
-          )
-
-          batch_upsert_groups(directory, synced_at, groups)
-        end
-
-        # For each group, stream and sync transitive members
-        Enum.each(group_assignments, fn assignment ->
-          group_id = assignment["principalId"]
-          group_name = assignment["principalDisplayName"]
-
-          Logger.debug("Streaming transitive members for group",
-            entra_directory_id: directory.id,
-            group_id: group_id,
-            group_name: group_name
-          )
-
-          Entra.APIClient.stream_group_transitive_members(access_token, group_id)
-          |> Stream.each(fn
-            {:error, error} ->
-              raise Entra.SyncError,
-                reason: "Failed to stream group transitive members for #{group_name}",
-                cause: error,
-                directory_id: directory.id,
-                step: :stream_group_transitive_members
-
-            members when is_list(members) ->
-              Logger.debug("Received transitive members page",
-                entra_directory_id: directory.id,
-                group_id: group_id,
-                count: length(members)
-              )
-
-              # Filter only users
-              user_members =
-                Enum.filter(members, fn member ->
-                  member["@odata.type"] == "#microsoft.graph.user"
-                end)
-
-              # Validate required fields for user members before processing
-              Enum.each(user_members, fn member ->
-                unless member["id"] do
-                  raise Entra.SyncError,
-                    reason: "User member missing required 'id' field in group #{group_name}",
-                    cause: member,
-                    directory_id: directory.id,
-                    step: :process_group_member
-                end
-              end)
-
-              # Build identities for these members
-              identities =
-                Enum.map(user_members, fn member ->
-                  map_user_to_identity(member, directory.id)
-                end)
-
-              # Build memberships (group_idp_id, user_idp_id)
-              memberships =
-                Enum.map(user_members, fn member ->
-                  {group_id, member["id"]}
-                end)
-
-              unless Enum.empty?(identities) do
-                batch_upsert_identities(directory, synced_at, identities)
-              end
-
-              unless Enum.empty?(memberships) do
-                batch_upsert_memberships(directory, synced_at, memberships)
-              end
-          end)
-          |> Stream.run()
-        end)
+        process_app_role_assignments(directory, access_token, synced_at, assignments)
     end)
     |> Stream.run()
 
     :ok
+  end
+
+  defp fetch_service_principal_id!(directory, access_token) do
+    # Get the service principal ID for the Entra Auth Provider app (not the Directory Sync app)
+    # We use app role assignments from the auth app to determine group memberships
+    config = Domain.Config.fetch_env!(:domain, Domain.Entra.AuthProvider)
+    client_id = config[:client_id]
+
+    Logger.debug("Getting service principal for Entra Auth Provider",
+      entra_directory_id: directory.id,
+      client_id: client_id
+    )
+
+    case Entra.APIClient.get_service_principal(access_token, client_id) do
+      {:ok, %{body: %{"value" => [%{"id" => id} | _]} = body}} ->
+        Logger.debug("Found service principal",
+          entra_directory_id: directory.id,
+          service_principal_id: id,
+          response_body: inspect(body)
+        )
+
+        id
+
+      {:ok, %{body: body} = response} ->
+        Logger.debug("Service principal not found",
+          entra_directory_id: directory.id,
+          client_id: client_id,
+          status: response.status,
+          response_body: inspect(body)
+        )
+
+        raise Entra.SyncError,
+          reason: "Service principal not found",
+          cause: response,
+          directory_id: directory.id,
+          step: :get_service_principal
+
+      {:error, error} ->
+        Logger.debug("Failed to get service principal",
+          entra_directory_id: directory.id,
+          error: inspect(error)
+        )
+
+        raise Entra.SyncError,
+          reason: "Failed to get service principal",
+          cause: error,
+          directory_id: directory.id,
+          step: :get_service_principal
+    end
+  end
+
+  defp process_app_role_assignments(directory, access_token, synced_at, assignments) do
+    Logger.debug("Received app role assignments page",
+      entra_directory_id: directory.id,
+      count: length(assignments),
+      assignments: inspect(assignments, pretty: true, limit: :infinity)
+    )
+
+    validate_assignments!(assignments, directory.id)
+
+    # Separate users and groups
+    {user_assignments, group_assignments} =
+      Enum.split_with(assignments, fn assignment ->
+        assignment["principalType"] == "User"
+      end)
+
+    Logger.debug("Split assignments by type",
+      entra_directory_id: directory.id,
+      user_count: length(user_assignments),
+      group_count: length(group_assignments)
+    )
+
+    sync_direct_user_assignments(directory, access_token, synced_at, user_assignments)
+    sync_group_assignments(directory, access_token, synced_at, group_assignments)
+  end
+
+  defp validate_assignments!(assignments, directory_id) do
+    Enum.each(assignments, fn assignment ->
+      unless assignment["principalId"] do
+        raise Entra.SyncError,
+          reason: "Assignment missing required 'principalId' field",
+          cause: assignment,
+          directory_id: directory_id,
+          step: :process_assignment
+      end
+
+      unless assignment["principalType"] do
+        raise Entra.SyncError,
+          reason: "Assignment missing required 'principalType' field",
+          cause: assignment,
+          directory_id: directory_id,
+          step: :process_assignment
+      end
+
+      unless assignment["principalDisplayName"] do
+        raise Entra.SyncError,
+          reason: "Assignment missing required 'principalDisplayName' field",
+          cause: assignment,
+          directory_id: directory_id,
+          step: :process_assignment
+      end
+    end)
+  end
+
+  defp sync_direct_user_assignments(_directory, _access_token, _synced_at, []), do: :ok
+
+  defp sync_direct_user_assignments(directory, access_token, synced_at, user_assignments) do
+    # Build and sync direct user identities
+    # Note: appRoleAssignedTo only gives us principalId and principalDisplayName
+    # We need to hydrate these with full user details using $batch endpoint
+    # Users in groups will get full details from transitiveMembers calls
+    Logger.debug("Processing direct user assignments",
+      entra_directory_id: directory.id,
+      count: length(user_assignments)
+    )
+
+    user_ids = Enum.map(user_assignments, & &1["principalId"])
+
+    # Batch fetch users in chunks of 20 (Microsoft Graph $batch API limit)
+    direct_identities =
+      user_ids
+      |> Enum.chunk_every(20)
+      |> Enum.flat_map(fn chunk ->
+        fetch_user_batch!(directory, access_token, chunk)
+      end)
+
+    unless Enum.empty?(direct_identities) do
+      batch_upsert_identities(directory, synced_at, direct_identities)
+    end
+  end
+
+  defp fetch_user_batch!(directory, access_token, chunk) do
+    Logger.debug("Fetching batch of users",
+      entra_directory_id: directory.id,
+      batch_size: length(chunk)
+    )
+
+    case Entra.APIClient.batch_get_users(access_token, chunk) do
+      {:ok, users} when is_list(users) ->
+        Logger.debug("Fetched batch of users successfully",
+          entra_directory_id: directory.id,
+          fetched_count: length(users)
+        )
+
+        Enum.map(users, fn user -> map_user_to_identity(user, directory.id) end)
+
+      {:error, error} ->
+        raise Entra.SyncError,
+          reason: "Failed to batch fetch users",
+          cause: error,
+          directory_id: directory.id,
+          step: :batch_get_users
+    end
+  end
+
+  defp sync_group_assignments(_directory, _access_token, _synced_at, []), do: :ok
+
+  defp sync_group_assignments(directory, access_token, synced_at, group_assignments) do
+    # Build and sync groups
+    groups =
+      Enum.map(group_assignments, fn assignment ->
+        %{
+          idp_id: assignment["principalId"],
+          name: assignment["principalDisplayName"]
+        }
+      end)
+
+    Logger.debug("Upserting groups",
+      entra_directory_id: directory.id,
+      count: length(groups)
+    )
+
+    batch_upsert_groups(directory, synced_at, groups)
+
+    # For each group, stream and sync transitive members
+    Enum.each(group_assignments, fn assignment ->
+      sync_assigned_group_members(directory, access_token, synced_at, assignment)
+    end)
+  end
+
+  defp sync_assigned_group_members(directory, access_token, synced_at, assignment) do
+    group_id = assignment["principalId"]
+    group_name = assignment["principalDisplayName"]
+
+    Logger.debug("Streaming transitive members for group",
+      entra_directory_id: directory.id,
+      group_id: group_id,
+      group_name: group_name
+    )
+
+    Entra.APIClient.stream_group_transitive_members(access_token, group_id)
+    |> Stream.each(fn
+      {:error, error} ->
+        raise Entra.SyncError,
+          reason: "Failed to stream group transitive members for #{group_name}",
+          cause: error,
+          directory_id: directory.id,
+          step: :stream_group_transitive_members
+
+      members when is_list(members) ->
+        process_assigned_group_members_page(directory, synced_at, group_id, group_name, members)
+    end)
+    |> Stream.run()
+  end
+
+  defp process_assigned_group_members_page(directory, synced_at, group_id, group_name, members) do
+    Logger.debug("Received transitive members page",
+      entra_directory_id: directory.id,
+      group_id: group_id,
+      count: length(members)
+    )
+
+    # Filter only users
+    user_members =
+      Enum.filter(members, fn member ->
+        member["@odata.type"] == "#microsoft.graph.user"
+      end)
+
+    # Validate required fields for user members before processing
+    Enum.each(user_members, fn member ->
+      unless member["id"] do
+        raise Entra.SyncError,
+          reason: "User member missing required 'id' field in group #{group_name}",
+          cause: member,
+          directory_id: directory.id,
+          step: :process_group_member
+      end
+    end)
+
+    # Build identities for these members
+    identities =
+      Enum.map(user_members, fn member -> map_user_to_identity(member, directory.id) end)
+
+    # Build memberships (group_idp_id, user_idp_id)
+    memberships = Enum.map(user_members, fn member -> {group_id, member["id"]} end)
+
+    unless Enum.empty?(identities) do
+      batch_upsert_identities(directory, synced_at, identities)
+    end
+
+    unless Enum.empty?(memberships) do
+      batch_upsert_memberships(directory, synced_at, memberships)
+    end
   end
 
   defp sync_all_groups(directory, access_token, synced_at) do
@@ -433,74 +455,77 @@ defmodule Domain.Entra.Sync do
 
         # For each group, stream and sync transitive members
         Enum.each(groups, fn group ->
-          group_id = group["id"]
-          group_name = group["displayName"]
-
-          Logger.debug("Streaming transitive members for group",
-            entra_directory_id: directory.id,
-            group_id: group_id,
-            group_name: group_name
-          )
-
-          Entra.APIClient.stream_group_transitive_members(access_token, group_id)
-          |> Stream.each(fn
-            {:error, error} ->
-              raise Entra.SyncError,
-                reason: "Failed to stream group transitive members",
-                cause: error,
-                directory_id: directory.id,
-                step: :stream_group_transitive_members
-
-            members when is_list(members) ->
-              Logger.debug("Received transitive members page",
-                entra_directory_id: directory.id,
-                group_id: group_id,
-                count: length(members)
-              )
-
-              # Filter only users
-              user_members =
-                Enum.filter(members, fn member ->
-                  member["@odata.type"] == "#microsoft.graph.user"
-                end)
-
-              # Validate required fields for user members before processing
-              Enum.each(user_members, fn member ->
-                unless member["id"] do
-                  raise Entra.SyncError,
-                    reason: "User member missing required 'id' field in group #{group_name}",
-                    cause: member,
-                    directory_id: directory.id,
-                    step: :process_group_member
-                end
-              end)
-
-              # Build identities for these members
-              identities =
-                Enum.map(user_members, fn member ->
-                  map_user_to_identity(member, directory.id)
-                end)
-
-              # Build memberships (group_idp_id, user_idp_id)
-              memberships =
-                Enum.map(user_members, fn member ->
-                  {group_id, member["id"]}
-                end)
-
-              unless Enum.empty?(identities) do
-                batch_upsert_identities(directory, synced_at, identities)
-              end
-
-              unless Enum.empty?(memberships) do
-                batch_upsert_memberships(directory, synced_at, memberships)
-              end
-          end)
-          |> Stream.run()
+          sync_all_group_members(directory, access_token, synced_at, group)
         end)
     end)
     |> Stream.run()
 
     :ok
+  end
+
+  defp sync_all_group_members(directory, access_token, synced_at, group) do
+    group_id = group["id"]
+    group_name = group["displayName"]
+
+    Logger.debug("Streaming transitive members for group",
+      entra_directory_id: directory.id,
+      group_id: group_id,
+      group_name: group_name
+    )
+
+    Entra.APIClient.stream_group_transitive_members(access_token, group_id)
+    |> Stream.each(fn
+      {:error, error} ->
+        raise Entra.SyncError,
+          reason: "Failed to stream group transitive members",
+          cause: error,
+          directory_id: directory.id,
+          step: :stream_group_transitive_members
+
+      members when is_list(members) ->
+        process_all_group_members_page(directory, synced_at, group_id, group_name, members)
+    end)
+    |> Stream.run()
+  end
+
+  defp process_all_group_members_page(directory, synced_at, group_id, group_name, members) do
+    Logger.debug("Received transitive members page",
+      entra_directory_id: directory.id,
+      group_id: group_id,
+      count: length(members)
+    )
+
+    # Filter only users
+    user_members =
+      Enum.filter(members, fn member ->
+        member["@odata.type"] == "#microsoft.graph.user"
+      end)
+
+    # Validate required fields for user members before processing
+    Enum.each(user_members, fn member ->
+      unless member["id"] do
+        raise Entra.SyncError,
+          reason: "User member missing required 'id' field in group #{group_name}",
+          cause: member,
+          directory_id: directory.id,
+          step: :process_group_member
+      end
+    end)
+
+    # Build identities for these members
+    identities =
+      Enum.map(user_members, fn member -> map_user_to_identity(member, directory.id) end)
+
+    # Build memberships (group_idp_id, user_idp_id)
+    memberships = Enum.map(user_members, fn member -> {group_id, member["id"]} end)
+
+    unless Enum.empty?(identities) do
+      batch_upsert_identities(directory, synced_at, identities)
+    end
+
+    unless Enum.empty?(memberships) do
+      batch_upsert_memberships(directory, synced_at, memberships)
+    end
   end
 
   defp batch_upsert_identities(directory, synced_at, identities) do

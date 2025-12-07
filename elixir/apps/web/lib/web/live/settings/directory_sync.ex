@@ -1282,8 +1282,7 @@ defmodule Web.Settings.DirectorySync do
     |> Enum.filter(fn {field, _error} ->
       field in [:domain, :tenant_id, :okta_domain]
     end)
-    |> Enum.map(fn {_field, {message, _opts}} -> message end)
-    |> Enum.join(" ")
+    |> Enum.map_join(" ", fn {_field, {message, _opts}} -> message end)
   end
 
   defp start_verification(%{assigns: %{type: "google"}} = socket) do
@@ -1477,13 +1476,13 @@ defmodule Web.Settings.DirectorySync do
     error_codes = body["error_codes"] || []
 
     cond do
-      70002 in error_codes || error == "invalid_client" ->
+      70_002 in error_codes || error == "invalid_client" ->
         "Invalid client credentials. The Application (client) ID or client secret is incorrect."
 
       7_000_218 in error_codes ->
         "Invalid client secret. The secret may have expired or been entered incorrectly."
 
-      90002 in error_codes || error == "invalid_tenant" ->
+      90_002 in error_codes || error == "invalid_tenant" ->
         "Tenant not found. Please verify your Tenant ID is correct."
 
       error_description ->

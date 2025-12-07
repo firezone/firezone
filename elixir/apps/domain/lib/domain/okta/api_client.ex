@@ -30,7 +30,7 @@ defmodule Domain.Okta.APIClient do
             private_key: nil,
             kid: nil
 
-  @spec new(%Directory{}) :: t()
+  @spec new(Directory.t()) :: t()
   def new(%Directory{} = directory) do
     %APIClient{
       base_url: "https://#{directory.okta_domain}",

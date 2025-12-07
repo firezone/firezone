@@ -49,7 +49,7 @@ defmodule Web.Groups do
     group = DB.get_group_with_actors!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
 
-    if is_editable_group?(group) do
+    if editable_group?(group) do
       changeset = changeset(group, %{})
 
       {:noreply,
@@ -159,7 +159,7 @@ defmodule Web.Groups do
   def handle_event("delete", %{"id" => id}, socket) do
     group = DB.get_group!(id, socket.assigns.subject)
 
-    if is_deletable_group?(group) do
+    if deletable_group?(group) do
       case DB.delete(group, socket.assigns.subject) do
         {:ok, _group} ->
           {:noreply, handle_success(socket, "Group deleted successfully")}
@@ -193,7 +193,7 @@ defmodule Web.Groups do
   end
 
   def handle_event("save", %{"group" => attrs}, socket) do
-    if is_editable_group?(socket.assigns.group) do
+    if editable_group?(socket.assigns.group) do
       attrs = build_attrs_with_memberships(attrs, socket)
       changeset = changeset(socket.assigns.group, attrs)
 
@@ -375,7 +375,7 @@ defmodule Web.Groups do
           <div>
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-sm font-semibold text-neutral-900">Details</h3>
-              <.popover :if={is_deletable_group?(@group)} placement="bottom-end" trigger="click">
+              <.popover :if={deletable_group?(@group)} placement="bottom-end" trigger="click">
                 <:target>
                   <button
                     type="button"
@@ -387,14 +387,14 @@ defmodule Web.Groups do
                 <:content>
                   <div class="py-1">
                     <.link
-                      :if={is_editable_group?(@group)}
+                      :if={editable_group?(@group)}
                       navigate={~p"/#{@account}/groups/#{@group.id}/edit?#{query_params(@uri)}"}
                       class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
                     >
                       <.icon name="hero-pencil" class="w-4 h-4" /> Edit
                     </.link>
                     <div
-                      :if={not is_editable_group?(@group)}
+                      :if={not editable_group?(@group)}
                       class="px-3 py-2 text-sm text-neutral-400 rounded-lg flex items-center gap-2 whitespace-nowrap cursor-not-allowed"
                       title="Synced groups cannot be edited"
                     >
@@ -532,7 +532,7 @@ defmodule Web.Groups do
                   </:badge>
                   <:actions :let={actor}>
                     <div class="ml-4 flex items-center gap-2">
-                      <% is_current = is_current_member?(actor, @group)
+                      <% is_current = current_member?(actor, @group)
                       is_to_add = Enum.any?(@members_to_add, &(&1.id == actor.id))
                       is_to_remove = Enum.any?(@members_to_remove, &(&1.id == actor.id)) %>
                       <span :if={is_current and not is_to_remove} class="text-xs text-neutral-500">
@@ -703,12 +703,12 @@ defmodule Web.Groups do
     """
   end
 
-  defp is_editable_group?(%{type: :managed, name: "Everyone"}), do: false
-  defp is_editable_group?(%{directory_id: nil}), do: true
-  defp is_editable_group?(_group), do: false
+  defp editable_group?(%{type: :managed, name: "Everyone"}), do: false
+  defp editable_group?(%{directory_id: nil}), do: true
+  defp editable_group?(_group), do: false
 
-  defp is_deletable_group?(%{name: "Everyone"}), do: false
-  defp is_deletable_group?(_group), do: true
+  defp deletable_group?(%{name: "Everyone"}), do: false
+  defp deletable_group?(_group), do: true
 
   defp get_idp_id(nil), do: nil
 
@@ -799,7 +799,7 @@ defmodule Web.Groups do
     members_to_remove = Enum.reject(socket.assigns.members_to_remove, &(&1.id == actor.id))
 
     members_to_add =
-      if is_current_member?(actor, socket.assigns.group) do
+      if current_member?(actor, socket.assigns.group) do
         socket.assigns.members_to_add
       else
         uniq_by_id([actor | socket.assigns.members_to_add])
@@ -821,7 +821,7 @@ defmodule Web.Groups do
     {members_to_add, members_to_remove}
   end
 
-  defp is_current_member?(actor, group) do
+  defp current_member?(actor, group) do
     Enum.any?(group.actors, &(&1.id == actor.id))
   end
 

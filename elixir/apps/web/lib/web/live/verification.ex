@@ -62,32 +62,9 @@ defmodule Web.Verification do
   end
 
   defp handle_entra_admin_consent(params, socket) do
-    # Extract parameters from Microsoft's admin consent callback
-    tenant_id = params["tenant"]
-    admin_consent = params["admin_consent"]
-    state = params["state"]
-    error_param = params["error"]
-    error_description = params["error_description"]
+    {verification_token, verification_type} = parse_state(params["state"])
 
-    # Extract token and type from state
-    # Format: "entra-admin-consent:{token}" for directory sync
-    # Format: "entra-verification:{token}" for auth provider
-    {verification_token, verification_type} =
-      case String.split(state || "", ":") do
-        ["entra-admin-consent", token] -> {token, :directory_sync}
-        ["entra-verification", token] -> {token, :auth_provider}
-        _ -> {nil, nil}
-      end
-
-    # Determine error message
-    error =
-      cond do
-        error_param -> error_description || error_param
-        admin_consent != "True" && !error_param -> "Admin consent was not granted"
-        !tenant_id && !error_param -> "Missing tenant information"
-        !verification_token && !error_param -> "Invalid state parameter"
-        true -> nil
-      end
+    error = detect_consent_error(params, verification_token)
 
     socket =
       assign(socket,
@@ -97,21 +74,46 @@ defmodule Web.Verification do
         verification_type: verification_type
       )
 
-    # Broadcast to the appropriate LiveView
-    if verification_token && tenant_id && !error && verification_type do
-      case verification_type do
-        :directory_sync ->
-          # Verify directory access with client credentials
-          handle_directory_sync_verification(socket, verification_token, tenant_id)
+    tenant_id = params["tenant"]
 
-        :auth_provider ->
-          # For auth provider, just broadcast success (no additional verification needed)
-          handle_auth_provider_verification(socket, verification_token, tenant_id)
-      end
+    if verification_token && tenant_id && !error && verification_type do
+      dispatch_verification(socket, verification_type, verification_token, tenant_id)
     else
-      # Error already set in socket assigns
       {:noreply, socket}
     end
+  end
+
+  defp parse_state(nil), do: {nil, nil}
+
+  defp parse_state(state) do
+    case String.split(state, ":") do
+      ["entra-admin-consent", token] -> {token, :directory_sync}
+      ["entra-verification", token] -> {token, :auth_provider}
+      _ -> {nil, nil}
+    end
+  end
+
+  defp detect_consent_error(params, verification_token) do
+    error_param = params["error"]
+    error_description = params["error_description"]
+    admin_consent = params["admin_consent"]
+    tenant_id = params["tenant"]
+
+    cond do
+      error_param -> error_description || error_param
+      admin_consent != "True" -> "Admin consent was not granted"
+      !tenant_id -> "Missing tenant information"
+      !verification_token -> "Invalid state parameter"
+      true -> nil
+    end
+  end
+
+  defp dispatch_verification(socket, :directory_sync, verification_token, tenant_id) do
+    handle_directory_sync_verification(socket, verification_token, tenant_id)
+  end
+
+  defp dispatch_verification(socket, :auth_provider, verification_token, tenant_id) do
+    handle_auth_provider_verification(socket, verification_token, tenant_id)
   end
 
   def handle_info(:success, socket) do
