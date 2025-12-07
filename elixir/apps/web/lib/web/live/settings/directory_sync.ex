@@ -470,8 +470,7 @@ defmodule Web.Settings.DirectorySync do
                 </div>
               </div>
             </div>
-
-    <!-- Marketing overlay -->
+            <!-- Marketing overlay -->
             <div class="absolute inset-0 flex items-center justify-center">
               <div class="bg-white rounded-xl shadow-lg p-6 max-w-md text-center border border-neutral-200">
                 <div class="mb-4">

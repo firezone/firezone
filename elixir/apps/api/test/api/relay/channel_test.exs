@@ -1,10 +1,12 @@
 defmodule API.Relay.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Relays, Repo}
+
+  import Domain.RelayFixtures
+  import Domain.TokenFixtures
 
   setup do
-    relay = Fixtures.Relays.create_relay() |> Repo.preload([:group, :account])
-    token = Fixtures.Relays.create_token(group: relay.group, account: relay.account)
+    relay = relay_fixture()
+    token = relay_token_fixture()
 
     stamp_secret = Domain.Crypto.random_token()
 
@@ -18,34 +20,11 @@ defmodule API.Relay.ChannelTest do
       })
       |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
-    %{relay: relay, socket: socket}
+    %{relay: relay, socket: socket, token: token}
   end
 
   describe "join/3" do
-    test "tracks presence after join of an account relay", %{relay: relay} do
-      presence = Domain.Presence.Relays.Account.list(relay.account_id)
-
-      assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
-      assert is_number(online_at)
-    end
-
-    test "tracks presence after join of an global relay" do
-      group = Fixtures.Relays.create_global_group()
-      relay = Fixtures.Relays.create_relay(group: group)
-      token = Fixtures.Relays.create_global_token(group: group)
-
-      stamp_secret = Domain.Crypto.random_token()
-
-      {:ok, _, _socket} =
-        API.Relay.Socket
-        |> socket("relay:#{relay.id}", %{
-          token_id: token.id,
-          relay: relay,
-          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
-        })
-        |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
-
+    test "tracks presence after join", %{relay: relay} do
       presence = Domain.Presence.Relays.Global.list()
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
