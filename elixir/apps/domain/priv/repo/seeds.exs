@@ -404,7 +404,8 @@ defmodule Domain.Repo.Seeds do
         account_id: account.id,
         type: :account_user,
         name: "Firezone Unprivileged",
-        email: unprivileged_actor_email
+        email: unprivileged_actor_email,
+        allow_email_otp_sign_in: true
       }
       |> Repo.insert()
 
@@ -430,7 +431,8 @@ defmodule Domain.Repo.Seeds do
         account_id: account.id,
         type: :account_admin_user,
         name: "Firezone Admin",
-        email: admin_actor_email
+        email: admin_actor_email,
+        allow_email_otp_sign_in: true
       })
 
     {:ok, service_account_actor} =
