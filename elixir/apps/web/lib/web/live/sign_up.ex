@@ -124,7 +124,7 @@ defmodule Web.SignUp do
                   :if={@account && @sign_up_enabled?}
                   account={@account}
                   provider={@provider}
-                  identity={@identity}
+                  actor={@actor}
                 />
                 <.sign_up_disabled :if={!@sign_up_enabled?} />
               </:item>
@@ -199,7 +199,7 @@ defmodule Web.SignUp do
           <.input
             type="hidden"
             name="email"
-            value={@identity.actor.email}
+            value={@actor.email}
           />
 
           <.button type="submit" class="w-full">
@@ -312,6 +312,7 @@ defmodule Web.SignUp do
     attrs =
       put_in(orig_attrs, ["actor", "type"], :account_admin_user)
       |> Map.put("email_confirmation", orig_attrs["email"])
+      |> Map.put("slug", "placeholder")
 
     changeset =
       attrs
@@ -323,14 +324,14 @@ defmodule Web.SignUp do
       registration = Ecto.Changeset.apply_changes(changeset)
 
       case register_account(socket, registration) do
-        {:ok, %{account: account, provider: provider, identity: identity, actor: actor}} ->
+        {:ok, %{account: account, provider: provider, actor: actor}} ->
           {:ok, account} = Domain.Billing.provision_account(account)
 
           socket =
             assign(socket,
               account: account,
               provider: provider,
-              identity: identity
+              actor: actor
             )
 
           socket =
@@ -338,7 +339,7 @@ defmodule Web.SignUp do
               id: actor.id,
               account_id: account.id,
               name: actor.name,
-              email: identity.provider_identifier
+              email: actor.email
             })
 
           socket =
@@ -346,7 +347,7 @@ defmodule Web.SignUp do
               name: "Sign Up",
               properties: %{
                 account_id: account.id,
-                identity_id: identity.id
+                actor_id: actor.id
               }
             })
 
@@ -386,9 +387,64 @@ defmodule Web.SignUp do
     import Ecto.Changeset
 
     %Domain.Account{}
-    |> cast(attrs, [:name])
+    |> cast(attrs, [:name, :legal_name, :slug])
+    |> maybe_default_legal_name()
+    |> maybe_generate_slug()
+    |> put_default_config()
     |> cast_embed(:metadata)
-    |> validate_required([:name])
+    |> validate_required([:name, :legal_name, :slug])
+    |> Domain.Account.changeset()
+  end
+
+  defp put_default_config(changeset) do
+    import Ecto.Changeset
+
+    # Initialize with default config
+    default_config = Domain.Accounts.Config.default_config()
+    put_change(changeset, :config, default_config)
+  end
+
+  defp maybe_generate_slug(changeset) do
+    import Ecto.Changeset
+
+    case get_field(changeset, :slug) do
+      nil ->
+        # Generate a unique slug
+        slug = generate_unique_slug()
+        put_change(changeset, :slug, slug)
+
+      "placeholder" ->
+        # Replace placeholder with a real slug
+        slug = generate_unique_slug()
+        put_change(changeset, :slug, slug)
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp generate_unique_slug do
+    slug_candidate = Domain.NameGenerator.generate_slug()
+
+    if DB.slug_exists?(slug_candidate) do
+      generate_unique_slug()
+    else
+      slug_candidate
+    end
+  end
+
+  defp maybe_default_legal_name(changeset) do
+    import Ecto.Changeset
+
+    case get_field(changeset, :legal_name) do
+      nil ->
+        # Default legal_name to name if not provided
+        name = get_field(changeset, :name)
+        put_change(changeset, :legal_name, name)
+
+      _ ->
+        changeset
+    end
   end
 
   defp create_everyone_group_changeset(account) do
@@ -505,10 +561,10 @@ defmodule Web.SignUp do
         internet_resource_changeset_fn.(account, internet_site)
         |> insert()
       end)
-      |> Ecto.Multi.run(:send_email, fn _repo, %{account: account, identity: identity} ->
-        Domain.Mailer.AuthEmail.sign_up_link_email(account, identity, user_agent, real_ip)
+      |> Ecto.Multi.run(:send_email, fn _repo, %{account: account, actor: actor} ->
+        Domain.Mailer.AuthEmail.sign_up_link_email(account, actor, user_agent, real_ip)
         |> Domain.Mailer.deliver_with_rate_limit(
-          rate_limit_key: {:sign_up_link, String.downcase(identity.provider_identifier)},
+          rate_limit_key: {:sign_up_link, String.downcase(actor.email)},
           rate_limit: 3,
           rate_limit_interval: :timer.minutes(30)
         )
@@ -520,10 +576,10 @@ defmodule Web.SignUp do
       id = Ecto.UUID.generate()
       attrs = %{account_id: account.id, id: id, type: :email_otp}
       parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id type]a)
-      attrs = %{id: id, name: "Email (OTP)"}
+      attrs = %{id: id, account_id: account.id, name: "Email (OTP)"}
 
       changeset =
-        cast(%EmailOTP.AuthProvider{}, attrs, ~w[id name]a)
+        cast(%EmailOTP.AuthProvider{}, attrs, ~w[id account_id name]a)
         |> EmailOTP.AuthProvider.changeset()
 
       with {:ok, _auth_provider} <- Safe.unscoped(parent_changeset) |> Safe.insert(),
@@ -550,6 +606,13 @@ defmodule Web.SignUp do
     def insert(changeset) do
       Safe.unscoped(changeset)
       |> Safe.insert()
+    end
+
+    def slug_exists?(slug) do
+      import Ecto.Query
+
+      query = from(a in Domain.Account, where: a.slug == ^slug, select: count(a.id))
+      Safe.unscoped(query) |> Safe.one() > 0
     end
   end
 end

@@ -118,9 +118,7 @@ defmodule Domain.Billing do
              account_slug: account.slug
            }) do
       account
-      |> update_account_metadata_changeset(%{
-        stripe: %{customer_id: customer_id, billing_email: customer_email}
-      })
+      |> update_account_metadata_changeset(%{customer_id: customer_id, billing_email: customer_email})
       |> DB.update()
     else
       {:ok, {status, body}} ->
@@ -229,9 +227,7 @@ defmodule Domain.Billing do
     with {:ok, %{"id" => subscription_id}} <-
            APIClient.create_subscription(secret_key, customer_id, default_price_id) do
       account
-      |> update_account_metadata_changeset(%{
-        stripe: %{subscription_id: subscription_id}
-      })
+      |> update_account_metadata_changeset(%{subscription_id: subscription_id})
       |> DB.update()
     else
       {:ok, {status, body}} ->
@@ -374,8 +370,18 @@ defmodule Domain.Billing do
   defp update_account_metadata_changeset(account, stripe_metadata) do
     import Ecto.Changeset
 
+    # Merge new stripe metadata with existing metadata
+    existing_stripe =
+      case account.metadata do
+        %{stripe: stripe} when not is_nil(stripe) -> Map.from_struct(stripe)
+        _ -> %{}
+      end
+
+    merged_stripe = Map.merge(existing_stripe, stripe_metadata)
+
     account
-    |> cast(%{metadata: %{stripe: stripe_metadata}}, [])
+    |> change()
+    |> put_change(:metadata, %{stripe: merged_stripe})
     |> cast_embed(:metadata)
   end
 
