@@ -1,6 +1,7 @@
 defmodule Web.Resources.Index do
   use Web, :live_view
-  alias Domain.{Changes.Change, PubSub, Resources}
+  alias Domain.{Changes.Change, PubSub, Resource}
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -12,7 +13,7 @@ defmodule Web.Resources.Index do
       |> assign(stale: false)
       |> assign(page_title: "Resources")
       |> assign_live_table("resources",
-        query_module: Resources.Resource.Query,
+        query_module: DB,
         sortable_fields: [
           {:resources, :name},
           {:resources, :address}
@@ -33,16 +34,16 @@ defmodule Web.Resources.Index do
   end
 
   def handle_resources_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:gateway_groups])
+    list_opts = Keyword.put(list_opts, :preload, [:site])
 
     with {:ok, resources, metadata} <-
-           Resources.list_resources(socket.assigns.subject, list_opts),
-         {:ok, resource_actor_groups_peek} <-
-           Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
+           DB.list_resources(socket.assigns.subject, list_opts) do
+      resource_policy_counts = DB.count_policies_for_resources(resources, socket.assigns.subject)
+
       {:ok,
        assign(socket,
          resources: resources,
-         resource_actor_groups_peek: resource_actor_groups_peek,
+         resource_policy_counts: resource_policy_counts,
          resources_metadata: metadata
        )}
     end
@@ -73,7 +74,6 @@ defmodule Web.Resources.Index do
         </.add_button>
       </:action>
       <:content>
-        <.flash_group flash={@flash} />
         <.live_table
           stale={@stale}
           id="resources"
@@ -97,40 +97,34 @@ defmodule Web.Resources.Index do
               <code>0.0.0.0/0</code>, <code>::/0 </code>
             </span>
           </:col>
-          <:col :let={resource} label="sites">
+          <:col :let={resource} label="site">
             <.link
-              :for={gateway_group <- resource.gateway_groups}
-              navigate={~p"/#{@account}/sites/#{gateway_group}"}
+              :if={resource.site}
+              navigate={~p"/#{@account}/sites/#{resource.site}"}
               class={link_style()}
             >
               <.badge type="info">
-                {gateway_group.name}
+                {resource.site.name}
               </.badge>
             </.link>
           </:col>
-          <:col :let={resource} label="Authorized groups" class="w-4/12">
-            <.peek peek={Map.fetch!(@resource_actor_groups_peek, resource.id)}>
-              <:empty>
-                None -
-                <.link
-                  class={["px-1", link_style()]}
-                  navigate={~p"/#{@account}/policies/new?resource_id=#{resource}"}
-                >
-                  Create a Policy
-                </.link>
-                to grant access.
-              </:empty>
-
-              <:item :let={group}>
-                <.group account={@account} group={group} class="mr-2" />
-              </:item>
-
-              <:tail :let={count}>
-                <span class="inline-block whitespace-nowrap">
-                  and {count} more.
-                </span>
-              </:tail>
-            </.peek>
+          <:col :let={resource} label="Policies" class="w-2/12">
+            <% count = Map.get(@resource_policy_counts, resource.id, 0) %>
+            <%= if count == 0 do %>
+              <.link
+                class={link_style()}
+                navigate={~p"/#{@account}/policies/new?resource_id=#{resource}"}
+              >
+                Create a Policy
+              </.link>
+            <% else %>
+              <.link
+                class={link_style()}
+                navigate={~p"/#{@account}/policies?resource_id=#{resource.id}"}
+              >
+                {count} {ngettext("policy", "policies", count)}
+              </.link>
+            <% end %>
           </:col>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -148,7 +142,7 @@ defmodule Web.Resources.Index do
       </:content>
     </.section>
 
-    <.section :if={Domain.Accounts.internet_resource_enabled?(@account)}>
+    <.section :if={Domain.Account.internet_resource_enabled?(@account)}>
       <:title>
         Internet
       </:title>
@@ -169,15 +163,107 @@ defmodule Web.Resources.Index do
       when event in ["paginate", "order_by", "filter", "reload"],
       do: handle_live_table_event(event, params, socket)
 
-  def handle_info(%Change{old_struct: %Resources.Resource{}}, socket) do
+  def handle_info(%Change{old_struct: %Resource{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
-  def handle_info(%Change{struct: %Resources.Resource{}}, socket) do
+  def handle_info(%Change{struct: %Resource{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
   def handle_info(_, socket) do
     {:noreply, socket}
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    import Domain.Repo.Query
+    alias Domain.{Safe, Resource, Policy}
+
+    def list_resources(subject, opts \\ []) do
+      all()
+      |> filter_features(subject.account)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def all do
+      from(resources in Resource, as: :resources)
+    end
+
+    def filter_features(queryable, %Domain.Account{} = account) do
+      if Domain.Account.internet_resource_enabled?(account) do
+        queryable
+      else
+        where(queryable, [resources: resources], resources.type != ^:internet)
+      end
+    end
+
+    def count_policies_for_resources(resources, subject) do
+      ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
+
+      from(p in Policy, as: :policies)
+      |> where([policies: p], p.resource_id in ^ids)
+      |> where([policies: p], is_nil(p.disabled_at))
+      |> group_by([policies: p], p.resource_id)
+      |> select([policies: p], {p.resource_id, count(p.id)})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> %{}
+        counts -> Map.new(counts)
+      end
+    end
+
+    def cursor_fields do
+      [
+        {:resources, :asc, :name},
+        {:resources, :asc, :inserted_at},
+        {:resources, :asc, :id}
+      ]
+    end
+
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :name_or_address,
+          title: "Name or Address",
+          type: {:string, :websearch},
+          fun: &filter_by_name_fts_or_address/2
+        },
+        %Domain.Repo.Filter{
+          name: :site_id,
+          type: {:string, :uuid},
+          values: [],
+          fun: &filter_by_site_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :type,
+          type: {:list, :string},
+          fun: &filter_by_type/2
+        }
+      ]
+    end
+
+    def filter_by_name_fts_or_address(queryable, name_or_address) do
+      {queryable,
+       dynamic(
+         [resources: resources],
+         fulltext_search(resources.name, ^name_or_address) or
+           ilike(resources.address, ^"%#{name_or_address}%")
+       )}
+    end
+
+    def filter_by_site_id(queryable, site_id) do
+      {queryable, dynamic([resources: r], r.site_id == ^site_id)}
+    end
+
+    def filter_by_type(queryable, {:not_in, types}) do
+      {queryable, dynamic([resources: resources], resources.type not in ^types)}
+    end
+
+    def filter_by_type(queryable, types) do
+      {queryable, dynamic([resources: resources], resources.type in ^types)}
+    end
   end
 end

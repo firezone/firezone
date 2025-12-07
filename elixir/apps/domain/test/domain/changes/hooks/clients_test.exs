@@ -1,7 +1,7 @@
 defmodule Domain.Changes.Hooks.ClientsTest do
   use Domain.DataCase, async: true
   import Domain.Changes.Hooks.Clients
-  alias Domain.{Changes.Change, Clients, Flows, PubSub}
+  alias Domain.{Changes.Change, Clients, PolicyAuthorizations, PubSub}
 
   describe "insert/1" do
     test "returns :ok" do
@@ -32,7 +32,7 @@ defmodule Domain.Changes.Hooks.ClientsTest do
       assert new_client.id == client.id
     end
 
-    test "update unverifies client and deletes associated flows" do
+    test "update unverifies client and deletes associated policy authorizations" do
       account = Fixtures.Accounts.create_account()
       client = Fixtures.Clients.create_client(account: account, verified_at: DateTime.utc_now())
       :ok = PubSub.Account.subscribe(client.account_id)
@@ -45,7 +45,12 @@ defmodule Domain.Changes.Hooks.ClientsTest do
 
       data = %{"id" => client.id, "verified_at" => nil, "account_id" => client.account_id}
 
-      assert flow = Fixtures.Flows.create_flow(client: client, account: account)
+      assert policy_authorization =
+               Fixtures.PolicyAuthorizations.create_policy_authorization(
+                 client: client,
+                 account: account
+               )
+
       assert :ok == on_update(0, old_data, data)
 
       assert_receive %Change{
@@ -57,7 +62,7 @@ defmodule Domain.Changes.Hooks.ClientsTest do
 
       assert is_nil(new_client.verified_at)
       assert new_client.id == client.id
-      refute Repo.get_by(Flows.Flow, id: flow.id)
+      refute Repo.get_by(PolicyAuthorizations.PolicyAuthorization, id: policy_authorization.id)
     end
   end
 

@@ -31,6 +31,10 @@ defmodule Domain.Config.Definitions do
   alias Domain.Config.Dumper
   alias Domain.Types
 
+  @entra_sync_client_id ""
+  @google_oidc_client_id "689429116054-72vkp65pqrntsq3bksj9bt4pft15if4v.apps.googleusercontent.com"
+  @entra_oidc_client_id "d0b74799-63b8-4c10-8255-1c03c48a3029"
+
   if Mix.env() in [:test, :dev] do
     @local_development_adapters [Swoosh.Adapters.Local]
   else
@@ -99,19 +103,6 @@ defmodule Domain.Config.Definitions do
          :cookie_signing_salt,
          :cookie_encryption_salt
        ]},
-      {"Authorization",
-       """
-       Providers:
-
-        * `openid_connect` is used to authenticate users via OpenID Connect, this is recommended for production use;
-        * `email` is used to authenticate users via sign in tokens sent to the email;
-        * `token` is used to authenticate service accounts using an API token;
-        * `userpass` is used to authenticate users with username and password, should be used
-        with extreme care and is not recommended for production use.
-       """,
-       [
-         :auth_provider_adapters
-       ]},
       {"Outbound Emails",
        [
          :outbound_email_from,
@@ -156,8 +147,8 @@ defmodule Domain.Config.Definitions do
     default: nil,
     changeset: fn changeset, key ->
       changeset
-      |> Domain.Repo.Changeset.validate_uri(key, require_trailing_slash: true)
-      |> Domain.Repo.Changeset.normalize_url(key)
+      |> Domain.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Domain.Changeset.normalize_url(key)
     end
   )
 
@@ -171,8 +162,8 @@ defmodule Domain.Config.Definitions do
     default: nil,
     changeset: fn changeset, key ->
       changeset
-      |> Domain.Repo.Changeset.validate_uri(key, require_trailing_slash: true)
-      |> Domain.Repo.Changeset.normalize_url(key)
+      |> Domain.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Domain.Changeset.normalize_url(key)
     end
   )
 
@@ -444,7 +435,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:tokens_key_base, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   @doc """
@@ -452,7 +443,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:tokens_salt, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   @doc """
@@ -460,7 +451,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:secret_key_base, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   @doc """
@@ -468,7 +459,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:live_view_signing_salt, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   @doc """
@@ -476,7 +467,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:cookie_signing_salt, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   @doc """
@@ -484,7 +475,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:cookie_encryption_salt, :string,
     sensitive: true,
-    changeset: &Domain.Repo.Changeset.validate_base64/2
+    changeset: &Domain.Changeset.validate_base64/2
   )
 
   ##############################################
@@ -497,6 +488,8 @@ defmodule Domain.Config.Definitions do
   It will affect on which auth providers can be created per an account but will not disable
   already active providers when setting is changed.
   """
+  # TODO: IdP refactor
+  # Remove google / okta / entra / jumpcloud
   defconfig(
     :auth_provider_adapters,
     {:array, ",", Ecto.ParameterizedType.init(Ecto.Enum, values: ~w[
@@ -521,6 +514,27 @@ defmodule Domain.Config.Definitions do
       token
     ]a
   )
+
+  ##############################################
+  ## Directory Sync
+  ##############################################
+
+  defconfig(:google_service_account_key, :string, default: nil, sensitive: true)
+
+  ##############################################
+  ## Google / Entra / Okta authentication
+  ##############################################
+
+  defconfig(:google_oidc_client_id, :string, default: @google_oidc_client_id)
+  defconfig(:google_oidc_client_secret, :string, default: nil, sensitive: true)
+
+  defconfig(:entra_sync_client_id, :string, default: @entra_sync_client_id)
+  defconfig(:entra_sync_client_secret, :string, default: nil, sensitive: true)
+
+  defconfig(:entra_oidc_client_id, :string, default: @entra_oidc_client_id)
+  defconfig(:entra_oidc_client_secret, :string, default: nil, sensitive: true)
+
+  # Okta uses a per-tenant client_id/secret
 
   ##############################################
   ## Telemetry
@@ -597,8 +611,8 @@ defmodule Domain.Config.Definitions do
     sensitive: true,
     changeset: fn changeset, key ->
       changeset
-      |> Domain.Repo.Changeset.trim_change(key)
-      |> Domain.Repo.Changeset.validate_email(key)
+      |> Domain.Changeset.trim_change(key)
+      |> Domain.Changeset.validate_email(key)
     end
   )
 
@@ -690,7 +704,7 @@ defmodule Domain.Config.Definitions do
     changeset: fn changeset, key ->
       changeset
       |> Ecto.Changeset.validate_required(key)
-      |> Domain.Repo.Changeset.validate_fqdn(key)
+      |> Domain.Changeset.validate_fqdn(key)
     end
   )
 
@@ -698,16 +712,6 @@ defmodule Domain.Config.Definitions do
   Boolean flag to turn IdP sync on/off for all accounts.
   """
   defconfig(:feature_idp_sync_enabled, :boolean, default: true)
-
-  @doc """
-  Boolean flag to turn UI flow activities on/off for all accounts.
-  """
-  defconfig(:feature_flow_activities_enabled, :boolean, default: false)
-
-  @doc """
-  Boolean flag to turn Account relays admin functionality on/off for all accounts.
-  """
-  defconfig(:feature_self_hosted_relays_enabled, :boolean, default: false)
 
   @doc """
   Boolean flag to turn Policy Conditions functionality on/off for all accounts.

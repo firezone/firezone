@@ -2,7 +2,7 @@ defmodule API.ResourceController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Resources
+  alias __MODULE__.DB
 
   action_fallback API.FallbackController
 
@@ -22,7 +22,7 @@ defmodule API.ResourceController do
     list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, resources, metadata} <-
-           Resources.list_resources(conn.assigns.subject, list_opts) do
+           DB.list_resources(conn.assigns.subject, list_opts) do
       render(conn, :index, resources: resources, metadata: metadata)
     end
   end
@@ -42,8 +42,7 @@ defmodule API.ResourceController do
     ]
 
   def show(conn, %{"id" => id}) do
-    with {:ok, resource} <-
-           Resources.fetch_resource_by_id(id, conn.assigns.subject) do
+    with {:ok, resource} <- DB.fetch_resource(id, conn.assigns.subject) do
       render(conn, :show, resource: resource)
     end
   end
@@ -59,8 +58,9 @@ defmodule API.ResourceController do
 
   def create(conn, %{"resource" => params}) do
     attrs = set_param_defaults(params)
+    changeset = create_changeset(attrs, conn.assigns.subject)
 
-    with {:ok, resource} <- Resources.create_resource(attrs, conn.assigns.subject) do
+    with {:ok, resource} <- DB.insert_resource(changeset, conn.assigns.subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/resources/#{resource}")
@@ -92,13 +92,14 @@ defmodule API.ResourceController do
     subject = conn.assigns.subject
     attrs = set_param_defaults(params)
 
-    with {:ok, resource} <- Resources.fetch_resource_by_id(id, subject) do
-      case Resources.update_resource(resource, attrs, subject) do
-        {:ok, updated_resource} ->
+    with {:ok, resource} <- DB.fetch_resource(id, subject) do
+      # Prevent updates to Internet resource
+      if resource.type == :internet do
+        {:error, {:forbidden, "Internet resource cannot be updated"}}
+      else
+        with {:ok, updated_resource} <- DB.update_resource(resource, attrs, subject) do
           render(conn, :show, resource: updated_resource)
-
-        {:error, reason} ->
-          {:error, reason}
+        end
       end
     end
   end
@@ -124,13 +125,90 @@ defmodule API.ResourceController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, resource} <- Resources.fetch_resource_by_id(id, subject),
-         {:ok, resource} <- Resources.delete_resource(resource, subject) do
-      render(conn, :show, resource: resource)
+    with {:ok, resource} <- DB.fetch_resource(id, subject) do
+      # Prevent deletion of Internet resource
+      if resource.type == :internet do
+        {:error, {:forbidden, "Internet resource cannot be deleted"}}
+      else
+        with {:ok, resource} <- DB.delete_resource(resource, subject) do
+          render(conn, :show, resource: resource)
+        end
+      end
     end
   end
 
   defp set_param_defaults(params) do
     Map.put_new(params, "filters", %{})
+  end
+
+  defp create_changeset(attrs, subject) do
+    account = subject.account
+
+    %Domain.Resource{}
+    |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack site_id]a)
+    |> Domain.Resource.changeset()
+    |> Ecto.Changeset.validate_required(~w[name type site_id]a)
+    |> Ecto.Changeset.put_change(:account_id, account.id)
+    |> Domain.Resource.validate_address(account)
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+
+    def list_resources(subject, opts \\ []) do
+      from(r in Domain.Resource, as: :resources)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def fetch_resource(id, subject) do
+      result =
+        from(r in Domain.Resource, where: r.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        resource -> {:ok, resource}
+      end
+    end
+
+    def update_resource(resource, attrs, subject) do
+      resource
+      |> changeset(attrs, subject)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def delete_resource(resource, subject) do
+      resource
+      |> Safe.scoped(subject)
+      |> Safe.delete()
+    end
+
+    def insert_resource(changeset, subject) do
+      Safe.scoped(changeset, subject)
+      |> Safe.insert()
+    end
+
+    defp changeset(resource, attrs, subject) do
+      update_fields = ~w[address address_description name type ip_stack site_id]a
+      required_fields = ~w[name type site_id]a
+
+      resource
+      |> Ecto.Changeset.cast(attrs, update_fields)
+      |> Ecto.Changeset.validate_required(required_fields)
+      |> Domain.Resource.validate_address(subject.account)
+      |> Domain.Resource.changeset()
+    end
+
+    def cursor_fields do
+      [
+        {:resources, :asc, :inserted_at},
+        {:resources, :asc, :id}
+      ]
+    end
   end
 end

@@ -93,6 +93,7 @@ defmodule Domain.MixProject do
       {:sentry, "~> 11.0"},
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
+      {:req, "~> 0.5.15"},
 
       # Other application deps
       {:tzdata, "~> 1.1"},

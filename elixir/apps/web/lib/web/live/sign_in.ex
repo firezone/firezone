@@ -1,44 +1,38 @@
 defmodule Web.SignIn do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-  alias Domain.{Auth, Accounts}
 
-  @root_adapters_whitelist [:email, :userpass, :openid_connect]
+  alias Domain.{
+    Safe,
+    Google,
+    EmailOTP,
+    Entra,
+    Okta,
+    OIDC,
+    Userpass
+  }
+
+  alias __MODULE__.DB
 
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
-    with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         [_ | _] = providers <- Auth.all_active_providers_for_account!(account) do
-      providers_by_adapter =
-        providers
-        |> group_providers_by_root_adapter()
-        |> Map.take(@root_adapters_whitelist)
-
-      params = Web.Auth.take_sign_in_params(params)
-
-      socket =
-        assign(socket,
-          params: params,
-          account: account,
-          providers_by_adapter: providers_by_adapter,
-          page_title: "Sign In"
-        )
-
-      {:ok, socket}
-    else
-      _other ->
-        raise Web.LiveErrors.NotFoundError, skip_sentry: true
-    end
+    account = DB.get_account_by_id_or_slug!(account_id_or_slug)
+    mount_account(account, params, socket)
   end
 
-  defp group_providers_by_root_adapter(providers) do
-    providers
-    |> Enum.group_by(fn provider ->
-      parent_adapter =
-        provider
-        |> Auth.fetch_provider_capabilities!()
-        |> Keyword.get(:parent_adapter)
+  defp mount_account(account, params, socket) do
+    socket =
+      assign(socket,
+        page_title: "Sign In",
+        account: account,
+        params: Web.Auth.take_sign_in_params(params),
+        google_auth_providers: auth_providers(account, Google.AuthProvider),
+        okta_auth_providers: auth_providers(account, Okta.AuthProvider),
+        entra_auth_providers: auth_providers(account, Entra.AuthProvider),
+        oidc_auth_providers: auth_providers(account, OIDC.AuthProvider),
+        email_otp_auth_provider: auth_providers(account, EmailOTP.AuthProvider),
+        userpass_auth_provider: auth_providers(account, Userpass.AuthProvider)
+      )
 
-      parent_adapter || provider.adapter
-    end)
+    {:ok, socket}
   end
 
   def render(assigns) do
@@ -52,7 +46,7 @@ defmodule Web.SignIn do
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
 
-            <.flash :if={not Accounts.account_active?(@account)} kind={:error} style="wide">
+            <.flash :if={not Domain.Account.active?(@account)} kind={:error} style="wide">
               This account has been disabled. Please contact your administrator to re-enable it.
             </.flash>
 
@@ -60,8 +54,8 @@ defmodule Web.SignIn do
               <% trial_ends_in_days = trial_ends_at |> DateTime.diff(DateTime.utc_now(), :day) %>
 
               <.flash :if={trial_ends_in_days <= 0} kind={:error}>
-                Your Enterprise pilot needs to be renewed.
-                Contact your system administrator to ensure uninterrupted service.
+                Your trial has expired and needs to be renewed.
+                Contact your account manager or administrator to ensure uninterrupted service.
               </.flash>
             <% end %>
 
@@ -70,41 +64,98 @@ defmodule Web.SignIn do
                 <.separator />
               </:separator>
 
-              <:item :if={adapter_enabled?(@providers_by_adapter, :openid_connect)}>
+              <:item :if={
+                Enum.any?(
+                  @google_auth_providers ++
+                    @okta_auth_providers ++ @entra_auth_providers ++ @oidc_auth_providers
+                )
+              }>
                 <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
                   Sign in with a configured provider
                 </h2>
 
-                <.providers_group_form
-                  adapter="openid_connect"
-                  providers={@providers_by_adapter[:openid_connect]}
-                  account={@account}
-                  params={@params}
-                />
+                <div class="space-y-3 items-center">
+                  <.auth_button
+                    :for={provider <- @google_auth_providers}
+                    account={@account}
+                    params={@params}
+                    provider={provider}
+                    type="google"
+                  >
+                    <:icon>
+                      <img
+                        src={~p"/images/google-logo.svg"}
+                        alt="Google Workspace Logo"
+                        class="w-5 h-5 mr-2"
+                      />
+                    </:icon>
+                  </.auth_button>
+
+                  <.auth_button
+                    :for={provider <- @okta_auth_providers}
+                    account={@account}
+                    params={@params}
+                    provider={provider}
+                    type="okta"
+                  >
+                    <:icon>
+                      <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-5 h-5 mr-2" />
+                    </:icon>
+                  </.auth_button>
+
+                  <.auth_button
+                    :for={provider <- @entra_auth_providers}
+                    account={@account}
+                    params={@params}
+                    provider={provider}
+                    type="entra"
+                  >
+                    <:icon>
+                      <img
+                        src={~p"/images/entra-logo.svg"}
+                        alt="Microsoft Entra Logo"
+                        class="w-5 h-5 mr-2"
+                      />
+                    </:icon>
+                  </.auth_button>
+
+                  <.auth_button
+                    :for={provider <- @oidc_auth_providers}
+                    account={@account}
+                    params={@params}
+                    provider={provider}
+                    type="oidc"
+                  >
+                    <:icon>
+                      <.provider_icon
+                        type={provider_type_from_issuer(provider.issuer)}
+                        class="w-5 h-5 mr-2"
+                      />
+                    </:icon>
+                  </.auth_button>
+                </div>
               </:item>
 
-              <:item :if={adapter_enabled?(@providers_by_adapter, :userpass)}>
+              <:item :if={@email_otp_auth_provider}>
                 <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
-                  Sign in with username and password
+                  Sign in with email
                 </h2>
 
-                <.providers_group_form
-                  adapter="userpass"
-                  provider={List.first(@providers_by_adapter[:userpass])}
+                <.email_form
+                  provider={@email_otp_auth_provider}
                   account={@account}
                   flash={@flash}
                   params={@params}
                 />
               </:item>
 
-              <:item :if={adapter_enabled?(@providers_by_adapter, :email)}>
+              <:item :if={@userpass_auth_provider}>
                 <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
-                  Sign in with email
+                  Sign in with username and password
                 </h2>
 
-                <.providers_group_form
-                  adapter="email"
-                  provider={List.first(@providers_by_adapter[:email])}
+                <.userpass_form
+                  provider={@userpass_auth_provider}
                   account={@account}
                   flash={@flash}
                   params={@params}
@@ -113,7 +164,7 @@ defmodule Web.SignIn do
             </.intersperse_blocks>
           </div>
         </div>
-        <div :if={Web.Auth.fetch_auth_context_type!(@params) == :browser} class="mx-auto p-6 sm:p-8">
+        <div :if={@params["as"] != "client"} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             Meant to sign in from a client instead?
             <.website_link path="/kb/client-apps">Read the docs.</.website_link>
@@ -130,13 +181,9 @@ defmodule Web.SignIn do
     """
   end
 
-  def disabled?(account, params) do
-    # We allow to sign in to Web UI even for disabled accounts
-    case Web.Auth.fetch_auth_context_type!(params) do
-      :client -> not Accounts.account_active?(account)
-      :browser -> false
-    end
-  end
+  # We allow signing in to Web UI even for disabled accounts
+  def disabled?(account, %{"as" => "client"}), do: not Domain.Account.active?(account)
+  def disabled?(_account, _params), do: false
 
   def separator(assigns) do
     ~H"""
@@ -148,28 +195,32 @@ defmodule Web.SignIn do
     """
   end
 
-  def providers_group_form(%{adapter: "openid_connect"} = assigns) do
+  attr :type, :string, required: true
+  attr :provider, :any, required: true
+  attr :account, :any, required: true
+  attr :params, :map, required: true
+  slot :icon
+
+  defp auth_button(assigns) do
     ~H"""
-    <div class="space-y-3 items-center">
-      <.openid_connect_button
-        :for={provider <- @providers}
-        provider={provider}
-        account={@account}
-        params={@params}
-      />
-    </div>
+    <.link
+      class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
+      href={~p"/#{@account}/sign_in/#{@type}/#{@provider.id}?#{@params}"}
+    >
+      {render_slot(@icon)} Sign in with <strong>{@provider.name}</strong>
+    </.link>
     """
   end
 
-  def providers_group_form(%{adapter: "userpass"} = assigns) do
-    provider_identifier = Phoenix.Flash.get(assigns.flash, :userpass_provider_identifier)
-    form = to_form(%{"provider_identifier" => provider_identifier}, as: "userpass")
+  def userpass_form(assigns) do
+    idp_id = Phoenix.Flash.get(assigns.flash, :userpass_idp_id)
+    form = to_form(%{"idp_id" => idp_id}, as: "userpass")
     assigns = Map.put(assigns, :userpass_form, form)
 
     ~H"""
     <.form
       for={@userpass_form}
-      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/verify_credentials"}
+      action={~p"/#{@account}/sign_in/userpass/#{@provider.id}"}
       class="space-y-4 lg:space-y-6"
       id="userpass_form"
       phx-update="ignore"
@@ -180,7 +231,7 @@ defmodule Web.SignIn do
         <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
 
         <.input
-          field={@userpass_form[:provider_identifier]}
+          field={@userpass_form[:idp_id]}
           type="text"
           label="Username"
           placeholder="Enter your username"
@@ -191,7 +242,7 @@ defmodule Web.SignIn do
           field={@userpass_form[:secret]}
           type="password"
           label="Password"
-          placeholder="••••••••"
+          placeholder="Enter your password"
           required
         />
       </div>
@@ -203,15 +254,15 @@ defmodule Web.SignIn do
     """
   end
 
-  def providers_group_form(%{adapter: "email"} = assigns) do
-    provider_identifier = Phoenix.Flash.get(assigns.flash, :email_provider_identifier)
-    form = to_form(%{"provider_identifier" => provider_identifier}, as: "email")
+  def email_form(assigns) do
+    email = Phoenix.Flash.get(assigns.flash, :email)
+    form = to_form(%{"email" => email}, as: "email")
     assigns = Map.put(assigns, :email_form, form)
 
     ~H"""
     <.form
       for={@email_form}
-      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/request_email_otp"}
+      action={~p"/#{@account}/sign_in/email_otp/#{@provider.id}"}
       class="space-y-4 lg:space-y-6"
       id="email_form"
       phx-update="ignore"
@@ -221,7 +272,7 @@ defmodule Web.SignIn do
       <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
 
       <.input
-        field={@email_form[:provider_identifier]}
+        field={@email_form[:email]}
         type="email"
         label="Email"
         placeholder="Enter your email"
@@ -234,19 +285,42 @@ defmodule Web.SignIn do
     """
   end
 
-  def openid_connect_button(assigns) do
-    ~H"""
-    <a
-      class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
-      href={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"}
-    >
-      <.provider_icon adapter={@provider.adapter} class="w-5 h-5 mr-2" /> Sign in with
-      <strong>{@provider.name}</strong>
-    </a>
-    """
-  end
-
   def adapter_enabled?(providers_by_adapter, adapter) do
     Map.get(providers_by_adapter, adapter, []) != []
+  end
+
+  defp auth_providers(account, module) do
+    if module in [EmailOTP.AuthProvider, Userpass.AuthProvider] do
+      DB.get_auth_provider(account, module)
+    else
+      DB.list_auth_providers(account, module)
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Account
+
+    def get_account_by_id_or_slug!(id_or_slug) do
+      query =
+        if Domain.Repo.valid_uuid?(id_or_slug),
+          do: from(a in Account, where: a.id == ^id_or_slug),
+          else: from(a in Account, where: a.slug == ^id_or_slug)
+
+      query |> Safe.unscoped() |> Safe.one!()
+    end
+
+    def get_auth_provider(account, module) do
+      from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def list_auth_providers(account, module) do
+      from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
   end
 end

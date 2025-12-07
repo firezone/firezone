@@ -1,40 +1,59 @@
 defmodule Web.SignUp do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-  alias Domain.{Auth, Accounts, Actors, Config}
+  alias Domain.{Accounts, Actor, Config}
   alias Web.Registration
+  alias __MODULE__.DB
 
   defmodule Registration do
-    use Domain, :schema
-
-    alias Domain.{Accounts, Actors}
-
+    use Ecto.Schema
     @primary_key false
+    @foreign_key_type :binary_id
+    @timestamps_opts [type: :utc_datetime_usec]
+
+    alias Domain.Accounts
+
+    import Ecto.Changeset
+    import Domain.Changeset
 
     embedded_schema do
       field(:email, :string)
-      embeds_one(:account, Accounts.Account)
-      embeds_one(:actor, Actors.Actor)
+      embeds_one(:account, Domain.Account)
+      embeds_one(:actor, Actor)
     end
 
     def changeset(attrs) do
       whitelisted_domains = Domain.Config.get_env(:domain, :sign_up_whitelisted_domains)
 
       %Registration{}
-      |> Ecto.Changeset.cast(attrs, [:email])
-      |> Ecto.Changeset.validate_required([:email])
-      |> Domain.Repo.Changeset.trim_change(:email)
-      |> Domain.Repo.Changeset.validate_email(:email)
+      |> cast(attrs, [:email])
+      |> validate_required([:email])
+      |> trim_change(:email)
+      |> validate_email(:email)
       |> validate_email_allowed(whitelisted_domains)
-      |> Ecto.Changeset.validate_confirmation(:email,
+      |> validate_confirmation(:email,
         required: true,
         message: "email does not match"
       )
-      |> Ecto.Changeset.cast_embed(:account,
-        with: fn _account, attrs -> Accounts.Account.Changeset.create(attrs) end
+      |> cast_embed(:account,
+        with: fn _account, attrs -> create_account_changeset(attrs) end
       )
-      |> Ecto.Changeset.cast_embed(:actor,
-        with: fn _account, attrs -> Actors.Actor.Changeset.create(attrs) end
+      |> cast_embed(:actor,
+        with: fn _actor, attrs -> create_actor_changeset(attrs) end
       )
+    end
+
+    defp create_account_changeset(attrs) do
+      %Domain.Account{}
+      |> cast(attrs, [:name, :legal_name, :slug])
+      |> Domain.Account.changeset()
+      |> put_default_value(:config, %Accounts.Config{})
+    end
+
+    defp create_actor_changeset(attrs) do
+      %Domain.Actor{}
+      |> cast(attrs, [:name])
+      |> validate_required([:name])
+      |> validate_length(:name, min: 1, max: 255)
     end
 
     defp validate_email_allowed(changeset, []) do
@@ -42,7 +61,7 @@ defmodule Web.SignUp do
     end
 
     defp validate_email_allowed(changeset, whitelisted_domains) do
-      Ecto.Changeset.validate_change(changeset, :email, fn :email, email ->
+      validate_change(changeset, :email, fn :email, email ->
         if email_allowed?(email, whitelisted_domains),
           do: [],
           else: [email: "this email domain is not allowed at this time"]
@@ -77,9 +96,7 @@ defmodule Web.SignUp do
         provider: nil,
         user_agent: user_agent,
         real_ip: real_ip,
-        sign_up_enabled?: sign_up_enabled?,
-        account_name_changed?: false,
-        actor_name_changed?: false
+        sign_up_enabled?: sign_up_enabled?
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -107,7 +124,7 @@ defmodule Web.SignUp do
                   :if={@account && @sign_up_enabled?}
                   account={@account}
                   provider={@provider}
-                  identity={@identity}
+                  actor={@actor}
                 />
                 <.sign_up_disabled :if={!@sign_up_enabled?} />
               </:item>
@@ -176,13 +193,13 @@ defmodule Web.SignUp do
           id="resend-email"
           as={:email}
           class="inline"
-          action={~p"/#{@account}/sign_in/providers/#{@provider}/request_email_otp"}
+          action={~p"/#{@account}/sign_in/email_otp/#{@provider}"}
           method="post"
         >
           <.input
             type="hidden"
-            name="email[provider_identifier]"
-            value={@identity.provider_identifier}
+            name="email"
+            value={@actor.email}
           />
 
           <.button type="submit" class="w-full">
@@ -280,15 +297,7 @@ defmodule Web.SignUp do
     """
   end
 
-  def handle_event("validate", %{"registration" => attrs} = payload, socket) do
-    account_name_changed? =
-      socket.assigns.account_name_changed? ||
-        payload["_target"] == ["registration", "account", "name"]
-
-    actor_name_changed? =
-      socket.assigns.actor_name_changed? ||
-        payload["_target"] == ["registration", "actor", "name"]
-
+  def handle_event("validate", %{"registration" => attrs}, socket) do
     attrs = Map.put(attrs, "email_confirmation", attrs["email"])
 
     changeset =
@@ -296,18 +305,14 @@ defmodule Web.SignUp do
       |> Registration.changeset()
       |> Map.put(:action, :validate)
 
-    {:noreply,
-     assign(socket,
-       form: to_form(changeset),
-       account_name_changed?: account_name_changed?,
-       actor_name_changed?: actor_name_changed?
-     )}
+    {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("submit", %{"registration" => orig_attrs}, socket) do
     attrs =
       put_in(orig_attrs, ["actor", "type"], :account_admin_user)
       |> Map.put("email_confirmation", orig_attrs["email"])
+      |> Map.put("slug", "placeholder")
 
     changeset =
       attrs
@@ -319,14 +324,14 @@ defmodule Web.SignUp do
       registration = Ecto.Changeset.apply_changes(changeset)
 
       case register_account(socket, registration) do
-        {:ok, %{account: account, provider: provider, identity: identity, actor: actor}} ->
+        {:ok, %{account: account, provider: provider, actor: actor}} ->
           {:ok, account} = Domain.Billing.provision_account(account)
 
           socket =
             assign(socket,
               account: account,
               provider: provider,
-              identity: identity
+              actor: actor
             )
 
           socket =
@@ -334,7 +339,7 @@ defmodule Web.SignUp do
               id: actor.id,
               account_id: account.id,
               name: actor.name,
-              email: identity.provider_identifier
+              email: actor.email
             })
 
           socket =
@@ -342,7 +347,7 @@ defmodule Web.SignUp do
               name: "Sign Up",
               properties: %{
                 account_id: account.id,
-                identity_id: identity.id
+                actor_id: actor.id
               }
             })
 
@@ -378,84 +383,248 @@ defmodule Web.SignUp do
     end
   end
 
+  defp create_account_changeset(attrs) do
+    import Ecto.Changeset
+
+    %Domain.Account{}
+    |> cast(attrs, [:name, :legal_name, :slug])
+    |> maybe_default_legal_name()
+    |> maybe_generate_slug()
+    |> put_default_config()
+    |> cast_embed(:metadata)
+    |> validate_required([:name, :legal_name, :slug])
+    |> Domain.Account.changeset()
+  end
+
+  defp put_default_config(changeset) do
+    import Ecto.Changeset
+
+    # Initialize with default config
+    default_config = Domain.Accounts.Config.default_config()
+    put_change(changeset, :config, default_config)
+  end
+
+  defp maybe_generate_slug(changeset) do
+    import Ecto.Changeset
+
+    case get_field(changeset, :slug) do
+      nil ->
+        # Generate a unique slug
+        slug = generate_unique_slug()
+        put_change(changeset, :slug, slug)
+
+      "placeholder" ->
+        # Replace placeholder with a real slug
+        slug = generate_unique_slug()
+        put_change(changeset, :slug, slug)
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp generate_unique_slug do
+    slug_candidate = Domain.NameGenerator.generate_slug()
+
+    if DB.slug_exists?(slug_candidate) do
+      generate_unique_slug()
+    else
+      slug_candidate
+    end
+  end
+
+  defp maybe_default_legal_name(changeset) do
+    import Ecto.Changeset
+
+    case get_field(changeset, :legal_name) do
+      nil ->
+        # Default legal_name to name if not provided
+        name = get_field(changeset, :name)
+        put_change(changeset, :legal_name, name)
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp create_everyone_group_changeset(account) do
+    import Ecto.Changeset
+
+    %Domain.Group{}
+    |> cast(%{name: "Everyone"}, [:name])
+    |> put_change(:account_id, account.id)
+    |> put_change(:type, :managed)
+    |> validate_required([:name, :account_id, :type])
+  end
+
   defp register_account(socket, registration) do
-    Ecto.Multi.new()
-    |> Ecto.Multi.run(
-      :account,
-      fn _repo, _changes ->
-        Accounts.create_account(%{
+    DB.register_account(
+      registration,
+      &create_account_changeset/1,
+      &create_everyone_group_changeset/1,
+      &create_site_changeset/2,
+      &create_internet_site_changeset/1,
+      &create_internet_resource_changeset/2,
+      socket.assigns.user_agent,
+      socket.assigns.real_ip
+    )
+  end
+
+  defp create_site_changeset(account, attrs) do
+    import Ecto.Changeset
+
+    %Domain.Site{
+      account_id: account.id,
+      managed_by: :account,
+      tokens: []
+    }
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> Domain.Site.changeset()
+  end
+
+  defp create_internet_site_changeset(account) do
+    import Ecto.Changeset
+
+    %Domain.Site{
+      account_id: account.id,
+      managed_by: :system,
+      tokens: []
+    }
+    |> cast(%{name: "Internet", managed_by: :system}, [:name, :managed_by])
+    |> validate_required([:name, :managed_by])
+    |> Domain.Site.changeset()
+  end
+
+  defp create_internet_resource_changeset(account, site) do
+    import Ecto.Changeset
+
+    attrs = %{
+      type: :internet,
+      name: "Internet"
+    }
+
+    %Domain.Resource{account_id: account.id, site_id: site.id}
+    |> cast(attrs, [:type, :name])
+    |> validate_required([:name, :type])
+  end
+
+  defmodule DB do
+    import Ecto.Changeset
+
+    alias Domain.{
+      Actor,
+      AuthProvider,
+      EmailOTP,
+      Safe
+    }
+
+    def register_account(
+          registration,
+          account_changeset_fn,
+          everyone_group_changeset_fn,
+          site_changeset_fn,
+          internet_site_changeset_fn,
+          internet_resource_changeset_fn,
+          user_agent,
+          real_ip
+        ) do
+      Ecto.Multi.new()
+      |> Ecto.Multi.run(:account, fn _repo, _changes ->
+        %{
           name: registration.account.name,
           metadata: %{stripe: %{billing_email: registration.email}}
-        })
-      end
-    )
-    |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
-      Domain.Actors.create_managed_group(account, %{
-        name: "Everyone"
-      })
-    end)
-    |> Ecto.Multi.run(
-      :provider,
-      fn _repo, %{account: account} ->
-        Auth.create_provider(account, %{
-          name: "Email",
-          adapter: :email,
-          adapter_config: %{}
-        })
-      end
-    )
-    |> Ecto.Multi.run(
-      :actor,
-      fn _repo, %{account: account} ->
-        Actors.create_actor(account, %{
-          type: :account_admin_user,
-          name: registration.actor.name
-        })
-      end
-    )
-    |> Ecto.Multi.run(
-      :identity,
-      fn _repo, %{actor: actor, provider: provider} ->
-        Auth.create_identity(actor, provider, %{
-          provider_identifier: registration.email,
-          provider_identifier_confirmation: registration.email
-        })
-      end
-    )
-    |> Ecto.Multi.run(
-      :default_site,
-      fn _repo, %{account: account} ->
-        Domain.Gateways.create_group(account, %{name: "Default Site"})
-      end
-    )
-    |> Ecto.Multi.run(
-      :internet_site,
-      fn _repo, %{account: account} ->
-        Domain.Gateways.create_internet_group(account)
-      end
-    )
-    |> Ecto.Multi.run(
-      :internet_resource,
-      fn _repo, %{account: account, internet_site: internet_site} ->
-        Domain.Resources.create_internet_resource(account, internet_site)
-      end
-    )
-    |> Ecto.Multi.run(
-      :send_email,
-      fn _repo, %{account: account, identity: identity} ->
-        Domain.Mailer.AuthEmail.sign_up_link_email(
-          account,
-          identity,
-          socket.assigns.user_agent,
-          socket.assigns.real_ip
-        )
+        }
+        |> account_changeset_fn.()
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
+        everyone_group_changeset_fn.(account)
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:provider, fn _repo, %{account: account} ->
+        create_email_provider(account)
+      end)
+      |> Ecto.Multi.run(:actor, fn _repo, %{account: account} ->
+        create_admin(account, registration.email, registration.actor.name)
+      end)
+      |> Ecto.Multi.run(:default_site, fn _repo, %{account: account} ->
+        site_changeset_fn.(account, %{name: "Default Site"})
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:internet_site, fn _repo, %{account: account} ->
+        internet_site_changeset_fn.(account)
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:internet_resource, fn _repo,
+                                               %{account: account, internet_site: internet_site} ->
+        internet_resource_changeset_fn.(account, internet_site)
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:send_email, fn _repo, %{account: account, actor: actor} ->
+        Domain.Mailer.AuthEmail.sign_up_link_email(account, actor, user_agent, real_ip)
         |> Domain.Mailer.deliver_with_rate_limit(
-          rate_limit_key: {:sign_up_link, String.downcase(identity.provider_identifier)},
+          rate_limit_key: {:sign_up_link, String.downcase(actor.email)},
           rate_limit: 3,
           rate_limit_interval: :timer.minutes(30)
         )
+      end)
+      |> Safe.transact()
+    end
+
+    def create_email_provider(account) do
+      id = Ecto.UUID.generate()
+
+      parent_changeset =
+        cast(
+          %AuthProvider{},
+          %{account_id: account.id, id: id, type: :email_otp},
+          ~w[id account_id type]a
+        )
+
+      email_otp_changeset =
+        cast(
+          %EmailOTP.AuthProvider{},
+          %{id: id, account_id: account.id, name: "Email (OTP)"},
+          ~w[id account_id name]a
+        )
+        |> EmailOTP.AuthProvider.changeset()
+
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:auth_provider, parent_changeset)
+      |> Ecto.Multi.insert(:email_otp_provider, email_otp_changeset)
+      |> Safe.transact()
+      |> case do
+        {:ok, %{email_otp_provider: email_provider}} -> {:ok, email_provider}
+        {:error, _step, changeset, _changes} -> {:error, changeset}
       end
-    )
-    |> Domain.Repo.transaction()
+    end
+
+    def create_admin(account, email, name) do
+      attrs = %{
+        account_id: account.id,
+        email: email,
+        name: name,
+        type: :account_admin_user,
+        allow_email_otp_sign_in: true
+      }
+
+      cast(%Domain.Actor{}, attrs, ~w[account_id email name type allow_email_otp_sign_in]a)
+      |> Domain.Actor.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def insert(changeset) do
+      Safe.unscoped(changeset)
+      |> Safe.insert()
+    end
+
+    def slug_exists?(slug) do
+      import Ecto.Query
+
+      query = from(a in Domain.Account, where: a.slug == ^slug, select: count(a.id))
+      Safe.unscoped(query) |> Safe.exists?()
+    end
   end
 end

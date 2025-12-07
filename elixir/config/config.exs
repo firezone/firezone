@@ -52,16 +52,23 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
   #   2. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
-    actor_group_memberships
-    actor_groups
+    memberships
+    groups
     actors
-    auth_identities
-    auth_providers
+    external_identities
+    google_auth_providers
+    entra_auth_providers
+    okta_auth_providers
+    oidc_auth_providers
+    email_otp_auth_providers
+    userpass_auth_providers
+    entra_directories
+    okta_directories
+    google_directories
     clients
-    gateway_groups
+    sites
     gateways
     policies
-    resource_connections
     resources
     tokens
   ],
@@ -98,15 +105,23 @@ config :domain, Domain.Changes.ReplicationConnection,
   #   3. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
-    actor_group_memberships
+    memberships
     clients
-    flows
+    policy_authorizations
     gateways
-    gateway_groups
+    sites
     policies
-    resource_connections
     resources
     tokens
+    google_auth_providers
+    entra_auth_providers
+    okta_auth_providers
+    oidc_auth_providers
+    email_otp_auth_providers
+    userpass_auth_providers
+    entra_directories
+    okta_directories
+    google_directories
   ],
   # Allow up to 60 seconds of lag before alerting
   warning_threshold: :timer.seconds(60),
@@ -128,16 +143,43 @@ config :domain, Domain.Analytics,
   mixpanel_token: nil,
   hubspot_workspace_id: nil
 
-config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
-  endpoint: "https://admin.googleapis.com",
-  token_endpoint: "https://oauth2.googleapis.com",
-  finch_transport_opts: []
-
-config :domain, Domain.Auth.Adapters.MicrosoftEntra.APIClient,
+config :domain, Domain.Entra.APIClient,
+  client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
+  client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET"),
   endpoint: "https://graph.microsoft.com",
-  finch_transport_opts: []
+  token_base_url: "https://login.microsoftonline.com"
 
-config :domain, Domain.Auth.Adapters.Okta.APIClient, finch_transport_opts: []
+config :domain, Domain.Google.APIClient,
+  endpoint: "https://admin.googleapis.com",
+  service_account_key: System.get_env("GOOGLE_SERVICE_ACCOUNT_KEY"),
+  token_endpoint: "https://oauth2.googleapis.com/token"
+
+config :domain, Domain.Google.AuthProvider,
+  # Should match an external OAuth2 client in Google Cloud Console
+  client_id: System.get_env("GOOGLE_OIDC_CLIENT_ID"),
+  client_secret: System.get_env("GOOGLE_OIDC_CLIENT_SECRET"),
+  response_type: "code",
+  scope: "openid email profile",
+  discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
+
+config :domain, Domain.Okta.AuthProvider,
+  # Should match an external OAuth2 client in Okta
+  response_type: "code",
+  scope: "openid email profile"
+
+config :domain, Domain.Entra.AuthProvider,
+  # Should match an external OAuth2 client in Azure
+  client_id: System.get_env("ENTRA_OIDC_CLIENT_ID"),
+  client_secret: System.get_env("ENTRA_OIDC_CLIENT_SECRET"),
+  response_type: "code",
+  scope: "openid email profile",
+  # Tenant-scoped endpoint for internal OAuth apps
+  discovery_document_uri:
+    "https://login.microsoftonline.com/52e801b2-c10e-42e6-9c36-4cb95f3353d5/v2.0/.well-known/openid-configuration"
+
+config :domain, Domain.OIDC.AuthProvider,
+  response_type: "code",
+  scope: "openid email profile"
 
 config :domain, Domain.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
@@ -180,15 +222,10 @@ config :domain, Domain.Cluster,
   adapter: nil,
   adapter_config: []
 
-config :domain, Domain.Instrumentation,
-  client_logs_enabled: true,
-  client_logs_bucket: "logs"
-
 config :domain, :enabled_features,
   idp_sync: true,
   traffic_filters: true,
   sign_up: true,
-  self_hosted_relays: true,
   policy_conditions: true,
   multi_site_resources: true,
   rest_api: true,
@@ -200,7 +237,7 @@ config :domain, docker_registry: "ghcr.io/firezone"
 
 config :domain, outbound_email_adapter_configured?: false
 
-config :domain, web_external_url: "http://localhost:13000"
+config :domain, web_external_url: "https://localhost:13443"
 
 ###############################
 ##### Web #####################
@@ -243,7 +280,7 @@ config :web,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
-config :web, Web.Plugs.SecureHeaders,
+config :web, Web.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://api-js.mixpanel.com",
     "img-src 'self' data: https://www.gravatar.com https://track.hubspot.com",

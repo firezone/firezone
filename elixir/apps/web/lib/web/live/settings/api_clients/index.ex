@@ -1,24 +1,36 @@
 defmodule Web.Settings.ApiClients.Index do
   use Web, :live_view
-  alias Domain.Actors
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+
+    def list_actors(subject, opts \\ []) do
+      from(a in Domain.Actor, as: :actors)
+      |> where([actors: a], a.type == :api_client)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:actors, :asc, :inserted_at},
+        {:actors, :asc, :id}
+      ]
+    end
+  end
 
   def mount(_params, _session, socket) do
-    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
       socket =
         socket
         |> assign(page_title: "API Clients")
         |> assign(api_url: Domain.Config.get_env(:web, :api_external_url))
         |> assign_live_table("actors",
-          query_module: Actors.Actor.Query,
+          query_module: DB,
           sortable_fields: [
             {:actors, :name},
             {:actors, :status}
-          ],
-          enforce_filters: [
-            {:type, "api_client"}
-          ],
-          hide_filters: [
-            :provider_id
           ],
           callback: &handle_api_clients_update!/2
         )
@@ -36,7 +48,7 @@ defmodule Web.Settings.ApiClients.Index do
 
   def handle_api_clients_update!(socket, list_opts) do
     with {:ok, actors, actors_metadata} <-
-           Actors.list_actors(socket.assigns.subject, list_opts) do
+           DB.list_actors(socket.assigns.subject, list_opts) do
       socket =
         assign(socket,
           actors: actors,
@@ -111,10 +123,10 @@ defmodule Web.Settings.ApiClients.Index do
     do: handle_live_table_event(event, params, socket)
 
   defp status(actor) do
-    if Actors.actor_active?(actor), do: "Active", else: "Disabled"
+    if is_nil(actor.disabled_at), do: "Active", else: "Disabled"
   end
 
   defp badge_type(actor) do
-    if Actors.actor_active?(actor), do: "success", else: "danger"
+    if is_nil(actor.disabled_at), do: "success", else: "danger"
   end
 end

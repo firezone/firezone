@@ -81,7 +81,7 @@ defmodule Web.Live.Clients.IndexTest do
         identity: online_client_identity
       )
 
-    :ok = Domain.Clients.Presence.connect(online_client, client_token.id)
+    :ok = Domain.Presence.Clients.connect(online_client, client_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -129,7 +129,7 @@ defmodule Web.Live.Clients.IndexTest do
       |> live(~p"/#{account}/clients")
 
     Domain.Config.put_env_override(:test_pid, self())
-    :ok = Domain.Clients.Presence.Actor.subscribe(client.actor_id)
+    :ok = Domain.Presence.Clients.Actor.subscribe(client.actor_id)
 
     client_token =
       Fixtures.Tokens.create_client_token(
@@ -138,7 +138,7 @@ defmodule Web.Live.Clients.IndexTest do
         identity: client_identity
       )
 
-    assert Domain.Clients.Presence.connect(client, client_token.id) == :ok
+    assert Domain.Presence.Clients.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
     assert_receive {:live_table_reloaded, "clients"}, 250
 

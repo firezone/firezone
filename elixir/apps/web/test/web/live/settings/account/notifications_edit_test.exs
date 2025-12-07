@@ -100,7 +100,7 @@ defmodule Web.Live.Settings.Account.NotificationsEditTest do
 
     assert_redirected(lv, ~p"/#{account}/settings/account")
 
-    assert account = Repo.get_by(Domain.Accounts.Account, id: account.id)
+    assert account = Repo.get_by(Domain.Account, id: account.id)
     assert account.config.notifications.outdated_gateway.enabled == true
   end
 end

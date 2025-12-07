@@ -1,6 +1,6 @@
 defmodule Domain.Network do
-  alias Domain.Repo
   alias Domain.Network.Address
+  alias __MODULE__.DB
 
   # Encompasses all of CGNAT and our reserved IPv6 unique local prefix
   @reserved_cidrs %{
@@ -17,21 +17,33 @@ defmodule Domain.Network do
   def reserved_cidrs, do: @reserved_cidrs
 
   def fetch_next_available_address!(account_id, type, opts \\ []) do
-    unless Repo.in_transaction?() do
-      raise "fetch_next_available_address/1 must be called inside a transaction"
-    end
-
     cidrs = Keyword.get(opts, :cidrs, @device_cidrs)
     cidr = Map.fetch!(cidrs, type)
     hosts = Domain.Types.CIDR.count_hosts(cidr)
     offset = Enum.random(2..max(2, hosts - 2))
 
-    address =
-      Address.Query.next_available_address(account_id, cidr, offset)
-      |> Domain.Repo.one!()
-      |> Address.Changeset.create(account_id)
-      |> Repo.insert!()
+    DB.fetch_and_insert_next_address!(account_id, cidr, offset)
+  end
 
-    address.address
+  defmodule DB do
+    alias Domain.Safe
+    alias Domain.Network.Address
+
+    def fetch_and_insert_next_address!(account_id, cidr, offset) do
+      {:ok, address} =
+        Safe.transact(fn ->
+          next_address =
+            Address.Query.next_available_address(account_id, cidr, offset)
+            |> Safe.unscoped()
+            |> Safe.one!()
+
+          next_address
+          |> Address.Changeset.create(account_id)
+          |> Safe.unscoped()
+          |> Safe.insert()
+        end)
+
+      address.address
+    end
   end
 end

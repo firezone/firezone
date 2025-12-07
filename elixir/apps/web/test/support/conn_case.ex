@@ -50,7 +50,7 @@ defmodule Web.ConnCase do
     Phoenix.Flash.get(conn.assigns.flash, key)
   end
 
-  def authorize_conn(conn, %Domain.Auth.Identity{} = identity) do
+  def authorize_conn(conn, %Domain.ExternalIdentity{} = identity) do
     expires_in = DateTime.utc_now() |> DateTime.add(300, :second)
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0, "FooBar 1.1")
 
@@ -66,7 +66,7 @@ defmodule Web.ConnCase do
 
     nonce = "nonce"
     {:ok, token} = Domain.Auth.create_token(identity, context, nonce, expires_in)
-    encoded_fragment = Domain.Tokens.encode_fragment!(token)
+    encoded_fragment = Domain.Crypto.encode_token_fragment!(token)
     {:ok, subject} = Domain.Auth.build_subject(token, context)
 
     conn
@@ -104,7 +104,7 @@ defmodule Web.ConnCase do
       get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", params)
 
     cookie_key = "fz_auth_state_#{provider.id}"
-    redirected_conn = Plug.Conn.fetch_cookies(redirected_conn, signed: [cookie_key])
+    redirected_conn = Plug.Conn.fetch_cookies(redirected_conn, encrypted: [cookie_key])
 
     {_params, state, verifier} =
       redirected_conn.cookies[cookie_key]

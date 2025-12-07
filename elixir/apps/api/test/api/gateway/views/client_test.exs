@@ -2,11 +2,11 @@
 
 defmodule API.Gateway.Views.ClientTest do
   use ExUnit.Case, async: true
-  alias Domain.Clients
+  alias Domain.Client
 
   describe "render/2" do
     test "parses_linux_headless_user_agent" do
-      client = %Clients.Client{
+      client = %Client{
         last_seen_user_agent: "Ubuntu/22.4.0 headless-client/1.5.4 (x86_64; 6.8.0-1036-azure)"
       }
 
@@ -18,7 +18,7 @@ defmodule API.Gateway.Views.ClientTest do
     end
 
     test "parses_macos_user_agent" do
-      client = %Clients.Client{
+      client = %Client{
         last_seen_user_agent: "Mac OS/15.4.1 apple-client/1.5.8 (arm64; 24.4.0)"
       }
 
@@ -30,7 +30,7 @@ defmodule API.Gateway.Views.ClientTest do
     end
 
     test "parses_android_user_agent" do
-      client = %Clients.Client{
+      client = %Client{
         last_seen_user_agent: "Android/12 android-client/1.5.2 (4.14.180-perf+)"
       }
 
@@ -42,7 +42,7 @@ defmodule API.Gateway.Views.ClientTest do
     end
 
     test "parses_windows_gui_user_agent" do
-      client = %Clients.Client{
+      client = %Client{
         last_seen_user_agent: "Windows/10.0.26200 gui-client/1.5.8 (x86_64)"
       }
 
@@ -54,7 +54,7 @@ defmodule API.Gateway.Views.ClientTest do
     end
 
     test "parses_ios_user_agent" do
-      client = %Clients.Client{
+      client = %Client{
         last_seen_user_agent: "iOS/26.0.1 apple-client/1.5.8 (25.0.0)"
       }
 
@@ -66,7 +66,7 @@ defmodule API.Gateway.Views.ClientTest do
     end
 
     test "parses_pop_os_user_agent" do
-      client = %Clients.Client{
+      client = %Client{
         last_seen_user_agent: "Pop!_OS/24.4.0 gui-client/1.5.8 (x86_64; 6.16.3-76061603-generic)"
       }
 
@@ -78,7 +78,7 @@ defmodule API.Gateway.Views.ClientTest do
     end
 
     test "parses_user_agent_without_additional_data" do
-      client = %Clients.Client{
+      client = %Client{
         last_seen_user_agent: "iOS/26.0.1 apple-client/1.5.8"
       }
 

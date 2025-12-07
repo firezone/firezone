@@ -1,33 +1,24 @@
 defmodule Web.Resources.Edit do
   use Web, :live_view
   import Web.Resources.Components
-  alias Domain.{Accounts, Gateways, Resources}
+  alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
-    with {:ok, resource} <-
-           Resources.fetch_resource_by_id(id, socket.assigns.subject,
-             preload: :gateway_groups,
-             filter: [
-               type: ["cidr", "dns", "ip"]
-             ]
-           ) do
-      gateway_groups = Gateways.all_groups!(socket.assigns.subject)
-      form = Resources.change_resource(resource, socket.assigns.subject) |> to_form()
+    resource = DB.get_resource!(id, socket.assigns.subject)
+    sites = DB.all_sites(socket.assigns.subject)
+    form = change_resource(resource, socket.assigns.subject) |> to_form()
 
-      socket =
-        assign(
-          socket,
-          resource: resource,
-          gateway_groups: gateway_groups,
-          form: form,
-          params: Map.take(params, ["site_id"]),
-          page_title: "Edit #{resource.name}"
-        )
+    socket =
+      assign(
+        socket,
+        resource: resource,
+        sites: sites,
+        form: form,
+        params: Map.take(params, ["site_id"]),
+        page_title: "Edit #{resource.name}"
+      )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
@@ -210,14 +201,10 @@ defmodule Web.Resources.Edit do
               form={@form[:filters]}
             />
 
-            <.connections_form
+            <.site_form
               :if={is_nil(@params["site_id"])}
-              id="connections_form"
-              multiple={Accounts.multi_site_resources_enabled?(@account)}
-              form={@form[:connections]}
-              account={@account}
-              resource={@resource}
-              gateway_groups={@gateway_groups}
+              form={@form}
+              sites={@sites}
             />
 
             <.submit_button phx-disable-with="Updating Resource...">
@@ -234,11 +221,10 @@ defmodule Web.Resources.Edit do
     attrs =
       attrs
       |> map_filters_form_attrs(socket.assigns.account)
-      |> map_connections_form_attrs()
-      |> maybe_delete_connections(socket.assigns.params)
+      |> maybe_update_site_id(socket.assigns.params)
 
     changeset =
-      Resources.change_resource(socket.assigns.resource, attrs, socket.assigns.subject)
+      change_resource(socket.assigns.resource, attrs, socket.assigns.subject)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -248,16 +234,13 @@ defmodule Web.Resources.Edit do
     attrs =
       attrs
       |> map_filters_form_attrs(socket.assigns.account)
-      |> map_connections_form_attrs()
-      |> maybe_delete_connections(socket.assigns.params)
+      |> maybe_update_site_id(socket.assigns.params)
 
-    case Resources.update_resource(
-           socket.assigns.resource,
-           attrs,
-           socket.assigns.subject
-         ) do
+    changeset = update_changeset(socket.assigns.resource, attrs, socket.assigns.subject)
+
+    case DB.update_resource(changeset, socket.assigns.subject) do
       {:ok, resource} ->
-        socket = put_flash(socket, :info, "Resource #{resource.name} updated successfully.")
+        socket = put_flash(socket, :success, "Resource #{resource.name} updated successfully")
 
         if site_id = socket.assigns.params["site_id"] do
           {:noreply,
@@ -274,11 +257,58 @@ defmodule Web.Resources.Edit do
     end
   end
 
-  defp maybe_delete_connections(attrs, params) do
-    if params["site_id"] do
-      Map.delete(attrs, "connections")
+  defp maybe_update_site_id(attrs, params) do
+    if site_id = params["site_id"] do
+      Map.put(attrs, "site_id", site_id)
     else
       attrs
+    end
+  end
+
+  defp change_resource(resource, attrs \\ %{}, subject) do
+    update_fields = ~w[address address_description name type ip_stack site_id]a
+    required_fields = ~w[name type site_id]a
+
+    resource
+    |> Ecto.Changeset.cast(attrs, update_fields)
+    |> Ecto.Changeset.validate_required(required_fields)
+    |> Domain.Resource.validate_address(subject.account)
+    |> Domain.Resource.changeset()
+  end
+
+  defp update_changeset(resource, attrs, subject) do
+    update_fields = ~w[address address_description name type ip_stack site_id]a
+    required_fields = ~w[name type site_id]a
+
+    resource
+    |> Ecto.Changeset.cast(attrs, update_fields)
+    |> Ecto.Changeset.validate_required(required_fields)
+    |> Domain.Resource.validate_address(subject.account)
+    |> Domain.Resource.changeset()
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Resource}
+
+    def all_sites(subject) do
+      from(s in Domain.Site, as: :sites)
+      |> where([sites: s], s.managed_by != :system)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    def get_resource!(id, subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.id == ^id)
+      |> preload(:site)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def update_resource(changeset, subject) do
+      Safe.scoped(changeset, subject)
+      |> Safe.update()
     end
   end
 end

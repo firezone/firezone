@@ -11,7 +11,7 @@ defimpl Phoenix.HTML.Safe, for: Domain.Types.ProtocolIPPort do
     do: Domain.Types.ProtocolIPPort.to_string(struct)
 end
 
-defimpl Phoenix.Param, for: Domain.Accounts.Account do
-  def to_param(%Domain.Accounts.Account{slug: slug}) when not is_nil(slug), do: slug
-  def to_param(%Domain.Accounts.Account{id: id}), do: id
+defimpl Phoenix.Param, for: Domain.Account do
+  def to_param(%Domain.Account{slug: slug}) when not is_nil(slug), do: slug
+  def to_param(%Domain.Account{id: id}), do: id
 end

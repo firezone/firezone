@@ -41,10 +41,10 @@ function api_send_reject_access() {
 Application.ensure_all_started(:domain)
 account_id = \"c89bcc8c-9392-4dae-a40d-888aef6d28e0\"
 
-[gateway_group] = Domain.Gateways.Group.Query.all() |> Domain.Gateways.Group.Query.by_account_id(account_id) |> Domain.Gateways.Group.Query.by_name(\"$site_name\") |> Domain.Repo.all()
-[gateway_id | _] = Domain.Gateways.Presence.Group.list(gateway_group.id) |> Map.keys()
-[client_id | _] = Domain.Clients.Presence.Account.list(account_id) |> Map.keys()
-[resource] = Domain.Resources.Resource.Query.all() |> Domain.Resources.Resource.Query.by_account_id(account_id) |> Domain.Repo.all() |> Enum.filter(&(&1.name == \"$resource_name\"))
+site = Domain.Repo.get_by!(Domain.Site, account_id: account_id, name: \"$site_name\")
+[gateway_id | _] = Domain.Presence.Gateways.Site.list(site.id) |> Map.keys()
+[client_id | _] = Domain.Presence.Clients.Account.list(account_id) |> Map.keys()
+resource = Domain.Repo.get_by!(Domain.Resource, account_id: account_id, name: \"$resource_name\")
 
 Domain.PubSub.Account.broadcast(account_id, {{:reject_access, gateway_id}, client_id, resource.id})
 "
@@ -100,7 +100,7 @@ function create_token_file {
     sudo mkdir "$CONFIG_DIR"
     sudo touch "$TOKEN_PATH"
     sudo chmod 600 "$TOKEN_PATH"
-    echo "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE" | sudo tee "$TOKEN_PATH" >/dev/null
+    echo ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkYTFiMmMzZDQtZTVmNi03ODkwLWFiY2QtZWYxMjM0NTY3ODkwbQAAADhTVkMwQUNDVDBTVEFUSUMwRlJBR01FTlQwVkFMVUUwMDAwMDAwMDAwMDAwMDAwMDAwMDAwPT09PW4GAMIZT_eaAWIAAVGA.vMzxmKI71l4oGZZYjmTIhkj6wDbTRVZV8IFpW7s36KU" | sudo tee "$TOKEN_PATH" >/dev/null
 
     # Also put it in `token.txt` for backwards compat, until pull #4666 merges and is
     # cut into a release.

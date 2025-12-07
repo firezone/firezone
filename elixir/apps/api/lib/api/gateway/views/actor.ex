@@ -1,7 +1,7 @@
 defmodule API.Gateway.Views.Actor do
-  alias Domain.Actors
+  alias Domain.Actor
 
-  def render(%Actors.Actor{} = actor) do
+  def render(%Actor{} = actor) do
     %{
       id: actor.id
     }

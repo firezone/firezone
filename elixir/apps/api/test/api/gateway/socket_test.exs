@@ -23,8 +23,8 @@ defmodule API.Gateway.SocketTest do
     end
 
     test "creates a new gateway" do
-      token = Fixtures.Gateways.create_token()
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      token = Fixtures.Sites.create_token()
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -43,8 +43,8 @@ defmodule API.Gateway.SocketTest do
     end
 
     test "uses region code to put default coordinates" do
-      token = Fixtures.Gateways.create_token()
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      token = Fixtures.Sites.create_token()
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -59,8 +59,8 @@ defmodule API.Gateway.SocketTest do
     end
 
     test "propagates trace context" do
-      token = Fixtures.Gateways.create_token()
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      token = Fixtures.Sites.create_token()
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
       attrs = connect_attrs(token: encrypted_secret)
 
       span_ctx = OpenTelemetry.Tracer.start_span("test")
@@ -78,10 +78,10 @@ defmodule API.Gateway.SocketTest do
 
     test "updates existing gateway" do
       account = Fixtures.Accounts.create_account()
-      group = Fixtures.Gateways.create_group(account: account)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-      token = Fixtures.Gateways.create_token(account: account, group: group)
-      encrypted_secret = Domain.Tokens.encode_fragment!(token)
+      site = Fixtures.Sites.create_site(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account, site: site)
+      token = Fixtures.Sites.create_token(account: account, site: site)
+      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret, external_id: gateway.external_id)
 

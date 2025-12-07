@@ -1,5 +1,6 @@
 defmodule Domain.Fixtures.Accounts do
   use Domain.Fixture
+  import Ecto.Changeset
   alias Domain.Repo
   alias Domain.Accounts
 
@@ -24,7 +25,6 @@ defmodule Domain.Fixtures.Accounts do
         policy_conditions: true,
         multi_site_resources: true,
         traffic_filters: true,
-        self_hosted_relays: true,
         idp_sync: true,
         rest_api: true
       },
@@ -39,33 +39,52 @@ defmodule Domain.Fixtures.Accounts do
 
   def create_account(attrs \\ %{}) do
     attrs = account_attrs(attrs)
-    {:ok, account} = Accounts.create_account(attrs)
-    account
+
+    %Domain.Account{}
+    |> cast(attrs, [:name, :legal_name, :slug])
+    |> cast_embed(:config)
+    |> cast_embed(:features)
+    |> cast_embed(:limits)
+    |> cast_embed(:metadata)
+    |> Repo.insert!()
   end
 
-  def delete_account(%Accounts.Account{} = account) do
+  def delete_account(%Domain.Account{} = account) do
     Repo.delete(account)
   end
 
-  def disable_account(%Accounts.Account{} = account) do
+  def disable_account(%Domain.Account{} = account) do
     update_account(account, disabled_at: DateTime.utc_now())
   end
 
-  def change_to_enterprise(%Accounts.Account{} = account) do
+  def change_to_enterprise(%Domain.Account{} = account) do
     update_account(account, %{metadata: %{stripe: %{product_name: "Enterprise"}}})
   end
 
-  def change_to_team(%Accounts.Account{} = account) do
+  def change_to_team(%Domain.Account{} = account) do
     update_account(account, %{metadata: %{stripe: %{product_name: "Team"}}})
   end
 
-  def change_to_starter(%Accounts.Account{} = account) do
+  def change_to_starter(%Domain.Account{} = account) do
     update_account(account, %{metadata: %{stripe: %{product_name: "Starter"}}})
   end
 
   def update_account(account, attrs \\ %{}) do
     account
-    |> Ecto.Changeset.change(attrs)
+    |> cast(attrs, [
+      :name,
+      :legal_name,
+      :slug,
+      :warning,
+      :warning_delivery_attempts,
+      :warning_last_sent_at,
+      :disabled_at,
+      :disabled_reason
+    ])
+    |> cast_embed(:config)
+    |> cast_embed(:features)
+    |> cast_embed(:limits)
+    |> cast_embed(:metadata)
     |> Repo.update!()
   end
 end

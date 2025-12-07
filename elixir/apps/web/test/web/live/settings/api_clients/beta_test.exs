@@ -46,7 +46,7 @@ defmodule Web.Live.Settings.ApiClients.BetaTest do
     features = Map.from_struct(account.features)
     attrs = %{features: %{features | rest_api: false}}
 
-    {:ok, account} = Domain.Accounts.update_account(account, attrs)
+    account = Fixtures.Accounts.update_account(account, attrs)
 
     {:ok, _lv, html} =
       conn
@@ -74,7 +74,7 @@ defmodule Web.Live.Settings.ApiClients.BetaTest do
       }
     }
 
-    {:ok, account} = Domain.Accounts.update_account(account, attrs)
+    account = Fixtures.Accounts.update_account(account, attrs)
 
     {:ok, lv, _html} =
       conn

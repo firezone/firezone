@@ -149,7 +149,7 @@ defmodule Web.Live.Settings.ApiClients.EditTest do
 
     assert_redirected(lv, ~p"/#{account}/settings/api_clients/#{api_client}")
 
-    assert actor = Repo.get_by(Domain.Actors.Actor, id: api_client.id)
+    assert actor = Repo.get_by(Domain.Actor, id: api_client.id)
     assert actor.name == attrs.name
   end
 end

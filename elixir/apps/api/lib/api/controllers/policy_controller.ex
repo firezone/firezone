@@ -2,7 +2,7 @@ defmodule API.PolicyController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Policies
+  alias __MODULE__.DB
 
   action_fallback API.FallbackController
 
@@ -22,7 +22,7 @@ defmodule API.PolicyController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, policies, metadata} <- Policies.list_policies(conn.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- DB.list_policies(conn.assigns.subject, list_opts) do
       render(conn, :index, policies: policies, metadata: metadata)
     end
   end
@@ -43,7 +43,7 @@ defmodule API.PolicyController do
 
   # Show a specific Policy
   def show(conn, %{"id" => id}) do
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, conn.assigns.subject) do
+    with {:ok, policy} <- DB.fetch_policy(id, conn.assigns.subject) do
       render(conn, :show, policy: policy)
     end
   end
@@ -59,7 +59,11 @@ defmodule API.PolicyController do
 
   # Create a new Policy
   def create(conn, %{"policy" => params}) do
-    with {:ok, policy} <- Policies.create_policy(params, conn.assigns.subject) do
+    subject = conn.assigns.subject
+
+    # Check if this is for an internet resource
+    with :ok <- DB.validate_internet_resource_policy(params, subject),
+         {:ok, policy} <- DB.create_policy(params, subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/policies/#{policy}")
@@ -91,14 +95,10 @@ defmodule API.PolicyController do
   def update(conn, %{"id" => id, "policy" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, subject) do
-      case Policies.update_policy(policy, params, subject) do
-        {:ok, policy} ->
-          render(conn, :show, policy: policy)
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+    with {:ok, policy} <- DB.fetch_policy(id, subject),
+         :ok <- DB.validate_internet_resource_policy(params, subject),
+         {:ok, policy} <- DB.update_policy(policy, params, subject) do
+      render(conn, :show, policy: policy)
     end
   end
 
@@ -124,9 +124,108 @@ defmodule API.PolicyController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, subject),
-         {:ok, policy} <- Policies.delete_policy(policy, subject) do
+    with {:ok, policy} <- DB.fetch_policy(id, subject),
+         {:ok, policy} <- DB.delete_policy(policy, subject) do
       render(conn, :show, policy: policy)
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    import Ecto.Changeset
+    alias Domain.{Policy, Safe, Auth}
+
+    def list_policies(subject, opts \\ []) do
+      from(p in Policy, as: :policies)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def fetch_policy(id, subject) do
+      result =
+        from(p in Policy, where: p.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        policy -> {:ok, policy}
+      end
+    end
+
+    def update_policy(policy, attrs, subject) do
+      policy
+      |> changeset(attrs)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def validate_internet_resource_policy(attrs, %Auth.Subject{} = subject) do
+      resource_id = attrs["resource_id"]
+
+      if resource_id do
+        # Fetch the resource to check its type
+        resource =
+          from(r in Domain.Resource, where: r.id == ^resource_id)
+          |> Safe.scoped(subject)
+          |> Safe.one()
+
+        case resource do
+          nil ->
+            {:error, :not_found}
+
+          %{type: :internet} ->
+            # Check if internet resource is enabled for the account
+            if Domain.Account.internet_resource_enabled?(subject.account) do
+              :ok
+            else
+              {:error, {:forbidden, "Internet resource is not enabled for this account"}}
+            end
+
+          _ ->
+            :ok
+        end
+      else
+        :ok
+      end
+    end
+
+    def create_policy(attrs, %Auth.Subject{} = subject) do
+      changeset = create_changeset(attrs, subject)
+
+      Safe.scoped(changeset, subject)
+      |> Safe.insert()
+    end
+
+    def delete_policy(policy, subject) do
+      policy
+      |> Safe.scoped(subject)
+      |> Safe.delete()
+    end
+
+    defp create_changeset(attrs, %Auth.Subject{} = subject) do
+      %Policy{}
+      |> cast(attrs, ~w[description group_id resource_id]a)
+      |> validate_required(~w[group_id resource_id]a)
+      |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
+      |> Policy.changeset()
+      |> put_change(:account_id, subject.account.id)
+    end
+
+    defp changeset(%Policy{} = policy, attrs) do
+      policy
+      |> cast(attrs, ~w[description group_id resource_id]a)
+      |> validate_required(~w[group_id resource_id]a)
+      |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
+      |> Policy.changeset()
+    end
+
+    def cursor_fields do
+      [
+        {:policies, :asc, :inserted_at},
+        {:policies, :asc, :id}
+      ]
     end
   end
 end

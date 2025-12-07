@@ -7,13 +7,13 @@ defmodule Web.Live.Resources.NewTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
-    group = Fixtures.Gateways.create_group(account: account, subject: subject)
+    site = Fixtures.Sites.create_site(account: account, subject: subject)
 
     %{
       account: account,
       actor: actor,
       identity: identity,
-      group: group
+      site: site
     }
   end
 
@@ -68,74 +68,21 @@ defmodule Web.Live.Resources.NewTest do
 
     form = form(lv, "form")
 
-    connection_inputs = [
-      "resource[connections][0][enabled]",
-      "resource[connections][0][gateway_group_id]"
-    ]
-
     expected_inputs =
-      (connection_inputs ++
-         [
-           "resource[filters][icmp][enabled]",
-           "resource[filters][icmp][protocol]",
-           "resource[filters][tcp][enabled]",
-           "resource[filters][tcp][protocol]",
-           "resource[filters][tcp][ports]",
-           "resource[filters][udp][enabled]",
-           "resource[filters][udp][protocol]",
-           "resource[filters][udp][ports]",
-           "resource[address]",
-           "resource[address_description]",
-           "resource[name]",
-           "resource[type]"
-         ])
-      |> Enum.sort()
-
-    assert find_inputs(form) == expected_inputs
-  end
-
-  test "renders form when multi-site resources are enabled", %{
-    account: account,
-    identity: identity,
-    group: group,
-    conn: conn
-  } do
-    account =
-      Fixtures.Accounts.update_account(account,
-        features: %{
-          traffic_filters: true,
-          multi_site_resources: true
-        }
-      )
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/new")
-
-    form = form(lv, "form")
-
-    connection_inputs = [
-      "resource[connections][#{group.id}][enabled]",
-      "resource[connections][#{group.id}][gateway_group_id]"
-    ]
-
-    expected_inputs =
-      (connection_inputs ++
-         [
-           "resource[address]",
-           "resource[address_description]",
-           "resource[filters][icmp][enabled]",
-           "resource[filters][icmp][protocol]",
-           "resource[filters][tcp][enabled]",
-           "resource[filters][tcp][protocol]",
-           "resource[filters][tcp][ports]",
-           "resource[filters][udp][enabled]",
-           "resource[filters][udp][protocol]",
-           "resource[filters][udp][ports]",
-           "resource[name]",
-           "resource[type]"
-         ])
+      [
+        "resource[filters][icmp][enabled]",
+        "resource[filters][icmp][protocol]",
+        "resource[filters][tcp][enabled]",
+        "resource[filters][tcp][protocol]",
+        "resource[filters][tcp][ports]",
+        "resource[filters][udp][enabled]",
+        "resource[filters][udp][protocol]",
+        "resource[filters][udp][ports]",
+        "resource[address]",
+        "resource[address_description]",
+        "resource[name]",
+        "resource[type]"
+      ]
       |> Enum.sort()
 
     assert find_inputs(form) == expected_inputs
@@ -162,7 +109,7 @@ defmodule Web.Live.Resources.NewTest do
 
     connection_inputs = [
       "resource[connections][0][enabled]",
-      "resource[connections][0][gateway_group_id]"
+      "resource[connections][0][site_id]"
     ]
 
     expected_inputs =
@@ -186,16 +133,16 @@ defmodule Web.Live.Resources.NewTest do
     assert find_inputs(form) == expected_inputs
   end
 
-  test "renders form without connections when site is set by query param", %{
+  test "renders form without site field when site is set by query param", %{
     account: account,
-    group: group,
+    site: site,
     identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+      |> live(~p"/#{account}/resources/new?site_id=#{site}")
 
     form = form(lv, "form")
 
@@ -297,7 +244,7 @@ defmodule Web.Live.Resources.NewTest do
     identity: identity,
     conn: conn
   } do
-    gateway_group = Fixtures.Gateways.create_group(account: account)
+    site = Fixtures.Sites.create_site(account: account)
 
     attrs = %{
       name: "foobar.com",
@@ -307,7 +254,7 @@ defmodule Web.Live.Resources.NewTest do
         tcp: %{ports: "80, 443", enabled: true},
         udp: %{ports: "100", enabled: true}
       },
-      connections: %{gateway_group.id => %{enabled: true}}
+      connections: %{site.id => %{enabled: true}}
     }
 
     {:ok, lv, _html} =
@@ -334,7 +281,7 @@ defmodule Web.Live.Resources.NewTest do
            }
   end
 
-  test "renders changeset errors for connections on submit", %{
+  test "renders changeset errors for site on submit", %{
     account: account,
     identity: identity,
     conn: conn
@@ -344,8 +291,7 @@ defmodule Web.Live.Resources.NewTest do
     attrs = %{
       name: "foo",
       address: "foobar.com",
-      address_description: "http://foobar.com:3000/",
-      connections: %{}
+      address_description: "http://foobar.com:3000/"
     }
 
     {:ok, lv, _html} =
@@ -362,16 +308,17 @@ defmodule Web.Live.Resources.NewTest do
            |> form("form", resource: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "connections" => ["can't be blank"]
+             "site" => ["can't be blank"]
            }
   end
 
-  test "creates a resource on valid attrs and no site_id set", %{
+  test "creates a resource on valid attrs and site_id is set", %{
+    site: site,
     account: account,
     identity: identity,
     conn: conn
   } do
-    gateway_group = Fixtures.Gateways.create_group(account: account)
+    site = Fixtures.Sites.create_site(account: account)
 
     attrs = %{
       name: "foobar.com",
@@ -383,7 +330,7 @@ defmodule Web.Live.Resources.NewTest do
         tcp: %{ports: "80, 443", enabled: true},
         udp: %{ports: "4000 - 5000", enabled: true}
       },
-      connections: %{gateway_group.id => %{enabled: true}}
+      site_id: site.id
     }
 
     {:ok, lv, _html} =
@@ -414,7 +361,7 @@ defmodule Web.Live.Resources.NewTest do
   test "creates a resource on valid attrs and site_id set", %{
     account: account,
     identity: identity,
-    group: group,
+    site: site,
     conn: conn
   } do
     attrs = %{
@@ -431,7 +378,7 @@ defmodule Web.Live.Resources.NewTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+      |> live(~p"/#{account}/resources/new?site_id=#{site}")
 
     lv
     |> form("form")
@@ -450,14 +397,14 @@ defmodule Web.Live.Resources.NewTest do
     resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
 
     flash =
-      assert_redirect(lv, ~p"/#{account}/policies/new?resource_id=#{resource}&site_id=#{group}")
+      assert_redirect(lv, ~p"/#{account}/policies/new?resource_id=#{resource}&site_id=#{site}")
 
     assert flash["info"] == "Resource #{resource.name} created successfully."
   end
 
   test "shows disabled traffic filter form when traffic filters disabled", %{
     account: account,
-    group: group,
+    site: site,
     identity: identity,
     conn: conn
   } do
@@ -466,7 +413,7 @@ defmodule Web.Live.Resources.NewTest do
     {:ok, lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+      |> live(~p"/#{account}/resources/new?site_id=#{site}")
 
     form = form(lv, "form")
 
@@ -491,7 +438,7 @@ defmodule Web.Live.Resources.NewTest do
   test "sets ip_stack when resource type is dns", %{
     account: account,
     identity: identity,
-    group: group,
+    site: site,
     conn: conn
   } do
     attrs = %{
@@ -503,7 +450,7 @@ defmodule Web.Live.Resources.NewTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+      |> live(~p"/#{account}/resources/new?site_id=#{site}")
 
     lv
     |> form("form")
@@ -520,7 +467,7 @@ defmodule Web.Live.Resources.NewTest do
   test "renders ip stack recommendation", %{
     account: account,
     identity: identity,
-    group: group,
+    site: site,
     conn: conn
   } do
     attrs = %{
@@ -533,7 +480,7 @@ defmodule Web.Live.Resources.NewTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+      |> live(~p"/#{account}/resources/new?site_id=#{site}")
 
     html =
       lv
@@ -545,7 +492,7 @@ defmodule Web.Live.Resources.NewTest do
 
   test "creates a resource on valid attrs when traffic filter form disabled", %{
     account: account,
-    group: group,
+    site: site,
     identity: identity,
     conn: conn
   } do
@@ -558,7 +505,7 @@ defmodule Web.Live.Resources.NewTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+      |> live(~p"/#{account}/resources/new?site_id=#{site}")
 
     lv
     |> form("form")
@@ -570,18 +517,17 @@ defmodule Web.Live.Resources.NewTest do
     |> render_submit()
 
     resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
-    assert %{connections: [connection]} = Repo.preload(resource, :connections)
-    assert connection.gateway_group_id == group.id
+    assert resource.site_id == site.id
 
     assert assert_redirect(
              lv,
-             ~p"/#{account}/policies/new?resource_id=#{resource}&site_id=#{group}"
+             ~p"/#{account}/policies/new?resource_id=#{resource}&site_id=#{site}"
            )
   end
 
   test "prevents saving resource if traffic filters set when traffic filters disabled", %{
     account: account,
-    group: group,
+    site: site,
     identity: identity,
     conn: conn
   } do
@@ -599,7 +545,7 @@ defmodule Web.Live.Resources.NewTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+      |> live(~p"/#{account}/resources/new?site_id=#{site}")
 
     # ** (ArgumentError) could not find non-disabled input, select or textarea with name "resource[filters][tcp][ports]" within:
     assert_raise ArgumentError, fn ->
@@ -609,53 +555,5 @@ defmodule Web.Live.Resources.NewTest do
     end
 
     assert Repo.all(Domain.Resources.Resource) == []
-  end
-
-  test "maintains selection of site when multi-site is false", %{
-    account: account,
-    group: _group,
-    identity: identity,
-    conn: conn
-  } do
-    Domain.Config.feature_flag_override(:multi_site_resources, false)
-    group2 = Fixtures.Gateways.create_group(account: account)
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/new")
-
-    lv
-    |> form("form")
-    |> render_change(%{"resource[connections][0][gateway_group_id]" => group2.id})
-
-    assert has_element?(
-             lv,
-             "select[name='resource[connections][0][gateway_group_id]'] option[value='#{group2.id}'][selected]"
-           )
-  end
-
-  test "maintains selection of sites when multi-site is true", %{
-    account: account,
-    group: group,
-    identity: identity,
-    conn: conn
-  } do
-    group2 = Fixtures.Gateways.create_group(account: account)
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/new")
-
-    lv
-    |> form("form")
-    |> render_change(%{
-      "resource[connections][#{group.id}][enabled]" => false,
-      "resource[connections][#{group2.id}][enabled]" => true
-    })
-
-    refute has_element?(lv, "input[name='resource[connections][#{group.id}][enabled]'][checked]")
-    assert has_element?(lv, "input[name='resource[connections][#{group2.id}][enabled]'][checked]")
   end
 end

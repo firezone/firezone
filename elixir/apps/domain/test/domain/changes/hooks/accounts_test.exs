@@ -26,14 +26,16 @@ defmodule Domain.Changes.Hooks.AccountsTest do
       }
 
       assert :ok == on_update(0, old_data, data)
-      assert_receive %Change{op: :delete, old_struct: %Accounts.Account{} = account, lsn: 0}
+      assert_receive %Change{op: :delete, old_struct: %Domain.Account{} = account, lsn: 0}
 
       assert account.id == account_id
     end
 
-    test "deletes associated flows when account is disabled" do
+    test "deletes associated policy authorizations when account is disabled" do
       account = Fixtures.Accounts.create_account()
-      flow = Fixtures.Flows.create_flow(account: account)
+
+      policy_authorization =
+        Fixtures.PolicyAuthorizations.create_policy_authorization(account: account)
 
       old_data = %{
         "id" => account.id,
@@ -46,7 +48,7 @@ defmodule Domain.Changes.Hooks.AccountsTest do
       }
 
       assert :ok == on_update(0, old_data, data)
-      assert Repo.get_by(Domain.Flows.Flow, id: flow.id) == nil
+      assert Repo.get_by(Domain.PolicyAuthorization, id: policy_authorization.id) == nil
     end
   end
 
@@ -58,7 +60,7 @@ defmodule Domain.Changes.Hooks.AccountsTest do
       old_data = %{"id" => account_id}
 
       assert :ok == on_delete(0, old_data)
-      assert_receive %Change{op: :delete, old_struct: %Accounts.Account{} = account, lsn: 0}
+      assert_receive %Change{op: :delete, old_struct: %Domain.Account{} = account, lsn: 0}
       assert account.id == account_id
     end
   end

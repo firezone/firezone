@@ -1,28 +1,26 @@
 defmodule Web.Settings.ApiClients.NewToken do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
-  alias Domain.{Auth, Actors, Tokens}
+  alias Domain.{Auth, Token}
+  alias __MODULE__.DB
+  import Ecto.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
     unless Domain.Config.global_feature_enabled?(:rest_api),
       do: raise(Web.LiveErrors.NotFoundError)
 
-    with {:ok, %{type: :api_client} = actor} <-
-           Actors.fetch_actor_by_id(id, socket.assigns.subject) do
-      changeset = Tokens.Token.Changeset.create(%{})
+    %{type: :api_client} = actor = DB.get_api_client!(id, socket.assigns.subject)
+    changeset = build_token_changeset(%{})
 
-      socket =
-        assign(socket,
-          actor: actor,
-          encoded_token: nil,
-          form: to_form(changeset),
-          page_title: "New API Token"
-        )
+    socket =
+      assign(socket,
+        actor: actor,
+        encoded_token: nil,
+        form: to_form(changeset),
+        page_title: "New API Token"
+      )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
@@ -67,7 +65,7 @@ defmodule Web.Settings.ApiClients.NewToken do
     attrs = map_expires_at(attrs)
 
     changeset =
-      Tokens.Token.Changeset.create(attrs)
+      build_token_changeset(attrs)
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -95,5 +93,25 @@ defmodule Web.Settings.ApiClients.NewToken do
       "" -> ""
       value -> "#{value}T00:00:00.000000Z"
     end)
+  end
+
+  # Local changeset for form validation
+  defp build_token_changeset(attrs) do
+    %Token{}
+    |> cast(attrs, [:name, :expires_at])
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+
+    def get_api_client!(id, subject) do
+      from(a in Domain.Actor,
+        where: a.id == ^id,
+        where: a.type == :api_client
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
   end
 end

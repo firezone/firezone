@@ -1,9 +1,9 @@
 defmodule Web.Settings.Account.Edit do
   use Web, :live_view
-  alias Domain.Accounts
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
-    changeset = Accounts.change_account(socket.assigns.account)
+    changeset = change_account_name(socket.assigns.account)
 
     socket =
       assign(socket,
@@ -46,21 +46,50 @@ defmodule Web.Settings.Account.Edit do
     """
   end
 
+  defp change_account_name(account, attrs \\ %{}) do
+    import Ecto.Changeset
+
+    account
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+  end
+
   def handle_event("change", %{"account" => attrs}, socket) do
     changeset =
-      Accounts.change_account(socket.assigns.account, attrs)
+      change_account_name(socket.assigns.account, attrs)
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("submit", %{"account" => attrs}, socket) do
-    with {:ok, _account} <-
-           Accounts.update_account(socket.assigns.account, attrs, socket.assigns.subject) do
-      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/account")}
+    with {:ok, account} <-
+           update_account_name(socket.assigns.account, attrs, socket.assigns.subject) do
+      socket =
+        socket
+        |> put_flash(:success, "Account #{account.name} updated successfully")
+        |> push_navigate(to: ~p"/#{socket.assigns.account}/settings/account")
+
+      {:noreply, socket}
     else
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  defp update_account_name(account, attrs, subject) do
+    account
+    |> change_account_name(attrs)
+    |> DB.update(subject)
+  end
+
+  defmodule DB do
+    alias Domain.Safe
+
+    def update(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
     end
   end
 end

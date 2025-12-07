@@ -2,18 +2,148 @@ defmodule Domain.Repo.Seeds do
   @moduledoc """
   Seeds the database with initial data.
   """
+  import Ecto.Changeset
+
   alias Domain.{
     Repo,
-    Accounts,
     Auth,
-    Actors,
-    Relays,
-    Gateways,
-    Resources,
-    Policies,
-    Flows,
-    Tokens
+    AuthProvider,
+    Account,
+    Actor,
+    Client,
+    Crypto,
+    EmailOTP,
+    Entra,
+    ExternalIdentity,
+    PolicyAuthorization,
+    Gateway,
+    Google,
+    Group,
+    Membership,
+    NameGenerator,
+    OIDC,
+    Policy,
+    Relay,
+    Resource,
+    Site,
+    Token,
+    Userpass
   }
+
+  # Populate these in your .env
+  defp google_idp_id do
+    System.get_env("GOOGLE_IDP_ID", "dummy")
+  end
+
+  defp entra_idp_id do
+    System.get_env("ENTRA_IDP_ID", "dummy")
+  end
+
+  defp entra_tenant_id do
+    System.get_env("ENTRA_TENANT_ID", "dummy")
+  end
+
+  # Helper function to create auth providers with the new structure
+  defp create_auth_provider(provider_module, attrs, subject) do
+    provider_id = Ecto.UUID.generate()
+    IO.inspect(provider_module, label: "Provider module being passed")
+    type = AuthProvider.type!(provider_module)
+    # Convert type to atom if it's a string
+    type = if is_binary(type), do: String.to_existing_atom(type), else: type
+
+    # First create the base auth_provider record using Repo directly
+    {:ok, _base_provider} =
+      Repo.insert(%AuthProvider{
+        id: provider_id,
+        account_id: subject.account.id,
+        type: type
+      })
+
+    # Then create the provider-specific record using Repo directly (seeds don't need authorization)
+    attrs_with_id =
+      attrs
+      |> Map.put(:id, provider_id)
+      |> Map.put(:account_id, subject.account.id)
+
+    changeset = struct(provider_module, attrs_with_id) |> Ecto.Changeset.change()
+
+    Repo.insert(changeset)
+  end
+
+  # Helper function to create resource directly without context module
+  defp create_resource(attrs, subject) do
+    # Create the resource
+    resource =
+      %Resource{
+        account_id: subject.account.id,
+        type: attrs[:type] || attrs["type"],
+        name: attrs[:name] || attrs["name"],
+        address: attrs[:address] || attrs["address"],
+        address_description: attrs[:address_description] || attrs["address_description"],
+        filters: attrs[:filters] || attrs["filters"] || [],
+        site_id: attrs[:site_id] || attrs["site_id"]
+      }
+      |> Repo.insert!()
+
+    {:ok, resource}
+  end
+
+  # Helper function to create gateway directly without context module
+  defp create_gateway(attrs, context) do
+    # Extract version from user agent
+    version =
+      context.user_agent
+      |> String.split(" connlib/")
+      |> List.last()
+      |> String.split(" ")
+      |> List.first()
+
+    # Get the site to get the account_id
+    site_id = attrs["site_id"] || attrs[:site_id]
+    site = Repo.get_by!(Site, id: site_id)
+
+    gateway =
+      %Gateway{
+        site_id: site_id,
+        account_id: site.account_id,
+        name: attrs["name"] || attrs[:name],
+        external_id: attrs["external_id"] || attrs[:external_id],
+        public_key: attrs["public_key"] || attrs[:public_key],
+        last_seen_user_agent: context.user_agent,
+        last_seen_remote_ip: context.remote_ip,
+        last_seen_version: version,
+        last_seen_at: DateTime.utc_now()
+      }
+      |> Repo.insert!()
+
+    {:ok, gateway}
+  end
+
+  # Helper function to create client directly without context module
+  defp create_client(attrs, subject, user_agent) do
+    # Extract version from user agent (e.g., "iOS/12.7 (iPhone) connlib/0.7.412" -> "0.7.412")
+    version =
+      user_agent |> String.split(" connlib/") |> List.last() |> String.split(" ") |> List.first()
+
+    client =
+      %Client{
+        account_id: subject.account.id,
+        actor_id: subject.actor.id,
+        name: attrs["name"] || attrs[:name],
+        external_id: attrs["external_id"] || attrs[:external_id],
+        public_key: attrs["public_key"] || attrs[:public_key],
+        identifier_for_vendor: attrs["identifier_for_vendor"] || attrs[:identifier_for_vendor],
+        device_uuid: attrs["device_uuid"] || attrs[:device_uuid],
+        device_serial: attrs["device_serial"] || attrs[:device_serial],
+        last_seen_user_agent: user_agent,
+        last_seen_remote_ip: subject.context.remote_ip,
+        last_seen_version: version,
+        last_seen_at: DateTime.utc_now()
+      }
+      |> Repo.insert!()
+
+    {:ok, client}
+  end
 
   def seed do
     # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
@@ -27,21 +157,52 @@ defmodule Domain.Repo.Seeds do
     # which helps with static docker-compose environment for local development.
     maybe_repo_update = fn resource, values ->
       if System.get_env("STATIC_SEEDS") == "true" do
-        Ecto.Changeset.change(resource, values)
-        |> Repo.update!()
+        changeset = Ecto.Changeset.change(resource, values)
+
+        # Token schema uses composite primary key (account_id, id), but relay tokens
+        # don't have an account_id, so we need to use update_all for those.
+        case resource do
+          %Token{account_id: nil, id: id} when not is_nil(id) ->
+            import Ecto.Query
+
+            # Filter out virtual fields that can't be persisted
+            virtual_fields = [
+              :secret_nonce,
+              :secret_fragment,
+              :auth_provider_name,
+              :auth_provider_type
+            ]
+
+            db_changes = Map.drop(changeset.changes, virtual_fields)
+
+            from(t in Token, where: t.id == ^id)
+            |> Repo.update_all(set: Enum.to_list(db_changes))
+
+            struct(resource, changeset.changes)
+
+          _ ->
+            Repo.update!(changeset)
+        end
       else
         resource
       end
     end
 
-    {:ok, account} =
-      Accounts.create_account(%{
-        name: "Firezone Account",
-        slug: "firezone",
-        config: %{
-          search_domain: "httpbin.search.test"
-        }
-      })
+    account =
+      %Account{}
+      |> cast(
+        %{
+          name: "Firezone Account",
+          legal_name: "Firezone Account",
+          slug: "firezone",
+          config: %{
+            search_domain: "httpbin.search.test"
+          }
+        },
+        [:name, :legal_name, :slug]
+      )
+      |> cast_embed(:config)
+      |> Repo.insert!()
 
     account =
       account
@@ -50,7 +211,6 @@ defmodule Domain.Repo.Seeds do
           policy_conditions: true,
           multi_site_resources: true,
           traffic_filters: true,
-          self_hosted_relays: true,
           idp_sync: true,
           rest_api: true,
           internet_resource: true
@@ -60,7 +220,7 @@ defmodule Domain.Repo.Seeds do
 
     account =
       maybe_repo_update.(account,
-        id: "c89bcc8c-9392-4dae-a40d-888aef6d28e0",
+        id: Ecto.UUID.cast!("c89bcc8c-9392-4dae-a40d-888aef6d28e0"),
         metadata: %{
           stripe: %{
             customer_id: "cus_PZKIfcHB6SSBA4",
@@ -74,18 +234,27 @@ defmodule Domain.Repo.Seeds do
           users_count: 15,
           monthly_active_users_count: 10,
           service_accounts_count: 10,
-          gateway_groups_count: 3,
+          sites_count: 3,
           account_admin_users_count: 5
         }
       )
 
-    {:ok, other_account} =
-      Accounts.create_account(%{
-        name: "Other Corp Account",
-        slug: "not_firezone"
-      })
+    other_account =
+      %Account{}
+      |> cast(
+        %{
+          name: "Other Corp Account",
+          legal_name: "Other Corp Account",
+          slug: "not_firezone"
+        },
+        [:name, :legal_name, :slug]
+      )
+      |> Repo.insert!()
 
-    other_account = maybe_repo_update.(other_account, id: "9b9290bf-e1bc-4dd3-b401-511908262690")
+    other_account =
+      maybe_repo_update.(other_account,
+        id: Ecto.UUID.cast!("9b9290bf-e1bc-4dd3-b401-511908262690")
+      )
 
     IO.puts("Created accounts: ")
 
@@ -95,175 +264,232 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
-    {:ok, internet_gateway_group} =
-      Gateways.create_internet_group(account)
+    internet_site =
+      %Site{
+        account_id: account.id,
+        name: "Internet",
+        managed_by: :system
+      }
+      |> Repo.insert!()
 
-    {:ok, other_internet_gateway_group} =
-      Gateways.create_internet_group(other_account)
+    other_internet_site =
+      %Site{
+        account_id: other_account.id,
+        name: "Internet",
+        managed_by: :system
+      }
+      |> Repo.insert!()
 
-    Domain.Resources.create_internet_resource(account, internet_gateway_group)
-    Domain.Resources.create_internet_resource(other_account, other_internet_gateway_group)
+    # Create internet resources
+    _internet_resource =
+      %Resource{
+        account_id: account.id,
+        name: "Internet",
+        type: :internet,
+        site_id: internet_site.id
+      }
+      |> Repo.insert!()
+
+    _other_internet_resource =
+      %Resource{
+        account_id: other_account.id,
+        name: "Internet",
+        type: :internet,
+        site_id: other_internet_site.id
+      }
+      |> Repo.insert!()
 
     IO.puts("")
 
-    {:ok, everyone_group} =
-      Domain.Actors.create_managed_group(account, %{
-        name: "Everyone"
-      })
+    everyone_group =
+      %Group{
+        account_id: account.id,
+        name: "Everyone",
+        type: :managed
+      }
+      |> Repo.insert!()
 
-    {:ok, _everyone_group} =
-      Domain.Actors.create_managed_group(other_account, %{
-        name: "Everyone"
-      })
+    _everyone_group =
+      %Group{
+        account_id: other_account.id,
+        name: "Everyone",
+        type: :managed
+      }
+      |> Repo.insert!()
 
-    {:ok, email_provider} =
-      Auth.create_provider(account, %{
-        name: "Email",
-        adapter: :email,
-        adapter_config: %{}
-      })
+    # Create auth providers for main account
+    system_subject = %Auth.Subject{
+      account: account,
+      actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
+      token_id: Ecto.UUID.generate(),
+      auth_provider_id: nil,
+      expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
+      context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
+    }
 
-    {:ok, oidc_provider} =
-      Auth.create_provider(account, %{
-        name: "OIDC",
-        adapter: :openid_connect,
-        adapter_config: %{
-          "client_id" => "CLIENT_ID",
-          "client_secret" => "CLIENT_SECRET",
-          "response_type" => "code",
-          "scope" => "openid email name groups",
-          "discovery_document_uri" => "https://common.auth0.com/.well-known/openid-configuration"
-        }
-      })
+    {:ok, _email_provider} =
+      create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, system_subject)
 
-    {:ok, _mock_provider} =
-      Auth.create_provider(account, %{
-        name: "Mock",
-        adapter: :mock,
-        adapter_config: %{}
-      })
+    {:ok, _userpass_provider} =
+      create_auth_provider(
+        Userpass.AuthProvider,
+        %{name: "Username & Password"},
+        system_subject
+      )
 
-    {:ok, userpass_provider} =
-      Auth.create_provider(account, %{
-        name: "UserPass",
-        adapter: :userpass,
-        adapter_config: %{}
-      })
+    {:ok, _oidc_provider} =
+      create_auth_provider(
+        OIDC.AuthProvider,
+        %{
+          is_verified: true,
+          name: "OIDC",
+          issuer: "https://common.auth0.com",
+          client_id: "CLIENT_ID",
+          client_secret: "CLIENT_SECRET",
+          discovery_document_uri: "https://common.auth0.com/.well-known/openid-configuration",
+          scope: "openid email profile groups"
+        },
+        system_subject
+      )
+
+    {:ok, _google_provider} =
+      create_auth_provider(
+        Google.AuthProvider,
+        %{
+          is_verified: true,
+          name: "Google",
+          issuer: "https://accounts.google.com",
+          domain: "firezone.dev"
+        },
+        system_subject
+      )
+
+    {:ok, _entra_provider} =
+      create_auth_provider(
+        Entra.AuthProvider,
+        %{
+          is_verified: true,
+          name: "Entra",
+          issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
+          tenant_id: entra_tenant_id()
+        },
+        system_subject
+      )
+
+    # Create auth providers for other_account
+    other_system_subject = %Auth.Subject{
+      account: other_account,
+      actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
+      token_id: Ecto.UUID.generate(),
+      auth_provider_id: nil,
+      expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
+      context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
+    }
 
     {:ok, _other_email_provider} =
-      Auth.create_provider(other_account, %{
-        name: "email",
-        adapter: :email,
-        adapter_config: %{}
-      })
+      create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, other_system_subject)
 
-    {:ok, other_userpass_provider} =
-      Auth.create_provider(other_account, %{
-        name: "UserPass",
-        adapter: :userpass,
-        adapter_config: %{}
-      })
+    {:ok, _other_userpass_provider} =
+      create_auth_provider(
+        Userpass.AuthProvider,
+        %{name: "Username & Password"},
+        other_system_subject
+      )
 
     unprivileged_actor_email = "firezone-unprivileged-1@localhost.local"
     admin_actor_email = "firezone@localhost.local"
 
     {:ok, unprivileged_actor} =
-      Actors.create_actor(account, %{
+      %Actor{
+        account_id: account.id,
         type: :account_user,
-        name: "Firezone Unprivileged"
-      })
+        name: "Firezone Unprivileged",
+        email: unprivileged_actor_email
+      }
+      |> Repo.insert()
 
-    other_actors =
+    other_actors_with_emails =
       for i <- 1..10 do
+        email = "user-#{i}@localhost.local"
+
         {:ok, actor} =
-          Actors.create_actor(account, %{
+          Repo.insert(%Actor{
+            account_id: account.id,
             type: :account_user,
-            name: "Firezone Unprivileged #{i}"
+            name: "Firezone Unprivileged #{i}",
+            email: email
           })
 
-        actor
+        {actor, email}
       end
 
+    other_actors = Enum.map(other_actors_with_emails, fn {actor, _email} -> actor end)
+
     {:ok, admin_actor} =
-      Actors.create_actor(account, %{
+      Repo.insert(%Actor{
+        account_id: account.id,
         type: :account_admin_user,
-        name: "Firezone Admin"
+        name: "Firezone Admin",
+        email: admin_actor_email
       })
 
     {:ok, service_account_actor} =
-      Actors.create_actor(account, %{
-        "type" => :service_account,
-        "name" => "Backup Manager"
+      Repo.insert(%Actor{
+        account_id: account.id,
+        type: :service_account,
+        name: "Backup Manager"
       })
 
-    {:ok, unprivileged_actor_email_identity} =
-      Auth.create_identity(unprivileged_actor, email_provider, %{
-        provider_identifier: unprivileged_actor_email,
-        provider_identifier_confirmation: unprivileged_actor_email
+    # Set password on actors (no identity needed for userpass/email)
+    password_hash = Crypto.hash(:argon2, "Firezone1234")
+
+    unprivileged_actor =
+      unprivileged_actor
+      |> Ecto.Changeset.change(password_hash: password_hash)
+      |> Repo.update!()
+
+    admin_actor =
+      admin_actor
+      |> Ecto.Changeset.change(password_hash: password_hash)
+      |> Repo.update!()
+
+    # Create separate OIDC identity (different issuer)
+    {:ok, _admin_actor_oidc_identity} =
+      Repo.insert(%ExternalIdentity{
+        actor_id: admin_actor.id,
+        account_id: account.id,
+        issuer: "https://common.auth0.com",
+        idp_id: admin_actor_email,
+        name: "Firezone Admin"
       })
 
-    {:ok, unprivileged_actor_userpass_identity} =
-      Auth.create_identity(unprivileged_actor, userpass_provider, %{
-        provider_identifier: unprivileged_actor_email,
-        provider_virtual_state: %{
-          "password" => "Firezone1234",
-          "password_confirmation" => "Firezone1234"
-        }
+    {:ok, _google_identity} =
+      Repo.insert(%ExternalIdentity{
+        actor_id: admin_actor.id,
+        account_id: account.id,
+        issuer: "https://accounts.google.com",
+        idp_id: google_idp_id(),
+        name: "Firezone Admin"
       })
 
-    _unprivileged_actor_userpass_identity =
-      maybe_repo_update.(unprivileged_actor_userpass_identity,
-        id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5"
-      )
-
-    {:ok, admin_actor_email_identity} =
-      Auth.create_identity(admin_actor, email_provider, %{
-        provider_identifier: admin_actor_email,
-        provider_identifier_confirmation: admin_actor_email
+    {:ok, _entra_identity} =
+      Repo.insert(%ExternalIdentity{
+        actor_id: admin_actor.id,
+        account_id: account.id,
+        issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
+        idp_id: entra_idp_id(),
+        name: "Firezone Admin"
       })
 
-    {:ok, _admin_actor_userpass_identity} =
-      Auth.create_identity(admin_actor, userpass_provider, %{
-        provider_identifier: admin_actor_email,
-        provider_virtual_state: %{
-          "password" => "Firezone1234",
-          "password_confirmation" => "Firezone1234"
-        }
-      })
-
-    {:ok, admin_actor_oidc_identity} =
-      Auth.create_identity(admin_actor, oidc_provider, %{
-        provider_identifier: admin_actor_email,
-        provider_identifier_confirmation: admin_actor_email
-      })
-
-    admin_actor_oidc_identity
-    |> Ecto.Changeset.change(
-      created_by: :provider,
-      provider_id: oidc_provider.id,
-      provider_identifier: admin_actor_email,
-      provider_state: %{"claims" => %{"email" => admin_actor_email, "group" => "users"}}
-    )
-    |> Repo.update!()
-
-    for actor <- other_actors do
-      email = "user-#{System.unique_integer([:positive, :monotonic])}@localhost.local"
-
+    for {actor, email} <- other_actors_with_emails do
       {:ok, identity} =
-        Auth.create_identity(actor, oidc_provider, %{
-          provider_identifier: email,
-          provider_identifier_confirmation: email
+        Repo.insert(%ExternalIdentity{
+          actor_id: actor.id,
+          account_id: account.id,
+          issuer: "https://common.auth0.com",
+          idp_id: email,
+          name: actor.name
         })
-
-      identity =
-        identity
-        |> Ecto.Changeset.change(
-          created_by: :provider,
-          provider_id: oidc_provider.id,
-          provider_identifier: email,
-          provider_state: %{"claims" => %{"email" => email, "group" => "users"}}
-        )
-        |> Repo.update!()
 
       context = %Auth.Context{
         type: :browser,
@@ -276,7 +502,16 @@ defmodule Domain.Repo.Seeds do
       }
 
       {:ok, token} =
-        Auth.create_token(identity, context, "n", nil)
+        Repo.insert(%Token{
+          type: :browser,
+          account_id: account.id,
+          actor_id: identity.actor_id,
+          expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
+          secret_nonce: "n",
+          secret_fragment: Crypto.random_token(32),
+          secret_salt: Crypto.random_token(16),
+          secret_hash: "placeholder"
+        })
 
       {:ok, subject} = Auth.build_subject(token, context)
 
@@ -293,19 +528,25 @@ defmodule Domain.Repo.Seeds do
 
         client_name = String.split(user_agent, "/") |> List.first()
 
-        {:ok, _client} =
-          Domain.Clients.upsert_client(
-            %{
-              name: "My #{client_name} #{i}",
-              external_id: Ecto.UUID.generate(),
-              public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-              identifier_for_vendor: Ecto.UUID.generate()
-            },
-            %{
-              subject
-              | context: %{subject.context | user_agent: user_agent}
-            }
-          )
+        # Create client directly using Repo since context modules are removed
+        # Extract version from user agent (e.g., "Ubuntu/22.4.0 connlib/1.2.2" -> "1.2.2")
+        version =
+          user_agent |> String.split("/") |> List.last() |> String.split(" ") |> List.first()
+
+        _client =
+          %Client{
+            account_id: subject.account.id,
+            actor_id: subject.actor.id,
+            name: "My #{client_name} #{i}",
+            external_id: Ecto.UUID.generate(),
+            public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+            identifier_for_vendor: Ecto.UUID.generate(),
+            last_seen_user_agent: user_agent,
+            last_seen_remote_ip: subject.context.remote_ip,
+            last_seen_version: version,
+            last_seen_at: DateTime.utc_now()
+          }
+          |> Repo.insert!()
       end
     end
 
@@ -314,36 +555,35 @@ defmodule Domain.Repo.Seeds do
     other_admin_actor_email = "other@localhost.local"
 
     {:ok, other_unprivileged_actor} =
-      Actors.create_actor(other_account, %{
+      Repo.insert(%Actor{
+        account_id: other_account.id,
         type: :account_user,
-        name: "Other Unprivileged"
+        name: "Other Unprivileged",
+        email: other_unprivileged_actor_email
       })
 
     {:ok, other_admin_actor} =
-      Actors.create_actor(other_account, %{
+      Repo.insert(%Actor{
+        account_id: other_account.id,
         type: :account_admin_user,
-        name: "Other Admin"
+        name: "Other Admin",
+        email: other_admin_actor_email
       })
 
-    {:ok, _other_unprivileged_actor_userpass_identity} =
-      Auth.create_identity(other_unprivileged_actor, other_userpass_provider, %{
-        provider_identifier: other_unprivileged_actor_email,
-        provider_virtual_state: %{
-          "password" => "Firezone1234",
-          "password_confirmation" => "Firezone1234"
-        }
-      })
+    # Set password on other_account actors (no identity needed for userpass/email)
+    password_hash = Crypto.hash(:argon2, "Firezone1234")
 
-    {:ok, _other_admin_actor_userpass_identity} =
-      Auth.create_identity(other_admin_actor, other_userpass_provider, %{
-        provider_identifier: other_admin_actor_email,
-        provider_virtual_state: %{
-          "password" => "Firezone1234",
-          "password_confirmation" => "Firezone1234"
-        }
-      })
+    _other_unprivileged_actor =
+      other_unprivileged_actor
+      |> Ecto.Changeset.change(password_hash: password_hash)
+      |> Repo.update!()
 
-    unprivileged_actor_context = %Auth.Context{
+    _other_admin_actor =
+      other_admin_actor
+      |> Ecto.Changeset.change(password_hash: password_hash)
+      |> Repo.update!()
+
+    _unprivileged_actor_context = %Auth.Context{
       type: :browser,
       user_agent: "iOS/18.1.0 connlib/1.3.5",
       remote_ip: {172, 28, 0, 100},
@@ -353,59 +593,74 @@ defmodule Domain.Repo.Seeds do
       remote_ip_location_lon: 30.5167
     }
 
-    nonce = "n"
+    # Create client token for unprivileged actor so policy authorizations can reference it
+    {:ok, unprivileged_client_token} =
+      Repo.insert(%Token{
+        type: :client,
+        account_id: account.id,
+        actor_id: unprivileged_actor.id,
+        secret_nonce: Ecto.UUID.generate(),
+        secret_fragment: Ecto.UUID.generate(),
+        secret_salt: Ecto.UUID.generate(),
+        secret_hash: Ecto.UUID.generate(),
+        expires_at: DateTime.utc_now() |> DateTime.add(7, :day)
+      })
 
-    {:ok, unprivileged_actor_token} =
-      Auth.create_token(unprivileged_actor_email_identity, unprivileged_actor_context, nonce, nil)
-
-    {:ok, unprivileged_subject} =
-      Auth.build_subject(unprivileged_actor_token, unprivileged_actor_context)
-
-    admin_actor_context = %Auth.Context{
-      type: :browser,
-      user_agent: "Mac OS/14.1.2 connlib/1.2.1",
-      remote_ip: {100, 64, 100, 58},
-      remote_ip_location_region: "UA",
-      remote_ip_location_city: "Kyiv",
-      remote_ip_location_lat: 50.4333,
-      remote_ip_location_lon: 30.5167
+    # For seeds, create a system subject for admin operations
+    # In real usage, subjects are created during sign-in flow
+    admin_subject = %Auth.Subject{
+      account: account,
+      actor: admin_actor,
+      token_id: Ecto.UUID.generate(),
+      auth_provider_id: nil,
+      expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
+      context: %Auth.Context{
+        type: :browser,
+        remote_ip: {127, 0, 0, 1},
+        user_agent: "seeds/1"
+      }
     }
 
-    {:ok, admin_actor_token} =
-      Auth.create_token(admin_actor_email_identity, admin_actor_context, nonce, nil)
+    unprivileged_subject = %Auth.Subject{
+      account: account,
+      actor: unprivileged_actor,
+      token_id: unprivileged_client_token.id,
+      auth_provider_id: nil,
+      expires_at: unprivileged_client_token.expires_at,
+      context: %Auth.Context{
+        type: :browser,
+        remote_ip: {127, 0, 0, 1},
+        user_agent: "seeds/1"
+      }
+    }
 
-    {:ok, admin_subject} =
-      Auth.build_subject(admin_actor_token, admin_actor_context)
+    # Create service account token using Auth module for proper handling
+    token_attrs = %{
+      name: "tok-#{Ecto.UUID.generate()}",
+      type: :client,
+      account_id: service_account_actor.account_id,
+      actor_id: service_account_actor.id,
+      secret_fragment: Crypto.random_token(32, encoder: :hex32),
+      expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
+    }
 
-    {:ok, service_account_actor_encoded_token} =
-      Auth.create_service_account_token(
-        service_account_actor,
-        %{
-          "name" => "tok-#{Ecto.UUID.generate()}",
-          "expires_at" => DateTime.utc_now() |> DateTime.add(365, :day)
-        },
-        admin_subject
+    # Use Auth.create_token which properly sets secret_salt and secret_hash
+    {:ok, service_account_token} = Auth.create_token(token_attrs)
+
+    service_account_token =
+      service_account_token
+      |> maybe_repo_update.(
+        id: Ecto.UUID.cast!("a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
+        secret_salt: "svc_acct_static_salt",
+        secret_fragment: "SVC0ACCT0STATIC0FRAGMENT0VALUE0000000000000000000000====",
+        secret_hash: "acae1bbcce42ac1a474c8e950aa9de036413a884151ecd007ad4d12862a79e62"
       )
 
-    {:ok, unprivileged_actor_email_identity} =
-      Domain.Auth.Adapters.Email.request_sign_in_token(
-        unprivileged_actor_email_identity,
-        unprivileged_actor_context
-      )
+    service_account_actor_encoded_token = Auth.encode_fragment!(service_account_token)
 
-    unprivileged_actor_email_token =
-      unprivileged_actor_email_identity.provider_virtual_state.nonce <>
-        unprivileged_actor_email_identity.provider_virtual_state.fragment
-
-    {:ok, admin_actor_email_identity} =
-      Domain.Auth.Adapters.Email.request_sign_in_token(
-        admin_actor_email_identity,
-        admin_actor_context
-      )
-
-    admin_actor_email_token =
-      admin_actor_email_identity.provider_virtual_state.nonce <>
-        admin_actor_email_identity.provider_virtual_state.fragment
+    # Email tokens are generated during sign-in flow, not pre-generated
+    unprivileged_actor_email_token = "<generated during sign-in>"
+    admin_actor_email_token = "<generated during sign-in>"
 
     IO.puts("Created users: ")
 
@@ -423,69 +678,55 @@ defmodule Domain.Repo.Seeds do
     IO.puts("")
 
     {:ok, user_iphone} =
-      Domain.Clients.upsert_client(
+      create_client(
         %{
           name: "FZ User iPhone",
           external_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           identifier_for_vendor: "APPL-#{Ecto.UUID.generate()}"
         },
-        %{
-          unprivileged_subject
-          | context: %{
-              unprivileged_subject.context
-              | user_agent: "iOS/12.7 (iPhone) connlib/0.7.412"
-            }
-        }
+        unprivileged_subject,
+        "iOS/12.7 (iPhone) connlib/0.7.412"
       )
 
     {:ok, _user_android_phone} =
-      Domain.Clients.upsert_client(
+      create_client(
         %{
           name: "FZ User Android",
           external_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           identifier_for_vendor: "GOOG-#{Ecto.UUID.generate()}"
         },
-        %{
-          unprivileged_subject
-          | context: %{unprivileged_subject.context | user_agent: "Android/14 connlib/0.7.412"}
-        }
+        unprivileged_subject,
+        "Android/14 connlib/0.7.412"
       )
 
     {:ok, _user_windows_laptop} =
-      Domain.Clients.upsert_client(
+      create_client(
         %{
           name: "FZ User Surface",
           external_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "WIN-#{Ecto.UUID.generate()}"
         },
-        %{
-          unprivileged_subject
-          | context: %{
-              unprivileged_subject.context
-              | user_agent: "Windows/10.0.22631 connlib/0.7.412"
-            }
-        }
+        unprivileged_subject,
+        "Windows/10.0.22631 connlib/0.7.412"
       )
 
     {:ok, _user_linux_laptop} =
-      Domain.Clients.upsert_client(
+      create_client(
         %{
           name: "FZ User Rendering Station",
           external_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "UB-#{Ecto.UUID.generate()}"
         },
-        %{
-          unprivileged_subject
-          | context: %{unprivileged_subject.context | user_agent: "Ubuntu/22.4.0 connlib/0.7.412"}
-        }
+        unprivileged_subject,
+        "Ubuntu/22.4.0 connlib/0.7.412"
       )
 
     {:ok, _admin_iphone} =
-      Domain.Clients.upsert_client(
+      create_client(
         %{
           name: "FZ Admin Laptop",
           external_id: Ecto.UUID.generate(),
@@ -493,16 +734,14 @@ defmodule Domain.Repo.Seeds do
           device_serial: "FVFHF246Q72Z",
           device_uuid: "#{Ecto.UUID.generate()}"
         },
-        %{
-          admin_subject
-          | context: %{admin_subject.context | user_agent: "Mac OS/14.5 connlib/0.7.412"}
-        }
+        admin_subject,
+        "Mac OS/14.5 connlib/0.7.412"
       )
 
     IO.puts("Clients created")
     IO.puts("")
 
-    IO.puts("Created Actor Groups: ")
+    IO.puts("Created Groups: ")
 
     # Collect all actors for this account
     all_actors = [
@@ -517,19 +756,15 @@ defmodule Domain.Repo.Seeds do
 
     # Create groups in chunks and collect their IDs
     group_ids =
-      1..10_000
+      1..20
       # Process in chunks to manage memory
       |> Enum.chunk_every(1000)
       |> Enum.flat_map(fn chunk ->
         group_attrs =
           Enum.map(chunk, fn i ->
             %{
-              name: "#{Domain.Accounts.generate_unique_slug()}-#{i}",
+              name: "#{NameGenerator.generate_slug()}-#{i}",
               type: :static,
-              provider_id: oidc_provider.id,
-              provider_identifier: Ecto.UUID.generate(),
-              created_by: :provider,
-              created_by_subject: %{"name" => "Provider", "email" => nil},
               account_id: admin_subject.account.id,
               inserted_at: DateTime.utc_now(),
               updated_at: DateTime.utc_now()
@@ -538,7 +773,7 @@ defmodule Domain.Repo.Seeds do
 
         {_, inserted_groups} =
           Repo.insert_all(
-            Domain.Actors.Group,
+            Group,
             group_attrs,
             returning: [:id]
           )
@@ -577,278 +812,283 @@ defmodule Domain.Repo.Seeds do
     memberships
     |> Enum.chunk_every(1000)
     |> Enum.each(fn chunk ->
-      Repo.insert_all(Domain.Actors.Membership, chunk)
+      Repo.insert_all(Membership, chunk)
     end)
 
-    {:ok, eng_group} = Actors.create_group(%{name: "Engineering", type: :static}, admin_subject)
-    {:ok, finance_group} = Actors.create_group(%{name: "Finance", type: :static}, admin_subject)
+    now = DateTime.utc_now()
 
-    {:ok, synced_group} =
-      Actors.create_group(
-        %{name: "Group:Synced Group with long name", type: :static},
-        admin_subject
-      )
+    group_values = [
+      %{
+        id: Ecto.UUID.generate(),
+        name: "Engineering",
+        type: :static,
+        account_id: account.id,
+        inserted_at: now,
+        updated_at: now
+      },
+      %{
+        id: Ecto.UUID.generate(),
+        name: "Finance",
+        type: :static,
+        account_id: account.id,
+        inserted_at: now,
+        updated_at: now
+      },
+      %{
+        id: Ecto.UUID.generate(),
+        name: "Synced Group with long name",
+        type: :static,
+        account_id: account.id,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
 
-    for group <- [eng_group, finance_group, synced_group] do
+    {3, group_results} =
+      Repo.insert_all(Group, group_values, returning: [:id, :name])
+
+    for group <- group_results do
       IO.puts("  Name: #{group.name}  ID: #{group.id}")
     end
 
-    eng_group
-    |> Repo.preload(:memberships)
-    |> Actors.update_group(
-      %{memberships: [%{actor_id: admin_subject.actor.id}]},
-      admin_subject
-    )
+    # Reload as structs for further use
+    [eng_group_id, finance_group_id, synced_group_id] = Enum.map(group_results, & &1.id)
 
-    finance_group
-    |> Repo.preload(:memberships)
-    |> Actors.update_group(
-      %{memberships: [%{actor_id: unprivileged_subject.actor.id}]},
-      admin_subject
-    )
+    eng_group = Repo.get_by!(Group, id: eng_group_id)
+    finance_group = Repo.get_by!(Group, id: finance_group_id)
+    synced_group = Repo.get_by!(Group, id: synced_group_id)
 
-    synced_group
-    |> Repo.preload(:memberships)
-    |> Actors.update_group(
-      %{
-        memberships: [
-          %{actor_id: admin_subject.actor.id},
-          %{actor_id: unprivileged_subject.actor.id}
-        ]
-      },
-      admin_subject
-    )
+    # Add admin as member of engineering group directly
+    %Membership{
+      group_id: eng_group.id,
+      actor_id: admin_subject.actor.id,
+      account_id: admin_subject.account.id
+    }
+    |> Repo.insert!()
 
-    synced_group
-    |> Ecto.Changeset.change(
-      created_by: :provider,
-      provider_id: oidc_provider.id,
-      provider_identifier: "dummy_oidc_group_id"
-    )
-    |> Repo.update!()
+    # Add unprivileged user as member of finance group directly
+    %Membership{
+      group_id: finance_group.id,
+      actor_id: unprivileged_subject.actor.id,
+      account_id: unprivileged_subject.account.id
+    }
+    |> Repo.insert!()
 
-    oidc_provider
-    |> Ecto.Changeset.change(last_synced_at: DateTime.utc_now())
-    |> Repo.update!()
+    # Add admin and unprivileged user as members of synced group
+    %Membership{
+      group_id: synced_group.id,
+      actor_id: admin_subject.actor.id,
+      account_id: admin_subject.account.id
+    }
+    |> Repo.insert!()
 
-    for name <- [
-          "Group:gcp-logging-viewers",
-          "Group:gcp-security-admins",
-          "Group:gcp-organization-admins",
-          "OU:Admins",
-          "OU:Product",
-          "Group:Engineering",
-          "Group:gcp-developers"
-        ] do
-      {:ok, group} = Actors.create_group(%{name: name, type: :static}, admin_subject)
+    %Membership{
+      group_id: synced_group.id,
+      actor_id: unprivileged_subject.actor.id,
+      account_id: unprivileged_subject.account.id
+    }
+    |> Repo.insert!()
 
-      group
-      |> Repo.preload(:memberships)
-      |> Actors.update_group(
-        %{memberships: [%{actor_id: admin_subject.actor.id}]},
-        admin_subject
-      )
+    # Add service account (Backup Manager) to synced group
+    %Membership{
+      group_id: synced_group.id,
+      actor_id: service_account_actor.id,
+      account_id: service_account_actor.account_id
+    }
+    |> Repo.insert!()
+
+    synced_group = synced_group
+
+    extra_group_names = [
+      "gcp-logging-viewers",
+      "gcp-security-admins",
+      "gcp-organization-admins",
+      "Admins",
+      "Product",
+      "Product Engineering",
+      "gcp-developers"
+    ]
+
+    extra_group_values =
+      Enum.map(extra_group_names, fn name ->
+        %{
+          id: Ecto.UUID.generate(),
+          name: name,
+          type: :static,
+          account_id: account.id,
+          inserted_at: now,
+          updated_at: now
+        }
+      end)
+
+    {_count, extra_group_results} =
+      Repo.insert_all(Group, extra_group_values, returning: [:id])
+
+    # Add admin as member of each extra group
+    for %{id: group_id} <- extra_group_results do
+      %Membership{
+        group_id: group_id,
+        actor_id: admin_subject.actor.id,
+        account_id: admin_subject.account.id
+      }
+      |> Repo.insert!()
     end
 
     IO.puts("")
 
-    {:ok, global_relay_group} =
-      Relays.create_global_group(%{name: "fz-global-relays"})
+    # Create relay tokens using Auth module for proper handling
+    relay_token_attrs = %{
+      type: :relay,
+      secret_fragment: Crypto.random_token(32, encoder: :hex32)
+    }
 
-    {:ok, global_relay_group_token} =
-      Tokens.create_token(%{
-        "type" => :relay_group,
-        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
-        "relay_group_id" => global_relay_group.id
-      })
+    # Use Auth.create_token which properly sets secret_salt and secret_hash
+    {:ok, global_relay_token} = Auth.create_token(relay_token_attrs)
 
-    global_relay_group_token =
-      global_relay_group_token
+    global_relay_token =
+      global_relay_token
       |> maybe_repo_update.(
-        id: "e82fcdc1-057a-4015-b90b-3b18f0f28053",
+        id: Ecto.UUID.cast!("e82fcdc1-057a-4015-b90b-3b18f0f28053"),
         secret_salt: "lZWUdgh-syLGVDsZEu_29A",
         secret_fragment: "C14NGA87EJRR03G4QPR07A9C6G784TSSTHSF4TI5T0GD8D6L0VRG====",
         secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
       )
 
-    global_relay_group_encoded_token = Tokens.encode_fragment!(global_relay_group_token)
+    global_relay_encoded_token =
+      Auth.encode_fragment!(global_relay_token)
 
-    IO.puts("Created global relay groups:")
-    IO.puts("  #{global_relay_group.name} token: #{global_relay_group_encoded_token}")
-
+    IO.puts("Created global relay token:")
+    IO.puts("  Token: #{global_relay_encoded_token}")
     IO.puts("")
 
+    # Create relays directly using the inline upsert logic from API.Relay.Socket
     relay_context = %Auth.Context{
-      type: :relay_group,
+      type: :relay,
       user_agent: "Ubuntu/14.04 connlib/0.7.412",
       remote_ip: {100, 64, 100, 58}
     }
 
-    {:ok, global_relay} =
-      Relays.upsert_relay(
-        global_relay_group,
+    # Create first global relay
+    global_relay =
+      %Relay{}
+      |> Ecto.Changeset.cast(
         %{
+          name: "global-relay-1",
           ipv4: {189, 172, 72, 111},
           ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
         },
-        relay_context
+        [:name, :ipv4, :ipv6]
       )
+      |> put_change(:last_seen_at, DateTime.utc_now())
+      |> put_change(:last_seen_user_agent, relay_context.user_agent)
+      |> put_change(:last_seen_remote_ip, relay_context.remote_ip)
+      |> put_change(:last_seen_version, "0.7.412")
+      |> Repo.insert!()
 
+    # Create additional global relays
     for i <- 1..5 do
-      {:ok, _global_relay} =
-        Relays.upsert_relay(
-          global_relay_group,
+      _global_relay =
+        %Relay{}
+        |> Ecto.Changeset.cast(
           %{
+            name: "global-relay-#{i + 1}",
             ipv4: {189, 172, 72, 111 + i},
             ipv6: {0, 0, 0, 0, 0, 0, 0, i}
           },
-          %{relay_context | remote_ip: %Postgrex.INET{address: {189, 172, 72, 111 + i}}}
+          [:name, :ipv4, :ipv6]
         )
+        |> put_change(:last_seen_at, DateTime.utc_now())
+        |> put_change(:last_seen_user_agent, relay_context.user_agent)
+        |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: {189, 172, 72, 111 + i}})
+        |> put_change(:last_seen_version, "0.7.412")
+        |> Repo.insert!()
     end
 
     IO.puts("Created global relays:")
-    IO.puts("  Group #{global_relay_group.name}:")
-    IO.puts("    IPv4: #{global_relay.ipv4} IPv6: #{global_relay.ipv6}")
+    IO.puts("  Relay: IPv4: #{global_relay.ipv4} IPv6: #{global_relay.ipv6}")
     IO.puts("")
 
-    relay_group =
-      account
-      |> Relays.Group.Changeset.create(%{name: "mycorp-aws-relays"}, admin_subject)
+    site =
+      %Site{account: account}
+      |> Ecto.Changeset.cast(%{name: "mycro-aws-gws", tokens: [%{}]}, [:name])
+      |> Domain.Changeset.trim_change([:name])
+      |> Domain.Changeset.put_default_value(:name, &NameGenerator.generate/0)
+      |> Ecto.Changeset.validate_required([:name])
+      |> Site.changeset()
+      |> Domain.Changeset.put_default_value(:managed_by, :account)
+      |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Repo.insert!()
 
-    {:ok, relay_group_token} =
-      Tokens.create_token(%{
-        "type" => :relay_group,
-        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
-        "account_id" => admin_subject.account.id,
-        "relay_group_id" => global_relay_group.id
-      })
+    # Create site token using Auth module for proper handling
+    site_token_attrs = %{
+      type: :site,
+      secret_fragment: Crypto.random_token(32, encoder: :hex32),
+      account_id: admin_subject.account.id,
+      site_id: site.id
+    }
 
-    relay_group_token =
-      relay_group_token
+    # Use Auth.create_token which properly sets secret_salt and secret_hash
+    {:ok, site_token} = Auth.create_token(site_token_attrs)
+
+    site_token =
+      site_token
       |> maybe_repo_update.(
-        id: "549c4107-1492-4f8f-a4ec-a9d2a66d8aa9",
-        secret_salt: "jaJwcwTRhzQr15SgzTB2LA",
-        secret_fragment: "PU5AITE1O8VDVNMHMOAC77DIKMOGTDIA672S6G1AB02OS34H5ME0====",
-        secret_hash: "af133f7efe751ca978ec3e5fadf081ce9ab50138ff52862395858c3d2c11c0c5"
-      )
-
-    relay_group_encoded_token = Tokens.encode_fragment!(relay_group_token)
-
-    IO.puts("Created relay groups:")
-    IO.puts("  #{relay_group.name} token: #{relay_group_encoded_token}")
-    IO.puts("")
-
-    {:ok, relay} =
-      Relays.upsert_relay(
-        relay_group,
-        %{
-          ipv4: {189, 172, 73, 111},
-          ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
-        },
-        %Auth.Context{
-          type: :relay_group,
-          user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-          remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
-        }
-      )
-
-    for i <- 1..5 do
-      {:ok, _relay} =
-        Relays.upsert_relay(
-          relay_group,
-          %{
-            ipv4: {189, 172, 73, 111 + i},
-            ipv6: {0, 0, 0, 0, 0, 0, 0, i}
-          },
-          %Auth.Context{
-            type: :relay_group,
-            user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-            remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
-          }
-        )
-    end
-
-    IO.puts("Created relays:")
-    IO.puts("  Group #{relay_group.name}:")
-    IO.puts("    IPv4: #{relay.ipv4} IPv6: #{relay.ipv6}")
-    IO.puts("")
-
-    gateway_group =
-      account
-      |> Gateways.Group.Changeset.create(
-        %{name: "mycro-aws-gws", tokens: [%{}]},
-        admin_subject
-      )
-      |> Repo.insert!()
-
-    {:ok, gateway_group_token} =
-      Tokens.create_token(
-        %{
-          "type" => :gateway_group,
-          "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
-          "account_id" => admin_subject.account.id,
-          "gateway_group_id" => gateway_group.id
-        },
-        admin_subject
-      )
-
-    gateway_group_token =
-      gateway_group_token
-      |> maybe_repo_update.(
-        id: "2274560b-e97b-45e4-8b34-679c7617e98d",
+        id: Ecto.UUID.cast!("2274560b-e97b-45e4-8b34-679c7617e98d"),
         secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
         secret_fragment: "O02L7US2J3VINOMPR9J6IL88QIQP6UO8AQVO6U5IPL0VJC22JGH0====",
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
       )
 
-    gateway_group_encoded_token = Tokens.encode_fragment!(gateway_group_token)
+    site_encoded_token = Auth.encode_fragment!(site_token)
 
-    IO.puts("Created gateway groups:")
-    IO.puts("  #{gateway_group.name} token: #{gateway_group_encoded_token}")
+    IO.puts("Created sites:")
+    IO.puts("  #{site.name} token: #{site_encoded_token}")
     IO.puts("")
 
+    # Create gateway directly
     {:ok, gateway1} =
-      Gateways.upsert_gateway(
-        gateway_group,
+      create_gateway(
         %{
+          site_id: site.id,
           external_id: Ecto.UUID.generate(),
-          name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
+          name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
         },
         %Auth.Context{
-          type: :gateway_group,
+          type: :site,
           user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
           remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
         }
       )
 
+    # Create another gateway
     {:ok, gateway2} =
-      Gateways.upsert_gateway(
-        gateway_group,
+      create_gateway(
         %{
+          site_id: site.id,
           external_id: Ecto.UUID.generate(),
-          name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
+          name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
         },
         %Auth.Context{
-          type: :gateway_group,
+          type: :site,
           user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
           remote_ip: %Postgrex.INET{address: {164, 112, 78, 62}}
         }
       )
 
     for i <- 1..10 do
+      # Create more gateways
       {:ok, _gateway} =
-        Gateways.upsert_gateway(
-          gateway_group,
+        create_gateway(
           %{
+            site_id: site.id,
             external_id: Ecto.UUID.generate(),
-            name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
+            name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
             public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
           },
           %Auth.Context{
-            type: :gateway_group,
+            type: :site,
             user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
             remote_ip: %Postgrex.INET{address: {164, 112, 78, 62 + i}}
           }
@@ -856,14 +1096,14 @@ defmodule Domain.Repo.Seeds do
     end
 
     IO.puts("Created gateways:")
-    gateway_name = "#{gateway_group.name}-#{gateway1.name}"
+    gateway_name = "#{site.name}-#{gateway1.name}"
     IO.puts("  #{gateway_name}:")
     IO.puts("    External UUID: #{gateway1.external_id}")
     IO.puts("    Public Key: #{gateway1.public_key}")
     IO.puts("    IPv4: #{gateway1.ipv4} IPv6: #{gateway1.ipv6}")
     IO.puts("")
 
-    gateway_name = "#{gateway_group.name}-#{gateway2.name}"
+    gateway_name = "#{site.name}-#{gateway2.name}"
     IO.puts("  #{gateway_name}:")
     IO.puts("    External UUID: #{gateway1.external_id}")
     IO.puts("    Public Key: #{gateway2.public_key}")
@@ -871,90 +1111,90 @@ defmodule Domain.Repo.Seeds do
     IO.puts("")
 
     {:ok, dns_google_resource} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :dns,
           name: "foobar.com",
           address: "foobar.com",
           address_description: "https://foobar.com/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
     {:ok, firez_one} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :dns,
           name: "**.firez.one",
           address: "**.firez.one",
           address_description: "https://firez.one/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
     {:ok, firezone_dev} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :dns,
           name: "*.firezone.dev",
           address: "*.firezone.dev",
           address_description: "https://firezone.dev/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
     {:ok, example_dns} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :dns,
           name: "example.com",
           address: "example.com",
           address_description: "https://example.com:1234/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
     {:ok, ip6only} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :dns,
           name: "ip6only",
           address: "ip6only.me",
           address_description: "https://ip6only.me/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
     {:ok, address_description_null_resource} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :dns,
           name: "Example",
           address: "*.example.com",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
     {:ok, dns_gitlab_resource} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :dns,
           name: "gitlab.mycorp.com",
           address: "gitlab.mycorp.com",
           address_description: "https://gitlab.mycorp.com/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          site_id: site.id,
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -965,13 +1205,13 @@ defmodule Domain.Repo.Seeds do
       )
 
     {:ok, ip_resource} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :ip,
           name: "Public DNS",
           address: "1.2.3.4",
           address_description: "http://1.2.3.4:3000/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          site_id: site.id,
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -982,39 +1222,39 @@ defmodule Domain.Repo.Seeds do
       )
 
     {:ok, cidr_resource} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :cidr,
           name: "MyCorp Network",
-          address: "172.20.0.1/16",
-          address_description: "172.20.0.1/16",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          address: "172.20.0.0/16",
+          address_description: "172.20.0.0/16",
+          site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
     {:ok, ipv6_resource} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :cidr,
           name: "MyCorp Network (IPv6)",
-          address: "172:20:0::1/64",
-          address_description: "172:20:0::1/64",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          address: "172:20::/64",
+          address_description: "172:20::/64",
+          site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
     {:ok, dns_httpbin_resource} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :dns,
           name: "**.httpbin",
           address: "**.httpbin",
           address_description: "http://httpbin/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          site_id: site.id,
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -1025,13 +1265,13 @@ defmodule Domain.Repo.Seeds do
       )
 
     {:ok, search_domain_resource} =
-      Resources.create_resource(
+      create_resource(
         %{
           type: :dns,
           name: "**.httpbin.search.test",
           address: "**.httpbin.search.test",
           address_description: "http://httpbin/",
-          connections: [%{gateway_group_id: gateway_group.id}],
+          site_id: site.id,
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},
             %{ports: ["53"], protocol: :udp},
@@ -1055,111 +1295,146 @@ defmodule Domain.Repo.Seeds do
     IO.puts("  #{search_domain_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("")
 
+    # Helper function to create policy directly without context module
+    create_policy = fn attrs, subject ->
+      policy =
+        %Policy{
+          account_id: subject.account.id,
+          description: attrs[:description] || attrs["description"],
+          group_id: attrs[:group_id] || attrs["group_id"],
+          resource_id: attrs[:resource_id] || attrs["resource_id"],
+          conditions: attrs[:conditions] || attrs["conditions"] || []
+        }
+        |> Repo.insert!()
+
+      {:ok, policy}
+    end
+
     {:ok, policy} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "All Access To Google",
-          actor_group_id: everyone_group.id,
+          description: "All Access To Google",
+          group_id: everyone_group.id,
           resource_id: dns_google_resource.id
         },
         admin_subject
       )
 
     {:ok, _} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "All Access To firez.one",
-          actor_group_id: synced_group.id,
+          description: "All Access To firez.one",
+          group_id: synced_group.id,
           resource_id: firez_one.id
         },
         admin_subject
       )
 
     {:ok, _} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "All Access To firez.one",
-          actor_group_id: everyone_group.id,
+          description: "All Access To firez.one",
+          group_id: everyone_group.id,
           resource_id: example_dns.id
         },
         admin_subject
       )
 
     {:ok, _} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "All Access To firezone.dev",
-          actor_group_id: everyone_group.id,
+          description: "All Access To firezone.dev",
+          group_id: everyone_group.id,
           resource_id: firezone_dev.id
         },
         admin_subject
       )
 
     {:ok, _} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "All Access To ip6only.me",
-          actor_group_id: synced_group.id,
+          description: "All Access To ip6only.me",
+          group_id: synced_group.id,
           resource_id: ip6only.id
         },
         admin_subject
       )
 
     {:ok, _} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "All access to Google",
-          actor_group_id: everyone_group.id,
+          description: "All access to Google",
+          group_id: everyone_group.id,
           resource_id: address_description_null_resource.id
         },
         admin_subject
       )
 
     {:ok, _} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "Eng Access To Gitlab",
-          actor_group_id: eng_group.id,
+          description: "Eng Access To Gitlab",
+          group_id: eng_group.id,
           resource_id: dns_gitlab_resource.id
         },
         admin_subject
       )
 
     {:ok, _} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "All Access To Network",
-          actor_group_id: synced_group.id,
+          description: "All Access To Network",
+          group_id: synced_group.id,
           resource_id: cidr_resource.id
         },
         admin_subject
       )
 
     {:ok, _} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "All Access To Network",
-          actor_group_id: synced_group.id,
+          description: "All Access To Network",
+          group_id: synced_group.id,
           resource_id: ipv6_resource.id
         },
         admin_subject
       )
 
     {:ok, _} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "All Access To **.httpbin",
-          actor_group_id: everyone_group.id,
+          description: "All Access To **.httpbin",
+          group_id: everyone_group.id,
           resource_id: dns_httpbin_resource.id
         },
         admin_subject
       )
 
     {:ok, _} =
-      Policies.create_policy(
+      create_policy.(
         %{
-          name: "All Access To **.httpbin.search.test",
-          actor_group_id: everyone_group.id,
+          description: "Synced Group Access To **.httpbin",
+          group_id: synced_group.id,
+          resource_id: dns_httpbin_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      create_policy.(
+        %{
+          description: "All Access To **.httpbin.search.test",
+          group_id: everyone_group.id,
+          resource_id: search_domain_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      create_policy.(
+        %{
+          description: "Synced Group Access To **.httpbin.search.test",
+          group_id: synced_group.id,
           resource_id: search_domain_resource.id
         },
         admin_subject
@@ -1168,46 +1443,28 @@ defmodule Domain.Repo.Seeds do
     IO.puts("Policies Created")
     IO.puts("")
 
-    {:ok, unprivileged_subject_client_token} =
-      Auth.create_token(
-        unprivileged_actor_email_identity,
-        %{unprivileged_actor_context | type: :client},
-        nonce,
-        nil
-      )
-
-    unprivileged_subject_client_token =
-      maybe_repo_update.(unprivileged_subject_client_token,
-        id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
-        secret_salt: "kKKA7dtf3TJk0-1O2D9N1w",
-        secret_fragment: "AiIy_6pBk-WLeRAPzzkCFXNqIZKWBs2Ddw_2vgIQvFg",
-        secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5"
-      )
-
-    IO.puts("Created client tokens:")
-
-    IO.puts(
-      "  #{unprivileged_actor_email} token: #{nonce <> Domain.Tokens.encode_fragment!(unprivileged_subject_client_token)}"
-    )
-
-    IO.puts("")
-
     membership =
-      Repo.get_by(Domain.Actors.Membership,
+      Repo.get_by(Membership,
         group_id: synced_group.id,
         actor_id: unprivileged_actor.id
       )
 
-    {:ok, _flow} =
-      Flows.create_flow(
-        user_iphone,
-        gateway1,
-        cidr_resource.id,
-        policy.id,
-        membership.id,
-        unprivileged_subject,
-        unprivileged_subject.expires_at
-      )
+    # Create policy_authorization directly without context module
+    _policy_authorization =
+      %PolicyAuthorization{
+        client_id: user_iphone.id,
+        gateway_id: gateway1.id,
+        resource_id: cidr_resource.id,
+        policy_id: policy.id,
+        membership_id: membership.id,
+        account_id: unprivileged_subject.account.id,
+        token_id: unprivileged_subject.token_id,
+        client_remote_ip: {127, 0, 0, 1},
+        client_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+        gateway_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}, netmask: nil},
+        expires_at: unprivileged_subject.expires_at || DateTime.utc_now() |> DateTime.add(3600)
+      }
+      |> Repo.insert!()
   end
 end
 

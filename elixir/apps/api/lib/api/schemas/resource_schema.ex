@@ -23,9 +23,14 @@ defmodule API.Schemas.Resource do
           type: :string,
           description: "IP stack type. Only supported for DNS resources.",
           enum: ["ipv4_only", "ipv6_only", "dual"]
+        },
+        site_id: %Schema{
+          title: "Site ID",
+          description: "Site to connect the Resource to",
+          type: :string
         }
       },
-      required: [:name, :type],
+      required: [:name, :type, :site_id],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "Prod DB",
@@ -41,27 +46,12 @@ defmodule API.Schemas.Resource do
     alias OpenApiSpex.Schema
     alias API.Schemas.Resource
 
-    properties =
-      Map.merge(Resource.Schema.schema().properties, %{
-        connections: %Schema{
-          title: "Connections",
-          description: "Gateway Groups to connect the Resource to",
-          type: :array,
-          items: %Schema{
-            type: :object,
-            properties: %{
-              gateway_group_id: %Schema{type: :string, description: "Gateway Group ID"}
-            }
-          }
-        }
-      })
-
     OpenApiSpex.schema(%{
       title: "ResourceRequest",
       description: "POST body for creating a Resource",
       type: :object,
       properties: %{
-        resource: %Schema{properties: properties}
+        resource: %Schema{properties: Resource.Schema.schema().properties}
       },
       required: [:resource],
       example: %{
@@ -70,11 +60,7 @@ defmodule API.Schemas.Resource do
           "address" => "10.0.0.10",
           "address_description" => "Production Database",
           "type" => "ip",
-          "connections" => [
-            %{
-              "gateway_group_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
-            }
-          ]
+          "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
         }
       }
     })

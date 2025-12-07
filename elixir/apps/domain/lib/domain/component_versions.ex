@@ -1,5 +1,5 @@
 defmodule Domain.ComponentVersions do
-  alias Domain.{Actors.Actor, Clients.Client, ComponentVersions}
+  alias Domain.{Client, ComponentVersions}
   use Supervisor
   require Logger
 
@@ -64,7 +64,7 @@ defmodule Domain.ComponentVersions do
   def get_component_type(%Client{last_seen_user_agent: "Android" <> _rest}),
     do: :android
 
-  def get_component_type(%Client{actor: %Actor{type: :service_account}}), do: :headless
+  def get_component_type(%Client{actor: %Domain.Actor{type: :service_account}}), do: :headless
 
   def get_component_type(_), do: :gui
 

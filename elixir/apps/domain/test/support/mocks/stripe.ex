@@ -794,7 +794,7 @@ defmodule Domain.Mocks.Stripe do
 
     %{
       "account_admin_users_count" => 1,
-      "gateway_groups_count" => 10,
+      "sites_count" => 10,
       "monthly_active_users_count" => "unlimited",
       "service_accounts_count" => 10,
       "users_count" => 6
@@ -807,7 +807,7 @@ defmodule Domain.Mocks.Stripe do
 
     %{
       "account_admin_users_count" => 10,
-      "gateway_groups_count" => 100,
+      "sites_count" => 100,
       "internet_resource" => true,
       "monthly_active_users_count" => "unlimited",
       "policy_conditions" => true,
@@ -823,7 +823,7 @@ defmodule Domain.Mocks.Stripe do
 
     %{
       "account_admin_users_count" => "unlimited",
-      "gateway_groups_count" => "unlimited",
+      "sites_count" => "unlimited",
       "idp_sync" => true,
       "internet_resource" => true,
       "monthly_active_users_count" => "unlimited",

@@ -32,7 +32,7 @@ defmodule Web.AcceptanceCase.Auth do
     end
   end
 
-  def authenticate(session, %Domain.Auth.Identity{} = identity) do
+  def authenticate(session, %Domain.ExternalIdentity{} = identity) do
     user_agent = fetch_session_user_agent!(session)
     remote_ip = {127, 0, 0, 1}
 
@@ -50,7 +50,7 @@ defmodule Web.AcceptanceCase.Auth do
     authenticate(session, token)
   end
 
-  def authenticate(session, %Domain.Tokens.Token{} = token) do
+  def authenticate(session, %Domain.Token{} = token) do
     options = Web.Session.options()
 
     key = Keyword.fetch!(options, :key)
@@ -58,7 +58,7 @@ defmodule Web.AcceptanceCase.Auth do
     signing_salt = Keyword.fetch!(options, :signing_salt)
     secret_key_base = Web.Endpoint.config(:secret_key_base)
 
-    encoded_token = Domain.Tokens.encode_fragment!(token)
+    encoded_token = Domain.Crypto.encode_token_fragment!(token)
     encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
     signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
 

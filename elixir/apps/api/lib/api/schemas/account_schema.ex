@@ -31,7 +31,7 @@ defmodule API.Schemas.Account do
         monthly_active_users: API.Schemas.Account.LimitSchema,
         service_accounts: API.Schemas.Account.LimitSchema,
         account_admin_users: API.Schemas.Account.LimitSchema,
-        gateway_groups: API.Schemas.Account.LimitSchema
+        sites: API.Schemas.Account.LimitSchema
       }
     })
   end

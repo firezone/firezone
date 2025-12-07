@@ -285,7 +285,7 @@ defmodule Web.AuthControllerTest do
       assert response =~ "Sign in successful"
 
       cookie_key = "fz_client_auth"
-      conn = fetch_cookies(conn, signed: [cookie_key])
+      conn = fetch_cookies(conn, encrypted: [cookie_key])
       client_auth_data = conn.cookies[cookie_key]
 
       assert client_auth_data[:state] == "STATE"
@@ -329,8 +329,8 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
-      assert :erlang.binary_to_term(fz_recent_account_ids) == [identity.account_id]
+      assert %{"recent_account_ids" => recent_account_ids} = conn.cookies
+      assert :erlang.binary_to_term(recent_account_ids) == [identity.account_id]
     end
   end
 
@@ -424,7 +424,7 @@ defmodule Web.AuthControllerTest do
         )
 
       cookie_key = "fz_auth_state_#{provider.id}"
-      conn = fetch_cookies(conn, signed: [cookie_key])
+      conn = fetch_cookies(conn, encrypted: [cookie_key])
 
       assert {nonce, provider_identifier, params} =
                conn.cookies[cookie_key]
@@ -739,7 +739,7 @@ defmodule Web.AuthControllerTest do
       assert response = response(conn, 200)
       assert response =~ "Sign in successful"
 
-      conn = fetch_cookies(conn, signed: [client_auth_cookie_key])
+      conn = fetch_cookies(conn, encrypted: [client_auth_cookie_key])
       client_auth_data = conn.cookies[client_auth_cookie_key]
 
       assert client_auth_data[:state] == redirect_params["state"]
@@ -803,8 +803,8 @@ defmodule Web.AuthControllerTest do
           }
         )
 
-      assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
-      assert :erlang.binary_to_term(fz_recent_account_ids) == [identity.account_id]
+      assert %{"recent_account_ids" => recent_account_ids} = conn.cookies
+      assert :erlang.binary_to_term(recent_account_ids) == [identity.account_id]
     end
 
     test "resets the rate limit for signed in identity", %{
@@ -1135,7 +1135,7 @@ defmodule Web.AuthControllerTest do
         })
 
       cookie_key = "fz_client_auth"
-      conn = fetch_cookies(conn, signed: [cookie_key])
+      conn = fetch_cookies(conn, encrypted: [cookie_key])
       client_auth_data = conn.cookies[cookie_key]
 
       assert response = response(conn, 200)
@@ -1217,8 +1217,8 @@ defmodule Web.AuthControllerTest do
           "code" => "MyFakeCode"
         })
 
-      assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
-      assert :erlang.binary_to_term(fz_recent_account_ids) == [identity.account_id]
+      assert %{"recent_account_ids" => recent_account_ids} = conn.cookies
+      assert :erlang.binary_to_term(recent_account_ids) == [identity.account_id]
     end
   end
 
@@ -1279,7 +1279,7 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to(conn) =~ ~p"/#{account}"
 
-      refute Repo.get(Domain.Tokens.Token, conn.assigns.subject.token_id)
+      refute Repo.get(Domain.Token, conn.assigns.subject.token_id)
     end
 
     test "works even if user is already logged out", %{conn: conn} do
@@ -1293,7 +1293,7 @@ defmodule Web.AuthControllerTest do
       assert redirected_to(conn) =~ ~p"/#{account}"
       assert conn.private.plug_session == %{"preferred_locale" => "en_US", "sessions" => []}
 
-      refute Map.has_key?(conn.cookies, "fz_recent_account_ids")
+      refute Map.has_key?(conn.cookies, "recent_account_ids")
     end
 
     test "redirects to client-specific post sign out url", %{conn: conn} do
@@ -1328,16 +1328,16 @@ defmodule Web.AuthControllerTest do
           })
           |> fetch_cookies()
 
-        %{value: signed_state} = authorized_conn.resp_cookies["fz_recent_account_ids"]
-        conn = put_req_cookie(conn, "fz_recent_account_ids", signed_state)
+        %{value: signed_state} = authorized_conn.resp_cookies["recent_account_ids"]
+        conn = put_req_cookie(conn, "recent_account_ids", signed_state)
 
         {conn, [account.id] ++ account_ids}
       end)
 
     conn = %{conn | secret_key_base: Web.Endpoint.config(:secret_key_base)}
-    conn = fetch_cookies(conn, signed: ["fz_recent_account_ids"])
-    assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
-    recent_account_ids = :erlang.binary_to_term(fz_recent_account_ids)
+    conn = fetch_cookies(conn, encrypted: ["recent_account_ids"])
+    assert %{"recent_account_ids" => recent_account_ids} = conn.cookies
+    recent_account_ids = :erlang.binary_to_term(recent_account_ids)
     assert length(recent_account_ids) == 5
     assert recent_account_ids == Enum.take(account_ids, 5)
   end

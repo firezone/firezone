@@ -1,6 +1,5 @@
 elixir/_build
 elixir/deps
-elixir/apps/web/assets
 elixir/.elixir_ls
 rust/target
 kotlin/android/app/build

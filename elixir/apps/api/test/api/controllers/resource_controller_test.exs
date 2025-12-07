@@ -1,17 +1,21 @@
 defmodule API.ResourceControllerTest do
   use API.ConnCase, async: true
-  alias Domain.Resources.Resource
+  alias Domain.Resource
+
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.ResourceFixtures
+  import Domain.SiteFixtures
+  import Domain.SubjectFixtures
 
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
-    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    subject = Fixtures.Auth.create_subject(identity: identity)
+    account = account_fixture()
+    actor = actor_fixture(type: :api_client, account: account)
+    subject = subject_fixture(actor: actor, account: account)
 
     %{
       account: account,
       actor: actor,
-      identity: identity,
       subject: subject
     }
   end
@@ -23,7 +27,7 @@ defmodule API.ResourceControllerTest do
     end
 
     test "lists all resources", %{conn: conn, account: account, actor: actor} do
-      resources = for _ <- 1..3, do: Fixtures.Resources.create_resource(%{account: account})
+      resources = for _ <- 1..3, do: resource_fixture(account: account)
 
       conn =
         conn
@@ -53,7 +57,7 @@ defmodule API.ResourceControllerTest do
     end
 
     test "lists resources with limit", %{conn: conn, account: account, actor: actor} do
-      resources = for _ <- 1..3, do: Fixtures.Resources.create_resource(%{account: account})
+      resources = for _ <- 1..3, do: resource_fixture(account: account)
 
       conn =
         conn
@@ -85,13 +89,13 @@ defmodule API.ResourceControllerTest do
 
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      resource = Fixtures.Resources.create_resource(%{account: account})
+      resource = resource_fixture(account: account)
       conn = get(conn, "/resources/#{resource.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns a single resource", %{conn: conn, account: account, actor: actor} do
-      resource = Fixtures.Resources.create_resource(%{account: account, ip_stack: :ipv4_only})
+      resource = dns_resource_fixture(account: account, ip_stack: :ipv4_only)
 
       conn =
         conn
@@ -145,7 +149,7 @@ defmodule API.ResourceControllerTest do
                  "error" => %{
                    "reason" => "Unprocessable Entity",
                    "validation_errors" => %{
-                     "connections" => ["can't be blank"],
+                     "site_id" => ["can't be blank"],
                      "name" => ["can't be blank"],
                      "type" => ["can't be blank"]
                    }
@@ -154,16 +158,14 @@ defmodule API.ResourceControllerTest do
     end
 
     test "creates a resource with valid attrs", %{conn: conn, account: account, actor: actor} do
-      gateway_group = Fixtures.Gateways.create_group(%{account: account})
+      site = site_fixture(account: account)
 
       attrs = %{
         "address" => "google.com",
         "name" => "Google",
         "type" => "dns",
         "ip_stack" => "ipv6_only",
-        "connections" => [
-          %{"gateway_group_id" => gateway_group.id}
-        ]
+        "site_id" => site.id
       }
 
       conn =
@@ -184,13 +186,13 @@ defmodule API.ResourceControllerTest do
 
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      resource = Fixtures.Resources.create_resource(%{account: account})
+      resource = resource_fixture(account: account)
       conn = put(conn, "/resources/#{resource.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: actor} do
-      resource = Fixtures.Resources.create_resource(%{account: account})
+      resource = resource_fixture(account: account)
 
       conn =
         conn
@@ -202,29 +204,25 @@ defmodule API.ResourceControllerTest do
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
     end
 
-    test "returns not found when resource is deleted", %{
+    test "returns not found when resource does not exist", %{
       conn: conn,
-      account: account,
-      actor: actor,
-      subject: subject
+      actor: actor
     } do
-      resource = Fixtures.Resources.create_resource(%{account: account})
-      Domain.Resources.delete_resource(resource, subject)
-
       attrs = %{"name" => "Google"}
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/resources/#{resource.id}", resource: attrs)
+        |> put("/resources/#{Ecto.UUID.generate()}", resource: attrs)
 
       assert resp = json_response(conn, 404)
       assert resp == %{"error" => %{"reason" => "Not Found"}}
     end
 
     test "updates a resource", %{conn: conn, account: account, actor: actor} do
-      resource = Fixtures.Resources.create_resource(%{account: account})
+      site = site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site)
 
       attrs = %{"name" => "Google", "ip_stack" => "ipv6_only"}
 
@@ -245,13 +243,13 @@ defmodule API.ResourceControllerTest do
 
   describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      resource = Fixtures.Resources.create_resource(%{account: account})
+      resource = resource_fixture(account: account)
       conn = delete(conn, "/resources/#{resource.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes a resource", %{conn: conn, account: account, actor: actor} do
-      resource = Fixtures.Resources.create_resource(%{account: account})
+      resource = dns_resource_fixture(account: account)
 
       conn =
         conn
@@ -270,7 +268,7 @@ defmodule API.ResourceControllerTest do
                }
              }
 
-      refute Repo.get(Resource, resource.id)
+      refute Repo.get_by(Resource, id: resource.id, account_id: resource.account_id)
     end
   end
 end

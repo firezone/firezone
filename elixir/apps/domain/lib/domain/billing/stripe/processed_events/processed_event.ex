@@ -3,10 +3,11 @@ defmodule Domain.Billing.Stripe.ProcessedEvents.ProcessedEvent do
   Schema for tracking processed Stripe webhook events.
   Ensures idempotency and chronological ordering of event processing.
   """
-
-  use Domain, :schema
+  use Ecto.Schema
 
   @primary_key {:stripe_event_id, :string, []}
+  @timestamps_opts [type: :utc_datetime_usec]
+
   schema "processed_stripe_events" do
     field :event_type, :string
     field :processed_at, :utc_datetime_usec
