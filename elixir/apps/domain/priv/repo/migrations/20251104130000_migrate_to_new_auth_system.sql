@@ -157,39 +157,33 @@ BEGIN
     -- ============================================================================
     RAISE NOTICE 'Step 4: Migrating OpenID Connect identities for account %', v_account_id;
 
-    -- Delete identities that don't have issuer or idp_id (user never signed in)
-    DELETE FROM external_identities i
-    USING legacy_auth_providers p
-    WHERE i.provider_id = p.id
-      AND p.account_id = v_account_id
-      AND p.adapter = 'openid_connect'
-      AND (
-        i.provider_state->'claims'->>'iss' IS NULL OR
-        (
-          i.provider_state->'claims'->>'oid' IS NULL AND
-          i.provider_state->'claims'->>'sub' IS NULL
-        )
-      );
-
-    -- Update OpenID Connect identities with issuer/idp_id from provider_state
+    -- Update all OpenID Connect identities
     UPDATE external_identities i
     SET
       name = a.name,
-      idp_id = 'oidc:' || COALESCE(
+      idp_id = COALESCE(
+        i.provider_identifier,
         i.provider_state->'claims'->>'oid',
         i.provider_state->'claims'->>'sub'
       ),
-      issuer = i.provider_state->'claims'->>'iss'
+      issuer = COALESCE(
+        i.provider_state->'claims'->>'iss',
+        p.adapter_state->'claims'->>'iss',
+        REGEXP_REPLACE(
+          REGEXP_REPLACE(
+            p.adapter_config->>'discovery_document_uri',
+            '/\\.well-known/.*$',
+            ''
+          ),
+          '/$',
+          ''
+        )
+      )
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id
       AND i.provider_id = p.id
       AND p.account_id = v_account_id
-      AND p.adapter = 'openid_connect'
-      AND i.provider_state->'claims'->>'iss' IS NOT NULL
-      AND (
-        i.provider_state->'claims'->>'oid' IS NOT NULL OR
-        i.provider_state->'claims'->>'sub' IS NOT NULL
-      );
+      AND p.adapter = 'openid_connect';
 
     -- ============================================================================
     -- STEP 5: MIGRATE GOOGLE WORKSPACE IDENTITIES
@@ -221,13 +215,24 @@ BEGIN
         i.provider_state->'claims'->>'oid',
         i.provider_identifier
       ),
-      issuer = p.adapter_state->'claims'->>'iss'
+      issuer = COALESCE(
+        i.provider_state->'claims'->>'iss',
+        p.adapter_state->'claims'->>'iss',
+        REGEXP_REPLACE(
+          REGEXP_REPLACE(
+            p.adapter_config->>'discovery_document_uri',
+            '/\\.well-known/.*$',
+            ''
+          ),
+          '/$',
+          ''
+        )
+      )
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id
       AND i.provider_id = p.id
       AND p.account_id = v_account_id
-      AND p.adapter = 'microsoft_entra'
-      AND p.adapter_state->'claims'->>'iss' IS NOT NULL;
+      AND p.adapter = 'microsoft_entra';
 
     -- ============================================================================
     -- STEP 7: MIGRATE OKTA IDENTITIES
@@ -239,13 +244,24 @@ BEGIN
     SET
       name = a.name,
       idp_id = i.provider_identifier,
-      issuer = p.adapter_state->'claims'->>'iss'
+      issuer = COALESCE(
+        i.provider_state->'claims'->>'iss',
+        p.adapter_state->'claims'->>'iss',
+        REGEXP_REPLACE(
+          REGEXP_REPLACE(
+            p.adapter_config->>'discovery_document_uri',
+            '/\\.well-known/.*$',
+            ''
+          ),
+          '/$',
+          ''
+        )
+      )
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id
       AND i.provider_id = p.id
       AND p.account_id = v_account_id
-      AND p.adapter = 'okta'
-      AND p.adapter_state->'claims'->>'iss' IS NOT NULL;
+      AND p.adapter = 'okta';
 
     -- ============================================================================
     -- STEP 8: MIGRATE ACTOR GROUPS
