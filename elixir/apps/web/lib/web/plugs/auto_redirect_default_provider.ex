@@ -21,8 +21,12 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
   def init(opts), do: opts
 
   @impl true
+  # Only redirect from the base sign-in page, not from provider-specific routes
   def call(
-        %{params: %{"as" => "client", "account_id_or_slug" => account_id_or_slug}} = conn,
+        %{
+          params: %{"as" => "client", "account_id_or_slug" => account_id_or_slug},
+          path_info: [_account]
+        } = conn,
         _opts
       ) do
     with %Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
@@ -45,7 +49,6 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
     end
   end
 
-  # Non-client sign in
   def call(conn, _opts) do
     conn
   end
