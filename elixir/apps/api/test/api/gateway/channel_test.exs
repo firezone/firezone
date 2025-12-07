@@ -1,29 +1,44 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Accounts, Changes, Gateways, PubSub}
+  alias Domain.{Changes, PubSub}
   import Domain.Cache.Cacheable, only: [to_cache: 1]
   import ExUnit.CaptureLog
 
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.ClientFixtures
+  import Domain.GatewayFixtures
+  import Domain.GroupFixtures
+  import Domain.MembershipFixtures
+  import Domain.PolicyAuthorizationFixtures
+  import Domain.PolicyFixtures
+  import Domain.RelayFixtures
+  import Domain.ResourceFixtures
+  import Domain.SiteFixtures
+  import Domain.SubjectFixtures
+  import Domain.TokenFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    identity = Fixtures.Auth.create_identity(actor: actor, account: account)
-    subject = Fixtures.Auth.create_subject(identity: identity)
-    client = Fixtures.Clients.create_client(subject: subject)
-    gateway = Fixtures.Gateways.create_gateway(account: account)
-    {:ok, site} = Sites.fetch_site_by_id(gateway.site_id, subject)
+    account = account_fixture()
+    actor = actor_fixture(type: :account_admin_user, account: account)
+    group = group_fixture(account: account)
+    membership = membership_fixture(account: account, actor: actor, group: group)
+
+    subject = subject_fixture(account: account, actor: actor)
+    client = client_fixture(account: account, actor: actor)
+
+    site = site_fixture(account: account)
+    gateway = gateway_fixture(account: account, site: site)
 
     resource =
-      Fixtures.Resources.create_resource(
+      dns_resource_fixture(
         account: account,
-        site_id: gateway.site_id
+        site: site
       )
 
-    token =
-      Fixtures.Sites.create_token(
-        site: site,
-        account: account
-      )
+    policy = policy_fixture(account: account, group: group, resource: resource)
+
+    token = site_token_fixture(site: site, account: account)
 
     {:ok, _, socket} =
       API.Gateway.Socket
@@ -36,22 +51,24 @@ defmodule API.Gateway.ChannelTest do
       })
       |> subscribe_and_join(API.Gateway.Channel, "gateway")
 
-    relay = Fixtures.Relays.create_relay()
-    global_relay = Fixtures.Relays.create_relay()
+    relay = relay_fixture()
+    global_relay = relay_fixture()
 
-    Fixtures.Relays.update_relay(global_relay,
+    update_relay(global_relay,
       last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
     )
 
     %{
       account: account,
       actor: actor,
-      identity: identity,
+      group: group,
+      membership: membership,
       subject: subject,
       client: client,
       site: site,
       gateway: gateway,
       resource: resource,
+      policy: policy,
       relay: relay,
       global_relay: global_relay,
       socket: socket,
@@ -61,7 +78,7 @@ defmodule API.Gateway.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join", %{account: account, gateway: gateway} do
-      presence = Gateways.Presence.Account.list(account.id)
+      presence = Domain.Presence.Gateways.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
       assert is_number(online_at)
@@ -113,18 +130,22 @@ defmodule API.Gateway.ChannelTest do
 
     test ":prune_cache removes key completely when all policy authorizations are expired", %{
       account: account,
+      actor: actor,
       client: client,
       resource: resource,
       socket: socket,
       gateway: gateway,
-      subject: subject
+      subject: subject,
+      group: group
     } do
       expired_policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
           resource: resource,
-          gateway: gateway
+          gateway: gateway,
+          group: group
         )
 
       expired_expiration = DateTime.utc_now() |> DateTime.add(-30, :second)
@@ -175,26 +196,32 @@ defmodule API.Gateway.ChannelTest do
 
     test ":prune_cache prunes only expired policy authorizations from the cache", %{
       account: account,
+      actor: actor,
       client: client,
       resource: resource,
       socket: socket,
       gateway: gateway,
-      subject: subject
+      subject: subject,
+      group: group
     } do
       expired_policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
           resource: resource,
-          gateway: gateway
+          gateway: gateway,
+          group: group
         )
 
       unexpired_policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
           resource: resource,
-          gateway: gateway
+          gateway: gateway,
+          group: group
         )
 
       expired_expiration = DateTime.utc_now() |> DateTime.add(-30, :second)
@@ -308,7 +335,12 @@ defmodule API.Gateway.ChannelTest do
       account: account,
       token: token
     } do
-      :ok = PubSub.subscribe("sessions:#{token.id}")
+      # Consume the init message from join
+      assert_push "init", _init_payload
+
+      # Subscribe to the token's socket topic (Domain.Auth.socket_id returns "tokens:#{id}")
+      socket_topic = Domain.Auth.socket_id(token.id)
+      :ok = PubSub.subscribe(socket_topic)
 
       data = %{
         "id" => token.id,
@@ -323,7 +355,7 @@ defmodule API.Gateway.ChannelTest do
         event: "disconnect"
       }
 
-      assert topic == "sessions:#{token.id}"
+      assert topic == socket_topic
     end
 
     test "disconnect socket when gateway is deleted", %{
@@ -343,7 +375,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_receive %Changes.Change{
         lsn: 100,
-        old_struct: %Gateways.Gateway{}
+        old_struct: %Domain.Gateway{}
       }
 
       assert_receive {:EXIT, _pid, _reason}
@@ -352,16 +384,20 @@ defmodule API.Gateway.ChannelTest do
     test "pushes allow_access message", %{
       client: client,
       account: account,
+      actor: actor,
       gateway: gateway,
       resource: resource,
       relay: relay,
-      socket: socket
+      socket: socket,
+      group: group
     } do
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
-          resource: resource
+          resource: resource,
+          group: group
         )
 
       channel_pid = self()
@@ -370,8 +406,7 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      relay = Repo.preload(relay, :group)
-      relay_token = Fixtures.Relays.create_token(account: account)
+      relay_token = relay_token_fixture(account: account)
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
@@ -393,12 +428,7 @@ defmodule API.Gateway.ChannelTest do
                id: resource.id,
                name: resource.name,
                type: :dns,
-               filters: [
-                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
-                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
-                 %{protocol: :icmp}
-               ]
+               filters: []
              }
 
       assert payload.ref
@@ -410,24 +440,31 @@ defmodule API.Gateway.ChannelTest do
 
     test "pushes allow_access message for internet resource", %{
       account: account,
+      actor: actor,
       client: client,
       gateway: gateway,
       relay: relay,
-      socket: socket
+      socket: socket,
+      group: group
     } do
-      internet_site = Fixtures.Sites.create_internet_site(account: account)
+      # Consume the init message from join
+      assert_push "init", _init_payload
+
+      internet_site = internet_site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_internet_resource(
+        internet_resource_fixture(
           account: account,
-          site_id: internet_site.id
+          site: internet_site
         )
 
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
-          resource: resource
+          resource: resource,
+          group: group
         )
 
       channel_pid = self()
@@ -436,9 +473,11 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      relay = Repo.preload(relay, :group)
-      relay_token = Fixtures.Relays.create_token(account: account)
+      relay_token = relay_token_fixture(account: account)
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+
+      # Consume the relays_presence message from relay connection
+      assert_push "relays_presence", _relays_presence
 
       send(
         socket.channel_pid,
@@ -469,11 +508,13 @@ defmodule API.Gateway.ChannelTest do
     test "does not send reject_access if another policy authorization is granting access to the same client and resource",
          %{
            account: account,
+           actor: actor,
            client: client,
            resource: resource,
            gateway: gateway,
            socket: socket,
-           subject: subject
+           subject: subject,
+           group: group
          } do
       channel_pid = self()
       socket_ref = make_ref()
@@ -485,23 +526,27 @@ defmodule API.Gateway.ChannelTest do
       :ok = PubSub.Account.subscribe(account.id)
 
       policy_authorization1 =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           subject: subject,
           client: client,
           gateway: gateway,
           resource: resource,
-          expires_at: in_one_hour
+          expires_at: in_one_hour,
+          group: group
         )
 
       policy_authorization2 =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           subject: subject,
           client: client,
           gateway: gateway,
           resource: resource,
-          expires_at: in_one_day
+          expires_at: in_one_day,
+          group: group
         )
 
       send(
@@ -540,7 +585,7 @@ defmodule API.Gateway.ChannelTest do
         "token_id" => policy_authorization1.token_id,
         "gateway_id" => gateway.id,
         "policy_id" => policy_authorization1.policy_id,
-        "membership_id" => policy_authorization1.group_membership_id,
+        "membership_id" => policy_authorization1.membership_id,
         "expires_at" => policy_authorization1.expires_at
       }
 
@@ -567,12 +612,14 @@ defmodule API.Gateway.ChannelTest do
 
     test "handles policy authorization deletion event when access is removed", %{
       account: account,
+      actor: actor,
       client: client,
       resource: resource,
       gateway: gateway,
       relay: relay,
       socket: socket,
-      subject: subject
+      subject: subject,
+      group: group
     } do
       channel_pid = self()
       socket_ref = make_ref()
@@ -580,17 +627,18 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      relay = Repo.preload(relay, :group)
-      relay_token = Fixtures.Relays.create_token(account: account)
+      relay_token = relay_token_fixture(account: account)
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           subject: subject,
           client: client,
           resource: resource,
-          gateway: gateway
+          gateway: gateway,
+          group: group
         )
 
       data = %{
@@ -600,7 +648,7 @@ defmodule API.Gateway.ChannelTest do
         "account_id" => account.id,
         "gateway_id" => gateway.id,
         "token_id" => policy_authorization.token_id,
-        "membership_id" => policy_authorization.group_membership_id,
+        "membership_id" => policy_authorization.membership_id,
         "policy_id" => policy_authorization.policy_id,
         "expires_at" => policy_authorization.expires_at
       }
@@ -633,12 +681,14 @@ defmodule API.Gateway.ChannelTest do
     test "ignores policy authorization deletion for other policy authorizations",
          %{
            account: account,
+           actor: actor,
            client: client,
            resource: resource,
            gateway: gateway,
            relay: relay,
            socket: socket,
-           subject: subject
+           subject: subject,
+           group: group
          } do
       channel_pid = self()
       socket_ref = make_ref()
@@ -646,43 +696,48 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      relay = Repo.preload(relay, :group)
-      relay_token = Fixtures.Relays.create_token(account: account)
+      relay_token = relay_token_fixture(account: account)
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           subject: subject,
           client: client,
           resource: resource,
-          gateway: gateway
+          gateway: gateway,
+          group: group
         )
 
-      other_client = Fixtures.Clients.create_client(account: account, subject: subject)
+      other_client = client_fixture(account: account, actor: actor)
 
       other_resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: gateway.site_id
+          site: gateway.site
         )
 
       other_policy_authorization1 =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           subject: subject,
           client: other_client,
           resource: resource,
-          gateway: gateway
+          gateway: gateway,
+          group: group
         )
 
       other_policy_authorization2 =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           subject: subject,
           client: client,
           resource: other_resource,
-          gateway: gateway
+          gateway: gateway,
+          group: group
         )
 
       # Build up policy authorization cache
@@ -753,7 +808,7 @@ defmodule API.Gateway.ChannelTest do
         "gateway_id" => other_policy_authorization1.gateway_id,
         "token_id" => other_policy_authorization1.token_id,
         "policy_id" => other_policy_authorization1.policy_id,
-        "membership_id" => other_policy_authorization1.group_membership_id,
+        "membership_id" => other_policy_authorization1.membership_id,
         "expires_at" => other_policy_authorization1.expires_at
       }
 
@@ -775,7 +830,7 @@ defmodule API.Gateway.ChannelTest do
         "gateway_id" => other_policy_authorization2.gateway_id,
         "token_id" => other_policy_authorization2.token_id,
         "policy_id" => other_policy_authorization2.policy_id,
-        "membership_id" => other_policy_authorization2.group_membership_id,
+        "membership_id" => other_policy_authorization2.membership_id,
         "expires_at" => other_policy_authorization2.expires_at
       }
 
@@ -795,16 +850,20 @@ defmodule API.Gateway.ChannelTest do
     test "ignores other resource updates", %{
       client: client,
       account: account,
+      actor: actor,
       gateway: gateway,
       resource: resource,
       relay: relay,
-      socket: socket
+      socket: socket,
+      group: group
     } do
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
-          resource: resource
+          resource: resource,
+          group: group
         )
 
       channel_pid = self()
@@ -812,8 +871,7 @@ defmodule API.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
       stamp_secret = Ecto.UUID.generate()
-      relay = Repo.preload(relay, :group)
-      relay_token = Fixtures.Relays.create_token(account: account)
+      relay_token = relay_token_fixture(account: account)
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
@@ -858,8 +916,10 @@ defmodule API.Gateway.ChannelTest do
       client: client,
       gateway: gateway,
       account: account,
+      actor: actor,
       resource: resource,
-      socket: socket
+      socket: socket,
+      group: group
     } do
       channel_pid = self()
       socket_ref = make_ref()
@@ -867,11 +927,13 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
           resource: resource,
-          gateway: gateway
+          gateway: gateway,
+          group: group
         )
 
       :ok = PubSub.Account.subscribe(account.id)
@@ -916,8 +978,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert_receive %Changes.Change{
         lsn: 100,
-        old_struct: %Domain.Resources.Resource{id: ^resource_id},
-        struct: %Domain.Resources.Resource{id: ^resource_id, address: "new-address"}
+        old_struct: %Domain.Resource{id: ^resource_id},
+        struct: %Domain.Resource{id: ^resource_id, address: "new-address"}
       }
 
       assert_push "reject_access", payload
@@ -932,14 +994,18 @@ defmodule API.Gateway.ChannelTest do
       client: client,
       gateway: gateway,
       account: account,
+      actor: actor,
       resource: resource,
-      socket: socket
+      socket: socket,
+      group: group
     } do
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
-          resource: resource
+          resource: resource,
+          group: group
         )
 
       channel_pid = self()
@@ -1092,7 +1158,9 @@ defmodule API.Gateway.ChannelTest do
     end
 
     test "does not send resource_updated when DNS adaptation fails", %{
-      socket: socket
+      socket: socket,
+      account: account,
+      site: site
     } do
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
@@ -1101,12 +1169,10 @@ defmodule API.Gateway.ChannelTest do
 
       # Create a DNS resource with an address that can't be adapted
       # For pre-1.2.0, addresses with wildcards not at the beginning get dropped
-      account = Fixtures.Accounts.create_account()
-
       resource =
-        Fixtures.Resources.create_resource(
+        dns_resource_fixture(
           account: account,
-          type: :dns,
+          site: site,
           address: "example.*.com"
         )
 
@@ -1132,7 +1198,8 @@ defmodule API.Gateway.ChannelTest do
 
     test "adapts DNS resource address for old gateway versions", %{
       socket: socket,
-      account: account
+      account: account,
+      site: site
     } do
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
@@ -1142,11 +1209,10 @@ defmodule API.Gateway.ChannelTest do
       # Create a DNS resource with an address that needs adaptation for old versions
       # Use the existing account from setup so the channel receives the update
       resource =
-        Fixtures.Resources.create_resource(
+        dns_resource_fixture(
           account: account,
-          type: :dns,
-          address: "**.example.com",
-          site_id: socket.assigns.gateway.site_id
+          site: site,
+          address: "**.example.com"
         )
 
       old_data = %{
@@ -1187,20 +1253,20 @@ defmodule API.Gateway.ChannelTest do
     } do
       stamp_secret = Ecto.UUID.generate()
 
-      relay1 = Fixtures.Relays.create_relay()
-      relay_token = Fixtures.Relays.create_global_token()
+      relay1 = relay_fixture()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay1, stamp_secret, relay_token.id)
 
-      Fixtures.Relays.update_relay(relay1,
+      update_relay(relay1,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
         last_seen_remote_ip_location_lat: 37.0,
         last_seen_remote_ip_location_lon: -120.0
       )
 
-      relay2 = Fixtures.Relays.create_relay()
+      relay2 = relay_fixture()
       :ok = Domain.Presence.Relays.connect(relay2, stamp_secret, relay_token.id)
 
-      Fixtures.Relays.update_relay(relay2,
+      update_relay(relay2,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-100, :second),
         last_seen_remote_ip_location_lat: 38.0,
         last_seen_remote_ip_location_lon: -121.0
@@ -1249,11 +1315,14 @@ defmodule API.Gateway.ChannelTest do
       site: site,
       token: token
     } do
+      # Consume the init message from the setup socket
+      assert_push "init", _setup_init
+
       stamp_secret = Ecto.UUID.generate()
 
-      relay = Fixtures.Relays.create_relay()
+      relay = relay_fixture()
 
-      Fixtures.Relays.update_relay(relay,
+      update_relay(relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
         last_seen_remote_ip_location_lat: 37.0,
         last_seen_remote_ip_location_lon: -120.0
@@ -1271,7 +1340,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "init", %{relays: []}
 
-      relay_token = Fixtures.Relays.create_global_token()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       assert_push "relays_presence",
@@ -1290,9 +1359,9 @@ defmodule API.Gateway.ChannelTest do
                username: _
              } = relay_view
 
-      other_relay = Fixtures.Relays.create_relay()
+      other_relay = relay_fixture()
 
-      Fixtures.Relays.update_relay(other_relay,
+      update_relay(other_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
         last_seen_remote_ip_location_lat: 37.0,
         last_seen_remote_ip_location_lon: -120.0
@@ -1352,16 +1421,20 @@ defmodule API.Gateway.ChannelTest do
     test "pushes request_connection message", %{
       client: client,
       account: account,
+      actor: actor,
       resource: resource,
       gateway: gateway,
       global_relay: relay,
-      socket: socket
+      socket: socket,
+      group: group
     } do
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
-          resource: resource
+          resource: resource,
+          group: group
         )
 
       channel_pid = self()
@@ -1371,8 +1444,7 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD"
 
       stamp_secret = Ecto.UUID.generate()
-      relay = Repo.preload(relay, :group)
-      relay_token = Fixtures.Relays.create_global_token(group: relay.group)
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
@@ -1397,12 +1469,7 @@ defmodule API.Gateway.ChannelTest do
                id: resource.id,
                name: resource.name,
                type: :dns,
-               filters: [
-                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
-                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
-                 %{protocol: :icmp}
-               ]
+               filters: []
              }
 
       assert payload.client == %{
@@ -1424,12 +1491,14 @@ defmodule API.Gateway.ChannelTest do
     test "request_connection tracks policy authorization and sends reject_access when policy authorization is deleted",
          %{
            account: account,
+           actor: actor,
            client: client,
            gateway: gateway,
            resource: resource,
            relay: relay,
            socket: socket,
-           subject: subject
+           subject: subject,
+           group: group
          } do
       channel_pid = self()
       socket_ref = make_ref()
@@ -1438,17 +1507,18 @@ defmodule API.Gateway.ChannelTest do
       preshared_key = "PSK"
 
       stamp_secret = Ecto.UUID.generate()
-      relay = Repo.preload(relay, :group)
-      relay_token = Fixtures.Relays.create_token(account: account)
+      relay_token = relay_token_fixture(account: account)
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           subject: subject,
           client: client,
           resource: resource,
-          gateway: gateway
+          gateway: gateway,
+          group: group
         )
 
       send(
@@ -1473,7 +1543,7 @@ defmodule API.Gateway.ChannelTest do
         "account_id" => account.id,
         "gateway_id" => gateway.id,
         "token_id" => policy_authorization.token_id,
-        "membership_id" => policy_authorization.group_membership_id,
+        "membership_id" => policy_authorization.membership_id,
         "policy_id" => policy_authorization.policy_id,
         "expires_at" => policy_authorization.expires_at
       }
@@ -1492,16 +1562,20 @@ defmodule API.Gateway.ChannelTest do
     test "pushes authorize_flow message", %{
       client: client,
       account: account,
+      actor: actor,
       gateway: gateway,
       resource: resource,
       socket: socket,
-      subject: subject
+      subject: subject,
+      group: group
     } do
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
-          resource: resource
+          resource: resource,
+          group: group
         )
 
       channel_pid = self()
@@ -1537,12 +1611,7 @@ defmodule API.Gateway.ChannelTest do
                id: resource.id,
                name: resource.name,
                type: :dns,
-               filters: [
-                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
-                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
-                 %{protocol: :icmp}
-               ]
+               filters: []
              }
 
       assert payload.client == %{
@@ -1556,16 +1625,16 @@ defmodule API.Gateway.ChannelTest do
                device_uuid: client.device_uuid,
                identifier_for_vendor: client.identifier_for_vendor,
                firebase_installation_id: client.firebase_installation_id,
-               # Hardcode these to avoid having to reparse the user agent.
-               device_os_name: "iOS",
-               device_os_version: "12.5"
+               # These are parsed from the user agent
+               device_os_name: "macOS",
+               device_os_version: "14.0"
              }
 
       assert payload.subject == %{
-               identity_id: subject.identity.id,
-               identity_name: subject.actor.name,
+               auth_provider_id: subject.auth_provider_id,
                actor_id: subject.actor.id,
-               actor_email: subject.identity.email
+               actor_email: subject.actor.email,
+               actor_name: subject.actor.name
              }
 
       assert payload.client_ice_credentials == ice_credentials.client
@@ -1578,11 +1647,13 @@ defmodule API.Gateway.ChannelTest do
     test "authorize_flow tracks policy authorization and sends reject_access when policy authorization is deleted",
          %{
            account: account,
+           actor: actor,
            client: client,
            gateway: gateway,
            resource: resource,
            socket: socket,
-           subject: subject
+           subject: subject,
+           group: group
          } do
       channel_pid = self()
       socket_ref = make_ref()
@@ -1595,12 +1666,14 @@ defmodule API.Gateway.ChannelTest do
       }
 
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           subject: subject,
           client: client,
           resource: resource,
-          gateway: gateway
+          gateway: gateway,
+          group: group
         )
 
       send(
@@ -1626,7 +1699,7 @@ defmodule API.Gateway.ChannelTest do
         "account_id" => account.id,
         "gateway_id" => gateway.id,
         "token_id" => policy_authorization.token_id,
-        "membership_id" => policy_authorization.group_membership_id,
+        "membership_id" => policy_authorization.membership_id,
         "policy_id" => policy_authorization.policy_id,
         "expires_at" => policy_authorization.expires_at
       }
@@ -1652,16 +1725,20 @@ defmodule API.Gateway.ChannelTest do
     test "flow_authorized forwards reply to the client channel", %{
       client: client,
       account: account,
+      actor: actor,
       resource: resource,
       gateway: gateway,
       socket: socket,
-      subject: subject
+      subject: subject,
+      group: group
     } do
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
-          resource: resource
+          resource: resource,
+          group: group
         )
 
       channel_pid = self()
@@ -1727,16 +1804,20 @@ defmodule API.Gateway.ChannelTest do
     test "connection ready forwards RFC session description to the client channel", %{
       client: client,
       account: account,
+      actor: actor,
       resource: resource,
       relay: relay,
       gateway: gateway,
-      socket: socket
+      socket: socket,
+      group: group
     } do
       policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(
+        policy_authorization_fixture(
           account: account,
+          actor: actor,
           client: client,
-          resource: resource
+          resource: resource,
+          group: group
         )
 
       channel_pid = self()
@@ -1747,8 +1828,7 @@ defmodule API.Gateway.ChannelTest do
       payload = "RTC_SD"
 
       stamp_secret = Ecto.UUID.generate()
-      relay = Repo.preload(relay, :group)
-      relay_token = Fixtures.Relays.create_token(account: account)
+      relay_token = relay_token_fixture(account: account)
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
@@ -1838,18 +1918,16 @@ defmodule API.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      client_actor = Fixtures.Actors.create_actor(account: account, type: :service_account)
-      client_identity = Fixtures.Auth.create_identity(account: account, actor: client_actor)
+      client_actor = service_account_fixture(account: account)
 
       client_token =
-        Fixtures.Tokens.create_client_token(
+        client_token_fixture(
           account: account,
-          actor: client_actor,
-          identity: client_identity
+          actor: client_actor
         )
 
       :ok = Domain.Presence.Clients.connect(client, client_token.id)
-      PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
+      PubSub.subscribe(Domain.Auth.socket_id(subject.token_id))
       :ok = PubSub.Account.subscribe(gateway.account_id)
 
       push(socket, "broadcast_ice_candidates", attrs)
@@ -1893,18 +1971,16 @@ defmodule API.Gateway.ChannelTest do
       }
 
       :ok = PubSub.Account.subscribe(gateway.account_id)
-      client_actor = Fixtures.Actors.create_actor(account: account, type: :service_account)
-      client_identity = Fixtures.Auth.create_identity(account: account, actor: client_actor)
+      client_actor = service_account_fixture(account: account)
 
       client_token =
-        Fixtures.Tokens.create_client_token(
+        client_token_fixture(
           account: account,
-          actor: client_actor,
-          identity: client_identity
+          actor: client_actor
         )
 
       :ok = Domain.Presence.Clients.connect(client, client_token.id)
-      PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
+      PubSub.subscribe(Domain.Auth.socket_id(subject.token_id))
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
@@ -1919,9 +1995,12 @@ defmodule API.Gateway.ChannelTest do
   # Debouncer tests
   describe "handle_info/3" do
     test "push_leave cancels leave if reconnecting with the same stamp secret" do
-      relay1 = Fixtures.Relays.create_relay()
+      # Consume the init message from join
+      assert_push "init", _init_payload
+
+      relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
-      relay_token = Fixtures.Relays.create_global_token()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
@@ -1934,7 +2013,7 @@ defmodule API.Gateway.ChannelTest do
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
-      Fixtures.Relays.disconnect_relay(relay1)
+      disconnect_relay(relay1)
 
       # presence_diff isn't immediate
       Process.sleep(1)
@@ -1954,9 +2033,12 @@ defmodule API.Gateway.ChannelTest do
     end
 
     test "disconnects immediately if reconnecting with a different stamp secret" do
-      relay1 = Fixtures.Relays.create_relay()
+      # Consume the init message from join
+      assert_push "init", _init_payload
+
+      relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
-      relay_token = Fixtures.Relays.create_global_token()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
@@ -1969,7 +2051,7 @@ defmodule API.Gateway.ChannelTest do
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
-      Fixtures.Relays.disconnect_relay(relay1)
+      disconnect_relay(relay1)
 
       # presence_diff isn't immediate
       Process.sleep(1)
@@ -1992,9 +2074,12 @@ defmodule API.Gateway.ChannelTest do
     end
 
     test "disconnects after the debounce timeout expires" do
-      relay1 = Fixtures.Relays.create_relay()
+      # Consume the init message from join
+      assert_push "init", _init_payload
+
+      relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
-      relay_token = Fixtures.Relays.create_global_token()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
@@ -2007,7 +2092,7 @@ defmodule API.Gateway.ChannelTest do
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
-      Fixtures.Relays.disconnect_relay(relay1)
+      disconnect_relay(relay1)
 
       # Should receive disconnect after timeout
       assert_push "relays_presence",

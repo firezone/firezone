@@ -52,7 +52,7 @@ defmodule Domain.ResourceFixtures do
         :type,
         :ip_stack
       ])
-      |> Ecto.Changeset.cast_embed(:filters)
+      |> Ecto.Changeset.cast_embed(:filters, with: &filter_changeset/2)
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Domain.Resource.changeset()
 
@@ -116,15 +116,39 @@ defmodule Domain.ResourceFixtures do
 
   @doc """
   Generate an internet resource.
+  Internet resources don't have an address (it's set to nil by the changeset).
   """
   def internet_resource_fixture(attrs \\ %{}) do
-    attrs =
-      attrs
-      |> Enum.into(%{})
-      |> Map.put(:type, :internet)
-      |> Map.put(:address, "0.0.0.0/0")
+    attrs = Enum.into(attrs, %{})
 
-    resource_fixture(attrs)
+    # Get or create account
+    account = Map.get(attrs, :account) || account_fixture()
+
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    resource_attrs =
+      attrs
+      |> Map.delete(:account)
+      |> Map.delete(:site)
+      |> Map.put(:type, :internet)
+      |> Map.put_new(:name, "Internet Resource #{unique_num}")
+      |> Map.delete(:address)
+
+    changeset =
+      %Domain.Resource{}
+      |> Ecto.Changeset.cast(resource_attrs, [:name, :type])
+      |> Ecto.Changeset.put_assoc(:account, account)
+      |> Domain.Resource.changeset()
+
+    changeset =
+      if site = Map.get(attrs, :site) do
+        Ecto.Changeset.put_assoc(changeset, :site, site)
+      else
+        changeset
+      end
+
+    {:ok, resource} = Domain.Repo.insert(changeset)
+    resource
   end
 
   @doc """
@@ -165,5 +189,22 @@ defmodule Domain.ResourceFixtures do
       |> Map.put(:filters, [%{protocol: :udp, ports: ports}])
 
     resource_fixture(attrs)
+  end
+
+  @doc """
+  Update a resource with the given attributes.
+  """
+  def update_resource(resource, attrs) do
+    attrs = Enum.into(attrs, %{})
+
+    resource
+    |> Ecto.Changeset.cast(attrs, [:name, :address, :address_description, :site_id])
+    |> Domain.Repo.update!()
+  end
+
+  # Private helper for casting filter embeds
+  defp filter_changeset(filter, attrs) do
+    filter
+    |> Ecto.Changeset.cast(attrs, [:protocol, :ports])
   end
 end

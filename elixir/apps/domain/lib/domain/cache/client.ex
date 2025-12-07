@@ -539,10 +539,12 @@ defmodule Domain.Cache.Client do
     end
   end
 
-  defp min_expires_at(nil, nil),
-    do: raise("Both policy_expires_at and token_expires_at cannot be nil")
+  # When both are nil, there is no expiration
+  defp min_expires_at(nil, nil), do: nil
 
   defp min_expires_at(nil, token_expires_at), do: token_expires_at
+
+  defp min_expires_at(policy_expires_at, nil), do: policy_expires_at
 
   defp min_expires_at(%DateTime{} = policy_expires_at, %DateTime{} = token_expires_at) do
     if DateTime.compare(policy_expires_at, token_expires_at) == :lt do
@@ -581,6 +583,10 @@ defmodule Domain.Cache.Client do
         from(m in Domain.Membership, where: m.actor_id == ^actor_id)
         |> Safe.scoped(subject)
         |> Safe.all()
+        |> case do
+          {:error, :unauthorized} -> []
+          list -> list
+        end
 
       # Get the Everyone group for this account (if it exists)
       everyone_group =
@@ -597,6 +603,9 @@ defmodule Domain.Cache.Client do
       # Append a synthetic membership for the Everyone group
       case everyone_group do
         nil ->
+          memberships
+
+        {:error, :unauthorized} ->
           memberships
 
         group ->

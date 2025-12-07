@@ -52,10 +52,9 @@ defmodule API.Gateway.Channel do
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.gateway.account_id)
 
-    # Return all connected relays for the account
+    # Return all connected relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
-    :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe(&1.id))
-    :ok = maybe_subscribe_for_relays_presence(relays)
+    :ok = Presence.Relays.Global.subscribe()
 
     account = DB.get_account_by_id!(socket.assigns.gateway.account_id)
 
@@ -108,73 +107,47 @@ defmodule API.Gateway.Channel do
   #### Reacting to relay presence ####
   ####################################
 
+  # Handle relay presence changes from global topic
   @impl true
   def handle_info(
         %Phoenix.Socket.Broadcast{
           event: "presence_diff",
-          topic: "presences:relays:" <> relay_id,
-          payload: %{leaves: leaves}
+          topic: "presences:global_relays",
+          payload: %{joins: joins, leaves: leaves}
         },
         socket
       ) do
-    if Map.has_key?(leaves, relay_id) do
-      :ok = Presence.Relays.Relay.unsubscribe(relay_id)
+    relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
 
-      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
-      {:ok, relays} = select_relays(socket, [relay_id])
-      :ok = maybe_subscribe_for_relays_presence(relays)
+    # Get the relay IDs we're currently tracking
+    tracked_relay_ids = Map.keys(socket.assigns[:stamp_secrets] || %{})
 
-      :ok =
-        Enum.each(relays, fn relay ->
-          # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Presence.Relays.Relay.unsubscribe(relay.id)
-          :ok = Presence.Relays.Relay.subscribe(relay.id)
-        end)
+    # Filter leaves to only relays we're tracking
+    left_relay_ids =
+      leaves
+      |> Map.keys()
+      |> Enum.filter(&(&1 in tracked_relay_ids))
 
-      payload = %{
-        disconnected_ids: [relay_id],
-        connected:
-          Views.Relay.render_many(
-            relays,
-            socket.assigns.gateway.public_key,
-            relay_credentials_expire_at
-          )
-      }
+    # Queue leaves for tracked relays that disconnected
+    socket =
+      Enum.reduce(left_relay_ids, socket, fn relay_id, socket ->
+        {:ok, relays} = select_relays(socket, [relay_id])
 
-      socket = Presence.Relays.Debouncer.queue_leave(self(), socket, relay_id, payload)
+        payload = %{
+          disconnected_ids: [relay_id],
+          connected:
+            Views.Relay.render_many(
+              relays,
+              socket.assigns.gateway.public_key,
+              relay_credentials_expire_at
+            )
+        }
 
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
+        Presence.Relays.Debouncer.queue_leave(self(), socket, relay_id, payload)
+      end)
 
-  def handle_info(
-        %Phoenix.Socket.Broadcast{
-          event: "presence_diff",
-          topic: "presences:" <> _,
-          payload: %{joins: joins}
-        },
-        socket
-      )
-      when map_size(joins) > 0 do
-    {:ok, relays} = select_relays(socket)
-
-    if length(relays) > 0 do
-      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
-
-      :ok = Presence.Relays.Global.unsubscribe()
-
-      :ok =
-        Enum.each(relays, fn relay ->
-          # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Presence.Relays.Relay.unsubscribe(relay)
-          :ok = Presence.Relays.Relay.subscribe(relay)
-        end)
-
-      # Cache new stamp secrets
-      socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
-
+    # Handle joins
+    if map_size(joins) > 0 do
       # If a relay reconnects with a different stamp_secret, disconnect them immediately
       joined_ids = Map.keys(joins)
 
@@ -185,17 +158,38 @@ defmodule API.Gateway.Channel do
           socket.assigns.gateway.account_id
         )
 
-      push(socket, "relays_presence", %{
-        disconnected_ids: disconnected_ids,
-        connected:
-          Views.Relay.render_many(
-            relays,
-            socket.assigns.gateway.public_key,
-            relay_credentials_expire_at
-          )
-      })
+      # Count how many relays we've already sent to the gateway
+      current_relay_count = map_size(socket.assigns[:stamp_secrets] || %{})
 
-      {:noreply, socket}
+      # Only send relays_presence for new relays if gateway has < 2 relays,
+      # or if we need to notify about disconnected relays from stamp_secret changes
+      if current_relay_count < 2 or disconnected_ids != [] do
+        {:ok, relays} = select_relays(socket)
+
+        if length(relays) > 0 do
+          # Cache new stamp secrets
+          socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
+
+          push(socket, "relays_presence", %{
+            disconnected_ids: disconnected_ids,
+            connected:
+              Views.Relay.render_many(
+                relays,
+                socket.assigns.gateway.public_key,
+                relay_credentials_expire_at
+              )
+          })
+
+          {:noreply, socket}
+        else
+          {:noreply, socket}
+        end
+      else
+        # Gateway already has >= 2 relays, just cache any new stamp secrets for tracking
+        {:ok, relays} = select_relays(socket)
+        socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
+        {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
@@ -541,12 +535,6 @@ defmodule API.Gateway.Channel do
         ipv6_masquerade_enabled: true
       }
     })
-  end
-
-  defp maybe_subscribe_for_relays_presence([]), do: :ok
-
-  defp maybe_subscribe_for_relays_presence(_relays) do
-    :ok = Presence.Relays.Global.subscribe()
   end
 
   ##########################################

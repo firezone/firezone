@@ -77,7 +77,9 @@ defmodule Domain.PolicyFixtures do
         :group_id,
         :resource_id
       ])
-      |> Ecto.Changeset.cast_embed(:conditions)
+      |> Ecto.Changeset.cast_embed(:conditions,
+        with: &Domain.Policies.Condition.changeset(&1, &2, 0)
+      )
       |> Domain.Policy.changeset()
       |> Domain.Repo.insert()
 
@@ -162,5 +164,19 @@ defmodule Domain.PolicyFixtures do
       group = group_fixture(account: account)
       policy_fixture(Map.merge(attrs, %{group: group, resource: resource, account: account}))
     end
+  end
+
+  @doc """
+  Update a policy with the given attributes.
+  """
+  def update_policy(policy, attrs) do
+    attrs = Enum.into(attrs, %{})
+
+    policy
+    |> Ecto.Changeset.cast(attrs, [:description, :disabled_at])
+    |> Ecto.Changeset.cast_embed(:conditions,
+      with: &Domain.Policies.Condition.changeset(&1, &2, 0)
+    )
+    |> Domain.Repo.update!()
   end
 end

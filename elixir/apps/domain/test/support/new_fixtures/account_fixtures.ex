@@ -112,4 +112,19 @@ defmodule Domain.AccountFixtures do
     ])
     |> Repo.update!()
   end
+
+  @doc """
+  Update an account with the given attributes.
+  """
+  def update_account(account, attrs) do
+    attrs = Enum.into(attrs, %{})
+
+    account
+    |> cast(attrs, [:name, :legal_name, :slug, :disabled_at, :disabled_reason])
+    |> cast_embed(:config)
+    |> cast_embed(:features)
+    |> cast_embed(:limits)
+    |> cast_embed(:metadata)
+    |> Repo.update!()
+  end
 end

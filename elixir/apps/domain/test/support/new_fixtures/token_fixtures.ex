@@ -18,7 +18,9 @@ defmodule Domain.TokenFixtures do
       name: "Token #{unique_num}",
       secret_salt: generate_salt(),
       secret_hash: generate_hash(),
-      remaining_attempts: 3
+      remaining_attempts: 3,
+      # Default expiration 30 days from now
+      expires_at: DateTime.add(DateTime.utc_now(), 30, :day)
     })
   end
 

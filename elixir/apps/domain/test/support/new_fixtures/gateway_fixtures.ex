@@ -17,9 +17,10 @@ defmodule Domain.GatewayFixtures do
       name: "Gateway #{unique_num}",
       external_id: "gateway_#{unique_num}",
       public_key: generate_public_key(),
-      last_seen_user_agent: "Firezone-Gateway/1.0.0",
+      last_seen_user_agent: "Firezone-Gateway/1.3.0",
       last_seen_remote_ip: {100, 64, 0, 1},
-      last_seen_version: "1.0.0",
+      # Version 1.3.0+ is required for internet resources
+      last_seen_version: "1.3.0",
       last_seen_at: DateTime.utc_now()
     })
   end

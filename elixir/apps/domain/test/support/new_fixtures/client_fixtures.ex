@@ -16,9 +16,13 @@ defmodule Domain.ClientFixtures do
       name: "Client #{unique_num}",
       external_id: "client_#{unique_num}",
       public_key: generate_public_key(),
-      last_seen_user_agent: "Firezone-Client/1.0.0",
+      # User agent format: "OS_Name/OS_Version Client_Type/Client_Version"
+      # NOTE: The version in the user agent must match last_seen_version
+      # because the gateway view re-parses the version from the user agent
+      last_seen_user_agent: "macOS/14.0 apple-client/1.3.0",
       last_seen_remote_ip: {100, 64, 0, 1},
-      last_seen_version: "1.0.0",
+      last_seen_remote_ip_location_region: "US",
+      last_seen_version: "1.3.0",
       last_seen_at: DateTime.utc_now()
     })
   end
@@ -59,6 +63,10 @@ defmodule Domain.ClientFixtures do
         :public_key,
         :last_seen_user_agent,
         :last_seen_remote_ip,
+        :last_seen_remote_ip_location_region,
+        :last_seen_remote_ip_location_city,
+        :last_seen_remote_ip_location_lat,
+        :last_seen_remote_ip_location_lon,
         :last_seen_version,
         :last_seen_at,
         :device_serial,
@@ -134,6 +142,15 @@ defmodule Domain.ClientFixtures do
     for _ <- 1..count do
       client_fixture(Map.merge(attrs, %{actor: actor, account: account}))
     end
+  end
+
+  @doc """
+  Verify a client (sets verified_at timestamp).
+  """
+  def verify_client(client) do
+    client
+    |> Ecto.Changeset.change(verified_at: DateTime.utc_now())
+    |> Domain.Repo.update!()
   end
 
   # Private helpers

@@ -1,11 +1,38 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Clients, Changes, Gateways, PubSub, Resources}
+  alias Domain.{Auth, Changes, Presence, PubSub}
   import ExUnit.CaptureLog
+
+  import Domain.AccountFixtures
+
+  defp join_channel(client, subject) do
+    {:ok, _reply, socket} =
+      API.Client.Socket
+      |> socket("client:#{client.id}", %{
+        client: client,
+        subject: subject
+      })
+      |> subscribe_and_join(API.Client.Channel, "client")
+
+    socket
+  end
+
+  import Domain.ActorFixtures
+  import Domain.ClientFixtures
+  import Domain.GatewayFixtures
+  import Domain.GroupFixtures
+  import Domain.IdentityFixtures
+  import Domain.MembershipFixtures
+  import Domain.PolicyFixtures
+  import Domain.RelayFixtures
+  import Domain.ResourceFixtures
+  import Domain.SiteFixtures
+  import Domain.SubjectFixtures
+  import Domain.TokenFixtures
 
   setup do
     account =
-      Fixtures.Accounts.create_account(
+      account_fixture(
         config: %{
           clients_upstream_dns: %{
             type: :custom,
@@ -22,94 +49,101 @@ defmodule API.Client.ChannelTest do
         }
       )
 
-    group = Fixtures.Actors.create_group(account: account)
-    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    group = group_fixture(account: account)
+    actor = actor_fixture(type: :account_admin_user, account: account)
 
     membership =
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+      membership_fixture(account: account, actor: actor, group: group)
 
-    identity = Fixtures.Auth.create_identity(actor: actor, account: account)
-    subject = Fixtures.Auth.create_subject(identity: identity)
-    client = Fixtures.Clients.create_client(subject: subject)
+    identity = identity_fixture(actor: actor, account: account)
+    subject = subject_fixture(account: account, actor: actor)
+    client = client_fixture(account: account, actor: actor)
 
-    site = Fixtures.Sites.create_site(account: account)
-    site_token = Fixtures.Sites.create_token(account: account, site: site)
-    gateway = Fixtures.Gateways.create_gateway(account: account, site: site)
+    site = site_fixture(account: account)
+    site_token = site_token_fixture(account: account, site: site)
+    gateway = gateway_fixture(account: account, site: site)
 
-    internet_site = Fixtures.Sites.create_internet_site(account: account)
+    internet_site = internet_site_fixture(account: account)
 
     internet_site_token =
-      Fixtures.Sites.create_token(account: account, site: internet_site)
+      site_token_fixture(account: account, site: internet_site)
 
     internet_gateway =
-      Fixtures.Gateways.create_gateway(account: account, site: internet_site)
+      gateway_fixture(account: account, site: internet_site)
+
+    default_filters = [
+      %{protocol: :tcp, ports: ["80", "433"]},
+      %{protocol: :udp, ports: ["100-200"]},
+      %{protocol: :icmp}
+    ]
 
     dns_resource =
-      Fixtures.Resources.create_resource(
+      dns_resource_fixture(
         account: account,
         ip_stack: :ipv4_only,
-        site_id: site.id
+        site: site,
+        filters: default_filters
       )
 
     cidr_resource =
-      Fixtures.Resources.create_resource(
-        type: :cidr,
+      cidr_resource_fixture(
         address: "192.168.1.1/28",
         account: account,
-        site_id: site.id
+        site: site,
+        filters: default_filters
       )
 
     ip_resource =
-      Fixtures.Resources.create_resource(
-        type: :ip,
+      ip_resource_fixture(
         address: "192.168.100.1",
         account: account,
-        site_id: site.id
+        site: site,
+        filters: default_filters
       )
 
     internet_resource =
-      Fixtures.Resources.create_internet_resource(
+      internet_resource_fixture(
         account: account,
-        site_id: internet_site.id
+        site: internet_site
       )
 
     unauthorized_resource =
-      Fixtures.Resources.create_resource(
+      resource_fixture(
         account: account,
-        site_id: site.id
+        site: site
       )
 
     nonconforming_resource =
-      Fixtures.Resources.create_resource(
+      resource_fixture(
         account: account,
-        site_id: site.id
+        site: site
       )
 
     offline_resource =
-      Fixtures.Resources.create_resource(account: account)
+      resource_fixture(account: account)
       |> Ecto.Changeset.change(site_id: nil)
       |> Repo.update!()
 
     dns_resource_policy =
-      Fixtures.Policies.create_policy(
+      policy_fixture(
         account: account,
         group: group,
         resource: dns_resource
       )
 
-    Fixtures.Policies.create_policy(
+    policy_fixture(
       account: account,
       group: group,
       resource: cidr_resource
     )
 
-    Fixtures.Policies.create_policy(
+    policy_fixture(
       account: account,
       group: group,
       resource: ip_resource
     )
 
-    Fixtures.Policies.create_policy(
+    policy_fixture(
       account: account,
       group: group,
       resource: nonconforming_resource,
@@ -123,13 +157,13 @@ defmodule API.Client.ChannelTest do
     )
 
     internet_resource_policy =
-      Fixtures.Policies.create_policy(
+      policy_fixture(
         account: account,
         group: group,
         resource: internet_resource
       )
 
-    Fixtures.Policies.create_policy(
+    policy_fixture(
       account: account,
       group: group,
       resource: offline_resource
@@ -140,20 +174,12 @@ defmodule API.Client.ChannelTest do
     subject = %{subject | expires_at: expires_at}
 
     global_relay =
-      Fixtures.Relays.create_relay(
+      relay_fixture(
         last_seen_remote_ip_location_lat: 37,
         last_seen_remote_ip_location_lon: -120
       )
 
-    global_relay_token = Fixtures.Relays.create_global_token()
-
-    {:ok, _reply, socket} =
-      API.Client.Socket
-      |> socket("client:#{client.id}", %{
-        client: client,
-        subject: subject
-      })
-      |> subscribe_and_join(API.Client.Channel, "client")
+    global_relay_token = relay_token_fixture()
 
     %{
       account: account,
@@ -179,14 +205,14 @@ defmodule API.Client.ChannelTest do
       dns_resource_policy: dns_resource_policy,
       internet_resource_policy: internet_resource_policy,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
-      socket: socket
+      global_relay_token: global_relay_token
     }
   end
 
   describe "join/3" do
-    test "tracks presence after join", %{account: account, client: client} do
-      presence = Clients.Presence.Account.list(account.id)
+    test "tracks presence after join", %{account: account, client: client, subject: subject} do
+      _socket = join_channel(client, subject)
+      presence = Presence.Clients.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
       assert is_number(online_at)
@@ -219,7 +245,7 @@ defmodule API.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      :ok = PubSub.subscribe("sessions:#{subject.token_id}")
+      :ok = PubSub.subscribe(Auth.socket_id(subject.token_id))
 
       {:ok, _reply, _socket} =
         API.Client.Socket
@@ -245,11 +271,12 @@ defmodule API.Client.ChannelTest do
         event: "disconnect"
       }
 
-      assert topic == "sessions:#{token.id}"
+      assert topic == Auth.socket_id(token.id)
     end
 
     test "sends list of available resources after join", %{
       client: client,
+      subject: subject,
       internet_site: internet_site,
       site: site,
       dns_resource: dns_resource,
@@ -259,6 +286,8 @@ defmodule API.Client.ChannelTest do
       internet_resource: internet_resource,
       offline_resource: offline_resource
     } do
+      _socket = join_channel(client, subject)
+
       assert_push "init", %{
         resources: resources,
         interface: interface,
@@ -275,7 +304,7 @@ defmodule API.Client.ChannelTest do
                name: dns_resource.name,
                address: dns_resource.address,
                address_description: dns_resource.address_description,
-               sites: [
+               gateway_groups: [
                  %{
                    id: site.id,
                    name: site.name
@@ -295,7 +324,7 @@ defmodule API.Client.ChannelTest do
                name: cidr_resource.name,
                address: cidr_resource.address,
                address_description: cidr_resource.address_description,
-               sites: [
+               gateway_groups: [
                  %{
                    id: site.id,
                    name: site.name
@@ -315,7 +344,7 @@ defmodule API.Client.ChannelTest do
                name: ip_resource.name,
                address: "#{ip_resource.address}/32",
                address_description: ip_resource.address_description,
-               sites: [
+               gateway_groups: [
                  %{
                    id: site.id,
                    name: site.name
@@ -332,7 +361,7 @@ defmodule API.Client.ChannelTest do
       assert %{
                id: internet_resource.id,
                type: :internet,
-               sites: [
+               gateway_groups: [
                  %{
                    id: internet_site.id,
                    name: internet_site.name
@@ -369,15 +398,13 @@ defmodule API.Client.ChannelTest do
       client: client,
       dns_resource: resource
     } do
-      assert_push "init", %{}
+      identity_fixture(actor: actor, account: account)
+      identity_fixture(actor: actor, account: account)
 
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      Fixtures.Auth.create_identity(actor: actor, account: account)
+      second_group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: second_group)
 
-      second_group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: second_group)
-
-      Fixtures.Policies.create_policy(
+      policy_fixture(
         account: account,
         group: second_group,
         resource: resource
@@ -403,41 +430,39 @@ defmodule API.Client.ChannelTest do
     } do
       client = %{client | last_seen_version: "1.1.55"}
 
-      assert_push "init", %{}
-
       star_mapped_resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           address: "**.glob-example.com",
           account: account,
-          site_id: site.id
+          site: site
         )
 
       question_mark_mapped_resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           address: "*.question-example.com",
           account: account,
-          site_id: site.id
+          site: site
         )
 
       mid_question_mark_mapped_resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           address: "foo.*.example.com",
           account: account,
-          site_id: site.id
+          site: site
         )
 
       mid_star_mapped_resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           address: "foo.**.glob-example.com",
           account: account,
-          site_id: site.id
+          site: site
         )
 
       mid_single_char_mapped_resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           address: "us-east?-d.glob-example.com",
           account: account,
-          site_id: site.id
+          site: site
         )
 
       for resource <- [
@@ -447,7 +472,7 @@ defmodule API.Client.ChannelTest do
             mid_star_mapped_resource,
             mid_single_char_mapped_resource
           ] do
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group,
           resource: resource
@@ -484,22 +509,22 @@ defmodule API.Client.ChannelTest do
     end
 
     test "subscribes for relays presence", %{client: client, subject: subject} do
-      relay1 = Fixtures.Relays.create_relay()
+      relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
-      relay_token = Fixtures.Relays.create_global_token()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
-      Fixtures.Relays.update_relay(relay1,
+      update_relay(relay1,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
         last_seen_remote_ip_location_lat: 37.0,
         last_seen_remote_ip_location_lon: -120.0
       )
 
-      relay2 = Fixtures.Relays.create_relay()
+      relay2 = relay_fixture()
       stamp_secret2 = Ecto.UUID.generate()
       :ok = Domain.Presence.Relays.connect(relay2, stamp_secret2, relay_token.id)
 
-      Fixtures.Relays.update_relay(relay2,
+      update_relay(relay2,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-100, :second),
         last_seen_remote_ip_location_lat: 38.0,
         last_seen_remote_ip_location_lon: -121.0
@@ -526,7 +551,8 @@ defmodule API.Client.ChannelTest do
                username: _
              } = relay_view
 
-      Domain.Presence.Relays.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
+      # Untrack from global topic to trigger presence change notification
+      Domain.Presence.Relays.untrack(self(), "presences:global_relays", relay1.id)
 
       assert_push "relays_presence",
                   %{
@@ -544,26 +570,21 @@ defmodule API.Client.ChannelTest do
       client: client,
       subject: subject
     } do
+      _socket = join_channel(client, subject)
+      # Consume the init message
+      assert_push "init", %{relays: []}
+
       stamp_secret = Ecto.UUID.generate()
 
-      relay = Fixtures.Relays.create_relay()
+      relay = relay_fixture()
 
-      Fixtures.Relays.update_relay(relay,
+      update_relay(relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
         last_seen_remote_ip_location_lat: 37.0,
         last_seen_remote_ip_location_lon: -120.0
       )
 
-      API.Client.Socket
-      |> socket("client:#{client.id}", %{
-        client: client,
-        subject: subject
-      })
-      |> subscribe_and_join(API.Client.Channel, "client")
-
-      assert_push "init", %{relays: []}
-
-      relay_token = Fixtures.Relays.create_global_token()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       assert_push "relays_presence",
@@ -582,23 +603,28 @@ defmodule API.Client.ChannelTest do
                username: _
              } = relay_view
 
-      other_relay = Fixtures.Relays.create_relay()
+      other_relay = relay_fixture()
 
-      Fixtures.Relays.update_relay(other_relay,
+      update_relay(other_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
         last_seen_remote_ip_location_lat: 37.0,
         last_seen_remote_ip_location_lon: -120.0
       )
 
       :ok = Domain.Presence.Relays.connect(other_relay, stamp_secret, relay_token.id)
-      other_relay_id = other_relay.id
 
-      refute_push "relays_presence",
+      # Should receive relays_presence since client has < 2 relays
+      assert_push "relays_presence",
                   %{
                     disconnected_ids: [],
-                    connected: [%{id: ^other_relay_id} | _]
+                    connected: connected
                   },
                   relays_presence_timeout()
+
+      # Both relays should be in the connected list
+      relay_ids = Enum.map(connected, & &1.id) |> Enum.uniq()
+      assert relay.id in relay_ids
+      assert other_relay.id in relay_ids
     end
 
     test "does not return the relay that is disconnected as online one", %{
@@ -607,11 +633,11 @@ defmodule API.Client.ChannelTest do
     } do
       stamp_secret = Ecto.UUID.generate()
 
-      relay1 = Fixtures.Relays.create_relay()
-      relay_token = Fixtures.Relays.create_global_token()
+      relay1 = relay_fixture()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay1, stamp_secret, relay_token.id)
 
-      Fixtures.Relays.update_relay(relay1,
+      update_relay(relay1,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
         last_seen_remote_ip_location_lat: 37.0,
         last_seen_remote_ip_location_lon: -120.0
@@ -637,7 +663,8 @@ defmodule API.Client.ChannelTest do
                username: _
              } = relay_view
 
-      Domain.Presence.Relays.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
+      # Untrack from global topic to trigger presence change notification
+      Domain.Presence.Relays.untrack(self(), "presences:global_relays", relay1.id)
 
       assert_push "relays_presence",
                   %{
@@ -654,16 +681,18 @@ defmodule API.Client.ChannelTest do
     test "sends resource_created_or_updated for new connectable_resources", %{
       account: account,
       actor: actor,
-      socket: socket
+      client: client,
+      subject: subject
     } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
-      site = Fixtures.Sites.create_site(account: account)
+      socket = join_channel(client, subject)
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
+      site = site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
       # Create a policy that becomes valid in one second
@@ -690,7 +719,7 @@ defmodule API.Client.ChannelTest do
       # This test will flake if run within 1 second of midnight UTC. Sorry about that.
       time_range = "#{day_letter}/#{now.hour}:#{now.minute}:#{now.second + 1}-23:59:59/UTC"
 
-      Fixtures.Policies.create_policy(
+      policy_fixture(
         account: account,
         group: group,
         resource: resource,
@@ -704,7 +733,7 @@ defmodule API.Client.ChannelTest do
       )
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
@@ -730,10 +759,14 @@ defmodule API.Client.ChannelTest do
   end
 
   describe "handle_info/2 for presence events" do
-    test "push_leave cancels leave if reconnecting with the same stamp secret" do
-      relay1 = Fixtures.Relays.create_relay()
+    test "push_leave cancels leave if reconnecting with the same stamp secret", %{
+      client: client,
+      subject: subject
+    } do
+      _socket = join_channel(client, subject)
+      relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
-      relay_token = Fixtures.Relays.create_global_token()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
@@ -746,7 +779,7 @@ defmodule API.Client.ChannelTest do
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
-      Fixtures.Relays.disconnect_relay(relay1)
+      disconnect_relay(relay1)
 
       # presence_diff isn't immediate
       Process.sleep(1)
@@ -765,10 +798,14 @@ defmodule API.Client.ChannelTest do
                   relays_presence_timeout() + 10
     end
 
-    test "push_leave disconnects immediately if reconnecting with a different stamp secret" do
-      relay1 = Fixtures.Relays.create_relay()
+    test "push_leave disconnects immediately if reconnecting with a different stamp secret", %{
+      client: client,
+      subject: subject
+    } do
+      _socket = join_channel(client, subject)
+      relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
-      relay_token = Fixtures.Relays.create_global_token()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
@@ -781,7 +818,7 @@ defmodule API.Client.ChannelTest do
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
-      Fixtures.Relays.disconnect_relay(relay1)
+      disconnect_relay(relay1)
 
       # presence_diff isn't immediate
       Process.sleep(1)
@@ -803,10 +840,14 @@ defmodule API.Client.ChannelTest do
       assert relay_id == relay1.id
     end
 
-    test "push_leave disconnects after the debounce timeout expires" do
-      relay1 = Fixtures.Relays.create_relay()
+    test "push_leave disconnects after the debounce timeout expires", %{
+      client: client,
+      subject: subject
+    } do
+      _socket = join_channel(client, subject)
+      relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
-      relay_token = Fixtures.Relays.create_global_token()
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
@@ -819,7 +860,7 @@ defmodule API.Client.ChannelTest do
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
-      Fixtures.Relays.disconnect_relay(relay1)
+      disconnect_relay(relay1)
 
       # Should receive disconnect after timeout
       assert_push "relays_presence",
@@ -834,7 +875,8 @@ defmodule API.Client.ChannelTest do
   end
 
   describe "handle_info/2 for change events" do
-    test "logs warning and ignores out of order %Change{}", %{socket: socket} do
+    test "logs warning and ignores out of order %Change{}", %{client: client, subject: subject} do
+      socket = join_channel(client, subject)
       send(socket.channel_pid, %Changes.Change{lsn: 100})
 
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
@@ -853,9 +895,12 @@ defmodule API.Client.ChannelTest do
     end
 
     test "for account updates the subject in the socket", %{
-      socket: socket,
+      client: client,
+      subject: subject,
       account: account
     } do
+      socket = join_channel(client, subject)
+
       updated_account = %{
         account
         | name: "New Name",
@@ -881,10 +926,11 @@ defmodule API.Client.ChannelTest do
     end
 
     test "for account updates pushes config_changed if account config changed", %{
-      socket: socket,
-      account: account,
-      client: client
+      client: client,
+      subject: subject,
+      account: account
     } do
+      socket = join_channel(client, subject)
       updated_account = %{account | config: %{account.config | search_domain: "new.example.com"}}
 
       change = %Changes.Change{
@@ -922,27 +968,30 @@ defmodule API.Client.ChannelTest do
          %{
            actor: actor,
            account: account,
-           socket: socket
+           client: client,
+           subject: subject
          } do
-      group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Auth.create_identity(actor: actor, account: account)
+      socket = join_channel(client, subject)
+      group = group_fixture(account: account)
+      identity_fixture(actor: actor, account: account)
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
         )
 
-      site = Fixtures.Sites.create_site(account: account)
+      site = site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_resource(
+        dns_resource_fixture(
           account: account,
-          site_id: site.id
+          site: site,
+          ip_stack: :ipv4_only
         )
 
-      Fixtures.Policies.create_policy(
+      policy_fixture(
         account: account,
         group: group,
         resource: resource
@@ -965,7 +1014,7 @@ defmodule API.Client.ChannelTest do
       assert payload.name == resource.name
       assert payload.ip_stack == resource.ip_stack
 
-      assert payload.sites == [
+      assert payload.gateway_groups == [
                %{
                  id: site.id,
                  name: site.name
@@ -977,50 +1026,48 @@ defmodule API.Client.ChannelTest do
          %{
            actor: actor,
            account: account,
-           socket: socket
+           client: client,
+           subject: subject
          } do
-      group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Auth.create_identity(actor: actor, account: account)
+      socket = join_channel(client, subject)
+      group = group_fixture(account: account)
+      identity_fixture(actor: actor, account: account)
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
         )
 
+      site = site_fixture(account: account)
+
+      resource =
+        dns_resource_fixture(
+          account: account,
+          site: site,
+          ip_stack: :ipv4_only
+        )
+
+      _policy =
+        policy_fixture(
+          account: account,
+          group: group,
+          resource: resource
+        )
+
+      # Send membership change to trigger resource access computation
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
         op: :insert,
         struct: membership
       })
 
-      resource = Fixtures.Resources.create_resource(account: account)
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 200,
-        op: :insert,
-        struct: resource
-      })
-
-      policy =
-        Fixtures.Policies.create_policy(
-          account: account,
-          group: group,
-          resource: resource
-        )
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 300,
-        op: :insert,
-        struct: policy
-      })
-
       assert_push "resource_created_or_updated", payload
       assert payload.id == resource.id
 
       send(socket.channel_pid, %Changes.Change{
-        lsn: 400,
+        lsn: 200,
         op: :delete,
         old_struct: membership
       })
@@ -1034,82 +1081,73 @@ defmodule API.Client.ChannelTest do
          %{
            actor: actor,
            account: account,
-           socket: socket
+           client: client,
+           subject: subject
          } do
+      socket = join_channel(client, subject)
+
       # Create two groups
-      group_1 = Fixtures.Actors.create_group(account: account)
-      group_2 = Fixtures.Actors.create_group(account: account)
-      Fixtures.Auth.create_identity(actor: actor, account: account)
+      group_1 = group_fixture(account: account)
+      group_2 = group_fixture(account: account)
+      identity_fixture(actor: actor, account: account)
 
       # Add actor to both groups
       membership_1 =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group_1
         )
 
       membership_2 =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group_2
         )
 
-      # Send membership inserts
+      site = site_fixture(account: account)
+
+      # Create a resource accessible by both groups
+      resource =
+        dns_resource_fixture(
+          account: account,
+          site: site,
+          ip_stack: :ipv4_only
+        )
+
+      # Create policies for both groups pointing to the same resource
+      policy_fixture(
+        account: account,
+        group: group_1,
+        resource: resource
+      )
+
+      policy_fixture(
+        account: account,
+        group: group_2,
+        resource: resource
+      )
+
+      # Send first membership insert to trigger resource access
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
         op: :insert,
         struct: membership_1
       })
 
+      # Resource should be created
+      assert_push "resource_created_or_updated", payload
+      assert payload.id == resource.id
+
+      # Send second membership insert
       send(socket.channel_pid, %Changes.Change{
         lsn: 101,
         op: :insert,
         struct: membership_2
       })
 
-      # Create a resource accessible by both groups
-      resource = Fixtures.Resources.create_resource(account: account)
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 200,
-        op: :insert,
-        struct: resource
-      })
-
-      # Create policies for both groups pointing to the same resource
-      policy_1 =
-        Fixtures.Policies.create_policy(
-          account: account,
-          group: group_1,
-          resource: resource
-        )
-
-      policy_2 =
-        Fixtures.Policies.create_policy(
-          account: account,
-          group: group_2,
-          resource: resource
-        )
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 300,
-        op: :insert,
-        struct: policy_1
-      })
-
-      # Resource should be created when first policy is added
-      assert_push "resource_created_or_updated", payload
-      assert payload.id == resource.id
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 301,
-        op: :insert,
-        struct: policy_2
-      })
-
-      # No duplicate resource creation for second policy
+      # No duplicate resource creation for second membership
       refute_push "resource_created_or_updated", _payload
 
       # Delete first membership
@@ -1119,7 +1157,7 @@ defmodule API.Client.ChannelTest do
         old_struct: membership_1
       })
 
-      # Resource should NOT be deleted because policy_2 still grants access
+      # Resource should NOT be deleted because policy_2 still grants access via membership_2
       refute_push "resource_deleted", _payload
 
       # Delete second membership
@@ -1139,13 +1177,23 @@ defmodule API.Client.ChannelTest do
            client: client,
            actor: actor,
            account: account,
-           socket: socket
+           subject: subject
          } do
-      resource = Fixtures.Resources.create_resource(account: account)
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
+      socket = join_channel(client, subject)
+      assert_push "init", _
 
-      Fixtures.Policies.create_policy(
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
+      site = site_fixture(account: account)
+
+      resource =
+        dns_resource_fixture(
+          account: account,
+          site: site,
+          ip_stack: :ipv4_only
+        )
+
+      policy_fixture(
         account: account,
         group: group,
         resource: resource,
@@ -1159,7 +1207,7 @@ defmodule API.Client.ChannelTest do
       )
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
@@ -1171,9 +1219,10 @@ defmodule API.Client.ChannelTest do
         struct: membership
       })
 
+      # Client is not verified, so resource should not be accessible
       refute_push "resource_created_or_updated", _payload
 
-      verified_client = Fixtures.Clients.verify_client(client)
+      verified_client = verify_client(client)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 200,
@@ -1182,8 +1231,8 @@ defmodule API.Client.ChannelTest do
         struct: verified_client
       })
 
+      # Now client is verified, resource should be accessible
       assert_push "resource_created_or_updated", payload
-
       assert payload.id == resource.id
 
       send(socket.channel_pid, %Changes.Change{
@@ -1193,14 +1242,16 @@ defmodule API.Client.ChannelTest do
         struct: client
       })
 
+      # Client is no longer verified, resource should be deleted
       assert_push "resource_deleted", payload
       assert payload == resource.id
     end
 
     test "for client deletions disconnects socket", %{
       client: client,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
       Process.flag(:trap_exit, true)
 
       send(socket.channel_pid, %Changes.Change{
@@ -1213,28 +1264,30 @@ defmodule API.Client.ChannelTest do
     end
 
     test "for sites pushes resource_created_or_updated for name changes", %{
-      socket: socket,
+      client: client,
+      subject: subject,
       account: account,
       actor: actor
     } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
-      site = Fixtures.Sites.create_site(account: account)
+      socket = join_channel(client, subject)
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
+      site = site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
-      Fixtures.Policies.create_policy(
+      policy_fixture(
         account: account,
         group: group,
         resource: resource
       )
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
@@ -1261,7 +1314,7 @@ defmodule API.Client.ChannelTest do
 
       assert payload.id == resource.id
 
-      assert payload.sites == [
+      assert payload.gateway_groups == [
                %{
                  id: site.id,
                  name: "test"
@@ -1270,23 +1323,25 @@ defmodule API.Client.ChannelTest do
     end
 
     test "for policy inserts sends resource_created_or_updated if new access is granted", %{
-      socket: socket,
+      client: client,
+      subject: subject,
       account: account,
       actor: actor
     } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
+      socket = join_channel(client, subject)
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
 
-      site = Fixtures.Sites.create_site(account: account)
+      site = site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
@@ -1301,7 +1356,7 @@ defmodule API.Client.ChannelTest do
       refute_push "resource_created_or_updated", _payload
 
       policy =
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group,
           resource: resource
@@ -1320,30 +1375,32 @@ defmodule API.Client.ChannelTest do
 
     test "for breaking policy updates sends resource_deleted followed by resource_created_or_updated",
          %{
-           socket: socket,
+           client: client,
+           subject: subject,
            account: account,
            actor: actor
          } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
+      socket = join_channel(client, subject)
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
 
-      site = Fixtures.Sites.create_site(account: account)
+      site = site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
       policy =
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group,
           resource: resource
         )
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
@@ -1360,7 +1417,7 @@ defmodule API.Client.ChannelTest do
       assert payload.id == resource.id
 
       updated_policy =
-        Fixtures.Policies.update_policy(policy,
+        update_policy(policy,
           conditions: [
             %{
               property: :remote_ip_location_region,
@@ -1386,7 +1443,7 @@ defmodule API.Client.ChannelTest do
       assert payload.id == resource.id
 
       updated_policy =
-        Fixtures.Policies.update_policy(policy,
+        update_policy(policy,
           conditions: [
             %{
               property: :remote_ip_location_region,
@@ -1411,30 +1468,32 @@ defmodule API.Client.ChannelTest do
     end
 
     test "for policy deletions sends resource_deleted", %{
-      socket: socket,
+      client: client,
+      subject: subject,
       account: account,
       actor: actor
     } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
+      socket = join_channel(client, subject)
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
 
-      site = Fixtures.Sites.create_site(account: account)
+      site = site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
       policy =
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group,
           resource: resource
         )
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
@@ -1464,30 +1523,32 @@ defmodule API.Client.ChannelTest do
     end
 
     test "for non-breaking policy updates just updates our state", %{
-      socket: socket,
+      client: client,
+      subject: subject,
       account: account,
       actor: actor
     } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
+      socket = join_channel(client, subject)
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
 
-      site = Fixtures.Sites.create_site(account: account)
+      site = site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
       policy =
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group,
           resource: resource
         )
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
@@ -1503,7 +1564,7 @@ defmodule API.Client.ChannelTest do
 
       assert payload.id == resource.id
 
-      updated_policy = Fixtures.Policies.update_policy(policy, description: "Updated description")
+      updated_policy = update_policy(policy, description: "Updated description")
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 200,
@@ -1520,29 +1581,31 @@ defmodule API.Client.ChannelTest do
 
     test "for resource site changes pushes resource_deleted followed by resource_created_or_updated",
          %{
-           socket: socket,
+           client: client,
+           subject: subject,
            account: account,
            actor: actor
          } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
+      socket = join_channel(client, subject)
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
 
-      site = Fixtures.Sites.create_site(account: account)
+      site = site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
-      Fixtures.Policies.create_policy(
+      policy_fixture(
         account: account,
         group: group,
         resource: resource
       )
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
@@ -1558,42 +1621,31 @@ defmodule API.Client.ChannelTest do
 
       assert payload.id == resource.id
 
-      assert payload.sites == [
+      assert payload.gateway_groups == [
                %{
                  id: site.id,
                  name: site.name
                }
              ]
 
-      new_site = Fixtures.Sites.create_site(account: account)
+      new_site = site_fixture(account: account)
 
-      Fixtures.Resources.update_resource(resource, site_id: new_site.id)
+      updated_resource = update_resource(resource, site_id: new_site.id)
 
       send(socket.channel_pid, %Changes.Change{
-        lsn: 150,
-        op: :delete,
-        old_struct: %Resources.Connection{
-          resource_id: resource.id,
-          site_id: site.id
-        }
+        lsn: 200,
+        op: :update,
+        old_struct: resource,
+        struct: updated_resource
       })
 
       assert_push "resource_deleted", payload
       assert payload == resource.id
 
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 200,
-        op: :insert,
-        struct: %Resources.Connection{
-          resource_id: resource.id,
-          site_id: new_site.id
-        }
-      })
-
       assert_push "resource_created_or_updated", payload
       assert payload.id == resource.id
 
-      assert payload.sites == [
+      assert payload.gateway_groups == [
                %{
                  id: new_site.id,
                  name: new_site.name
@@ -1601,85 +1653,29 @@ defmodule API.Client.ChannelTest do
              ]
     end
 
-    test "for resource_connection insert adds site to existing resource", %{
-      socket: socket,
-      account: account,
-      actor: actor
-    } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
-
-      site_1 = Fixtures.Sites.create_site(account: account)
-      site_2 = Fixtures.Sites.create_site(account: account)
-
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          site_id: site_1.id
-        )
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        group: group,
-        resource: resource
-      )
-
-      membership =
-        Fixtures.Actors.create_membership(
-          account: account,
-          actor: actor,
-          group: group
-        )
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 100,
-        op: :insert,
-        struct: membership
-      })
-
-      assert_push "resource_created_or_updated", payload
-      assert length(payload.sites) == 1
-
-      # Add a second site to the same resource
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 200,
-        op: :insert,
-        struct: %Resources.Connection{
-          resource_id: resource.id,
-          site_id: site_2.id
-        }
-      })
-
-      # Resource should be toggled (deleted then created) to handle the update
-      assert_push "resource_deleted", deleted_id
-      assert deleted_id == resource.id
-
-      assert_push "resource_created_or_updated", payload
-      assert payload.id == resource.id
-      assert length(payload.sites) == 2
-    end
-
     test "for multiple policies with different conditions on same resource applies most permissive",
          %{
-           socket: socket,
+           client: client,
+           subject: subject,
            account: account,
            actor: actor
          } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group_1 = Fixtures.Actors.create_group(account: account)
-      group_2 = Fixtures.Actors.create_group(account: account)
+      socket = join_channel(client, subject)
+      identity_fixture(actor: actor, account: account)
+      group_1 = group_fixture(account: account)
+      group_2 = group_fixture(account: account)
 
-      site = Fixtures.Sites.create_site(account: account)
+      site = site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
       # Create restrictive policy with client verification requirement
       _restrictive_policy =
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group_1,
           resource: resource,
@@ -1693,7 +1689,7 @@ defmodule API.Client.ChannelTest do
         )
 
       membership_1 =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group_1
@@ -1710,7 +1706,7 @@ defmodule API.Client.ChannelTest do
 
       # Add a more permissive policy without conditions from second group
       permissive_policy =
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group_2,
           resource: resource,
@@ -1718,7 +1714,7 @@ defmodule API.Client.ChannelTest do
         )
 
       membership_2 =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group_2
@@ -1754,32 +1750,34 @@ defmodule API.Client.ChannelTest do
     end
 
     test "for resource update that changes address compatibility removes access", %{
-      socket: socket,
+      client: client,
+      subject: subject,
       account: account,
       actor: actor
     } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
+      socket = join_channel(client, subject)
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
 
-      site = Fixtures.Sites.create_site(account: account)
+      site = site_fixture(account: account)
 
       # Create IPv4 resource
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           type: :ip,
           address: "192.168.1.1",
           account: account,
-          site_id: site.id
+          site: site
         )
 
-      Fixtures.Policies.create_policy(
+      policy_fixture(
         account: account,
         group: group,
         resource: resource
       )
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
@@ -1810,29 +1808,31 @@ defmodule API.Client.ChannelTest do
     end
 
     test "for resource updates sends resource_created_or_updated", %{
-      socket: socket,
+      client: client,
+      subject: subject,
       account: account,
       actor: actor
     } do
-      Fixtures.Auth.create_identity(actor: actor, account: account)
-      group = Fixtures.Actors.create_group(account: account)
+      socket = join_channel(client, subject)
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
 
-      site = Fixtures.Sites.create_site(account: account)
+      site = site_fixture(account: account)
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
-      Fixtures.Policies.create_policy(
+      policy_fixture(
         account: account,
         group: group,
         resource: resource
       )
 
       membership =
-        Fixtures.Actors.create_membership(
+        membership_fixture(
           account: account,
           actor: actor,
           group: group
@@ -1848,7 +1848,7 @@ defmodule API.Client.ChannelTest do
 
       assert payload.id == resource.id
 
-      updated_resource = Fixtures.Resources.update_resource(resource, name: "Updated Name")
+      updated_resource = update_resource(resource, name: "Updated Name")
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 200,
@@ -1867,8 +1867,9 @@ defmodule API.Client.ChannelTest do
     test "pushes ice_candidates message", %{
       client: client,
       gateway: gateway,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
       candidates = ["foo", "bar"]
 
       send(
@@ -1889,8 +1890,9 @@ defmodule API.Client.ChannelTest do
     test "pushes invalidate_ice_candidates message", %{
       client: client,
       gateway: gateway,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
       candidates = ["foo", "bar"]
 
       send(
@@ -1908,7 +1910,8 @@ defmodule API.Client.ChannelTest do
   end
 
   describe "handle_in/3 create_flow" do
-    test "returns error when resource is not found", %{socket: socket} do
+    test "returns error when resource is not found", %{client: client, subject: subject} do
+      socket = join_channel(client, subject)
       resource_id = Ecto.UUID.generate()
 
       push(socket, "create_flow", %{
@@ -1920,11 +1923,13 @@ defmodule API.Client.ChannelTest do
     end
 
     test "returns error when all gateways are offline", %{
+      client: client,
+      subject: subject,
       dns_resource: resource,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
-      socket: socket
+      global_relay_token: global_relay_token
     } do
+      socket = join_channel(client, subject)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
@@ -1939,13 +1944,15 @@ defmodule API.Client.ChannelTest do
 
     test "returns :not_found when client has no policy allowing access to resource", %{
       account: account,
-      socket: socket
+      client: client,
+      subject: subject
     } do
-      resource = Fixtures.Resources.create_resource(account: account)
+      socket = join_channel(client, subject)
+      resource = resource_fixture(account: account)
 
-      gateway = Fixtures.Gateways.create_gateway(account: account) |> Repo.preload(:site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway = gateway_fixture(account: account) |> Repo.preload(:site)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -1967,8 +1974,10 @@ defmodule API.Client.ChannelTest do
       site: site,
       gateway: gateway,
       membership: membership,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
+
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
         op: :insert,
@@ -1976,9 +1985,9 @@ defmodule API.Client.ChannelTest do
       })
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
       send(socket.channel_pid, %Changes.Change{
@@ -1988,7 +1997,7 @@ defmodule API.Client.ChannelTest do
       })
 
       policy =
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group,
           resource: resource,
@@ -2013,8 +2022,8 @@ defmodule API.Client.ChannelTest do
       }
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       push(socket, "create_flow", attrs)
 
@@ -2028,12 +2037,14 @@ defmodule API.Client.ChannelTest do
 
     test "returns error when all gateways connected to the resource are offline", %{
       account: account,
-      dns_resource: resource,
-      socket: socket
+      client: client,
+      subject: subject,
+      dns_resource: resource
     } do
-      gateway = Fixtures.Gateways.create_gateway(account: account) |> Repo.preload(:site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      socket = join_channel(client, subject)
+      gateway = gateway_fixture(account: account) |> Repo.preload(:site)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2057,18 +2068,19 @@ defmodule API.Client.ChannelTest do
       gateway: gateway,
       global_relay: global_relay,
       global_relay_token: global_relay_token,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
       :ok = PubSub.Account.subscribe(gateway.account_id)
-      :ok = Gateways.Presence.connect(gateway, site_token.id)
-      :ok = PubSub.subscribe(Domain.Tokens.socket_id(site_token))
+      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      :ok = PubSub.subscribe(Auth.socket_id(site_token.id))
 
       # Prime cache
       send(socket.channel_pid, {:created, resource})
@@ -2108,9 +2120,11 @@ defmodule API.Client.ChannelTest do
       client: client,
       global_relay: global_relay,
       global_relay_token: global_relay_token,
-      socket: socket
+      subject: subject
     } do
-      Fixtures.Accounts.update_account(account,
+      socket = join_channel(client, subject)
+
+      update_account(account,
         features: %{
           internet_resource: true
         }
@@ -2121,14 +2135,14 @@ defmodule API.Client.ChannelTest do
 
       :ok = PubSub.Account.subscribe(account.id)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Domain.Tokens.socket_id(site_token))
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      PubSub.subscribe(Auth.socket_id(site_token.id))
 
       send(socket.channel_pid, {:created, resource})
       send(socket.channel_pid, {:created, policy})
@@ -2166,9 +2180,9 @@ defmodule API.Client.ChannelTest do
       gateway: gateway,
       subject: subject,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
-      socket: socket
+      global_relay_token: global_relay_token
     } do
+      socket = join_channel(client, subject)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
       :ok = PubSub.Account.subscribe(gateway.account_id)
@@ -2177,12 +2191,12 @@ defmodule API.Client.ChannelTest do
       send(socket.channel_pid, {:created, policy})
       send(socket.channel_pid, {:created, membership})
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      :ok = Gateways.Presence.connect(gateway, site_token.id)
-      PubSub.subscribe(Domain.Tokens.socket_id(site_token))
+      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      PubSub.subscribe(Auth.socket_id(site_token.id))
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2226,7 +2240,7 @@ defmodule API.Client.ChannelTest do
          gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials}
       )
 
-      site_id = gateway.site_id
+      gateway_group_id = gateway.site_id
       gateway_id = gateway.id
       gateway_public_key = gateway.public_key
       gateway_ipv4 = gateway.ipv4
@@ -2240,7 +2254,7 @@ defmodule API.Client.ChannelTest do
         gateway_ipv6: ^gateway_ipv6,
         resource_id: ^resource_id,
         client_ice_credentials: %{username: client_ice_username, password: client_ice_password},
-        site_id: ^site_id,
+        gateway_group_id: ^gateway_group_id,
         gateway_id: ^gateway_id,
         gateway_ice_credentials: %{
           username: gateway_ice_username,
@@ -2268,12 +2282,12 @@ defmodule API.Client.ChannelTest do
       global_relay_token: global_relay_token,
       group: group
     } do
-      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
-      client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+      actor = actor_fixture(type: :service_account, account: account)
+      client = client_fixture(account: account, actor: actor)
+      membership_fixture(account: account, actor: actor, group: group)
 
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+      identity = identity_fixture(account: account, actor: actor)
+      subject = subject_fixture(account: account, actor: actor, identity: identity)
 
       {:ok, _reply, socket} =
         API.Client.Socket
@@ -2286,14 +2300,14 @@ defmodule API.Client.ChannelTest do
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Domain.Tokens.socket_id(site_token))
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      PubSub.subscribe(Auth.socket_id(site_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -2315,57 +2329,36 @@ defmodule API.Client.ChannelTest do
       account: account,
       site: site,
       dns_resource: resource,
-      dns_resource_policy: policy,
-      membership: membership,
+      dns_resource_policy: _policy,
+      membership: _membership,
       subject: subject,
       client: client,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
-      socket: socket
+      global_relay_token: global_relay_token
     } do
       :ok =
         Domain.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
+      # Use an older client version for this test
       client = %{client | last_seen_version: "1.4.55"}
 
       gateway =
-        Fixtures.Gateways.create_gateway(
+        gateway_fixture(
           account: account,
           site: site,
-          context:
-            Fixtures.Auth.build_context(
-              type: :site,
-              user_agent: "Linux/24.04 connlib/1.0.412"
-            )
+          last_seen_user_agent: "Linux/24.04 connlib/1.0.412",
+          last_seen_version: "1.0.412"
         )
         |> Repo.preload(:site)
 
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       :ok = PubSub.Account.subscribe(account.id)
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 0,
-        op: :insert,
-        struct: resource
-      })
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 1,
-        op: :insert,
-        struct: policy
-      })
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 2,
-        op: :insert,
-        struct: membership
-      })
 
       {:ok, _reply, socket} =
         API.Client.Socket
@@ -2388,19 +2381,16 @@ defmodule API.Client.ChannelTest do
       assert resource_id == resource.id
 
       gateway =
-        Fixtures.Gateways.create_gateway(
+        gateway_fixture(
           account: account,
           site: site,
-          context:
-            Fixtures.Auth.build_context(
-              type: :site,
-              user_agent: "Linux/24.04 connlib/1.4.11"
-            )
+          last_seen_user_agent: "Linux/24.04 connlib/1.4.11",
+          last_seen_version: "1.4.11"
         )
         |> Repo.preload(:site)
 
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2420,32 +2410,35 @@ defmodule API.Client.ChannelTest do
       membership: membership,
       global_relay: global_relay,
       global_relay_token: global_relay_token,
-      socket: socket
+      client: client,
+      subject: subject
     } do
+      socket = join_channel(client, subject)
+
       :ok =
         Domain.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
       gateway1 =
-        Fixtures.Gateways.create_gateway(
+        gateway_fixture(
           account: account,
-          group: site
+          site: site
         )
-        |> Repo.preload(:group)
+        |> Repo.preload(:site)
 
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway1.site)
-      :ok = Gateways.Presence.connect(gateway1, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway1.site)
+      :ok = Presence.Gateways.connect(gateway1, gateway_token.id)
 
       gateway2 =
-        Fixtures.Gateways.create_gateway(
+        gateway_fixture(
           account: account,
-          group: site
+          site: site
         )
 
-      :ok = Gateways.Presence.connect(gateway2, gateway_token.id)
+      :ok = Presence.Gateways.connect(gateway2, gateway_token.id)
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -2486,33 +2479,43 @@ defmodule API.Client.ChannelTest do
   end
 
   describe "handle_in/3 prepare_connection" do
-    test "returns error when resource is not found", %{socket: socket} do
+    test "returns error when resource is not found", %{client: client, subject: subject} do
+      socket = join_channel(client, subject)
       ref = push(socket, "prepare_connection", %{"resource_id" => Ecto.UUID.generate()})
       assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when there are no online relays", %{
-      dns_resource: resource,
-      socket: socket
+      client: client,
+      subject: subject,
+      dns_resource: resource
     } do
+      socket = join_channel(client, subject)
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :error, %{reason: :offline}
     end
 
-    test "returns error when all gateways are offline", %{dns_resource: resource, socket: socket} do
+    test "returns error when all gateways are offline", %{
+      client: client,
+      subject: subject,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns error when client has no policy allowing access to resource", %{
       account: account,
-      socket: socket
+      client: client,
+      subject: subject
     } do
-      resource = Fixtures.Resources.create_resource(account: account)
+      socket = join_channel(client, subject)
+      resource = resource_fixture(account: account)
 
-      gateway = Fixtures.Gateways.create_gateway(account: account) |> Repo.preload(:site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway = gateway_fixture(account: account) |> Repo.preload(:site)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id
@@ -2524,12 +2527,14 @@ defmodule API.Client.ChannelTest do
 
     test "returns error when all gateways connected to the resource are offline", %{
       account: account,
-      dns_resource: resource,
-      socket: socket
+      client: client,
+      subject: subject,
+      dns_resource: resource
     } do
-      gateway = Fixtures.Gateways.create_gateway(account: account) |> Repo.preload(:site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      socket = join_channel(client, subject)
+      gateway = gateway_fixture(account: account) |> Repo.preload(:site)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :error, %{reason: :offline}
@@ -2537,22 +2542,24 @@ defmodule API.Client.ChannelTest do
 
     test "returns online gateway connected to the resource", %{
       account: account,
+      client: client,
+      subject: subject,
       dns_resource: resource,
       gateway: gateway,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
-      socket: socket
+      global_relay_token: global_relay_token
     } do
+      socket = join_channel(client, subject)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -2569,13 +2576,15 @@ defmodule API.Client.ChannelTest do
 
     test "does not return gateways that do not support the resource", %{
       account: account,
+      client: client,
+      subject: subject,
       dns_resource: dns_resource,
-      internet_resource: internet_resource,
-      socket: socket
+      internet_resource: internet_resource
     } do
-      gateway = Fixtures.Gateways.create_gateway(account: account) |> Repo.preload(:site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      socket = join_channel(client, subject)
+      gateway = gateway_fixture(account: account) |> Repo.preload(:site)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => dns_resource.id})
       assert_reply ref, :error, %{reason: :offline}
@@ -2586,47 +2595,48 @@ defmodule API.Client.ChannelTest do
 
     test "returns gateway that support the DNS resource address syntax", %{
       account: account,
+      client: client,
+      subject: subject,
       group: group,
       membership: membership,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
-      socket: socket
+      global_relay_token: global_relay_token
     } do
+      socket = join_channel(client, subject)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      site = Fixtures.Sites.create_site(account: account)
+      site = site_fixture(account: account)
 
       gateway =
-        Fixtures.Gateways.create_gateway(
+        gateway_fixture(
           account: account,
           site: site,
-          context: %{
-            user_agent: "iOS/12.5 (iPhone) connlib/1.1.0"
-          }
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/1.1.0",
+          last_seen_version: "1.1.0"
         )
         |> Repo.preload(:site)
 
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           address: "foo.*.example.com",
           account: account,
-          site_id: site.id
+          site: site
         )
 
       policy =
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group,
           resource: resource
         )
 
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -2634,37 +2644,36 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :not_found}
 
       gateway =
-        Fixtures.Gateways.create_gateway(
+        gateway_fixture(
           account: account,
           site: site,
-          context: %{
-            user_agent: "iOS/12.5 (iPhone) connlib/1.2.0"
-          }
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/1.2.0",
+          last_seen_version: "1.2.0"
         )
         |> Repo.preload(:site)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       :ok = PubSub.Account.subscribe(account.id)
 
       send(socket.channel_pid, %Changes.Change{
-        lsn: 0,
+        lsn: 100,
         op: :insert,
         struct: resource
       })
 
       send(socket.channel_pid, %Changes.Change{
-        lsn: 1,
+        lsn: 101,
         op: :insert,
         struct: policy
       })
 
       send(socket.channel_pid, %Changes.Change{
-        lsn: 2,
+        lsn: 102,
         op: :insert,
         struct: membership
       })
@@ -2683,14 +2692,17 @@ defmodule API.Client.ChannelTest do
 
     test "returns gateway that support Internet resources", %{
       account: account,
+      client: client,
+      subject: subject,
       internet_site: internet_site,
       internet_resource: resource,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
-      socket: socket
+      global_relay_token: global_relay_token
     } do
+      socket = join_channel(client, subject)
+
       account =
-        Fixtures.Accounts.update_account(account,
+        update_account(account,
           features: %{
             internet_resource: true
           }
@@ -2699,22 +2711,21 @@ defmodule API.Client.ChannelTest do
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
       gateway =
-        Fixtures.Gateways.create_gateway(
+        gateway_fixture(
           account: account,
           site: internet_site,
-          context: %{
-            user_agent: "iOS/12.5 connlib/1.2.0"
-          }
+          last_seen_user_agent: "iOS/12.5 connlib/1.2.0",
+          last_seen_version: "1.2.0"
         )
         |> Repo.preload(:site)
 
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -2722,21 +2733,20 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :offline}
 
       gateway =
-        Fixtures.Gateways.create_gateway(
+        gateway_fixture(
           account: account,
           site: internet_site,
-          context: %{
-            user_agent: "iOS/12.5 connlib/1.3.0"
-          }
+          last_seen_user_agent: "iOS/12.5 connlib/1.3.0",
+          last_seen_version: "1.3.0"
         )
         |> Repo.preload(:site)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -2758,12 +2768,12 @@ defmodule API.Client.ChannelTest do
       global_relay_token: global_relay_token,
       group: group
     } do
-      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
-      client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+      actor = actor_fixture(type: :service_account, account: account)
+      client = client_fixture(account: account, actor: actor)
+      membership_fixture(account: account, actor: actor, group: group)
 
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+      identity = identity_fixture(account: account, actor: actor)
+      subject = subject_fixture(account: account, actor: actor, identity: identity)
 
       {:ok, _reply, socket} =
         API.Client.Socket
@@ -2776,13 +2786,13 @@ defmodule API.Client.ChannelTest do
       :ok =
         Domain.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -2801,26 +2811,23 @@ defmodule API.Client.ChannelTest do
       :ok =
         Domain.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
 
-      Fixtures.Relays.update_relay(global_relay,
+      update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
       client = %{client | last_seen_version: "1.2.55"}
 
       gateway =
-        Fixtures.Gateways.create_gateway(
+        gateway_fixture(
           account: account,
           site: site,
-          context:
-            Fixtures.Auth.build_context(
-              type: :site,
-              user_agent: "Linux/24.04 connlib/1.0.412"
-            )
+          last_seen_user_agent: "Linux/24.04 connlib/1.0.412",
+          last_seen_version: "1.0.412"
         )
         |> Repo.preload(:site)
 
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       {:ok, _reply, socket} =
         API.Client.Socket
@@ -2835,19 +2842,16 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :offline}
 
       gateway =
-        Fixtures.Gateways.create_gateway(
+        gateway_fixture(
           account: account,
           site: site,
-          context:
-            Fixtures.Auth.build_context(
-              type: :site,
-              user_agent: "Linux/24.04 connlib/1.1.11"
-            )
+          last_seen_user_agent: "Linux/24.04 connlib/1.1.11",
+          last_seen_version: "1.1.11"
         )
         |> Repo.preload(:site)
 
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -2856,7 +2860,13 @@ defmodule API.Client.ChannelTest do
   end
 
   describe "handle_in/3 reuse_connection" do
-    test "returns error when resource is not found", %{gateway: gateway, socket: socket} do
+    test "returns error when resource is not found", %{
+      client: client,
+      subject: subject,
+      gateway: gateway
+    } do
+      socket = join_channel(client, subject)
+
       attrs = %{
         "resource_id" => Ecto.UUID.generate(),
         "gateway_id" => gateway.id,
@@ -2867,7 +2877,13 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :not_found}
     end
 
-    test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
+    test "returns error when gateway is not found", %{
+      client: client,
+      subject: subject,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
+
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => Ecto.UUID.generate(),
@@ -2878,14 +2894,16 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :not_found}
     end
 
-    test "returns not_found when gateway is not connected to resource", %{
+    test "returns offline when gateway is not connected to resource", %{
       account: account,
-      dns_resource: resource,
-      socket: socket
+      client: client,
+      subject: subject,
+      dns_resource: resource
     } do
-      gateway = Fixtures.Gateways.create_gateway(account: account) |> Repo.preload(:site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      socket = join_channel(client, subject)
+      gateway = gateway_fixture(account: account) |> Repo.preload(:site)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2894,7 +2912,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, %{reason: :not_found}
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns :not_found when resource is not in connectable_resources", %{
@@ -2904,16 +2922,18 @@ defmodule API.Client.ChannelTest do
       membership: membership,
       site: site,
       gateway: gateway,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
+
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
       policy =
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group,
           resource: resource,
@@ -2933,8 +2953,8 @@ defmodule API.Client.ChannelTest do
       }
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       :ok = PubSub.Account.subscribe(account.id)
 
       send(socket.channel_pid, {:created, resource})
@@ -2950,13 +2970,15 @@ defmodule API.Client.ChannelTest do
 
     test "returns error when client has no policy allowing access to resource", %{
       account: account,
-      socket: socket
+      client: client,
+      subject: subject
     } do
-      resource = Fixtures.Resources.create_resource(account: account)
+      socket = join_channel(client, subject)
+      resource = resource_fixture(account: account)
 
-      gateway = Fixtures.Gateways.create_gateway(account: account) |> Repo.preload(:site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway = gateway_fixture(account: account) |> Repo.preload(:site)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2969,10 +2991,13 @@ defmodule API.Client.ChannelTest do
     end
 
     test "returns error when gateway is offline", %{
+      client: client,
+      subject: subject,
       dns_resource: resource,
-      gateway: gateway,
-      socket: socket
+      gateway: gateway
     } do
+      socket = join_channel(client, subject)
+
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
@@ -2990,15 +3015,16 @@ defmodule API.Client.ChannelTest do
       membership: membership,
       gateway: gateway,
       client: client,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
       public_key = gateway.public_key
       resource_id = resource.id
       client_id = client.id
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       :ok = PubSub.Account.subscribe(resource.account_id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3064,12 +3090,12 @@ defmodule API.Client.ChannelTest do
       site_token: site_token,
       group: group
     } do
-      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
-      client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+      actor = actor_fixture(type: :service_account, account: account)
+      client = client_fixture(account: account, actor: actor)
+      membership_fixture(account: account, actor: actor, group: group)
 
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+      identity = identity_fixture(account: account, actor: actor)
+      subject = subject_fixture(account: account, actor: actor, identity: identity)
 
       {:ok, _reply, socket} =
         API.Client.Socket
@@ -3080,9 +3106,9 @@ defmodule API.Client.ChannelTest do
         |> subscribe_and_join(API.Client.Channel, "client")
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
-      Phoenix.PubSub.subscribe(PubSub, Domain.Tokens.socket_id(site_token))
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      Phoenix.PubSub.subscribe(PubSub, Auth.socket_id(site_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3103,7 +3129,13 @@ defmodule API.Client.ChannelTest do
   end
 
   describe "handle_in/3 request_connection" do
-    test "returns error when resource is not found", %{gateway: gateway, socket: socket} do
+    test "returns error when resource is not found", %{
+      client: client,
+      subject: subject,
+      gateway: gateway
+    } do
+      socket = join_channel(client, subject)
+
       attrs = %{
         "resource_id" => Ecto.UUID.generate(),
         "gateway_id" => gateway.id,
@@ -3115,7 +3147,13 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :not_found}
     end
 
-    test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
+    test "returns error when gateway is not found", %{
+      client: client,
+      subject: subject,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
+
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => Ecto.UUID.generate(),
@@ -3127,14 +3165,16 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :not_found}
     end
 
-    test "returns error when gateway is not connected to resource", %{
+    test "returns offline when gateway is not connected to resource", %{
       account: account,
-      dns_resource: resource,
-      socket: socket
+      client: client,
+      subject: subject,
+      dns_resource: resource
     } do
-      gateway = Fixtures.Gateways.create_gateway(account: account) |> Repo.preload(:site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      socket = join_channel(client, subject)
+      gateway = gateway_fixture(account: account) |> Repo.preload(:site)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3144,18 +3184,20 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, %{reason: :not_found}
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns error when client has no policy allowing access to resource", %{
       account: account,
-      socket: socket
+      client: client,
+      subject: subject
     } do
-      resource = Fixtures.Resources.create_resource(account: account)
+      socket = join_channel(client, subject)
+      resource = resource_fixture(account: account)
 
-      gateway = Fixtures.Gateways.create_gateway(account: account) |> Repo.preload(:site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway = gateway_fixture(account: account) |> Repo.preload(:site)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3175,16 +3217,18 @@ defmodule API.Client.ChannelTest do
       membership: membership,
       site: site,
       gateway: gateway,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
+
       resource =
-        Fixtures.Resources.create_resource(
+        resource_fixture(
           account: account,
-          site_id: site.id
+          site: site
         )
 
       policy =
-        Fixtures.Policies.create_policy(
+        policy_fixture(
           account: account,
           group: group,
           resource: resource,
@@ -3205,8 +3249,8 @@ defmodule API.Client.ChannelTest do
       }
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3236,10 +3280,13 @@ defmodule API.Client.ChannelTest do
     end
 
     test "returns error when gateway is offline", %{
+      client: client,
+      subject: subject,
       dns_resource: resource,
-      gateway: gateway,
-      socket: socket
+      gateway: gateway
     } do
+      socket = join_channel(client, subject)
+
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
@@ -3257,16 +3304,17 @@ defmodule API.Client.ChannelTest do
       site_token: site_token,
       gateway: gateway,
       client: client,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
       public_key = gateway.public_key
       resource_id = resource.id
       client_id = client.id
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Domain.Tokens.socket_id(site_token))
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      PubSub.subscribe(Auth.socket_id(site_token.id))
 
       :ok = PubSub.Account.subscribe(resource.account_id)
 
@@ -3316,12 +3364,12 @@ defmodule API.Client.ChannelTest do
       gateway: gateway,
       group: group
     } do
-      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
-      client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+      actor = actor_fixture(type: :service_account, account: account)
+      client = client_fixture(account: account, actor: actor)
+      membership_fixture(account: account, actor: actor, group: group)
 
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+      identity = identity_fixture(account: account, actor: actor)
+      subject = subject_fixture(account: account, actor: actor, identity: identity)
 
       {:ok, _reply, socket} =
         API.Client.Socket
@@ -3332,9 +3380,9 @@ defmodule API.Client.ChannelTest do
         |> subscribe_and_join(API.Client.Channel, "client")
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
-      Phoenix.PubSub.subscribe(PubSub, Domain.Tokens.socket_id(site_token))
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      Phoenix.PubSub.subscribe(PubSub, Auth.socket_id(site_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3353,8 +3401,10 @@ defmodule API.Client.ChannelTest do
 
   describe "handle_in/3 broadcast_ice_candidates" do
     test "does nothing when gateways list is empty", %{
-      socket: socket
+      client: client,
+      subject: subject
     } do
+      socket = join_channel(client, subject)
       candidates = ["foo", "bar"]
 
       attrs = %{
@@ -3371,8 +3421,9 @@ defmodule API.Client.ChannelTest do
       client: client,
       site_token: site_token,
       gateway: gateway,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
       candidates = ["foo", "bar"]
 
       attrs = %{
@@ -3381,9 +3432,9 @@ defmodule API.Client.ChannelTest do
       }
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Domain.Tokens.socket_id(site_token))
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      PubSub.subscribe(Auth.socket_id(site_token.id))
 
       :ok = PubSub.Account.subscribe(client.account_id)
 
@@ -3398,8 +3449,10 @@ defmodule API.Client.ChannelTest do
 
   describe "handle_in/3 broadcast_invalidated_ice_candidates" do
     test "does nothing when gateways list is empty", %{
-      socket: socket
+      client: client,
+      subject: subject
     } do
+      socket = join_channel(client, subject)
       candidates = ["foo", "bar"]
 
       attrs = %{
@@ -3416,8 +3469,9 @@ defmodule API.Client.ChannelTest do
       client: client,
       site_token: site_token,
       gateway: gateway,
-      socket: socket
+      subject: subject
     } do
+      socket = join_channel(client, subject)
       candidates = ["foo", "bar"]
 
       attrs = %{
@@ -3426,9 +3480,9 @@ defmodule API.Client.ChannelTest do
       }
 
       gateway = Repo.preload(gateway, :site)
-      gateway_token = Fixtures.Sites.create_token(account: account, site: gateway.site)
-      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
-      :ok = PubSub.subscribe(Domain.Tokens.socket_id(site_token))
+      gateway_token = site_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = PubSub.subscribe(Auth.socket_id(site_token.id))
       :ok = PubSub.Account.subscribe(client.account_id)
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
@@ -3441,7 +3495,8 @@ defmodule API.Client.ChannelTest do
   end
 
   describe "handle_in/3 for unknown message" do
-    test "it doesn't crash", %{socket: socket} do
+    test "it doesn't crash", %{client: client, subject: subject} do
+      socket = join_channel(client, subject)
       ref = push(socket, "unknown_message", %{})
       assert_reply ref, :error, %{reason: :unknown_message}
     end

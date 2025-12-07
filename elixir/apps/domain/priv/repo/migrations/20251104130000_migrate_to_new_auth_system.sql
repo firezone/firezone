@@ -351,7 +351,7 @@ BEGIN
 
     INSERT INTO oidc_auth_providers (
       id, account_id, name, issuer, client_id, client_secret,
-      discovery_document_uri, is_disabled, is_default, context,
+      discovery_document_uri, is_disabled, is_default, is_legacy, context,
       created_by, inserted_at, updated_at
     )
     SELECT
@@ -382,6 +382,7 @@ BEGIN
       p.adapter_config->>'discovery_document_uri',
       (p.disabled_at IS NOT NULL),
       (p.assigned_default_at IS NOT NULL),
+      true,
       'clients_and_portal',
       'system',
       NOW(),
@@ -420,7 +421,7 @@ BEGIN
 
     INSERT INTO oidc_auth_providers (
       id, account_id, name, issuer, client_id, client_secret,
-      discovery_document_uri, is_disabled, is_default, context,
+      discovery_document_uri, is_disabled, is_default, is_legacy, context,
       created_by, inserted_at, updated_at
     )
     SELECT
@@ -433,6 +434,7 @@ BEGIN
       'https://accounts.google.com/.well-known/openid-configuration',
       (p.disabled_at IS NOT NULL),
       (p.assigned_default_at IS NOT NULL),
+      true,
       'clients_and_portal',
       'system',
       NOW(),
@@ -452,7 +454,7 @@ BEGIN
 
     INSERT INTO oidc_auth_providers (
       id, account_id, name, issuer, client_id, client_secret,
-      discovery_document_uri, is_disabled, is_default, context,
+      discovery_document_uri, is_disabled, is_default, is_legacy, context,
       created_by, inserted_at, updated_at
     )
     SELECT
@@ -465,6 +467,7 @@ BEGIN
       p.adapter_config->>'discovery_document_uri',
       (p.disabled_at IS NOT NULL),
       (p.assigned_default_at IS NOT NULL),
+      true,
       'clients_and_portal',
       'system',
       NOW(),
@@ -485,7 +488,7 @@ BEGIN
 
     INSERT INTO oidc_auth_providers (
       id, account_id, name, issuer, client_id, client_secret,
-      discovery_document_uri, is_disabled, is_default, context,
+      discovery_document_uri, is_disabled, is_default, is_legacy, context,
       created_by, inserted_at, updated_at
     )
     SELECT
@@ -498,6 +501,7 @@ BEGIN
       p.adapter_config->>'discovery_document_uri',
       (p.disabled_at IS NOT NULL),
       (p.assigned_default_at IS NOT NULL),
+      true,
       'clients_and_portal',
       'system',
       NOW(),

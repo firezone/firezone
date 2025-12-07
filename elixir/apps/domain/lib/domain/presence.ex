@@ -322,24 +322,6 @@ defmodule Domain.Presence do
       end
     end
 
-    defmodule Relay do
-      def subscribe(relay_id) do
-        relay_id
-        |> topic()
-        |> PubSub.subscribe()
-      end
-
-      def unsubscribe(relay_id) do
-        relay_id
-        |> topic()
-        |> PubSub.unsubscribe()
-      end
-
-      defp topic(relay_id) do
-        "presences:relays:" <> relay_id
-      end
-    end
-
     defmodule Debouncer do
       require Logger
 

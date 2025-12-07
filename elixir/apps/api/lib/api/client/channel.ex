@@ -50,10 +50,9 @@ defmodule API.Client.Channel do
         socket.assigns.subject
       )
 
-    # Initialize relays
+    # Initialize relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
-    :ok = Enum.each(relays, &Presence.Relays.Relay.subscribe(&1.id))
-    :ok = maybe_subscribe_for_relays_presence(relays)
+    :ok = Presence.Relays.Global.subscribe()
 
     # Initialize debouncer for flappy relays
     socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
@@ -156,91 +155,84 @@ defmodule API.Client.Channel do
   #### Reacting to relay presence ####
   ####################################
 
+  # Handle relay presence changes from global topic
   def handle_info(
         %Phoenix.Socket.Broadcast{
           event: "presence_diff",
-          topic: "presences:relays:" <> relay_id,
-          payload: %{leaves: leaves}
+          topic: "presences:global_relays",
+          payload: %{joins: joins, leaves: leaves}
         },
         socket
       ) do
-    if Map.has_key?(leaves, relay_id) do
-      :ok = Presence.Relays.Relay.unsubscribe(relay_id)
+    # Get the relay IDs we're currently tracking
+    tracked_relay_ids = Map.keys(socket.assigns[:stamp_secrets] || %{})
 
-      {:ok, relays} = select_relays(socket, [relay_id])
-      :ok = maybe_subscribe_for_relays_presence(relays)
+    # Filter leaves to only relays we're tracking
+    left_relay_ids =
+      leaves
+      |> Map.keys()
+      |> Enum.filter(&(&1 in tracked_relay_ids))
 
-      :ok =
-        Enum.each(relays, fn relay ->
-          # TODO: Why are we unsubscribing and subscribing again?
-          :ok = Presence.Relays.Relay.unsubscribe(relay.id)
-          :ok = Presence.Relays.Relay.subscribe(relay.id)
-        end)
+    # Queue leaves for tracked relays that disconnected
+    socket =
+      Enum.reduce(left_relay_ids, socket, fn relay_id, socket ->
+        {:ok, relays} = select_relays(socket, [relay_id])
 
-      payload = %{
-        disconnected_ids: [relay_id],
-        connected:
-          Views.Relay.render_many(
-            relays,
-            socket.assigns.client.public_key,
-            socket.assigns.subject.expires_at
-          )
-      }
-
-      {:noreply, Presence.Relays.Debouncer.queue_leave(self(), socket, relay_id, payload)}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info(
-        %Phoenix.Socket.Broadcast{
-          event: "presence_diff",
-          topic: "presences:" <> _,
-          payload: %{joins: joins}
-        },
-        socket
-      ) do
-    if Enum.count(joins) > 0 do
-      {:ok, relays} = select_relays(socket)
-
-      if length(relays) > 0 do
-        :ok = Presence.Relays.Global.unsubscribe()
-
-        :ok =
-          Enum.each(relays, fn relay ->
-            # TODO: Why are we unsubscribing and subscribing again?
-            :ok = Presence.Relays.Relay.unsubscribe(relay.id)
-            :ok = Presence.Relays.Relay.subscribe(relay.id)
-          end)
-
-        # Cache new stamp secrets
-        socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
-
-        # If a relay reconnects with a different stamp_secret, disconnect them immediately
-        joined_ids = Map.keys(joins)
-
-        {socket, disconnected_ids} =
-          Presence.Relays.Debouncer.cancel_leaves_or_disconnect_immediately(
-            socket,
-            joined_ids,
-            socket.assigns.client.account_id
-          )
-
-        {:ok, relays} = select_relays(socket)
-
-        push(socket, "relays_presence", %{
-          disconnected_ids: disconnected_ids,
+        payload = %{
+          disconnected_ids: [relay_id],
           connected:
             Views.Relay.render_many(
               relays,
               socket.assigns.client.public_key,
               socket.assigns.subject.expires_at
             )
-        })
+        }
 
-        {:noreply, socket}
+        Presence.Relays.Debouncer.queue_leave(self(), socket, relay_id, payload)
+      end)
+
+    # Handle joins
+    if map_size(joins) > 0 do
+      # If a relay reconnects with a different stamp_secret, disconnect them immediately
+      joined_ids = Map.keys(joins)
+
+      {socket, disconnected_ids} =
+        Presence.Relays.Debouncer.cancel_leaves_or_disconnect_immediately(
+          socket,
+          joined_ids,
+          socket.assigns.client.account_id
+        )
+
+      # Count how many relays we've already sent to the client
+      current_relay_count = map_size(socket.assigns[:stamp_secrets] || %{})
+
+      # Only send relays_presence for new relays if client has < 2 relays,
+      # or if we need to notify about disconnected relays from stamp_secret changes
+      if current_relay_count < 2 or disconnected_ids != [] do
+        {:ok, relays} = select_relays(socket)
+
+        if length(relays) > 0 do
+          # Cache new stamp secrets
+          socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
+
+          push(socket, "relays_presence", %{
+            disconnected_ids: disconnected_ids,
+            connected:
+              Views.Relay.render_many(
+                relays,
+                socket.assigns.client.public_key,
+                socket.assigns.subject.expires_at
+              )
+          })
+
+          {:noreply, socket}
+        else
+          {:noreply, socket}
+        end
       else
+        # Client already has >= 2 relays, just cache any new stamp secrets for tracking
+        {:ok, relays} = select_relays(socket)
+        socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
         {:noreply, socket}
       end
     else
@@ -509,7 +501,7 @@ defmodule API.Client.Channel do
              error ->
                error
            end),
-         true <- resource.site_id == Ecto.UUID.dump!(gateway.site_id),
+         true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id),
          true <- gateway.online? do
       # TODO: Optimization
       {:ok, policy_authorization} =
@@ -580,7 +572,7 @@ defmodule API.Client.Channel do
              error ->
                error
            end),
-         true <- resource.site_id == Ecto.UUID.dump!(gateway.site_id),
+         true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id),
          true <- gateway.online? do
       # TODO: Optimization
       {:ok, policy_authorization} =
@@ -674,12 +666,6 @@ defmodule API.Client.Channel do
     relays = load_balance_relays(location, relays)
 
     {:ok, relays}
-  end
-
-  defp maybe_subscribe_for_relays_presence([]), do: :ok
-
-  defp maybe_subscribe_for_relays_presence(_relays) do
-    :ok = Presence.Relays.Global.subscribe()
   end
 
   defp generate_preshared_key(client, gateway) do
@@ -794,9 +780,13 @@ defmodule API.Client.Channel do
            old_struct: %Domain.Client{} = old_client,
            struct: %Domain.Client{id: client_id} = client
          },
-         %{assigns: %{client: %{id: id}}} = socket
+         %{assigns: %{client: %{id: id} = current_client}} = socket
        )
        when id == client_id do
+    # Update socket with the new client state, preserving loaded associations
+    updated_client = %{client | account: current_client.account, actor: current_client.actor}
+    socket = assign(socket, :client, updated_client)
+
     # Changes in client verification can affect the list of allowed resources
     if old_client.verified_at != client.verified_at do
       Cache.Client.recompute_connectable_resources(

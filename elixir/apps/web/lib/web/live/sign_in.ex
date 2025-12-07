@@ -127,7 +127,10 @@ defmodule Web.SignIn do
                     type="oidc"
                   >
                     <:icon>
-                      <.provider_icon type={provider_type_from_identity(provider)} class="w-5 h-5 mr-2" />
+                      <.provider_icon
+                        type={provider_type_from_issuer(provider.issuer)}
+                        class="w-5 h-5 mr-2"
+                      />
                     </:icon>
                   </.auth_button>
                 </div>

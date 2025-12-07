@@ -64,4 +64,17 @@ defmodule Domain.SiteFixtures do
   def account_site_fixture(attrs \\ %{}) do
     site_fixture(Map.put(attrs, :managed_by, :account))
   end
+
+  @doc """
+  Generate an internet site (system-managed for internet resources).
+  """
+  def internet_site_fixture(attrs \\ %{}) do
+    attrs =
+      attrs
+      |> Enum.into(%{})
+      |> Map.put(:managed_by, :system)
+      |> Map.put_new(:name, "Internet")
+
+    site_fixture(attrs)
+  end
 end

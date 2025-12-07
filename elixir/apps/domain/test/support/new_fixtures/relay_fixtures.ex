@@ -12,9 +12,10 @@ defmodule Domain.RelayFixtures do
     Enum.into(attrs, %{
       name: "Relay #{unique_num}",
       ipv4: {100, 64, rem(unique_num, 255), rem(unique_num, 255)},
+      ipv6: {0x2001, 0x0DB8, 0, 0, 0, 0, 0, rem(unique_num, 65535)},
       port: 3478,
       last_seen_user_agent: "Firezone-Relay/1.0.0",
-      last_seen_version: "1.0.0",
+      last_seen_version: "1.3.0",
       last_seen_remote_ip: {100, 64, 0, 1},
       last_seen_at: DateTime.utc_now()
     })
@@ -102,5 +103,26 @@ defmodule Domain.RelayFixtures do
   """
   def relay_with_custom_port_fixture(port, attrs \\ %{}) do
     relay_fixture(Map.put(attrs, :port, port))
+  end
+
+  @doc """
+  Update a relay with the given changes.
+  """
+  def update_relay(relay, changes) do
+    relay
+    |> Ecto.Changeset.change(Enum.into(changes, %{}))
+    |> Domain.Repo.update!()
+  end
+
+  @doc """
+  Manually disconnects a relay for testing purposes.
+  This simulates the relay socket closing without token deletion.
+  Used to test relay presence debouncing in client/gateway channels.
+  """
+  def disconnect_relay(relay) do
+    :ok = Domain.Presence.untrack(self(), "presences:global_relays", relay.id)
+    :ok = Domain.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
+    :ok = Domain.PubSub.unsubscribe("relays:#{relay.id}")
+    :ok
   end
 end

@@ -1493,10 +1493,9 @@ defmodule Web.CoreComponents do
   def provider_type_from_group(_), do: "firezone"
 
   @doc """
-  Helper function to get provider type from identity
-  Determines provider type based on the issuer URL
+  Helper function to get provider type from an issuer URL.
   """
-  def provider_type_from_identity(%{issuer: issuer}) when is_binary(issuer) do
+  def provider_type_from_issuer(issuer) when is_binary(issuer) do
     cond do
       String.contains?(issuer, "okta.com") -> "okta"
       String.contains?(issuer, "google.com") -> "google"
@@ -1505,7 +1504,7 @@ defmodule Web.CoreComponents do
     end
   end
 
-  def provider_type_from_identity(_), do: "firezone"
+  def provider_type_from_issuer(_), do: "firezone"
 
   @doc """
   Renders a logo appropriate for the given provider.

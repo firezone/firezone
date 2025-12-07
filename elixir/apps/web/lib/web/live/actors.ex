@@ -934,7 +934,7 @@ defmodule Web.Actors do
                       <div class="flex-1 space-y-3">
                         <div class="flex items-center gap-2 min-w-0">
                           <.provider_icon
-                            type={provider_type_from_identity(identity)}
+                            type={provider_type_from_issuer(identity.issuer)}
                             class="w-5 h-5 flex-shrink-0"
                           />
                           <div
