@@ -559,6 +559,9 @@ defmodule Domain.Cache.Client do
     alias Domain.Safe
 
     def all_policies_for_actor_id!(actor_id, subject) do
+      # Service accounts don't get access to the "Everyone" group - they must have explicit memberships
+      include_everyone_group = subject.actor.type in [:account_user, :account_admin_user]
+
       from(p in Domain.Policy, as: :policies)
       |> where([policies: p], is_nil(p.disabled_at))
       |> join(:inner, [policies: p], ag in assoc(p, :group), as: :group)
@@ -567,7 +570,8 @@ defmodule Domain.Cache.Client do
       |> where(
         [memberships: m, group: ag, actor: a],
         m.actor_id == ^actor_id or
-          (ag.type == :managed and
+          (^include_everyone_group and
+             ag.type == :managed and
              is_nil(ag.idp_id) and
              ag.name == "Everyone" and
              ag.account_id == a.account_id)
@@ -588,28 +592,33 @@ defmodule Domain.Cache.Client do
           list -> list
         end
 
-      # Get the Everyone group for this account (if it exists)
-      everyone_group =
-        from(g in Domain.Group,
-          where:
-            g.type == :managed and
-              is_nil(g.idp_id) and
-              g.name == "Everyone" and
-              g.account_id == ^subject.account.id
-        )
-        |> Safe.scoped(subject)
-        |> Safe.one()
+      # Service accounts don't get access to the "Everyone" group - they must have explicit memberships
+      if subject.actor.type in [:account_user, :account_admin_user] do
+        # Get the Everyone group for this account (if it exists)
+        everyone_group =
+          from(g in Domain.Group,
+            where:
+              g.type == :managed and
+                is_nil(g.idp_id) and
+                g.name == "Everyone" and
+                g.account_id == ^subject.account.id
+          )
+          |> Safe.scoped(subject)
+          |> Safe.one()
 
-      # Append a synthetic membership for the Everyone group
-      case everyone_group do
-        nil ->
-          memberships
+        # Append a synthetic membership for the Everyone group
+        case everyone_group do
+          nil ->
+            memberships
 
-        {:error, :unauthorized} ->
-          memberships
+          {:error, :unauthorized} ->
+            memberships
 
-        group ->
-          memberships ++ [%{group_id: group.id, id: nil}]
+          group ->
+            memberships ++ [%{group_id: group.id, id: nil}]
+        end
+      else
+        memberships
       end
     end
 
