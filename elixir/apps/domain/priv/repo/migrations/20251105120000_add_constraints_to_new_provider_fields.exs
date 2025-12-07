@@ -23,6 +23,34 @@ defmodule Domain.Repo.Migrations.AddConstraintsToNewProviderFields do
       )
     )
 
+    # Delete any external identities that are missing the new required fields
+    execute(
+      """
+      DELETE FROM external_identities
+      WHERE issuer IS NULL OR idp_id IS NULL
+      """,
+      ""
+    )
+
+    # Delete duplicate external identities that would violate the new unique constraint
+    execute(
+      """
+      DELETE FROM external_identities
+      WHERE id IN (
+        SELECT id FROM (
+          SELECT id,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY account_id, actor_id, issuer, idp_id
+                   ORDER BY inserted_at DESC
+                 ) as rn
+          FROM external_identities
+        ) ranked
+        WHERE rn > 1
+      );
+      """,
+      ""
+    )
+
     alter table(:external_identities) do
       modify(:issuer, :text, null: false)
       modify(:idp_id, :text, null: false)

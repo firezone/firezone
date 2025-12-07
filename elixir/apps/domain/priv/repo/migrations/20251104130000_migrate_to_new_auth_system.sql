@@ -1,5 +1,6 @@
 -- Migration: Convert all accounts from legacy auth system to new directory-based system
 -- This migration performs the following operations for each account:
+-- 0. Delete unsupported legacy auth providers (mock, jumpcloud)
 -- 1. Populate actor emails from identities
 -- 2. Set allow_email_otp_sign_in based on email identity existence
 -- 3. Migrate userpass and email identities (set issuer="firezone")
@@ -23,6 +24,14 @@ DECLARE
   v_directory UUID;
   v_duplicate_count INT;
 BEGIN
+  -- ============================================================================
+  -- STEP 0: DELETE UNSUPPORTED LEGACY AUTH PROVIDERS
+  -- ============================================================================
+  RAISE NOTICE 'Step 0: Deleting unsupported legacy auth providers (mock, jumpcloud)';
+
+  DELETE FROM legacy_auth_providers
+  WHERE adapter IN ('mock', 'jumpcloud');
+
   -- Loop through each account
   FOR v_account_id IN SELECT id FROM accounts ORDER BY id
   LOOP
@@ -172,7 +181,7 @@ BEGIN
         REGEXP_REPLACE(
           REGEXP_REPLACE(
             p.adapter_config->>'discovery_document_uri',
-            '/\\.well-known/.*$',
+            '/\.well-known/.*$',
             ''
           ),
           '/$',
@@ -221,7 +230,7 @@ BEGIN
         REGEXP_REPLACE(
           REGEXP_REPLACE(
             p.adapter_config->>'discovery_document_uri',
-            '/\\.well-known/.*$',
+            '/\.well-known/.*$',
             ''
           ),
           '/$',
@@ -250,7 +259,7 @@ BEGIN
         REGEXP_REPLACE(
           REGEXP_REPLACE(
             p.adapter_config->>'discovery_document_uri',
-            '/\\.well-known/.*$',
+            '/\.well-known/.*$',
             ''
           ),
           '/$',
@@ -386,7 +395,7 @@ BEGIN
         REGEXP_REPLACE(
           REGEXP_REPLACE(
             p.adapter_config->>'discovery_document_uri',
-            '/\\.well-known/.*$',
+            '/\.well-known/.*$',
             ''
           ),
           '/$',
@@ -418,7 +427,7 @@ BEGIN
         REGEXP_REPLACE(
           REGEXP_REPLACE(
             p.adapter_config->>'discovery_document_uri',
-            '/\\.well-known/.*$',
+            '/\.well-known/.*$',
             ''
           ),
           '/$',
