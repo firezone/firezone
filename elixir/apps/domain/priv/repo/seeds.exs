@@ -32,15 +32,15 @@ defmodule Domain.Repo.Seeds do
 
   # Populate these in your .env
   defp google_idp_id do
-    System.get_env("GOOGLE_IDP_ID")
+    System.get_env("GOOGLE_IDP_ID", "dummy")
   end
 
   defp entra_idp_id do
-    System.get_env("ENTRA_IDP_ID")
+    System.get_env("ENTRA_IDP_ID", "dummy")
   end
 
   defp entra_tenant_id do
-    System.get_env("ENTRA_TENANT_ID")
+    System.get_env("ENTRA_TENANT_ID", "dummy")
   end
 
   # Helper function to create auth providers with the new structure
