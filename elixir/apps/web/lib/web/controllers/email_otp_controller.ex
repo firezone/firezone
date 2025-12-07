@@ -35,7 +35,7 @@ defmodule Web.EmailOTPController do
         %{
           "account_id_or_slug" => account_id_or_slug,
           "auth_provider_id" => auth_provider_id,
-          "email" => email
+          "email" => %{"email" => email}
         } = params
       )
       when is_binary(email) do
