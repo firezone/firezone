@@ -1300,8 +1300,7 @@ defmodule Domain.Repo.Seeds do
       policy =
         %Policy{
           account_id: subject.account.id,
-          description:
-            attrs[:name] || attrs["name"] || attrs[:description] || attrs["description"],
+          description: attrs[:description] || attrs["description"],
           group_id: attrs[:group_id] || attrs["group_id"],
           resource_id: attrs[:resource_id] || attrs["resource_id"],
           conditions: attrs[:conditions] || attrs["conditions"] || []
@@ -1314,7 +1313,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, policy} =
       create_policy.(
         %{
-          name: "All Access To Google",
+          description: "All Access To Google",
           group_id: everyone_group.id,
           resource_id: dns_google_resource.id
         },
@@ -1324,7 +1323,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          name: "All Access To firez.one",
+          description: "All Access To firez.one",
           group_id: synced_group.id,
           resource_id: firez_one.id
         },
@@ -1334,7 +1333,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          name: "All Access To firez.one",
+          description: "All Access To firez.one",
           group_id: everyone_group.id,
           resource_id: example_dns.id
         },
@@ -1344,7 +1343,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          name: "All Access To firezone.dev",
+          description: "All Access To firezone.dev",
           group_id: everyone_group.id,
           resource_id: firezone_dev.id
         },
@@ -1354,7 +1353,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          name: "All Access To ip6only.me",
+          description: "All Access To ip6only.me",
           group_id: synced_group.id,
           resource_id: ip6only.id
         },
@@ -1364,7 +1363,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          name: "All access to Google",
+          description: "All access to Google",
           group_id: everyone_group.id,
           resource_id: address_description_null_resource.id
         },
@@ -1374,7 +1373,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          name: "Eng Access To Gitlab",
+          description: "Eng Access To Gitlab",
           group_id: eng_group.id,
           resource_id: dns_gitlab_resource.id
         },
@@ -1384,7 +1383,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          name: "All Access To Network",
+          description: "All Access To Network",
           group_id: synced_group.id,
           resource_id: cidr_resource.id
         },
@@ -1394,7 +1393,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          name: "All Access To Network",
+          description: "All Access To Network",
           group_id: synced_group.id,
           resource_id: ipv6_resource.id
         },
@@ -1404,7 +1403,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          name: "All Access To **.httpbin",
+          description: "All Access To **.httpbin",
           group_id: everyone_group.id,
           resource_id: dns_httpbin_resource.id
         },
@@ -1414,7 +1413,17 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          name: "All Access To **.httpbin.search.test",
+          description: "Synced Group Access To **.httpbin",
+          group_id: synced_group.id,
+          resource_id: dns_httpbin_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      create_policy.(
+        %{
+          description: "All Access To **.httpbin.search.test",
           group_id: everyone_group.id,
           resource_id: search_domain_resource.id
         },
