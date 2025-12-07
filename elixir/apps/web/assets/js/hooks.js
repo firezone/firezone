@@ -241,19 +241,22 @@ Hooks.CopyClipboard = {
 
       const textToCopy = (targetEl.innerText || targetEl.textContent).trim();
 
-      navigator.clipboard.writeText(textToCopy).then(() => {
-        // Show success state
-        if ($defaultMessage) $defaultMessage.classList.add("hidden");
-        if ($successMessage) $successMessage.classList.remove("hidden");
+      navigator.clipboard
+        .writeText(textToCopy)
+        .then(() => {
+          // Show success state
+          if ($defaultMessage) $defaultMessage.classList.add("hidden");
+          if ($successMessage) $successMessage.classList.remove("hidden");
 
-        // Reset after 2 seconds
-        setTimeout(() => {
-          if ($defaultMessage) $defaultMessage.classList.remove("hidden");
-          if ($successMessage) $successMessage.classList.add("hidden");
-        }, 2000);
-      }).catch((err) => {
-        console.error("Failed to copy:", err);
-      });
+          // Reset after 2 seconds
+          setTimeout(() => {
+            if ($defaultMessage) $defaultMessage.classList.remove("hidden");
+            if ($successMessage) $successMessage.classList.add("hidden");
+          }, 2000);
+        })
+        .catch((err) => {
+          console.error("Failed to copy:", err);
+        });
     };
 
     button.addEventListener("click", this.clickHandler, { capture: true });
