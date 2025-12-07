@@ -574,17 +574,29 @@ defmodule Web.SignUp do
 
     def create_email_provider(account) do
       id = Ecto.UUID.generate()
-      attrs = %{account_id: account.id, id: id, type: :email_otp}
-      parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id type]a)
-      attrs = %{id: id, account_id: account.id, name: "Email (OTP)"}
 
-      changeset =
-        cast(%EmailOTP.AuthProvider{}, attrs, ~w[id account_id name]a)
+      parent_changeset =
+        cast(
+          %AuthProvider{},
+          %{account_id: account.id, id: id, type: :email_otp},
+          ~w[id account_id type]a
+        )
+
+      email_otp_changeset =
+        cast(
+          %EmailOTP.AuthProvider{},
+          %{id: id, account_id: account.id, name: "Email (OTP)"},
+          ~w[id account_id name]a
+        )
         |> EmailOTP.AuthProvider.changeset()
 
-      with {:ok, _auth_provider} <- Safe.unscoped(parent_changeset) |> Safe.insert(),
-           {:ok, email_provider} <- Safe.unscoped(changeset) |> Safe.insert() do
-        {:ok, email_provider}
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:auth_provider, parent_changeset)
+      |> Ecto.Multi.insert(:email_otp_provider, email_otp_changeset)
+      |> Safe.transact()
+      |> case do
+        {:ok, %{email_otp_provider: email_provider}} -> {:ok, email_provider}
+        {:error, _step, changeset, _changes} -> {:error, changeset}
       end
     end
 
@@ -612,7 +624,7 @@ defmodule Web.SignUp do
       import Ecto.Query
 
       query = from(a in Domain.Account, where: a.slug == ^slug, select: count(a.id))
-      Safe.unscoped(query) |> Safe.one() > 0
+      Safe.unscoped(query) |> Safe.exists?()
     end
   end
 end

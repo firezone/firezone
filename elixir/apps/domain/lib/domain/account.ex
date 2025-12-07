@@ -84,7 +84,7 @@ defmodule Domain.Account do
   end
 
   defp account_feature_enabled?(account, feature) do
-    Map.fetch!(account.features || %Domain.Accounts.Features{}, feature)
+    Map.fetch!(account.features || %Domain.Accounts.Features{}, feature) || false
   end
 end
 

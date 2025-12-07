@@ -6,6 +6,12 @@ defmodule Domain.Repo do
   alias Domain.Repo.{Paginator, Preloader, Filter}
   require Ecto.Query
 
+  def valid_uuid?(binary) when is_binary(binary),
+    do: match?(<<_::64, ?-, _::32, ?-, _::32, ?-, _::32, ?-, _::96>>, binary)
+
+  def valid_uuid?(_binary),
+    do: false
+
   @doc """
   Similar to `Ecto.Repo.all/2`, fetches all results from the query but returns a tuple
   and allow to execute preloads and paginate through the results.

@@ -35,7 +35,7 @@ defmodule Web.HomeController do
 
   defp validate_account_id_or_slug(account_id_or_slug) do
     cond do
-      match?({:ok, _}, Ecto.UUID.cast(account_id_or_slug)) ->
+      Domain.Repo.valid_uuid?(account_id_or_slug) ->
         {:ok, String.downcase(account_id_or_slug)}
 
       String.match?(account_id_or_slug, @slug_regex) ->

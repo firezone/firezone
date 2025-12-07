@@ -78,12 +78,10 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
     }
 
     def get_account_by_id_or_slug(id_or_slug) do
-      case Ecto.UUID.cast(id_or_slug) do
-        {:ok, _uuid} ->
-          where(Account, [a], a.id == ^id_or_slug)
-
-        :error ->
-          where(Account, [a], a.slug == ^id_or_slug)
+      if Domain.Repo.valid_uuid?(id_or_slug) do
+        where(Account, [a], a.id == ^id_or_slug)
+      else
+        where(Account, [a], a.slug == ^id_or_slug)
       end
       |> Safe.unscoped()
       |> Safe.one()
