@@ -1430,6 +1430,16 @@ defmodule Domain.Repo.Seeds do
         admin_subject
       )
 
+    {:ok, _} =
+      create_policy.(
+        %{
+          description: "Synced Group Access To **.httpbin.search.test",
+          group_id: synced_group.id,
+          resource_id: search_domain_resource.id
+        },
+        admin_subject
+      )
+
     IO.puts("Policies Created")
     IO.puts("")
 
