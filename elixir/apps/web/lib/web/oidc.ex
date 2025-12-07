@@ -53,7 +53,7 @@ defmodule Web.OIDC do
     with {:ok, config} <- Application.fetch_env(:domain, Domain.OIDC.AuthProvider) do
       config =
         Enum.into(config, %{
-          redirect_uri: callback_url(),
+          redirect_uri: callback_url(provider),
           client_id: provider.client_id,
           client_secret: provider.client_secret,
           discovery_document_uri: provider.discovery_document_uri,
@@ -106,7 +106,7 @@ defmodule Web.OIDC do
         grant_type: "authorization_code",
         code: code,
         code_verifier: verifier,
-        redirect_uri: callback_url()
+        redirect_uri: callback_url(provider)
       }
 
       OpenIDConnect.fetch_tokens(config, params)
