@@ -889,6 +889,14 @@ defmodule Domain.Repo.Seeds do
     }
     |> Repo.insert!()
 
+    # Add service account (Backup Manager) to synced group
+    %Membership{
+      group_id: synced_group.id,
+      actor_id: service_account_actor.id,
+      account_id: service_account_actor.account_id
+    }
+    |> Repo.insert!()
+
     synced_group = synced_group
 
     extra_group_names = [
