@@ -515,7 +515,7 @@ defmodule Domain.Okta.ReqDPoP do
     end
   end
 
-  defp default_backoff_ms(), do: 1000
+  defp default_backoff_ms, do: 1000
 
   defp wrap_adapter(%Req.Request{adapter: orig} = req) do
     Req.Request.put_private(req, :dpop_orig_adapter, orig)

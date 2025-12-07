@@ -5,7 +5,7 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
     explanations: [
       check: """
       Domain.Safe should only be called from within a DB module.
-      
+
       All modules that need to access Domain.Safe should define an inline DB module
       and make all Domain.Safe calls from within that module.
       """,
@@ -15,7 +15,7 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
   @doc false
   def run(source_file, params \\ []) do
     issue_meta = IssueMeta.for(source_file, params)
-    
+
     # Skip checking the Domain.Safe module itself
     if String.ends_with?(source_file.filename, "domain/lib/domain/safe.ex") do
       []
@@ -77,7 +77,7 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
   defp issue_for(line_no, issue_meta, module_stack) do
     current_module = List.last(module_stack)
     location = if current_module, do: " (in module #{inspect(current_module)})", else: ""
-    
+
     format_issue(
       issue_meta,
       message:

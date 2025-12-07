@@ -72,7 +72,8 @@ defmodule Domain.Cache.Gateway do
   def prune(cache) do
     now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 
-    # 1. Remove individual policy_authorizations older than 14 days, then remove access entry if no policy_authorizations left
+    # 1. Remove individual policy_authorizations older than 14 days, then remove access entry if no
+    # policy_authorizations left
     for {tuple, policy_authorization_id_map} <- cache,
         filtered =
           Map.reject(policy_authorization_id_map, fn {_fid_bytes, expires_at_unix} ->

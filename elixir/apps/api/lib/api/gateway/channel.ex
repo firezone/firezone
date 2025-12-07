@@ -607,8 +607,8 @@ defmodule API.Gateway.Channel do
         #   - Admin recreates the same policy (same access)
         #   - Client connection resumes
         #   - Client sees exactly the same resource list
-        #   - Client now has lost the ability to recreate the policy authorization because from its perspective, it is still connected
-        #     to this gateway.
+        #   - Client now has lost the ability to recreate the policy authorization because from its perspective,
+        #     it is still connected to this gateway.
         #   - Packets to gateway are essentially blackholed until the client signs out and back in
 
         # This will be fixed when the client responds to the ICMP prohibited by filter message:
