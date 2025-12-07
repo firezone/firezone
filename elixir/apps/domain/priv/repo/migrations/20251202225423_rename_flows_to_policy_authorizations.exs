@@ -80,77 +80,77 @@ defmodule Domain.Repo.Migrations.RenameFlowsToPolicyAuthorizations do
     # But we need to rename them explicitly to follow our naming convention
     execute(
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT flows_account_id_fkey TO policy_authorizations_account_id_fkey
       """,
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT policy_authorizations_account_id_fkey TO flows_account_id_fkey
       """
     )
 
     execute(
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT flows_client_id_fkey TO policy_authorizations_client_id_fkey
       """,
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT policy_authorizations_client_id_fkey TO flows_client_id_fkey
       """
     )
 
     execute(
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT flows_gateway_id_fkey TO policy_authorizations_gateway_id_fkey
       """,
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT policy_authorizations_gateway_id_fkey TO flows_gateway_id_fkey
       """
     )
 
     execute(
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT flows_membership_id_fkey TO policy_authorizations_membership_id_fkey
       """,
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT policy_authorizations_membership_id_fkey TO flows_membership_id_fkey
       """
     )
 
     execute(
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT flows_policy_id_fkey TO policy_authorizations_policy_id_fkey
       """,
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT policy_authorizations_policy_id_fkey TO flows_policy_id_fkey
       """
     )
 
     execute(
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT flows_resource_id_fkey TO policy_authorizations_resource_id_fkey
       """,
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT policy_authorizations_resource_id_fkey TO flows_resource_id_fkey
       """
     )
 
     execute(
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT flows_token_id_fkey TO policy_authorizations_token_id_fkey
       """,
       """
-        ALTER TABLE policy_authorizations 
+        ALTER TABLE policy_authorizations
         RENAME CONSTRAINT policy_authorizations_token_id_fkey TO flows_token_id_fkey
       """
     )

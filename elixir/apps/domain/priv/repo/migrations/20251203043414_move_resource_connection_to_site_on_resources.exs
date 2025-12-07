@@ -33,14 +33,14 @@ defmodule Domain.Repo.Migrations.MoveResourceConnectionToSiteOnResources do
       """
         UPDATE resources
         SET site_id = (
-          SELECT site_id 
-          FROM resource_connections 
+          SELECT site_id
+          FROM resource_connections
           WHERE resource_connections.resource_id = resources.id
           LIMIT 1
         )
         WHERE EXISTS (
-          SELECT 1 
-          FROM resource_connections 
+          SELECT 1
+          FROM resource_connections
           WHERE resource_connections.resource_id = resources.id
         )
       """,

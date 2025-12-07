@@ -612,10 +612,10 @@ defmodule Domain.Google.Sync do
         VALUES #{values_clause}
       )
       INSERT INTO groups (
-        id, name, directory_id, idp_id, account_id, 
+        id, name, directory_id, idp_id, account_id,
         inserted_at, updated_at, type, last_synced_at
       )
-      SELECT 
+      SELECT
         uuid_generate_v4(),
         id.name,
         $#{directory_id},
@@ -628,25 +628,25 @@ defmodule Domain.Google.Sync do
       FROM input_data id
       ON CONFLICT (account_id, idp_id) WHERE idp_id IS NOT NULL
       DO UPDATE SET
-        name = CASE 
-          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at 
-          THEN EXCLUDED.name 
-          ELSE groups.name 
+        name = CASE
+          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
+          THEN EXCLUDED.name
+          ELSE groups.name
         END,
-        directory_id = CASE 
-          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at 
-          THEN EXCLUDED.directory_id 
-          ELSE groups.directory_id 
+        directory_id = CASE
+          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
+          THEN EXCLUDED.directory_id
+          ELSE groups.directory_id
         END,
-        last_synced_at = CASE 
-          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at 
-          THEN EXCLUDED.last_synced_at 
-          ELSE groups.last_synced_at 
+        last_synced_at = CASE
+          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
+          THEN EXCLUDED.last_synced_at
+          ELSE groups.last_synced_at
         END,
-        updated_at = CASE 
-          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at 
-          THEN EXCLUDED.updated_at 
-          ELSE groups.updated_at 
+        updated_at = CASE
+          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
+          THEN EXCLUDED.updated_at
+          ELSE groups.updated_at
         END
       """
     end
