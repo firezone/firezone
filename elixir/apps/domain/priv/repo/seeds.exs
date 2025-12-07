@@ -157,14 +157,6 @@ defmodule Domain.Repo.Seeds do
     # which helps with static docker-compose environment for local development.
     maybe_repo_update = fn resource, values ->
       if System.get_env("STATIC_SEEDS") == "true" do
-        # Convert string IDs to binary UUIDs if present
-        values =
-          if Map.has_key?(values, :id) do
-            Map.update!(values, :id, &Ecto.UUID.cast!/1)
-          else
-            values
-          end
-
         Ecto.Changeset.change(resource, values)
         |> Repo.update!()
       else
@@ -204,7 +196,7 @@ defmodule Domain.Repo.Seeds do
 
     account =
       maybe_repo_update.(account,
-        id: "c89bcc8c-9392-4dae-a40d-888aef6d28e0",
+        id: Ecto.UUID.cast!("c89bcc8c-9392-4dae-a40d-888aef6d28e0"),
         metadata: %{
           stripe: %{
             customer_id: "cus_PZKIfcHB6SSBA4",
@@ -235,7 +227,7 @@ defmodule Domain.Repo.Seeds do
       )
       |> Repo.insert!()
 
-    other_account = maybe_repo_update.(other_account, id: "9b9290bf-e1bc-4dd3-b401-511908262690")
+    other_account = maybe_repo_update.(other_account, id: Ecto.UUID.cast!("9b9290bf-e1bc-4dd3-b401-511908262690"))
 
     IO.puts("Created accounts: ")
 
@@ -912,7 +904,7 @@ defmodule Domain.Repo.Seeds do
     global_relay_token =
       global_relay_token
       |> maybe_repo_update.(
-        id: "e82fcdc1-057a-4015-b90b-3b18f0f28053",
+        id: Ecto.UUID.cast!("e82fcdc1-057a-4015-b90b-3b18f0f28053"),
         secret_salt: "lZWUdgh-syLGVDsZEu_29A",
         secret_fragment: "C14NGA87EJRR03G4QPR07A9C6G784TSSTHSF4TI5T0GD8D6L0VRG====",
         secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
@@ -997,7 +989,7 @@ defmodule Domain.Repo.Seeds do
     site_token =
       site_token
       |> maybe_repo_update.(
-        id: "2274560b-e97b-45e4-8b34-679c7617e98d",
+        id: Ecto.UUID.cast!("2274560b-e97b-45e4-8b34-679c7617e98d"),
         secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
         secret_fragment: "O02L7US2J3VINOMPR9J6IL88QIQP6UO8AQVO6U5IPL0VJC22JGH0====",
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
