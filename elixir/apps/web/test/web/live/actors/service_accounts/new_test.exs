@@ -110,7 +110,7 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     conn: conn
   } do
     {:ok, account} =
-      Domain.Accounts.update_account(account, %{
+      Fixtures.Accounts.update_account(account, %{
         limits: %{
           service_accounts_count: 1
         }
@@ -154,7 +154,7 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     |> form("form", actor: attrs)
     |> render_submit()
 
-    assert actor = Repo.get_by(Domain.Actors.Actor, name: attrs.name)
+    assert actor = Repo.get_by(Domain.Actor, name: attrs.name)
     assert actor.type == :service_account
 
     assert_redirect(lv, ~p"/#{account}/actors/service_accounts/#{actor}/new_identity")

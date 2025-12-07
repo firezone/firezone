@@ -607,12 +607,10 @@ defmodule Domain.AuthTest do
       provider_adapter_config: provider_adapter_config
     } do
       assert changeset = new_provider(account)
-      assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
+      assert %Ecto.Changeset{data: %Domain.AuthProvider{}} = changeset
 
       assert changeset.changes == %{
-               account_id: account.id,
-               created_by: :system,
-               created_by_subject: %{"email" => nil, "name" => "System"}
+               account_id: account.id
              }
 
       provider_attrs =
@@ -622,7 +620,7 @@ defmodule Domain.AuthTest do
         )
 
       assert changeset = new_provider(account, provider_attrs)
-      assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
+      assert %Ecto.Changeset{data: %Domain.AuthProvider{}} = changeset
       assert changeset.changes.name == provider_attrs.name
       assert changeset.changes.provisioner == provider_attrs.provisioner
       assert changeset.changes.adapter == provider_attrs.adapter
@@ -717,7 +715,7 @@ defmodule Domain.AuthTest do
     test "returns error if provider is disabled by account feature flag", %{
       account: account
     } do
-      {:ok, account} = Domain.Accounts.update_account(account, %{features: %{idp_sync: false}})
+      account = Fixtures.Accounts.update_account(account, %{features: %{idp_sync: false}})
 
       attrs =
         Fixtures.Auth.provider_attrs(
@@ -748,9 +746,6 @@ defmodule Domain.AuthTest do
       assert provider.adapter == attrs.adapter
       assert provider.adapter_config == attrs.adapter_config
       assert provider.account_id == account.id
-
-      assert provider.created_by == :system
-      assert provider.created_by_subject == %{"email" => nil, "name" => "System"}
 
       assert is_nil(provider.disabled_at)
     end
@@ -821,13 +816,6 @@ defmodule Domain.AuthTest do
       subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert {:ok, provider} = create_provider(account, attrs, subject)
-
-      assert provider.created_by == :identity
-
-      assert provider.created_by_subject == %{
-               "email" => subject.identity.email,
-               "name" => subject.actor.name
-             }
     end
   end
 
@@ -849,7 +837,7 @@ defmodule Domain.AuthTest do
       provider_attrs = Fixtures.Auth.provider_attrs()
 
       assert changeset = change_provider(provider, provider_attrs)
-      assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
+      assert %Ecto.Changeset{data: %Domain.AuthProvider{}} = changeset
 
       assert changeset.changes.name == provider_attrs.name
     end
@@ -1019,7 +1007,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _provider} = disable_provider(provider, subject)
 
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(Token, token.id)
     end
 
     test "returns error when trying to disable the last provider", %{
@@ -1199,20 +1187,20 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _provider} = delete_provider(provider, subject)
 
-      refute Repo.get(Auth.Identity, identity.id)
-      refute Repo.get(Tokens.Token, token.id)
+      refute Repo.get(ExternalIdentity, identity.id)
+      refute Repo.get(Token, token.id)
     end
 
-    test "deletes provider actor groups", %{
+    test "deletes provider groups", %{
       account: account,
       subject: subject,
       provider: provider
     } do
-      actor_group = Fixtures.Actors.create_group(account: account, provider: provider)
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
 
       assert {:ok, _provider} = delete_provider(provider, subject)
 
-      refute Repo.get(Domain.Actors.Group, actor_group.id)
+      refute Repo.get(Domain.Group, group.id)
     end
 
     test "returns error when trying to delete the last provider", %{
@@ -1278,7 +1266,7 @@ defmodule Domain.AuthTest do
                  [
                    reason: :missing_permissions,
                    missing_permissions: [
-                     %Domain.Auth.Permission{resource: Domain.Auth.Provider, action: :manage}
+                     %Domain.Auth.Permission{resource: Domain.AuthProvider, action: :manage}
                    ]
                  ]}}
     end
@@ -1584,17 +1572,14 @@ defmodule Domain.AuthTest do
 
       assert Enum.all?(provider_identifiers, &(&1 in insert))
 
-      identities = Auth.Identity |> Repo.all() |> Repo.preload(:actor)
+      identities = ExternalIdentity |> Repo.all() |> Repo.preload(:actor)
       assert length(identities) == 2
 
       for identity <- identities do
         assert identity.inserted_at
-        assert identity.created_by == :provider
         assert identity.provider_id == provider.id
         assert identity.provider_identifier in provider_identifiers
         assert identity.actor.name in actor_names
-        assert identity.actor.last_synced_at
-        assert identity.created_by_subject == %{"email" => nil, "name" => "Provider"}
 
         assert Map.get(actor_ids_by_provider_identifier, identity.provider_identifier) ==
                  identity.actor_id
@@ -1650,12 +1635,12 @@ defmodule Domain.AuthTest do
       assert identity1.provider_identifier in update
       assert identity2.provider_identifier in update
 
-      actor = Repo.get(Domain.Actors.Actor, identity1.actor_id)
+      actor = Repo.get(Domain.Actor, identity1.actor_id)
       assert actor.type == :account_admin_user
       assert actor.name == "Brian Manifold"
       assert Map.get(actor_ids_by_provider_identifier, identity1.provider_identifier) == actor.id
 
-      actor = Repo.get(Domain.Actors.Actor, identity2.actor_id)
+      actor = Repo.get(Domain.Actor, identity2.actor_id)
       assert actor.type == :account_user
       assert actor.name == "Jennie Smith"
       assert Map.get(actor_ids_by_provider_identifier, identity2.provider_identifier) == actor.id
@@ -1729,11 +1714,11 @@ defmodule Domain.AuthTest do
       assert Enum.take(provider_identifiers, 2)
              |> Enum.all?(&(&1 in delete))
 
-      refute Repo.get_by(Auth.Identity, provider_identifier: "USER_ID1")
-      refute Repo.get_by(Auth.Identity, provider_identifier: "USER_ID2")
+      refute Repo.get_by(ExternalIdentity, provider_identifier: "USER_ID1")
+      refute Repo.get_by(ExternalIdentity, provider_identifier: "USER_ID2")
 
-      assert Auth.Identity.Query.all()
-             |> Auth.Identity.Query.by_provider_id(provider.id)
+      assert ExternalIdentity.Query.all()
+             |> ExternalIdentity.Query.by_provider_id(provider.id)
              |> Repo.aggregate(:count) == 3
 
       assert actor_ids_by_provider_identifier
@@ -1763,12 +1748,12 @@ defmodule Domain.AuthTest do
       assert {:error, "Sync deletion of identities too large"} =
                sync_provider_identities(provider, attrs_list)
 
-      assert Auth.Identity.Query.all()
-             |> Auth.Identity.Query.by_provider_id(provider.id)
+      assert ExternalIdentity.Query.all()
+             |> ExternalIdentity.Query.by_provider_id(provider.id)
              |> Repo.aggregate(:count) == 5
 
-      assert Auth.Identity.Query.all()
-             |> Auth.Identity.Query.by_provider_id(provider.id)
+      assert ExternalIdentity.Query.all()
+             |> ExternalIdentity.Query.by_provider_id(provider.id)
              |> Repo.aggregate(:count) == 5
     end
 
@@ -1823,8 +1808,8 @@ defmodule Domain.AuthTest do
                }
              }
 
-      assert Repo.aggregate(Auth.Identity, :count) == 0
-      assert Repo.aggregate(Domain.Actors.Actor, :count) == 0
+      assert Repo.aggregate(ExternalIdentity, :count) == 0
+      assert Repo.aggregate(Domain.Actor, :count) == 0
     end
   end
 
@@ -1921,7 +1906,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, updated_identity} = upsert_identity(actor, provider, attrs)
 
-      assert Repo.one(Auth.Identity).id == updated_identity.id
+      assert Repo.one(ExternalIdentity).id == updated_identity.id
 
       assert updated_identity.provider_virtual_state == %{}
       assert updated_identity.provider_state == %{}
@@ -1975,7 +1960,7 @@ defmodule Domain.AuthTest do
       provider_id = provider.id
 
       assert changeset = new_identity(actor, provider, %{})
-      assert %Ecto.Changeset{data: %Domain.Auth.Identity{}} = changeset
+      assert %Ecto.Changeset{data: %Domain.ExternalIdentity{}} = changeset
 
       assert %{
                account_id: ^account_id,
@@ -1988,15 +1973,14 @@ defmodule Domain.AuthTest do
       identity_attrs = Fixtures.Auth.identity_attrs()
 
       assert changeset = new_identity(actor, provider, identity_attrs)
-      assert %Ecto.Changeset{data: %Domain.Auth.Identity{}} = changeset
+      assert %Ecto.Changeset{data: %Domain.ExternalIdentity{}} = changeset
 
       assert %{
                account_id: ^account_id,
                actor_id: ^actor_id,
                provider_id: ^provider_id,
                provider_state: %{},
-               provider_virtual_state: %{},
-               created_by: :system
+               provider_virtual_state: %{}
              } = changeset.changes
     end
   end
@@ -2055,11 +2039,6 @@ defmodule Domain.AuthTest do
       assert identity.provider_state == %{}
       assert identity.provider_virtual_state == %{}
       assert identity.account_id == provider.account_id
-
-      assert identity.created_by_subject == %{
-               "name" => subject.actor.name,
-               "email" => subject.identity.email
-             }
     end
 
     test "trims whitespace when creating an identity", %{
@@ -2302,8 +2281,7 @@ defmodule Domain.AuthTest do
         Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
-          actor: actor,
-          created_by: :provider
+          actor: actor
         )
 
       assert delete_identity(identity, subject) == {:error, :cant_delete_synced_identity}
@@ -2321,7 +2299,7 @@ defmodule Domain.AuthTest do
 
       assert deleted_identity.id == identity.id
 
-      refute Repo.get(Auth.Identity, identity.id)
+      refute Repo.get(ExternalIdentity, identity.id)
     end
 
     test "allows subject to delete identity that belongs to another actor with manage permission",
@@ -2338,13 +2316,15 @@ defmodule Domain.AuthTest do
         |> Fixtures.Auth.add_permission(Authorizer.manage_own_identities_permission())
         |> Fixtures.Auth.add_permission(Authorizer.manage_identities_permission())
         |> Fixtures.Auth.add_permission(Tokens.Authorizer.manage_tokens_permission())
-        |> Fixtures.Auth.add_permission(Domain.Flows.Authorizer.create_flows_permission())
+        |> Fixtures.Auth.add_permission(
+          Domain.PolicyAuthorizations.Authorizer.create_policy_authorizations_permission()
+        )
 
       assert {:ok, deleted_identity} = delete_identity(identity, subject)
 
       assert deleted_identity.id == identity.id
 
-      refute Repo.get(Auth.Identity, identity.id)
+      refute Repo.get(ExternalIdentity, identity.id)
     end
 
     test "deletes token", %{
@@ -2357,7 +2337,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _deleted_identity} = delete_identity(identity, subject)
 
-      refute Repo.get(Domain.Tokens.Token, token.id)
+      refute Repo.get(Domain.Token, token.id)
     end
 
     test "does not delete identity that belongs to another actor with manage_own permission", %{
@@ -2377,7 +2357,7 @@ defmodule Domain.AuthTest do
                  [
                    reason: :missing_permissions,
                    missing_permissions: [
-                     %Domain.Auth.Permission{resource: Domain.Auth.Identity, action: :manage}
+                     %Domain.Auth.Permission{resource: Domain.ExternalIdentity, action: :manage}
                    ]
                  ]}}
     end
@@ -2454,15 +2434,15 @@ defmodule Domain.AuthTest do
       Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      all_identities_query = Auth.Identity.Query.all()
+      all_identities_query = ExternalIdentity.Query.all()
       assert Repo.aggregate(all_identities_query, :count) == 4
       assert delete_identities_for(actor, subject) == {:ok, 3}
 
       assert Repo.aggregate(all_identities_query, :count) == 1
 
       by_actor_id_query =
-        Auth.Identity.Query.all()
-        |> Auth.Identity.Query.by_actor_id(actor.id)
+        ExternalIdentity.Query.all()
+        |> ExternalIdentity.Query.by_actor_id(actor.id)
 
       assert Repo.aggregate(by_actor_id_query, :count) == 0
     end
@@ -2478,7 +2458,7 @@ defmodule Domain.AuthTest do
 
       assert delete_identities_for(actor, subject) == {:ok, 1}
 
-      refute Repo.get(Domain.Tokens.Token, token.id)
+      refute Repo.get(Domain.Token, token.id)
     end
 
     test "does not remove identities that belong to another actor", %{
@@ -2490,7 +2470,7 @@ defmodule Domain.AuthTest do
       Fixtures.Auth.create_identity(account: account, provider: provider)
 
       assert delete_identities_for(actor, subject) == {:ok, 0}
-      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 2
+      assert Repo.aggregate(ExternalIdentity.Query.all(), :count) == 2
     end
 
     test "doesn't allow regular users to delete other users identities", %{
@@ -2511,7 +2491,7 @@ defmodule Domain.AuthTest do
                    Authorizer.manage_identities_permission()
                  ]}}
 
-      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 3
+      assert Repo.aggregate(ExternalIdentity.Query.all(), :count) == 3
     end
   end
 
@@ -2626,14 +2606,13 @@ defmodule Domain.AuthTest do
       assert subject.expires_at
       assert subject.context.type == context.type
 
-      assert token = Repo.get(Tokens.Token, subject.token_id)
+      assert token = Repo.get(Token, subject.token_id)
       assert token.type == context.type
       assert token.expires_at
       assert token.account_id == account.id
       assert token.identity_id == identity.id
-      assert token.created_by == :system
-      assert token.created_by_user_agent == context.user_agent
-      assert token.created_by_remote_ip.address == context.remote_ip
+      assert token.updated_by_user_agent == context.user_agent
+      assert token.updated_by_remote_ip.address == context.remote_ip
     end
 
     test "provider identifier is not case sensitive", %{
@@ -2693,7 +2672,7 @@ defmodule Domain.AuthTest do
                sign_in(provider, identity.id, nonce, secret, context)
 
       {:ok, {_account_id, id, _nonce, _secret}} = Tokens.peek_token(fragment, context)
-      assert token = Repo.get(Domain.Tokens.Token, id)
+      assert token = Repo.get(Domain.Token, id)
       assert token.type == context.type
       assert token.identity_id == token_identity.id
     end
@@ -2953,13 +2932,11 @@ defmodule Domain.AuthTest do
       assert subject.identity.id == token_identity.id
       assert subject.context.type == context.type
 
-      assert token = Repo.get(Tokens.Token, subject.token_id)
+      assert token = Repo.get(Token, subject.token_id)
       assert token.type == context.type
       assert token.account_id == account.id
       assert token.identity_id == identity.id
-      assert token.created_by == :system
-      assert token.created_by_user_agent == context.user_agent
-      assert token.created_by_remote_ip.address == context.remote_ip
+      assert token.updated_by_remote_ip.address == context.remote_ip
 
       assert subject.expires_at == token.expires_at
       assert DateTime.truncate(subject.expires_at, :second) == expires_at
@@ -2995,7 +2972,7 @@ defmodule Domain.AuthTest do
       assert {:ok, token_identity, fragment} = sign_in(provider, nonce, payload, context)
 
       {:ok, {_account_id, id, _nonce, _secret}} = Tokens.peek_token(fragment, context)
-      assert token = Repo.get(Domain.Tokens.Token, id)
+      assert token = Repo.get(Domain.Token, id)
       assert token.type == context.type
       assert token.identity_id == token_identity.id
     end
@@ -3304,7 +3281,7 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       subject = Fixtures.Auth.create_subject(account: account, identity: identity)
 
-      assert {:ok, %Auth.Identity{}, redirect_url} = sign_out(subject, "https://fz.d/sign_out")
+      assert {:ok, %ExternalIdentity{}, redirect_url} = sign_out(subject, "https://fz.d/sign_out")
 
       post_redirect_url = URI.encode_www_form("https://fz.d/sign_out")
 
@@ -3313,7 +3290,7 @@ defmodule Domain.AuthTest do
       assert redirect_url =~ "client_id=#{provider.adapter_config["client_id"]}"
       assert redirect_url =~ "post_logout_redirect_uri=#{post_redirect_url}"
 
-      refute Repo.get(Tokens.Token, subject.token_id)
+      refute Repo.get(Token, subject.token_id)
     end
 
     test "returns identity and url without changes for other providers" do
@@ -3323,10 +3300,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       subject = Fixtures.Auth.create_subject(account: account, identity: identity)
 
-      assert {:ok, %Auth.Identity{}, "https://fz.d/sign_out"} =
+      assert {:ok, %ExternalIdentity{}, "https://fz.d/sign_out"} =
                sign_out(subject, "https://fz.d/sign_out")
 
-      refute Repo.get(Tokens.Token, subject.token_id)
+      refute Repo.get(Token, subject.token_id)
     end
   end
 
@@ -3393,15 +3370,13 @@ defmodule Domain.AuthTest do
       assert sa_subject.context.type == context.type
       assert sa_subject.permissions == fetch_type_permissions!(:service_account)
 
-      assert token = Repo.get(Tokens.Token, sa_subject.token_id)
+      assert token = Repo.get(Token, sa_subject.token_id)
       assert token.name == "foo"
       assert token.type == context.type
       assert token.account_id == account.id
       refute token.identity_id
       assert token.actor_id == actor.id
-      assert token.created_by == :identity
-      assert token.created_by_user_agent == context.user_agent
-      assert token.created_by_remote_ip.address == context.remote_ip
+      assert token.updated_by_remote_ip.address == context.remote_ip
 
       assert sa_subject.expires_at == token.expires_at
       assert DateTime.truncate(sa_subject.expires_at, :second) == one_day
@@ -3506,15 +3481,13 @@ defmodule Domain.AuthTest do
       assert api_subject.context.type == context.type
       assert api_subject.permissions == fetch_type_permissions!(:api_client)
 
-      assert token = Repo.get(Tokens.Token, api_subject.token_id)
+      assert token = Repo.get(Token, api_subject.token_id)
       assert token.name == "foo"
       assert token.type == context.type
       assert token.account_id == account.id
       refute token.identity_id
       assert token.actor_id == actor.id
-      assert token.created_by == :identity
-      assert token.created_by_user_agent == context.user_agent
-      assert token.created_by_remote_ip.address == context.remote_ip
+      assert token.updated_by_remote_ip.address == context.remote_ip
 
       assert api_subject.expires_at == token.expires_at
       assert DateTime.truncate(api_subject.expires_at, :second) == one_day
@@ -3593,7 +3566,7 @@ defmodule Domain.AuthTest do
 
       {:ok, browser_token} = create_token(identity, browser_context, nonce, nil)
 
-      browser_fragment = Tokens.encode_fragment!(browser_token)
+      browser_fragment = Domain.Crypto.encode_token_fragment!(browser_token)
 
       client_context =
         Fixtures.Auth.build_context(
@@ -3610,7 +3583,7 @@ defmodule Domain.AuthTest do
         )
 
       {:ok, client_token} = create_token(identity, client_context, nonce, nil)
-      client_fragment = Tokens.encode_fragment!(client_token)
+      client_fragment = Domain.Crypto.encode_token_fragment!(client_token)
 
       %{
         account: account,
@@ -3764,22 +3737,7 @@ defmodule Domain.AuthTest do
     } do
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
 
-      assert subject.identity.last_seen_at != identity.last_seen_at
-      assert subject.identity.last_seen_remote_ip != identity.last_seen_remote_ip
-      assert subject.identity.last_seen_remote_ip.address == context.remote_ip
-
-      assert subject.identity.last_seen_remote_ip_location_region ==
-               context.remote_ip_location_region
-
-      assert subject.identity.last_seen_remote_ip_location_city == context.remote_ip_location_city
-      assert subject.identity.last_seen_remote_ip_location_lat == context.remote_ip_location_lat
-      assert subject.identity.last_seen_remote_ip_location_lon == context.remote_ip_location_lon
-
-      assert subject.identity.last_seen_user_agent != identity.last_seen_user_agent
-      assert subject.identity.last_seen_user_agent == context.user_agent
-
-      assert identity = Repo.get(Auth.Identity, subject.identity.id)
-      assert identity.last_seen_at == subject.identity.last_seen_at
+      assert identity = Repo.get(ExternalIdentity, subject.identity.id)
     end
 
     test "updates last signed in fields for token on success", %{
@@ -3790,15 +3748,12 @@ defmodule Domain.AuthTest do
     } do
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
 
-      assert token = Repo.get(Tokens.Token, subject.token_id)
-      assert token.last_seen_at != identity.last_seen_at
-      assert token.last_seen_remote_ip != identity.last_seen_remote_ip
+      assert token = Repo.get(Token, subject.token_id)
       assert token.last_seen_remote_ip.address == context.remote_ip
       assert token.last_seen_remote_ip_location_region == context.remote_ip_location_region
       assert token.last_seen_remote_ip_location_city == context.remote_ip_location_city
       assert token.last_seen_remote_ip_location_lat == context.remote_ip_location_lat
       assert token.last_seen_remote_ip_location_lon == context.remote_ip_location_lon
-      assert token.last_seen_user_agent != identity.last_seen_user_agent
       assert token.last_seen_user_agent == context.user_agent
     end
 

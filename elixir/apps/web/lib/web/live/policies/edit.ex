@@ -1,34 +1,34 @@
 defmodule Web.Policies.Edit do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Policies, Auth}
+  alias Domain.{Policy, Auth}
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, policy} <-
-           Policies.fetch_policy_by_id(id, socket.assigns.subject,
-             preload: [:actor_group, :resource]
-           ) do
-      providers = Auth.all_active_providers_for_account!(socket.assigns.account)
+    policy = DB.get_policy!(id, socket.assigns.subject)
 
-      form =
-        policy
-        |> Policies.change_policy(%{})
-        |> to_form()
+    providers =
+      DB.all_active_providers_for_account(
+        socket.assigns.account,
+        socket.assigns.subject
+      )
 
-      socket =
-        assign(socket,
-          page_title: "Edit Policy #{policy.id}",
-          timezone: Map.get(socket.private.connect_params, "timezone", "UTC"),
-          providers: providers,
-          policy: policy,
-          selected_resource: policy.resource,
-          form: form
-        )
+    form =
+      policy
+      |> change_policy(%{})
+      |> to_form()
 
-      {:ok, socket}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    socket =
+      assign(socket,
+        page_title: "Edit Policy #{policy.id}",
+        timezone: Map.get(socket.private.connect_params, "timezone", "UTC"),
+        providers: providers,
+        policy: policy,
+        selected_resource: policy.resource,
+        form: form
+      )
+
+    {:ok, socket}
   end
 
   def render(assigns) do
@@ -56,13 +56,13 @@ defmodule Web.Policies.Edit do
               <fieldset class="flex flex-col gap-2">
                 <.live_component
                   module={Web.Components.FormComponents.SelectWithGroups}
-                  id="policy_actor_group_id"
+                  id="policy_group_id"
                   label="Group"
-                  placeholder="Select Actor Group"
-                  field={@form[:actor_group_id]}
-                  fetch_option_callback={&Web.Groups.Components.fetch_group_option(&1, @subject)}
-                  list_options_callback={&Web.Groups.Components.list_group_options(&1, @subject)}
-                  value={@form[:actor_group_id].value}
+                  placeholder="Select Group"
+                  field={@form[:group_id]}
+                  fetch_option_callback={&DB.fetch_group_option(&1, @subject)}
+                  list_options_callback={&DB.list_group_options(&1, @subject)}
+                  value={@form[:group_id].value}
                   required
                 >
                   <:options_group :let={options_group}>
@@ -70,7 +70,13 @@ defmodule Web.Policies.Edit do
                   </:options_group>
 
                   <:option :let={group}>
-                    {group.name}
+                    <div class="flex items-center gap-3">
+                      <.provider_icon
+                        type={provider_type_from_group(group)}
+                        class="w-5 h-5 flex-shrink-0"
+                      />
+                      <span>{group.name}</span>
+                    </div>
                   </:option>
 
                   <:no_options :let={name}>
@@ -115,21 +121,21 @@ defmodule Web.Policies.Edit do
                   <:option :let={resource}>
                     <%= if resource.type == :internet do %>
                       Internet
-                      <span :if={not Domain.Accounts.internet_resource_enabled?(@account)}>
+                      <span :if={not Domain.Account.internet_resource_enabled?(@account)}>
                         - <span class="text-red-800">upgrade to unlock</span>
                       </span>
                     <% else %>
                       {resource.name}
                     <% end %>
 
-                    <span :if={resource.gateway_groups == []} class="text-red-800">
-                      (not connected to any Site)
+                    <span :if={is_nil(resource.site_id)} class="text-red-800">
+                      (not connected to a Site)
                     </span>
                     <span
-                      :if={length(resource.gateway_groups) > 0}
+                      :if={resource.site_id}
                       class="text-neutral-500 inline-flex"
                     >
-                      (<.resource_gateway_groups gateway_groups={resource.gateway_groups} />)
+                      ({resource.site.name})
                     </span>
                   </:option>
 
@@ -205,7 +211,7 @@ defmodule Web.Policies.Edit do
       |> maybe_drop_unsupported_conditions(socket)
 
     changeset =
-      Policies.change_policy(socket.assigns.policy, params)
+      change_policy(socket.assigns.policy, params)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -217,12 +223,183 @@ defmodule Web.Policies.Edit do
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
 
-    case Policies.update_policy(socket.assigns.policy, params, socket.assigns.subject) do
+    case update_policy(socket.assigns.policy, params, socket.assigns.subject) do
       {:ok, policy} ->
-        {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
+        socket =
+          socket
+          |> put_flash(:success, "Policy updated successfully")
+          |> push_navigate(to: ~p"/#{socket.assigns.account}/policies/#{policy}")
+
+        {:noreply, socket}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
+  end
+
+  # Inline functions from Domain.Policies
+
+  defp change_policy(%Policy{} = policy, attrs) do
+    import Ecto.Changeset
+
+    policy
+    |> cast(attrs, ~w[description group_id resource_id]a)
+    |> validate_required(~w[group_id resource_id]a)
+    |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
+    |> Policy.changeset()
+  end
+
+  defp update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
+    changeset = change_policy(policy, attrs)
+    DB.update_policy(changeset, subject)
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Group}
+    alias Domain.Auth
+
+    def get_policy!(id, %Auth.Subject{} = subject) do
+      from(p in Policy, as: :policies)
+      |> where([policies: p], p.id == ^id)
+      |> preload([:group, :resource])
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def update_policy(changeset, %Auth.Subject{} = subject) do
+      Safe.scoped(changeset, subject)
+      |> Safe.update()
+    end
+
+    def all_active_providers_for_account(_account, subject) do
+      [
+        Userpass.AuthProvider,
+        EmailOTP.AuthProvider,
+        OIDC.AuthProvider,
+        Google.AuthProvider,
+        Entra.AuthProvider,
+        Okta.AuthProvider
+      ]
+      |> Enum.flat_map(fn schema ->
+        from(p in schema, where: not p.is_disabled)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+      end)
+    end
+
+    def fetch_group_option(id, subject) do
+      group =
+        from(g in Group, as: :groups)
+        |> where([groups: g], g.id == ^id)
+        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+          on: gd.id == d.id and d.type == :google,
+          as: :google_directory
+        )
+        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+          on: ed.id == d.id and d.type == :entra,
+          as: :entra_directory
+        )
+        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+          on: od.id == d.id and d.type == :okta,
+          as: :okta_directory
+        )
+        |> select_merge(
+          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+          %{
+            directory_name:
+              fragment(
+                "COALESCE(?, ?, ?, 'Firezone')",
+                gd.name,
+                ed.name,
+                od.name
+              ),
+            directory_type: d.type
+          }
+        )
+        |> Safe.scoped(subject)
+        |> Safe.one!()
+
+      {:ok, group_option(group)}
+    end
+
+    def list_group_options(search_query_or_nil, subject) do
+      query =
+        from(g in Group, as: :groups)
+        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+          on: gd.id == d.id and d.type == :google,
+          as: :google_directory
+        )
+        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+          on: ed.id == d.id and d.type == :entra,
+          as: :entra_directory
+        )
+        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+          on: od.id == d.id and d.type == :okta,
+          as: :okta_directory
+        )
+        |> select_merge(
+          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+          %{
+            directory_name:
+              fragment(
+                "COALESCE(?, ?, ?, 'Firezone')",
+                gd.name,
+                ed.name,
+                od.name
+              ),
+            directory_type: d.type
+          }
+        )
+        |> order_by([groups: g], asc: g.name)
+        |> limit(25)
+
+      query =
+        if search_query_or_nil != "" and search_query_or_nil != nil do
+          from(g in query, where: ilike(g.name, ^"%#{search_query_or_nil}%"))
+        else
+          query
+        end
+
+      groups = query |> Safe.scoped(subject) |> Safe.all()
+      metadata = %{limit: 25, count: length(groups)}
+
+      {:ok, grouped_select_options(groups), metadata}
+    end
+
+    defp grouped_select_options(groups) do
+      groups
+      |> Enum.group_by(&option_groups_index_and_label/1)
+      |> Enum.sort_by(fn {{options_group_index, options_group_label}, _groups} ->
+        {options_group_index, options_group_label}
+      end)
+      |> Enum.map(fn {{_options_group_index, options_group_label}, groups} ->
+        {options_group_label, groups |> Enum.sort_by(& &1.name) |> Enum.map(&group_option/1)}
+      end)
+    end
+
+    defp option_groups_index_and_label(group) do
+      index =
+        cond do
+          group_synced?(group) -> 9
+          group_managed?(group) -> 1
+          true -> 2
+        end
+
+      label =
+        cond do
+          group_synced?(group) -> "Synced from #{group.directory_name}"
+          group_managed?(group) -> "Managed by Firezone"
+          true -> "Manually managed"
+        end
+
+      {index, label}
+    end
+
+    defp group_option(group), do: {group.id, group.name, group}
+    defp group_synced?(group), do: not is_nil(group.directory_id)
+    defp group_managed?(group), do: group.type == :managed
   end
 end

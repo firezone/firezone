@@ -31,7 +31,7 @@ defmodule Domain.Mailer.SyncErrorEmailTest do
   end
 
   defp set_provider_failure(provider, message) do
-    Domain.Auth.Provider.Changeset.sync_failed(provider, message)
+    Domain.AuthProvider.Changeset.sync_failed(provider, message)
     |> Domain.Repo.update!()
   end
 end

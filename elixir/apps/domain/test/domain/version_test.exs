@@ -98,7 +98,7 @@ defmodule Domain.VersionTest do
     test "headless client below version cannot change sites" do
       client = %Domain.Clients.Client{
         last_seen_version: "1.5.3",
-        actor: %Domain.Actors.Actor{type: :service_account}
+        actor: %Domain.Actor{type: :service_account}
       }
 
       assert Domain.Version.resource_cannot_change_sites_on_client?(client)
@@ -107,7 +107,7 @@ defmodule Domain.VersionTest do
     test "headless client at version cannot change sites" do
       client = %Domain.Clients.Client{
         last_seen_version: "1.5.4",
-        actor: %Domain.Actors.Actor{type: :service_account}
+        actor: %Domain.Actor{type: :service_account}
       }
 
       assert Domain.Version.resource_cannot_change_sites_on_client?(client)
@@ -116,7 +116,7 @@ defmodule Domain.VersionTest do
     test "headless client above version can change sites" do
       client = %Domain.Clients.Client{
         last_seen_version: "1.5.5",
-        actor: %Domain.Actors.Actor{type: :service_account}
+        actor: %Domain.Actor{type: :service_account}
       }
 
       refute Domain.Version.resource_cannot_change_sites_on_client?(client)

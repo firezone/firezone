@@ -1,6 +1,5 @@
 defmodule Web.Router do
   use Web, :router
-  import Web.Auth
 
   pipeline :public do
     plug :accepts, ["html", "xml"]
@@ -10,22 +9,13 @@ defmodule Web.Router do
     plug :put_root_layout, html: {Web.Layouts, :root}
   end
 
-  pipeline :account do
-    plug :fetch_account
-    plug :fetch_subject
-  end
-
-  pipeline :control_plane do
+  pipeline :dev_tools do
     plug :accepts, ["html"]
-    plug :fetch_session
-    plug :protect_from_forgery
-    plug :fetch_live_flash
-    plug :put_root_layout, html: {Web.Layouts, :root}
+    plug :disable_csp
   end
 
-  pipeline :ensure_authenticated_admin do
-    plug :ensure_authenticated
-    plug :ensure_authenticated_actor_type, :account_admin_user
+  defp disable_csp(conn, _opts) do
+    Plug.Conn.delete_resp_header(conn, "content-security-policy")
   end
 
   scope "/browser", Web do
@@ -49,7 +39,7 @@ defmodule Web.Router do
 
   if Mix.env() in [:dev, :test] do
     scope "/dev" do
-      pipe_through [:public]
+      pipe_through [:dev_tools]
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
 
@@ -73,107 +63,109 @@ defmodule Web.Router do
     live "/", SignUp
   end
 
-  scope "/:account_id_or_slug", Web do
-    pipe_through [
-      :public,
-      :account,
-      :redirect_if_user_is_authenticated,
-      Web.Plugs.AutoRedirectDefaultProvider
-    ]
+  scope "/auth", Web do
+    pipe_through :public
 
-    live_session :redirect_if_user_is_authenticated,
-      on_mount: [
-        Web.Sandbox,
-        {Web.Auth, :redirect_if_user_is_authenticated}
-      ] do
-      live "/", SignIn
+    get "/oidc/callback", OIDCController, :callback
+  end
 
-      # Adapter-specific routes
-      ## Email
-      live "/sign_in/providers/email/:provider_id", SignIn.Email
+  scope "/", Web do
+    pipe_through :public
+
+    live_session :verification,
+      on_mount: [Web.LiveHooks.AllowEctoSandbox] do
+      live "/verification", Verification
     end
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:control_plane, :account]
+    pipe_through [
+      :public,
+      Web.Plugs.FetchAccount,
+      Web.Plugs.FetchSubject,
+      Web.Plugs.RedirectIfAuthenticated,
+      Web.Plugs.AutoRedirectDefaultProvider
+    ]
+
+    # Email auth entry point
+    post "/sign_in/email_otp/:auth_provider_id", EmailOTPController, :sign_in
+    post "/sign_in/email_otp/:auth_provider_id/verify", EmailOTPController, :verify
+
+    # Userpass auth entry point
+    post "/sign_in/userpass/:auth_provider_id", UserpassController, :sign_in
+
+    live_session :redirect_if_user_is_authenticated,
+      on_mount: [
+        Web.LiveHooks.AllowEctoSandbox,
+        Web.LiveHooks.FetchAccount,
+        Web.LiveHooks.FetchSubject,
+        Web.LiveHooks.RedirectIfAuthenticated
+      ] do
+      live "/", SignIn
+      live "/sign_in/email_otp/:auth_provider_id", SignIn.Email
+    end
+
+    # Legacy OIDC auth entry point - we maintain indefinitely to avoid forcing admins to update
+    # their redirect URIs. Used if the oidc_auth_provider.is_legacy flag is set to true.
+    get "/sign_in/providers/:auth_provider_id/handle_callback", OIDCController, :callback
+
+    # OIDC auth entry point (placed after LiveView routes to avoid conflicts)
+    get "/sign_in/:auth_provider_type/:auth_provider_id", OIDCController, :sign_in
+  end
+
+  # Sign in / out routes
+  scope "/:account_id_or_slug", Web do
+    pipe_through [
+      :public,
+      Web.Plugs.FetchAccount,
+      Web.Plugs.FetchSubject
+    ]
 
     get "/sign_in/client_redirect", SignInController, :client_redirect
     get "/sign_in/client_auth_error", SignInController, :client_auth_error
 
-    scope "/sign_in/providers/:provider_id" do
-      # UserPass
-      post "/verify_credentials", AuthController, :verify_credentials
-
-      # Email
-      post "/request_email_otp", AuthController, :request_email_otp
-      get "/verify_sign_in_token", AuthController, :verify_sign_in_token
-
-      # IdP
-      get "/redirect", AuthController, :redirect_to_idp
-      get "/handle_callback", AuthController, :handle_idp_callback
-    end
+    post "/sign_out", SignOutController, :sign_out
   end
 
+  # Authenticated admin routes
   scope "/:account_id_or_slug", Web do
-    pipe_through [:control_plane, :account]
-
-    get "/sign_out", AuthController, :sign_out
-  end
-
-  scope "/:account_id_or_slug", Web do
-    pipe_through [:control_plane, :account, :ensure_authenticated_admin]
+    pipe_through [
+      :public,
+      Web.Plugs.FetchAccount,
+      Web.Plugs.FetchSubject,
+      Web.Plugs.EnsureAuthenticated,
+      Web.Plugs.EnsureAdmin
+    ]
 
     live_session :ensure_authenticated,
       on_mount: [
-        Web.Sandbox,
-        {Web.Auth, :ensure_authenticated},
-        {Web.Auth, :ensure_account_admin_user_actor},
-        {Web.Auth, :mount_account},
-        {Web.Nav, :set_active_sidebar_item}
+        Web.LiveHooks.AllowEctoSandbox,
+        Web.LiveHooks.FetchAccount,
+        Web.LiveHooks.FetchSubject,
+        Web.LiveHooks.EnsureAuthenticated,
+        Web.LiveHooks.EnsureAdmin,
+        Web.LiveHooks.SetActiveSidebarItem,
+        Web.LiveHooks.HandleModalReturn
       ] do
-      scope "/actors", Actors do
-        live "/", Index
-        live "/new", New
-        live "/:id", Show
+      # Actors
+      live "/actors", Actors
+      live "/actors/add", Actors, :add
+      live "/actors/add_user", Actors, :add_user
+      live "/actors/add_service_account", Actors, :add_service_account
+      live "/actors/:id/edit", Actors, :edit
+      live "/actors/:id/add_token", Actors, :add_token
+      live "/actors/:id", Actors, :show
 
-        scope "/users", Users do
-          live "/new", New
-          live "/:id/new_identity", NewIdentity
-        end
-
-        scope "/service_accounts", ServiceAccounts do
-          live "/new", New
-          live "/:id/new_identity", NewIdentity
-        end
-
-        live "/:id/edit", Edit
-        live "/:id/edit_groups", EditGroups
-      end
-
-      scope "/groups", Groups do
-        live "/", Index
-        live "/new", New
-        live "/:id/edit", Edit
-        live "/:id/edit_actors", EditActors
-        live "/:id", Show
-      end
+      # Groups
+      live "/groups", Groups
+      live "/groups/add", Groups, :add
+      live "/groups/:id/edit", Groups, :edit
+      live "/groups/:id", Groups, :show
 
       scope "/clients", Clients do
         live "/", Index
         live "/:id", Show
         live "/:id/edit", Edit
-      end
-
-      scope "/relay_groups", RelayGroups do
-        live "/", Index
-        live "/new", New
-        live "/:id/edit", Edit
-        live "/:id/new_token", NewToken
-        live "/:id", Show
-      end
-
-      scope "/relays", Relays do
-        live "/:id", Show
       end
 
       scope "/sites", Sites do
@@ -225,69 +217,20 @@ defmodule Web.Router do
           live "/:id/edit", Edit
         end
 
-        scope "/identity_providers", IdentityProviders do
-          live "/", Index
-          live "/new", New
+        # AuthProviders
+        scope "/authentication" do
+          live "/", Authentication
+          live "/select_type", Authentication, :select_type
+          live "/:type/new", Authentication, :new
+          live "/:type/:id/edit", Authentication, :edit
+        end
 
-          scope "/openid_connect", OpenIDConnect do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-
-            # OpenID Connection
-            get "/:provider_id/redirect", Connect, :redirect_to_idp
-            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
-          end
-
-          scope "/google_workspace", GoogleWorkspace do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-
-            # OpenID Connection
-            get "/:provider_id/redirect", Connect, :redirect_to_idp
-            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
-          end
-
-          scope "/microsoft_entra", MicrosoftEntra do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-
-            # OpenID Connection
-            get "/:provider_id/redirect", Connect, :redirect_to_idp
-            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
-          end
-
-          scope "/okta", Okta do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-
-            # OpenID Connection
-            get "/:provider_id/redirect", Connect, :redirect_to_idp
-            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
-          end
-
-          scope "/jumpcloud", JumpCloud do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-
-            # OpenID Connection
-            get "/:provider_id/redirect", Connect, :redirect_to_idp
-            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
-          end
-
-          scope "/mock", Mock do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-          end
-
-          scope "/system", System do
-            live "/:provider_id", Show
-          end
+        # Directories
+        scope "/directory_sync" do
+          live "/", DirectorySync
+          live "/select_type", DirectorySync, :select_type
+          live "/:type/new", DirectorySync, :new
+          live "/:type/:id/edit", DirectorySync, :edit
         end
 
         live "/dns", DNS

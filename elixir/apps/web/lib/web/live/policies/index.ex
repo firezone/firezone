@@ -1,6 +1,7 @@
 defmodule Web.Policies.Index do
   use Web, :live_view
-  alias Domain.{Changes.Change, PubSub, Policies}
+  alias Domain.{Changes.Change, PubSub}
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -12,11 +13,11 @@ defmodule Web.Policies.Index do
       |> assign(stale: false)
       |> assign(page_title: "Policies")
       |> assign_live_table("policies",
-        query_module: Policies.Policy.Query,
+        query_module: DB,
         sortable_fields: [],
         hide_filters: [
-          :actor_group_id,
-          :actor_group_name,
+          :group_id,
+          :group_name,
           :resource_id,
           :resource_name
         ],
@@ -32,9 +33,9 @@ defmodule Web.Policies.Index do
   end
 
   def handle_policies_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, actor_group: [:provider], resource: [])
+    list_opts = Keyword.put(list_opts, :preload, group: [], resource: [])
 
-    with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- DB.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          policies: policies,
@@ -63,7 +64,6 @@ defmodule Web.Policies.Index do
         Policies grant access to Resources.
       </:help>
       <:content>
-        <.flash_group flash={@flash} />
         <.live_table
           stale={@stale}
           id="policies"
@@ -82,9 +82,7 @@ defmodule Web.Policies.Index do
             </.link>
           </:col>
           <:col :let={policy} label="group" class="w-3/12">
-            <span class="flex items-center">
-              <.group account={@account} group={policy.actor_group} />
-            </span>
+            <.group_badge account={@account} group={policy.group} return_to={@current_path} />
           </:col>
           <:col :let={policy} label="resource" class="w-2/12">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>
@@ -93,9 +91,13 @@ defmodule Web.Policies.Index do
           </:col>
           <:col :let={policy} label="status">
             <%= if is_nil(policy.disabled_at) do %>
-              Active
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                Active
+              </span>
             <% else %>
-              <span class="text-red-800">Disabled</span>
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                Disabled
+              </span>
             <% end %>
           </:col>
           <:empty>
@@ -119,15 +121,131 @@ defmodule Web.Policies.Index do
       when event in ["paginate", "order_by", "filter", "reload"],
       do: handle_live_table_event(event, params, socket)
 
-  def handle_info(%Change{old_struct: %Policies.Policy{}}, socket) do
+  def handle_info(%Change{old_struct: %Domain.Policy{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
-  def handle_info(%Change{struct: %Policies.Policy{}}, socket) do
+  def handle_info(%Change{struct: %Domain.Policy{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
   def handle_info(_, socket) do
     {:noreply, socket}
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    import Domain.Repo.Query
+    alias Domain.{Safe, Policy}
+
+    def list_policies(subject, opts \\ []) do
+      from(p in Policy, as: :policies)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    # Pagination support
+    def cursor_fields,
+      do: [
+        {:policies, :asc, :inserted_at},
+        {:policies, :asc, :id}
+      ]
+
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :resource_id,
+          title: "Resource",
+          type: {:string, :uuid},
+          fun: &filter_by_resource_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_id,
+          title: "Group",
+          type: {:string, :uuid},
+          fun: &filter_by_group_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_name,
+          title: "Group Name",
+          type: {:string, :websearch},
+          fun: &filter_by_group_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :resource_name,
+          title: "Resource Name",
+          type: {:string, :websearch},
+          fun: &filter_by_resource_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_or_resource_name,
+          title: "Group Name or Resource Name",
+          type: {:string, :websearch},
+          fun: &filter_by_group_or_resource_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :status,
+          title: "Status",
+          type: :string,
+          values: [
+            {"Active", "active"},
+            {"Disabled", "disabled"}
+          ],
+          fun: &filter_by_status/2
+        }
+      ]
+    end
+
+    def filter_by_resource_id(queryable, resource_id) do
+      {queryable, dynamic([policies: p], p.resource_id == ^resource_id)}
+    end
+
+    def filter_by_group_id(queryable, group_id) do
+      {queryable, dynamic([policies: p], p.group_id == ^group_id)}
+    end
+
+    def filter_by_group_name(queryable, name) do
+      queryable = with_joined_group(queryable)
+      {queryable, dynamic([group: g], fulltext_search(g.name, ^name))}
+    end
+
+    def filter_by_resource_name(queryable, name) do
+      queryable = with_joined_resource(queryable)
+      {queryable, dynamic([resource: r], fulltext_search(r.name, ^name))}
+    end
+
+    def filter_by_group_or_resource_name(queryable, name) do
+      queryable = queryable |> with_joined_group() |> with_joined_resource()
+
+      {queryable,
+       dynamic(
+         [group: g, resource: r],
+         fulltext_search(g.name, ^name) or fulltext_search(r.name, ^name)
+       )}
+    end
+
+    def filter_by_status(queryable, "active") do
+      {queryable, dynamic([policies: p], is_nil(p.disabled_at))}
+    end
+
+    def filter_by_status(queryable, "disabled") do
+      {queryable, dynamic([policies: p], not is_nil(p.disabled_at))}
+    end
+
+    defp with_joined_group(queryable) do
+      if has_named_binding?(queryable, :group) do
+        queryable
+      else
+        join(queryable, :inner, [policies: p], g in assoc(p, :group), as: :group)
+      end
+    end
+
+    defp with_joined_resource(queryable) do
+      if has_named_binding?(queryable, :resource) do
+        queryable
+      else
+        join(queryable, :inner, [policies: p], r in assoc(p, :resource), as: :resource)
+      end
+    end
   end
 end

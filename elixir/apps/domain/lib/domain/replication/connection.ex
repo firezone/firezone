@@ -288,7 +288,7 @@ defmodule Domain.Replication.Connection do
         send(self(), :interval_logger)
 
         query =
-          "START_REPLICATION SLOT \"#{state.replication_slot_name}\" LOGICAL 0/0  (proto_version '#{state.proto_version}', publication_names '#{state.publication_name}')"
+          "START_REPLICATION SLOT \"#{state.replication_slot_name}\" LOGICAL 0/0  (proto_version '#{state.proto_version}', publication_names '#{state.publication_name}', messages 'true')"
 
         {:stream, query, [], %{state | step: :streaming}}
       end
@@ -511,7 +511,7 @@ defmodule Domain.Replication.Connection do
         lag_ms = DateTime.diff(DateTime.utc_now(), commit_timestamp, :millisecond)
         send(self(), {:check_warning_threshold, lag_ms})
         send(self(), {:check_error_threshold, lag_ms})
-
+        state = on_begin(state, msg)
         {:noreply, [], state}
       end
     end
@@ -535,6 +535,11 @@ defmodule Domain.Replication.Connection do
       end
 
       defp handle_write(%Decoder.Messages.Type{}, _server_wal_end, state) do
+        {:noreply, [], state}
+      end
+
+      defp handle_write(%Decoder.Messages.LogicalMessage{} = msg, _server_wal_end, state) do
+        state = on_logical_message(state, msg)
         {:noreply, [], state}
       end
 
@@ -668,8 +673,10 @@ defmodule Domain.Replication.Connection do
       # Default implementations for required callbacks - modules using this should implement these
       def on_write(state, _lsn, _op, _table, _old_data, _data), do: state
       def on_flush(state), do: state
+      def on_begin(state, _begin_msg), do: state
+      def on_logical_message(state, _message), do: state
 
-      defoverridable on_write: 6, on_flush: 1
+      defoverridable on_write: 6, on_flush: 1, on_begin: 2, on_logical_message: 2
     end
   end
 end

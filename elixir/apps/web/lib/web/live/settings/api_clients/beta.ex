@@ -2,7 +2,7 @@ defmodule Web.Settings.ApiClients.Beta do
   use Web, :live_view
 
   def mount(_params, _session, socket) do
-    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
       {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients")}
     else
       socket =

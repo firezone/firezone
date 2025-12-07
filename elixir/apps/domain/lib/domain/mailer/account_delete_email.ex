@@ -6,7 +6,7 @@ defmodule Domain.Mailer.AccountDelete do
   embed_templates "account_delete_email/*.text", suffix: "_text"
 
   def account_delete_email(
-        %Domain.Accounts.Account{} = account,
+        %Domain.Account{} = account,
         %Domain.Auth.Subject{} = subject
       ) do
     default_email()

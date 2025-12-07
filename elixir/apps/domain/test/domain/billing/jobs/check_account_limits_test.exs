@@ -24,7 +24,7 @@ defmodule Domain.Billing.Jobs.CheckAccountLimitsTest do
     } do
       assert execute(%{}) == :ok
 
-      account = Repo.get!(Domain.Accounts.Account, account.id)
+      account = Repo.get!(Domain.Account, account.id)
       refute account.warning
       assert account.warning_delivery_attempts == 0
       refute account.warning_last_sent_at
@@ -42,22 +42,22 @@ defmodule Domain.Billing.Jobs.CheckAccountLimitsTest do
       Fixtures.Actors.create_actor(type: :service_account, account: account)
       Fixtures.Actors.create_actor(type: :service_account, account: account)
 
-      Fixtures.Gateways.create_group(account: account)
-      Fixtures.Gateways.create_group(account: account)
+      Fixtures.Sites.create_site(account: account)
+      Fixtures.Sites.create_site(account: account)
 
-      Domain.Accounts.update_account(account, %{
+      Fixtures.Accounts.update_account(account, %{
         limits: %{
           users_count: 1,
           monthly_active_users_count: 1,
           service_accounts_count: 1,
-          gateway_groups_count: 1,
+          sites_count: 1,
           account_admin_users_count: 1
         }
       })
 
       assert execute(%{}) == :ok
 
-      account = Repo.get!(Domain.Accounts.Account, account.id)
+      account = Repo.get!(Domain.Account, account.id)
 
       assert account.warning =~ "You have exceeded the following limits:"
       assert account.warning =~ "users"

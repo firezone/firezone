@@ -1,5 +1,5 @@
 defmodule API.Client.Views.Relay do
-  alias Domain.Relays
+  alias Domain.Relay
 
   def render_many(relays, salt, expires_at) do
     relays
@@ -14,12 +14,12 @@ defmodule API.Client.Views.Relay do
 
   defp render_addr(_relay, _salt, _expires_at, nil), do: []
 
-  defp render_addr(%Relays.Relay{} = relay, salt, expires_at, address) do
+  defp render_addr(%Relay{} = relay, salt, expires_at, address) do
     %{
       username: username,
       password: password,
       expires_at: expires_at
-    } = Relays.generate_username_and_password(relay, salt, expires_at)
+    } = generate_username_and_password(relay, salt, expires_at)
 
     %{
       id: relay.id,
@@ -36,4 +36,18 @@ defmodule API.Client.Views.Relay do
 
   defp format_address(%Postgrex.INET{address: address} = inet) when tuple_size(address) == 8,
     do: "[#{inet}]"
+
+  defp generate_username_and_password(%Relay{stamp_secret: stamp_secret}, public_key, expires_at)
+       when is_binary(stamp_secret) do
+    salt = generate_hash(public_key)
+    expires_at = DateTime.to_unix(expires_at, :second)
+    password = generate_hash("#{expires_at}:#{stamp_secret}:#{salt}")
+
+    %{username: "#{expires_at}:#{salt}", password: password, expires_at: expires_at}
+  end
+
+  defp generate_hash(string) do
+    :crypto.hash(:sha256, string)
+    |> Base.encode64(padding: false)
+  end
 end

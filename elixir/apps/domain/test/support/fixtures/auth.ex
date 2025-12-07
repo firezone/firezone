@@ -34,21 +34,13 @@ defmodule Domain.Fixtures.Auth do
   -----END PRIVATE KEY-----
   """
 
-  def user_password, do: "Hello w0rld!"
   def remote_ip, do: {100, 64, 100, 58}
   def user_agent, do: "iOS/12.5 connlib/1.3.0"
   def email(domain \\ "example.com"), do: "user-#{unique_integer()}@#{domain}"
 
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: :email, name: name}) do
-    "user-#{unique_integer()}@#{String.downcase(name)}.com"
-  end
-
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: :userpass, name: name}) do
-    "user-#{unique_integer()}@#{String.downcase(name)}.com"
-  end
-
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: _other_adapter}) do
-    Ecto.UUID.generate()
+  def random_provider_identifier(_provider) do
+    # Simplified since provider system has changed
+    "user-#{unique_integer()}@example.com"
   end
 
   def random_workos_org_identifier do
@@ -62,7 +54,6 @@ defmodule Domain.Fixtures.Auth do
       name: "provider-#{unique_integer()}",
       adapter: :email,
       adapter_config: %{},
-      created_by: :system,
       provisioner: :manual
     })
   end
@@ -427,7 +418,7 @@ defmodule Domain.Fixtures.Auth do
 
     {email, attrs} =
       Map.pop_lazy(attrs, :email, fn ->
-        if to_string(provider_identifier) =~ Domain.Auth.email_regex() do
+        if String.contains?(provider_identifier, "@") do
           provider_identifier
         else
           email()
@@ -453,7 +444,7 @@ defmodule Domain.Fixtures.Auth do
 
     {:ok, identity} = Auth.upsert_identity(actor, provider, attrs)
 
-    attrs = Map.take(attrs, [:provider_state, :created_by])
+    attrs = Map.take(attrs, [:provider_state])
 
     identity
     |> Ecto.Changeset.change(attrs)
@@ -518,7 +509,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:provider] || attrs[:actor] || attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Accounts.Account, relation.account_id)
+          Repo.get!(Domain.Account, relation.account_id)
         else
           Fixtures.Accounts.create_account(assoc_attrs)
         end
@@ -529,7 +520,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Auth.Provider, relation.provider_id)
+          Repo.get!(Domain.AuthProvider, relation.provider_id)
         else
           {provider, _bypass} =
             assoc_attrs
@@ -550,7 +541,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Actors.Actor, relation.actor_id)
+          Repo.get!(Domain.Actor, relation.actor_id)
         else
           assoc_attrs
           |> Enum.into(%{
@@ -624,7 +615,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:provider] || attrs[:actor] || attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Accounts.Account, relation.account_id)
+          Repo.get!(Domain.Account, relation.account_id)
         else
           Fixtures.Accounts.create_account(assoc_attrs)
         end
@@ -635,7 +626,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Auth.Provider, relation.provider_id)
+          Repo.get!(Domain.AuthProvider, relation.provider_id)
         else
           {provider, _bypass} =
             assoc_attrs
@@ -656,7 +647,7 @@ defmodule Domain.Fixtures.Auth do
         relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Actors.Actor, relation.actor_id)
+          Repo.get!(Domain.Actor, relation.actor_id)
         else
           assoc_attrs
           |> Enum.into(%{
@@ -697,22 +688,6 @@ defmodule Domain.Fixtures.Auth do
       end)
 
     {:ok, token} = Auth.create_token(identity, context, nonce, expires_at)
-    {token, nonce <> Domain.Tokens.encode_fragment!(token)}
-  end
-
-  def remove_permission(%Auth.Subject{} = subject, permission) do
-    %{subject | permissions: MapSet.delete(subject.permissions, permission)}
-  end
-
-  def remove_permissions(%Auth.Subject{} = subject) do
-    %{subject | permissions: MapSet.new()}
-  end
-
-  def set_permissions(%Auth.Subject{} = subject, permissions) do
-    %{subject | permissions: MapSet.new(permissions)}
-  end
-
-  def add_permission(%Auth.Subject{} = subject, permission) do
-    %{subject | permissions: MapSet.put(subject.permissions, permission)}
+    {token, nonce <> Domain.Crypto.encode_token_fragment!(token)}
   end
 end

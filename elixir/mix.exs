@@ -40,6 +40,7 @@ defmodule Firezone.MixProject do
       {:sentry, "~> 11.0"},
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
+      {:req, "~> 0.5.15"},
 
       # Shared test deps
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},

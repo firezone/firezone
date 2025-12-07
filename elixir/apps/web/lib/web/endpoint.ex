@@ -1,17 +1,31 @@
 defmodule Web.Endpoint do
   use Sentry.PlugCapture
   use Phoenix.Endpoint, otp_app: :web
-  import Web.Auth
+
+  # NOTE: This is only used for the LiveView session. We store per-account cookies to allow
+  # multiple accounts to be logged in simultaneously. See Web.Session.Cookie.
+  @session_cookie [
+    store: :cookie,
+    key: "_firezone_key",
+    same_site: "Lax",
+    max_age: 8 * 60 * 60,
+    encrypt: true,
+    secure: {__MODULE__, :cookie_secure, []},
+    signing_salt: {__MODULE__, :cookie_signing_salt, []},
+    encryption_salt: {__MODULE__, :cookie_encryption_salt, []}
+  ]
 
   if Application.compile_env(:domain, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
-    plug Web.Sandbox
+    plug Web.Plugs.AllowEctoSandbox
   end
 
   plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
   plug Plug.MethodOverride
-  plug :put_hsts_header
-  plug Web.Plugs.SecureHeaders
+
+  # Security Headers
+  plug Web.Plugs.PutSTSHeader
+  plug Web.Plugs.PutCSPHeader
 
   plug RemoteIp,
     headers: ["x-forwarded-for"],
@@ -40,6 +54,17 @@ defmodule Web.Endpoint do
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :domain
   end
 
+  plug Plug.Parsers,
+    parsers: [:urlencoded, :multipart, :json],
+    pass: ["*/*"],
+    json_decoder: Phoenix.json_library()
+
+  plug Plug.Session, @session_cookie
+
+  plug Web.Plugs.FetchUserAgent
+  plug Web.Router
+  plug Sentry.PlugContext
+
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [
       connect_info: [
@@ -48,39 +73,10 @@ defmodule Web.Endpoint do
         :peer_data,
         :x_headers,
         :uri,
-        session: {Web.Session, :options, []}
+        session: {__MODULE__, :live_view_session_options, []}
       ]
     ],
     longpoll: false
-
-  plug Plug.Parsers,
-    parsers: [:urlencoded, :multipart, :json],
-    pass: ["*/*"],
-    json_decoder: Phoenix.json_library()
-
-  plug :fetch_user_agent
-
-  plug Web.Session
-
-  plug Web.Router
-
-  plug Sentry.PlugContext
-
-  def put_hsts_header(conn, _opts) do
-    scheme =
-      config(:url, [])
-      |> Keyword.get(:scheme)
-
-    if scheme == "https" do
-      put_resp_header(
-        conn,
-        "strict-transport-security",
-        "max-age=63072000; includeSubDomains; preload"
-      )
-    else
-      conn
-    end
-  end
 
   def real_ip_opts do
     [
@@ -98,5 +94,23 @@ defmodule Web.Endpoint do
   def clients do
     Domain.Config.fetch_env!(:web, :private_clients)
     |> Enum.map(&to_string/1)
+  end
+
+  def cookie_secure do
+    Domain.Config.fetch_env!(:web, :cookie_secure)
+  end
+
+  def cookie_signing_salt do
+    Domain.Config.fetch_env!(:web, :cookie_signing_salt)
+  end
+
+  def cookie_encryption_salt do
+    Domain.Config.fetch_env!(:web, :cookie_encryption_salt)
+  end
+
+  # Configures the LiveView session cookie options.
+  # IMPORTANT: Must use the same key as Plug.Session so they share session data
+  def live_view_session_options do
+    @session_cookie
   end
 end

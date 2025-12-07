@@ -17,7 +17,7 @@ defmodule Web.Live.Settings.BillingTest do
         limits: %{
           monthly_active_users_count: 100,
           service_accounts_count: 100,
-          gateway_groups_count: 10,
+          sites_count: 10,
           account_admin_users_count: 2,
           users_count: 200
         }

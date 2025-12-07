@@ -126,7 +126,7 @@ defmodule Domain.Telemetry do
 
   defp periodic_measurements do
     [
-      {Domain.Relays, :send_metrics, []},
+      {Domain.Presence.Relays, :send_metrics, []},
       # Enhanced BEAM measurements
       {__MODULE__, :emit_beam_health_metrics, []},
       {__MODULE__, :emit_gc_metrics, []},

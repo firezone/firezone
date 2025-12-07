@@ -3,10 +3,10 @@ defmodule API.Gateway.Views.Subject do
 
   def render(%Auth.Subject{} = subject) do
     %{
-      identity_id: get_in(subject, [Access.key(:identity), Access.key(:id)]),
-      identity_name: subject.actor.name,
+      auth_provider_id: subject.auth_provider_id,
       actor_id: subject.actor.id,
-      actor_email: get_in(subject, [Access.key(:identity), Access.key(:email)])
+      actor_email: subject.actor.email,
+      actor_name: subject.actor.name
     }
   end
 end

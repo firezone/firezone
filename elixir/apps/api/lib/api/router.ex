@@ -50,25 +50,32 @@ defmodule API.Router do
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]
 
-    resources "/gateway_groups", GatewayGroupController, except: [:new, :edit] do
-      post "/tokens", GatewayGroupController, :create_token
-      delete "/tokens", GatewayGroupController, :delete_all_tokens
-      delete "/tokens/:id", GatewayGroupController, :delete_token
+    resources "/sites", SiteController, except: [:new, :edit] do
+      post "/tokens", SiteController, :create_token
+      delete "/tokens", SiteController, :delete_all_tokens
+      delete "/tokens/:id", SiteController, :delete_token
       resources "/gateways", GatewayController, except: [:new, :edit, :create, :update]
     end
 
     resources "/actors", ActorController, except: [:new, :edit] do
-      resources "/identities", IdentityController, except: [:new, :edit, :create, :update]
-      post "/providers/:provider_id/identities/", IdentityController, :create
+      resources "/external_identities", ExternalIdentityController, only: [:index, :show, :delete]
     end
 
-    resources "/actor_groups", ActorGroupController, except: [:new, :edit] do
-      get "/memberships", ActorGroupMembershipController, :index
-      put "/memberships", ActorGroupMembershipController, :update_put
-      patch "/memberships", ActorGroupMembershipController, :update_patch
+    resources "/groups", GroupController, except: [:new, :edit] do
+      get "/memberships", MembershipController, :index
+      put "/memberships", MembershipController, :update_put
+      patch "/memberships", MembershipController, :update_patch
     end
 
-    resources "/identity_providers", IdentityProviderController, only: [:index, :show, :delete]
+    resources "/userpass_auth_providers", UserpassAuthProviderController, only: [:index, :show]
+    resources "/email_otp_auth_providers", EmailOTPAuthProviderController, only: [:index, :show]
+    resources "/oidc_auth_providers", OIDCAuthProviderController, only: [:index, :show]
+    resources "/google_auth_providers", GoogleAuthProviderController, only: [:index, :show]
+    resources "/entra_auth_providers", EntraAuthProviderController, only: [:index, :show]
+    resources "/okta_auth_providers", OktaAuthProviderController, only: [:index, :show]
+    resources "/google_directories", GoogleDirectoryController, only: [:index, :show]
+    resources "/entra_directories", EntraDirectoryController, only: [:index, :show]
+    resources "/okta_directories", OktaDirectoryController, only: [:index, :show]
   end
 
   scope "/integrations", API.Integrations do

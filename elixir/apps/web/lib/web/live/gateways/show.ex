@@ -1,35 +1,34 @@
 defmodule Web.Gateways.Show do
   use Web, :live_view
-  alias Domain.Gateways
+  alias Domain.Presence
+  alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: [:group, :online?]) do
-      if connected?(socket) do
-        :ok = Gateways.Presence.Group.subscribe(gateway.group_id)
-      end
+    gateway = DB.get_gateway!(id, socket.assigns.subject)
+    gateway = DB.preload_gateways_presence([gateway]) |> List.first()
 
-      socket =
-        socket
-        |> assign(
-          page_title: "Gateway #{gateway.name}",
-          gateway: gateway
-        )
-
-      {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    if connected?(socket) do
+      :ok = Presence.Gateways.Site.subscribe(gateway.site_id)
     end
+
+    socket =
+      socket
+      |> assign(
+        page_title: "Gateway #{gateway.name}",
+        gateway: gateway
+      )
+
+    {:ok, socket}
   end
 
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}"}>
-        {@gateway.group.name}
+      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.site}"}>
+        {@gateway.site.name}
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}/gateways"}>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.site}/gateways"}>
         Gateways
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}"}>
@@ -46,10 +45,10 @@ defmodule Web.Gateways.Show do
             <:label>Site</:label>
             <:value>
               <.link
-                navigate={~p"/#{@account}/sites/#{@gateway.group}"}
+                navigate={~p"/#{@account}/sites/#{@gateway.site}"}
                 class={["font-medium", link_style()]}
               >
-                {@gateway.group.name}
+                {@gateway.site.name}
               </.link>
             </:value>
           </.vertical_table_row>
@@ -118,7 +117,7 @@ defmodule Web.Gateways.Show do
             Deleting the gateway does not remove it's access token so it can be re-created again,
             revoke the token on the
             <.link
-              navigate={~p"/#{@account}/sites/#{@gateway.group}"}
+              navigate={~p"/#{@account}/sites/#{@gateway.site}"}
               class={["font-medium", link_style()]}
             >
               site
@@ -140,7 +139,7 @@ defmodule Web.Gateways.Show do
 
   def handle_info(
         %Phoenix.Socket.Broadcast{
-          topic: "presences:group_gateways:" <> _group_id,
+          topic: "presences:sites:" <> _site_id,
           payload: payload
         },
         socket
@@ -150,9 +149,7 @@ defmodule Web.Gateways.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, gateway.id) ->
-          {:ok, gateway} =
-            Gateways.fetch_gateway_by_id(gateway.id, socket.assigns.subject, preload: [:group])
-
+          gateway = DB.get_gateway!(gateway.id, socket.assigns.subject)
           assign(socket, gateway: %{gateway | online?: true})
 
         Map.has_key?(payload.leaves, gateway.id) ->
@@ -166,13 +163,36 @@ defmodule Web.Gateways.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _gateway} = Gateways.delete_gateway(socket.assigns.gateway, socket.assigns.subject)
+    {:ok, _gateway} = DB.delete_gateway(socket.assigns.gateway, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "Gateway was deleted.")
-      |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.group}")
+      |> put_flash(:success, "Gateway was deleted.")
+      |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.site}")
 
     {:noreply, socket}
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+    alias Domain.Gateway
+
+    def get_gateway!(id, subject) do
+      from(g in Gateway, as: :gateways)
+      |> where([gateways: g], g.id == ^id)
+      |> preload(:site)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def delete_gateway(gateway, subject) do
+      Safe.scoped(gateway, subject)
+      |> Safe.delete()
+    end
+
+    def preload_gateways_presence(gateways) do
+      Presence.Gateways.preload_gateways_presence(gateways)
+    end
   end
 end

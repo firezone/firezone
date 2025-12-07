@@ -1,5 +1,6 @@
 defmodule Domain.Network.Address.Changeset do
-  use Domain, :changeset
+  import Ecto.Changeset
+  import Domain.Changeset
   alias Domain.Network.Address
 
   def create(address, account_id) do

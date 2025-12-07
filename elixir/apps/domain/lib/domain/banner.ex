@@ -3,6 +3,7 @@ defmodule Domain.Banner do
   import Ecto.Changeset
 
   @primary_key false
+
   schema "banners" do
     field :message, :string
   end

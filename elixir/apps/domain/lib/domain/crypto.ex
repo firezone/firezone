@@ -1,16 +1,16 @@
 defmodule Domain.Crypto do
-  alias Domain.{Clients, Gateways}
+  alias Domain.{Client, Gateway}
 
   @doc """
   Generates a WireGuard pre-shared key for a client-gateway pair.
   """
   def psk(
-        %Clients.Client{
+        %Client{
           id: client_id,
           public_key: client_pubkey,
           psk_base: client_psk_base
         },
-        %Gateways.Gateway{
+        %Gateway{
           id: gateway_id,
           public_key: gateway_pubkey,
           psk_base: gateway_psk_base

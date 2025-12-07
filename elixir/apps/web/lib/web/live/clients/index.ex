@@ -1,19 +1,19 @@
 defmodule Web.Clients.Index do
   use Web, :live_view
-  import Web.Actors.Components
   import Web.Clients.Components
-  alias Domain.{Clients, ComponentVersions}
+  alias Domain.{Presence.Clients, ComponentVersions}
+  alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = Clients.Presence.Account.subscribe(socket.assigns.subject.account.id)
+      :ok = Clients.Account.subscribe(socket.assigns.subject.account.id)
     end
 
     socket =
       socket
       |> assign(page_title: "Clients")
       |> assign_live_table("clients",
-        query_module: Clients.Client.Query,
+        query_module: DB,
         sortable_fields: [
           {:clients, :name},
           {:clients, :last_seen_version},
@@ -38,7 +38,7 @@ defmodule Web.Clients.Index do
   def handle_clients_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
 
-    with {:ok, clients, metadata} <- Clients.list_clients(socket.assigns.subject, list_opts) do
+    with {:ok, clients, metadata} <- DB.list_clients(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          clients: clients,
@@ -63,7 +63,6 @@ defmodule Web.Clients.Index do
         <.docs_action path="/deploy/clients" />
       </:action>
       <:content>
-        <.flash_group flash={@flash} />
         <.live_table
           id="clients"
           rows={@clients}
@@ -97,9 +96,7 @@ defmodule Web.Clients.Index do
             </div>
           </:col>
           <:col :let={client} label="user">
-            <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
-              <.actor_name_and_role account={@account} actor={client.actor} />
-            </.link>
+            <.actor_name_and_role account={@account} actor={client.actor} return_to={@current_path} />
           </:col>
           <:col :let={client} field={{:clients, :last_seen_version}} label="version">
             <.version
@@ -141,6 +138,99 @@ defmodule Web.Clients.Index do
       {:noreply, socket}
     else
       {:noreply, socket}
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    import Domain.Repo.Query
+    alias Domain.{Presence.Clients, Safe}
+    alias Domain.Client
+
+    def list_clients(subject, opts \\ []) do
+      base_query = from(c in Client, as: :clients)
+
+      # Check if we need to prefilter by presence
+      base_query =
+        case get_in(opts, [:filter, :presence]) do
+          "online" ->
+            ids = Clients.online_client_ids(subject.account.id)
+            where(base_query, [clients: c], c.id in ^ids)
+
+          "offline" ->
+            ids = Clients.online_client_ids(subject.account.id)
+            where(base_query, [clients: c], c.id not in ^ids)
+
+          _ ->
+            base_query
+        end
+
+      base_query
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:clients, :desc, :last_seen_at},
+        {:clients, :asc, :id}
+      ]
+    end
+
+    def preloads do
+      [
+        :actor,
+        online?: &Clients.preload_clients_presence/1
+      ]
+    end
+
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :name,
+          title: "Name",
+          type: {:string, :websearch},
+          fun: &filter_by_name_fts/2
+        },
+        %Domain.Repo.Filter{
+          name: :verification,
+          title: "Verification Status",
+          type: :string,
+          values: [
+            {"Verified", "verified"},
+            {"Not Verified", "not_verified"}
+          ],
+          fun: &filter_by_verification/2
+        },
+        %Domain.Repo.Filter{
+          name: :presence,
+          title: "Presence",
+          type: :string,
+          values: [
+            {"Online", "online"},
+            {"Offline", "offline"}
+          ],
+          fun: &filter_by_presence/2
+        }
+      ]
+    end
+
+    def filter_by_name_fts(queryable, name) do
+      {queryable, dynamic([clients: clients], fulltext_search(clients.name, ^name))}
+    end
+
+    def filter_by_verification(queryable, "verified") do
+      {queryable, dynamic([clients: clients], not is_nil(clients.verified_at))}
+    end
+
+    def filter_by_verification(queryable, "not_verified") do
+      {queryable, dynamic([clients: clients], is_nil(clients.verified_at))}
+    end
+
+    def filter_by_presence(queryable, _presence) do
+      # This is handled as a prefilter in list_clients
+      # Return the queryable unchanged since actual filtering happens above
+      {queryable, true}
     end
   end
 end

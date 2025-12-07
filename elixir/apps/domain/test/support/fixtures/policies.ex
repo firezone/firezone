@@ -23,8 +23,8 @@ defmodule Domain.Fixtures.Policies do
         |> Fixtures.Auth.create_subject()
       end)
 
-    {actor_group_id, attrs} =
-      pop_assoc_fixture_id(attrs, :actor_group, fn assoc_attrs ->
+    {group_id, attrs} =
+      pop_assoc_fixture_id(attrs, :group, fn assoc_attrs ->
         assoc_attrs
         |> Enum.into(%{account: account, subject: subject})
         |> Fixtures.Actors.create_group()
@@ -37,7 +37,7 @@ defmodule Domain.Fixtures.Policies do
 
     {:ok, policy} =
       attrs
-      |> Map.put(:actor_group_id, actor_group_id)
+      |> Map.put(:group_id, group_id)
       |> Map.put(:resource_id, resource_id)
       |> Domain.Policies.create_policy(subject)
 

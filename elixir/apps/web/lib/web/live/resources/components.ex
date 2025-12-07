@@ -1,6 +1,6 @@
 defmodule Web.Resources.Components do
   use Web, :component_library
-  alias Domain.Resources
+  alias __MODULE__.DB
 
   @resource_types %{
     internet: %{index: 1, label: nil},
@@ -10,7 +10,7 @@ defmodule Web.Resources.Components do
   }
 
   def fetch_resource_option(id, subject) do
-    {:ok, resource} = Resources.fetch_resource_by_id(id, subject)
+    resource = DB.get_resource!(id, subject)
     {:ok, resource_option(resource)}
   end
 
@@ -21,8 +21,8 @@ defmodule Web.Resources.Components do
         else: []
 
     {:ok, resources, metadata} =
-      Resources.list_resources(subject,
-        preload: [:gateway_groups],
+      DB.list_resources(subject,
+        preload: [:site],
         limit: 25,
         filter: filter
       )
@@ -54,7 +54,7 @@ defmodule Web.Resources.Components do
 
   def map_filters_form_attrs(attrs, account) do
     attrs =
-      if Domain.Accounts.traffic_filters_enabled?(account) do
+      if Domain.Account.traffic_filters_enabled?(account) do
         attrs
       else
         Map.put(attrs, "filters", %{})
@@ -110,7 +110,7 @@ defmodule Web.Resources.Components do
       |> Map.put(:forms_by_protocol, forms_by_protocol)
       |> Map.put(
         :traffic_filters_enabled?,
-        Domain.Accounts.traffic_filters_enabled?(assigns.account)
+        Domain.Account.traffic_filters_enabled?(assigns.account)
       )
 
     ~H"""
@@ -310,117 +310,26 @@ defmodule Web.Resources.Components do
   defp pretty_print_ports([]), do: "All ports allowed"
   defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
 
-  def map_connections_form_attrs(attrs) do
-    Map.update(attrs, "connections", [], fn connections ->
-      for {id, connection_attrs} <- connections,
-          connection_attrs["enabled"] == "true",
-          into: %{} do
-        {id, connection_attrs}
-      end
-    end)
-  end
-
   attr :form, :any, required: true
-  attr :account, :any, required: true
-  attr :gateway_groups, :list, required: true
-  attr :resource, :any, default: nil
-  attr :multiple, :boolean, required: true
+  attr :sites, :list, required: true
   attr :rest, :global
 
-  def connections_form(%{multiple: false} = assigns) do
+  def site_form(assigns) do
     ~H"""
-    <% connected_gateway_group_id = @form |> connected_gateway_group_ids() |> List.first() %>
-
-    <.input type="hidden" name={"#{@form.name}[0][enabled]"} value="true" />
-    <.input :if={@resource} type="hidden" name={"#{@form.name}[0][resource_id]"} value={@resource.id} />
-
     <.input
+      field={@form[:site_id]}
       type="select"
       label="Site"
-      name={"#{@form.name}[0][gateway_group_id]"}
       options={
-        Enum.map(@gateway_groups, fn gateway_group ->
-          {gateway_group.name, gateway_group.id}
+        Enum.map(@sites, fn site ->
+          {site.name, site.id}
         end)
       }
-      value={connected_gateway_group_id}
       placeholder="Select a Site"
       required
+      {@rest}
     />
     """
-  end
-
-  def connections_form(%{multiple: true} = assigns) do
-    assigns = assign(assigns, :errors, Enum.map(assigns.form.errors, &translate_error(&1)))
-
-    ~H"""
-    <fieldset class="flex flex-col gap-2" {@rest}>
-      <legend class="text-xl mb-4">Sites</legend>
-
-      <p class="text-sm text-neutral-500">
-        When multiple sites are selected, the client will automatically connect to the closest one based on its geographical location.
-      </p>
-
-      <.error :for={error <- @errors} data-validation-error-for="connections">
-        {error}
-      </.error>
-      <div :for={gateway_group <- @gateway_groups}>
-        <% connected_gateway_group_ids = connected_gateway_group_ids(@form) %>
-
-        <.input
-          type="hidden"
-          name={"#{@form.name}[#{gateway_group.id}][gateway_group_id]"}
-          value={gateway_group.id}
-        />
-
-        <.input
-          :if={@resource}
-          type="hidden"
-          name={"#{@form.name}[#{gateway_group.id}][resource_id]"}
-          value={@resource.id}
-        />
-
-        <div class="flex gap-4 items-end py-4 text-sm border-b">
-          <div class="w-8">
-            <.input
-              type="checkbox"
-              name={"#{@form.name}[#{gateway_group.id}][enabled]"}
-              checked={gateway_group.id in connected_gateway_group_ids}
-            />
-          </div>
-
-          <div class="w-64 no-grow text-neutral-500">
-            <.link
-              navigate={~p"/#{@account}/sites/#{gateway_group}"}
-              class="font-medium text-accent-500 hover:underline"
-              target="_blank"
-            >
-              {gateway_group.name}
-            </.link>
-          </div>
-        </div>
-      </div>
-    </fieldset>
-    """
-  end
-
-  def connected_gateway_group_ids(form) do
-    Enum.flat_map(form.value, fn
-      %Ecto.Changeset{action: :delete} ->
-        []
-
-      %Ecto.Changeset{action: :replace} ->
-        []
-
-      %Ecto.Changeset{} = changeset ->
-        [Ecto.Changeset.apply_changes(changeset).gateway_group_id]
-
-      %Domain.Resources.Connection{} = connection ->
-        [connection.gateway_group_id]
-
-      {_, %{"gateway_group_id" => id}} ->
-        [id]
-    end)
   end
 
   @known_recommendations %{
@@ -433,6 +342,58 @@ defmodule Web.Resources.Components do
       |> Enum.find_value(fn {key, value} ->
         if String.ends_with?(String.trim(address), key), do: value
       end)
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Safe, Resource}
+
+    def get_resource!(id, subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def list_resources(subject, opts \\ []) do
+      from(r in Resource, as: :resources)
+      |> Safe.scoped(subject)
+      |> Safe.list(DB.ListQuery, opts)
+    end
+  end
+
+  defmodule DB.ListQuery do
+    import Ecto.Query
+    import Domain.Repo.Query
+
+    def cursor_fields do
+      [
+        {:resources, :asc, :name},
+        {:resources, :asc, :id}
+      ]
+    end
+
+    def preloads, do: []
+
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :name_or_address,
+          title: "Name or Address",
+          type: {:string, :websearch},
+          fun: &filter_by_name_fts_or_address/2
+        }
+      ]
+    end
+
+    def filter_by_name_fts_or_address(queryable, name_or_address) do
+      {queryable,
+       dynamic(
+         [resources: resources],
+         fulltext_search(resources.name, ^name_or_address) or
+           ilike(resources.address, ^"%#{name_or_address}%")
+       )}
     end
   end
 end

@@ -1,11 +1,12 @@
 defmodule Domain.Changes.Hooks.Resources do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Changes.Change, Flows, PubSub, Resources}
+  alias Domain.{Changes.Change, PubSub}
+  alias __MODULE__.DB
   import Domain.SchemaHelpers
 
   @impl true
   def on_insert(lsn, data) do
-    resource = struct_from_params(Resources.Resource, data)
+    resource = struct_from_params(Domain.Resource, data)
     change = %Change{lsn: lsn, op: :insert, struct: resource}
 
     PubSub.Account.broadcast(resource.account_id, change)
@@ -13,23 +14,24 @@ defmodule Domain.Changes.Hooks.Resources do
 
   @impl true
   def on_update(lsn, old_data, data) do
-    old_resource = struct_from_params(Resources.Resource, old_data)
-    resource = struct_from_params(Resources.Resource, data)
+    old_resource = struct_from_params(Domain.Resource, old_data)
+    resource = struct_from_params(Domain.Resource, data)
     change = %Change{lsn: lsn, op: :update, old_struct: old_resource, struct: resource}
 
     # Breaking updates
 
-    # This is a special case - we need to delete related flows because connectivity has changed
-    # Gateway _does_ handle resource filter changes so we don't need to delete flows
-    # for those changes - they're processed by the Gateway channel pid.
+    # This is a special case - we need to delete related policy_authorizations because connectivity has changed
+    # Gateway _does_ handle resource filter changes so we don't need to delete policy_authorizations
+    # for those changes - they're processed by the Gateway channel process.
 
-    # The Gateway channel will process these flow deletions and re-authorize the flow.
+    # The Gateway channel will process these policy_authorization deletions and re-authorize the policy_authorization.
     # However, the gateway will also react to the resource update and send reject_access
-    # so that the Gateway's state is updated correctly, and the client can create a new flow.
-    if old_resource.ip_stack != resource.ip_stack or
+    # so that the Gateway's state is updated correctly, and the client can create a new policy_authorization.
+    if old_resource.site_id != resource.site_id or
+         old_resource.ip_stack != resource.ip_stack or
          old_resource.type != resource.type or
          old_resource.address != resource.address do
-      Flows.delete_flows_for(resource)
+      DB.delete_policy_authorizations_for(resource)
     end
 
     PubSub.Account.broadcast(resource.account_id, change)
@@ -41,5 +43,19 @@ defmodule Domain.Changes.Hooks.Resources do
     change = %Change{lsn: lsn, op: :delete, old_struct: resource}
 
     PubSub.Account.broadcast(resource.account_id, change)
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+
+    # Inline function from Domain.PolicyAuthorizations
+    def delete_policy_authorizations_for(%Domain.Resource{} = resource) do
+      from(f in Domain.PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: f], f.account_id == ^resource.account_id)
+      |> where([policy_authorizations: f], f.resource_id == ^resource.id)
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
   end
 end

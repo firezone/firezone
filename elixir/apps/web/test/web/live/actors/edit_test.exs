@@ -185,7 +185,7 @@ defmodule Web.Live.Actors.EditTest do
 
       assert_redirected(lv, ~p"/#{account}/actors/#{actor}")
 
-      assert updated_actor = Repo.get_by(Domain.Actors.Actor, id: actor.id)
+      assert updated_actor = Repo.get_by(Domain.Actor, id: actor.id)
       assert updated_actor.name == attrs.name
       assert updated_actor.name != actor.name
     end
@@ -346,7 +346,7 @@ defmodule Web.Live.Actors.EditTest do
       assert_redirected(lv, ~p"/#{account}/actors/#{actor}")
 
       assert updated_actor =
-               Repo.get_by(Domain.Actors.Actor, id: actor.id) |> Repo.preload(:memberships)
+               Repo.get_by(Domain.Actor, id: actor.id) |> Repo.preload(:memberships)
 
       assert updated_actor.name == attrs.name
       assert updated_actor.name != actor.name

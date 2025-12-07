@@ -70,7 +70,7 @@ defmodule Web.TableComponents do
 
   attr :id, :any, default: nil, doc: "the function for generating the row id"
   attr :row, :map, required: true, doc: "the row data"
-  attr :click, :any, default: nil, doc: "the function for handling phx-click on each row"
+  attr :patch, :any, default: nil, doc: "the function for generating patch path for each row"
 
   attr :columns, :any, required: true, doc: "col slot taken from parent component"
   attr :actions, :list, required: true, doc: "action slot taken from parent component"
@@ -81,16 +81,27 @@ defmodule Web.TableComponents do
 
   def table_row(assigns) do
     ~H"""
-    <tr id={@id} class="border-b">
+    <tr
+      id={@id}
+      class={[
+        "border-b",
+        @patch && "hover:cursor-pointer hover:bg-neutral-50"
+      ]}
+    >
       <td
         :for={{col, _i} <- Enum.with_index(@columns)}
-        phx-click={@click && @click.(@row)}
-        class={[
-          "px-4 py-3",
-          @click && "hover:cursor-pointer"
-        ]}
+        class="px-3 py-3"
       >
-        {render_slot(col, @mapper.(@row))}
+        <.link
+          :if={@patch}
+          patch={@patch.(@row)}
+          class="block -mx-3 -my-3 px-3 py-3"
+        >
+          {render_slot(col, @mapper.(@row))}
+        </.link>
+        <span :if={!@patch}>
+          {render_slot(col, @mapper.(@row))}
+        </span>
       </td>
       <% # this is a hack which allows to hide empty action dropdowns,
       # because LiveView doesn't allow to do <:slot :let={x} :if={x} />
@@ -99,7 +110,7 @@ defmodule Web.TableComponents do
           render = render_slot(action, @mapper.(@row))
           not_empty_render?(render)
         end) %>
-      <td :if={@actions != [] and show_actions?} class="px-4 py-3">
+      <td :if={@actions != [] and show_actions?} class="px-3 py-3">
         <div class="flex space-x-1 items-center justify-end">
           <span :for={action <- @actions}>
             {render_slot(action, @mapper.(@row))}
@@ -133,7 +144,6 @@ defmodule Web.TableComponents do
   attr :id, :string, required: true
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
-  attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
   attr :class, :string, default: nil, doc: "the class for the table"
 
   attr :row_item, :any,
@@ -171,7 +181,6 @@ defmodule Web.TableComponents do
             actions={@action}
             row={row}
             id={@row_id && @row_id.(row)}
-            click={@row_click}
             mapper={@row_item}
           />
         </tbody>
@@ -204,7 +213,6 @@ defmodule Web.TableComponents do
   attr :group_id, :any, default: nil, doc: "the function for generating the group id"
 
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
-  attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
 
   attr :group_items, :any,
     required: true,
@@ -247,7 +255,6 @@ defmodule Web.TableComponents do
           actions={@action}
           row={row}
           id={@row_id && @row_id.(row)}
-          click={@row_click}
           mapper={@row_item}
         />
       </tbody>

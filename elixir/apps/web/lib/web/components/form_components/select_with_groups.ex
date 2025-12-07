@@ -301,7 +301,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
             </div>
 
             <div
-              :if={@metadata.next_page_cursor}
+              :if={Map.get(@metadata, :next_page_cursor)}
               class={[
                 "py-2 px-4 text-sm text-neutral-400"
               ]}

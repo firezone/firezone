@@ -7,7 +7,7 @@ defmodule Domain.Cache.Cacheable.Resource do
     :address_description,
     :ip_stack,
     :filters,
-    :gateway_groups
+    :site
   ]
 
   @type filter :: %{
@@ -23,6 +23,6 @@ defmodule Domain.Cache.Cacheable.Resource do
           address_description: String.t(),
           ip_stack: atom(),
           filters: [filter()],
-          gateway_groups: [Domain.Cache.Cacheable.GatewayGroup.t()]
+          site: Domain.Cache.Cacheable.Site.t() | nil
         }
 end

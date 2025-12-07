@@ -2,48 +2,46 @@ defmodule Web.Resources.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Resources.Components
-  alias Domain.{PubSub, Resources, Policies, Flows}
+  alias Domain.PubSub
+  alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
-    with {:ok, resource} <- fetch_resource(id, socket.assigns.subject),
-         {:ok, actor_groups_peek} <-
-           Resources.peek_resource_actor_groups([resource], 3, socket.assigns.subject) do
-      if connected?(socket) do
-        :ok = PubSub.Account.subscribe(resource.account_id)
-      end
+    resource = get_resource!(id, socket.assigns.subject)
+    {:ok, groups_peek} = DB.peek_resource_groups([resource], 3, socket.assigns.subject)
 
-      socket =
-        assign(
-          socket,
-          page_title: "Resource #{resource.name}",
-          resource: resource,
-          actor_groups_peek: Map.fetch!(actor_groups_peek, resource.id),
-          params: Map.take(params, ["site_id"])
-        )
-        |> assign_live_table("flows",
-          query_module: Flows.Flow.Query,
-          sortable_fields: [],
-          hide_filters: [:expiration],
-          callback: &handle_flows_update!/2
-        )
-        |> assign_live_table("policies",
-          query_module: Policies.Policy.Query,
-          hide_filters: [
-            :actor_group_id,
-            :resource_name,
-            :group_or_resource_name
-          ],
-          enforce_filters: [
-            {:resource_id, resource.id}
-          ],
-          sortable_fields: [],
-          callback: &handle_policies_update!/2
-        )
-
-      {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    if connected?(socket) do
+      :ok = PubSub.Account.subscribe(resource.account_id)
     end
+
+    socket =
+      assign(
+        socket,
+        page_title: "Resource #{resource.name}",
+        resource: resource,
+        groups_peek: Map.fetch!(groups_peek, resource.id),
+        params: Map.take(params, ["site_id"])
+      )
+      |> assign_live_table("policy_authorizations",
+        query_module: DB.PolicyAuthorizationQuery,
+        sortable_fields: [],
+        hide_filters: [:expiration],
+        callback: &handle_policy_authorizations_update!/2
+      )
+      |> assign_live_table("policies",
+        query_module: DB,
+        hide_filters: [
+          :group_id,
+          :resource_name,
+          :group_or_resource_name
+        ],
+        enforce_filters: [
+          {:resource_id, resource.id}
+        ],
+        sortable_fields: [],
+        callback: &handle_policies_update!/2
+      )
+
+    {:ok, socket}
   end
 
   def handle_params(params, uri, socket) do
@@ -52,9 +50,9 @@ defmodule Web.Resources.Show do
   end
 
   def handle_policies_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, actor_group: [:provider], resource: [])
+    list_opts = Keyword.put(list_opts, :preload, group: [], resource: [])
 
-    with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- DB.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          policies: policies,
@@ -63,20 +61,24 @@ defmodule Web.Resources.Show do
     end
   end
 
-  def handle_flows_update!(socket, list_opts) do
+  def handle_policy_authorizations_update!(socket, list_opts) do
     list_opts =
       Keyword.put(list_opts, :preload,
         client: [:actor],
-        gateway: [:group],
-        policy: [:resource, :actor_group]
+        gateway: [:site],
+        policy: [:resource, :group]
       )
 
-    with {:ok, flows, metadata} <-
-           Flows.list_flows_for(socket.assigns.resource, socket.assigns.subject, list_opts) do
+    with {:ok, policy_authorizations, metadata} <-
+           DB.list_policy_authorizations_for(
+             socket.assigns.resource,
+             socket.assigns.subject,
+             list_opts
+           ) do
       {:ok,
        assign(socket,
-         flows: flows,
-         flows_metadata: metadata
+         policy_authorizations: policy_authorizations,
+         policy_authorizations_metadata: metadata
        )}
     end
   end
@@ -162,21 +164,20 @@ defmodule Web.Resources.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>
-              Connected Sites
+              Site
             </:label>
             <:value>
               <.link
-                :for={gateway_group <- @resource.gateway_groups}
-                :if={@resource.gateway_groups != []}
-                navigate={~p"/#{@account}/sites/#{gateway_group}"}
+                :if={@resource.site}
+                navigate={~p"/#{@account}/sites/#{@resource.site}"}
                 class={[link_style()]}
               >
                 <.badge type="info">
-                  {gateway_group.name}
+                  {@resource.site.name}
                 </.badge>
               </.link>
-              <span :if={@resource.gateway_groups == []}>
-                No linked Sites to display
+              <span :if={is_nil(@resource.site)}>
+                Not linked to a site
               </span>
             </:value>
           </.vertical_table_row>
@@ -191,14 +192,6 @@ defmodule Web.Resources.Show do
               <div :for={filter <- @resource.filters} :if={@resource.filters != []} %>
                 <.filter_description filter={filter} />
               </div>
-            </:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>
-              Created
-            </:label>
-            <:value>
-              <.created_by schema={@resource} />
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -236,13 +229,17 @@ defmodule Web.Resources.Show do
             </.link>
           </:col>
           <:col :let={policy} label="group">
-            <.group account={@account} group={policy.actor_group} />
+            <.group_badge account={@account} group={policy.group} return_to={@current_path} />
           </:col>
           <:col :let={policy} label="status">
             <%= if is_nil(policy.disabled_at) do %>
-              Active
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                Active
+              </span>
             <% else %>
-              Disabled
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                Disabled
+              </span>
             <% end %>
           </:col>
           <:empty>
@@ -279,38 +276,52 @@ defmodule Web.Resources.Show do
       </:help>
       <:content>
         <.live_table
-          id="flows"
-          rows={@flows}
-          row_id={&"flows-#{&1.id}"}
-          filters={@filters_by_table_id["flows"]}
-          filter={@filter_form_by_table_id["flows"]}
-          ordered_by={@order_by_table_id["flows"]}
-          metadata={@flows_metadata}
+          id="policy_authorizations"
+          rows={@policy_authorizations}
+          row_id={&"policy_authorizations-#{&1.id}"}
+          filters={@filters_by_table_id["policy_authorizations"]}
+          filter={@filter_form_by_table_id["policy_authorizations"]}
+          ordered_by={@order_by_table_id["policy_authorizations"]}
+          metadata={@policy_authorizations_metadata}
         >
-          <:col :let={flow} label="authorized">
-            <.relative_datetime datetime={flow.inserted_at} />
+          <:col :let={policy_authorization} label="authorized">
+            <.relative_datetime datetime={policy_authorization.inserted_at} />
           </:col>
-          <:col :let={flow} label="policy">
-            <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
-              <.policy_name policy={flow.policy} />
+          <:col :let={policy_authorization} label="policy">
+            <.link
+              navigate={~p"/#{@account}/policies/#{policy_authorization.policy_id}"}
+              class={[link_style()]}
+            >
+              <.policy_name policy={policy_authorization.policy} />
             </.link>
           </:col>
-          <:col :let={flow} label="client, actor" class="w-3/12">
-            <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={[link_style()]}>
-              {flow.client.name}
+          <:col :let={policy_authorization} label="client, actor" class="w-3/12">
+            <.link
+              navigate={~p"/#{@account}/clients/#{policy_authorization.client_id}"}
+              class={[link_style()]}
+            >
+              {policy_authorization.client.name}
             </.link>
             owned by
-            <.link navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"} class={[link_style()]}>
-              {flow.client.actor.name}
+            <.link
+              navigate={
+                ~p"/#{@account}/actors/#{policy_authorization.client.actor_id}?#{[return_to: @current_path]}"
+              }
+              class={[link_style()]}
+            >
+              {policy_authorization.client.actor.name}
             </.link>
-            {flow.client_remote_ip}
+            {policy_authorization.client_remote_ip}
           </:col>
-          <:col :let={flow} label="gateway" class="w-3/12">
-            <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              {flow.gateway.group.name}-{flow.gateway.name}
+          <:col :let={policy_authorization} label="gateway" class="w-3/12">
+            <.link
+              navigate={~p"/#{@account}/gateways/#{policy_authorization.gateway_id}"}
+              class={[link_style()]}
+            >
+              {policy_authorization.gateway.site.name}-{policy_authorization.gateway.name}
             </.link>
             <br />
-            <code class="text-xs">{flow.gateway_remote_ip}</code>
+            <code class="text-xs">{policy_authorization.gateway_remote_ip}</code>
           </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No activity to display.</div>
@@ -348,17 +359,11 @@ defmodule Web.Resources.Show do
 
   # TODO: Do we really want to update the view in place?
   def handle_info(
-        {_action, _old_resource, %Resources.Resource{id: resource_id}},
+        {_action, _old_resource, %Domain.Resource{id: resource_id}},
         %{assigns: %{resource: %{id: id}}} = socket
       )
       when resource_id == id do
-    {:ok, resource} =
-      Resources.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject,
-        preload: [
-          :gateway_groups,
-          :policies
-        ]
-      )
+    resource = DB.get_resource!(socket.assigns.resource.id, socket.assigns.subject)
 
     {:noreply, assign(socket, resource: resource)}
   end
@@ -372,9 +377,9 @@ defmodule Web.Resources.Show do
 
   def handle_event("delete", %{"id" => _resource_id}, socket) do
     {:ok, _deleted_resource} =
-      Resources.delete_resource(socket.assigns.resource, socket.assigns.subject)
+      DB.delete_resource(socket.assigns.resource, socket.assigns.subject)
 
-    socket = put_flash(socket, :info, "Resource was deleted.")
+    socket = put_flash(socket, :success, "Resource was deleted.")
 
     if site_id = socket.assigns.params["site_id"] do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}")}
@@ -395,15 +400,434 @@ defmodule Web.Resources.Show do
     end
   end
 
-  defp fetch_resource("internet", subject) do
-    Resources.fetch_internet_resource(subject, preload: [:gateway_groups])
+  defp get_resource!("internet", subject) do
+    DB.get_internet_resource!(subject)
   end
 
-  defp fetch_resource(id, subject) do
-    Resources.fetch_resource_by_id(id, subject, preload: [:gateway_groups])
+  defp get_resource!(id, subject) do
+    DB.get_resource!(id, subject)
   end
 
   defp format_ip_stack(:dual), do: "Dual-stack (IPv4 and IPv6)"
   defp format_ip_stack(:ipv4_only), do: "IPv4 only"
   defp format_ip_stack(:ipv6_only), do: "IPv6 only"
+
+  defmodule DB do
+    import Ecto.Query
+    import Domain.Repo.Query
+    alias Domain.{Safe, Resource, Policy}
+
+    def get_resource!(id, subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.id == ^id)
+      |> preload([:site, :policies])
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def get_internet_resource!(subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.type == :internet)
+      |> preload([:site, :policies])
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def peek_resource_groups(resources, limit, subject) do
+      resource_ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
+
+      groups_by_resource =
+        from(p in Policy, as: :policies)
+        |> join(:inner, [policies: p], g in Domain.Group,
+          on: g.id == p.group_id,
+          as: :groups
+        )
+        |> where([policies: p], p.resource_id in ^resource_ids)
+        |> where([policies: p], is_nil(p.disabled_at))
+        |> select([policies: p, groups: g], {p.resource_id, g})
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+      peek =
+        Enum.into(resources, %{}, fn resource ->
+          all_groups = Map.get(groups_by_resource, resource.id, [])
+          peek_groups = Enum.take(all_groups, limit)
+
+          {resource.id,
+           %{
+             items: peek_groups,
+             count: length(all_groups)
+           }}
+        end)
+
+      {:ok, peek}
+    end
+
+    def delete_resource(resource, subject) do
+      Safe.scoped(resource, subject)
+      |> Safe.delete()
+    end
+
+    def list_policies(subject, opts \\ []) do
+      from(p in Policy, as: :policies)
+      |> Safe.scoped(subject)
+      |> Safe.list(DB, opts)
+    end
+
+    # Pagination support for policies
+    def cursor_fields,
+      do: [
+        {:policies, :asc, :inserted_at},
+        {:policies, :asc, :id}
+      ]
+
+    def filters do
+      [
+        %Domain.Repo.Filter{
+          name: :resource_id,
+          title: "Resource",
+          type: {:string, :uuid},
+          fun: &filter_by_resource_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_id,
+          title: "Group",
+          type: {:string, :uuid},
+          fun: &filter_by_group_id/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_name,
+          title: "Group Name",
+          type: {:string, :websearch},
+          fun: &filter_by_group_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :resource_name,
+          title: "Resource Name",
+          type: {:string, :websearch},
+          fun: &filter_by_resource_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :group_or_resource_name,
+          title: "Group Name or Resource Name",
+          type: {:string, :websearch},
+          fun: &filter_by_group_or_resource_name/2
+        },
+        %Domain.Repo.Filter{
+          name: :status,
+          title: "Status",
+          type: :string,
+          values: [
+            {"Active", "active"},
+            {"Disabled", "disabled"}
+          ],
+          fun: &filter_by_status/2
+        }
+      ]
+    end
+
+    def filter_by_resource_id(queryable, resource_id) do
+      {queryable, dynamic([policies: p], p.resource_id == ^resource_id)}
+    end
+
+    def filter_by_group_id(queryable, group_id) do
+      {queryable, dynamic([policies: p], p.group_id == ^group_id)}
+    end
+
+    def filter_by_group_name(queryable, name) do
+      queryable = with_joined_group(queryable)
+      {queryable, dynamic([group: g], fulltext_search(g.name, ^name))}
+    end
+
+    def filter_by_resource_name(queryable, name) do
+      queryable = with_joined_resource(queryable)
+      {queryable, dynamic([resource: r], fulltext_search(r.name, ^name))}
+    end
+
+    def filter_by_group_or_resource_name(queryable, name) do
+      queryable = queryable |> with_joined_group() |> with_joined_resource()
+
+      {queryable,
+       dynamic(
+         [group: g, resource: r],
+         fulltext_search(g.name, ^name) or fulltext_search(r.name, ^name)
+       )}
+    end
+
+    def filter_by_status(queryable, "active") do
+      {queryable, dynamic([policies: p], is_nil(p.disabled_at))}
+    end
+
+    def filter_by_status(queryable, "disabled") do
+      {queryable, dynamic([policies: p], not is_nil(p.disabled_at))}
+    end
+
+    defp with_joined_group(queryable) do
+      if has_named_binding?(queryable, :group) do
+        queryable
+      else
+        join(queryable, :inner, [policies: p], g in assoc(p, :group), as: :group)
+      end
+    end
+
+    defp with_joined_resource(queryable) do
+      if has_named_binding?(queryable, :resource) do
+        queryable
+      else
+        join(queryable, :inner, [policies: p], r in assoc(p, :resource), as: :resource)
+      end
+    end
+
+    def preloads, do: []
+
+    # Inline functions from Domain.PolicyAuthorizations
+    def list_policy_authorizations_for(assoc, subject, opts \\ [])
+
+    def list_policy_authorizations_for(
+          %Domain.Policy{} = policy,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_policy_id(policy.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Resource{} = resource,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_resource_id(resource.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Client{} = client,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_client_id(client.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Actor{} = actor,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_actor_id(actor.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    def list_policy_authorizations_for(
+          %Domain.Gateway{} = gateway,
+          %Domain.Auth.Subject{} = subject,
+          opts
+        ) do
+      DB.PolicyAuthorizationQuery.all()
+      |> DB.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
+      |> list_policy_authorizations(subject, opts)
+    end
+
+    defp list_policy_authorizations(queryable, subject, opts) do
+      queryable
+      |> Domain.Safe.scoped(subject)
+      |> Domain.Safe.list(DB.PolicyAuthorizationQuery, opts)
+    end
+  end
+
+  defmodule DB.PolicyAuthorizationQuery do
+    import Ecto.Query
+
+    def all do
+      from(policy_authorizations in Domain.PolicyAuthorization, as: :policy_authorizations)
+    end
+
+    def expired(queryable) do
+      now = DateTime.utc_now()
+
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.expires_at <= ^now
+      )
+    end
+
+    def not_expired(queryable) do
+      now = DateTime.utc_now()
+
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.expires_at > ^now
+      )
+    end
+
+    def by_id(queryable, id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.id == ^id
+      )
+    end
+
+    def by_account_id(queryable, account_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.account_id == ^account_id
+      )
+    end
+
+    def by_token_id(queryable, token_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.token_id == ^token_id
+      )
+    end
+
+    def by_policy_id(queryable, policy_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.policy_id == ^policy_id
+      )
+    end
+
+    def for_cache(queryable) do
+      queryable
+      |> select(
+        [policy_authorizations: policy_authorizations],
+        {{policy_authorizations.client_id, policy_authorizations.resource_id},
+         {policy_authorizations.id, policy_authorizations.expires_at}}
+      )
+    end
+
+    def by_policy_group_id(queryable, group_id) do
+      queryable
+      |> with_joined_policy()
+      |> where([policy: policy], policy.group_id == ^group_id)
+    end
+
+    def by_membership_id(queryable, membership_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.membership_id == ^membership_id
+      )
+    end
+
+    def by_site_id(queryable, site_id) do
+      queryable
+      |> with_joined_site()
+      |> where([site: site], site.id == ^site_id)
+    end
+
+    def by_resource_id(queryable, resource_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.resource_id == ^resource_id
+      )
+    end
+
+    def by_not_in_resource_ids(queryable, resource_ids) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.resource_id not in ^resource_ids
+      )
+    end
+
+    def by_client_id(queryable, client_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.client_id == ^client_id
+      )
+    end
+
+    def by_actor_id(queryable, actor_id) do
+      queryable
+      |> with_joined_client()
+      |> where([client: client], client.actor_id == ^actor_id)
+    end
+
+    def by_gateway_id(queryable, gateway_id) do
+      where(
+        queryable,
+        [policy_authorizations: policy_authorizations],
+        policy_authorizations.gateway_id == ^gateway_id
+      )
+    end
+
+    def with_joined_policy(queryable) do
+      with_policy_authorization_named_binding(queryable, :policy, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          policy in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
+      end)
+    end
+
+    def with_joined_client(queryable) do
+      with_policy_authorization_named_binding(queryable, :client, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          client in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
+      end)
+    end
+
+    def with_joined_site(queryable) do
+      queryable
+      |> with_joined_gateway()
+      |> with_policy_authorization_named_binding(:site, fn queryable, binding ->
+        join(queryable, :inner, [gateway: gateway], site in assoc(gateway, :site), as: ^binding)
+      end)
+    end
+
+    def with_joined_gateway(queryable) do
+      with_policy_authorization_named_binding(queryable, :gateway, fn queryable, binding ->
+        join(
+          queryable,
+          :inner,
+          [policy_authorizations: policy_authorizations],
+          gateway in assoc(policy_authorizations, ^binding),
+          as: ^binding
+        )
+      end)
+    end
+
+    def with_policy_authorization_named_binding(queryable, binding, fun) do
+      if has_named_binding?(queryable, binding) do
+        queryable
+      else
+        fun.(queryable, binding)
+      end
+    end
+
+    # Pagination
+    def cursor_fields,
+      do: [
+        {:policy_authorizations, :desc, :inserted_at},
+        {:policy_authorizations, :asc, :id}
+      ]
+
+    def filters, do: []
+
+    def preloads, do: []
+  end
 end

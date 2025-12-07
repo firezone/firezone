@@ -2,7 +2,10 @@ defmodule API.ClientController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Clients
+  alias Domain.Presence.Clients
+  alias __MODULE__.DB
+  import Ecto.Changeset
+  import Domain.Changeset
 
   action_fallback(API.FallbackController)
 
@@ -31,7 +34,7 @@ defmodule API.ClientController do
       |> Pagination.params_to_list_opts()
       |> Keyword.put(:preload, :online?)
 
-    with {:ok, clients, metadata} <- Clients.list_clients(conn.assigns.subject, list_opts) do
+    with {:ok, clients, metadata} <- DB.list_clients(conn.assigns.subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
     end
   end
@@ -53,8 +56,8 @@ defmodule API.ClientController do
 
   # Show a specific Client
   def show(conn, %{"id" => id}) do
-    with {:ok, client} <-
-           Clients.fetch_client_by_id(id, conn.assigns.subject, preload: :online?) do
+    with {:ok, client} <- DB.fetch_client(id, conn.assigns.subject) do
+      client = Clients.preload_clients_presence([client]) |> List.first()
       render(conn, :show, client: client)
     end
   end
@@ -80,14 +83,26 @@ defmodule API.ClientController do
   def update(conn, %{"id" => id, "client" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
-         {:ok, client} <- Clients.update_client(client, params, subject) do
+    with {:ok, client} <- DB.fetch_client(id, subject),
+         changeset = update_changeset(client, params),
+         {:ok, client} <- DB.update_client(changeset, subject) do
       render(conn, :show, client: client)
     end
   end
 
   def update(_conn, _params) do
     {:error, :bad_request}
+  end
+
+  defp update_changeset(client, attrs) do
+    import Ecto.Changeset
+    update_fields = ~w[name]a
+    required_fields = ~w[external_id name public_key]a
+
+    client
+    |> cast(attrs, update_fields)
+    |> validate_required(required_fields)
+    |> Domain.Client.changeset()
   end
 
   operation(:verify,
@@ -109,8 +124,9 @@ defmodule API.ClientController do
   def verify(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
-         {:ok, client} <- Clients.verify_client(client, subject) do
+    with {:ok, client} <- DB.fetch_client(id, subject),
+         changeset = client |> change() |> put_default_value(:verified_at, DateTime.utc_now()),
+         {:ok, client} <- DB.verify_client(changeset, subject) do
       render(conn, :show, client: client)
     end
   end
@@ -132,10 +148,12 @@ defmodule API.ClientController do
 
   # Unverify a Client
   def unverify(conn, %{"id" => id}) do
+    import Ecto.Changeset
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
-         {:ok, client} <- Clients.remove_client_verification(client, subject) do
+    with {:ok, client} <- DB.fetch_client(id, subject),
+         changeset = client |> change() |> put_change(:verified_at, nil),
+         {:ok, client} <- DB.remove_client_verification(changeset, subject) do
       render(conn, :show, client: client)
     end
   end
@@ -159,9 +177,88 @@ defmodule API.ClientController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
-         {:ok, client} <- Clients.delete_client(client, subject) do
+    with {:ok, client} <- DB.fetch_client(id, subject),
+         {:ok, client} <- DB.delete_client(client, subject) do
       render(conn, :show, client: client)
+    end
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.{Presence.Clients, Safe}
+    alias Domain.Client
+
+    def list_clients(subject, opts \\ []) do
+      from(c in Client, as: :clients)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:clients, :asc, :inserted_at},
+        {:clients, :asc, :id}
+      ]
+    end
+
+    def preloads do
+      [
+        online?: &Clients.preload_clients_presence/1
+      ]
+    end
+
+    def fetch_client(id, subject) do
+      result =
+        from(c in Client, as: :clients)
+        |> where([clients: c], c.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        client -> {:ok, client}
+      end
+    end
+
+    def update_client(changeset, subject) do
+      case Safe.scoped(changeset, subject) |> Safe.update() do
+        {:ok, updated_client} ->
+          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+
+    def verify_client(changeset, subject) do
+      case Safe.scoped(changeset, subject) |> Safe.update() do
+        {:ok, updated_client} ->
+          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+
+    def remove_client_verification(changeset, subject) do
+      case Safe.scoped(changeset, subject) |> Safe.update() do
+        {:ok, updated_client} ->
+          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+
+    def delete_client(client, subject) do
+      case Safe.scoped(client, subject) |> Safe.delete() do
+        {:ok, deleted_client} ->
+          {:ok, Clients.preload_clients_presence([deleted_client]) |> List.first()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 end

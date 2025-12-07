@@ -49,15 +49,6 @@
     Policies
   </.sidebar_item>
 
-  <.sidebar_item
-    :if={Domain.Accounts.self_hosted_relays_enabled?(@account)}
-    current_path={@current_path}
-    navigate={~p"/#{@account}/relay_groups"}
-    icon="hero-arrows-right-left"
-  >
-    Relays
-  </.sidebar_item>
-
   <.sidebar_item_group current_path={@current_path} id="settings" icon="hero-cog-solid">
     <:name>Settings</:name>
 
@@ -68,8 +59,11 @@
     >
       Billing
     </:item>
-    <:item navigate={~p"/#{@account}/settings/identity_providers"}>
-      Identity Providers
+    <:item navigate={~p"/#{@account}/settings/authentication"}>
+      Authentication
+    </:item>
+    <:item navigate={~p"/#{@account}/settings/directory_sync"}>
+      Directory Sync
     </:item>
     <:item navigate={~p"/#{@account}/settings/dns"}>DNS</:item>
     <:item navigate={~p"/#{@account}/settings/api_clients"}>
@@ -99,6 +93,22 @@
 </.sidebar>
 
 <main class="lg:ml-64 h-auto pt-14">
+  <.flash id="success-toast" kind={:success} title="Success!" style="toast" flash={@flash} />
+  <.flash id="info-toast" kind={:info} title="Information!" style="toast" flash={@flash} />
+  <.flash id="warning-toast" kind={:warning} title="Warning!" style="toast" flash={@flash} />
+  <.flash id="error-toast" kind={:error} title="Error!" style="toast" flash={@flash} />
+  <.flash
+    id="disconnected-toast"
+    kind={:error}
+    title="We can't find the internet"
+    style="toast"
+    phx-disconnected={JS.dispatch("toast:show", to: "#disconnected-toast")}
+    phx-connected={JS.dispatch("toast:hide", to: "#disconnected-toast")}
+    autoshow={false}
+  >
+    Attempting to reconnect <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
+  </.flash>
+
   <% banner = Domain.Repo.one(Domain.Banner) %>
   <div
     :if={banner}
@@ -118,7 +128,7 @@
     </span>
   </.flash>
 
-  <.flash :if={not Domain.Accounts.account_active?(@account)} kind={:error} class="m-1">
+  <.flash :if={not Domain.Account.active?(@account)} kind={:error} class="m-1">
     This account has been disabled.
     <span>
       Please

@@ -126,16 +126,13 @@ defmodule Web.Live.Groups.NewTest do
     |> form("form", group: attrs)
     |> render_submit()
 
-    assert group = Repo.get_by(Domain.Actors.Group, name: attrs.name)
+    assert group = Repo.get_by(Domain.Group, name: attrs.name)
 
     assert_redirected(lv, ~p"/#{account}/groups/#{group}/edit_actors")
 
     assert group.name == attrs.name
     refute group.provider_id
     refute group.provider_identifier
-
-    assert group.created_by == :identity
-    assert group.created_by_subject == %{"email" => identity.email, "name" => actor.name}
 
     assert group.account_id == account.id
   end

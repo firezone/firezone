@@ -89,9 +89,9 @@ defmodule Web.Live.Actors.ShowTest do
       |> live(~p"/#{account}/actors/#{actor}")
 
     Domain.Config.put_env_override(:test_pid, self())
-    :ok = Domain.Clients.Presence.Actor.subscribe(actor.id)
+    :ok = Domain.Presence.Clients.Actor.subscribe(actor.id)
     client_token = Fixtures.Tokens.create_client_token(account: account, actor: actor)
-    assert Domain.Clients.Presence.connect(client, client_token.id) == :ok
+    assert Domain.Presence.Clients.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
     assert_receive {:live_table_reloaded, "clients"}, 500
 
@@ -106,7 +106,7 @@ defmodule Web.Live.Actors.ShowTest do
     end)
   end
 
-  test "renders flows table", %{
+  test "renders policy_authorizations table", %{
     conn: conn
   } do
     account = Fixtures.Accounts.create_account()
@@ -114,13 +114,14 @@ defmodule Web.Live.Actors.ShowTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     client = Fixtures.Clients.create_client(account: account, actor: actor)
 
-    flow =
-      Fixtures.Flows.create_flow(
+    policy_authorization =
+      Fixtures.PolicyAuthorizations.create_policy_authorization(
         account: account,
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    policy_authorization =
+      Repo.preload(policy_authorization, [:client, gateway: [:site], policy: [:group, :resource]])
 
     {:ok, lv, _html} =
       conn
@@ -129,22 +130,22 @@ defmodule Web.Live.Actors.ShowTest do
 
     [row] =
       lv
-      |> element("#flows")
+      |> element("#policy_authorizations")
       |> render()
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["policy"] =~ flow.policy.actor_group.name
-    assert row["policy"] =~ flow.policy.resource.name
+    assert row["policy"] =~ policy_authorization.policy.group.name
+    assert row["policy"] =~ policy_authorization.policy.resource.name
 
     assert row["client"] ==
-             "#{flow.client.name} #{client.last_seen_remote_ip}"
+             "#{policy_authorization.client.name} #{client.last_seen_remote_ip}"
 
     assert row["gateway"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+             "#{policy_authorization.gateway.site.name}-#{policy_authorization.gateway.name} #{policy_authorization.gateway.last_seen_remote_ip}"
   end
 
-  test "does not render flows for deleted policies", %{
+  test "does not render policy_authorizations for deleted policies", %{
     conn: conn
   } do
     account = Fixtures.Accounts.create_account()
@@ -152,14 +153,16 @@ defmodule Web.Live.Actors.ShowTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     client = Fixtures.Clients.create_client(account: account, actor: actor)
 
-    flow =
-      Fixtures.Flows.create_flow(
+    policy_authorization =
+      Fixtures.PolicyAuthorizations.create_policy_authorization(
         account: account,
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
-    Fixtures.Policies.delete_policy(flow.policy)
+    policy_authorization =
+      Repo.preload(policy_authorization, [:client, gateway: [:site], policy: [:group, :resource]])
+
+    Fixtures.Policies.delete_policy(policy_authorization.policy)
 
     {:ok, lv, _html} =
       conn
@@ -168,12 +171,12 @@ defmodule Web.Live.Actors.ShowTest do
 
     [] =
       lv
-      |> element("#flows")
+      |> element("#policy_authorizations")
       |> render()
       |> table_to_map()
   end
 
-  test "does not render flows for deleted policy assocs", %{
+  test "does not render policy_authorizations for deleted policy assocs", %{
     conn: conn
   } do
     account = Fixtures.Accounts.create_account()
@@ -181,15 +184,17 @@ defmodule Web.Live.Actors.ShowTest do
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     client = Fixtures.Clients.create_client(account: account, actor: actor)
 
-    flow =
-      Fixtures.Flows.create_flow(
+    policy_authorization =
+      Fixtures.PolicyAuthorizations.create_policy_authorization(
         account: account,
         client: client
       )
 
-    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
-    Fixtures.Actors.delete_group(flow.policy.actor_group)
-    Fixtures.Resources.delete_resource(flow.policy.resource)
+    policy_authorization =
+      Repo.preload(policy_authorization, [:client, gateway: [:site], policy: [:group, :resource]])
+
+    Fixtures.Actors.delete_group(policy_authorization.policy.group)
+    Fixtures.Resources.delete_resource(policy_authorization.policy.resource)
 
     {:ok, lv, _html} =
       conn
@@ -198,7 +203,7 @@ defmodule Web.Live.Actors.ShowTest do
 
     assert [] ==
              lv
-             |> element("#flows")
+             |> element("#policy_authorizations")
              |> render()
              |> table_to_map()
   end
@@ -299,15 +304,11 @@ defmodule Web.Live.Actors.ShowTest do
     } do
       invited_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => actor.name}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       synced_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Ecto.Changeset.change(created_by: :provider)
         |> Repo.update!()
 
       admin_identity = Repo.preload(admin_identity, :provider)
@@ -361,10 +362,7 @@ defmodule Web.Live.Actors.ShowTest do
     } do
       email_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       {:ok, lv, _html} =
@@ -401,10 +399,7 @@ defmodule Web.Live.Actors.ShowTest do
             "userinfo" => %{"email" => oidc_email}
           }
         )
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       {:ok, lv, _html} =
@@ -434,10 +429,7 @@ defmodule Web.Live.Actors.ShowTest do
     } do
       email_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       {:ok, lv, _html} =
@@ -515,10 +507,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       email_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: email_provider)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       {:ok, lv, _html} =
@@ -561,10 +550,7 @@ defmodule Web.Live.Actors.ShowTest do
     } do
       other_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
-        )
+        |> Ecto.Changeset.change()
         |> Repo.update!()
 
       {:ok, lv, _html} =
@@ -693,7 +679,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
+      refute Repo.get_by(Domain.Token, id: token.id)
     end
 
     test "allows revoking all tokens", %{
@@ -726,7 +712,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
+      refute Repo.get_by(Domain.Token, id: token.id)
     end
 
     test "allows editing actors", %{
@@ -765,7 +751,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      refute Repo.get(Domain.Actors.Actor, actor.id)
+      refute Repo.get(Domain.Actor, actor.id)
     end
 
     test "allows deleting synced actors that don't have any identities left", %{
@@ -788,7 +774,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      refute Repo.get(Domain.Actors.Actor, actor.id)
+      refute Repo.get(Domain.Actor, actor.id)
     end
 
     test "renders error when trying to delete last admin", %{
@@ -809,7 +795,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't delete the last admin of an account."
 
-      assert Repo.get(Domain.Actors.Actor, actor.id)
+      assert Repo.get(Domain.Actor, actor.id)
     end
 
     test "allows disabling actors", %{
@@ -833,7 +819,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was disabled."
 
-      assert Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+      assert Repo.get(Domain.Actor, actor.id).disabled_at
     end
 
     test "renders error when trying to disable last admin", %{
@@ -854,7 +840,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't disable the last admin of an account."
 
-      refute Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+      refute Repo.get(Domain.Actor, actor.id).disabled_at
     end
 
     test "allows enabling actors", %{
@@ -879,7 +865,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was enabled."
 
-      refute Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+      refute Repo.get(Domain.Actor, actor.id).disabled_at
     end
   end
 
@@ -995,7 +981,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      refute Repo.get(Domain.Actors.Actor, actor.id)
+      refute Repo.get(Domain.Actor, actor.id)
     end
 
     test "allows disabling actors", %{
@@ -1018,7 +1004,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was disabled."
 
-      assert Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+      assert Repo.get(Domain.Actor, actor.id).disabled_at
     end
 
     test "allows enabling actors", %{
@@ -1043,7 +1029,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was enabled."
 
-      refute Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+      refute Repo.get(Domain.Actor, actor.id).disabled_at
     end
 
     test "renders actor tokens", %{
@@ -1128,7 +1114,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
+      refute Repo.get_by(Domain.Token, id: token.id)
     end
 
     test "allows revoking all tokens", %{
@@ -1161,7 +1147,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
+      refute Repo.get_by(Domain.Token, id: token.id)
     end
   end
 end

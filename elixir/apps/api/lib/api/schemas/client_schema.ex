@@ -80,15 +80,6 @@ defmodule API.Schemas.Client do
           type: :string,
           description: "Client verification timestamp"
         },
-        verified_by: %Schema{
-          type: :string,
-          description: "Client verification method",
-          enum: [:system, :actor, :identity]
-        },
-        verified_by_subject: %Schema{
-          type: :object,
-          description: "Actor Name and/or Identity email who verified the client"
-        },
         created_at: %Schema{
           type: :string,
           description: "Client creation timestamp"
@@ -215,8 +206,6 @@ defmodule API.Schemas.Client do
           "identifier_for_vendor" => nil,
           "firebase_installation_id" => nil,
           "verified_at" => "2025-01-01T00:00:00Z",
-          "verified_by" => "identity",
-          "verified_by_subject" => %{"name" => "Foo", "email" => "foo@bar.com"},
           "created_at" => "2025-01-01T00:00:00Z",
           "updated_at" => "2025-01-01T00:00:00Z"
         }
@@ -260,8 +249,6 @@ defmodule API.Schemas.Client do
             "identifier_for_vendor" => nil,
             "firebase_installation_id" => nil,
             "verified_at" => "2025-01-01T00:00:00Z",
-            "verified_by" => "identity",
-            "verified_by_subject" => %{"name" => "Foo", "email" => "foo@bar.com"},
             "created_at" => "2025-01-01T00:00:00Z",
             "updated_at" => "2025-01-01T00:00:00Z"
           },
@@ -286,8 +273,6 @@ defmodule API.Schemas.Client do
             "identifier_for_vendor" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
             "firebase_installation_id" => nil,
             "verified_at" => nil,
-            "verified_by" => nil,
-            "verified_by_subject" => %{"name" => "Foo", "email" => "foo@bar.com"},
             "created_at" => "2025-01-01T00:00:00Z",
             "updated_at" => "2025-01-01T00:00:00Z"
           }

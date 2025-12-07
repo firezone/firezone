@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Gateways do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Changes.Change, Gateways, PubSub}
+  alias Domain.{Changes.Change, Gateway, PubSub}
   import Domain.SchemaHelpers
 
   @impl true
@@ -11,7 +11,7 @@ defmodule Domain.Changes.Hooks.Gateways do
 
   @impl true
   def on_delete(lsn, old_data) do
-    gateway = struct_from_params(Gateways.Gateway, old_data)
+    gateway = struct_from_params(Gateway, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: gateway}
 
     PubSub.Account.broadcast(gateway.account_id, change)

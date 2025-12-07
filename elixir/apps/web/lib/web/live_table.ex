@@ -23,7 +23,7 @@ defmodule Web.LiveTable do
 
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
-  attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
+  attr :row_patch, :any, default: nil, doc: "the function for generating patch path for each row"
   attr :class, :string, default: nil, doc: "the class for the table"
 
   attr :row_item, :any,
@@ -55,7 +55,7 @@ defmodule Web.LiveTable do
             actions={@action}
             row={row}
             id={@row_id && @row_id.(row)}
-            click={@row_click}
+            patch={@row_patch}
             mapper={@row_item}
           />
         </tbody>
@@ -285,6 +285,21 @@ defmodule Web.LiveTable do
     """
   end
 
+  defp filter(%{filter: %{type: {:string, :select}}} = assigns) do
+    ~H"""
+    <div class="flex items-center order-4">
+      <div class="w-full">
+        <.input
+          type="select"
+          field={@form[@filter.name]}
+          prompt={"For any " <> @filter.title}
+          options={@filter.values}
+        />
+      </div>
+    </div>
+    """
+  end
+
   defp filter(%{filter: %{type: :string, values: values}} = assigns)
        when 0 < length(values) and length(values) < 5 do
     ~H"""
@@ -409,12 +424,10 @@ defmodule Web.LiveTable do
     <div class="flex items-center order-4">
       <div class="w-full">
         <.input
-          type="group_select"
+          type="select"
           field={@form[@filter.name]}
-          options={[
-            {nil, [{"For any " <> @filter.title, nil}]},
-            {@filter.title, @filter.values}
-          ]}
+          prompt={"For any " <> @filter.title}
+          options={@filter.values}
         />
       </div>
     </div>
@@ -702,7 +715,7 @@ defmodule Web.LiveTable do
 
   defp preload_values(%{values: fun} = filter, _query_module, subject) when is_function(fun, 1) do
     options = fun.(subject) |> Enum.map(&{&1.name, &1.id})
-    %{filter | values: [{nil, options}]}
+    %{filter | values: options}
   end
 
   defp preload_values(filter, _query_module, _subject),

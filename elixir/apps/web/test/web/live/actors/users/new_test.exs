@@ -111,7 +111,7 @@ defmodule Web.Live.Actors.User.NewTest do
     conn: conn
   } do
     {:ok, account} =
-      Domain.Accounts.update_account(account, %{
+      Fixtures.Accounts.update_account(account, %{
         limits: %{
           monthly_active_users_count: 1
         }
@@ -159,7 +159,7 @@ defmodule Web.Live.Actors.User.NewTest do
     |> form("form", actor: attrs)
     |> render_submit()
 
-    assert new_admin_actor = Repo.get_by(Domain.Actors.Actor, name: attrs.name)
+    assert new_admin_actor = Repo.get_by(Domain.Actor, name: attrs.name)
     assert new_admin_actor.type == :account_admin_user
 
     assert_redirect(
@@ -183,7 +183,7 @@ defmodule Web.Live.Actors.User.NewTest do
     |> form("form", actor: attrs)
     |> render_submit()
 
-    assert new_actor = Repo.get_by(Domain.Actors.Actor, name: attrs.name)
+    assert new_actor = Repo.get_by(Domain.Actor, name: attrs.name)
     assert new_actor.type == :account_user
 
     assert_redirect(

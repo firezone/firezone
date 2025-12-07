@@ -1,18 +1,18 @@
 defmodule Domain.Changes.Hooks.Tokens do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{PubSub, Tokens}
+  alias Domain.PubSub
   import Domain.SchemaHelpers
 
   @impl true
   def on_insert(_lsn, _data), do: :ok
 
   @impl true
-  # updates for email and relay_group tokens have no side effects
+  # updates for email and relay tokens have no side effects
   def on_update(_lsn, _old_data, _new_data), do: :ok
 
   @impl true
   def on_delete(_lsn, old_data) do
-    token = struct_from_params(Tokens.Token, old_data)
+    token = struct_from_params(Domain.Token, old_data)
 
     # We don't need to broadcast deleted tokens since the disconnect_socket/1
     # function will handle any disconnects for us directly.
@@ -24,7 +24,7 @@ defmodule Domain.Changes.Hooks.Tokens do
   # This is a special message that disconnects all sockets using this token,
   # such as for LiveViews.
   defp disconnect_socket(token) do
-    topic = Domain.Tokens.socket_id(token.id)
+    topic = Domain.Auth.socket_id(token.id)
     payload = %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect"}
     PubSub.broadcast(topic, payload)
   end

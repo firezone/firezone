@@ -82,12 +82,12 @@ defmodule Web.Live.Resources.IndexTest do
     identity: identity,
     conn: conn
   } do
-    group = Fixtures.Gateways.create_group(account: account)
+    site = Fixtures.Sites.create_site(account: account)
 
     resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{gateway_group_id: group.id}]
+        site_id: site.id
       )
 
     {:ok, lv, _html} =
@@ -104,7 +104,7 @@ defmodule Web.Live.Resources.IndexTest do
     Enum.each(resource_rows, fn row ->
       assert row["name"] =~ resource.name
       assert row["address"] =~ resource.address
-      assert row["sites"] =~ group.name
+      assert row["sites"] =~ site.name
       assert row["authorized groups"] == "None - Create a Policy to grant access."
     end)
   end
@@ -152,12 +152,12 @@ defmodule Web.Live.Resources.IndexTest do
     identity: identity,
     conn: conn
   } do
-    group = Fixtures.Gateways.create_group(account: account)
+    site = Fixtures.Sites.create_site(account: account)
 
     resource =
       Fixtures.Resources.create_resource(
         account: account,
-        connections: [%{gateway_group_id: group.id}]
+        site_id: site.id
       )
 
     policies =
@@ -175,7 +175,7 @@ defmodule Web.Live.Resources.IndexTest do
           resource: resource
         )
       ]
-      |> Repo.preload(:actor_group)
+      |> Repo.preload(:group)
 
     {:ok, lv, _html} =
       conn
@@ -190,7 +190,7 @@ defmodule Web.Live.Resources.IndexTest do
 
     Enum.each(resource_rows, fn row ->
       for policy <- policies do
-        assert row["authorized groups"] =~ policy.actor_group.name
+        assert row["authorized groups"] =~ policy.group.name
       end
     end)
 
@@ -221,11 +221,11 @@ defmodule Web.Live.Resources.IndexTest do
     conn: conn
   } do
     account = Fixtures.Accounts.update_account(account, features: %{internet_resource: true})
-    group = Fixtures.Gateways.create_internet_group(account: account)
+    site = Fixtures.Sites.create_internet_site(account: account)
 
     Fixtures.Resources.create_internet_resource(
       account: account,
-      connections: [%{gateway_group_id: group.id}]
+      site_id: site.id
     )
 
     {:ok, lv, _html} =
@@ -246,11 +246,11 @@ defmodule Web.Live.Resources.IndexTest do
     identity: identity,
     conn: conn
   } do
-    group = Fixtures.Gateways.create_internet_group(account: account)
+    site = Fixtures.Sites.create_internet_site(account: account)
 
     Fixtures.Resources.create_internet_resource(
       account: account,
-      connections: [%{gateway_group_id: group.id}]
+      site_id: site.id
     )
 
     {:ok, _lv, html} =

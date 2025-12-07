@@ -1,26 +1,25 @@
 defmodule Web.Settings.ApiClients.Show do
   use Web, :live_view
-  alias Domain.{Actors, Tokens}
+  alias __MODULE__.DB
+  import Ecto.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
-    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
-      with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []) do
-        socket =
-          socket
-          |> assign(
-            actor: actor,
-            page_title: "API Client #{actor.name}"
-          )
-          |> assign_live_table("tokens",
-            query_module: Tokens.Token.Query,
-            sortable_fields: [],
-            callback: &handle_tokens_update!/2
-          )
+    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
+      actor = DB.get_api_client!(id, socket.assigns.subject)
 
-        {:ok, socket}
-      else
-        {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-      end
+      socket =
+        socket
+        |> assign(
+          actor: actor,
+          page_title: "API Client #{actor.name}"
+        )
+        |> assign_live_table("tokens",
+          query_module: DB,
+          sortable_fields: [],
+          callback: &handle_tokens_update!/2
+        )
+
+      {:ok, socket}
     else
       {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
     end
@@ -32,13 +31,16 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_tokens_update!(socket, list_opts) do
-    with {:ok, tokens, metadata} <-
-           Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
-      {:ok,
-       assign(socket,
-         tokens: tokens,
-         tokens_metadata: metadata
-       )}
+    case DB.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+      {:ok, tokens, metadata} ->
+        {:ok,
+         assign(socket,
+           tokens: tokens,
+           tokens_metadata: metadata
+         )}
+
+      {:error, :unauthorized} ->
+        {:ok, assign(socket, tokens: [], tokens_metadata: %{})}
     end
   end
 
@@ -60,7 +62,7 @@ defmodule Web.Settings.ApiClients.Show do
           Edit API Client
         </.edit_button>
       </:action>
-      <:action :if={Actors.actor_active?(@actor)}>
+      <:action :if={is_nil(@actor.disabled_at)}>
         <.button_with_confirmation
           id="disable"
           style="warning"
@@ -69,7 +71,7 @@ defmodule Web.Settings.ApiClients.Show do
         >
           <:dialog_title>Confirm disabling the API Client</:dialog_title>
           <:dialog_content>
-            Are you sure want to disable this API Client and revoke all its tokens?
+            Are you sure want to disable this API Client? It will no longer be able to authenticate.
           </:dialog_content>
           <:dialog_confirm_button>
             Disable
@@ -80,7 +82,7 @@ defmodule Web.Settings.ApiClients.Show do
           Disable API Client
         </.button_with_confirmation>
       </:action>
-      <:action :if={Actors.actor_disabled?(@actor)}>
+      <:action :if={@actor.disabled_at}>
         <.button_with_confirmation
           id="enable"
           style="warning"
@@ -101,7 +103,7 @@ defmodule Web.Settings.ApiClients.Show do
           Enable API Client
         </.button_with_confirmation>
       </:action>
-      <:content flash={@flash}>
+      <:content>
         <.vertical_table id="api-client">
           <.vertical_table_row>
             <:label>Name</:label>
@@ -121,7 +123,7 @@ defmodule Web.Settings.ApiClients.Show do
     <.section>
       <:title>API Tokens</:title>
 
-      <:action :if={Actors.actor_active?(@actor) and @actor.type == :api_client}>
+      <:action :if={is_nil(@actor.disabled_at) and @actor.type == :api_client}>
         <.add_button
           :if={@actor.type == :api_client}
           navigate={~p"/#{@account}/settings/api_clients/#{@actor}/new_token"}
@@ -130,7 +132,7 @@ defmodule Web.Settings.ApiClients.Show do
         </.add_button>
       </:action>
 
-      <:action :if={Actors.actor_active?(@actor)}>
+      <:action :if={is_nil(@actor.disabled_at)}>
         <.button_with_confirmation
           id="revoke_all_tokens"
           style="danger"
@@ -166,9 +168,6 @@ defmodule Web.Settings.ApiClients.Show do
           </:col>
           <:col :let={token} label="expires at">
             {Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Web.CLDR, [])}
-          </:col>
-          <:col :let={token} label="created by">
-            {token.created_by_subject["name"]}
           </:col>
           <:col :let={token} label="last used">
             <.relative_datetime datetime={token.last_seen_at} />
@@ -235,10 +234,12 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_event("disable", _params, socket) do
-    with {:ok, actor} <- Actors.disable_actor(socket.assigns.actor, socket.assigns.subject) do
+    changeset = disable_actor_changeset(socket.assigns.actor)
+
+    with {:ok, actor} <- DB.update_actor(changeset, socket.assigns.subject) do
       socket =
         socket
-        |> put_flash(:info, "API Client was disabled.")
+        |> put_flash(:success, "API Client was disabled.")
         |> assign(actor: actor)
         |> reload_live_table!("tokens")
 
@@ -247,11 +248,12 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_event("enable", _params, socket) do
-    {:ok, actor} = Actors.enable_actor(socket.assigns.actor, socket.assigns.subject)
+    changeset = enable_actor_changeset(socket.assigns.actor)
+    {:ok, actor} = DB.update_actor(changeset, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "API Client was enabled.")
+      |> put_flash(:success, "API Client was enabled.")
       |> assign(actor: actor)
       |> reload_live_table!("tokens")
 
@@ -260,31 +262,113 @@ defmodule Web.Settings.ApiClients.Show do
 
   def handle_event("revoke_all_tokens", _params, socket) do
     {:ok, deleted_tokens_count} =
-      Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
+      DB.delete_all_tokens_for_actor(socket.assigns.actor, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "#{deleted_tokens_count} token(s) were revoked.")
+      |> put_flash(:success, "#{deleted_tokens_count} token(s) were revoked.")
       |> reload_live_table!("tokens")
 
     {:noreply, socket}
   end
 
   def handle_event("revoke_token", %{"id" => id}, socket) do
-    {:ok, token} = Tokens.fetch_token_by_id(id, socket.assigns.subject)
-    {:ok, _token} = Tokens.delete_token(token, socket.assigns.subject)
+    {:ok, _token} = DB.delete_token(id, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "Token was revoked.")
+      |> put_flash(:success, "Token was revoked.")
       |> reload_live_table!("tokens")
 
     {:noreply, socket}
   end
 
   def handle_event("delete", _params, socket) do
-    with {:ok, _actor} <- Actors.delete_actor(socket.assigns.actor, socket.assigns.subject) do
+    with {:ok, _actor} <- DB.delete_actor(socket.assigns.actor, socket.assigns.subject) do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients")}
+    end
+  end
+
+  defp disable_actor_changeset(actor) do
+    actor
+    |> change()
+    |> put_change(:disabled_at, DateTime.utc_now())
+  end
+
+  defp enable_actor_changeset(actor) do
+    actor
+    |> change()
+    |> put_change(:disabled_at, nil)
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    alias Domain.Safe
+
+    def get_api_client!(id, subject) do
+      from(a in Domain.Actor,
+        where: a.id == ^id,
+        where: a.type == :api_client
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def update_actor(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def list_tokens_for(actor, subject, opts \\ []) do
+      case subject.actor.type do
+        :account_admin_user ->
+          from(t in Domain.Token,
+            as: :tokens,
+            where: t.actor_id == ^actor.id,
+            order_by: [desc: t.inserted_at, desc: t.id]
+          )
+          |> Safe.scoped(subject)
+          |> Safe.list(__MODULE__, opts)
+
+        _ ->
+          {:error, :unauthorized}
+      end
+    end
+
+    def delete_all_tokens_for_actor(actor, subject) do
+      query = from(t in Domain.Token, where: t.actor_id == ^actor.id)
+      {count, _} = query |> Safe.scoped(subject) |> Safe.delete_all()
+      {:ok, count}
+    end
+
+    def delete_token(token_id, subject) do
+      import Ecto.Query
+
+      result =
+        from(t in Domain.Token,
+          where: t.id == ^token_id,
+          where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
+        )
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        token -> Safe.scoped(token, subject) |> Safe.delete()
+      end
+    end
+
+    def delete_actor(actor, subject) do
+      Safe.scoped(actor, subject) |> Safe.delete()
+    end
+
+    def cursor_fields do
+      [
+        {:tokens, :desc, :inserted_at},
+        {:tokens, :desc, :id}
+      ]
     end
   end
 end

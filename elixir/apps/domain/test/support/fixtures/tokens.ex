@@ -16,9 +16,7 @@ defmodule Domain.Fixtures.Tokens do
       type: type,
       secret_nonce: nonce,
       secret_fragment: fragment,
-      expires_at: expires_at,
-      created_by_user_agent: user_agent,
-      created_by_remote_ip: remote_ip
+      expires_at: expires_at
     })
   end
 
@@ -38,7 +36,7 @@ defmodule Domain.Fixtures.Tokens do
     attrs = Map.put(attrs, :identity_id, identity_id)
     attrs = Map.put(attrs, :account_id, account.id)
 
-    {:ok, token} = Domain.Tokens.create_token(attrs)
+    {:ok, token} = Domain.Auth.create_token(attrs)
     token
   end
 
@@ -64,7 +62,7 @@ defmodule Domain.Fixtures.Tokens do
 
     attrs = Map.put(attrs, :identity_id, identity_id)
 
-    {:ok, token} = Domain.Tokens.create_token(attrs, subject)
+    {:ok, token} = Domain.Auth.create_token(attrs, subject)
     token
   end
 
@@ -81,7 +79,7 @@ defmodule Domain.Fixtures.Tokens do
         relation = attrs[:identity]
 
         if not is_nil(relation) and is_struct(relation) do
-          Repo.get!(Domain.Actors.Actor, relation.actor_id)
+          Repo.get!(Domain.Actor, relation.actor_id)
         else
           assoc_attrs
           |> Enum.into(%{account: account})
@@ -109,7 +107,7 @@ defmodule Domain.Fixtures.Tokens do
     attrs = Map.put(attrs, :actor_id, actor.id)
     attrs = Map.put(attrs, :identity_id, identity.id)
 
-    {:ok, token} = Domain.Tokens.create_token(attrs)
+    {:ok, token} = Domain.Auth.create_token(attrs)
     token
   end
 
@@ -139,7 +137,7 @@ defmodule Domain.Fixtures.Tokens do
     attrs = Map.put(attrs, :actor_id, actor.id)
     attrs = Map.put(attrs, :identity_id, identity.id)
 
-    {:ok, token} = Domain.Tokens.create_token(attrs)
+    {:ok, token} = Domain.Auth.create_token(attrs)
     token
   end
 
@@ -187,12 +185,10 @@ defmodule Domain.Fixtures.Tokens do
         secret_fragment: secret_fragment,
         account_id: actor.account_id,
         actor_id: actor.id,
-        created_by_user_agent: subject.context.user_agent,
-        created_by_remote_ip: subject.context.remote_ip,
         expires_at: expires_at
       })
 
-    {:ok, token} = Domain.Tokens.create_token(attrs, subject)
+    {:ok, token} = Domain.Auth.create_token(attrs, subject)
     token
   end
 

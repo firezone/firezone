@@ -3,10 +3,10 @@ defmodule Domain.Billing.EventHandler do
   Handles Stripe webhook events for billing and subscription management.
   """
 
-  alias Domain.Repo
   alias Domain.Accounts
   alias Domain.Billing
   alias Domain.Billing.Stripe.ProcessedEvents
+  alias __MODULE__.DB
   require Logger
 
   @subscription_events ["created", "resumed"]
@@ -17,10 +17,8 @@ defmodule Domain.Billing.EventHandler do
 
   defp process_event_with_lock(event) do
     customer_id = extract_customer_id(event)
-    hashed_id = :erlang.phash2(customer_id)
 
-    Repo.transact(fn ->
-      Repo.query!("SELECT pg_advisory_xact_lock($1)", [hashed_id])
+    DB.with_customer_lock(customer_id, fn ->
       process_event(event, customer_id)
     end)
   end
@@ -177,8 +175,6 @@ defmodule Domain.Billing.EventHandler do
     case update_account_by_stripe_customer_id(customer_id, attrs) do
       {:ok, _account} -> :ok
       {:error, :customer_not_provisioned} -> create_account_from_stripe_customer(customer_data)
-      # TODO: Find out when this would happen and why
-      {:error, :not_found} -> :ok
       {:error, reason} -> log_and_return_error("sync account from Stripe", customer_id, reason)
     end
   end
@@ -379,7 +375,7 @@ defmodule Domain.Billing.EventHandler do
         extract_slug_from_uri(company_website)
 
       true ->
-        Accounts.generate_unique_slug()
+        generate_unique_slug()
     end
   end
 
@@ -402,12 +398,24 @@ defmodule Domain.Billing.EventHandler do
         |> String.replace("-", "_")
 
       true ->
-        Accounts.generate_unique_slug()
+        generate_unique_slug()
     end
   end
 
+  defp generate_unique_slug do
+    slug_candidate = Domain.NameGenerator.generate_slug()
+
+    if DB.slug_exists?(slug_candidate) do
+      generate_unique_slug()
+    else
+      slug_candidate
+    end
+  end
+
+  # TODO: BILLING OVERHAUL
+  # The DB operations should be wrapped in a transaction to ensure atomicity
   defp create_account_with_defaults(attrs, metadata, account_email) do
-    with {:ok, account} <- Domain.Accounts.create_account(attrs),
+    with {:ok, account} <- attrs |> create_account_changeset() |> DB.insert(),
          {:ok, account} <- Billing.update_stripe_customer(account),
          {:ok, account} <- Domain.Billing.create_subscription(account),
          :ok <- setup_account_defaults(account, metadata, account_email) do
@@ -417,43 +425,93 @@ defmodule Domain.Billing.EventHandler do
 
   defp setup_account_defaults(account, metadata, account_email) do
     # Create default groups and resources
-    # TODO: IDP Sync - Use special case everyone group instead of storing in DB
-    {:ok, _everyone_group} = Domain.Actors.create_managed_group(account, %{name: "Everyone"})
-    {:ok, _gateway_group} = Domain.Gateways.create_group(account, %{name: "Default Site"})
-    {:ok, internet_gateway_group} = Domain.Gateways.create_internet_group(account)
-    {:ok, _resource} = Domain.Resources.create_internet_resource(account, internet_gateway_group)
+    changeset = create_everyone_group_changeset(account)
+    {:ok, _everyone_group} = DB.insert(changeset)
+    changeset = create_site_changeset(account, %{name: "Default Site"})
+    {:ok, _site} = DB.insert_site(changeset)
+    changeset = create_internet_site_changeset(account)
+    {:ok, internet_site} = DB.insert_site(changeset)
+    changeset = create_internet_resource_changeset(account, internet_site)
+    {:ok, _resource} = DB.insert(changeset)
 
     # Create email provider
-    {:ok, email_provider} =
-      Domain.Auth.create_provider(account, %{
-        name: "Email (OTP)",
-        adapter: :email,
-        adapter_config: %{}
-      })
+    {:ok, _email_provider} = DB.create_email_provider(account)
 
     # Create admin user
-    admin_name = "#{metadata["account_owner_first_name"]} #{metadata["account_owner_last_name"]}"
-    admin_email = metadata["account_admin_email"] || account_email
-
-    {:ok, actor} =
-      Domain.Actors.create_actor(account, %{
-        type: :account_admin_user,
-        name: admin_name
-      })
-
-    {:ok, _identity} =
-      Domain.Auth.upsert_identity(actor, email_provider, %{
-        provider_identifier: admin_email,
-        provider_identifier_confirmation: admin_email
-      })
+    email = metadata["account_admin_email"] || account_email
+    given_name = metadata["account_owner_first_name"]
+    family_name = metadata["account_owner_last_name"]
+    name = "#{given_name} #{family_name}"
+    changeset = create_admin_changeset(account, email, name)
+    {:ok, _actor} = DB.insert(changeset)
 
     :ok
+  end
+
+  defp create_everyone_group_changeset(account) do
+    import Ecto.Changeset
+    attrs = %{account_id: account.id, name: "Everyone", type: :managed}
+    cast(%Domain.Group{}, attrs, ~w[account_id name type]a)
+  end
+
+  defp create_admin_changeset(account, email, name) do
+    import Ecto.Changeset
+
+    attrs = %{
+      account_id: account.id,
+      email: email,
+      name: name,
+      type: :account_admin_user,
+      allow_email_otp_sign_in: true
+    }
+
+    cast(%Domain.Actor{}, attrs, ~w[account_id email name type allow_email_otp_sign_in]a)
+  end
+
+  defp create_site_changeset(account, attrs) do
+    import Ecto.Changeset
+
+    %Domain.Site{
+      account_id: account.id,
+      managed_by: :account,
+      tokens: []
+    }
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> validate_length(:name, min: 1, max: 255)
+    |> unique_constraint(:name, name: :sites_account_id_name_index)
+  end
+
+  defp create_internet_site_changeset(account) do
+    import Ecto.Changeset
+
+    %Domain.Site{
+      account_id: account.id,
+      managed_by: :system
+    }
+    |> cast(%{name: "Internet", managed_by: :system}, [:name, :managed_by])
+    |> validate_required([:name, :managed_by])
+    |> validate_length(:name, min: 1, max: 255)
+    |> unique_constraint(:name, name: :sites_account_id_name_index)
+  end
+
+  defp create_internet_resource_changeset(account, site) do
+    import Ecto.Changeset
+
+    attrs = %{
+      type: :internet,
+      name: "Internet"
+    }
+
+    %Domain.Resource{site_id: site.id, account_id: account.id}
+    |> cast(attrs, [:type, :name])
+    |> validate_required([:name, :type])
   end
 
   # Account Updates
   defp update_account_by_stripe_customer_id(customer_id, attrs) do
     with {:ok, account_id} <- Billing.fetch_customer_account_id(customer_id) do
-      Accounts.update_account_by_id(account_id, attrs)
+      DB.update_account_by_id(account_id, attrs)
     end
   end
 
@@ -517,4 +575,80 @@ defmodule Domain.Billing.EventHandler do
 
   defp put_if_not_nil(map, _key, nil), do: map
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
+
+  defp create_account_changeset(attrs) do
+    import Ecto.Changeset
+
+    %Domain.Account{}
+    |> cast(attrs, [:name])
+    |> cast_embed(:metadata)
+    |> validate_required([:name])
+  end
+
+  defmodule DB do
+    import Ecto.Query
+    import Ecto.Changeset
+
+    alias Domain.{
+      Account,
+      AuthProvider,
+      EmailOTP,
+      Safe
+    }
+
+    def with_customer_lock(customer_id, fun) do
+      hashed_id = :erlang.phash2(customer_id)
+
+      Safe.transact(fn ->
+        {:ok, _} = Safe.unscoped() |> Safe.query("SELECT pg_advisory_xact_lock($1)", [hashed_id])
+        fun.()
+      end)
+    end
+
+    def slug_exists?(slug) do
+      from(a in Domain.Account, where: a.slug == ^slug)
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
+
+    def create_email_provider(account) do
+      id = Ecto.UUID.generate()
+      attrs = %{account_id: account.id, id: id, type: :email_otp}
+      parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id type]a)
+      attrs = %{id: id, name: "Email (OTP)"}
+
+      changeset = cast(%EmailOTP.AuthProvider{}, attrs, ~w[id name]a)
+
+      with {:ok, _auth_provider} <- Safe.unscoped(parent_changeset) |> Safe.insert(),
+           {:ok, email_provider} <- Safe.unscoped(changeset) |> Safe.insert() do
+        {:ok, email_provider}
+      end
+    end
+
+    def insert(changeset) do
+      Safe.unscoped(changeset)
+      |> Safe.insert()
+    end
+
+    def update_account_by_id(id, attrs) do
+      from(a in Account, where: a.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.one!()
+      |> case do
+        %Account{} = account ->
+          account
+          |> cast(attrs, [])
+          |> cast_embed(:limits)
+          |> cast_embed(:features)
+          |> cast_embed(:metadata)
+          |> Safe.unscoped()
+          |> Safe.update()
+      end
+    end
+
+    def insert_site(changeset) do
+      Safe.unscoped(changeset)
+      |> Safe.insert()
+    end
+  end
 end
