@@ -647,6 +647,15 @@ defmodule Domain.Repo.Seeds do
     # Use Auth.create_token which properly sets secret_salt and secret_hash
     {:ok, service_account_token} = Auth.create_token(token_attrs)
 
+    service_account_token =
+      service_account_token
+      |> maybe_repo_update.(
+        id: Ecto.UUID.cast!("a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
+        secret_salt: "svc_acct_static_salt",
+        secret_fragment: "SVC0ACCT0STATIC0FRAGMENT0VALUE0000000000000000000000====",
+        secret_hash: "acae1bbcce42ac1a474c8e950aa9de036413a884151ecd007ad4d12862a79e62"
+      )
+
     service_account_actor_encoded_token = Auth.encode_fragment!(service_account_token)
 
     # Email tokens are generated during sign-in flow, not pre-generated
