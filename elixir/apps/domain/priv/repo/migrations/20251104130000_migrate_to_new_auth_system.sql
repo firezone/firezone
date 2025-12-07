@@ -528,14 +528,6 @@ BEGIN
       AND p.adapter_state->'claims'->>'iss' IS NOT NULL
     ON CONFLICT (id) DO NOTHING;
 
-    -- ============================================================================
-    -- STEP 10: DELETE LEGACY PROVIDERS
-    -- ============================================================================
-    RAISE NOTICE 'Step 10: Deleting legacy auth providers for account %', v_account_id;
-
-    DELETE FROM legacy_auth_providers
-    WHERE account_id = v_account_id;
-
     RAISE NOTICE 'Completed migration for account: %', v_account_id;
 
   END LOOP;
