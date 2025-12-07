@@ -20,7 +20,7 @@ defmodule Domain.Cache.Gateway do
     = ~ 7 MB
   """
 
-  alias Domain.{Cache, Gateways}
+  alias Domain.{Cache, Gateway}
   alias __MODULE__.DB
   import Ecto.UUID, only: [dump!: 1, load!: 1]
 
@@ -39,7 +39,7 @@ defmodule Domain.Cache.Gateway do
   @doc """
     Fetches relevant policy_authorizations from the DB and transforms them into the cache format.
   """
-  @spec hydrate(Gateways.Gateway.t()) :: t()
+  @spec hydrate(Gateway.t()) :: t()
   def hydrate(gateway) do
     OpenTelemetry.Tracer.with_span "Domain.Cache.hydrate_policy_authorizations",
       attributes: %{
