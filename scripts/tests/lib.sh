@@ -41,10 +41,10 @@ function api_send_reject_access() {
 Application.ensure_all_started(:domain)
 account_id = \"c89bcc8c-9392-4dae-a40d-888aef6d28e0\"
 
-[gateway_group] = Domain.Gateways.Group.Query.all() |> Domain.Gateways.Group.Query.by_account_id(account_id) |> Domain.Gateways.Group.Query.by_name(\"$site_name\") |> Domain.Repo.all()
-[gateway_id | _] = Domain.Gateways.Presence.Group.list(gateway_group.id) |> Map.keys()
-[client_id | _] = Domain.Clients.Presence.Account.list(account_id) |> Map.keys()
-[resource] = Domain.Resources.Resource.Query.all() |> Domain.Resources.Resource.Query.by_account_id(account_id) |> Domain.Repo.all() |> Enum.filter(&(&1.name == \"$resource_name\"))
+site = Domain.Repo.get_by!(Domain.Site, account_id: account_id, name: \"$site_name\")
+[gateway_id | _] = Domain.Presence.Gateways.Site.list(site.id) |> Map.keys()
+[client_id | _] = Domain.Presence.Clients.Account.list(account_id) |> Map.keys()
+resource = Domain.Repo.get_by!(Domain.Resource, account_id: account_id, name: \"$resource_name\")
 
 Domain.PubSub.Account.broadcast(account_id, {{:reject_access, gateway_id}, client_id, resource.id})
 "
