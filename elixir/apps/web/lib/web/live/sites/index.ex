@@ -244,11 +244,21 @@ defmodule Web.Sites.Index do
     end
 
     def get_internet_resource(subject) do
-      from(r in Resource, as: :resources)
-      |> where([resources: r], r.type == :internet)
-      |> preload(site: [gateways: :online?])
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      resource =
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.type == :internet)
+        |> preload(site: :gateways)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case resource do
+        nil ->
+          nil
+
+        resource ->
+          gateways = Presence.Gateways.preload_gateways_presence(resource.site.gateways)
+          put_in(resource.site.gateways, gateways)
+      end
     end
 
     def cursor_fields,
