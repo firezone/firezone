@@ -227,7 +227,10 @@ defmodule Domain.Repo.Seeds do
       )
       |> Repo.insert!()
 
-    other_account = maybe_repo_update.(other_account, id: Ecto.UUID.cast!("9b9290bf-e1bc-4dd3-b401-511908262690"))
+    other_account =
+      maybe_repo_update.(other_account,
+        id: Ecto.UUID.cast!("9b9290bf-e1bc-4dd3-b401-511908262690")
+      )
 
     IO.puts("Created accounts: ")
 
