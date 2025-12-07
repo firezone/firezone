@@ -16,9 +16,9 @@ defmodule Web.Auth do
   # that the user has signed in to.
   @recent_accounts_cookie_name "recent_account_ids"
   @recent_accounts_cookie_options [
-    encrypt: true,
+    sign: true,
     max_age: 365 * 24 * 60 * 60,
-    same_site: "Strict",
+    same_site: "Lax",
     secure: true,
     http_only: true
   ]
@@ -29,8 +29,13 @@ defmodule Web.Auth do
   ###########################
 
   def recent_account_ids(conn) do
-    conn = Plug.Conn.fetch_cookies(conn, encrypted: [@recent_accounts_cookie_name])
-    Map.get(conn.cookies, @recent_accounts_cookie_name, [])
+    conn = Plug.Conn.fetch_cookies(conn, signed: [@recent_accounts_cookie_name])
+
+    if recent_account_ids = Map.get(conn.cookies, @recent_accounts_cookie_name) do
+      Plug.Crypto.non_executable_binary_to_term(recent_account_ids, [:safe])
+    else
+      []
+    end
   end
 
   def prepend_recent_account_id(conn, id_to_prepend) do
@@ -40,7 +45,7 @@ defmodule Web.Auth do
     Plug.Conn.put_resp_cookie(
       conn,
       @recent_accounts_cookie_name,
-      ids,
+      :erlang.term_to_binary(ids),
       @recent_accounts_cookie_options
     )
   end
@@ -52,7 +57,7 @@ defmodule Web.Auth do
     Plug.Conn.put_resp_cookie(
       conn,
       @recent_accounts_cookie_name,
-      ids,
+      :erlang.term_to_binary(ids),
       @recent_accounts_cookie_options
     )
   end
