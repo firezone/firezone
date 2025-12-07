@@ -637,11 +637,15 @@ defmodule Domain.Repo.Seeds do
     }
 
     # Create service account token using Auth module for proper handling
+    # Use nonce "n" for backwards compatibility with old static seeds
+    nonce = "n"
+
     token_attrs = %{
       name: "tok-#{Ecto.UUID.generate()}",
       type: :client,
       account_id: service_account_actor.account_id,
       actor_id: service_account_actor.id,
+      secret_nonce: nonce,
       secret_fragment: Crypto.random_token(32, encoder: :hex32),
       expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
     }
@@ -652,13 +656,13 @@ defmodule Domain.Repo.Seeds do
     service_account_token =
       service_account_token
       |> maybe_repo_update.(
-        id: Ecto.UUID.cast!("a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
-        secret_salt: "svc_acct_static_salt",
-        secret_fragment: "SVC0ACCT0STATIC0FRAGMENT0VALUE0000000000000000000000====",
-        secret_hash: "acae1bbcce42ac1a474c8e950aa9de036413a884151ecd007ad4d12862a79e62"
+        id: Ecto.UUID.cast!("7da7d1cd-111c-44a7-b5ac-4027b9d230e5"),
+        secret_salt: "kKKA7dtf3TJk0-1O2D9N1w",
+        secret_fragment: "AiIy_6pBk-WLeRAPzzkCFXNqIZKWBs2Ddw_2vgIQvFg",
+        secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5"
       )
 
-    service_account_actor_encoded_token = Auth.encode_fragment!(service_account_token)
+    service_account_actor_encoded_token = nonce <> Auth.encode_fragment!(service_account_token)
 
     # Email tokens are generated during sign-in flow, not pre-generated
     unprivileged_actor_email_token = "<generated during sign-in>"

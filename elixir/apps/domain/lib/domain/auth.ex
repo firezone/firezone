@@ -153,19 +153,34 @@ defmodule Domain.Auth do
   end
 
   defp decode_token_with_context(encoded_token, %Context{} = context) do
-    with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2) do
-      config = fetch_config!()
-      key_base = Keyword.fetch!(config, :key_base)
-      salt = Keyword.fetch!(config, :salt) <> to_string(context.type)
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    base_salt = Keyword.fetch!(config, :salt)
+    salt = base_salt <> to_string(context.type)
+    legacy_salt = legacy_token_salt(context.type, base_salt)
 
-      case Plug.Crypto.verify(key_base, salt, encoded_fragment, max_age: :infinity) do
-        {:ok, {account_id, id, fragment}} -> {:ok, {nonce, account_id, id, fragment}}
-        _ -> {:error, :invalid_token}
-      end
+    with {:error, _} <- try_decode(encoded_token, key_base, salt),
+         {:error, _} <- try_decode(encoded_token, key_base, legacy_salt) do
+      {:error, :invalid_token}
+    end
+  end
+
+  defp try_decode(_encoded_token, _key_base, nil), do: {:error, :no_salt}
+
+  defp try_decode(encoded_token, key_base, salt) do
+    with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2),
+         {:ok, {account_id, id, fragment}} <-
+           Plug.Crypto.verify(key_base, salt, encoded_fragment, max_age: :infinity) do
+      {:ok, {nonce, account_id, id, fragment}}
     else
       _ -> {:error, :invalid_token}
     end
   end
+
+  # Maps new token types to their legacy equivalents for backwards compatibility
+  defp legacy_token_salt(:site, base_salt), do: base_salt <> "gateway_group"
+  defp legacy_token_salt(:relay, base_salt), do: base_salt <> "relay_group"
+  defp legacy_token_salt(_type, _base_salt), do: nil
 
   defp use_token_changeset(%Token{} = token, %Context{} = context) do
     token
