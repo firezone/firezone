@@ -159,8 +159,8 @@ defmodule Domain.Repo.Seeds do
       if System.get_env("STATIC_SEEDS") == "true" do
         # Convert string IDs to binary UUIDs if present
         values =
-          if Map.has_key?(values, :id) do
-            Map.update!(values, :id, &Ecto.UUID.cast!/1)
+          if Keyword.has_key?(values, :id) do
+            Keyword.update!(values, :id, &Ecto.UUID.cast!/1)
           else
             values
           end
