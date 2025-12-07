@@ -1576,6 +1576,14 @@ defmodule Web.Settings.DirectorySync do
     end
   end
 
+  defp parse_okta_verification_error(
+         {:error, %Req.Response{status: 403, body: "", headers: headers}}
+       ) do
+    headers
+    |> extract_www_authenticate_header()
+    |> parse_www_authenticate_error()
+  end
+
   defp parse_okta_verification_error({:error, %Req.Response{status: 403, body: body}}) do
     error_code = body["errorCode"]
     error_summary = body["errorSummary"]
@@ -1632,6 +1640,45 @@ defmodule Web.Settings.DirectorySync do
 
   defp directory_identifier("okta", directory) do
     directory.okta_domain
+  end
+
+  defp extract_www_authenticate_header(headers) do
+    headers
+    |> Map.get("www-authenticate", [])
+    |> List.first("")
+    |> parse_www_authenticate_params()
+  end
+
+  defp parse_www_authenticate_params(header_value) do
+    header_value
+    |> String.split(",", trim: true)
+    |> Enum.map(&split_kv/1)
+    |> Map.new()
+  end
+
+  defp parse_www_authenticate_error(%{"error" => "insufficient_scope"}) do
+    "The access token provided does not contain the required scopes."
+  end
+
+  defp parse_www_authenticate_error(%{"error_description" => description})
+       when is_binary(description) do
+    description
+  end
+
+  defp parse_www_authenticate_error(_) do
+    "An unknown error occurred"
+  end
+
+  defp split_kv(item) do
+    [key, value] = String.split(item, "=", parts: 2)
+
+    clean_value =
+      value
+      |> String.trim()
+      |> String.trim_leading("\"")
+      |> String.trim_trailing("\"")
+
+    {String.trim(key), clean_value}
   end
 
   defmodule DB do
