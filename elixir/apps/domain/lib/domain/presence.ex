@@ -345,6 +345,9 @@ defmodule Domain.Presence do
       # Removes reconnected relays from pending leaves:
       # - If the stamp secret hasn't changed, we need to cancel the pending leave
       # - If it has, we need to disconnect from the relay immediately
+      #
+      # Also checks for stamp_secret changes against cached stamp_secrets (not just pending_leaves)
+      # to handle the case where a relay reconnects so quickly that the join arrives before the leave.
       def cancel_leaves_or_disconnect_immediately(socket, joined_ids, _account_id) do
         {:ok, connected_relays} =
           Domain.Presence.Relays.all_connected_relays()
@@ -355,9 +358,10 @@ defmodule Domain.Presence do
           |> Enum.reduce(%{}, fn relay, acc -> Map.put(acc, relay.id, relay.stamp_secret) end)
 
         pending_leaves = Map.get(socket.assigns, :pending_leaves, %{})
+        cached_stamp_secrets = Map.get(socket.assigns, :stamp_secrets, %{})
 
-        # Immediately disconnect from relays where stamp secret has changed
-        disconnected_ids =
+        # Check for stamp_secret changes in pending_leaves
+        disconnected_from_pending =
           Enum.reduce(pending_leaves, [], fn {relay_id, stamp_secret}, acc ->
             if Map.get(joined_stamp_secrets, relay_id) != stamp_secret do
               [relay_id | acc]
@@ -365,6 +369,23 @@ defmodule Domain.Presence do
               acc
             end
           end)
+
+        # Also check for stamp_secret changes in cached stamp_secrets
+        # This handles the case where join arrives before leave
+        disconnected_from_cached =
+          Enum.reduce(joined_ids, [], fn relay_id, acc ->
+            cached_secret = Map.get(cached_stamp_secrets, relay_id)
+            new_secret = Map.get(joined_stamp_secrets, relay_id)
+
+            # Only add if we have a cached secret AND it differs from the new one
+            if cached_secret != nil and new_secret != nil and cached_secret != new_secret do
+              [relay_id | acc]
+            else
+              acc
+            end
+          end)
+
+        disconnected_ids = Enum.uniq(disconnected_from_pending ++ disconnected_from_cached)
 
         # Remove any reconnected relays from pending leaves
         pending_leaves =

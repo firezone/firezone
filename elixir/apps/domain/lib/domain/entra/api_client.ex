@@ -134,6 +134,8 @@ defmodule Domain.Entra.APIClient do
     endpoint = config[:endpoint] || "https://graph.microsoft.com"
     url = "#{endpoint}/v1.0/$batch"
 
+    require Logger
+
     case Req.post(url,
            headers: [
              {"Authorization", "Bearer #{access_token}"},
@@ -142,31 +144,50 @@ defmodule Domain.Entra.APIClient do
            json: batch_body
          ) do
       {:ok, %Req.Response{status: 200, body: %{"responses" => responses}}} ->
-        require Logger
-
         Logger.debug("Batch API response",
           response_count: length(responses),
           responses: inspect(responses, pretty: true, limit: :infinity)
         )
 
-        # Extract successful user objects from batch responses
-        users =
-          responses
-          |> Enum.filter(fn response ->
-            status = response["status"]
+        # Separate successful and failed responses
+        {successful, failed} =
+          Enum.split_with(responses, fn response -> response["status"] == 200 end)
 
-            Logger.debug("Checking response status",
-              status: inspect(status),
-              match: status == 200
+        # If all requests failed, return an error
+        if Enum.empty?(successful) and not Enum.empty?(failed) do
+          # Get the first error for context
+          first_error = List.first(failed)
+          error_body = first_error["body"]
+          error_status = first_error["status"]
+
+          Logger.error("All batch user requests failed",
+            status: error_status,
+            error: inspect(error_body)
+          )
+
+          {:error, {:batch_all_failed, error_status, error_body}}
+        else
+          # Log any failed requests as warnings
+          if not Enum.empty?(failed) do
+            Logger.warning("Some batch user requests failed",
+              failed_count: length(failed),
+              successful_count: length(successful)
             )
+          end
 
-            status == 200
-          end)
-          |> Enum.map(fn response -> response["body"] end)
+          users = Enum.map(successful, fn response -> response["body"] end)
+          Logger.debug("Filtered users", count: length(users))
 
-        Logger.debug("Filtered users", count: length(users))
+          {:ok, users}
+        end
 
-        {:ok, users}
+      {:ok, %Req.Response{} = response} ->
+        Logger.error("Batch API request failed",
+          status: response.status,
+          body: inspect(response.body)
+        )
+
+        {:error, {:batch_request_failed, response.status, response.body}}
 
       {:error, _} = error ->
         error

@@ -1296,7 +1296,8 @@ defmodule API.Gateway.ChannelTest do
                username: _
              } = relay_view
 
-      Domain.Presence.Relays.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
+      # Untrack from global topic to trigger presence change notification
+      Domain.Presence.Relays.untrack(self(), "presences:global_relays", relay1.id)
 
       assert_push "relays_presence",
                   %{
@@ -1359,6 +1360,7 @@ defmodule API.Gateway.ChannelTest do
                username: _
              } = relay_view
 
+      # Connect a second relay - should receive relays_presence since we have < 2 relays
       other_relay = relay_fixture()
 
       update_relay(other_relay,
@@ -1368,12 +1370,31 @@ defmodule API.Gateway.ChannelTest do
       )
 
       :ok = Domain.Presence.Relays.connect(other_relay, stamp_secret, relay_token.id)
-      other_relay_id = other_relay.id
+
+      # Should receive update for second relay since we only had 1 relay cached
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [],
+                    connected: _connected
+                  },
+                  relays_presence_timeout() + 10
+
+      # Now connect a third relay - should NOT receive relays_presence since we have >= 2 relays
+      third_relay = relay_fixture()
+
+      update_relay(third_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      :ok = Domain.Presence.Relays.connect(third_relay, stamp_secret, relay_token.id)
+      third_relay_id = third_relay.id
 
       refute_push "relays_presence",
                   %{
                     disconnected_ids: [],
-                    connected: [%{id: ^other_relay_id} | _]
+                    connected: [%{id: ^third_relay_id} | _]
                   },
                   relays_presence_timeout() + 10
     end

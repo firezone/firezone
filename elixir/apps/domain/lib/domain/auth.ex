@@ -265,9 +265,23 @@ defmodule Domain.Auth do
     end
 
     def update_token(changeset) do
-      changeset
-      |> Safe.unscoped()
-      |> Safe.update()
+      # Relay tokens don't have account_id, so we can't use the composite primary key
+      # for updates. Instead, use update_all with the token id.
+      token = changeset.data
+
+      if is_nil(token.account_id) do
+        changes = changeset.changes
+
+        from(t in Token, where: t.id == ^token.id)
+        |> Safe.unscoped()
+        |> Safe.update_all(set: Enum.to_list(changes))
+
+        {:ok, struct(token, changes)}
+      else
+        changeset
+        |> Safe.unscoped()
+        |> Safe.update()
+      end
     end
 
     def fetch_token_for_use(id, account_id, context_type) do
