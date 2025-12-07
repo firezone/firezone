@@ -157,8 +157,32 @@ defmodule Domain.Repo.Seeds do
     # which helps with static docker-compose environment for local development.
     maybe_repo_update = fn resource, values ->
       if System.get_env("STATIC_SEEDS") == "true" do
-        Ecto.Changeset.change(resource, values)
-        |> Repo.update!()
+        changeset = Ecto.Changeset.change(resource, values)
+
+        # Token schema uses composite primary key (account_id, id), but relay tokens
+        # don't have an account_id, so we need to use update_all for those.
+        case resource do
+          %Token{account_id: nil, id: id} when not is_nil(id) ->
+            import Ecto.Query
+
+            # Filter out virtual fields that can't be persisted
+            virtual_fields = [
+              :secret_nonce,
+              :secret_fragment,
+              :auth_provider_name,
+              :auth_provider_type
+            ]
+
+            db_changes = Map.drop(changeset.changes, virtual_fields)
+
+            from(t in Token, where: t.id == ^id)
+            |> Repo.update_all(set: Enum.to_list(db_changes))
+
+            struct(resource, changeset.changes)
+
+          _ ->
+            Repo.update!(changeset)
+        end
       else
         resource
       end
