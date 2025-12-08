@@ -109,8 +109,14 @@ defmodule Domain.PolicyAuthorizationFixtures do
 
     # Get or create token
     token =
-      Map.get(attrs, :token) ||
-        client_token_fixture(account: account, actor: actor)
+      case Map.get(attrs, :token) do
+        nil ->
+          {token, _encoded} = token_fixture(type: :client, account: account, actor: actor)
+          token
+
+        existing ->
+          existing
+      end
 
     # Get expires_at
     expires_at =

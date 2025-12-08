@@ -259,8 +259,8 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when token is issued for a different context type" do
-      {_token, browser_encoded} = encodable_token_fixture(type: :browser)
-      {_token, client_encoded} = encodable_token_fixture(type: :client)
+      {_token, browser_encoded} = token_fixture(type: :browser)
+      {_token, client_encoded} = token_fixture(type: :client)
 
       browser_context = build_context(type: :browser)
       client_context = build_context(type: :client)
@@ -272,25 +272,25 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when browser token used with api_client context" do
-      {_token, encoded} = encodable_token_fixture(type: :browser)
+      {_token, encoded} = token_fixture(type: :browser)
       context = build_context(type: :api_client)
       assert authenticate(encoded, context) == {:error, :unauthorized}
     end
 
     test "returns error when client token used with api_client context" do
-      {_token, encoded} = encodable_token_fixture(type: :client)
+      {_token, encoded} = token_fixture(type: :client)
       context = build_context(type: :api_client)
       assert authenticate(encoded, context) == {:error, :unauthorized}
     end
 
     test "returns error when api_client token used with browser context" do
-      {_token, encoded} = encodable_token_fixture(type: :api_client)
+      {_token, encoded} = token_fixture(type: :api_client)
       context = build_context(type: :browser)
       assert authenticate(encoded, context) == {:error, :unauthorized}
     end
 
     test "returns error when nonce is invalid" do
-      {_token, encoded} = encodable_token_fixture(type: :browser, nonce: "correct")
+      {_token, encoded} = token_fixture(type: :browser, nonce: "correct")
       context = build_context(type: :browser)
 
       # Replace correct nonce with wrong one
@@ -299,7 +299,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when nonce is empty but expected non-empty" do
-      {_token, encoded} = encodable_token_fixture(type: :browser, nonce: "nonempty")
+      {_token, encoded} = token_fixture(type: :browser, nonce: "nonempty")
       context = build_context(type: :browser)
 
       # Remove the nonce entirely
@@ -312,7 +312,7 @@ defmodule Domain.AuthTest do
       account = account_fixture()
       actor = actor_fixture(account: account, type: :account_admin_user)
 
-      {token, encoded} = encodable_token_fixture(type: :browser, account: account, actor: actor)
+      {token, encoded} = token_fixture(type: :browser, account: account, actor: actor)
 
       context = build_context(type: :browser)
 
@@ -329,7 +329,7 @@ defmodule Domain.AuthTest do
       account = account_fixture()
       actor = actor_fixture(account: account)
 
-      {token, encoded} = encodable_token_fixture(type: :client, account: account, actor: actor)
+      {token, encoded} = token_fixture(type: :client, account: account, actor: actor)
 
       context = build_context(type: :client)
 
@@ -345,7 +345,7 @@ defmodule Domain.AuthTest do
       actor = actor_fixture(account: account, type: :api_client)
 
       {token, encoded} =
-        encodable_token_fixture(type: :api_client, account: account, actor: actor)
+        token_fixture(type: :api_client, account: account, actor: actor)
 
       context = build_context(type: :api_client)
 
@@ -370,7 +370,7 @@ defmodule Domain.AuthTest do
     end
 
     test "updates last seen fields for token on success" do
-      {_token, encoded} = encodable_token_fixture(type: :browser)
+      {_token, encoded} = token_fixture(type: :browser)
 
       context =
         build_context(
@@ -398,7 +398,7 @@ defmodule Domain.AuthTest do
     end
 
     test "updates last_seen_at timestamp on each use" do
-      {token, encoded} = encodable_token_fixture(type: :browser)
+      {token, encoded} = token_fixture(type: :browser)
       context = build_context(type: :browser)
 
       # First use
@@ -421,9 +421,9 @@ defmodule Domain.AuthTest do
     test "returns error when actor is deleted" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      {_token, encoded} = encodable_token_fixture(type: :browser, account: account, actor: actor)
+      {_token, encoded} = token_fixture(type: :browser, account: account, actor: actor)
 
-      delete_actor(actor)
+      Domain.Repo.delete!(actor)
 
       context = build_context(type: :browser)
       assert authenticate(encoded, context) == {:error, :unauthorized}
@@ -432,9 +432,11 @@ defmodule Domain.AuthTest do
     test "returns error when actor is disabled" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      {_token, encoded} = encodable_token_fixture(type: :browser, account: account, actor: actor)
+      {_token, encoded} = token_fixture(type: :browser, account: account, actor: actor)
 
-      disable_actor(actor)
+      actor
+      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Domain.Repo.update!()
 
       context = build_context(type: :browser)
       assert authenticate(encoded, context) == {:error, :unauthorized}
@@ -442,7 +444,7 @@ defmodule Domain.AuthTest do
 
     test "returns error when token is expired" do
       {_token, encoded} =
-        encodable_token_fixture(
+        token_fixture(
           type: :browser,
           expires_at: DateTime.add(DateTime.utc_now(), -3600, :second)
         )
@@ -453,7 +455,7 @@ defmodule Domain.AuthTest do
 
     test "returns error when token expired just now" do
       {_token, encoded} =
-        encodable_token_fixture(
+        token_fixture(
           type: :browser,
           expires_at: DateTime.add(DateTime.utc_now(), -1, :second)
         )
@@ -464,7 +466,7 @@ defmodule Domain.AuthTest do
 
     test "succeeds when token expires in the future" do
       {_token, encoded} =
-        encodable_token_fixture(
+        token_fixture(
           type: :browser,
           expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
         )
@@ -475,7 +477,7 @@ defmodule Domain.AuthTest do
 
     test "returns error when token does not exist in database" do
       # Create and then delete the token
-      {token, encoded} = encodable_token_fixture(type: :browser)
+      {token, encoded} = token_fixture(type: :browser)
       Repo.delete!(token)
 
       context = build_context(type: :browser)
@@ -483,7 +485,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when fragment is tampered with" do
-      {_token, encoded} = encodable_token_fixture(type: :browser)
+      {_token, encoded} = token_fixture(type: :browser)
       context = build_context(type: :browser)
 
       # Tamper with the fragment part
@@ -493,7 +495,7 @@ defmodule Domain.AuthTest do
     end
 
     test "handles IPv6 addresses in context" do
-      {_token, encoded} = encodable_token_fixture(type: :browser)
+      {_token, encoded} = token_fixture(type: :browser)
 
       context =
         build_context(
@@ -507,7 +509,7 @@ defmodule Domain.AuthTest do
     end
 
     test "handles various user agent strings" do
-      {_token, encoded} = encodable_token_fixture(type: :browser)
+      {_token, encoded} = token_fixture(type: :browser)
 
       # DB has 255 char limit for user_agent
       user_agent = String.duplicate("M", 255)
@@ -524,7 +526,7 @@ defmodule Domain.AuthTest do
     end
 
     test "subject contains auth_provider_id when present on token" do
-      {token, encoded} = encodable_token_fixture(type: :browser)
+      {token, encoded} = token_fixture(type: :browser)
       context = build_context(type: :browser)
 
       assert {:ok, subject} = authenticate(encoded, context)
@@ -1011,7 +1013,7 @@ defmodule Domain.AuthTest do
 
   describe "use_token/2" do
     test "returns token when valid" do
-      {token, encoded} = encodable_token_fixture(type: :browser)
+      {token, encoded} = token_fixture(type: :browser)
       context = build_context(type: :browser)
 
       assert {:ok, used_token} = use_token(encoded, context)
@@ -1035,7 +1037,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when token type doesn't match context" do
-      {_token, encoded} = encodable_token_fixture(type: :browser)
+      {_token, encoded} = token_fixture(type: :browser)
       context = build_context(type: :client)
 
       assert {:error, :invalid_or_expired_token} = use_token(encoded, context)
@@ -1043,7 +1045,7 @@ defmodule Domain.AuthTest do
 
     test "returns error for expired token" do
       {_token, encoded} =
-        encodable_token_fixture(
+        token_fixture(
           type: :browser,
           expires_at: DateTime.add(DateTime.utc_now(), -1, :hour)
         )
@@ -1054,7 +1056,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when token deleted from database" do
-      {token, encoded} = encodable_token_fixture(type: :browser)
+      {token, encoded} = token_fixture(type: :browser)
       Repo.delete!(token)
 
       context = build_context(type: :browser)
@@ -1062,7 +1064,7 @@ defmodule Domain.AuthTest do
     end
 
     test "updates last_seen fields on token" do
-      {token, encoded} = encodable_token_fixture(type: :browser)
+      {token, encoded} = token_fixture(type: :browser)
 
       context =
         build_context(
@@ -1079,7 +1081,7 @@ defmodule Domain.AuthTest do
     end
 
     test "updates all location fields" do
-      {token, encoded} = encodable_token_fixture(type: :browser)
+      {token, encoded} = token_fixture(type: :browser)
 
       context =
         build_context(
@@ -1102,7 +1104,7 @@ defmodule Domain.AuthTest do
     end
 
     test "can use token multiple times" do
-      {token, encoded} = encodable_token_fixture(type: :browser)
+      {token, encoded} = token_fixture(type: :browser)
       context = build_context(type: :browser)
 
       assert {:ok, _} = use_token(encoded, context)
@@ -1112,7 +1114,7 @@ defmodule Domain.AuthTest do
     end
 
     test "works with client token type" do
-      {token, encoded} = encodable_token_fixture(type: :client)
+      {token, encoded} = token_fixture(type: :client)
       context = build_context(type: :client)
 
       assert {:ok, used_token} = use_token(encoded, context)
@@ -1124,7 +1126,7 @@ defmodule Domain.AuthTest do
       actor = actor_fixture(account: account, type: :api_client)
 
       {token, encoded} =
-        encodable_token_fixture(type: :api_client, account: account, actor: actor)
+        token_fixture(type: :api_client, account: account, actor: actor)
 
       context = build_context(type: :api_client)
 
@@ -1133,7 +1135,7 @@ defmodule Domain.AuthTest do
     end
 
     test "works with relay token type" do
-      {token, encoded} = encodable_token_fixture(type: :relay)
+      {token, encoded} = token_fixture(type: :relay)
       context = build_context(type: :relay)
 
       assert {:ok, used_token} = use_token(encoded, context)
@@ -1143,7 +1145,7 @@ defmodule Domain.AuthTest do
     test "works with site token type" do
       account = account_fixture()
       site = Domain.SiteFixtures.site_fixture(account: account)
-      {token, encoded} = encodable_token_fixture(type: :site, account: account, site: site)
+      {token, encoded} = token_fixture(type: :site, account: account, site: site)
       context = build_context(type: :site)
 
       assert {:ok, used_token} = use_token(encoded, context)
@@ -1151,7 +1153,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when fragment is wrong" do
-      {_token, encoded} = encodable_token_fixture(type: :browser, nonce: "test")
+      {_token, encoded} = token_fixture(type: :browser, nonce: "test")
       context = build_context(type: :browser)
 
       # Corrupt the fragment
@@ -1305,7 +1307,7 @@ defmodule Domain.AuthTest do
 
   describe "build_subject/2" do
     test "builds subject from browser token" do
-      {token, _encoded} = encodable_token_fixture(type: :browser)
+      {token, _encoded} = token_fixture(type: :browser)
       context = build_context(type: :browser)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1314,7 +1316,7 @@ defmodule Domain.AuthTest do
     end
 
     test "builds subject from client token" do
-      {token, _encoded} = encodable_token_fixture(type: :client)
+      {token, _encoded} = token_fixture(type: :client)
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1326,7 +1328,7 @@ defmodule Domain.AuthTest do
       actor = actor_fixture(account: account, type: :api_client)
 
       {token, _encoded} =
-        encodable_token_fixture(type: :api_client, account: account, actor: actor)
+        token_fixture(type: :api_client, account: account, actor: actor)
 
       context = build_context(type: :api_client)
 
@@ -1338,9 +1340,11 @@ defmodule Domain.AuthTest do
     test "returns error when actor is disabled" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      {token, _encoded} = encodable_token_fixture(type: :browser, account: account, actor: actor)
+      {token, _encoded} = token_fixture(type: :browser, account: account, actor: actor)
 
-      disable_actor(actor)
+      actor
+      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Domain.Repo.update!()
 
       context = build_context(type: :browser)
       assert {:error, :not_found} = build_subject(token, context)
@@ -1349,9 +1353,9 @@ defmodule Domain.AuthTest do
     test "returns error when actor is deleted" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      {token, _encoded} = encodable_token_fixture(type: :browser, account: account, actor: actor)
+      {token, _encoded} = token_fixture(type: :browser, account: account, actor: actor)
 
-      delete_actor(actor)
+      Domain.Repo.delete!(actor)
 
       context = build_context(type: :browser)
       assert {:error, :not_found} = build_subject(token, context)
@@ -1360,7 +1364,7 @@ defmodule Domain.AuthTest do
     test "subject contains correct account" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      {token, _encoded} = encodable_token_fixture(type: :browser, account: account, actor: actor)
+      {token, _encoded} = token_fixture(type: :browser, account: account, actor: actor)
       context = build_context(type: :browser)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1370,7 +1374,7 @@ defmodule Domain.AuthTest do
     test "subject contains correct actor" do
       account = account_fixture()
       actor = actor_fixture(account: account, type: :account_admin_user)
-      {token, _encoded} = encodable_token_fixture(type: :browser, account: account, actor: actor)
+      {token, _encoded} = token_fixture(type: :browser, account: account, actor: actor)
       context = build_context(type: :browser)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1380,7 +1384,7 @@ defmodule Domain.AuthTest do
 
     test "subject contains expires_at from token" do
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
-      {token, _encoded} = encodable_token_fixture(type: :browser, expires_at: expires_at)
+      {token, _encoded} = token_fixture(type: :browser, expires_at: expires_at)
       context = build_context(type: :browser)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1388,7 +1392,7 @@ defmodule Domain.AuthTest do
     end
 
     test "subject contains nil expires_at when token has no expiration" do
-      {token, _encoded} = encodable_token_fixture(type: :client, expires_at: nil)
+      {token, _encoded} = token_fixture(type: :client, expires_at: nil)
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1396,7 +1400,7 @@ defmodule Domain.AuthTest do
     end
 
     test "subject contains auth_provider_id from token" do
-      {token, _encoded} = encodable_token_fixture(type: :browser)
+      {token, _encoded} = token_fixture(type: :browser)
       context = build_context(type: :browser)
 
       assert {:ok, subject} = build_subject(token, context)
@@ -1405,7 +1409,7 @@ defmodule Domain.AuthTest do
     end
 
     test "subject context matches provided context" do
-      {token, _encoded} = encodable_token_fixture(type: :browser)
+      {token, _encoded} = token_fixture(type: :browser)
 
       context =
         build_context(
@@ -1482,7 +1486,7 @@ defmodule Domain.AuthTest do
     test "new site tokens still work with current salt" do
       account = account_fixture()
       site = Domain.SiteFixtures.site_fixture(account: account)
-      {token, encoded} = encodable_token_fixture(type: :site, account: account, site: site)
+      {token, encoded} = token_fixture(type: :site, account: account, site: site)
 
       context = build_context(type: :site)
       assert {:ok, used_token} = use_token(encoded, context)
@@ -1490,7 +1494,7 @@ defmodule Domain.AuthTest do
     end
 
     test "new relay tokens still work with current salt" do
-      {token, encoded} = encodable_token_fixture(type: :relay)
+      {token, encoded} = token_fixture(type: :relay)
 
       context = build_context(type: :relay)
       assert {:ok, used_token} = use_token(encoded, context)

@@ -117,20 +117,4 @@ defmodule Domain.ActorFixtures do
     |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
     |> Domain.Repo.update!()
   end
-
-  @doc """
-  Disable an existing actor.
-  """
-  def disable_actor(actor) do
-    actor
-    |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
-    |> Domain.Repo.update!()
-  end
-
-  @doc """
-  Delete an existing actor.
-  """
-  def delete_actor(actor) do
-    Domain.Repo.delete!(actor)
-  end
 end
