@@ -173,9 +173,19 @@ defmodule Domain.Billing.EventHandler do
     attrs = build_customer_update_attrs(customer_metadata, customer_name, customer_email)
 
     case update_account_by_stripe_customer_id(customer_id, attrs) do
-      {:ok, _account} -> :ok
-      {:error, :customer_not_provisioned} -> create_account_from_stripe_customer(customer_data)
-      {:error, reason} -> log_and_return_error("sync account from Stripe", customer_id, reason)
+      {:ok, _account} ->
+        :ok
+
+      {:error, :customer_not_provisioned} ->
+        create_account_from_stripe_customer(customer_data)
+
+      {:error, reason} ->
+        Logger.error("Failed to sync account from Stripe",
+          customer_id: customer_id,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
     end
   end
 
@@ -232,7 +242,12 @@ defmodule Domain.Billing.EventHandler do
       update_account(customer_id, attrs)
     else
       {:error, reason} ->
-        log_and_return_error("build subscription update attrs", customer_id, reason)
+        Logger.error("Failed to build subscription update attrs",
+          customer_id: customer_id,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
     end
   end
 
@@ -292,17 +307,13 @@ defmodule Domain.Billing.EventHandler do
         :ok
 
       {:error, reason} ->
-        log_and_return_error("update account on Stripe subscription event", customer_id, reason)
+        Logger.error("Failed to update account on Stripe subscription event",
+          customer_id: customer_id,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
     end
-  end
-
-  defp log_and_return_error(operation, customer_id, reason) do
-    Logger.error("Failed to #{operation}",
-      customer_id: customer_id,
-      reason: inspect(reason)
-    )
-
-    :error
   end
 
   # Account Creation
@@ -356,7 +367,7 @@ defmodule Domain.Billing.EventHandler do
          "name" => customer_name,
          "metadata" => customer_metadata
        }) do
-    Logger.warning("Failed to create account from Stripe",
+    Logger.error("Failed to create account from Stripe",
       customer_id: customer_id,
       customer_metadata: inspect(customer_metadata),
       customer_name: customer_name,
