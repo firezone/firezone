@@ -40,14 +40,6 @@ defmodule Domain.Billing.EventHandler do
         )
 
         {:error, reason}
-
-      error ->
-        Logger.error("Unknown failure processing stripe event",
-          customer_id: customer_id,
-          reason: inspect(error)
-        )
-
-        {:error, :unknown_failure}
     end
   end
 
