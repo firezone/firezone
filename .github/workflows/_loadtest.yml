@@ -1,0 +1,102 @@
+name: Build and upload loadtest binaries
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  loadtest:
+    name: loadtest-${{ matrix.os }}-${{ matrix.artifact_name }}
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            binary: firezone-loadtest
+            artifact_name: x86_64
+          - os: windows
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            binary: firezone-loadtest.exe
+            artifact_name: x86_64.exe
+          - os: macos
+            runner: macos-26
+            target: aarch64-apple-darwin
+            binary: firezone-loadtest
+            artifact_name: aarch64
+
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ inputs.sha }}
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: ${{ matrix.target }}
+          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Install Azure CLI (macOS)
+        if: matrix.os == 'macos'
+        run: brew update && brew install azure-cli
+
+      - name: Build loadtest binary
+        shell: bash
+        run: |
+          set -e
+          cargo build \
+            --profile release \
+            --target ${{ matrix.target }} \
+            --package firezone-loadtest
+
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.binary }}
+
+      - name: Generate checksum (Linux/Windows)
+        if: matrix.os != 'macos'
+        shell: bash
+        run: sha256sum ${{ matrix.binary }} > ${{ matrix.binary }}.sha256sum.txt
+
+      - name: Generate checksum (macOS)
+        if: matrix.os == 'macos'
+        run: shasum -a 256 ${{ matrix.binary }} > ${{ matrix.binary }}.sha256sum.txt
+
+      - name: Upload to Azure Storage
+        shell: bash
+        run: |
+          set -e
+          az storage blob upload \
+            --container-name binaries \
+            --name "loadtest/${{ matrix.os }}/${{ inputs.sha }}/${{ matrix.artifact_name }}" \
+            --file "${{ matrix.binary }}" \
+            --overwrite true \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+
+          az storage blob upload \
+            --container-name binaries \
+            --name "loadtest/${{ matrix.os }}/${{ inputs.sha }}/${{ matrix.artifact_name }}.sha256sum.txt" \
+            --file "${{ matrix.binary }}.sha256sum.txt" \
+            --overwrite true \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"

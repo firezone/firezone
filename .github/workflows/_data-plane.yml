@@ -238,10 +238,7 @@ jobs:
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
-          - package: firezone-loadtest
-            artifact: firezone-loadtest
-            image_name: loadtest
-            skip_docker: true
+
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
       SENTRY_ENVIRONMENT: "production"
@@ -320,25 +317,7 @@ jobs:
             --overwrite true \
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
-      - name: Copy loadtest to Azure Storage
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-loadtest' }}
-        run: |
-          set -e
-          az storage blob upload \
-            --container-name binaries \
-            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}" \
-            --file "${{ matrix.name.package }}" \
-            --overwrite true \
-            --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
 
-          az storage blob upload \
-            --container-name binaries \
-            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt" \
-            --file "${{ matrix.name.package }}.sha256sum.txt" \
-            --overwrite true \
-            --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
       - name: Create Firezone Gateway .deb package
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
         run: |
@@ -404,7 +383,7 @@ jobs:
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       # PRs & non-main branches: read-only cache
       - name: Build Docker images (read-only cache)
-        if: ${{ github.ref != 'refs/heads/main' && !matrix.name.skip_docker }}
+        if: ${{ github.ref != 'refs/heads/main' }}
         id: build_ro
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
@@ -421,7 +400,7 @@ jobs:
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       # main: read/write cache
       - name: Build Docker images (read/write cache)
-        if: ${{ github.ref == 'refs/heads/main' && !matrix.name.skip_docker }}
+        if: ${{ github.ref == 'refs/heads/main' }}
         id: build_rw
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
@@ -438,13 +417,11 @@ jobs:
           target: ${{ matrix.stage }}
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
-        if: ${{ !matrix.name.skip_docker }}
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.image_name }}
           digest="${{ github.ref == 'refs/heads/main' && steps.build_rw.outputs.digest || steps.build_ro.outputs.digest }}"
           touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest artifact
-        if: ${{ !matrix.name.skip_docker }}
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           overwrite: true
@@ -453,7 +430,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Output image name
-        if: ${{ !matrix.name.skip_docker }}
         id: image-name
         run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}" >> "$GITHUB_OUTPUT"
 
