@@ -244,14 +244,7 @@ pub fn run(
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 
-    let gui_ipc = match rt.block_on(create_gui_ipc_server()) {
-        Ok(gui_ipc) => gui_ipc,
-        Err(e) => {
-            tracing::debug!("{e:#}");
-
-            return Err(anyhow::Error::new(AlreadyRunning));
-        }
-    };
+    let gui_ipc = rt.block_on(create_gui_ipc_server())?;
 
     let (general_settings, advanced_settings) =
         rt.block_on(settings::migrate_legacy_settings(advanced_settings));
@@ -600,7 +593,7 @@ async fn create_gui_ipc_server() -> Result<ipc::Server> {
 
     // If we managed to send the IPC message then another instance of Firezone is already running.
 
-    bail!("Successfully handshaked with existing instance of Firezone GUI")
+    bail!(AlreadyRunning)
 }
 
 async fn new_instance_handshake(
