@@ -101,11 +101,11 @@ fn ipc_path(id: SocketId) -> PathBuf {
     match id {
         SocketId::Tunnel => PathBuf::from("/run").join(BUNDLE_ID).join("tunnel.sock"),
         SocketId::Gui => bin_shared::known_dirs::runtime()
-            .expect("`known_dirs::runtime()` should always work")
+            .expect("$XDG_RUNTIME_DIR not set")
             .join("gui.sock"),
         #[cfg(test)]
         SocketId::Test(id) => bin_shared::known_dirs::runtime()
-            .expect("`known_dirs::runtime()` should always work")
+            .expect("$XDG_RUNTIME_DIR not set")
             .join(format!("ipc_test_{id}.sock")),
     }
 }
