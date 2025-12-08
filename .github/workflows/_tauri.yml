@@ -223,7 +223,7 @@ jobs:
           az storage blob upload \
             --container-name binaries \
             --name "windows-gui-client/preview/${{ matrix.arch }}" \
-            --file "${{ env.ARTIFACT_SRC }}.msi" \
+            --file "${{ env.BINARY_DEST_PATH }}.msi" \
             --overwrite true \
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
