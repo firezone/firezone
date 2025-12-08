@@ -1,7 +1,7 @@
 defmodule Domain.Changes.Hooks.ResourcesTest do
   use Domain.DataCase, async: true
   import Domain.Changes.Hooks.Resources
-  alias Domain.{Changes.Change, PolicyAuthorizations, Resources, PubSub}
+  alias Domain.{Changes.Change, PolicyAuthorizations, Resource, PubSub}
 
   describe "insert/1" do
     test "broadcasts created resource" do
@@ -25,7 +25,7 @@ defmodule Domain.Changes.Hooks.ResourcesTest do
 
       assert_receive %Change{
         op: :insert,
-        struct: %Resources.Resource{} = created_resource,
+        struct: %Resource{} = created_resource,
         lsn: 0
       }
 
@@ -63,8 +63,8 @@ defmodule Domain.Changes.Hooks.ResourcesTest do
 
       assert_receive %Change{
         op: :update,
-        old_struct: %Resources.Resource{},
-        struct: %Resources.Resource{} = updated_resource,
+        old_struct: %Resource{},
+        struct: %Resource{} = updated_resource,
         lsn: 0
       }
 
@@ -127,7 +127,7 @@ defmodule Domain.Changes.Hooks.ResourcesTest do
 
       assert_receive %Change{
         op: :delete,
-        old_struct: %Resources.Resource{} = deleted_resource,
+        old_struct: %Resource{} = deleted_resource,
         lsn: 0
       }
 

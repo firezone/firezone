@@ -2,6 +2,8 @@ defmodule API.Integrations.Stripe.WebhookControllerTest do
   use API.ConnCase, async: true
   import API.Integrations.Stripe.WebhookController
 
+  import Domain.AccountFixtures
+
   describe "handle_webhook/2" do
     test "returns error when payload is not signed", %{conn: conn} do
       conn = post(conn, "/integrations/stripe/webhooks", %{"message" => "Hello, world!"})
@@ -23,7 +25,7 @@ defmodule API.Integrations.Stripe.WebhookControllerTest do
 
     test "returns 200 OK with the request body", %{conn: conn} do
       customer_id = "cus_xxx"
-      account = Fixtures.Accounts.create_account()
+      account = account_fixture()
 
       account =
         account

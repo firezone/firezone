@@ -42,7 +42,8 @@ defmodule Web.Live.Sites.NewTokenTest do
     gateway = Fixtures.Gateways.create_gateway(account: account, site: site, token: token)
     :ok = Domain.Presence.Gateways.connect(gateway, token.id)
 
-    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{site.id}"}
+    expected_topic = "presences:sites:#{site.id}"
+    assert_receive %Phoenix.Socket.Broadcast{topic: ^expected_topic}
 
     wait_for(fn ->
       assert element(lv, "#connection-status")

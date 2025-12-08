@@ -1,7 +1,7 @@
 defmodule Domain.Changes.Hooks.ClientsTest do
   use Domain.DataCase, async: true
   import Domain.Changes.Hooks.Clients
-  alias Domain.{Changes.Change, Clients, PolicyAuthorizations, PubSub}
+  alias Domain.{Changes.Change, Client, PolicyAuthorizations, PubSub}
 
   describe "insert/1" do
     test "returns :ok" do
@@ -22,8 +22,8 @@ defmodule Domain.Changes.Hooks.ClientsTest do
 
       assert_receive %Change{
         op: :update,
-        old_struct: %Clients.Client{} = old_client,
-        struct: %Clients.Client{} = new_client,
+        old_struct: %Client{} = old_client,
+        struct: %Client{} = new_client,
         lsn: 0
       }
 
@@ -55,8 +55,8 @@ defmodule Domain.Changes.Hooks.ClientsTest do
 
       assert_receive %Change{
         op: :update,
-        old_struct: %Clients.Client{},
-        struct: %Clients.Client{} = new_client,
+        old_struct: %Client{},
+        struct: %Client{} = new_client,
         lsn: 0
       }
 
@@ -75,7 +75,7 @@ defmodule Domain.Changes.Hooks.ClientsTest do
       old_data = %{"id" => client.id, "account_id" => client.account_id}
 
       assert :ok == on_delete(0, old_data)
-      assert_receive %Change{op: :delete, old_struct: %Clients.Client{} = deleted_client, lsn: 0}
+      assert_receive %Change{op: :delete, old_struct: %Client{} = deleted_client, lsn: 0}
       assert deleted_client.id == client.id
     end
   end

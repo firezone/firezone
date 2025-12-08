@@ -1,10 +1,18 @@
 defmodule Web.Live.Sites.Gateways.IndexTest do
   use Web.ConnCase, async: true
 
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.GatewayFixtures
+  import Domain.IdentityFixtures
+  import Domain.SiteFixtures
+  import Domain.TokenFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    identity = Fixtures.Auth.create_identity(account: account, actor: [type: :account_admin_user])
-    site = Fixtures.Sites.create_site(account: account)
+    account = account_fixture()
+    actor = admin_actor_fixture(account: account)
+    identity = identity_fixture(account: account, actor: actor)
+    site = site_fixture(account: account)
 
     %{
       account: account,
@@ -52,7 +60,7 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
     conn: conn
   } do
     gateway =
-      Fixtures.Gateways.create_gateway(
+      gateway_fixture(
         account: account,
         site: site,
         context: %{user_agent: "iOS/12.5 (iPhone) connlib/1.3.2"}
@@ -83,10 +91,10 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
     site: site,
     conn: conn
   } do
-    token = Fixtures.Sites.create_token(account: account, site: site)
+    token = site_token_fixture(account: account, site: site)
 
     gateway =
-      Fixtures.Gateways.create_gateway(
+      gateway_fixture(
         account: account,
         site: site,
         context: %{user_agent: "iOS/12.5 (iPhone) connlib/1.3.2"}
@@ -99,7 +107,8 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
 
     :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
     :ok = Domain.Presence.Gateways.connect(gateway, token.id)
-    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{site.id}"}
+    expected_topic = "presences:sites:#{site.id}"
+    assert_receive %Phoenix.Socket.Broadcast{topic: ^expected_topic}
 
     wait_for(fn ->
       [row] =

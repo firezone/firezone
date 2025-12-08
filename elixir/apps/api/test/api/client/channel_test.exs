@@ -4,19 +4,6 @@ defmodule API.Client.ChannelTest do
   import ExUnit.CaptureLog
 
   import Domain.AccountFixtures
-
-  defp join_channel(client, subject) do
-    {:ok, _reply, socket} =
-      API.Client.Socket
-      |> socket("client:#{client.id}", %{
-        client: client,
-        subject: subject
-      })
-      |> subscribe_and_join(API.Client.Channel, "client")
-
-    socket
-  end
-
   import Domain.ActorFixtures
   import Domain.ClientFixtures
   import Domain.GatewayFixtures
@@ -29,6 +16,18 @@ defmodule API.Client.ChannelTest do
   import Domain.SiteFixtures
   import Domain.SubjectFixtures
   import Domain.TokenFixtures
+
+  defp join_channel(client, subject) do
+    {:ok, _reply, socket} =
+      API.Client.Socket
+      |> socket("client:#{client.id}", %{
+        client: client,
+        subject: subject
+      })
+      |> subscribe_and_join(API.Client.Channel, "client")
+
+    socket
+  end
 
   setup do
     account =
