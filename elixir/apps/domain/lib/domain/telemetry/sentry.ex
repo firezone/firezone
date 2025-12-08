@@ -3,7 +3,10 @@ defmodule Domain.Telemetry.Sentry do
     # This happens when libcluster loses connection to a node, which is normal during deploys.
     # We have threshold-based error logging in Domain.Cluster.GoogleComputeLabelsStrategy to report those.
     "Node ~p not responding **~n** Removing (timedout) connection",
-    "[libcluster:default] unable to connect to"
+    "[libcluster:default] unable to connect to",
+
+    # These occur under normal operation whenever a particular account or resource can't be found in the DB.
+    "Ecto.NoResultsError: expected at least one result but got none in query:"
   ]
 
   def before_send(%{original_exception: %{skip_sentry: skip_sentry}}) when skip_sentry do

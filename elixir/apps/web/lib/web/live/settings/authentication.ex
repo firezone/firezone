@@ -181,7 +181,7 @@ defmodule Web.Settings.Authentication do
            |> push_patch(to: ~p"/#{socket.assigns.account}/settings/authentication")}
 
         {:error, reason} ->
-          Logger.warning("Failed to delete authentication provider", reason: reason)
+          Logger.info("Failed to delete authentication provider", reason: reason)
           {:noreply, put_flash(socket, :error, "Failed to delete authentication provider.")}
       end
     else
@@ -219,7 +219,7 @@ defmodule Web.Settings.Authentication do
          |> put_flash(:success, "Authentication provider #{action} successfully.")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        Logger.error("Failed to toggle authentication provider",
+        Logger.info("Failed to toggle authentication provider",
           errors: inspect(changeset.errors),
           changes: inspect(changeset.changes)
         )
@@ -240,7 +240,7 @@ defmodule Web.Settings.Authentication do
         {:noreply, put_flash(socket, :error, error_message)}
 
       {:error, reason} ->
-        Logger.error("Failed to toggle authentication provider: #{inspect(reason)}")
+        Logger.info("Failed to toggle authentication provider: #{inspect(reason)}")
         {:noreply, put_flash(socket, :error, "Failed to update authentication provider.")}
     end
   end
@@ -1073,7 +1073,7 @@ defmodule Web.Settings.Authentication do
   end
 
   defp handle_verification_setup_error({:error, reason}, field, socket) do
-    Logger.warning(
+    Logger.info(
       "Unexpected error during OIDC verification setup",
       subject: socket.assigns.subject,
       reason: reason
@@ -1114,7 +1114,7 @@ defmodule Web.Settings.Authentication do
         {:noreply, socket}
 
       error ->
-        Logger.warning("Failed to set default auth provider",
+        Logger.info("Failed to set default auth provider",
           error: inspect(error)
         )
 
@@ -1139,7 +1139,7 @@ defmodule Web.Settings.Authentication do
       {:noreply, socket}
     else
       error ->
-        Logger.warning("Failed to clear default auth provider",
+        Logger.info("Failed to clear default auth provider",
           error: inspect(error)
         )
 

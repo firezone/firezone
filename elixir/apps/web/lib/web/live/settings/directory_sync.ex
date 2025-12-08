@@ -188,7 +188,7 @@ defmodule Web.Settings.DirectorySync do
          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/directory_sync")}
 
       {:error, reason} ->
-        Logger.error("Failed to delete directory: #{inspect(reason)}")
+        Logger.info("Failed to delete directory: #{inspect(reason)}")
         {:noreply, put_flash(socket, :error, "Failed to delete directory.")}
     end
   end
@@ -246,79 +246,27 @@ defmodule Web.Settings.DirectorySync do
            |> put_flash(:success, "Directory #{action} successfully.")}
 
         {:error, reason} ->
-          Logger.error("Failed to toggle directory: #{inspect(reason)}")
+          Logger.info("Failed to toggle directory: #{inspect(reason)}")
           {:noreply, put_flash(socket, :error, "Failed to update directory.")}
       end
     end
   end
 
-  def handle_event("sync_directory", %{"id" => id, "type" => "entra"}, socket) do
-    directory =
-      socket.assigns.directories
-      |> Enum.find(fn d -> d.id == id end)
-      |> DB.reload(socket.assigns.subject)
-
-    if is_nil(directory) do
-      {:noreply, socket |> init()}
-    else
-      with {:ok, _job} <- Entra.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
-           {:ok, _directory} <-
-             changeset(directory, %{error_message: nil})
-             |> DB.update_directory(socket.assigns.subject) do
-        {:noreply, socket |> init()}
-      else
-        {:error, reason} ->
-          Logger.error("Failed to schedule directory sync",
-            directory: directory,
-            reason: reason
-          )
-
-          case changeset(directory, %{error_message: "Failed to schedule directory sync."})
-               |> DB.update_directory(socket.assigns.subject) do
-            {:ok, _directory} -> {:noreply, socket |> init()}
-            {:error, _} -> {:noreply, socket |> init()}
-          end
+  def handle_event("sync_directory", %{"id" => id, "type" => type}, socket) do
+    sync_module =
+      case type do
+        "entra" -> Domain.Entra.Sync
+        "google" -> Domain.Google.Sync
+        "okta" -> Domain.Okta.Sync
+        _ -> raise "Unsupported directory type for sync: #{type}"
       end
-    end
-  end
 
-  def handle_event("sync_directory", %{"id" => id, "type" => "google"}, socket) do
-    directory =
-      socket.assigns.directories
-      |> Enum.find(fn d -> d.id == id end)
-      |> DB.reload(socket.assigns.subject)
-
-    if is_nil(directory) do
-      {:noreply, socket |> init()}
-    else
-      with {:ok, _job} <- Google.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
-           {:ok, _directory} <-
-             changeset(directory, %{error_message: nil})
-             |> DB.update_directory(socket.assigns.subject) do
-        {:noreply, socket |> init()}
-      else
-        {:error, reason} ->
-          Logger.error("Failed to schedule directory sync",
-            directory: directory,
-            reason: reason
-          )
-
-          case changeset(directory, %{error_message: "Failed to schedule directory sync."})
-               |> DB.update_directory(socket.assigns.subject) do
-            {:ok, _directory} -> {:noreply, socket |> init()}
-            {:error, _} -> {:noreply, socket |> init()}
-          end
-      end
-    end
-  end
-
-  def handle_event("sync_directory", %{"id" => id, "type" => "okta"}, socket) do
-    case Oban.insert(Domain.Okta.Sync.new(%{"directory_id" => id})) do
+    case Oban.insert(sync_module.new(%{"directory_id" => id})) do
       {:ok, _job} ->
         {:noreply, put_flash(socket, :info, "Directory sync has been queued successfully.")}
 
       {:error, reason} ->
-        Logger.error("Failed to enqueue Okta sync job", id: id, reason: inspect(reason))
+        Logger.info("Failed to enqueue #{type} sync job", id: id, reason: inspect(reason))
         {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
     end
   end
@@ -328,19 +276,12 @@ defmodule Web.Settings.DirectorySync do
   end
 
   def handle_info({:entra_admin_consent, pid, _issuer, tenant_id, state_token}, socket) do
-    require Logger
-    Logger.info("DirectorySync received entra_admin_consent: #{state_token}")
-
     :ok = Domain.PubSub.unsubscribe("entra-admin-consent:#{state_token}")
-
     stored_token = socket.assigns.verification.token
-    Logger.info("Stored token: #{inspect(stored_token)}, Received token: #{state_token}")
 
     # Verify the state token matches
     if stored_token && Plug.Crypto.secure_compare(stored_token, state_token) do
-      Logger.info("Token matches! Sending :success to pid #{inspect(pid)}")
-      result = send(pid, :success)
-      Logger.info("Send result: #{inspect(result)}")
+      send(pid, :success)
 
       # After admin consent, verify we can actually access the directory using client credentials
       config = Domain.Config.fetch_env!(:domain, Entra.APIClient)
