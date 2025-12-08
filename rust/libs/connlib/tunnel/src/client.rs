@@ -822,7 +822,10 @@ impl ClientState {
         let trigger = trigger.into();
         let trigger_name = trigger.name();
 
-        debug_assert!(self.resources_by_id.contains_key(&rid));
+        if !self.resources_by_id.contains_key(&rid) {
+            tracing::debug!(%rid, "Resource not found, skipping connection intent");
+            return;
+        }
 
         match self.pending_flows.entry(rid) {
             Entry::Vacant(v) => {
