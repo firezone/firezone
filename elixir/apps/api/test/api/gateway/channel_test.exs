@@ -406,7 +406,7 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      relay_token = relay_token_fixture(account: account)
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
@@ -473,7 +473,7 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      relay_token = relay_token_fixture(account: account)
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       # Consume the relays_presence message from relay connection
@@ -627,7 +627,7 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      relay_token = relay_token_fixture(account: account)
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       policy_authorization =
@@ -696,7 +696,7 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      relay_token = relay_token_fixture(account: account)
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       policy_authorization =
@@ -871,7 +871,7 @@ defmodule API.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
       stamp_secret = Ecto.UUID.generate()
-      relay_token = relay_token_fixture(account: account)
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
@@ -1528,7 +1528,7 @@ defmodule API.Gateway.ChannelTest do
       preshared_key = "PSK"
 
       stamp_secret = Ecto.UUID.generate()
-      relay_token = relay_token_fixture(account: account)
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       policy_authorization =
@@ -1849,7 +1849,7 @@ defmodule API.Gateway.ChannelTest do
       payload = "RTC_SD"
 
       stamp_secret = Ecto.UUID.generate()
-      relay_token = relay_token_fixture(account: account)
+      relay_token = relay_token_fixture()
       :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
@@ -1942,7 +1942,8 @@ defmodule API.Gateway.ChannelTest do
       client_actor = service_account_fixture(account: account)
 
       client_token =
-        client_token_fixture(
+        token_fixture(
+          type: :client,
           account: account,
           actor: client_actor
         )
@@ -1995,7 +1996,8 @@ defmodule API.Gateway.ChannelTest do
       client_actor = service_account_fixture(account: account)
 
       client_token =
-        client_token_fixture(
+        token_fixture(
+          type: :client,
           account: account,
           actor: client_actor
         )
