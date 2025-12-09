@@ -3,7 +3,7 @@ defmodule Domain.Repo.Migrations.DropRemainingAttemptsFromTokens do
 
   def change do
     alter table(:tokens) do
-      remove(:remaining_attempts)
+      remove(:remaining_attempts, :integer)
     end
   end
 end
