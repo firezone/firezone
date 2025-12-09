@@ -42,10 +42,6 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
                 is AuthViewModel.ViewAction.LaunchAuthFlow -> setupWebView(action.url)
-                is AuthViewModel.ViewAction.NavigateToSignIn -> {
-                    navigateToSignIn()
-                }
-                is AuthViewModel.ViewAction.ShowError -> showError()
                 else -> {}
             }
         }
@@ -77,18 +73,5 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
             Intent(this, MainActivity::class.java),
         )
         finish()
-    }
-
-    private fun showError() {
-        AlertDialog
-            .Builder(this)
-            .setTitle(R.string.error_dialog_title)
-            .setMessage(R.string.error_dialog_message)
-            .setPositiveButton(
-                R.string.error_dialog_button_text,
-            ) { _, _ ->
-                this@AuthActivity.finish()
-            }.setIcon(R.drawable.ic_firezone_logo)
-            .show()
     }
 }

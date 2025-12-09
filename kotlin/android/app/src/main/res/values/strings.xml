@@ -38,11 +38,6 @@
 	<string name="launching_auth_flow">Launching Browser to sign in…</string>
 
 	<!-- Error Dialog -->
-	<string name="error_dialog_title">Error</string>
-	<string name="error_dialog_message">
-		Oops! Something went wrong. Contact your admin if this issue persists.
-	</string>
-	<string name="error_dialog_button_text">Ok</string>
 	<string name="enable_vpn_permission">Enable VPN Permission</string>
 	<string name="vpn_permission_description">
 		Firezone requires the VPN permission in order to route packets from your device to protected
