@@ -35,7 +35,7 @@
 	<string name="sign_out">Sign Out</string>
 
 	<!-- Auth -->
-	<string name="launching_auth_flow">Launching Chrome to sign in…</string>
+	<string name="launching_auth_flow">Launching Browser to sign in…</string>
 
 	<!-- Error Dialog -->
 	<string name="error_dialog_title">Error</string>
