@@ -3,6 +3,8 @@ defmodule Web.Session.Cookie do
   This module manages individual session cookies named `_sess_<account_id>` that store the session token.
   """
 
+  require Logger
+
   # Full work day - 8 hours
   @max_cookie_age 8 * 60 * 60
 
@@ -137,11 +139,11 @@ defmodule Web.Session.Cookie do
         # Instead, LiveView will need to compute it from the subject.token_id
         Plug.Conn.assign(conn, :subject, subject)
       else
-        {:error, :unauthorized} ->
-          delete_account_cookie(conn, account.id)
+        error ->
+          trace = Process.info(self(), :current_stacktrace)
+          Logger.info("Failed to fetch subject", error: error, stacktrace: trace)
 
-        _ ->
-          conn
+          delete_account_cookie(conn, account.id)
       end
     else
       conn

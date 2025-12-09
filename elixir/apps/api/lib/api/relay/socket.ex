@@ -21,7 +21,7 @@ defmodule API.Relay.Socket do
       context = API.Sockets.auth_context(connect_info, :relay)
       attrs = Map.take(attrs, ~w[ipv4 ipv6 name port])
 
-      with {:ok, token} <- authenticate_token(encoded_token, context),
+      with {:ok, token} <- Auth.use_token(encoded_token, context),
            {:ok, relay} <- upsert_relay(attrs, context) do
         OpenTelemetry.Tracer.set_attributes(%{
           token_id: token.id,
@@ -38,14 +38,11 @@ defmodule API.Relay.Socket do
 
         {:ok, socket}
       else
-        {:error, :unauthorized} ->
-          OpenTelemetry.Tracer.set_status(:error, "invalid_token")
-          {:error, :invalid_token}
+        error ->
+          trace = Process.info(self(), :current_stacktrace)
+          Logger.info("Relay socket connection failed", error: error, stacktrace: trace)
 
-        {:error, reason} ->
-          OpenTelemetry.Tracer.set_status(:error, inspect(reason))
-          Logger.debug("Error connecting relay websocket: #{inspect(reason)}")
-          {:error, reason}
+          error
       end
     end
   end
@@ -56,15 +53,6 @@ defmodule API.Relay.Socket do
 
   @impl true
   def id(socket), do: Auth.socket_id(socket.assigns.token_id)
-
-  defp authenticate_token(encoded_token, %Auth.Context{} = context)
-       when is_binary(encoded_token) do
-    with {:ok, token} <- Auth.use_token(encoded_token, context) do
-      {:ok, token}
-    else
-      {:error, :invalid_or_expired_token} -> {:error, :unauthorized}
-    end
-  end
 
   defp upsert_relay(attrs, %Auth.Context{} = context) do
     changeset = upsert_changeset(attrs, context)

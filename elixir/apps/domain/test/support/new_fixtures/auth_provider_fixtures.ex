@@ -15,6 +15,7 @@ defmodule Domain.AuthProviderFixtures do
   """
   def valid_auth_provider_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
+      id: Ecto.UUID.generate(),
       type: :email_otp
     })
   end
@@ -44,14 +45,10 @@ defmodule Domain.AuthProviderFixtures do
       |> Map.delete(:account)
       |> valid_auth_provider_attrs()
 
-    {:ok, auth_provider} =
-      %Domain.AuthProvider{}
-      |> Ecto.Changeset.cast(auth_provider_attrs, [:type])
-      |> Ecto.Changeset.put_assoc(:account, account)
-      |> Domain.AuthProvider.changeset()
-      |> Domain.Repo.insert()
-
-    auth_provider
+    %Domain.AuthProvider{}
+    |> Ecto.Changeset.cast(auth_provider_attrs, [:id, :type])
+    |> Ecto.Changeset.put_assoc(:account, account)
+    |> Domain.Repo.insert!()
   end
 
   @doc """

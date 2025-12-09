@@ -1,6 +1,7 @@
 defmodule Domain.Auth do
   import Ecto.Changeset
-  require Ecto.Query
+  import Ecto.Query
+  import Domain.Changeset
   alias Domain.Token
   alias Domain.Auth.{Subject, Context}
   alias __MODULE__.DB
@@ -94,13 +95,13 @@ defmodule Domain.Auth do
     |> put_change(:secret_salt, Domain.Crypto.random_token(16))
     |> validate_format(:secret_nonce, ~r/^[^\.]{0,128}$/)
     |> validate_required(:secret_fragment)
-    |> Domain.Changeset.put_hash(:secret_fragment, :sha3_256,
+    |> put_hash(:secret_fragment, :sha3_256,
       with_nonce: :secret_nonce,
       with_salt: :secret_salt,
       to: :secret_hash
     )
     |> delete_change(:secret_nonce)
-    |> Domain.Changeset.validate_datetime(:expires_at, greater_than: DateTime.utc_now())
+    |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
     |> validate_required(~w[secret_salt secret_hash]a)
     |> validate_required_assocs()
   end
@@ -148,7 +149,11 @@ defmodule Domain.Auth do
          {:ok, token} <- DB.update_token(changeset) do
       {:ok, token}
     else
-      _ -> {:error, :invalid_or_expired_token}
+      error ->
+        trace = Process.info(self(), :current_stacktrace)
+        Logger.info("Token use failed", stacktrace: trace, error: error)
+
+        {:error, :invalid_token}
     end
   end
 
@@ -172,8 +177,6 @@ defmodule Domain.Auth do
          {:ok, {account_id, id, fragment}} <-
            Plug.Crypto.verify(key_base, salt, encoded_fragment, max_age: :infinity) do
       {:ok, {nonce, account_id, id, fragment}}
-    else
-      _ -> {:error, :invalid_token}
     end
   end
 
@@ -221,11 +224,11 @@ defmodule Domain.Auth do
          {:ok, subject} <- build_subject(token, context) do
       {:ok, subject}
     else
-      {:error, :invalid_or_expired_token} ->
-        {:error, :unauthorized}
+      error ->
+        trace = Process.info(self(), :current_stacktrace)
+        Logger.info("Authentication failed", stacktrace: trace, error: error)
 
-      {:error, :not_found} ->
-        {:error, :unauthorized}
+        {:error, :invalid_token}
     end
   end
 
@@ -317,17 +320,42 @@ defmodule Domain.Auth do
           where(query, [tokens: tokens], tokens.account_id == ^account_id)
         end
 
-      case query |> Safe.unscoped() |> Safe.one() do
-        nil ->
-          {:error, :not_found}
+      # For email tokens, decrement remaining_attempts and expire when exhausted.
+      # This provides brute-force protection for OTP codes.
+      query =
+        if context_type == :email do
+          query
+          |> update([tokens: tokens],
+            set: [
+              remaining_attempts:
+                fragment(
+                  "CASE WHEN ? IS NOT NULL THEN ? - 1 ELSE NULL END",
+                  tokens.remaining_attempts,
+                  tokens.remaining_attempts
+                ),
+              expires_at:
+                fragment(
+                  "CASE WHEN ? IS NOT NULL AND ? - 1 <= 0 THEN COALESCE(?, NOW()) ELSE ? END",
+                  tokens.remaining_attempts,
+                  tokens.remaining_attempts,
+                  tokens.expires_at,
+                  tokens.expires_at
+                )
+            ]
+          )
+          |> select([tokens: tokens], tokens)
+        else
+          query
+          |> update([tokens: tokens], set: [last_seen_at: ^DateTime.utc_now()])
+          |> select([tokens: tokens], tokens)
+        end
 
-        token ->
-          # Update last_seen_at
-          from(t in Token, where: t.id == ^token.id)
-          |> Safe.unscoped()
-          |> Safe.update_all(set: [last_seen_at: DateTime.utc_now()])
-
-          {:ok, token}
+      query
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+      |> case do
+        {1, [token]} -> {:ok, token}
+        {0, []} -> {:error, :not_found}
       end
     end
   end
