@@ -51,7 +51,6 @@
 		the button below.
 	</string>
 	<string name="request_permission">Request Permission</string>
-	<string name="signing_in_requires_chrome_browser">Signing in requires Chrome browser</string>
 
 	<!-- Managed Configuration -->
 	<string name="config_token_title">Token</string>
