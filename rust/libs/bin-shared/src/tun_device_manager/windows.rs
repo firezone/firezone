@@ -466,7 +466,7 @@ fn start_recv_thread(
                         break;
                     }
                     Err(e) => {
-                        tracing::error!("wintun::Session::receive_blocking: {e:#?}");
+                        tracing::error!("wintun::Session::receive_blocking: {e}");
                         break;
                     }
                 };
