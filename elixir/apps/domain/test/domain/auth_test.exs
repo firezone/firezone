@@ -735,7 +735,7 @@ defmodule Domain.AuthTest do
         account_id: account.id,
         actor_id: actor.id,
         secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        expires_at: DateTime.add(DateTime.utc_now(), 15, :minute),
+        expires_at: DateTime.add(DateTime.utc_now(), 15, :minute)
       }
 
       assert {:ok, token} = create_token(attrs)
@@ -750,7 +750,7 @@ defmodule Domain.AuthTest do
         type: :email,
         account_id: account.id,
         actor_id: actor.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
+        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32)
       }
 
       assert {:error, changeset} = create_token(attrs)
@@ -764,7 +764,7 @@ defmodule Domain.AuthTest do
         type: :email,
         account_id: account.id,
         secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        expires_at: DateTime.add(DateTime.utc_now(), 15, :minute),
+        expires_at: DateTime.add(DateTime.utc_now(), 15, :minute)
       }
 
       assert {:error, changeset} = create_token(attrs)
