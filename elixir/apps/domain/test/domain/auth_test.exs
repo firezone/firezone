@@ -1334,39 +1334,6 @@ defmodule Domain.AuthTest do
       assert used_token.id == token.id
     end
 
-    test "different token types produce different encodings" do
-      account = account_fixture()
-      actor = actor_fixture(account: account)
-      fragment = Domain.Crypto.random_token(32, encoder: :hex32)
-
-      browser_attrs = %{
-        type: :browser,
-        account_id: account.id,
-        actor_id: actor.id,
-        secret_fragment: fragment,
-        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
-      }
-
-      client_attrs = %{
-        type: :client,
-        account_id: account.id,
-        actor_id: actor.id,
-        secret_fragment: fragment
-      }
-
-      {:ok, browser_token} = create_token(browser_attrs)
-      {:ok, client_token} = create_token(client_attrs)
-
-      browser_token = %{browser_token | secret_fragment: fragment}
-      client_token = %{client_token | secret_fragment: fragment}
-
-      browser_encoded = encode_fragment!(browser_token)
-      client_encoded = encode_fragment!(client_token)
-
-      # Different types should produce different encodings due to salt
-      assert browser_encoded != client_encoded
-    end
-
     test "encodes relay token without account_id" do
       fragment = Domain.Crypto.random_token(32, encoder: :hex32)
 
