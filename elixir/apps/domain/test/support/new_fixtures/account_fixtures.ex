@@ -10,7 +10,7 @@ defmodule Domain.AccountFixtures do
   Generate valid account attributes with sensible defaults.
   """
   def valid_account_attrs(attrs \\ %{}) do
-    unique_num = System.unique_integer([:positive, :monotonic])
+    unique_num = System.unique_integer([:positive])
 
     Enum.into(attrs, %{
       name: "Account #{unique_num}",

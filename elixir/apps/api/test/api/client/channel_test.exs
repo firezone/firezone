@@ -2114,7 +2114,6 @@ defmodule API.Client.ChannelTest do
       account: account,
       membership: membership,
       internet_resource_policy: policy,
-      internet_site_token: site_token,
       internet_gateway: gateway,
       internet_resource: resource,
       client: client,
@@ -2277,7 +2276,6 @@ defmodule API.Client.ChannelTest do
       dns_resource_policy: policy,
       membership: membership,
       gateway: gateway,
-      site_token: site_token,
       global_relay: global_relay,
       global_relay_token: global_relay_token,
       group: group
@@ -3088,7 +3086,6 @@ defmodule API.Client.ChannelTest do
       dns_resource_policy: policy,
       membership: membership,
       gateway: gateway,
-      site_token: site_token,
       group: group
     } do
       actor = actor_fixture(type: :service_account, account: account)
@@ -3302,7 +3299,6 @@ defmodule API.Client.ChannelTest do
     test "broadcasts request_connection to the gateways and then returns connect message", %{
       account: account,
       dns_resource: resource,
-      site_token: site_token,
       gateway: gateway,
       client: client,
       subject: subject
@@ -3361,7 +3357,6 @@ defmodule API.Client.ChannelTest do
     test "works with service accounts", %{
       account: account,
       dns_resource: resource,
-      site_token: site_token,
       gateway: gateway,
       group: group
     } do
@@ -3420,7 +3415,6 @@ defmodule API.Client.ChannelTest do
     test "broadcasts :ice_candidates message to all gateways", %{
       account: account,
       client: client,
-      site_token: site_token,
       gateway: gateway,
       subject: subject
     } do
@@ -3468,7 +3462,6 @@ defmodule API.Client.ChannelTest do
     test "broadcasts :invalidate_ice_candidates message to all gateways", %{
       account: account,
       client: client,
-      site_token: site_token,
       gateway: gateway,
       subject: subject
     } do

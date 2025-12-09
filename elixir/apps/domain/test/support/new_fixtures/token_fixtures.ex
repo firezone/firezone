@@ -8,20 +8,32 @@ defmodule Domain.TokenFixtures do
   import Domain.SiteFixtures
 
   @doc """
+  Generate valid token attributes with sensible defaults.
+  """
+  def valid_token_attrs(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    secret_nonce = Map.get(attrs, :secret_nonce, "")
+    secret_fragment = Map.get(attrs, :secret_fragment, generate_secret_fragment())
+    secret_salt = generate_salt()
+
+    Enum.into(attrs, %{
+      type: :browser,
+      name: "Token #{System.unique_integer([:positive])}",
+      secret_nonce: secret_nonce,
+      secret_fragment: secret_fragment,
+      secret_salt: secret_salt,
+      secret_hash: compute_secret_hash(secret_nonce, secret_fragment, secret_salt),
+      remaining_attempts: 0,
+      expires_at: DateTime.add(DateTime.utc_now(), 30, :day)
+    })
+  end
+
+  @doc """
   Generate a token with valid default attributes.
 
   Returns the token with `secret_fragment` populated as a virtual field.
-  Use `encode_token/1` or `encode_token/2` to get the encoded string.
-
-  ## Options
-
-    * `:type` - Token type (default: `:browser`)
-    * `:account` - Account to associate with the token
-    * `:actor` - Actor for browser/client/api_client tokens
-    * `:site` - Site for site tokens
-    * `:secret_fragment` - Custom secret fragment (generated if not provided)
-    * `:nonce` - Nonce for hash computation (default: "")
-    * `:expires_at` - Token expiration time
+  Use `encode_token/1` to get the encoded string.
 
   ## Examples
 
@@ -31,41 +43,19 @@ defmodule Domain.TokenFixtures do
 
   """
   def token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-
-    type = Map.get(attrs, :type, :browser)
-    name = Map.get(attrs, :name, "Token #{System.unique_integer([:positive])}")
-    remaining_attempts = Map.get(attrs, :remaining_attempts, 0)
-    nonce = Map.get(attrs, :nonce, "")
-    expires_at = Map.get(attrs, :expires_at, DateTime.add(DateTime.utc_now(), 30, :day))
-    secret_fragment = Map.get(attrs, :secret_fragment, generate_secret_fragment())
-    secret_salt = generate_salt()
-    secret_hash = compute_secret_hash(nonce, secret_fragment, secret_salt)
-
-    token_attrs = %{
-      type: type,
-      name: name,
-      secret_nonce: nonce,
-      secret_salt: secret_salt,
-      secret_hash: secret_hash,
-      remaining_attempts: remaining_attempts,
-      expires_at: expires_at
-    }
+    attrs = valid_token_attrs(attrs)
+    type = attrs.type
 
     # Get or create account (relay tokens don't have accounts)
-    account =
-      if type == :relay do
-        nil
-      else
-        Map.get(attrs, :account) || account_fixture()
-      end
+    account = if type == :relay, do: nil, else: Map.get(attrs, :account) || account_fixture()
 
     changeset =
       %Domain.Token{}
-      |> Ecto.Changeset.cast(token_attrs, [
+      |> Ecto.Changeset.cast(attrs, [
         :type,
         :name,
         :secret_nonce,
+        :secret_fragment,
         :secret_salt,
         :secret_hash,
         :remaining_attempts,
@@ -108,10 +98,7 @@ defmodule Domain.TokenFixtures do
         changeset
       end
 
-    token = Domain.Repo.insert!(changeset)
-
-    # Set the virtual field so encode_token can use it
-    %{token | secret_fragment: secret_fragment, secret_nonce: nonce}
+    Domain.Repo.insert!(changeset)
   end
 
   @doc """

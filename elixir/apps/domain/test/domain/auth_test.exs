@@ -290,7 +290,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when nonce is invalid" do
-      encoded = encode_token(browser_token_fixture(nonce: "correct"))
+      encoded = encode_token(browser_token_fixture(secret_nonce: "correct"))
       context = build_context(type: :browser)
 
       # Replace correct nonce with wrong one
@@ -299,7 +299,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when nonce is empty but expected non-empty" do
-      encoded = encode_token(browser_token_fixture(nonce: "nonempty"))
+      encoded = encode_token(browser_token_fixture(secret_nonce: "nonempty"))
       context = build_context(type: :browser)
 
       # Remove the nonce entirely
@@ -1170,7 +1170,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when fragment is wrong" do
-      encoded = encode_token(browser_token_fixture(nonce: "test"))
+      encoded = encode_token(browser_token_fixture(secret_nonce: "test"))
       context = build_context(type: :browser)
 
       # Corrupt the fragment

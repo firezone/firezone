@@ -289,11 +289,7 @@ defmodule API.SiteControllerTest do
     } do
       site = site_fixture(account: account)
 
-      tokens =
-        for _ <- 1..3 do
-          token = site_token_fixture(account: account, site: site)
-          token
-        end
+      tokens = for _ <- 1..3, do: site_token_fixture(account: account, site: site)
 
       conn =
         conn
