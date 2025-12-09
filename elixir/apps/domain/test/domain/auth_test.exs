@@ -736,12 +736,10 @@ defmodule Domain.AuthTest do
         actor_id: actor.id,
         secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
         expires_at: DateTime.add(DateTime.utc_now(), 15, :minute),
-        remaining_attempts: 3
       }
 
       assert {:ok, token} = create_token(attrs)
       assert token.type == :email
-      assert token.remaining_attempts == 3
     end
 
     test "fails to create email token without expires_at" do
@@ -753,27 +751,10 @@ defmodule Domain.AuthTest do
         account_id: account.id,
         actor_id: actor.id,
         secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        remaining_attempts: 3
       }
 
       assert {:error, changeset} = create_token(attrs)
       assert "can't be blank" in errors_on(changeset).expires_at
-    end
-
-    test "fails to create email token without remaining_attempts" do
-      account = account_fixture()
-      actor = actor_fixture(account: account)
-
-      attrs = %{
-        type: :email,
-        account_id: account.id,
-        actor_id: actor.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        expires_at: DateTime.add(DateTime.utc_now(), 15, :minute)
-      }
-
-      assert {:error, changeset} = create_token(attrs)
-      assert "can't be blank" in errors_on(changeset).remaining_attempts
     end
 
     test "fails to create email token without actor_id" do
@@ -784,7 +765,6 @@ defmodule Domain.AuthTest do
         account_id: account.id,
         secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
         expires_at: DateTime.add(DateTime.utc_now(), 15, :minute),
-        remaining_attempts: 3
       }
 
       assert {:error, changeset} = create_token(attrs)
@@ -1182,106 +1162,6 @@ defmodule Domain.AuthTest do
       corrupted = nonce <> ".corrupted_fragment"
 
       assert {:error, :invalid_token} = use_token(corrupted, context)
-    end
-
-    test "decrements remaining_attempts for email tokens on use" do
-      token = email_token_fixture(remaining_attempts: 3)
-      encoded = encode_token(token)
-      context = build_context(type: :email)
-
-      assert {:ok, used_token} = use_token(encoded, context)
-      assert used_token.remaining_attempts == 2
-
-      # Verify in database
-      db_token = Repo.get_by(Token, id: token.id)
-      assert db_token.remaining_attempts == 2
-    end
-
-    test "decrements remaining_attempts for email tokens even on invalid secret" do
-      token = email_token_fixture(remaining_attempts: 3)
-      context = build_context(type: :email)
-
-      # Encode with wrong secret_fragment - this creates a valid signed token
-      # that will decode successfully, but the hash verification will fail
-      encoded_with_wrong_secret = encode_token(%{token | secret_fragment: "wrong_secret"})
-
-      assert {:error, :invalid_token} = use_token(encoded_with_wrong_secret, context)
-
-      # Verify attempts were decremented despite invalid secret
-      db_token = Repo.get_by(Token, id: token.id)
-      assert db_token.remaining_attempts == 2
-    end
-
-    test "expires email token when remaining_attempts reaches zero" do
-      token = email_token_fixture(remaining_attempts: 1, expires_at: nil)
-      context = build_context(type: :email)
-
-      # Encode with wrong secret_fragment
-      encoded_with_wrong_secret = encode_token(%{token | secret_fragment: "wrong_secret"})
-
-      assert {:error, :invalid_token} = use_token(encoded_with_wrong_secret, context)
-
-      # Verify token is now expired
-      db_token = Repo.get_by(Token, id: token.id)
-      assert db_token.remaining_attempts == 0
-      assert db_token.expires_at != nil
-      assert DateTime.compare(db_token.expires_at, DateTime.utc_now()) in [:lt, :eq]
-    end
-
-    test "email token becomes invalid after exhausting all attempts" do
-      token = email_token_fixture(remaining_attempts: 2, expires_at: nil)
-      context = build_context(type: :email)
-
-      # Encode with wrong secret - this will decode but fail hash verification
-      encoded_with_wrong_secret = encode_token(%{token | secret_fragment: "wrong"})
-
-      # First failed attempt
-      assert {:error, :invalid_token} = use_token(encoded_with_wrong_secret, context)
-
-      db_token = Repo.get_by(Token, id: token.id)
-      assert db_token.remaining_attempts == 1
-      assert db_token.expires_at == nil
-
-      # Second failed attempt - should expire the token
-      assert {:error, :invalid_token} = use_token(encoded_with_wrong_secret, context)
-
-      db_token = Repo.get_by(Token, id: token.id)
-      assert db_token.remaining_attempts == 0
-      assert db_token.expires_at != nil
-
-      # Third attempt - token should now be expired and not found
-      correct_encoded = encode_token(token)
-      assert {:error, :invalid_token} = use_token(correct_encoded, context)
-    end
-
-    test "does not decrement remaining_attempts for non-email tokens" do
-      token = browser_token_fixture()
-      encoded = encode_token(token)
-      context = build_context(type: :browser)
-
-      assert {:ok, _} = use_token(encoded, context)
-      assert {:ok, _} = use_token(encoded, context)
-
-      # Browser tokens don't have remaining_attempts tracking
-      db_token = Repo.get_by(Token, id: token.id)
-      assert is_nil(db_token.remaining_attempts)
-    end
-
-    test "returns error for expired email token even with remaining attempts" do
-      token =
-        email_token_fixture(
-          remaining_attempts: 3,
-          expires_at: DateTime.add(DateTime.utc_now(), -1, :hour)
-        )
-
-      encoded = encode_token(token)
-      context = build_context(type: :email)
-
-      assert {:error, :invalid_token} = use_token(encoded, context)
-
-      # Verify remaining_attempts was NOT decremented (token was already expired)
-      db_token = Repo.get_by(Token, id: token.id)
-      assert db_token.remaining_attempts == 3
     end
   end
 

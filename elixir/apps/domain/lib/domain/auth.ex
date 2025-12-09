@@ -79,7 +79,7 @@ defmodule Domain.Auth do
       token
       |> cast(
         attrs,
-        ~w[name account_id actor_id site_id auth_provider_id secret_fragment secret_nonce remaining_attempts expires_at type]a
+        ~w[name account_id actor_id site_id auth_provider_id secret_fragment secret_nonce expires_at type]a
       )
       |> validate_required(~w[type]a)
 
@@ -132,7 +132,6 @@ defmodule Domain.Auth do
         changeset
         |> validate_required(:actor_id)
         |> validate_required(:expires_at)
-        |> validate_required(:remaining_attempts)
 
       _ ->
         changeset
@@ -320,37 +319,9 @@ defmodule Domain.Auth do
           where(query, [tokens: tokens], tokens.account_id == ^account_id)
         end
 
-      # For email tokens, decrement remaining_attempts and expire when exhausted.
-      # This provides brute-force protection for OTP codes.
-      query =
-        if context_type == :email do
-          query
-          |> update([tokens: tokens],
-            set: [
-              remaining_attempts:
-                fragment(
-                  "CASE WHEN ? IS NOT NULL THEN ? - 1 ELSE NULL END",
-                  tokens.remaining_attempts,
-                  tokens.remaining_attempts
-                ),
-              expires_at:
-                fragment(
-                  "CASE WHEN ? IS NOT NULL AND ? - 1 <= 0 THEN COALESCE(?, NOW()) ELSE ? END",
-                  tokens.remaining_attempts,
-                  tokens.remaining_attempts,
-                  tokens.expires_at,
-                  tokens.expires_at
-                )
-            ]
-          )
-          |> select([tokens: tokens], tokens)
-        else
-          query
-          |> update([tokens: tokens], set: [last_seen_at: ^DateTime.utc_now()])
-          |> select([tokens: tokens], tokens)
-        end
-
       query
+      |> update([tokens: tokens], set: [last_seen_at: ^DateTime.utc_now()])
+      |> select([tokens: tokens], tokens)
       |> Safe.unscoped()
       |> Safe.update_all([])
       |> case do

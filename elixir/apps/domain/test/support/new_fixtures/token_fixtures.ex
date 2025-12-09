@@ -57,7 +57,6 @@ defmodule Domain.TokenFixtures do
         :secret_fragment,
         :secret_salt,
         :secret_hash,
-        :remaining_attempts,
         :last_seen_user_agent,
         :last_seen_remote_ip,
         :last_seen_remote_ip_location_region,
@@ -150,7 +149,6 @@ defmodule Domain.TokenFixtures do
     attrs
     |> Enum.into(%{})
     |> Map.put(:type, :email)
-    |> Map.put_new(:remaining_attempts, 3)
     |> token_fixture()
   end
 
