@@ -11,22 +11,21 @@ defmodule Domain.TokenFixtures do
   Generate valid token attributes with sensible defaults.
   """
   def valid_token_attrs(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
+    attrs =
+      Enum.into(attrs, %{
+        type: :browser,
+        name: "Token #{System.unique_integer([:positive, :monotonic])}",
+        secret_nonce: "",
+        secret_fragment: generate_secret_fragment(),
+        secret_salt: generate_salt(),
+        expires_at: DateTime.add(DateTime.utc_now(), 30, :day)
+      })
 
-    secret_nonce = Map.get(attrs, :secret_nonce, "")
-    secret_fragment = Map.get(attrs, :secret_fragment, generate_secret_fragment())
-    secret_salt = generate_salt()
-
-    Enum.into(attrs, %{
-      type: :browser,
-      name: "Token #{System.unique_integer([:positive])}",
-      secret_nonce: secret_nonce,
-      secret_fragment: secret_fragment,
-      secret_salt: secret_salt,
-      secret_hash: compute_secret_hash(secret_nonce, secret_fragment, secret_salt),
-      remaining_attempts: 0,
-      expires_at: DateTime.add(DateTime.utc_now(), 30, :day)
-    })
+    attrs
+    |> Map.put_new(
+      :secret_hash,
+      compute_secret_hash(attrs.secret_nonce, attrs.secret_fragment, attrs.secret_salt)
+    )
   end
 
   @doc """
@@ -148,7 +147,11 @@ defmodule Domain.TokenFixtures do
   Generate an email token.
   """
   def email_token_fixture(attrs \\ %{}) do
-    attrs |> Enum.into(%{}) |> Map.put(:type, :email) |> token_fixture()
+    attrs
+    |> Enum.into(%{})
+    |> Map.put(:type, :email)
+    |> Map.put_new(:remaining_attempts, 3)
+    |> token_fixture()
   end
 
   @doc """

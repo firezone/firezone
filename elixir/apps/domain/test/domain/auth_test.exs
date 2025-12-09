@@ -5,6 +5,7 @@ defmodule Domain.AuthTest do
   import Domain.SubjectFixtures
   import Domain.AccountFixtures
   import Domain.ActorFixtures
+  import Domain.AuthProviderFixtures
   alias Domain.Token
 
   describe "create_service_account_token/3" do
@@ -238,24 +239,24 @@ defmodule Domain.AuthTest do
     test "returns error when token is invalid" do
       context = build_context(type: :browser)
 
-      assert authenticate("invalid.token", context) == {:error, :unauthorized}
-      assert authenticate("foo", context) == {:error, :unauthorized}
-      assert authenticate(".invalid", context) == {:error, :unauthorized}
+      assert authenticate("invalid.token", context) == {:error, :invalid_token}
+      assert authenticate("foo", context) == {:error, :invalid_token}
+      assert authenticate(".invalid", context) == {:error, :invalid_token}
     end
 
     test "returns error for empty token" do
       context = build_context(type: :browser)
-      assert authenticate("", context) == {:error, :unauthorized}
+      assert authenticate("", context) == {:error, :invalid_token}
     end
 
     test "returns error for token with only nonce" do
       context = build_context(type: :browser)
-      assert authenticate("justnonce.", context) == {:error, :unauthorized}
+      assert authenticate("justnonce.", context) == {:error, :invalid_token}
     end
 
     test "returns error for token with only fragment" do
       context = build_context(type: :browser)
-      assert authenticate(".justfragment", context) == {:error, :unauthorized}
+      assert authenticate(".justfragment", context) == {:error, :invalid_token}
     end
 
     test "returns error when token is issued for a different context type" do
@@ -266,27 +267,27 @@ defmodule Domain.AuthTest do
       client_context = build_context(type: :client)
 
       # Browser token used with client context
-      assert authenticate(browser_encoded, client_context) == {:error, :unauthorized}
+      assert authenticate(browser_encoded, client_context) == {:error, :invalid_token}
       # Client token used with browser context
-      assert authenticate(client_encoded, browser_context) == {:error, :unauthorized}
+      assert authenticate(client_encoded, browser_context) == {:error, :invalid_token}
     end
 
     test "returns error when browser token used with api_client context" do
       encoded = encode_token(browser_token_fixture())
       context = build_context(type: :api_client)
-      assert authenticate(encoded, context) == {:error, :unauthorized}
+      assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when client token used with api_client context" do
       encoded = encode_token(client_token_fixture())
       context = build_context(type: :api_client)
-      assert authenticate(encoded, context) == {:error, :unauthorized}
+      assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when api_client token used with browser context" do
       encoded = encode_token(api_client_token_fixture())
       context = build_context(type: :browser)
-      assert authenticate(encoded, context) == {:error, :unauthorized}
+      assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when nonce is invalid" do
@@ -295,7 +296,7 @@ defmodule Domain.AuthTest do
 
       # Replace correct nonce with wrong one
       wrong_nonce_token = "wrong" <> String.slice(encoded, 7..-1//1)
-      assert authenticate(wrong_nonce_token, context) == {:error, :unauthorized}
+      assert authenticate(wrong_nonce_token, context) == {:error, :invalid_token}
     end
 
     test "returns error when nonce is empty but expected non-empty" do
@@ -305,7 +306,7 @@ defmodule Domain.AuthTest do
       # Remove the nonce entirely
       [_nonce, fragment] = String.split(encoded, ".", parts: 2)
       empty_nonce_token = "." <> fragment
-      assert authenticate(empty_nonce_token, context) == {:error, :unauthorized}
+      assert authenticate(empty_nonce_token, context) == {:error, :invalid_token}
     end
 
     test "returns subject for browser token" do
@@ -429,7 +430,7 @@ defmodule Domain.AuthTest do
       Domain.Repo.delete!(actor)
 
       context = build_context(type: :browser)
-      assert authenticate(encoded, context) == {:error, :unauthorized}
+      assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when actor is disabled" do
@@ -442,7 +443,7 @@ defmodule Domain.AuthTest do
       |> Domain.Repo.update!()
 
       context = build_context(type: :browser)
-      assert authenticate(encoded, context) == {:error, :unauthorized}
+      assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when token is expired" do
@@ -454,7 +455,7 @@ defmodule Domain.AuthTest do
 
       encoded = encode_token(token)
       context = build_context(type: :browser)
-      assert authenticate(encoded, context) == {:error, :unauthorized}
+      assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when token expired just now" do
@@ -466,7 +467,7 @@ defmodule Domain.AuthTest do
 
       encoded = encode_token(token)
       context = build_context(type: :browser)
-      assert authenticate(encoded, context) == {:error, :unauthorized}
+      assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "succeeds when token expires in the future" do
@@ -488,7 +489,7 @@ defmodule Domain.AuthTest do
       Repo.delete!(token)
 
       context = build_context(type: :browser)
-      assert authenticate(encoded, context) == {:error, :unauthorized}
+      assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when fragment is tampered with" do
@@ -498,7 +499,7 @@ defmodule Domain.AuthTest do
       # Tamper with the fragment part
       [nonce, fragment] = String.split(encoded, ".", parts: 2)
       tampered = nonce <> "." <> fragment <> "tampered"
-      assert authenticate(tampered, context) == {:error, :unauthorized}
+      assert authenticate(tampered, context) == {:error, :invalid_token}
     end
 
     test "handles IPv6 addresses in context" do
@@ -533,13 +534,16 @@ defmodule Domain.AuthTest do
     end
 
     test "subject contains auth_provider_id when present on token" do
-      token = browser_token_fixture()
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
+
+      token = client_token_fixture(account: account, actor: actor, auth_provider: auth_provider)
       encoded = encode_token(token)
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
 
       assert {:ok, subject} = authenticate(encoded, context)
-      # auth_provider_id is passed through from token to subject (nil if not set)
-      assert subject.auth_provider_id == token.auth_provider_id
+      assert subject.auth_provider_id == auth_provider.id
     end
   end
 
@@ -1032,24 +1036,24 @@ defmodule Domain.AuthTest do
     test "returns error for invalid token" do
       context = build_context(type: :browser)
 
-      assert {:error, :invalid_or_expired_token} = use_token("invalid.token", context)
+      assert {:error, :invalid_token} = use_token("invalid.token", context)
     end
 
     test "returns error for empty string" do
       context = build_context(type: :browser)
-      assert {:error, :invalid_or_expired_token} = use_token("", context)
+      assert {:error, :invalid_token} = use_token("", context)
     end
 
     test "returns error for token without separator" do
       context = build_context(type: :browser)
-      assert {:error, :invalid_or_expired_token} = use_token("notokenhere", context)
+      assert {:error, :invalid_token} = use_token("notokenhere", context)
     end
 
     test "returns error when token type doesn't match context" do
       encoded = encode_token(browser_token_fixture())
       context = build_context(type: :client)
 
-      assert {:error, :invalid_or_expired_token} = use_token(encoded, context)
+      assert {:error, :invalid_token} = use_token(encoded, context)
     end
 
     test "returns error for expired token" do
@@ -1062,7 +1066,7 @@ defmodule Domain.AuthTest do
       encoded = encode_token(token)
       context = build_context(type: :browser)
 
-      assert {:error, :invalid_or_expired_token} = use_token(encoded, context)
+      assert {:error, :invalid_token} = use_token(encoded, context)
     end
 
     test "returns error when token deleted from database" do
@@ -1071,7 +1075,7 @@ defmodule Domain.AuthTest do
       Repo.delete!(token)
 
       context = build_context(type: :browser)
-      assert {:error, :invalid_or_expired_token} = use_token(encoded, context)
+      assert {:error, :invalid_token} = use_token(encoded, context)
     end
 
     test "updates last_seen fields on token" do
@@ -1177,7 +1181,107 @@ defmodule Domain.AuthTest do
       [nonce, _fragment] = String.split(encoded, ".", parts: 2)
       corrupted = nonce <> ".corrupted_fragment"
 
-      assert {:error, :invalid_or_expired_token} = use_token(corrupted, context)
+      assert {:error, :invalid_token} = use_token(corrupted, context)
+    end
+
+    test "decrements remaining_attempts for email tokens on use" do
+      token = email_token_fixture(remaining_attempts: 3)
+      encoded = encode_token(token)
+      context = build_context(type: :email)
+
+      assert {:ok, used_token} = use_token(encoded, context)
+      assert used_token.remaining_attempts == 2
+
+      # Verify in database
+      db_token = Repo.get_by(Token, id: token.id)
+      assert db_token.remaining_attempts == 2
+    end
+
+    test "decrements remaining_attempts for email tokens even on invalid secret" do
+      token = email_token_fixture(remaining_attempts: 3)
+      context = build_context(type: :email)
+
+      # Encode with wrong secret_fragment - this creates a valid signed token
+      # that will decode successfully, but the hash verification will fail
+      encoded_with_wrong_secret = encode_token(%{token | secret_fragment: "wrong_secret"})
+
+      assert {:error, :invalid_token} = use_token(encoded_with_wrong_secret, context)
+
+      # Verify attempts were decremented despite invalid secret
+      db_token = Repo.get_by(Token, id: token.id)
+      assert db_token.remaining_attempts == 2
+    end
+
+    test "expires email token when remaining_attempts reaches zero" do
+      token = email_token_fixture(remaining_attempts: 1, expires_at: nil)
+      context = build_context(type: :email)
+
+      # Encode with wrong secret_fragment
+      encoded_with_wrong_secret = encode_token(%{token | secret_fragment: "wrong_secret"})
+
+      assert {:error, :invalid_token} = use_token(encoded_with_wrong_secret, context)
+
+      # Verify token is now expired
+      db_token = Repo.get_by(Token, id: token.id)
+      assert db_token.remaining_attempts == 0
+      assert db_token.expires_at != nil
+      assert DateTime.compare(db_token.expires_at, DateTime.utc_now()) in [:lt, :eq]
+    end
+
+    test "email token becomes invalid after exhausting all attempts" do
+      token = email_token_fixture(remaining_attempts: 2, expires_at: nil)
+      context = build_context(type: :email)
+
+      # Encode with wrong secret - this will decode but fail hash verification
+      encoded_with_wrong_secret = encode_token(%{token | secret_fragment: "wrong"})
+
+      # First failed attempt
+      assert {:error, :invalid_token} = use_token(encoded_with_wrong_secret, context)
+
+      db_token = Repo.get_by(Token, id: token.id)
+      assert db_token.remaining_attempts == 1
+      assert db_token.expires_at == nil
+
+      # Second failed attempt - should expire the token
+      assert {:error, :invalid_token} = use_token(encoded_with_wrong_secret, context)
+
+      db_token = Repo.get_by(Token, id: token.id)
+      assert db_token.remaining_attempts == 0
+      assert db_token.expires_at != nil
+
+      # Third attempt - token should now be expired and not found
+      correct_encoded = encode_token(token)
+      assert {:error, :invalid_token} = use_token(correct_encoded, context)
+    end
+
+    test "does not decrement remaining_attempts for non-email tokens" do
+      token = browser_token_fixture()
+      encoded = encode_token(token)
+      context = build_context(type: :browser)
+
+      assert {:ok, _} = use_token(encoded, context)
+      assert {:ok, _} = use_token(encoded, context)
+
+      # Browser tokens don't have remaining_attempts tracking
+      db_token = Repo.get_by(Token, id: token.id)
+      assert is_nil(db_token.remaining_attempts)
+    end
+
+    test "returns error for expired email token even with remaining attempts" do
+      token =
+        email_token_fixture(
+          remaining_attempts: 3,
+          expires_at: DateTime.add(DateTime.utc_now(), -1, :hour)
+        )
+
+      encoded = encode_token(token)
+      context = build_context(type: :email)
+
+      assert {:error, :invalid_token} = use_token(encoded, context)
+
+      # Verify remaining_attempts was NOT decremented (token was already expired)
+      db_token = Repo.get_by(Token, id: token.id)
+      assert db_token.remaining_attempts == 3
     end
   end
 
@@ -1416,12 +1520,15 @@ defmodule Domain.AuthTest do
     end
 
     test "subject contains auth_provider_id from token" do
-      token = browser_token_fixture()
-      context = build_context(type: :browser)
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
+
+      token = client_token_fixture(account: account, actor: actor, auth_provider: auth_provider)
+      context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
-      # auth_provider_id passes through from token (nil if not set)
-      assert subject.auth_provider_id == token.auth_provider_id
+      assert subject.auth_provider_id == auth_provider.id
     end
 
     test "subject context matches provided context" do

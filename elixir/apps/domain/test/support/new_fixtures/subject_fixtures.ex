@@ -59,8 +59,7 @@ defmodule Domain.SubjectFixtures do
             actor: actor
           })
 
-        token = token_fixture(token_attrs)
-        token
+        token_fixture(token_attrs)
       end)
 
     %Subject{
