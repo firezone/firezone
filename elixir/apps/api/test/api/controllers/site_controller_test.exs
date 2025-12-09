@@ -255,14 +255,14 @@ defmodule API.SiteControllerTest do
   describe "delete single gateway token" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       site = site_fixture(%{account: account})
-      {token, _encoded} = token_fixture(type: :site, account: account, site: site)
+      token = site_token_fixture(account: account, site: site)
       conn = delete(conn, "/sites/#{site.id}/tokens/#{token.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes gateway token", %{conn: conn, account: account, actor: actor} do
       site = site_fixture(%{account: account})
-      {token, _encoded} = token_fixture(type: :site, account: account, site: site)
+      token = site_token_fixture(account: account, site: site)
 
       conn =
         conn
@@ -291,7 +291,7 @@ defmodule API.SiteControllerTest do
 
       tokens =
         for _ <- 1..3 do
-          {token, _encoded} = token_fixture(type: :site, account: account, site: site)
+          token = site_token_fixture(account: account, site: site)
           token
         end
 

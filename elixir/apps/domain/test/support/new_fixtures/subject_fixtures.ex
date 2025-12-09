@@ -7,7 +7,8 @@ defmodule Domain.SubjectFixtures do
   import Domain.ActorFixtures
   import Domain.TokenFixtures
 
-  alias Domain.Auth.{Subject, Context}
+  alias Domain.Auth.Context
+  alias Domain.Auth.Subject
 
   @doc """
   Build an auth subject with sensible defaults.
@@ -58,7 +59,7 @@ defmodule Domain.SubjectFixtures do
             actor: actor
           })
 
-        {token, _encoded} = token_fixture(token_attrs)
+        token = token_fixture(token_attrs)
         token
       end)
 

@@ -1,5 +1,6 @@
 defmodule Domain.Auth do
   import Ecto.Changeset
+  import Domain.Changeset
   require Ecto.Query
   alias Domain.Token
   alias Domain.Auth.{Subject, Context}
@@ -94,13 +95,13 @@ defmodule Domain.Auth do
     |> put_change(:secret_salt, Domain.Crypto.random_token(16))
     |> validate_format(:secret_nonce, ~r/^[^\.]{0,128}$/)
     |> validate_required(:secret_fragment)
-    |> Domain.Changeset.put_hash(:secret_fragment, :sha3_256,
+    |> put_hash(:secret_fragment, :sha3_256,
       with_nonce: :secret_nonce,
       with_salt: :secret_salt,
       to: :secret_hash
     )
     |> delete_change(:secret_nonce)
-    |> Domain.Changeset.validate_datetime(:expires_at, greater_than: DateTime.utc_now())
+    |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
     |> validate_required(~w[secret_salt secret_hash]a)
     |> validate_required_assocs()
   end

@@ -111,8 +111,7 @@ defmodule Domain.PolicyAuthorizationFixtures do
     token =
       case Map.get(attrs, :token) do
         nil ->
-          {token, _encoded} = token_fixture(type: :client, account: account, actor: actor)
-          token
+          client_token_fixture(account: account, actor: actor)
 
         existing ->
           existing

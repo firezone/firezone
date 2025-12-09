@@ -6,7 +6,7 @@ defmodule API.Relay.ChannelTest do
 
   setup do
     relay = relay_fixture()
-    {token, _encoded} = token_fixture(type: :relay)
+    token = relay_token_fixture()
 
     stamp_secret = Domain.Crypto.random_token()
 
