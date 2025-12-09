@@ -65,17 +65,39 @@ fn read_latest_event(source: &str) -> Option<String> {
             "-NoProfile",
             "-Command",
             &format!(
-                "Get-WinEvent -LogName Application -FilterXPath \"*[System[Provider[@Name='{}']]]\" -MaxEvents 1 | Select-Object -ExpandProperty Message",
-                source
+                "Get-WinEvent -LogName Application -FilterXPath \"*[System[Provider[@Name='{source}']]]\" -MaxEvents 1 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Message"
             ),
         ])
         .output()
         .ok()?;
 
-    if output.status.success() {
+    if output.status.success() && !output.stdout.is_empty() {
         Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
     } else {
         None
+    }
+}
+
+/// Debug helper: lists all events from a source.
+#[allow(dead_code)]
+fn debug_list_events(source: &str) -> String {
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+                "Get-WinEvent -LogName Application -FilterXPath \"*[System[Provider[@Name='{source}']]]\" -MaxEvents 10 -ErrorAction SilentlyContinue | Select-Object TimeCreated, Message | Format-List"
+            ),
+        ])
+        .output();
+
+    match output {
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            format!("stdout: {stdout}\nstderr: {stderr}")
+        }
+        Err(e) => format!("Failed to run PowerShell: {e}"),
     }
 }
 
@@ -109,10 +131,16 @@ fn writes_event_to_event_log() {
     let event_content = read_latest_event(&source);
 
     // Verify (cleanup happens via SourceGuard on drop)
-    let content = event_content.expect("Should have read an event");
+    let content = event_content.unwrap_or_else(|| {
+        panic!(
+            "Should have read an event from source '{source}'. Debug: {}",
+            debug_list_events(&source)
+        )
+    });
     assert!(
         content.contains(&test_message) || content.contains("Integration test event"),
-        "Event should contain our message, got: {content}"
+        "Event should contain our message, got: {content}\nSource: {source}\nDebug: {}",
+        debug_list_events(&source)
     );
     assert!(
         content.contains("test_field") || content.contains("test_value"),
@@ -193,10 +221,16 @@ fn captures_span_fields() {
 
     let event_content = read_latest_event(&source);
 
-    let content = event_content.expect("Should have read an event");
+    let content = event_content.unwrap_or_else(|| {
+        panic!(
+            "Should have read an event from source '{source}'. Debug: {}",
+            debug_list_events(&source)
+        )
+    });
     assert!(
         content.contains("handling request"),
-        "Event should contain our message, got: {content}"
+        "Event should contain our message, got: {content}\nSource: {source}\nDebug: {}",
+        debug_list_events(&source)
     );
     assert!(
         content.contains("request") && content.contains("method=GET"),
