@@ -67,6 +67,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
             // Fallback to default browser if Custom Tabs unavailable
             val intent = Intent(Intent.ACTION_VIEW, url)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.addCategory(Intent.CATEGORY_BROWSABLE)
             startActivity(intent)
         }
     }
