@@ -11,8 +11,10 @@ use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 /// Unique source name for testing to avoid conflicts.
-fn test_source() -> String {
-    format!("Firezone-Test-{}", std::process::id())
+///
+/// Uses process ID and a unique suffix to ensure each test has its own source.
+fn test_source(suffix: &str) -> String {
+    format!("Firezone-Test-{}-{suffix}", std::process::id())
 }
 
 /// Guard that removes the Event Log source on drop.
@@ -80,7 +82,7 @@ fn read_latest_event(source: &str) -> Option<String> {
 #[test]
 #[ignore = "Requires Windows and may need admin privileges"]
 fn writes_event_to_event_log() {
-    let source = test_source();
+    let source = test_source("writes");
     let _cleanup = SourceGuard(source.clone());
 
     // Clean up any previous test runs
@@ -121,7 +123,7 @@ fn writes_event_to_event_log() {
 #[test]
 #[ignore = "Requires Windows and may need admin privileges"]
 fn maps_log_levels_correctly() {
-    let source = test_source();
+    let source = test_source("levels");
     let _cleanup = SourceGuard(source.clone());
 
     remove_source(&source);
@@ -170,7 +172,7 @@ fn maps_log_levels_correctly() {
 #[test]
 #[ignore = "Requires Windows and may need admin privileges"]
 fn captures_span_fields() {
-    let source = test_source();
+    let source = test_source("spans");
     let _cleanup = SourceGuard(source.clone());
 
     remove_source(&source);
