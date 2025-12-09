@@ -55,7 +55,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
 
         // Try to use Custom Tabs with the default browser first
         try {
-            launchCustomTabsIntent(url);
+            launchCustomTabsIntent(url)
             return
         } catch (e: ActivityNotFoundException) {
             Log.d(TAG, "CustomTabs don't appear to be available, falling back to ACTION_VIEW intent")
@@ -70,11 +70,11 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     }
 
     private fun launchCustomTabsIntent(uri: Uri) {
-            CustomTabsIntent
-                .Builder()
-                .setShowTitle(true)
-                .build()
-                .launchUrl(this, uri)
+        CustomTabsIntent
+            .Builder()
+            .setShowTitle(true)
+            .build()
+            .launchUrl(this, uri)
     }
 
     private fun launchActionViewIntent(uri: Uri) {
