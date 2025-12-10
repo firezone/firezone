@@ -97,6 +97,7 @@ jobs:
             rust/${{ matrix.binary }}.sha256sum.txt
 
       - name: Upload to Azure Storage
+        if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -e
