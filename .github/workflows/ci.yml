@@ -31,7 +31,7 @@ jobs:
         run: |
           set -e
 
-          jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,data-plane-perf";
+          jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,data-plane-perf,loadtest";
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
@@ -84,7 +84,7 @@ jobs:
           jobs="static-analysis" # Always run static-analysis
 
           if grep -q '^rust/' changed_files.txt; then
-            jobs="${jobs},rust,kotlin,swift,control-plane,data-plane,data-plane-perf"
+            jobs="${jobs},rust,kotlin,swift,control-plane,data-plane,data-plane-perf,loadtest"
           fi
           if grep -q '^rust/gui-client/' changed_files.txt; then
             jobs="${jobs},tauri"
@@ -209,6 +209,12 @@ jobs:
       image_prefix: "perf"
       profile: "release"
       stage: "debug" # Only the debug images have perf tooling
+
+  loadtest:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'loadtest')
+    uses: ./.github/workflows/_loadtest.yml
+    secrets: inherit
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
