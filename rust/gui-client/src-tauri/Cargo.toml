@@ -33,7 +33,7 @@ futures = { workspace = true }
 hex = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
-keyring = { workspace = true, features = ["crypto-rust", "sync-secret-service", "windows-native"] }
+keyring-core = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
 output_vt100 = { workspace = true }
@@ -73,6 +73,7 @@ uuid = { workspace = true, features = ["v4"] }
 zip = { workspace = true, features = ["deflate", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 sd-notify = { workspace = true }
@@ -83,6 +84,7 @@ tracing-journald = { workspace = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 admx-macro = { workspace = true }
 tauri-winrt-notification = "0.7.2"
+windows-native-keyring-store = { workspace = true }
 windows-service = { workspace = true }
 winreg = { workspace = true }
 
