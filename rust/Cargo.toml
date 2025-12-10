@@ -203,6 +203,7 @@ tokio-rustls = { version = "0.26.4", default-features = false }
 tokio-stream = "0.1.17"
 tokio-tungstenite = "0.28.0"
 tokio-util = "0.7.16"
+toml = "0.8"
 tracing = { version = "0.1.40" }
 tracing-appender = "0.2.3"
 tracing-core = "0.1.34"

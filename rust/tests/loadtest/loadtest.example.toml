@@ -1,0 +1,86 @@
+# Loadtest Configuration
+#
+# All sections and fields are required. Copy this file and modify as needed.
+# Only test types listed in 'types' will be executed.
+#
+# Usage:
+#   firezone-loadtest                     # Run random test from loadtest.toml
+#   firezone-loadtest --config test.toml  # Use custom config file
+#   firezone-loadtest --seed 12345        # Reproducible random test
+
+# Test types to run. Options: http, tcp, websocket, ping
+types = ["http"]
+
+# HTTP load testing via Goose framework
+[http]
+# Target URLs to test against
+addresses = [
+    "https://example.com",
+]
+# HTTP versions: 1 (HTTP/1.1) or 2 (HTTP/2)
+http_version = [1, 2]
+# Number of concurrent users (random value from range)
+users = { min = 10, max = 100, step = 10 }
+# Test duration in seconds
+run_time_secs = { min = 30, max = 120 }
+
+# TCP connection testing
+[tcp]
+# Target addresses (host:port)
+addresses = [
+    "127.0.0.1:8080",
+]
+# Number of concurrent connections
+concurrent = { min = 5, max = 50 }
+# How long to hold connections (seconds)
+duration_secs = { min = 30, max = 300, step = 30 }
+# Connection timeout (seconds)
+timeout_secs = { min = 10, max = 10 }
+# Enable echo mode for round-trip verification
+echo_mode = false
+# Payload size for echo messages (bytes)
+echo_payload_size = { min = 64, max = 64 }
+# Interval between echo messages (seconds)
+echo_interval_secs = { min = 1, max = 1 }
+# Timeout for echo responses (seconds)
+echo_read_timeout_secs = { min = 5, max = 5 }
+
+# WebSocket connection testing
+[websocket]
+# Target WebSocket URLs
+addresses = [
+    "wss://echo.websocket.org",
+]
+# Number of concurrent connections
+concurrent = { min = 5, max = 50, step = 5 }
+# How long to hold connections (seconds)
+duration_secs = { min = 30, max = 300 }
+# Connection timeout (seconds)
+timeout_secs = { min = 5, max = 30 }
+# Ping interval (seconds) - ignored if echo_mode is true
+ping_interval_secs = { min = 5, max = 15 }
+# Enable echo mode for round-trip verification
+echo_mode = false
+# Payload size for echo messages (bytes)
+echo_payload_size = { min = 64, max = 64 }
+# Interval between echo messages (seconds)
+echo_interval_secs = { min = 1, max = 1 }
+# Timeout for echo responses (seconds)
+echo_read_timeout_secs = { min = 5, max = 5 }
+
+# ICMP ping testing
+# Note: Requires elevated privileges on Linux/macOS (root or CAP_NET_RAW)
+[ping]
+# Target IP addresses (IPv4 or IPv6)
+addresses = [
+    "8.8.8.8",
+    "1.1.1.1",
+]
+# Number of pings per target (minimum 1)
+count = { min = 5, max = 20 }
+# Interval between pings (milliseconds)
+interval_ms = { min = 500, max = 2000 }
+# Ping timeout (milliseconds)
+timeout_ms = { min = 1000, max = 5000 }
+# Payload size (bytes)
+payload_size = { min = 56, max = 1024 }
