@@ -8,6 +8,7 @@ defmodule Domain.Changes.ReplicationConnection do
     "clients" => Hooks.Clients,
     "policy_authorizations" => Hooks.PolicyAuthorizations,
     "gateways" => Hooks.Gateways,
+    "gateway_tokens" => Hooks.GatewayTokens,
     "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,
     "resources" => Hooks.Resources,

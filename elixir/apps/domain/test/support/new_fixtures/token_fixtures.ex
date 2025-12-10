@@ -77,15 +77,6 @@ defmodule Domain.TokenFixtures do
         changeset
       end
 
-    # Associate with site for site tokens
-    changeset =
-      if type == :site do
-        site = Map.get(attrs, :site) || site_fixture(account: account)
-        Ecto.Changeset.put_assoc(changeset, :site, site)
-      else
-        changeset
-      end
-
     # Optionally associate with auth_provider
     changeset =
       if auth_provider = Map.get(attrs, :auth_provider) do
@@ -122,31 +113,40 @@ defmodule Domain.TokenFixtures do
   Generate a relay token using Domain.RelayToken schema.
   """
   def relay_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-
-    secret_nonce = Map.get(attrs, :secret_nonce, generate_secret_nonce())
-    secret_fragment = Map.get(attrs, :secret_fragment, generate_secret_fragment())
-    secret_salt = Map.get(attrs, :secret_salt, generate_salt())
-    secret_hash = compute_secret_hash(secret_nonce, secret_fragment, secret_salt)
-
-    %Domain.RelayToken{
-      secret_nonce: secret_nonce,
-      secret_fragment: secret_fragment,
-      secret_salt: secret_salt,
-      secret_hash: secret_hash
-    }
+    attrs
+    |> Enum.into(%{})
+    |> infrastructure_token_secrets()
+    |> then(&struct!(Domain.RelayToken, &1))
     |> Domain.Repo.insert!()
   end
 
   @doc """
-  Generate a site/gateway token. Expires at nil (infinity).
+  Generate a gateway token using Domain.GatewayToken schema.
   """
-  def site_token_fixture(attrs \\ %{}) do
+  def gateway_token_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    account = Map.get(attrs, :account) || account_fixture()
+    site = Map.get(attrs, :site) || site_fixture(account: account)
+
     attrs
-    |> Enum.into(%{})
-    |> Map.put(:type, :site)
-    |> Map.put_new(:expires_at, nil)
-    |> token_fixture()
+    |> Map.put(:account_id, account.id)
+    |> Map.put(:site_id, site.id)
+    |> infrastructure_token_secrets()
+    |> then(&struct!(Domain.GatewayToken, &1))
+    |> Domain.Repo.insert!()
+  end
+
+  defp infrastructure_token_secrets(attrs) do
+    attrs =
+      attrs
+      |> Map.put_new_lazy(:secret_nonce, &generate_secret_nonce/0)
+      |> Map.put_new_lazy(:secret_fragment, &generate_secret_fragment/0)
+      |> Map.put_new_lazy(:secret_salt, &generate_salt/0)
+
+    Map.put_new_lazy(attrs, :secret_hash, fn ->
+      compute_secret_hash(attrs.secret_nonce, attrs.secret_fragment, attrs.secret_salt)
+    end)
   end
 
   @doc """
@@ -178,15 +178,24 @@ defmodule Domain.TokenFixtures do
   Encode a relay token for use in authentication.
   """
   def encode_relay_token(token) do
+    encode_infrastructure_token(token, "relay", nil)
+  end
+
+  @doc """
+  Encode a gateway token for use in authentication.
+  """
+  def encode_gateway_token(token) do
+    encode_infrastructure_token(token, "gateway", token.account_id)
+  end
+
+  defp encode_infrastructure_token(token, type, account_id) do
     config = Domain.Config.fetch_env!(:domain, Domain.Tokens)
     key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt) <> token_type(token)
-    body = {Map.get(token, :account_id), token.id, token.secret_fragment}
+    salt = Keyword.fetch!(config, :salt) <> type
+    body = {account_id, token.id, token.secret_fragment}
 
     token.secret_nonce <> "." <> Plug.Crypto.sign(key_base, salt, body)
   end
-
-  defp token_type(%Domain.RelayToken{}), do: "relay"
 
   # Private helpers
 

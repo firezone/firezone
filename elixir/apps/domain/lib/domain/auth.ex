@@ -48,10 +48,7 @@ defmodule Domain.Auth do
   # Relay Tokens
 
   def create_relay_token do
-    secret_fragment = Domain.Crypto.random_token(32, encoder: :hex32)
-    secret_nonce = Domain.Crypto.random_token(8, encoder: :url_encode64)
-    secret_salt = Domain.Crypto.random_token(16)
-    secret_hash = Domain.Crypto.hash(:sha3_256, secret_nonce <> secret_fragment <> secret_salt)
+    {secret_fragment, secret_nonce, secret_salt, secret_hash} = generate_token_secrets()
 
     %Domain.RelayToken{
       secret_fragment: secret_fragment,
@@ -60,6 +57,30 @@ defmodule Domain.Auth do
       secret_hash: secret_hash
     }
     |> DB.insert_relay_token()
+  end
+
+  # Gateway Tokens
+
+  def create_gateway_token(%Domain.Site{} = site, %Subject{} = subject) do
+    {secret_fragment, secret_nonce, secret_salt, secret_hash} = generate_token_secrets()
+
+    %Domain.GatewayToken{
+      account_id: site.account_id,
+      site_id: site.id,
+      secret_fragment: secret_fragment,
+      secret_nonce: secret_nonce,
+      secret_salt: secret_salt,
+      secret_hash: secret_hash
+    }
+    |> DB.insert_gateway_token(subject)
+  end
+
+  defp generate_token_secrets do
+    secret_fragment = Domain.Crypto.random_token(32, encoder: :hex32)
+    secret_nonce = Domain.Crypto.random_token(8, encoder: :url_encode64)
+    secret_salt = Domain.Crypto.random_token(16)
+    secret_hash = Domain.Crypto.hash(:sha3_256, secret_nonce <> secret_fragment <> secret_salt)
+    {secret_fragment, secret_nonce, secret_salt, secret_hash}
   end
 
   # Token encoding/decoding
@@ -80,44 +101,69 @@ defmodule Domain.Auth do
   end
 
   def encode_fragment!(%Domain.RelayToken{} = token) do
-    body = {nil, token.id, token.secret_fragment}
+    encode_infrastructure_token(token, "relay", nil)
+  end
+
+  def encode_fragment!(%Domain.GatewayToken{} = token) do
+    encode_infrastructure_token(token, "gateway", token.account_id)
+  end
+
+  defp encode_infrastructure_token(token, type, account_id) do
+    body = {account_id, token.id, token.secret_fragment}
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
-    token.secret_nonce <> "." <> Plug.Crypto.sign(key_base, salt <> "relay", body)
+    token.secret_nonce <> "." <> Plug.Crypto.sign(key_base, salt <> type, body)
   end
 
   def verify_relay_token(encoded_token) when is_binary(encoded_token) do
+    verify_infrastructure_token(encoded_token, "relay", "relay_group", &DB.fetch_relay_token/1)
+  end
+
+  def verify_gateway_token(encoded_token) when is_binary(encoded_token) do
+    verify_infrastructure_token(
+      encoded_token,
+      "gateway",
+      "gateway_group",
+      &DB.fetch_gateway_token/2
+    )
+  end
+
+  defp verify_infrastructure_token(encoded_token, current_salt, legacy_salt, fetch_fn) do
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     base_salt = Keyword.fetch!(config, :salt)
 
     with [nonce, signed] <- String.split(encoded_token, ".", parts: 2),
-         {:ok, {_account_id, id, fragment}} <-
-           decode_relay_token(signed, key_base, base_salt),
-         {:ok, relay_token} <- DB.fetch_relay_token(id),
-         :ok <- verify_relay_token_hash(relay_token, nonce, fragment) do
-      {:ok, relay_token}
+         {:ok, {account_id, id, fragment}} <-
+           decode_infrastructure_token(signed, key_base, base_salt, current_salt, legacy_salt),
+         {:ok, token} <- apply_fetch(fetch_fn, account_id, id),
+         :ok <- verify_token_hash(token, nonce, fragment) do
+      {:ok, token}
     else
       _ -> {:error, :invalid_token}
     end
   end
 
-  defp decode_relay_token(signed, key_base, base_salt) do
-    # Try current salt first, then legacy relay_group salt
-    case Plug.Crypto.verify(key_base, base_salt <> "relay", signed, max_age: :infinity) do
+  defp apply_fetch(fetch_fn, _account_id, id) when is_function(fetch_fn, 1), do: fetch_fn.(id)
+
+  defp apply_fetch(fetch_fn, account_id, id) when is_function(fetch_fn, 2),
+    do: fetch_fn.(account_id, id)
+
+  defp decode_infrastructure_token(signed, key_base, base_salt, current_salt, legacy_salt) do
+    case Plug.Crypto.verify(key_base, base_salt <> current_salt, signed, max_age: :infinity) do
       {:ok, _} = result ->
         result
 
       {:error, _} ->
-        Plug.Crypto.verify(key_base, base_salt <> "relay_group", signed, max_age: :infinity)
+        Plug.Crypto.verify(key_base, base_salt <> legacy_salt, signed, max_age: :infinity)
     end
   end
 
-  defp verify_relay_token_hash(relay_token, nonce, fragment) do
-    expected_hash = Domain.Crypto.hash(:sha3_256, nonce <> fragment <> relay_token.secret_salt)
+  defp verify_token_hash(token, nonce, fragment) do
+    expected_hash = Domain.Crypto.hash(:sha3_256, nonce <> fragment <> token.secret_salt)
 
-    if Plug.Crypto.secure_compare(expected_hash, relay_token.secret_hash) do
+    if Plug.Crypto.secure_compare(expected_hash, token.secret_hash) do
       :ok
     else
       :error
@@ -136,7 +182,7 @@ defmodule Domain.Auth do
       token
       |> cast(
         attrs,
-        ~w[name account_id actor_id site_id auth_provider_id secret_fragment secret_nonce expires_at type]a
+        ~w[name account_id actor_id auth_provider_id secret_fragment secret_nonce expires_at type]a
       )
       |> validate_required(~w[type]a)
 
@@ -178,10 +224,6 @@ defmodule Domain.Auth do
         changeset
         |> validate_required(:actor_id)
 
-      {_data_or_changes, :site} ->
-        changeset
-        |> validate_required(:site_id)
-
       {_data_or_changes, :email} ->
         changeset
         |> validate_required(:actor_id)
@@ -219,15 +261,11 @@ defmodule Domain.Auth do
     key_base = Keyword.fetch!(config, :key_base)
     base_salt = Keyword.fetch!(config, :salt)
     salt = base_salt <> to_string(context.type)
-    legacy_salt = legacy_token_salt(context.type, base_salt)
 
-    with {:error, _} <- try_decode(encoded_token, key_base, salt),
-         {:error, _} <- try_decode(encoded_token, key_base, legacy_salt) do
+    with {:error, _} <- try_decode(encoded_token, key_base, salt) do
       {:error, :invalid_token}
     end
   end
-
-  defp try_decode(_encoded_token, _key_base, nil), do: {:error, :no_salt}
 
   defp try_decode(encoded_token, key_base, salt) do
     with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2),
@@ -236,10 +274,6 @@ defmodule Domain.Auth do
       {:ok, {nonce, account_id, id, fragment}}
     end
   end
-
-  # Maps new token types to their legacy equivalents for backwards compatibility
-  defp legacy_token_salt(:site, base_salt), do: base_salt <> "gateway_group"
-  defp legacy_token_salt(_type, _base_salt), do: nil
 
   defp use_token_changeset(%Token{} = token, %Context{} = context) do
     token
@@ -351,6 +385,25 @@ defmodule Domain.Auth do
       |> case do
         nil -> {:error, :not_found}
         relay_token -> {:ok, relay_token}
+      end
+    end
+
+    def insert_gateway_token(gateway_token, subject) do
+      gateway_token
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+    end
+
+    def fetch_gateway_token(account_id, id) do
+      from(gt in Domain.GatewayToken,
+        where: gt.account_id == ^account_id,
+        where: gt.id == ^id
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        gateway_token -> {:ok, gateway_token}
       end
     end
 

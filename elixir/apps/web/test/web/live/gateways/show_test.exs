@@ -100,8 +100,8 @@ defmodule Web.Live.Gateways.ShowTest do
     identity: identity,
     conn: conn
   } do
-    site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-    :ok = Domain.Presence.Gateways.connect(gateway, site_token.id)
+    gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
+    :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -149,8 +149,8 @@ defmodule Web.Live.Gateways.ShowTest do
       |> live(~p"/#{account}/gateways/#{gateway}")
 
     :ok = Domain.Presence.Gateways.Site.subscribe(gateway.site.id)
-    site_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-    :ok = Domain.Presence.Gateways.connect(gateway, site_token.id)
+    gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
+    :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
     assert_receive %{topic: "presences:sites:" <> _}
 
     table =

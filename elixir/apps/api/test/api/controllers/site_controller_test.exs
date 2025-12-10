@@ -1,12 +1,10 @@
 defmodule API.SiteControllerTest do
   use API.ConnCase, async: true
   alias Domain.Site
-  alias Domain.Token
 
   import Domain.AccountFixtures
   import Domain.ActorFixtures
   import Domain.SiteFixtures
-  import Domain.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -225,83 +223,6 @@ defmodule API.SiteControllerTest do
              }
 
       refute Repo.get_by(Site, id: site.id, account_id: site.account_id)
-    end
-  end
-
-  describe "site token create/2" do
-    test "returns error when not authorized", %{conn: conn, account: account} do
-      site = site_fixture(%{account: account})
-      conn = post(conn, "/sites/#{site.id}/tokens")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
-    end
-
-    test "creates a gateway token", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      site = site_fixture(%{account: account})
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/sites/#{site.id}/tokens")
-
-      assert %{"data" => %{"id" => _id, "token" => _token}} = json_response(conn, 201)
-    end
-  end
-
-  describe "delete single gateway token" do
-    test "returns error when not authorized", %{conn: conn, account: account} do
-      site = site_fixture(%{account: account})
-      token = site_token_fixture(account: account, site: site)
-      conn = delete(conn, "/sites/#{site.id}/tokens/#{token.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
-    end
-
-    test "deletes gateway token", %{conn: conn, account: account, actor: actor} do
-      site = site_fixture(%{account: account})
-      token = site_token_fixture(account: account, site: site)
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> delete("/sites/#{site.id}/tokens/#{token.id}")
-
-      assert %{"data" => %{"id" => _id}} = json_response(conn, 200)
-
-      refute Repo.get_by(Token, id: token.id, account_id: token.account_id)
-    end
-  end
-
-  describe "delete all gateway tokens" do
-    test "returns error when not authorized", %{conn: conn, account: account} do
-      site = site_fixture(%{account: account})
-      conn = delete(conn, "/sites/#{site.id}/tokens")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
-    end
-
-    test "deletes all gateway tokens", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      site = site_fixture(account: account)
-
-      tokens = for _ <- 1..3, do: site_token_fixture(account: account, site: site)
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> delete("/sites/#{site.id}/tokens")
-
-      assert %{"data" => %{"deleted_count" => 3}} = json_response(conn, 200)
-
-      Enum.map(tokens, fn token ->
-        refute Repo.get_by(Token, id: token.id, account_id: token.account_id)
-      end)
     end
   end
 end

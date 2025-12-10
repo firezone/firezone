@@ -665,6 +665,10 @@ defmodule Domain.Safe do
   def permit(_action, Domain.Site, :api_client), do: :ok
   def permit(:read, Domain.Site, _), do: :ok
 
+  # GatewayToken permissions
+  def permit(_action, Domain.GatewayToken, :account_admin_user), do: :ok
+  def permit(_action, Domain.GatewayToken, :api_client), do: :ok
+
   # Resource permissions
   def permit(_action, Domain.Resource, :account_admin_user), do: :ok
   def permit(_action, Domain.Resource, :api_client), do: :ok

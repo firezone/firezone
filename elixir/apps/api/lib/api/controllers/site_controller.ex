@@ -2,7 +2,7 @@ defmodule API.SiteController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.{Auth, Safe}
+  alias Domain.Safe
   alias __MODULE__.DB
 
   action_fallback API.FallbackController
@@ -65,7 +65,7 @@ defmodule API.SiteController do
 
   # Create a new Site
   def create(conn, %{"site" => params}) do
-    changeset = create_changeset(conn.assigns.subject.account, params, conn.assigns.subject)
+    changeset = create_changeset(conn.assigns.subject.account, params)
 
     with {:ok, site} <- DB.create_site(changeset, conn.assigns.subject) do
       conn
@@ -79,7 +79,7 @@ defmodule API.SiteController do
     {:error, :bad_request}
   end
 
-  defp create_changeset(account, attrs, subject) do
+  defp create_changeset(account, attrs) do
     import Ecto.Changeset
 
     %Domain.Site{}
@@ -87,18 +87,6 @@ defmodule API.SiteController do
     |> validate_required([:name])
     |> put_change(:account_id, account.id)
     |> put_change(:managed_by, :account)
-    |> cast_assoc(:tokens,
-      required: false,
-      with: fn struct, attrs ->
-        import Ecto.Changeset
-
-        struct
-        |> cast(attrs, [:name, :expires_at])
-        |> put_change(:type, :site)
-        |> put_change(:account_id, subject.account.id)
-        |> Domain.Token.changeset()
-      end
-    )
   end
 
   operation :update,
@@ -155,89 +143,9 @@ defmodule API.SiteController do
     end
   end
 
-  operation :create_token,
-    summary: "Create a Token",
-    parameters: [
-      site_id: [
-        in: :path,
-        description: "Site ID",
-        type: :string,
-        example: "00000000-0000-0000-0000-000000000000"
-      ]
-    ],
-    responses: [
-      ok: {"New Token Response", "application/json", API.Schemas.SiteToken.NewToken}
-    ]
-
-  # Create a Site Token (used for deploying a gateway)
-  def create_token(conn, %{"site_id" => site_id}) do
-    subject = conn.assigns.subject
-
-    with {:ok, site} <- DB.fetch_site(site_id, subject),
-         {:ok, token, encoded_token} <-
-           DB.create_token(site, %{}, subject) do
-      conn
-      |> put_status(:created)
-      |> render(:token, token: token, encoded_token: encoded_token)
-    end
-  end
-
-  operation :delete_token,
-    summary: "Delete a Token",
-    parameters: [
-      site_id: [
-        in: :path,
-        description: "Site ID",
-        type: :string,
-        example: "00000000-0000-0000-0000-000000000000"
-      ],
-      id: [
-        in: :path,
-        description: "Token ID",
-        type: :string,
-        example: "00000000-0000-0000-0000-000000000000"
-      ]
-    ],
-    responses: [
-      ok: {"Deleted Token Response", "application/json", API.Schemas.SiteToken.DeletedToken}
-    ]
-
-  # Delete/Revoke a Site Token
-  def delete_token(conn, %{"site_id" => _site_id, "id" => token_id}) do
-    subject = conn.assigns.subject
-
-    with {:ok, token} <- DB.fetch_token(token_id, subject),
-         {:ok, deleted_token} <- DB.delete_token(token, subject) do
-      render(conn, :deleted_token, token: deleted_token)
-    end
-  end
-
-  operation :delete_all_tokens,
-    summary: "Delete all Tokens for a given Site",
-    parameters: [
-      site_id: [
-        in: :path,
-        description: "Site ID",
-        type: :string,
-        example: "00000000-0000-0000-0000-000000000000"
-      ]
-    ],
-    responses: [
-      ok: {"Deleted Tokens Response", "application/json", API.Schemas.SiteToken.DeletedTokens}
-    ]
-
-  def delete_all_tokens(conn, %{"site_id" => site_id}) do
-    subject = conn.assigns.subject
-
-    with {:ok, site} <- DB.fetch_site(site_id, subject),
-         {deleted_count, _} <- DB.delete_all_site_tokens(site, subject) do
-      render(conn, :deleted_tokens, %{count: deleted_count})
-    end
-  end
-
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Billing, Token}
+    alias Domain.{Safe, Billing}
     alias Domain.Site
 
     def list_sites(subject, opts \\ []) do
@@ -281,48 +189,6 @@ defmodule API.SiteController do
       site
       |> Safe.scoped(subject)
       |> Safe.delete()
-    end
-
-    def create_token(site, attrs, subject) do
-      attrs =
-        Map.merge(attrs, %{
-          "type" => :site,
-          "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
-          "account_id" => site.account_id,
-          "site_id" => site.id
-        })
-
-      with {:ok, token} <- Auth.create_token(attrs, subject) do
-        {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Auth.encode_fragment!(token)}
-      end
-    end
-
-    def fetch_token(id, subject) do
-      result =
-        from(t in Token,
-          where: t.id == ^id,
-          where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
-        )
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        token -> {:ok, token}
-      end
-    end
-
-    def delete_token(token, subject) do
-      token
-      |> Safe.scoped(subject)
-      |> Safe.delete()
-    end
-
-    def delete_all_site_tokens(site, subject) do
-      import Ecto.Query
-      query = from(t in Token, where: t.site_id == ^site.id)
-      Safe.scoped(query, subject) |> Safe.delete_all()
     end
 
     defp changeset(site, attrs, _subject) do

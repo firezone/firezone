@@ -522,7 +522,7 @@ defmodule Web.Sites.Show do
     end
 
     def delete_tokens_for_site(site, subject) do
-      from(t in Domain.Token, where: t.site_id == ^site.id)
+      from(t in Domain.GatewayToken, where: t.site_id == ^site.id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
     end
@@ -583,7 +583,7 @@ defmodule Web.Sites.Show do
         |> Safe.aggregate(:count)
 
       tokens =
-        from(t in Domain.Token, where: t.site_id == ^site.id)
+        from(t in Domain.GatewayToken, where: t.site_id == ^site.id)
         |> Safe.scoped(subject)
         |> Safe.aggregate(:count)
 
