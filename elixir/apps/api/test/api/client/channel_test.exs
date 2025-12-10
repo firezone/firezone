@@ -717,7 +717,6 @@ defmodule API.Client.ChannelTest do
           7 -> "U"
         end
 
-      # This test will flake if run within 1 second of midnight UTC. Sorry about that.
       start_time =
         one_second_later
         |> DateTime.to_time()
