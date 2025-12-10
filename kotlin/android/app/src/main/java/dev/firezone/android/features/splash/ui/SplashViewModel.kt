@@ -1,4 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
+// Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.splash.ui
 
 import android.content.Context

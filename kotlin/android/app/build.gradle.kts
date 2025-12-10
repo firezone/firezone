@@ -26,7 +26,7 @@ spotless {
         ktlint()
         target("**/*.kt")
         targetExclude("**/generated/*")
-        licenseHeader("/* Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc. */", "^(package |import |@file)")
+        licenseHeader("// Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc.", "^(package |import |@file)")
     }
     kotlinGradle {
         ktlint()
