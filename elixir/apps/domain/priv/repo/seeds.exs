@@ -159,7 +159,7 @@ defmodule Domain.Repo.Seeds do
       if System.get_env("STATIC_SEEDS") == "true" do
         changeset = Ecto.Changeset.change(resource, values)
 
-        # RelayToken uses a simple primary key (id) but has virtual fields
+        # RelayToken and GatewayToken have virtual fields that cannot be persisted
         case resource do
           %Domain.RelayToken{id: id} when not is_nil(id) ->
             import Ecto.Query
@@ -170,6 +170,23 @@ defmodule Domain.Repo.Seeds do
             db_changes = Map.drop(changeset.changes, virtual_fields)
 
             from(rt in Domain.RelayToken, where: rt.id == ^id)
+            |> Repo.update_all(set: Enum.to_list(db_changes))
+
+            struct(resource, changeset.changes)
+
+          %Domain.GatewayToken{account_id: account_id, id: id}
+          when not is_nil(account_id) and not is_nil(id) ->
+            import Ecto.Query
+
+            # Filter out virtual fields that can't be persisted
+            virtual_fields = [:secret_nonce, :secret_fragment]
+
+            db_changes = Map.drop(changeset.changes, virtual_fields)
+
+            from(gt in Domain.GatewayToken,
+              where: gt.account_id == ^account_id,
+              where: gt.id == ^id
+            )
             |> Repo.update_all(set: Enum.to_list(db_changes))
 
             struct(resource, changeset.changes)
@@ -1027,30 +1044,38 @@ defmodule Domain.Repo.Seeds do
       |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Repo.insert!()
 
-    # Create site token using Auth module for proper handling
-    site_token_attrs = %{
-      type: :site,
-      secret_fragment: Crypto.random_token(32, encoder: :hex32),
-      account_id: admin_subject.account.id,
-      site_id: site.id
-    }
+    # Create gateway token manually
+    secret_nonce = ""
+    secret_fragment = Crypto.random_token(32, encoder: :hex32)
+    secret_salt = Crypto.random_token(16)
+    secret_hash = Crypto.hash(:sha3_256, secret_nonce <> secret_fragment <> secret_salt)
 
-    # Use Auth.create_token which properly sets secret_salt and secret_hash
-    {:ok, site_token} = Auth.create_token(site_token_attrs)
+    gateway_token =
+      %Domain.GatewayToken{
+        account_id: site.account_id,
+        site_id: site.id,
+        secret_nonce: secret_nonce,
+        secret_fragment: secret_fragment,
+        secret_salt: secret_salt,
+        secret_hash: secret_hash
+      }
+      |> Ecto.Changeset.change()
+      |> Repo.insert!()
 
-    site_token =
-      site_token
+    gateway_token =
+      gateway_token
       |> maybe_repo_update.(
         id: Ecto.UUID.cast!("2274560b-e97b-45e4-8b34-679c7617e98d"),
         secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
+        secret_nonce: "",
         secret_fragment: "O02L7US2J3VINOMPR9J6IL88QIQP6UO8AQVO6U5IPL0VJC22JGH0====",
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
       )
 
-    site_encoded_token = Auth.encode_fragment!(site_token)
+    gateway_encoded_token = Auth.encode_fragment!(gateway_token)
 
     IO.puts("Created sites:")
-    IO.puts("  #{site.name} token: #{site_encoded_token}")
+    IO.puts("  #{site.name} token: #{gateway_encoded_token}")
     IO.puts("")
 
     # Create gateway directly
@@ -1063,7 +1088,7 @@ defmodule Domain.Repo.Seeds do
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
         },
         %Auth.Context{
-          type: :site,
+          type: :gateway,
           user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
           remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
         }
@@ -1079,7 +1104,7 @@ defmodule Domain.Repo.Seeds do
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
         },
         %Auth.Context{
-          type: :site,
+          type: :gateway,
           user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
           remote_ip: %Postgrex.INET{address: {164, 112, 78, 62}}
         }
@@ -1096,7 +1121,7 @@ defmodule Domain.Repo.Seeds do
             public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
           },
           %Auth.Context{
-            type: :site,
+            type: :gateway,
             user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
             remote_ip: %Postgrex.INET{address: {164, 112, 78, 62 + i}}
           }

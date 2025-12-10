@@ -476,7 +476,7 @@ defmodule Web.SignUp do
     %Domain.Site{
       account_id: account.id,
       managed_by: :account,
-      tokens: []
+      gateway_tokens: []
     }
     |> cast(attrs, [:name])
     |> validate_required([:name])
@@ -489,7 +489,7 @@ defmodule Web.SignUp do
     %Domain.Site{
       account_id: account.id,
       managed_by: :system,
-      tokens: []
+      gateway_tokens: []
     }
     |> cast(%{name: "Internet", managed_by: :system}, [:name, :managed_by])
     |> validate_required([:name, :managed_by])

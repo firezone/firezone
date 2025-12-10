@@ -7,7 +7,7 @@ defmodule Web.Sites.NewToken do
 
     {site, token, env} =
       if connected?(socket) do
-        {:ok, token, encoded_token} = DB.create_token(site, %{}, socket.assigns.subject)
+        {:ok, token, encoded_token} = DB.create_token(site, socket.assigns.subject)
         :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
         {site, token, env(encoded_token)}
       else
@@ -432,14 +432,8 @@ defmodule Web.Sites.NewToken do
       |> Safe.one!()
     end
 
-    def create_token(site, attrs, subject) do
-      attrs =
-        attrs
-        |> Map.put("type", :site)
-        |> Map.put("site_id", site.id)
-        |> Map.put("secret_fragment", Domain.Crypto.random_token(32, encoder: :hex32))
-
-      with {:ok, token} <- Domain.Auth.create_token(attrs, subject) do
+    def create_token(site, subject) do
+      with {:ok, token} <- Domain.Auth.create_gateway_token(site, subject) do
         {:ok, %{token | secret_nonce: nil, secret_fragment: nil},
          Domain.Auth.encode_fragment!(token)}
       end
