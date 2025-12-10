@@ -734,12 +734,12 @@ defmodule Domain.AuthTest do
 
     test "verifies a valid one-time passcode" do
       account = account_fixture()
-      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+      actor = actor_fixture(account: account)
 
       {:ok, passcode} = create_one_time_passcode(account, actor)
 
       assert {:ok, verified_passcode} =
-               verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+               verify_one_time_passcode(account.id, passcode.id, passcode.code)
 
       assert verified_passcode.id == passcode.id
       assert verified_passcode.actor_id == actor.id
@@ -752,7 +752,7 @@ defmodule Domain.AuthTest do
       {:ok, passcode} = create_one_time_passcode(account, actor)
 
       assert {:error, :invalid_code} =
-               verify_one_time_passcode(account.id, actor.id, passcode.id, "wrong")
+               verify_one_time_passcode(account.id, passcode.id, "wrong")
     end
 
     test "fails to verify one-time passcode with wrong passcode_id" do
@@ -762,50 +762,34 @@ defmodule Domain.AuthTest do
       {:ok, passcode} = create_one_time_passcode(account, actor)
 
       assert {:error, :invalid_code} =
-               verify_one_time_passcode(account.id, actor.id, Ecto.UUID.generate(), passcode.code)
+               verify_one_time_passcode(account.id, Ecto.UUID.generate(), passcode.code)
     end
 
-    test "fails to verify one-time passcode with wrong actor_id" do
+    test "one-time passcode can only be used once" do
       account = account_fixture()
       actor = actor_fixture(account: account)
 
       {:ok, passcode} = create_one_time_passcode(account, actor)
 
-      assert {:error, :invalid_code} =
-               verify_one_time_passcode(
-                 account.id,
-                 Ecto.UUID.generate(),
-                 passcode.id,
-                 passcode.code
-               )
-    end
-
-    test "one-time passcode can only be used once" do
-      account = account_fixture()
-      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
-
-      {:ok, passcode} = create_one_time_passcode(account, actor)
-
-      assert {:ok, _} = verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+      assert {:ok, _} = verify_one_time_passcode(account.id, passcode.id, passcode.code)
 
       assert {:error, :invalid_code} =
-               verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+               verify_one_time_passcode(account.id, passcode.id, passcode.code)
     end
 
     test "creating a new passcode deletes existing passcodes for the actor" do
       account = account_fixture()
-      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+      actor = actor_fixture(account: account)
 
       {:ok, passcode1} = create_one_time_passcode(account, actor)
       {:ok, passcode2} = create_one_time_passcode(account, actor)
 
       # First passcode should no longer be valid
       assert {:error, :invalid_code} =
-               verify_one_time_passcode(account.id, actor.id, passcode1.id, passcode1.code)
+               verify_one_time_passcode(account.id, passcode1.id, passcode1.code)
 
       # Second passcode should still be valid
-      assert {:ok, _} =
-               verify_one_time_passcode(account.id, actor.id, passcode2.id, passcode2.code)
+      assert {:ok, _} = verify_one_time_passcode(account.id, passcode2.id, passcode2.code)
     end
 
     test "fails to create token without type" do

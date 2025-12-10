@@ -3,14 +3,13 @@ defmodule Web.EmailOTPTest do
 
   alias Web.EmailOTP
 
-  describe "put_state/5" do
+  describe "put_state/4" do
     test "sets encrypted cookie with correct options", %{conn: conn} do
       provider_id = Ecto.UUID.generate()
-      actor_id = Ecto.UUID.generate()
       passcode_id = Ecto.UUID.generate()
       email = "test@example.com"
 
-      conn = EmailOTP.put_state(conn, provider_id, actor_id, passcode_id, email)
+      conn = EmailOTP.put_state(conn, provider_id, passcode_id, email)
 
       cookie_key = "email_otp_#{provider_id}"
       assert %{^cookie_key => cookie} = conn.resp_cookies
@@ -37,7 +36,6 @@ defmodule Web.EmailOTPTest do
   describe "fetch_state/1" do
     test "returns state from cookie when provider_id is in path_params", %{conn: conn} do
       provider_id = Ecto.UUID.generate()
-      actor_id = Ecto.UUID.generate()
       passcode_id = Ecto.UUID.generate()
       email = "test@example.com"
 
@@ -45,7 +43,7 @@ defmodule Web.EmailOTPTest do
 
       conn =
         conn
-        |> EmailOTP.put_state(provider_id, actor_id, passcode_id, email)
+        |> EmailOTP.put_state(provider_id, passcode_id, email)
         |> Plug.Conn.send_resp(200, "")
         |> then(&Plug.Test.recycle_cookies(build_conn(), &1))
         |> Map.put(:path_params, %{"auth_provider_id" => provider_id})
@@ -53,7 +51,6 @@ defmodule Web.EmailOTPTest do
         |> Plug.Conn.fetch_cookies(encrypted: [cookie_key])
 
       assert EmailOTP.fetch_state(conn) == %{
-               "actor_id" => actor_id,
                "one_time_passcode_id" => passcode_id,
                "email" => email
              }

@@ -288,15 +288,10 @@ defmodule Web.EmailOTPControllerTest do
       account: account,
       provider: provider
     } do
-      # Set up cookie with a fake passcode_id and actor_id
+      # Set up cookie with a fake passcode_id
       conn =
         conn
-        |> EmailOTP.put_state(
-          provider.id,
-          Ecto.UUID.generate(),
-          Ecto.UUID.generate(),
-          "test@example.com"
-        )
+        |> EmailOTP.put_state(provider.id, Ecto.UUID.generate(), "test@example.com")
         |> recycle_with_cookie(provider.id)
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => "123456"
@@ -343,7 +338,7 @@ defmodule Web.EmailOTPControllerTest do
 
       assert redirected_to(conn) =~ ~p"/#{account.id}"
       # Actor no longer has allow_email_otp_sign_in (due to being disabled)
-      assert flash(conn, :error) =~ "The sign in code is invalid or expired."
+      assert flash(conn, :error) =~ "You may not use this method to sign in"
     end
 
     test "redirects with error when actor no longer has allow_email_otp_sign_in", %{
@@ -383,7 +378,7 @@ defmodule Web.EmailOTPControllerTest do
 
       assert redirected_to(conn) =~ ~p"/#{account.id}"
       # Actor no longer allowed to use email OTP sign-in
-      assert flash(conn, :error) =~ "The sign in code is invalid or expired."
+      assert flash(conn, :error) =~ "You may not use this method to sign in"
     end
 
     test "redirects with error when provider is disabled", %{

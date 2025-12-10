@@ -13,9 +13,10 @@ defmodule Web.SignIn.Email do
     redirect_params = Web.Auth.take_sign_in_params(params)
 
     account = DB.get_account_by_id_or_slug(account_id_or_slug)
+    email = session["email"]
 
     with %Domain.Account{} = account <- account,
-         {:ok, email} <- Map.fetch(session, "email") do
+         email when is_binary(email) and email != "" <- email do
       form = to_form(%{"secret" => nil})
 
       verify_action = ~p"/#{account_id_or_slug}/sign_in/email_otp/#{provider_id}/verify"
