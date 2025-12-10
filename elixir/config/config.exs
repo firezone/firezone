@@ -68,6 +68,7 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     clients
     sites
     gateways
+    gateway_tokens
     policies
     resources
     tokens
@@ -109,6 +110,7 @@ config :domain, Domain.Changes.ReplicationConnection,
     clients
     policy_authorizations
     gateways
+    gateway_tokens
     sites
     policies
     resources

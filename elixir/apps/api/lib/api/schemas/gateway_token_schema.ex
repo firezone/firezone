@@ -1,4 +1,4 @@
-defmodule API.Schemas.SiteToken do
+defmodule API.Schemas.GatewayToken do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -6,12 +6,12 @@ defmodule API.Schemas.SiteToken do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "SiteToken",
-      description: "Site Token",
+      title: "GatewayToken",
+      description: "Gateway Token",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Site Token ID"},
-        token: %Schema{type: :string, description: "Site Token"}
+        id: %Schema{type: :string, description: "Gateway Token ID"},
+        token: %Schema{type: :string, description: "Gateway Token"}
       },
       required: [:id, :token],
       example: %{
@@ -21,17 +21,16 @@ defmodule API.Schemas.SiteToken do
     })
   end
 
-  defmodule NewToken do
+  defmodule Response do
     require OpenApiSpex
-    alias OpenApiSpex.Schema
-    alias API.Schemas.SiteToken
+    alias API.Schemas.GatewayToken
 
     OpenApiSpex.schema(%{
-      title: "NewSiteTokenResponse",
-      description: "Response schema for a new Site Token",
+      title: "GatewayTokenResponse",
+      description: "Response schema for a new Gateway Token",
       type: :object,
       properties: %{
-        data: SiteToken.Schema
+        data: GatewayToken.Schema
       },
       example: %{
         "data" => %{
@@ -42,17 +41,22 @@ defmodule API.Schemas.SiteToken do
     })
   end
 
-  defmodule DeletedToken do
+  defmodule DeletedResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.SiteToken
 
     OpenApiSpex.schema(%{
-      title: "DeletedSiteTokenResponse",
-      description: "Response schema for a new Site Token",
+      title: "DeletedGatewayTokenResponse",
+      description: "Response schema for a deleted Gateway Token",
       type: :object,
       properties: %{
-        data: SiteToken.Schema
+        data: %Schema{
+          type: :object,
+          properties: %{
+            id: %Schema{type: :string, description: "Gateway Token ID"}
+          },
+          required: [:id]
+        }
       },
       example: %{
         "data" => %{
@@ -62,13 +66,13 @@ defmodule API.Schemas.SiteToken do
     })
   end
 
-  defmodule DeletedTokens do
+  defmodule DeletedAllResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "DeletedSiteTokenListResponse",
-      description: "Response schema for deleted Site Tokens",
+      title: "DeletedGatewayTokensResponse",
+      description: "Response schema for deleted Gateway Tokens",
       type: :object,
       properties: %{
         data: %Schema{

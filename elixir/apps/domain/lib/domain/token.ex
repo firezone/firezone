@@ -16,7 +16,6 @@ defmodule Domain.Token do
         :browser,
         :client,
         :api_client,
-        :site,
         :email
       ]
 
@@ -27,8 +26,6 @@ defmodule Domain.Token do
 
     # set for browser and client tokens
     belongs_to :actor, Domain.Actor
-    # set for gateway tokens
-    belongs_to :site, Domain.Site
 
     # we store just hash(nonce+fragment+salt)
     field :secret_nonce, :string, virtual: true, redact: true
@@ -59,7 +56,6 @@ defmodule Domain.Token do
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
     |> assoc_constraint(:auth_provider)
-    |> assoc_constraint(:site)
     |> check_constraint(:type, name: :type_must_be_valid)
     |> unique_constraint(:secret_hash)
   end

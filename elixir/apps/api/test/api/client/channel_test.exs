@@ -60,13 +60,13 @@ defmodule API.Client.ChannelTest do
     client = client_fixture(account: account, actor: actor)
 
     site = site_fixture(account: account)
-    site_token = site_token_fixture(account: account, site: site)
+    gateway_token = gateway_token_fixture(account: account, site: site)
     gateway = gateway_fixture(account: account, site: site)
 
     internet_site = internet_site_fixture(account: account)
 
-    internet_site_token =
-      site_token_fixture(account: account, site: internet_site)
+    internet_gateway_token =
+      gateway_token_fixture(account: account, site: internet_site)
 
     internet_gateway =
       gateway_fixture(account: account, site: internet_site)
@@ -188,12 +188,12 @@ defmodule API.Client.ChannelTest do
       identity: identity,
       subject: subject,
       client: client,
-      site_token: site_token,
+      gateway_token: gateway_token,
       site: site,
       membership: membership,
       gateway: gateway,
       internet_site: internet_site,
-      internet_site_token: internet_site_token,
+      internet_gateway_token: internet_gateway_token,
       internet_gateway: internet_gateway,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
@@ -1956,8 +1956,8 @@ defmodule API.Client.ChannelTest do
       resource = resource_fixture(account: account)
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2027,8 +2027,8 @@ defmodule API.Client.ChannelTest do
       }
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       push(socket, "create_flow", attrs)
 
@@ -2048,8 +2048,8 @@ defmodule API.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2069,7 +2069,7 @@ defmodule API.Client.ChannelTest do
       dns_resource_policy: policy,
       membership: membership,
       client: client,
-      site_token: site_token,
+      gateway_token: gateway_token,
       gateway: gateway,
       global_relay: global_relay,
       global_relay_token: global_relay_token,
@@ -2084,8 +2084,8 @@ defmodule API.Client.ChannelTest do
       )
 
       :ok = PubSub.Account.subscribe(gateway.account_id)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
-      :ok = PubSub.subscribe(Auth.socket_id(site_token.id))
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = PubSub.subscribe(Auth.socket_id(gateway_token.id))
 
       # Prime cache
       send(socket.channel_pid, {:created, resource})
@@ -2144,9 +2144,9 @@ defmodule API.Client.ChannelTest do
       )
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
-      PubSub.subscribe(Auth.socket_id(site_token.id))
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      PubSub.subscribe(Auth.socket_id(gateway_token.id))
 
       send(socket.channel_pid, {:created, resource})
       send(socket.channel_pid, {:created, policy})
@@ -2180,7 +2180,7 @@ defmodule API.Client.ChannelTest do
       dns_resource_policy: policy,
       membership: membership,
       client: client,
-      site_token: site_token,
+      gateway_token: gateway_token,
       gateway: gateway,
       subject: subject,
       global_relay: global_relay,
@@ -2199,8 +2199,8 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
-      PubSub.subscribe(Auth.socket_id(site_token.id))
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      PubSub.subscribe(Auth.socket_id(gateway_token.id))
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2308,9 +2308,9 @@ defmodule API.Client.ChannelTest do
       )
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
-      PubSub.subscribe(Auth.socket_id(site_token.id))
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      PubSub.subscribe(Auth.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -2358,8 +2358,8 @@ defmodule API.Client.ChannelTest do
         )
         |> Repo.preload(:site)
 
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -2392,8 +2392,8 @@ defmodule API.Client.ChannelTest do
         )
         |> Repo.preload(:site)
 
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2432,9 +2432,9 @@ defmodule API.Client.ChannelTest do
         )
         |> Repo.preload(:site)
 
-      site_token = site_token_fixture(account: account, site: gateway1.site)
+      gateway_token = gateway_token_fixture(account: account, site: gateway1.site)
 
-      :ok = Presence.Gateways.connect(gateway1, site_token.id)
+      :ok = Presence.Gateways.connect(gateway1, gateway_token.id)
 
       gateway2 =
         gateway_fixture(
@@ -2442,7 +2442,7 @@ defmodule API.Client.ChannelTest do
           site: site
         )
 
-      :ok = Presence.Gateways.connect(gateway2, site_token.id)
+      :ok = Presence.Gateways.connect(gateway2, gateway_token.id)
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -2518,8 +2518,8 @@ defmodule API.Client.ChannelTest do
       resource = resource_fixture(account: account)
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id
@@ -2537,8 +2537,8 @@ defmodule API.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :error, %{reason: :offline}
@@ -2562,8 +2562,8 @@ defmodule API.Client.ChannelTest do
       )
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -2587,8 +2587,8 @@ defmodule API.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => dns_resource.id})
       assert_reply ref, :error, %{reason: :offline}
@@ -2639,8 +2639,8 @@ defmodule API.Client.ChannelTest do
           resource: resource
         )
 
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -2660,8 +2660,8 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       :ok = PubSub.Account.subscribe(account.id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -2728,8 +2728,8 @@ defmodule API.Client.ChannelTest do
         )
         |> Repo.preload(:site)
 
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -2749,8 +2749,8 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -2795,8 +2795,8 @@ defmodule API.Client.ChannelTest do
       )
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -2830,8 +2830,8 @@ defmodule API.Client.ChannelTest do
         )
         |> Repo.preload(:site)
 
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       {:ok, _reply, socket} =
         API.Client.Socket
@@ -2854,8 +2854,8 @@ defmodule API.Client.ChannelTest do
         )
         |> Repo.preload(:site)
 
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -2906,8 +2906,8 @@ defmodule API.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2957,8 +2957,8 @@ defmodule API.Client.ChannelTest do
       }
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       :ok = PubSub.Account.subscribe(account.id)
 
       send(socket.channel_pid, {:created, resource})
@@ -2981,8 +2981,8 @@ defmodule API.Client.ChannelTest do
       resource = resource_fixture(account: account)
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3027,8 +3027,8 @@ defmodule API.Client.ChannelTest do
       client_id = client.id
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       :ok = PubSub.Account.subscribe(resource.account_id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3109,9 +3109,9 @@ defmodule API.Client.ChannelTest do
         |> subscribe_and_join(API.Client.Channel, "client")
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
-      Phoenix.PubSub.subscribe(PubSub, Auth.socket_id(site_token.id))
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      Phoenix.PubSub.subscribe(PubSub, Auth.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3176,8 +3176,8 @@ defmodule API.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3199,8 +3199,8 @@ defmodule API.Client.ChannelTest do
       resource = resource_fixture(account: account)
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3252,8 +3252,8 @@ defmodule API.Client.ChannelTest do
       }
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3314,9 +3314,9 @@ defmodule API.Client.ChannelTest do
       client_id = client.id
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
-      PubSub.subscribe(Auth.socket_id(site_token.id))
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      PubSub.subscribe(Auth.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(resource.account_id)
 
@@ -3381,9 +3381,9 @@ defmodule API.Client.ChannelTest do
         |> subscribe_and_join(API.Client.Channel, "client")
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
-      Phoenix.PubSub.subscribe(PubSub, Auth.socket_id(site_token.id))
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      Phoenix.PubSub.subscribe(PubSub, Auth.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3432,9 +3432,9 @@ defmodule API.Client.ChannelTest do
       }
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
-      PubSub.subscribe(Auth.socket_id(site_token.id))
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      PubSub.subscribe(Auth.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(client.account_id)
 
@@ -3479,9 +3479,9 @@ defmodule API.Client.ChannelTest do
       }
 
       gateway = Repo.preload(gateway, :site)
-      site_token = site_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, site_token.id)
-      :ok = PubSub.subscribe(Auth.socket_id(site_token.id))
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = PubSub.subscribe(Auth.socket_id(gateway_token.id))
       :ok = PubSub.Account.subscribe(client.account_id)
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)

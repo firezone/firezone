@@ -38,7 +38,7 @@ defmodule API.Gateway.ChannelTest do
 
     policy = policy_fixture(account: account, group: group, resource: resource)
 
-    token = site_token_fixture(site: site, account: account)
+    token = gateway_token_fixture(site: site, account: account)
 
     {:ok, _, socket} =
       API.Gateway.Socket

@@ -18,36 +18,6 @@ defmodule API.SiteJSON do
     %{data: data(site)}
   end
 
-  @doc """
-  Render a Site Token
-  """
-  def token(%{token: token, encoded_token: encoded_token}) do
-    %{
-      data: %{
-        id: token.id,
-        token: encoded_token
-      }
-    }
-  end
-
-  @doc """
-  Render a deleted Site Token
-  """
-  def deleted_token(%{token: token}) do
-    %{
-      data: %{
-        id: token.id
-      }
-    }
-  end
-
-  @doc """
-  Render all deleted Site Tokens
-  """
-  def deleted_tokens(%{count: count}) do
-    %{data: %{deleted_count: count}}
-  end
-
   defp data(%Domain.Site{} = site) do
     %{
       id: site.id,

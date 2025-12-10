@@ -19,15 +19,15 @@ defmodule API.Gateway.Socket do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "gateway.connect" do
-      context = API.Sockets.auth_context(connect_info, :site)
+      context = API.Sockets.auth_context(connect_info, :gateway)
       attrs = Map.take(attrs, ~w[external_id name public_key])
 
-      with {:ok, token} <- Auth.use_token(encoded_token, context),
-           {:ok, site} <- DB.fetch_site(token.site_id),
+      with {:ok, gateway_token} <- Auth.verify_gateway_token(encoded_token),
+           {:ok, site} <- DB.fetch_site(gateway_token.site_id),
            changeset = upsert_changeset(site, attrs, context),
            {:ok, gateway} <- DB.upsert_gateway(changeset, site) do
         OpenTelemetry.Tracer.set_attributes(%{
-          token_id: token.id,
+          token_id: gateway_token.id,
           gateway_id: gateway.id,
           account_id: gateway.account_id,
           version: gateway.last_seen_version
@@ -35,7 +35,7 @@ defmodule API.Gateway.Socket do
 
         socket =
           socket
-          |> assign(:token_id, token.id)
+          |> assign(:token_id, gateway_token.id)
           |> assign(:site, site)
           |> assign(:gateway, gateway)
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())

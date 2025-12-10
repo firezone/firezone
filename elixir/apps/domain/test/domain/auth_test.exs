@@ -686,35 +686,6 @@ defmodule Domain.AuthTest do
       assert "can't be blank" in errors_on(changeset).actor_id
     end
 
-    test "creates a site token" do
-      account = account_fixture()
-      site = Domain.SiteFixtures.site_fixture(account: account)
-
-      attrs = %{
-        type: :site,
-        account_id: account.id,
-        site_id: site.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32)
-      }
-
-      assert {:ok, token} = create_token(attrs)
-      assert token.type == :site
-      assert token.site_id == site.id
-    end
-
-    test "fails to create site token without site_id" do
-      account = account_fixture()
-
-      attrs = %{
-        type: :site,
-        account_id: account.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32)
-      }
-
-      assert {:error, changeset} = create_token(attrs)
-      assert "can't be blank" in errors_on(changeset).site_id
-    end
-
     test "creates a relay token" do
       assert {:ok, token} = create_relay_token()
       assert token.id != nil
@@ -722,6 +693,29 @@ defmodule Domain.AuthTest do
       assert token.secret_nonce != nil
       assert token.secret_hash != nil
       assert token.secret_salt != nil
+    end
+
+    test "creates a gateway token" do
+      account = account_fixture()
+      site = Domain.SiteFixtures.site_fixture(account: account)
+      subject = admin_subject_fixture(account: account)
+
+      assert {:ok, token} = create_gateway_token(site, subject)
+      assert token.id != nil
+      assert token.account_id == account.id
+      assert token.site_id == site.id
+      assert token.secret_fragment != nil
+      assert token.secret_nonce != nil
+      assert token.secret_hash != nil
+      assert token.secret_salt != nil
+    end
+
+    test "non-admin user cannot create gateway token" do
+      account = account_fixture()
+      site = Domain.SiteFixtures.site_fixture(account: account)
+      subject = subject_fixture(account: account, actor: %{type: :account_user})
+
+      assert {:error, :unauthorized} = create_gateway_token(site, subject)
     end
 
     test "creates an email token with all required fields" do
@@ -982,23 +976,6 @@ defmodule Domain.AuthTest do
       assert token.type == :api_client
       assert token.account_id == account.id
     end
-
-    test "creates site token with subject" do
-      account = account_fixture()
-      subject = subject_fixture(account: account)
-      site = Domain.SiteFixtures.site_fixture(account: account)
-
-      attrs = %{
-        type: :site,
-        site_id: site.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32)
-      }
-
-      assert {:ok, token} = create_token(attrs, subject)
-      assert token.type == :site
-      assert token.account_id == account.id
-      assert token.site_id == site.id
-    end
   end
 
   describe "use_token/2" do
@@ -1139,15 +1116,14 @@ defmodule Domain.AuthTest do
       assert verified_token.id == token.id
     end
 
-    test "works with site token type" do
+    test "works with gateway token type" do
       account = account_fixture()
       site = Domain.SiteFixtures.site_fixture(account: account)
-      token = site_token_fixture(account: account, site: site)
-      encoded = encode_token(token)
-      context = build_context(type: :site)
+      token = gateway_token_fixture(account: account, site: site)
+      encoded = encode_gateway_token(token)
 
-      assert {:ok, used_token} = use_token(encoded, context)
-      assert used_token.id == token.id
+      assert {:ok, verified_token} = verify_gateway_token(encoded)
+      assert verified_token.id == token.id
     end
 
     test "returns error when fragment is wrong" do
@@ -1221,23 +1197,18 @@ defmodule Domain.AuthTest do
       assert verified_token.id == token.id
     end
 
-    test "encodes site token" do
+    test "encodes gateway token" do
       account = account_fixture()
       site = Domain.SiteFixtures.site_fixture(account: account)
-      fragment = Domain.Crypto.random_token(32, encoder: :hex32)
+      subject = admin_subject_fixture(account: account)
 
-      attrs = %{
-        type: :site,
-        account_id: account.id,
-        site_id: site.id,
-        secret_fragment: fragment
-      }
-
-      {:ok, token} = create_token(attrs)
-      token = %{token | secret_fragment: fragment}
+      {:ok, token} = create_gateway_token(site, subject)
 
       encoded = encode_fragment!(token)
-      assert String.starts_with?(encoded, ".")
+
+      # Verify the encoded token can be used for authentication
+      assert {:ok, verified_token} = verify_gateway_token(encoded)
+      assert verified_token.id == token.id
     end
   end
 
@@ -1387,36 +1358,23 @@ defmodule Domain.AuthTest do
   end
 
   describe "legacy token compatibility" do
-    test "site tokens work with legacy gateway_group salt" do
+    test "gateway tokens work with legacy gateway_group salt" do
       # This tests backward compatibility for tokens created before
-      # the rename from gateway_group to site
+      # the rename from gateway_group to gateway
       account = account_fixture()
       site = Domain.SiteFixtures.site_fixture(account: account)
 
-      # Create a token that would have been signed with the old salt
-      fragment = Domain.Crypto.random_token(32, encoder: :hex32)
-      nonce = "legacy"
-
-      attrs = %{
-        type: :site,
-        account_id: account.id,
-        site_id: site.id,
-        secret_fragment: fragment,
-        secret_nonce: nonce
-      }
-
-      {:ok, token} = create_token(attrs)
+      token = gateway_token_fixture(account: account, site: site)
 
       # Manually create an encoded token using the legacy salt
       config = Application.fetch_env!(:domain, Domain.Tokens)
       key_base = Keyword.fetch!(config, :key_base)
       legacy_salt = Keyword.fetch!(config, :salt) <> "gateway_group"
-      body = {token.account_id, token.id, fragment}
-      legacy_encoded = nonce <> "." <> Plug.Crypto.sign(key_base, legacy_salt, body)
+      body = {token.account_id, token.id, token.secret_fragment}
+      legacy_encoded = token.secret_nonce <> "." <> Plug.Crypto.sign(key_base, legacy_salt, body)
 
-      context = build_context(type: :site)
-      assert {:ok, used_token} = use_token(legacy_encoded, context)
-      assert used_token.id == token.id
+      assert {:ok, verified_token} = verify_gateway_token(legacy_encoded)
+      assert verified_token.id == token.id
     end
 
     test "relay tokens work with legacy relay_group salt" do
@@ -1435,15 +1393,14 @@ defmodule Domain.AuthTest do
       assert verified_token.id == token.id
     end
 
-    test "new site tokens still work with current salt" do
+    test "new gateway tokens still work with current salt" do
       account = account_fixture()
       site = Domain.SiteFixtures.site_fixture(account: account)
-      token = site_token_fixture(account: account, site: site)
-      encoded = encode_token(token)
+      token = gateway_token_fixture(account: account, site: site)
+      encoded = encode_gateway_token(token)
 
-      context = build_context(type: :site)
-      assert {:ok, used_token} = use_token(encoded, context)
-      assert used_token.id == token.id
+      assert {:ok, verified_token} = verify_gateway_token(encoded)
+      assert verified_token.id == token.id
     end
 
     test "new relay tokens still work with current salt" do

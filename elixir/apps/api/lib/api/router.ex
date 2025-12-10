@@ -51,9 +51,9 @@ defmodule API.Router do
     resources "/policies", PolicyController, except: [:new, :edit]
 
     resources "/sites", SiteController, except: [:new, :edit] do
-      post "/tokens", SiteController, :create_token
-      delete "/tokens", SiteController, :delete_all_tokens
-      delete "/tokens/:id", SiteController, :delete_token
+      post "/gateway_tokens", GatewayTokenController, :create
+      delete "/gateway_tokens", GatewayTokenController, :delete_all
+      delete "/gateway_tokens/:id", GatewayTokenController, :delete
       resources "/gateways", GatewayController, except: [:new, :edit, :create, :update]
     end
 

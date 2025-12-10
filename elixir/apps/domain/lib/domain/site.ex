@@ -21,10 +21,10 @@ defmodule Domain.Site do
 
     field :name, :string
 
-    field :managed_by, Ecto.Enum, values: ~w[account system]a, defauilt: :account
+    field :managed_by, Ecto.Enum, values: ~w[account system]a, default: :account
 
     has_many :gateways, Domain.Gateway, references: :id
-    has_many :tokens, Domain.Token, references: :id
+    has_many :gateway_tokens, Domain.GatewayToken, references: :id
     has_many :resources, Domain.Resource, references: :id
 
     timestamps()

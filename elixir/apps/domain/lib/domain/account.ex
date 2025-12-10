@@ -43,6 +43,7 @@ defmodule Domain.Account do
     has_many :sites, Domain.Site
 
     has_many :tokens, Domain.Token
+    has_many :gateway_tokens, Domain.GatewayToken
 
     has_many :google_directories, Domain.Google.Directory
     has_many :google_auth_providers, Domain.Google.AuthProvider
