@@ -91,16 +91,14 @@ defmodule Web.UserpassController do
       expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
     }
 
-    with {:ok, token} <- Domain.Auth.create_token(attrs) do
-      {:ok, Domain.Auth.encode_fragment!(token)}
-    end
+    Domain.Auth.create_token(attrs)
   end
 
   # Context: :browser
   # Store session cookie and redirect to portal or redirect_to parameter
   defp signed_in(conn, :browser, account, _actor, token, params) do
     conn
-    |> Web.Session.Cookie.put_account_cookie(account.id, token)
+    |> Web.Session.Cookie.put_account_cookie(account.id, token.id)
     |> Redirector.portal_signed_in(account, params)
   end
 
