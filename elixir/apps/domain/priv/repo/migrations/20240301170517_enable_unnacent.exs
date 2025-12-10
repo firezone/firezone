@@ -3,7 +3,7 @@ defmodule Domain.Repo.Migrations.EnableUnnacent do
 
   def change do
     execute("""
-    CREATE EXTENSION unaccent;
+    CREATE EXTENSION IF NOT EXISTS unaccent;
     """)
   end
 end

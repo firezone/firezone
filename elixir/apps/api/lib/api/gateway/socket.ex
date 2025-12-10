@@ -1,5 +1,6 @@
 defmodule API.Gateway.Socket do
   use Phoenix.Socket
+  alias Domain.Auth
   alias Domain.{Gateway, Version}
   alias __MODULE__.DB
   require Logger
@@ -21,7 +22,8 @@ defmodule API.Gateway.Socket do
       context = API.Sockets.auth_context(connect_info, :site)
       attrs = Map.take(attrs, ~w[external_id name public_key])
 
-      with {:ok, site, token} <- DB.authenticate_gateway_token(encoded_token, context),
+      with {:ok, token} <- Auth.use_token(encoded_token, context),
+           {:ok, site} <- DB.fetch_site(token.site_id),
            changeset = upsert_changeset(site, attrs, context),
            {:ok, gateway} <- DB.upsert_gateway(changeset, site) do
         OpenTelemetry.Tracer.set_attributes(%{
@@ -41,14 +43,11 @@ defmodule API.Gateway.Socket do
 
         {:ok, socket}
       else
-        {:error, :unauthorized} ->
-          OpenTelemetry.Tracer.set_status(:error, "invalid_token")
-          {:error, :invalid_token}
+        error ->
+          trace = Process.info(self(), :current_stacktrace)
+          Logger.info("Gateway socket connection failed", error: error, stacktrace: trace)
 
-        {:error, reason} ->
-          OpenTelemetry.Tracer.set_status(:error, inspect(reason))
-          Logger.debug("Error connecting gateway websocket: #{inspect(reason)}")
-          {:error, reason}
+          error
       end
     end
   end
@@ -115,22 +114,11 @@ defmodule API.Gateway.Socket do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Network, Safe, Auth}
+    alias Domain.{Network, Safe}
     alias Domain.Gateway
     alias Domain.Site
 
-    def authenticate_gateway_token(encoded_token, %Auth.Context{} = context)
-        when is_binary(encoded_token) do
-      with {:ok, token} <- Auth.use_token(encoded_token, context),
-           {:ok, site} <- fetch_site(token.site_id) do
-        {:ok, site, token}
-      else
-        {:error, :invalid_or_expired_token} -> {:error, :unauthorized}
-        {:error, :not_found} -> {:error, :unauthorized}
-      end
-    end
-
-    defp fetch_site(id) do
+    def fetch_site(id) do
       result =
         from(s in Site, where: s.id == ^id)
         |> Safe.unscoped()

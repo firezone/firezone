@@ -11,52 +11,50 @@ defmodule Domain.TokenFixtures do
   Generate valid token attributes with sensible defaults.
   """
   def valid_token_attrs(attrs \\ %{}) do
-    unique_num = System.unique_integer([:positive, :monotonic])
+    attrs =
+      Enum.into(attrs, %{
+        type: :browser,
+        name: "Token #{System.unique_integer([:positive, :monotonic])}",
+        secret_nonce: "",
+        secret_fragment: generate_secret_fragment(),
+        secret_salt: generate_salt(),
+        expires_at: DateTime.add(DateTime.utc_now(), 30, :day)
+      })
 
-    Enum.into(attrs, %{
-      type: :browser,
-      name: "Token #{unique_num}",
-      secret_salt: generate_salt(),
-      secret_hash: generate_hash(),
-      remaining_attempts: 3,
-      # Default expiration 30 days from now
-      expires_at: DateTime.add(DateTime.utc_now(), 30, :day)
-    })
+    attrs
+    |> Map.put_new(
+      :secret_hash,
+      compute_secret_hash(attrs.secret_nonce, attrs.secret_fragment, attrs.secret_salt)
+    )
   end
 
   @doc """
   Generate a token with valid default attributes.
 
-  The token will be created with an associated account and actor/site
-  depending on the token type.
+  Returns the token with `secret_fragment` populated as a virtual field.
+  Use `encode_token/1` to get the encoded string.
 
   ## Examples
 
       token = token_fixture()
-      token = token_fixture(type: :client)
-      token = token_fixture(actor: actor, type: :browser)
+      token = client_token_fixture()
+      encoded = encode_token(token)
 
   """
   def token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
+    attrs = valid_token_attrs(attrs)
+    type = attrs.type
 
-    # Get or create account
-    account = Map.get(attrs, :account) || account_fixture()
-
-    # Build token attrs
-    token_attrs =
-      attrs
-      |> Map.delete(:account)
-      |> Map.delete(:actor)
-      |> Map.delete(:site)
-      |> Map.delete(:auth_provider)
-      |> valid_token_attrs()
+    # Get or create account (relay tokens don't have accounts)
+    account = if type == :relay, do: nil, else: Map.get(attrs, :account) || account_fixture()
 
     changeset =
       %Domain.Token{}
-      |> Ecto.Changeset.cast(token_attrs, [
+      |> Ecto.Changeset.cast(attrs, [
         :type,
         :name,
+        :secret_nonce,
+        :secret_fragment,
         :secret_salt,
         :secret_hash,
         :remaining_attempts,
@@ -69,12 +67,13 @@ defmodule Domain.TokenFixtures do
         :last_seen_at,
         :expires_at
       ])
-      |> Ecto.Changeset.put_assoc(:account, account)
-      |> Domain.Token.changeset()
 
-    # Associate with actor for browser/client/api_client tokens
     changeset =
-      if Map.get(token_attrs, :type) in [:browser, :client, :api_client] do
+      if account, do: Ecto.Changeset.put_assoc(changeset, :account, account), else: changeset
+
+    # Associate with actor for browser/client/api_client/email tokens
+    changeset =
+      if type in [:browser, :client, :api_client, :email] do
         actor = Map.get(attrs, :actor) || actor_fixture(account: account)
         Ecto.Changeset.put_assoc(changeset, :actor, actor)
       else
@@ -83,7 +82,7 @@ defmodule Domain.TokenFixtures do
 
     # Associate with site for site tokens
     changeset =
-      if Map.get(token_attrs, :type) == :site do
+      if type == :site do
         site = Map.get(attrs, :site) || site_fixture(account: account)
         Ecto.Changeset.put_assoc(changeset, :site, site)
       else
@@ -98,87 +97,76 @@ defmodule Domain.TokenFixtures do
         changeset
       end
 
-    {:ok, token} = Domain.Repo.insert(changeset)
-    token
+    Domain.Repo.insert!(changeset)
   end
 
   @doc """
-  Generate a browser token.
+  Generate a browser token (default type).
   """
   def browser_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    token_fixture(Map.put(attrs, :type, :browser))
+    attrs |> Enum.into(%{}) |> Map.put(:type, :browser) |> token_fixture()
   end
 
   @doc """
   Generate a client token.
   """
   def client_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    token_fixture(Map.put(attrs, :type, :client))
+    attrs |> Enum.into(%{}) |> Map.put(:type, :client) |> token_fixture()
   end
 
   @doc """
   Generate an API client token.
   """
   def api_client_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    token_fixture(Map.put(attrs, :type, :api_client))
+    attrs |> Enum.into(%{}) |> Map.put(:type, :api_client) |> token_fixture()
   end
 
   @doc """
-  Generate a relay token.
+  Generate a relay token. Expires at nil (infinity).
   """
   def relay_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    token_fixture(Map.put(attrs, :type, :relay))
+    attrs
+    |> Enum.into(%{})
+    |> Map.put(:type, :relay)
+    |> Map.put_new(:expires_at, nil)
+    |> token_fixture()
   end
 
   @doc """
-  Generate a site token (for gateway).
+  Generate a site/gateway token. Expires at nil (infinity).
   """
   def site_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    token_fixture(Map.put(attrs, :type, :site))
+    attrs
+    |> Enum.into(%{})
+    |> Map.put(:type, :site)
+    |> Map.put_new(:expires_at, nil)
+    |> token_fixture()
   end
 
   @doc """
   Generate an email token.
   """
   def email_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    token_fixture(Map.put(attrs, :type, :email))
+    attrs
+    |> Enum.into(%{})
+    |> Map.put(:type, :email)
+    |> Map.put_new(:remaining_attempts, 3)
+    |> token_fixture()
   end
 
   @doc """
-  Generate an expired token.
+  Encode a token for use in authentication.
+
+  Reads the `secret_fragment` and `secret_nonce` from the token's virtual fields.
   """
-  def expired_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    token_fixture(Map.put(attrs, :expires_at, DateTime.add(DateTime.utc_now(), -3600, :second)))
-  end
+  def encode_token(token) do
+    config = Domain.Config.fetch_env!(:domain, Domain.Tokens)
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt) <> to_string(token.type)
+    body = {token.account_id, token.id, token.secret_fragment}
+    nonce = token.secret_nonce || ""
 
-  @doc """
-  Generate a token with last seen information.
-  """
-  def active_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-
-    attrs =
-      attrs
-      |> Map.put_new(:last_seen_at, DateTime.utc_now())
-      |> Map.put_new(:last_seen_user_agent, "Mozilla/5.0")
-      |> Map.put_new(:last_seen_remote_ip, {100, 64, 0, 1})
-
-    token_fixture(attrs)
-  end
-
-  @doc """
-  Generate a token with no remaining attempts.
-  """
-  def exhausted_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    token_fixture(Map.put(attrs, :remaining_attempts, 0))
+    nonce <> "." <> Plug.Crypto.sign(key_base, salt, body)
   end
 
   # Private helpers
@@ -188,8 +176,13 @@ defmodule Domain.TokenFixtures do
     |> Base.encode64()
   end
 
-  defp generate_hash do
+  defp generate_secret_fragment do
     :crypto.strong_rand_bytes(32)
-    |> Base.encode64()
+    |> Base.hex_encode32(case: :upper, padding: true)
+  end
+
+  defp compute_secret_hash(nonce, fragment, salt) do
+    :crypto.hash(:sha3_256, nonce <> fragment <> salt)
+    |> Base.encode16(case: :lower)
   end
 end

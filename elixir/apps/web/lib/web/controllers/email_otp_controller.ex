@@ -222,9 +222,6 @@ defmodule Web.EmailOTPController do
          true <- token.actor_id == actor.id do
       {:ok, _count} = DB.delete_all_email_tokens_for_actor(actor)
       {:ok, actor, nil}
-    else
-      {:error, :invalid_or_expired_token} -> {:error, :invalid_secret}
-      false -> {:error, :invalid_secret}
     end
   end
 
