@@ -3,7 +3,8 @@ defmodule Web.Plugs.FetchSubject do
 
   import Plug.Conn
   alias Domain.Account
-  alias Domain.Auth
+
+  require Logger
 
   @impl true
   def init(opts), do: opts
@@ -15,15 +16,24 @@ defmodule Web.Plugs.FetchSubject do
     remote_ip = conn.remote_ip
     context = Domain.Auth.Context.build(remote_ip, user_agent, conn.req_headers, context_type)
 
-    with {:ok, fragment} <- fetch_token(conn, account),
-         {:ok, subject} <- Domain.Auth.authenticate(fragment, context) do
+    with {:ok, token_id} <- Web.Session.Cookie.fetch_account_cookie(conn, account.id),
+         {:ok, token} <- Domain.Auth.fetch_token(account.id, token_id, context_type),
+         {:ok, subject} <- Domain.Auth.build_subject(token, context) do
       conn
-      |> put_session(:live_socket_id, Auth.socket_id(subject.token_id))
-      # Token is used by LiveView
-      |> put_session(:token, fragment)
+      |> put_session(:live_socket_id, Domain.Auth.socket_id(token.id))
+      # We re-fetch the token in the fetch_subject live hook
+      |> put_session(:token_id, token.id)
       |> assign(:subject, subject)
     else
-      {:error, :unauthorized} ->
+      error ->
+        trace = Process.info(self(), :current_stacktrace)
+
+        Logger.info("Failed to fetch subject",
+          error: error,
+          stacktrace: trace,
+          account_id: account.id
+        )
+
         conn
         |> delete_account_session(account)
     end
@@ -31,17 +41,10 @@ defmodule Web.Plugs.FetchSubject do
 
   def call(conn, _opts), do: conn
 
-  defp fetch_token(conn, account) do
-    case Web.Session.Cookie.fetch_account_cookie(conn, account.id) do
-      {:ok, token} -> {:ok, token}
-      _ -> {:error, :unauthorized}
-    end
-  end
-
   defp delete_account_session(conn, %Account{} = account) do
     conn
     |> delete_session(:live_socket_id)
-    |> delete_session(:token)
+    |> delete_session(:token_id)
     |> Web.Session.Cookie.delete_account_cookie(account.id)
   end
 

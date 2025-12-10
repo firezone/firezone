@@ -64,12 +64,7 @@ defmodule Domain.Auth do
 
   # Token Management
 
-  def create_token(attrs) do
-    changeset = create_token_changeset(%Token{}, attrs, nil)
-    DB.insert_token(changeset)
-  end
-
-  def create_token(attrs, %Subject{} = subject) do
+  def create_token(attrs, subject \\ nil) do
     changeset = create_token_changeset(%Token{}, attrs, subject)
     DB.insert_token(changeset)
   end
@@ -138,11 +133,15 @@ defmodule Domain.Auth do
     end
   end
 
+  def fetch_token(account_id, token_id, context_type) do
+    DB.fetch_token_for_use(token_id, account_id, context_type)
+  end
+
   def use_token(encoded_token, %Context{} = context)
       when is_binary(encoded_token) do
     with {:ok, {nonce, account_id, id, fragment}} <-
            decode_token_with_context(encoded_token, context),
-         {:ok, token} <- DB.fetch_token_for_use(id, account_id, context.type),
+         {:ok, token} <- DB.fetch_token_for_use(account_id, id, context.type),
          :ok <- verify_secret_hash(token, nonce, fragment),
          changeset = use_token_changeset(token, context),
          {:ok, token} <- DB.update_token(changeset) do
@@ -301,14 +300,14 @@ defmodule Domain.Auth do
       end
     end
 
-    def fetch_token_for_use(id, account_id, context_type) do
+    def fetch_token_for_use(account_id, token_id, context_type) do
       query =
         from(tokens in Token, as: :tokens)
         |> where(
           [tokens: tokens],
           tokens.expires_at > ^DateTime.utc_now() or is_nil(tokens.expires_at)
         )
-        |> where([tokens: tokens], tokens.id == ^id)
+        |> where([tokens: tokens], tokens.id == ^token_id)
         |> where([tokens: tokens], tokens.type == ^context_type)
 
       # Relay tokens don't have account scope
