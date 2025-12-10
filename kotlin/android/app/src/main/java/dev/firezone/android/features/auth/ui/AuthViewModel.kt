@@ -45,10 +45,6 @@ internal class AuthViewModel
             data class LaunchAuthFlow(
                 val url: String,
             ) : ViewAction()
-
-            object NavigateToSignIn : ViewAction()
-
-            object ShowError : ViewAction()
         }
 
         internal companion object {
