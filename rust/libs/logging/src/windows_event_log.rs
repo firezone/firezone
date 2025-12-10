@@ -7,19 +7,19 @@
 //!
 //! # Level Filtering
 //!
-//! The layer supports independent filtering via the `EVENTLOG_DIRECTIVES` environment
-//! variable. This allows controlling what gets written to the Windows Event Log
-//! separately from `RUST_LOG`:
+//! The layer filters events via the `EVENTLOG_DIRECTIVES` environment variable,
+//! defaulting to `info`. This allows controlling what gets written to the Windows
+//! Event Log separately from `RUST_LOG`:
 //!
 //! ```ignore
 //! // Set in environment:
 //! // RUST_LOG=debug              # Console gets debug logs
-//! // EVENTLOG_DIRECTIVES=warn    # Event Log only gets warn and above
+//! // EVENTLOG_DIRECTIVES=info    # Event Log gets info and above
 //!
 //! use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 //!
 //! tracing_subscriber::registry()
-//!     .with(logging::windows_event_log::filtered_layer("MyApp")?)
+//!     .with(logging::windows_event_log::layer("MyApp")?)
 //!     .init();
 //! ```
 //!
@@ -27,12 +27,10 @@
 //!
 //! # Event IDs
 //!
-//! Different log levels map to distinct Event IDs for filtering in Event Viewer:
+//! Log levels map to Event IDs supported by `EventCreate.exe`:
 //! - ERROR: Event ID 1
 //! - WARN:  Event ID 2
-//! - INFO:  Event ID 3
-//! - DEBUG: Event ID 4
-//! - TRACE: Event ID 5
+//! - INFO/DEBUG/TRACE: Event ID 3
 //!
 //! # Event Source Registration
 //!
@@ -524,55 +522,33 @@ fn to_wide_string(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// Creates a new Windows Event Log layer without filtering.
+/// Creates a Windows Event Log layer with default filtering.
 ///
-/// Attempts to auto-register the source (requires admin privileges).
-/// Falls back gracefully if registration fails but the source exists.
-///
-/// **Note:** This layer logs all events regardless of level. For independent
-/// filtering, use [`filtered_layer`] instead.
-///
-/// # Errors
-///
-/// Returns an error if the event source cannot be opened. This typically
-/// means the source was never registered. Register it manually with:
-///
-/// ```powershell
-/// New-EventLog -LogName Application -Source "YourSourceName"
-/// ```
-pub fn layer(source: &str) -> Result<WindowsEventLogLayer, Error> {
-    WindowsEventLogLayer::new(source)
-}
-
-/// Creates a Windows Event Log layer with filtering from `EVENTLOG_DIRECTIVES`.
-///
-/// This allows independent control of what gets logged to the Windows Event Log,
-/// separate from the `RUST_LOG` environment variable.
+/// Filtering is controlled by the `EVENTLOG_DIRECTIVES` environment variable,
+/// defaulting to `info`. This allows independent control of Event Log verbosity
+/// separate from `RUST_LOG`.
 ///
 /// # Environment Variable
 ///
 /// Set `EVENTLOG_DIRECTIVES` to control filtering:
-/// - `warn` - only warnings and errors
+/// - `error` - only errors
+/// - `warn` - warnings and errors
 /// - `info` - info, warnings, and errors (default)
 /// - `debug` - debug and above
 /// - `mymodule=debug,warn` - debug for mymodule, warn for everything else
-///
-/// If not set, defaults to `info`.
 ///
 /// # Errors
 ///
 /// Returns an error if the event source cannot be opened or if the filter
 /// directives are invalid.
-pub fn filtered_layer<S>(
-    source: &str,
-) -> Result<Filtered<WindowsEventLogLayer, EnvFilter, S>, Error>
+pub fn layer<S>(source: &str) -> Result<Filtered<WindowsEventLogLayer, EnvFilter, S>, Error>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     let directives =
         std::env::var(ENV_EVENTLOG_DIRECTIVES).unwrap_or_else(|_| DEFAULT_DIRECTIVES.to_owned());
 
-    filtered_layer_with_directives(source, &directives)
+    layer_with_directives(source, &directives)
 }
 
 /// Creates a Windows Event Log layer with custom filter directives.
@@ -584,7 +560,7 @@ where
 ///
 /// Returns an error if the event source cannot be opened or if the filter
 /// directives are invalid.
-pub fn filtered_layer_with_directives<S>(
+pub fn layer_with_directives<S>(
     source: &str,
     directives: &str,
 ) -> Result<Filtered<WindowsEventLogLayer, EnvFilter, S>, Error>
@@ -598,6 +574,18 @@ where
     })?;
 
     Ok(layer.with_filter(filter))
+}
+
+/// Creates an unfiltered Windows Event Log layer.
+///
+/// **Warning:** This logs ALL events regardless of level, which can be very
+/// verbose. Prefer [`layer`] for production use.
+///
+/// # Errors
+///
+/// Returns an error if the event source cannot be opened.
+pub fn unfiltered_layer(source: &str) -> Result<WindowsEventLogLayer, Error> {
+    WindowsEventLogLayer::new(source)
 }
 
 /// Errors that can occur when working with the Windows Event Log.
