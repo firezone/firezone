@@ -68,11 +68,11 @@ use windows::Win32::System::Registry::{
 };
 use windows::core::{PCWSTR, w};
 
+// Event IDs 1-3 are defined in EventCreate.exe's message table
+// with the "%1" format string for custom messages.
 const EVENT_ID_ERROR: u32 = 1;
 const EVENT_ID_WARNING: u32 = 2;
 const EVENT_ID_INFO: u32 = 3;
-const EVENT_ID_DEBUG: u32 = 4;
-const EVENT_ID_TRACE: u32 = 5;
 
 /// Registry value for supported event types (Error | Warning | Information).
 const TYPES_SUPPORTED: u32 = 0x07;
@@ -293,9 +293,7 @@ where
         let (event_type, event_id) = match *level {
             Level::ERROR => (EVENTLOG_ERROR_TYPE, EVENT_ID_ERROR),
             Level::WARN => (EVENTLOG_WARNING_TYPE, EVENT_ID_WARNING),
-            Level::INFO => (EVENTLOG_INFORMATION_TYPE, EVENT_ID_INFO),
-            Level::DEBUG => (EVENTLOG_INFORMATION_TYPE, EVENT_ID_DEBUG),
-            Level::TRACE => (EVENTLOG_INFORMATION_TYPE, EVENT_ID_TRACE),
+            _ => (EVENTLOG_INFORMATION_TYPE, EVENT_ID_INFO),
         };
 
         // Build plain text message
