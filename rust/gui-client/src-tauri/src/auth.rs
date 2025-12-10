@@ -368,9 +368,8 @@ pub fn replicate_6791() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
-
     use super::*;
+    use tempfile::tempdir;
 
     fn bogus_secret(x: &str) -> SecretString {
         SecretString::new(x.into())
@@ -379,6 +378,8 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn keyring_rs() {
+        use keyring_core::api::CredentialStoreApi as _;
+
         let store = windows_native_keyring_store::Store::new().unwrap();
 
         // We used this test to find that `service` is not used on Windows - We have to namespace on our own.
