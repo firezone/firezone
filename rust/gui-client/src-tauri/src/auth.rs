@@ -2,11 +2,15 @@
 
 use anyhow::{Context, Result};
 use bin_shared::known_dirs;
+use keyring_core::CredentialStore;
 use logging::err_with_src;
 use rand::{RngCore, thread_rng};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use subtle::ConstantTimeEq;
 use url::Url;
 
@@ -21,7 +25,7 @@ pub enum Error {
     #[error("Couldn't delete session file from disk: {0}")]
     DeleteFile(std::io::Error),
     #[error(transparent)]
-    Keyring(#[from] keyring::Error),
+    Keyring(#[from] keyring_core::Error),
     #[error("No in-flight request")]
     NoInflightRequest,
     #[error("session file path has no parent, this should be impossible")]
@@ -43,8 +47,9 @@ pub enum Error {
 
 pub struct Auth {
     /// Implementation details in case we need to disable `keyring-rs`
-    token_store: keyring::Entry,
+    token_store: keyring_core::Entry,
     state: State,
+    session_dir: PathBuf,
 }
 
 enum State {
@@ -100,18 +105,36 @@ impl Auth {
     ///
     /// Performs I/O.
     pub fn new() -> Result<Self> {
-        Self::new_with_key("dev.firezone.client/token")
+        #[cfg(target_os = "linux")]
+        let store = dbus_secret_service_keyring_store::Store::new()?;
+
+        #[cfg(target_os = "windows")]
+        let store = windows_native_keyring_store::Store::new()?;
+
+        #[cfg(target_os = "macos")]
+        let store = keyring_core::mock::Store::new()?;
+
+        Self::new_with_key(
+            "dev.firezone.client/token",
+            store,
+            known_dirs::session().context("Failed to determine `session` directory")?,
+        )
     }
 
     /// Creates a new Auth struct with a custom keyring key for testing.
     ///
     /// `new` also just wraps this.
-    fn new_with_key(keyring_key: &'static str) -> Result<Self> {
-        // The 2nd and 3rd args are ignored on some platforms, so don't use them
-        let token_store = keyring::Entry::new_with_target(keyring_key, "", "")?;
+    fn new_with_key(
+        keyring_key: &'static str,
+        store: Arc<CredentialStore>,
+        session_dir: PathBuf,
+    ) -> Result<Self> {
+        let token_store = store.build("", keyring_key, None)?;
+
         let mut this = Self {
             token_store,
             state: State::SignedOut,
+            session_dir,
         };
 
         match this.get_token_from_disk() {
@@ -142,7 +165,7 @@ impl Auth {
     /// Performs I/O.
     pub fn sign_out(&mut self) -> Result<(), Error> {
         match self.token_store.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Ok(()) | Err(keyring_core::Error::NoEntry) => {}
             Err(error) => {
                 tracing::warn!(
                     "Couldn't delete token while signing out: {}",
@@ -150,8 +173,8 @@ impl Auth {
                 );
             }
         }
-        delete_if_exists(&actor_name_path()?)?;
-        delete_if_exists(&session_data_path()?)?;
+        delete_if_exists(&actor_name_path(&self.session_dir))?;
+        delete_if_exists(&session_data_path(&self.session_dir))?;
         self.state = State::SignedOut;
         Ok(())
     }
@@ -214,9 +237,12 @@ impl Auth {
         {
             tracing::info!("{e:#}"); // Log that we couldn't save it and allow the user to continue anyway.
         }
-        save_file(&actor_name_path()?, session.actor_name.as_bytes())?;
         save_file(
-            &session_data_path()?,
+            &actor_name_path(&self.session_dir),
+            session.actor_name.as_bytes(),
+        )?;
+        save_file(
+            &session_data_path(&self.session_dir),
             serde_json::to_string(session)
                 .map_err(Error::SerializeSession)?
                 .as_bytes(),
@@ -245,7 +271,7 @@ impl Auth {
         // Read the actor_name file, then let the session file override it if present.
 
         let mut session = Session::default();
-        match std::fs::read_to_string(actor_name_path()?) {
+        match std::fs::read_to_string(actor_name_path(&self.session_dir)) {
             Ok(x) => session.actor_name = x,
             // It can happen with dev systems that actor_name.txt doesn't exist
             // even though the token is in the cred manager.
@@ -253,7 +279,7 @@ impl Auth {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(Error::ReadFile(e)),
         };
-        match std::fs::read_to_string(session_data_path()?) {
+        match std::fs::read_to_string(session_data_path(&self.session_dir)) {
             Ok(json) => {
                 session = serde_json::from_str(&json)
                     .map_err(|source| Error::DeserializeSession { source, json })?;
@@ -299,16 +325,12 @@ fn save_file(path: &Path, content: &[u8]) -> Result<(), Error> {
 /// Returns a path to a file where we can save the actor name
 ///
 /// Hopefully we don't need to save anything else, or there will be a migration step
-fn actor_name_path() -> Result<PathBuf, Error> {
-    Ok(known_dirs::session()
-        .ok_or(Error::CantFindKnownDir)?
-        .join("actor_name.txt"))
+fn actor_name_path(session_dir: &Path) -> PathBuf {
+    session_dir.join("actor_name.txt")
 }
 
-fn session_data_path() -> Result<PathBuf, Error> {
-    Ok(known_dirs::session()
-        .ok_or(Error::CantFindKnownDir)?
-        .join("session_data.json"))
+fn session_data_path(session_dir: &Path) -> PathBuf {
+    session_dir.join("session_data.json")
 }
 
 /// Generates a random nonce using a CSPRNG, then returns it as hexadecimal
@@ -346,50 +368,19 @@ pub fn replicate_6791() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::tempdir;
+
     use super::*;
 
-    #[cfg(not(target_os = "linux"))]
     fn bogus_secret(x: &str) -> SecretString {
         SecretString::new(x.into())
     }
 
-    #[test]
-    fn actor_name() {
-        assert!(
-            actor_name_path()
-                .expect("`actor_name_path` should return Ok")
-                .components()
-                .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref()))
-        );
-    }
-
-    #[test]
-    fn keyring_is_persistent() {
-        assert!(matches!(
-            keyring::default::default_credential_builder().persistence(),
-            keyring::credential::CredentialPersistence::UntilDelete
-        ));
-    }
-
-    /// Runs everything in one test so that `cargo test` can't multi-thread it
-    /// This should work around a bug we had <https://github.com/firezone/firezone/issues/3256>
-    #[test]
-    // The Linux CI is headless so it's hard to test keyrings in it
-    #[cfg(not(target_os = "linux"))]
-    fn everything() {
-        // Run `happy_path` first to make sure it reacts okay if our `data` dir is missing
-        // TODO: Re-enable happy path tests once `keyring-rs` is working in CI tests
-        happy_path("");
-        happy_path("Jane Doe");
-        utils();
-        no_inflight_request();
-        states_dont_match();
-    }
-
-    // The Linux CI is headless so it's hard to test keyrings in it
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
     #[test]
     fn keyring_rs() {
+        let store = windows_native_keyring_store::Store::new().unwrap();
+
         // We used this test to find that `service` is not used on Windows - We have to namespace on our own.
 
         let name_1 = "dev.firezone.client/test_1/token";
@@ -398,12 +389,12 @@ mod tests {
         let test_password_1 = "test_password_1";
         let test_password_2 = "test_password_2";
 
-        let entry = keyring::Entry::new_with_target(name_1, "", "").unwrap();
+        let entry = store.build("", name_1, None).unwrap();
         entry.set_password("test_password_1").unwrap();
 
         {
             // In the middle of accessing one token, access another to make sure they don't interfere much
-            let entry = keyring::Entry::new_with_target(name_2, "", "").unwrap();
+            let entry = store.build("", name_2, None).unwrap();
             entry.set_password(test_password_2).unwrap();
 
             std::thread::sleep(std::time::Duration::from_secs(1));
@@ -413,7 +404,7 @@ mod tests {
         {
             // Make sure that closing and re-opening the `Entry` on the same thread
             // gives the correct result
-            let entry = keyring::Entry::new_with_target(name_2, "", "").unwrap();
+            let entry = store.build("", name_2, None).unwrap();
             assert_eq!(entry.get_password().unwrap(), test_password_2);
             entry.delete_credential().unwrap();
 
@@ -429,8 +420,8 @@ mod tests {
         assert!(entry.get_password().is_err());
     }
 
-    #[cfg(not(target_os = "linux"))]
-    fn utils() {
+    #[test]
+    fn secure_eq() {
         // This doesn't test for constant-time properties, it just makes sure the function
         // gives the right result
         let f = |a: &str, b: &str| secure_equality(&bogus_secret(a), &bogus_secret(b));
@@ -454,14 +445,21 @@ mod tests {
         );
     }
 
-    #[cfg(not(target_os = "linux"))]
-    fn happy_path(actor_name: &str) {
+    #[test]
+    fn happy_path() {
+        let _guard = logging::test("trace");
+
+        let actor_name = "Jane Doe";
+        let store = keyring_core::mock::Store::new().unwrap();
+        let session_dir = tempdir().unwrap();
+
         // Key for credential manager. This is not what we use in production
         let key = "dev.firezone.client/test_DMRCZ67A_happy_path/token";
 
         {
             // Start the program
-            let mut state = Auth::new_with_key(key).unwrap();
+            let mut state =
+                Auth::new_with_key(key, store.clone(), session_dir.path().to_path_buf()).unwrap();
 
             // Delete any token on disk from previous test runs
             state.sign_out().unwrap();
@@ -487,7 +485,8 @@ mod tests {
 
         // Recreate the state to simulate closing and re-opening the app
         {
-            let mut state = Auth::new_with_key(key).unwrap();
+            let mut state =
+                Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
 
             // Make sure we automatically got the token and actor_name back
             assert!(state.token().unwrap().is_some());
@@ -505,11 +504,17 @@ mod tests {
         }
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[test]
     fn no_inflight_request() {
+        let session_dir = tempdir().unwrap();
+
         // Start the program
-        let mut state =
-            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_invalid_response/token").unwrap();
+        let mut state = Auth::new_with_key(
+            "dev.firezone.client/test_DMRCZ67A_invalid_response/token",
+            keyring_core::mock::Store::new().unwrap(),
+            session_dir.path().to_path_buf(),
+        )
+        .unwrap();
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
@@ -532,12 +537,17 @@ mod tests {
         state.sign_out().unwrap();
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[test]
     fn states_dont_match() {
+        let session_dir = tempdir().unwrap();
+
         // Start the program
-        let mut state =
-            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_states_dont_match/token")
-                .unwrap();
+        let mut state = Auth::new_with_key(
+            "dev.firezone.client/test_DMRCZ67A_states_dont_match/token",
+            keyring_core::mock::Store::new().unwrap(),
+            session_dir.path().to_path_buf(),
+        )
+        .unwrap();
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
