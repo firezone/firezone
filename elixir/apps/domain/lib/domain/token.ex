@@ -37,9 +37,6 @@ defmodule Domain.Token do
     field :secret_salt, :string, redact: true
     field :secret_hash, :string, redact: true
 
-    # Limits how many times invalid secret can be used for a token
-    field :remaining_attempts, :integer
-
     field :last_seen_user_agent, :string
     field :last_seen_remote_ip, Domain.Types.IP
     field :last_seen_remote_ip_location_region, :string
