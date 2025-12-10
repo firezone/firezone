@@ -254,7 +254,6 @@ skip = [
     "itertools",
     "libloading",
     "linux-raw-sys",
-    "nix",
     "object",
     "phf",
     "phf_codegen",
