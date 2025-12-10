@@ -21,17 +21,17 @@ defmodule API.Relay.Socket do
       context = API.Sockets.auth_context(connect_info, :relay)
       attrs = Map.take(attrs, ~w[ipv4 ipv6 name port])
 
-      with {:ok, token} <- Auth.use_token(encoded_token, context),
+      with {:ok, relay_token} <- Auth.verify_relay_token(encoded_token),
            {:ok, relay} <- upsert_relay(attrs, context) do
         OpenTelemetry.Tracer.set_attributes(%{
-          token_id: token.id,
+          token_id: relay_token.id,
           relay_id: relay.id,
           version: relay.last_seen_version
         })
 
         socket =
           socket
-          |> assign(:token_id, token.id)
+          |> assign(:token_id, relay_token.id)
           |> assign(:relay, relay)
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())

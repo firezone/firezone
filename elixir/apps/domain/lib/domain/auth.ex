@@ -45,6 +45,23 @@ defmodule Domain.Auth do
     end
   end
 
+  # Relay Tokens
+
+  def create_relay_token do
+    secret_fragment = Domain.Crypto.random_token(32, encoder: :hex32)
+    secret_nonce = Domain.Crypto.random_token(8, encoder: :url_encode64)
+    secret_salt = Domain.Crypto.random_token(16)
+    secret_hash = Domain.Crypto.hash(:sha3_256, secret_nonce <> secret_fragment <> secret_salt)
+
+    %Domain.RelayToken{
+      secret_fragment: secret_fragment,
+      secret_nonce: secret_nonce,
+      secret_salt: secret_salt,
+      secret_hash: secret_hash
+    }
+    |> DB.insert_relay_token()
+  end
+
   # Token encoding/decoding
 
   @doc """
@@ -60,6 +77,51 @@ defmodule Domain.Auth do
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
     "." <> Plug.Crypto.sign(key_base, salt <> to_string(type), body)
+  end
+
+  def encode_fragment!(%Domain.RelayToken{} = token) do
+    body = {nil, token.id, token.secret_fragment}
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt)
+    token.secret_nonce <> "." <> Plug.Crypto.sign(key_base, salt <> "relay", body)
+  end
+
+  def verify_relay_token(encoded_token) when is_binary(encoded_token) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    base_salt = Keyword.fetch!(config, :salt)
+
+    with [nonce, signed] <- String.split(encoded_token, ".", parts: 2),
+         {:ok, {_account_id, id, fragment}} <-
+           decode_relay_token(signed, key_base, base_salt),
+         {:ok, relay_token} <- DB.fetch_relay_token(id),
+         :ok <- verify_relay_token_hash(relay_token, nonce, fragment) do
+      {:ok, relay_token}
+    else
+      _ -> {:error, :invalid_token}
+    end
+  end
+
+  defp decode_relay_token(signed, key_base, base_salt) do
+    # Try current salt first, then legacy relay_group salt
+    case Plug.Crypto.verify(key_base, base_salt <> "relay", signed, max_age: :infinity) do
+      {:ok, _} = result ->
+        result
+
+      {:error, _} ->
+        Plug.Crypto.verify(key_base, base_salt <> "relay_group", signed, max_age: :infinity)
+    end
+  end
+
+  defp verify_relay_token_hash(relay_token, nonce, fragment) do
+    expected_hash = Domain.Crypto.hash(:sha3_256, nonce <> fragment <> relay_token.secret_salt)
+
+    if Plug.Crypto.secure_compare(expected_hash, relay_token.secret_hash) do
+      :ok
+    else
+      :error
+    end
   end
 
   # Token Management
@@ -115,9 +177,6 @@ defmodule Domain.Auth do
       {_data_or_changes, :api_client} ->
         changeset
         |> validate_required(:actor_id)
-
-      {_data_or_changes, :relay} ->
-        changeset
 
       {_data_or_changes, :site} ->
         changeset
@@ -180,7 +239,6 @@ defmodule Domain.Auth do
 
   # Maps new token types to their legacy equivalents for backwards compatibility
   defp legacy_token_salt(:site, base_salt), do: base_salt <> "gateway_group"
-  defp legacy_token_salt(:relay, base_salt), do: base_salt <> "relay_group"
   defp legacy_token_salt(_type, _base_salt), do: nil
 
   defp use_token_changeset(%Token{} = token, %Context{} = context) do
@@ -280,45 +338,37 @@ defmodule Domain.Auth do
       |> Safe.insert()
     end
 
-    def update_token(changeset) do
-      # Relay tokens don't have account_id, so we can't use the composite primary key
-      # for updates. Instead, use update_all with the token id.
-      token = changeset.data
+    def insert_relay_token(relay_token) do
+      relay_token
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
 
-      if is_nil(token.account_id) do
-        changes = changeset.changes
-
-        from(t in Token, where: t.id == ^token.id)
-        |> Safe.unscoped()
-        |> Safe.update_all(set: Enum.to_list(changes))
-
-        {:ok, struct(token, changes)}
-      else
-        changeset
-        |> Safe.unscoped()
-        |> Safe.update()
+    def fetch_relay_token(id) do
+      from(rt in Domain.RelayToken, where: rt.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        relay_token -> {:ok, relay_token}
       end
     end
 
+    def update_token(changeset) do
+      changeset
+      |> Safe.unscoped()
+      |> Safe.update()
+    end
+
     def fetch_token_for_use(account_id, token_id, context_type) do
-      query =
-        from(tokens in Token, as: :tokens)
-        |> where(
-          [tokens: tokens],
-          tokens.expires_at > ^DateTime.utc_now() or is_nil(tokens.expires_at)
-        )
-        |> where([tokens: tokens], tokens.id == ^token_id)
-        |> where([tokens: tokens], tokens.type == ^context_type)
-
-      # Relay tokens don't have account scope
-      query =
-        if context_type == :relay do
-          query
-        else
-          where(query, [tokens: tokens], tokens.account_id == ^account_id)
-        end
-
-      query
+      from(tokens in Token, as: :tokens)
+      |> where(
+        [tokens: tokens],
+        tokens.expires_at > ^DateTime.utc_now() or is_nil(tokens.expires_at)
+      )
+      |> where([tokens: tokens], tokens.id == ^token_id)
+      |> where([tokens: tokens], tokens.type == ^context_type)
+      |> where([tokens: tokens], tokens.account_id == ^account_id)
       |> update([tokens: tokens], set: [last_seen_at: ^DateTime.utc_now()])
       |> select([tokens: tokens], tokens)
       |> Safe.unscoped()
