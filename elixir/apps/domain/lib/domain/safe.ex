@@ -13,7 +13,10 @@ defmodule Domain.Safe do
     @moduledoc """
     Scoped context that carries authorization information and optional queryable.
     """
-    @type t :: %__MODULE__{subject: Subject.t(), queryable: Ecto.Queryable.t() | nil}
+    @type t :: %__MODULE__{
+            subject: Subject.t(),
+            queryable: Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t() | nil
+          }
 
     defstruct [:subject, :queryable]
   end
@@ -22,7 +25,9 @@ defmodule Domain.Safe do
     @moduledoc """
     Unscoped context for operations without authorization.
     """
-    @type t :: %__MODULE__{queryable: Ecto.Queryable.t() | nil}
+    @type t :: %__MODULE__{
+            queryable: Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t() | nil
+          }
 
     defstruct [:queryable]
   end
@@ -44,7 +49,8 @@ defmodule Domain.Safe do
     %Scoped{subject: subject, queryable: nil}
   end
 
-  @spec scoped(Ecto.Queryable.t() | Ecto.Changeset.t(), Subject.t()) :: Scoped.t()
+  @spec scoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), Subject.t()) ::
+          Scoped.t()
   def scoped(queryable, %Subject{} = subject) do
     %Scoped{subject: subject, queryable: queryable}
   end
@@ -66,7 +72,7 @@ defmodule Domain.Safe do
     %Unscoped{queryable: nil}
   end
 
-  @spec unscoped(Ecto.Queryable.t()) :: Unscoped.t()
+  @spec unscoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t()) :: Unscoped.t()
   def unscoped(queryable) do
     %Unscoped{queryable: queryable}
   end
@@ -357,12 +363,30 @@ defmodule Domain.Safe do
     end
   end
 
+  def insert(%Scoped{subject: subject, queryable: struct}) when is_struct(struct) do
+    schema = get_schema_module(struct)
+
+    with :ok <- permit(:insert, schema, subject) do
+      Repo.transact(fn ->
+        emit_subject_message(subject)
+
+        %{struct | account_id: subject.account.id}
+        |> Repo.insert()
+      end)
+    end
+  end
+
   @spec insert(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def insert(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
     schema = get_schema_module(changeset.data)
 
     changeset
     |> apply_schema_changeset(schema)
+    |> Repo.insert()
+  end
+
+  def insert(%Unscoped{queryable: struct}) when is_struct(struct) do
+    struct
     |> Repo.insert()
   end
 
