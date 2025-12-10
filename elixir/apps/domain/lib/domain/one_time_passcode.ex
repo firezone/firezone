@@ -1,0 +1,21 @@
+defmodule Domain.OneTimePasscode do
+  use Ecto.Schema
+
+  @primary_key false
+  @foreign_key_type :binary_id
+  @timestamps_opts [type: :utc_datetime_usec]
+
+  schema "one_time_passcodes" do
+    belongs_to :account, Domain.Account, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+
+    belongs_to :actor, Domain.Actor
+
+    field :code_hash, :string, redact: true
+    field :code, :string, virtual: true, redact: true
+
+    field :expires_at, :utc_datetime_usec
+
+    timestamps()
+  end
+end

@@ -15,8 +15,7 @@ defmodule Domain.Token do
       values: [
         :browser,
         :client,
-        :api_client,
-        :email
+        :api_client
       ]
 
     field :name, :string

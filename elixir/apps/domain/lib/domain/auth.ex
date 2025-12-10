@@ -3,6 +3,7 @@ defmodule Domain.Auth do
   import Ecto.Query
   import Domain.Changeset
   alias Domain.Token
+  alias Domain.OneTimePasscode
   alias Domain.Auth.{Subject, Context}
   alias __MODULE__.DB
   require Logger
@@ -81,6 +82,45 @@ defmodule Domain.Auth do
     secret_salt = Domain.Crypto.random_token(16)
     secret_hash = Domain.Crypto.hash(:sha3_256, secret_nonce <> secret_fragment <> secret_salt)
     {secret_fragment, secret_nonce, secret_salt, secret_hash}
+  end
+
+  # One-Time Passcodes
+
+  @otp_expiration_seconds 15 * 60
+
+  def create_one_time_passcode(%Domain.Account{} = account, %Domain.Actor{} = actor) do
+    code = Domain.Crypto.random_token(5, encoder: :user_friendly)
+    code_hash = Domain.Crypto.hash(:argon2, code)
+    expires_at = DateTime.utc_now() |> DateTime.add(@otp_expiration_seconds, :second)
+
+    # Delete existing passcodes for this actor first
+    :ok = DB.delete_one_time_passcodes_for_actor(account, actor)
+
+    %OneTimePasscode{
+      account_id: account.id,
+      actor_id: actor.id,
+      code_hash: code_hash,
+      code: code,
+      expires_at: expires_at
+    }
+    |> DB.insert_one_time_passcode()
+  end
+
+  def verify_one_time_passcode(account_id, passcode_id, entered_code) do
+    case DB.fetch_one_time_passcode(account_id, passcode_id) do
+      {:ok, passcode} ->
+        if Domain.Crypto.equal?(:argon2, entered_code, passcode.code_hash) do
+          :ok = DB.delete_one_time_passcode(passcode)
+          {:ok, passcode}
+        else
+          {:error, :invalid_code}
+        end
+
+      {:error, :not_found} ->
+        # Perform dummy verification to prevent timing attacks
+        Domain.Crypto.equal?(:argon2, nil, nil)
+        {:error, :invalid_code}
+    end
   end
 
   # Token encoding/decoding
@@ -349,6 +389,7 @@ defmodule Domain.Auth do
     alias Domain.Account
     alias Domain.Actor
     alias Domain.Token
+    alias Domain.OneTimePasscode
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
@@ -430,6 +471,50 @@ defmodule Domain.Auth do
         {1, [token]} -> {:ok, token}
         {0, []} -> {:error, :not_found}
       end
+    end
+
+    # One-Time Passcode functions
+
+    def insert_one_time_passcode(passcode) do
+      passcode
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_one_time_passcode(account_id, id) do
+      from(otp in OneTimePasscode,
+        where: otp.account_id == ^account_id,
+        where: otp.id == ^id,
+        where: otp.expires_at > ^DateTime.utc_now()
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        otp -> {:ok, otp}
+      end
+    end
+
+    def delete_one_time_passcodes_for_actor(account, actor) do
+      from(otp in OneTimePasscode,
+        where: otp.account_id == ^account.id,
+        where: otp.actor_id == ^actor.id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      :ok
+    end
+
+    def delete_one_time_passcode(passcode) do
+      from(otp in OneTimePasscode,
+        where: otp.account_id == ^passcode.account_id,
+        where: otp.id == ^passcode.id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      :ok
     end
   end
 end

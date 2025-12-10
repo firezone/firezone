@@ -89,6 +89,7 @@ defmodule Web.Router do
 
     # Email auth entry point
     post "/sign_in/email_otp/:auth_provider_id", EmailOTPController, :sign_in
+    get "/sign_in/email_otp/:auth_provider_id/verify", EmailOTPController, :verify
     post "/sign_in/email_otp/:auth_provider_id/verify", EmailOTPController, :verify
 
     # Userpass auth entry point
@@ -102,6 +103,16 @@ defmodule Web.Router do
         Web.LiveHooks.RedirectIfAuthenticated
       ] do
       live "/", SignIn
+    end
+
+    live_session :email_otp_verify,
+      session: {Web.EmailOTP, :fetch_state, []},
+      on_mount: [
+        Web.LiveHooks.AllowEctoSandbox,
+        Web.LiveHooks.FetchAccount,
+        Web.LiveHooks.FetchSubject,
+        Web.LiveHooks.RedirectIfAuthenticated
+      ] do
       live "/sign_in/email_otp/:auth_provider_id", SignIn.Email
     end
 
