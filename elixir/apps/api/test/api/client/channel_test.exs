@@ -697,9 +697,10 @@ defmodule API.Client.ChannelTest do
 
       # Create a policy that becomes valid in one second
       now = DateTime.utc_now()
+      one_second_later = DateTime.add(now, 1, :second)
 
       day_letter =
-        case Date.day_of_week(now) do
+        case Date.day_of_week(one_second_later) do
           # Monday
           1 -> "M"
           # Tuesday
@@ -716,8 +717,12 @@ defmodule API.Client.ChannelTest do
           7 -> "U"
         end
 
-      # This test will flake if run within 1 second of midnight UTC. Sorry about that.
-      time_range = "#{day_letter}/#{now.hour}:#{now.minute}:#{now.second + 1}-23:59:59/UTC"
+      start_time =
+        one_second_later
+        |> DateTime.to_time()
+        |> Time.to_string()
+
+      time_range = "#{day_letter}/#{start_time}-23:59:59/UTC"
 
       policy_fixture(
         account: account,
