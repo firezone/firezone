@@ -293,7 +293,6 @@ defmodule Domain.TokensTest do
       assert token.last_seen_remote_ip_location_lat == context.remote_ip_location_lat
       assert token.last_seen_remote_ip_location_lon == context.remote_ip_location_lon
       assert token.last_seen_at
-      refute token.remaining_attempts
     end
 
     test "returns error when secret is invalid", %{account: account} do
@@ -311,7 +310,6 @@ defmodule Domain.TokensTest do
 
       token =
         Fixtures.Tokens.create_token(
-          remaining_attempts: 3,
           expires_at: nil,
           account: account,
           secret_nonce: nonce
@@ -324,7 +322,6 @@ defmodule Domain.TokensTest do
                {:error, :invalid_or_expired_token}
 
       token = Repo.get(Token, token.id)
-      assert token.remaining_attempts == 2
       refute token.expires_at
     end
 
@@ -333,7 +330,6 @@ defmodule Domain.TokensTest do
 
       token =
         Fixtures.Tokens.create_token(
-          remaining_attempts: 1,
           expires_at: nil,
           account: account,
           secret_nonce: nonce
@@ -346,7 +342,6 @@ defmodule Domain.TokensTest do
                {:error, :invalid_or_expired_token}
 
       token = Repo.get(Token, token.id)
-      assert token.remaining_attempts == 0
       assert token.expires_at
     end
 

@@ -167,8 +167,6 @@ defmodule Web.EmailOTPController do
   defp request_sign_in_token(actor, _context) do
     # Token expiration: 30 minutes
     sign_in_token_expiration_seconds = 30 * 60
-    # Max attempts: 3
-    sign_in_token_max_attempts = 3
 
     nonce = String.downcase(Domain.Crypto.random_token(5, encoder: :user_friendly))
     expires_at = DateTime.utc_now() |> DateTime.add(sign_in_token_expiration_seconds, :second)
@@ -183,7 +181,6 @@ defmodule Web.EmailOTPController do
         secret_nonce: nonce,
         account_id: actor.account_id,
         actor_id: actor.id,
-        remaining_attempts: sign_in_token_max_attempts,
         expires_at: expires_at
       })
 
