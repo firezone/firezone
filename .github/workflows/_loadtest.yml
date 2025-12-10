@@ -61,6 +61,13 @@ jobs:
         if: matrix.os == 'macos'
         run: brew update && brew install azure-cli
 
+      - name: Register Event Log source (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          New-EventLog -LogName Application -Source "Firezone-Loadtest" -ErrorAction SilentlyContinue
+          Write-Host "Event Log source 'Firezone-Loadtest' registered (or already exists)"
+
       - name: Build loadtest binary
         shell: bash
         run: |
@@ -81,7 +88,16 @@ jobs:
         if: matrix.os == 'macos'
         run: shasum -a 256 ${{ matrix.binary }} > ${{ matrix.binary }}.sha256sum.txt
 
+      - name: Upload artifact to GitHub
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: firezone-loadtest-${{ matrix.os }}-${{ matrix.artifact_name }}
+          path: |
+            rust/${{ matrix.binary }}
+            rust/${{ matrix.binary }}.sha256sum.txt
+
       - name: Upload to Azure Storage
+        if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -e

@@ -743,7 +743,7 @@ mod async_dns {
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
-            let key_handle = Registry::HKEY(key.raw_handle() as *mut c_void);
+            let key_handle = Registry::HKEY(key.raw_handle());
             unsafe {
                 Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, Some(event), true)
             }
