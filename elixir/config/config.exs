@@ -122,6 +122,7 @@ config :domain, Domain.Changes.ReplicationConnection,
     entra_directories
     okta_directories
     google_directories
+    relay_tokens
   ],
   # Allow up to 60 seconds of lag before alerting
   warning_threshold: :timer.seconds(60),

@@ -20,7 +20,8 @@ defmodule Domain.Changes.ReplicationConnection do
     "userpass_auth_providers" => Hooks.AuthProviders,
     "entra_directories" => Hooks.Directories,
     "okta_directories" => Hooks.Directories,
-    "google_directories" => Hooks.Directories
+    "google_directories" => Hooks.Directories,
+    "relay_tokens" => Hooks.RelayTokens
   }
 
   def on_write(state, lsn, op, table, old_data, data) do
