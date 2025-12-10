@@ -96,12 +96,7 @@ jobs:
 
           set -x
 
-          # First, run all tests with coverage instrumentation.
-          if [ "${{ runner.os }}" = "Linux" ] && [ "${{ matrix.runs-on }}" = "ubuntu-24.04" ]; then
-            cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
-          else
-            cargo test --all-features ${{ steps.setup-rust.outputs.test-packages }} -- --include-ignored --nocapture
-          fi
+          cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
 
           # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
           patterns=(
@@ -148,13 +143,24 @@ jobs:
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
           TESTCASES_DIR: "libs/connlib/tunnel/testcases"
 
-      - name: Upload coverage to Coveralls
-        uses: coverallsapp/github-action@v2
-        if: ${{ runner.os == 'Linux' && matrix.runs-on == 'ubuntu-24.04' }}
+      - uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: rust/lcov.info
           format: lcov
+          flag-name: ${{ matrix.runs-on }}
+          parallel: true
+
+  coverage-finish:
+    name: coverage-finish
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Finalize coverage upload
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel-finished: true
 
   fuzz:
     name: fuzz
