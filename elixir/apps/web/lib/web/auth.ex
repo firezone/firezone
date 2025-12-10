@@ -14,28 +14,24 @@ defmodule Web.Auth do
 
   # This is the cookie which will store recent account ids
   # that the user has signed in to.
-  @recent_accounts_cookie_name "recent_account_ids"
+  @recent_accounts_cookie_name "recents"
+  @max_cookie_age 60 * 60 * 24 * 400
   @recent_accounts_cookie_options [
-    sign: true,
-    max_age: 365 * 24 * 60 * 60,
+    encrypt: true,
+    max_age: @max_cookie_age,
     same_site: "Lax",
     secure: true,
     http_only: true
   ]
-  @remember_last_account_ids 5
+  @remember_last_account_ids 50
 
   ###########################
   ## Controller Helpers
   ###########################
 
   def recent_account_ids(conn) do
-    conn = Plug.Conn.fetch_cookies(conn, signed: [@recent_accounts_cookie_name])
-
-    if recent_account_ids = Map.get(conn.cookies, @recent_accounts_cookie_name) do
-      Plug.Crypto.non_executable_binary_to_term(recent_account_ids, [:safe])
-    else
-      []
-    end
+    conn = Plug.Conn.fetch_cookies(conn, encrypted: [@recent_accounts_cookie_name])
+    Map.get(conn.cookies, @recent_accounts_cookie_name, [])
   end
 
   def prepend_recent_account_id(conn, id_to_prepend) do
@@ -45,7 +41,7 @@ defmodule Web.Auth do
     Plug.Conn.put_resp_cookie(
       conn,
       @recent_accounts_cookie_name,
-      :erlang.term_to_binary(ids),
+      ids,
       @recent_accounts_cookie_options
     )
   end
@@ -57,7 +53,7 @@ defmodule Web.Auth do
     Plug.Conn.put_resp_cookie(
       conn,
       @recent_accounts_cookie_name,
-      :erlang.term_to_binary(ids),
+      ids,
       @recent_accounts_cookie_options
     )
   end
