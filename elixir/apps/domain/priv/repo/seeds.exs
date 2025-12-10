@@ -159,23 +159,17 @@ defmodule Domain.Repo.Seeds do
       if System.get_env("STATIC_SEEDS") == "true" do
         changeset = Ecto.Changeset.change(resource, values)
 
-        # Token schema uses composite primary key (account_id, id), but relay tokens
-        # don't have an account_id, so we need to use update_all for those.
+        # RelayToken uses a simple primary key (id) but has virtual fields
         case resource do
-          %Token{account_id: nil, id: id} when not is_nil(id) ->
+          %Domain.RelayToken{id: id} when not is_nil(id) ->
             import Ecto.Query
 
             # Filter out virtual fields that can't be persisted
-            virtual_fields = [
-              :secret_nonce,
-              :secret_fragment,
-              :auth_provider_name,
-              :auth_provider_type
-            ]
+            virtual_fields = [:secret_nonce, :secret_fragment]
 
             db_changes = Map.drop(changeset.changes, virtual_fields)
 
-            from(t in Token, where: t.id == ^id)
+            from(rt in Domain.RelayToken, where: rt.id == ^id)
             |> Repo.update_all(set: Enum.to_list(db_changes))
 
             struct(resource, changeset.changes)
@@ -942,20 +936,28 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
-    # Create relay tokens using Auth module for proper handling
-    relay_token_attrs = %{
-      type: :relay,
-      secret_fragment: Crypto.random_token(32, encoder: :hex32)
-    }
+    # Create relay token manually
+    secret_nonce = ""
+    secret_fragment = Crypto.random_token(32, encoder: :hex32)
+    secret_salt = Crypto.random_token(16)
+    secret_hash = Crypto.hash(:sha3_256, secret_nonce <> secret_fragment <> secret_salt)
 
-    # Use Auth.create_token which properly sets secret_salt and secret_hash
-    {:ok, global_relay_token} = Auth.create_token(relay_token_attrs)
+    global_relay_token =
+      %Domain.RelayToken{
+        secret_nonce: secret_nonce,
+        secret_fragment: secret_fragment,
+        secret_salt: secret_salt,
+        secret_hash: secret_hash
+      }
+      |> Ecto.Changeset.change()
+      |> Repo.insert!()
 
     global_relay_token =
       global_relay_token
       |> maybe_repo_update.(
         id: Ecto.UUID.cast!("e82fcdc1-057a-4015-b90b-3b18f0f28053"),
         secret_salt: "lZWUdgh-syLGVDsZEu_29A",
+        secret_nonce: "",
         secret_fragment: "C14NGA87EJRR03G4QPR07A9C6G784TSSTHSF4TI5T0GD8D6L0VRG====",
         secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
       )

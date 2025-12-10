@@ -715,15 +715,13 @@ defmodule Domain.AuthTest do
       assert "can't be blank" in errors_on(changeset).site_id
     end
 
-    test "creates a relay token without account" do
-      attrs = %{
-        type: :relay,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32)
-      }
-
-      assert {:ok, token} = create_token(attrs)
-      assert token.type == :relay
-      assert is_nil(token.account_id)
+    test "creates a relay token" do
+      assert {:ok, token} = create_relay_token()
+      assert token.id != nil
+      assert token.secret_fragment != nil
+      assert token.secret_nonce != nil
+      assert token.secret_hash != nil
+      assert token.secret_salt != nil
     end
 
     test "creates an email token with all required fields" do
@@ -1135,11 +1133,10 @@ defmodule Domain.AuthTest do
 
     test "works with relay token type" do
       token = relay_token_fixture()
-      encoded = encode_token(token)
-      context = build_context(type: :relay)
+      encoded = encode_relay_token(token)
 
-      assert {:ok, used_token} = use_token(encoded, context)
-      assert used_token.id == token.id
+      assert {:ok, verified_token} = verify_relay_token(encoded)
+      assert verified_token.id == token.id
     end
 
     test "works with site token type" do
@@ -1214,19 +1211,14 @@ defmodule Domain.AuthTest do
       assert used_token.id == token.id
     end
 
-    test "encodes relay token without account_id" do
-      fragment = Domain.Crypto.random_token(32, encoder: :hex32)
-
-      attrs = %{
-        type: :relay,
-        secret_fragment: fragment
-      }
-
-      {:ok, token} = create_token(attrs)
-      token = %{token | secret_fragment: fragment}
+    test "encodes relay token" do
+      {:ok, token} = create_relay_token()
 
       encoded = encode_fragment!(token)
-      assert String.starts_with?(encoded, ".")
+
+      # Verify the encoded token can be used for authentication
+      assert {:ok, verified_token} = verify_relay_token(encoded)
+      assert verified_token.id == token.id
     end
 
     test "encodes site token" do
@@ -1430,27 +1422,17 @@ defmodule Domain.AuthTest do
     test "relay tokens work with legacy relay_group salt" do
       # This tests backward compatibility for tokens created before
       # the rename from relay_group to relay
-      fragment = Domain.Crypto.random_token(32, encoder: :hex32)
-      nonce = "legacy"
-
-      attrs = %{
-        type: :relay,
-        secret_fragment: fragment,
-        secret_nonce: nonce
-      }
-
-      {:ok, token} = create_token(attrs)
+      token = relay_token_fixture()
 
       # Manually create an encoded token using the legacy salt
       config = Application.fetch_env!(:domain, Domain.Tokens)
       key_base = Keyword.fetch!(config, :key_base)
       legacy_salt = Keyword.fetch!(config, :salt) <> "relay_group"
-      body = {token.account_id, token.id, fragment}
-      legacy_encoded = nonce <> "." <> Plug.Crypto.sign(key_base, legacy_salt, body)
+      body = {nil, token.id, token.secret_fragment}
+      legacy_encoded = token.secret_nonce <> "." <> Plug.Crypto.sign(key_base, legacy_salt, body)
 
-      context = build_context(type: :relay)
-      assert {:ok, used_token} = use_token(legacy_encoded, context)
-      assert used_token.id == token.id
+      assert {:ok, verified_token} = verify_relay_token(legacy_encoded)
+      assert verified_token.id == token.id
     end
 
     test "new site tokens still work with current salt" do
@@ -1466,11 +1448,10 @@ defmodule Domain.AuthTest do
 
     test "new relay tokens still work with current salt" do
       token = relay_token_fixture()
-      encoded = encode_token(token)
+      encoded = encode_relay_token(token)
 
-      context = build_context(type: :relay)
-      assert {:ok, used_token} = use_token(encoded, context)
-      assert used_token.id == token.id
+      assert {:ok, verified_token} = verify_relay_token(encoded)
+      assert verified_token.id == token.id
     end
   end
 end

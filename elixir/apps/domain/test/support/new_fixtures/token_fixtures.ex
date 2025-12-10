@@ -45,8 +45,7 @@ defmodule Domain.TokenFixtures do
     attrs = valid_token_attrs(attrs)
     type = attrs.type
 
-    # Get or create account (relay tokens don't have accounts)
-    account = if type == :relay, do: nil, else: Map.get(attrs, :account) || account_fixture()
+    account = Map.get(attrs, :account) || account_fixture()
 
     changeset =
       %Domain.Token{}
@@ -67,8 +66,7 @@ defmodule Domain.TokenFixtures do
         :expires_at
       ])
 
-    changeset =
-      if account, do: Ecto.Changeset.put_assoc(changeset, :account, account), else: changeset
+    changeset = Ecto.Changeset.put_assoc(changeset, :account, account)
 
     # Associate with actor for browser/client/api_client/email tokens
     changeset =
@@ -121,14 +119,23 @@ defmodule Domain.TokenFixtures do
   end
 
   @doc """
-  Generate a relay token. Expires at nil (infinity).
+  Generate a relay token using Domain.RelayToken schema.
   """
   def relay_token_fixture(attrs \\ %{}) do
-    attrs
-    |> Enum.into(%{})
-    |> Map.put(:type, :relay)
-    |> Map.put_new(:expires_at, nil)
-    |> token_fixture()
+    attrs = Enum.into(attrs, %{})
+
+    secret_nonce = Map.get(attrs, :secret_nonce, generate_secret_nonce())
+    secret_fragment = Map.get(attrs, :secret_fragment, generate_secret_fragment())
+    secret_salt = Map.get(attrs, :secret_salt, generate_salt())
+    secret_hash = compute_secret_hash(secret_nonce, secret_fragment, secret_salt)
+
+    %Domain.RelayToken{
+      secret_nonce: secret_nonce,
+      secret_fragment: secret_fragment,
+      secret_salt: secret_salt,
+      secret_hash: secret_hash
+    }
+    |> Domain.Repo.insert!()
   end
 
   @doc """
@@ -167,11 +174,30 @@ defmodule Domain.TokenFixtures do
     nonce <> "." <> Plug.Crypto.sign(key_base, salt, body)
   end
 
+  @doc """
+  Encode a relay token for use in authentication.
+  """
+  def encode_relay_token(token) do
+    config = Domain.Config.fetch_env!(:domain, Domain.Tokens)
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt) <> token_type(token)
+    body = {Map.get(token, :account_id), token.id, token.secret_fragment}
+
+    token.secret_nonce <> "." <> Plug.Crypto.sign(key_base, salt, body)
+  end
+
+  defp token_type(%Domain.RelayToken{}), do: "relay"
+
   # Private helpers
 
   defp generate_salt do
     :crypto.strong_rand_bytes(16)
     |> Base.encode64()
+  end
+
+  defp generate_secret_nonce do
+    :crypto.strong_rand_bytes(8)
+    |> Base.url_encode64(padding: false)
   end
 
   defp generate_secret_fragment do

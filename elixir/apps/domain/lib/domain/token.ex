@@ -16,7 +16,6 @@ defmodule Domain.Token do
         :browser,
         :client,
         :api_client,
-        :relay,
         :site,
         :email
       ]
