@@ -6,29 +6,34 @@
     windows,
     expect(clippy::print_stderr, reason = "CLI tool outputs warnings to stderr")
 )]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 //! Load testing CLI for Firezone VPN.
 //!
-//! This tool uses Goose to perform load testing through the VPN tunnel.
-//! It assumes the Firezone client is already connected.
+//! Supports HTTP, TCP, and WebSocket load testing.
 //!
 //! # Usage
 //!
 //! Run `firezone-loadtest -h` for all options
 //! You can also see Goose docs: <https://book.goose.rs>
 //!
-//! Key flags:
+//! ```bash
+//! # Random test from config (default mode)
+//! firezone-loadtest --config loadtest.toml
 //!
-//! - `-H, --host HOST` - Target URL (default: <https://firezone.dev>)
-//! - `-u, --users N` - Concurrent users (default: 10)
-//! - `-t, --run-time TIME` - Duration like `30s`, `5m`, `1h` (default: 30s)
-//! - `--report-file NAME` - Generate report (.html, .json, .md)
-//! - `--no-print-metrics` - Suppress human-readable metrics output
-//! - `-q` - Quiet mode (use `-qq` or `-qqq` for less output)
+//! # Reproducible random test with seed
+//! firezone-loadtest --config loadtest.toml --seed 12345
+//!
+//! # HTTP/1.1 load test (manual mode)
+//! firezone-loadtest http -H https://example.com -u 100 -t 60s
+//!
+//! # HTTP/2 load test
+//! firezone-loadtest http --http-version 2 -H https://example.com -u 100 -t 60s
+//! ```
 //!
 //! # For Azure log ingestion (clean JSON output)
 //! ```bash
-//! firezone-loadtest -qq --no-print-metrics 2>/dev/null | tail -1
+//! firezone-loadtest http -qq --no-print-metrics 2>/dev/null | tail -1
 //! ```
 //!
 //! # Windows Event Log
@@ -39,134 +44,193 @@
 //! New-EventLog -LogName Application -Source "Firezone-Loadtest"
 //! ```
 
-use goose::config::GooseDefault;
-use goose::metrics::GooseMetrics;
-use goose::prelude::*;
+mod cli;
+mod config;
+mod echo_payload;
+mod http;
+mod ping;
+mod tcp;
+mod util;
+mod websocket;
+
+use crate::config::{HttpConfig, MIN_PING_COUNT, PingConfig, TcpConfig, TestType, WebsocketConfig};
+use clap::{Parser, Subcommand};
+use config::LoadTestConfig;
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
+use rand::{Rng as _, SeedableRng as _};
 use serde::Serialize;
-use tracing_subscriber::util::SubscriberInitExt as _;
+use std::net::IpAddr;
+use std::path::PathBuf;
+use std::time::Duration;
+use tracing::info;
+use url::Url;
 
-#[cfg(windows)]
-const EVENT_LOG_SOURCE: &str = "Firezone-Loadtest";
-const DEFAULT_HOST: &str = "https://example.com";
-const DEFAULT_USERS: usize = 10;
-const DEFAULT_RUN_TIME: usize = 30;
+/// Default config file name.
+const DEFAULT_CONFIG_FILE: &str = "loadtest.toml";
 
-/// Simplified metrics summary for Azure log ingestion.
-///
-/// Uses values directly from Goose without additional calculation.
-#[derive(Serialize)]
-struct LoadTestSummary {
-    target_host: String,
-    duration_secs: usize,
-    total_requests: usize,
-    successful_requests: usize,
-    failed_requests: usize,
-    min_response_time_ms: usize,
-    max_response_time_ms: usize,
-    avg_response_time_ms: usize,
+/// Default echo payload size in bytes for CLI commands.
+const DEFAULT_ECHO_PAYLOAD_SIZE: usize = 64;
+
+#[derive(Parser)]
+#[command(
+    name = "firezone-loadtest",
+    about = "Load testing CLI for Firezone VPN"
+)]
+struct Cli {
+    /// Path to TOML configuration file (default: loadtest.toml)
+    #[arg(long, global = true)]
+    config: Option<PathBuf>,
+
+    /// Random seed for reproducible test selection
+    #[arg(long, global = true)]
+    seed: Option<u64>,
+
+    /// Print default configuration to stdout and exit
+    #[arg(long)]
+    dump_config: bool,
+
+    #[command(subcommand)]
+    command: Option<Commands>,
 }
 
-impl LoadTestSummary {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Iterating to find our single endpoint"
-    )]
-    fn from_metrics(metrics: &GooseMetrics) -> Self {
-        // We only have one endpoint ("GET /"), so grab its data directly
-        let (total_requests, successful_requests, failed_requests, min_time, max_time, avg_time) =
-            metrics
-                .requests
-                .values()
-                .next()
-                .map(|r| {
-                    let avg = if r.raw_data.counter > 0 {
-                        r.raw_data.total_time / r.raw_data.counter
-                    } else {
-                        0
-                    };
-                    (
-                        r.raw_data.counter,
-                        r.success_count,
-                        r.fail_count,
-                        r.raw_data.minimum_time,
-                        r.raw_data.maximum_time,
-                        avg,
-                    )
-                })
-                .unwrap_or_default();
-
-        let target_host = metrics
-            .hosts
-            .iter()
-            .next()
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string());
-
-        Self {
-            target_host,
-            duration_secs: metrics.duration,
-            total_requests,
-            successful_requests,
-            failed_requests,
-            min_response_time_ms: min_time,
-            max_response_time_ms: max_time,
-            avg_response_time_ms: avg_time,
-        }
-    }
+#[derive(Subcommand)]
+enum Commands {
+    /// Random test from config file (default when no subcommand given)
+    Random,
+    /// HTTP load testing using Goose
+    Http(http::Args),
+    /// TCP connection load testing
+    Tcp(tcp::Args),
+    /// WebSocket connection load testing
+    Websocket(websocket::Args),
+    /// ICMP ping testing
+    Ping(ping::Args),
 }
 
 #[tokio::main]
-async fn main() -> Result<(), GooseError> {
+async fn main() -> anyhow::Result<()> {
     init_logging();
+    let cli = Cli::parse();
 
-    tracing::info!(
-        host = DEFAULT_HOST,
-        users = DEFAULT_USERS,
-        run_time_secs = DEFAULT_RUN_TIME,
-        "load test started"
-    );
+    if cli.dump_config {
+        print!("{DEFAULT_CONFIG}");
+        return Ok(());
+    }
 
-    let metrics = GooseAttack::initialize()?
-        .set_default(GooseDefault::Host, DEFAULT_HOST)?
-        .set_default(GooseDefault::Users, DEFAULT_USERS)?
-        .set_default(GooseDefault::RunTime, DEFAULT_RUN_TIME)?
-        .set_default(GooseDefault::NoResetMetrics, true)?
-        .register_scenario(
-            scenario!("LoadTest").register_transaction(transaction!(load_test_request)),
-        )
-        .execute()
-        .await?;
-
-    // Output simplified metrics as JSON for Azure log ingestion
-    let summary = LoadTestSummary::from_metrics(&metrics);
-
-    tracing::info!(
-        target_host = %summary.target_host,
-        duration_secs = summary.duration_secs,
-        total_requests = summary.total_requests,
-        successful_requests = summary.successful_requests,
-        failed_requests = summary.failed_requests,
-        min_response_time_ms = summary.min_response_time_ms,
-        max_response_time_ms = summary.max_response_time_ms,
-        avg_response_time_ms = summary.avg_response_time_ms,
-        "load test completed"
-    );
-
-    println!(
-        "{}",
-        serde_json::to_string(&summary).expect("Failed to serialize metrics")
-    );
+    match cli.command {
+        None | Some(Commands::Random) => run_random(cli.config, cli.seed).await?,
+        Some(Commands::Http(args)) => http::run_with_cli_args(args).await?,
+        Some(Commands::Tcp(args)) => tcp::run_with_cli_args(args).await?,
+        Some(Commands::Websocket(args)) => websocket::run_with_cli_args(args).await?,
+        Some(Commands::Ping(args)) => ping::run_with_cli_args(args).await?,
+    }
 
     Ok(())
 }
 
+/// Default configuration compiled from the example file.
+const DEFAULT_CONFIG: &str = include_str!("../loadtest.example.toml");
+
+/// Run a random test from the config file.
+async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::Result<()> {
+    let config_path = config_path.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_FILE));
+
+    if !config_path.exists() {
+        anyhow::bail!(
+            "Config file not found: {}\n\nCreate a loadtest.toml file or specify one with --config",
+            config_path.display()
+        );
+    }
+
+    info!(config = %config_path.display(), "Loading config");
+
+    let config = LoadTestConfig::load(&config_path)?;
+    let mut selector = TestSelector::new(seed);
+    let seed = selector.seed();
+
+    info!(seed, enabled_types = ?config.enabled_types(), "Selecting random test");
+
+    match selector.select(&config) {
+        AnyTestConfig::Http(http) => {
+            info!(
+                test_type = "http",
+                seed,
+                address = %http.address,
+                http_version = http.http_version,
+                users = http.users,
+                duration_secs = http.run_time.as_secs(),
+                "Starting HTTP test"
+            );
+
+            http::run_with_config(http, seed).await
+        }
+        AnyTestConfig::Tcp(tcp) => {
+            info!(
+                test_type = "tcp",
+                seed,
+                address = %tcp.target,
+                concurrent = tcp.concurrent,
+                duration_secs = tcp.hold_duration.as_secs(),
+                echo_mode = tcp.echo_mode,
+                "Starting TCP test"
+            );
+
+            tcp::run_with_config(tcp, seed).await
+        }
+        AnyTestConfig::Websocket(ws) => {
+            info!(
+                test_type = "websocket",
+                seed,
+                url = %ws.url,
+                concurrent = ws.concurrent,
+                duration_secs = ws.hold_duration.as_secs(),
+                echo_mode = ws.echo_mode,
+                "Starting WebSocket test"
+            );
+
+            websocket::run_with_config(ws, seed).await
+        }
+        AnyTestConfig::Ping(ping) => {
+            info!(
+                test_type = "ping",
+                seed,
+                targets = ?ping.targets,
+                count = ping.count,
+                interval_ms = ping.interval.as_millis() as u64,
+                "Starting ping test"
+            );
+
+            ping::run_with_config(ping, seed).await
+        }
+    }
+}
+
+/// Generic wrapper to add a seed to any test summary for reproducibility.
+#[derive(Serialize)]
+struct WithSeed<T: Serialize> {
+    seed: u64,
+    #[serde(flatten)]
+    inner: T,
+}
+
+impl<T: Serialize> WithSeed<T> {
+    fn new(seed: u64, inner: T) -> Self {
+        Self { seed, inner }
+    }
+}
+
 /// Initializes logging with optional Windows Event Log support.
+///
+/// On non-Windows platforms, uses RUST_LOG env var for filtering.
+/// Default to info level for this crate, warn for dependencies.
 fn init_logging() {
     #[cfg(windows)]
     {
         use tracing_subscriber::layer::SubscriberExt as _;
+        use tracing_subscriber::util::SubscriberInitExt as _;
 
-        match logging::windows_event_log::layer(EVENT_LOG_SOURCE) {
+        match logging::windows_event_log::layer("Firezone-Loadtest") {
             Ok(layer) => {
                 tracing_subscriber::registry().with(layer).init();
             }
@@ -183,29 +247,163 @@ fn init_logging() {
 
     #[cfg(not(windows))]
     {
-        tracing_subscriber::registry().init();
+        use tracing_subscriber::EnvFilter;
+
+        // Initialize tracing with RUST_LOG env var support
+        // Default to info level for this crate, warn for dependencies
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| EnvFilter::new("firezone_loadtest=info,warn")),
+            )
+            .with_writer(std::io::stderr)
+            .init();
     }
 }
 
-/// Performs an HTTP GET request and validates the response.
-async fn load_test_request(user: &mut GooseUser) -> TransactionResult {
-    let mut goose = user.get("/").await?;
+/// Resolved test configuration (one of the test types).
+#[derive(Debug)]
+enum AnyTestConfig {
+    Http(http::TestConfig),
+    Tcp(tcp::TestConfig),
+    Websocket(websocket::TestConfig),
+    Ping(ping::TestConfig),
+}
 
-    // Validate response status is 2xx
-    if let Ok(response) = goose.response
-        && !response.status().is_success()
-    {
-        let status = response.status();
-        let url = user.base_url.as_str();
+/// Random test selector.
+struct TestSelector {
+    rng: StdRng,
+    seed: u64,
+}
 
-        tracing::warn!(
-            status = %status,
-            url = %url,
-            "request failed"
-        );
-
-        return user.set_failure(&format!("{status}"), &mut goose.request, None, None);
+impl TestSelector {
+    /// Create a new selector with the given seed, or generate a random one.
+    fn new(seed: Option<u64>) -> Self {
+        let seed = seed.unwrap_or_else(rand::random);
+        let rng = StdRng::seed_from_u64(seed);
+        Self { rng, seed }
     }
 
-    Ok(())
+    fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    fn select(&mut self, config: &LoadTestConfig) -> AnyTestConfig {
+        let types = config.enabled_types();
+        let test_type = types[self.rng.gen_range(0..types.len())];
+
+        match test_type {
+            TestType::Http => AnyTestConfig::Http(self.resolve_http(&config.http)),
+            TestType::Tcp => AnyTestConfig::Tcp(self.resolve_tcp(&config.tcp)),
+            TestType::Websocket => {
+                AnyTestConfig::Websocket(self.resolve_websocket(&config.websocket))
+            }
+            TestType::Ping => AnyTestConfig::Ping(self.resolve_ping(&config.ping)),
+        }
+    }
+
+    fn resolve_http(&mut self, config: &HttpConfig) -> http::TestConfig {
+        let address = config
+            .addresses
+            .choose(&mut self.rng)
+            .expect("should have at least one address");
+        let address = Url::parse(address).expect("URL validated during config load");
+        let http_version = config.http_version[self.rng.gen_range(0..config.http_version.len())];
+        let users = self.rng.gen_range(config.users);
+        let run_time = Duration::from_secs(self.rng.gen_range(config.run_time_secs));
+
+        http::TestConfig {
+            address,
+            http_version,
+            users,
+            run_time,
+        }
+    }
+
+    fn resolve_tcp(&mut self, config: &TcpConfig) -> tcp::TestConfig {
+        let address = config
+            .addresses
+            .choose(&mut self.rng)
+            .expect("should have at least one address");
+
+        let concurrent = self.rng.gen_range(config.concurrent) as usize;
+        let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));
+        let timeout = Duration::from_secs(self.rng.gen_range(config.timeout_secs));
+        let echo_mode = config.echo_mode;
+        let echo_payload_size = self.rng.gen_range(config.echo_payload_size) as usize;
+        let echo_interval = Some(Duration::from_secs(
+            self.rng.gen_range(config.echo_interval_secs),
+        ));
+        let echo_read_timeout =
+            Duration::from_secs(self.rng.gen_range(config.echo_read_timeout_secs));
+
+        tcp::TestConfig {
+            target: address.to_owned(),
+            concurrent,
+            hold_duration: duration,
+            connect_timeout: timeout,
+            echo_mode,
+            echo_payload_size,
+            echo_interval,
+            echo_read_timeout,
+        }
+    }
+
+    fn resolve_websocket(&mut self, config: &WebsocketConfig) -> websocket::TestConfig {
+        let address = config
+            .addresses
+            .choose(&mut self.rng)
+            .expect("should have at least one address");
+        let address = Url::parse(address).expect("URL validated during config load");
+
+        let concurrent = self.rng.gen_range(config.concurrent) as usize;
+        let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));
+        let timeout = Duration::from_secs(self.rng.gen_range(config.timeout_secs));
+        let ping_interval = Some(Duration::from_secs(
+            self.rng.gen_range(config.ping_interval_secs),
+        ));
+        let echo_mode = config.echo_mode;
+        let echo_payload_size = self.rng.gen_range(config.echo_payload_size) as usize;
+        let echo_interval = Some(Duration::from_secs(
+            self.rng.gen_range(config.echo_interval_secs),
+        ));
+        let echo_read_timeout =
+            Duration::from_secs(self.rng.gen_range(config.echo_read_timeout_secs));
+
+        websocket::TestConfig {
+            url: address,
+            concurrent,
+            hold_duration: duration,
+            connect_timeout: timeout,
+            ping_interval,
+            echo_mode,
+            echo_payload_size,
+            echo_interval,
+            echo_read_timeout,
+        }
+    }
+
+    fn resolve_ping(&mut self, config: &PingConfig) -> ping::TestConfig {
+        // Parse all targets
+        let targets: Vec<IpAddr> = config
+            .addresses
+            .iter()
+            .map(|s| s.parse().expect("IP address validated during config load"))
+            .collect();
+
+        // Ensure minimum count of 1 ping
+        let count = (self.rng.gen_range(config.count) as usize).max(MIN_PING_COUNT);
+        let interval = Duration::from_millis(self.rng.gen_range(config.interval_ms));
+        let timeout = Duration::from_millis(self.rng.gen_range(config.timeout_ms));
+        let payload_size = self.rng.gen_range(config.payload_size) as usize;
+
+        ping::TestConfig {
+            targets,
+            count: Some(count),
+            interval,
+            timeout,
+            payload_size,
+            duration: None,
+        }
+    }
 }
