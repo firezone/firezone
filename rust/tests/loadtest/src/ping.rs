@@ -74,21 +74,6 @@ pub struct PingTestSummary {
     pub per_target: Vec<TargetSummary>,
 }
 
-/// Resolved ping test parameters (ready to execute).
-#[derive(Debug)]
-pub struct ResolvedPingConfig {
-    /// Target IP addresses.
-    pub targets: Vec<IpAddr>,
-    /// Number of pings per target.
-    pub count: usize,
-    /// Interval between pings.
-    pub interval: Duration,
-    /// Ping timeout.
-    pub timeout: Duration,
-    /// Payload size.
-    pub payload_size: usize,
-}
-
 #[derive(Parser)]
 pub struct PingArgs {
     /// Target IP address(es) to ping
@@ -146,17 +131,8 @@ pub async fn run_with_cli_args(args: PingArgs) -> anyhow::Result<()> {
 }
 
 /// Run ping test from resolved config.
-pub async fn run_with_config(config: ResolvedPingConfig, seed: u64) -> anyhow::Result<()> {
-    let ping_config = PingTestConfig {
-        targets: config.targets,
-        count: Some(config.count),
-        duration: None,
-        interval: config.interval,
-        timeout: config.timeout,
-        payload_size: config.payload_size,
-    };
-
-    let summary = run(ping_config).await?;
+pub async fn run_with_config(config: PingTestConfig, seed: u64) -> anyhow::Result<()> {
+    let summary = run(config).await?;
 
     println!(
         "{}",

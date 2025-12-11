@@ -55,7 +55,7 @@ mod websocket;
 
 use crate::config::{HttpConfig, MIN_PING_COUNT, PingConfig, TcpConfig, TestType, WebsocketConfig};
 use crate::http::{HttpArgs, ResolvedHttpConfig};
-use crate::ping::{PingArgs, ResolvedPingConfig};
+use crate::ping::PingArgs;
 use crate::tcp::TcpArgs;
 use crate::websocket::WebsocketArgs;
 use clap::{Parser, Subcommand};
@@ -270,8 +270,8 @@ fn init_logging() {
 enum ResolvedConfig {
     Http(ResolvedHttpConfig),
     Tcp(tcp::TcpTestConfig),
-    Websocket(ResolvedWebsocketConfig),
-    Ping(ResolvedPingConfig),
+    Websocket(websocket::WebsocketTestConfig),
+    Ping(ping::PingTestConfig),
 }
 
 /// Random test selector.
@@ -381,7 +381,7 @@ impl TestSelector {
         }
     }
 
-    fn resolve_ping(&mut self, config: &PingConfig) -> ResolvedPingConfig {
+    fn resolve_ping(&mut self, config: &PingConfig) -> ping::PingTestConfig {
         // Parse all targets
         let targets: Vec<IpAddr> = config
             .addresses
@@ -395,12 +395,13 @@ impl TestSelector {
         let timeout = Duration::from_millis(config.timeout_ms.pick(&mut self.rng));
         let payload_size = config.payload_size.pick(&mut self.rng) as usize;
 
-        ResolvedPingConfig {
+        ping::PingTestConfig {
             targets,
-            count,
+            count: Some(count),
             interval,
             timeout,
             payload_size,
+            duration: None,
         }
     }
 }
