@@ -54,10 +54,6 @@ mod util;
 mod websocket;
 
 use crate::config::{HttpConfig, MIN_PING_COUNT, PingConfig, TcpConfig, TestType, WebsocketConfig};
-use crate::http::HttpArgs;
-use crate::ping::PingArgs;
-use crate::tcp::TcpArgs;
-use crate::websocket::WebsocketArgs;
 use clap::{Parser, Subcommand};
 use config::LoadTestConfig;
 use rand::rngs::StdRng;
@@ -106,13 +102,13 @@ enum Commands {
     /// Random test from config file (default when no subcommand given)
     Random,
     /// HTTP load testing using Goose
-    Http(HttpArgs),
+    Http(http::HttpArgs),
     /// TCP connection load testing
-    Tcp(TcpArgs),
+    Tcp(tcp::TcpArgs),
     /// WebSocket connection load testing
-    Websocket(WebsocketArgs),
+    Websocket(websocket::WebsocketArgs),
     /// ICMP ping testing
-    Ping(PingArgs),
+    Ping(ping::PingArgs),
 }
 
 #[tokio::main]
