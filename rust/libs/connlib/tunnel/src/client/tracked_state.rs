@@ -1,3 +1,5 @@
+use std::hash::{DefaultHasher, Hash, Hasher as _};
+
 /// Manages a state `T` and tracks updates to it.
 pub struct TrackedState<T> {
     current: Option<T>,
@@ -15,7 +17,7 @@ impl<T> Default for TrackedState<T> {
 
 impl<T> TrackedState<T>
 where
-    T: Clone + PartialEq,
+    T: Clone + PartialEq + Hash,
 {
     pub fn current(&self) -> Option<&T> {
         self.current.as_ref()
@@ -25,7 +27,7 @@ where
         match self.pending_update.as_mut() {
             Some(pending) => pending.update_want(new.clone()),
             None => {
-                self.pending_update = Some(PendingUpdate::new(self.current.clone(), new.clone()))
+                self.pending_update = Some(PendingUpdate::new(self.current.as_ref(), new.clone()))
             }
         };
         self.current = Some(new);
@@ -43,16 +45,19 @@ where
 ///
 /// In the event that the very last one ends up being the state we are already in, no update is issued at all.
 struct PendingUpdate<T> {
-    current: Option<T>,
+    current_hash: Option<u64>,
     want: T,
 }
 
 impl<T> PendingUpdate<T>
 where
-    T: PartialEq,
+    T: std::hash::Hash,
 {
-    pub fn new(current: Option<T>, want: T) -> Self {
-        Self { current, want }
+    pub fn new(current: Option<&T>, want: T) -> Self {
+        Self {
+            current_hash: current.map(hash), // We only store the hash to avoid expensive copies.
+            want,
+        }
     }
 
     pub fn update_want(&mut self, want: T) {
@@ -60,14 +65,23 @@ where
     }
 
     pub fn into_new(self) -> Option<T> {
-        if let Some(current) = self.current
-            && current == self.want
+        if let Some(current) = self.current_hash
+            && current == hash(&self.want)
         {
             return None;
         };
 
         Some(self.want)
     }
+}
+
+fn hash<T>(value: &T) -> u64
+where
+    T: Hash,
+{
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
 }
 
 #[cfg(test)]
