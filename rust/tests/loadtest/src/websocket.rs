@@ -92,20 +92,6 @@ pub struct WebsocketArgs {
     echo_read_timeout: Duration,
 }
 
-/// Resolved WebSocket test parameters (ready to execute).
-#[derive(Debug)]
-pub struct ResolvedWebsocketConfig {
-    pub address: Url,
-    pub concurrent: usize,
-    pub duration: Duration,
-    pub timeout: Duration,
-    pub ping_interval: Option<Duration>,
-    pub echo_mode: bool,
-    pub echo_payload_size: usize,
-    pub echo_interval: Option<Duration>,
-    pub echo_read_timeout: Duration,
-}
-
 /// Result of a WebSocket connection attempt.
 struct ConnectionResult {
     success: bool,
@@ -193,20 +179,8 @@ pub async fn run_with_cli_args(args: WebsocketArgs) -> anyhow::Result<()> {
 }
 
 /// Run WebSocket test from resolved config.
-pub async fn run_with_config(config: ResolvedWebsocketConfig, seed: u64) -> anyhow::Result<()> {
-    let ws_config = WebsocketTestConfig {
-        url: config.address,
-        concurrent: config.concurrent,
-        hold_duration: config.duration,
-        connect_timeout: config.timeout,
-        ping_interval: config.ping_interval,
-        echo_mode: config.echo_mode,
-        echo_payload_size: config.echo_payload_size,
-        echo_interval: config.echo_interval,
-        echo_read_timeout: config.echo_read_timeout,
-    };
-
-    let summary = run(ws_config).await?;
+pub async fn run_with_config(config: WebsocketTestConfig, seed: u64) -> anyhow::Result<()> {
+    let summary = run(config).await?;
 
     println!(
         "{}",

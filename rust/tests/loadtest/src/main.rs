@@ -57,7 +57,7 @@ use crate::config::{HttpConfig, MIN_PING_COUNT, PingConfig, TcpConfig, TestType,
 use crate::http::{HttpArgs, ResolvedHttpConfig};
 use crate::ping::{PingArgs, ResolvedPingConfig};
 use crate::tcp::TcpArgs;
-use crate::websocket::{ResolvedWebsocketConfig, WebsocketArgs};
+use crate::websocket::WebsocketArgs;
 use clap::{Parser, Subcommand};
 use config::LoadTestConfig;
 use rand::rngs::StdRng;
@@ -189,9 +189,9 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
             info!(
                 test_type = "websocket",
                 seed,
-                url = %ws.address,
+                url = %ws.url,
                 concurrent = ws.concurrent,
-                duration_secs = ws.duration.as_secs(),
+                duration_secs = ws.hold_duration.as_secs(),
                 echo_mode = ws.echo_mode,
                 "Starting WebSocket test"
             );
@@ -350,7 +350,7 @@ impl TestSelector {
         }
     }
 
-    fn resolve_websocket(&mut self, config: &WebsocketConfig) -> ResolvedWebsocketConfig {
+    fn resolve_websocket(&mut self, config: &WebsocketConfig) -> websocket::WebsocketTestConfig {
         let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
         let address = Url::parse(addr_str).expect("URL validated during config load");
 
@@ -368,11 +368,11 @@ impl TestSelector {
         let echo_read_timeout =
             Duration::from_secs(config.echo_read_timeout_secs.pick(&mut self.rng));
 
-        ResolvedWebsocketConfig {
-            address,
+        websocket::WebsocketTestConfig {
+            url: address,
             concurrent,
-            duration,
-            timeout,
+            hold_duration: duration,
+            connect_timeout: timeout,
             ping_interval,
             echo_mode,
             echo_payload_size,
