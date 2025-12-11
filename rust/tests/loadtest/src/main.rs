@@ -44,62 +44,40 @@
 //! New-EventLog -LogName Application -Source "Firezone-Loadtest"
 //! ```
 
+mod cli;
 mod config;
 mod echo_payload;
-mod http_version;
+mod http;
 mod ping;
 mod tcp;
 mod util;
 mod websocket;
 
+use crate::config::{HttpConfig, MIN_PING_COUNT, PingConfig, TcpConfig, TestType, WebsocketConfig};
+use crate::http::{HttpArgs, ResolvedHttpConfig};
+use crate::ping::{PingArgs, ResolvedPingConfig};
+use crate::tcp::{ResolvedTcpConfig, TcpArgs};
+use crate::websocket::{ResolvedWebsocketConfig, WebsocketArgs};
 use clap::{Parser, Subcommand};
-use config::{LoadTestConfig, ResolvedConfig, TestSelector};
-use echo_payload::HEADER_SIZE;
-use goose::config::GooseConfiguration;
-use goose::metrics::GooseMetrics;
-use goose::prelude::*;
-use gumdrop::Options;
-use http_version::HttpVersion;
+use config::LoadTestConfig;
+use rand::rngs::StdRng;
+use rand::{Rng as _, SeedableRng as _};
 use serde::Serialize;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::time::Duration;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
-#[cfg(windows)]
-use tracing_subscriber::util::SubscriberInitExt as _;
 use url::Url;
 
 #[cfg(windows)]
 const EVENT_LOG_SOURCE: &str = "Firezone-Loadtest";
-
-/// Global HTTP version configuration set from CLI args.
-///
-/// Goose transactions are static functions, so we use a global to pass configuration.
-static HTTP_VERSION: OnceLock<HttpVersion> = OnceLock::new();
-
-/// Default request timeout in seconds.
-const DEFAULT_TIMEOUT_SECS: u64 = 60;
 
 /// Default config file name.
 const DEFAULT_CONFIG_FILE: &str = "loadtest.toml";
 
 /// Default echo payload size in bytes for CLI commands.
 const DEFAULT_ECHO_PAYLOAD_SIZE: usize = 64;
-
-/// Goose options help text appended to HTTP subcommand help.
-const GOOSE_HELP: &str = r#"
-GOOSE OPTIONS (forwarded):
-  -H, --host <HOST>        Target host URL
-  -u, --users <N>          Concurrent users (default: 10)
-  -t, --run-time <TIME>    Duration (e.g., 30s, 5m, 1h)
-  --report-file <FILE>     Generate report (.html, .json, .md)
-  --no-print-metrics       Suppress human-readable metrics output
-  -q                       Quiet mode (-qq, -qqq for less)
-
-See: https://book.goose.rs/getting-started/runtime-options.html
-"#;
 
 #[derive(Parser)]
 #[command(
@@ -137,259 +115,6 @@ enum Commands {
     Ping(PingArgs),
 }
 
-#[derive(Parser)]
-#[command(after_long_help = GOOSE_HELP)]
-struct HttpArgs {
-    /// HTTP version to use (1 or 2)
-    #[arg(long, default_value = "1", value_name = "VERSION")]
-    http_version: HttpVersion,
-
-    /// Arguments passed to Goose
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-    goose_args: Vec<String>,
-}
-
-#[derive(Parser)]
-struct TcpArgs {
-    /// Run as echo server (listen for connections)
-    #[arg(long)]
-    server: bool,
-
-    /// Port to listen on (server mode only)
-    #[arg(short = 'p', long, default_value = "9000")]
-    port: u16,
-
-    /// Target address (host:port) - required in client mode
-    #[arg(long, value_name = "ADDR")]
-    target: Option<SocketAddr>,
-
-    /// Number of concurrent connections to establish
-    #[arg(short = 'c', long, default_value = "10")]
-    concurrent: usize,
-
-    /// How long to hold each connection open (e.g., 30s, 5m)
-    #[arg(short = 'd', long, default_value = "30s", value_parser = parse_duration)]
-    duration: Duration,
-
-    /// Connection timeout for establishing connections
-    #[arg(long, default_value = "10s", value_parser = parse_duration)]
-    timeout: Duration,
-
-    /// Enable echo mode: send timestamped payloads and verify responses
-    #[arg(long)]
-    echo: bool,
-
-    /// Echo payload size in bytes (minimum 16 for header)
-    #[arg(long, default_value_t = DEFAULT_ECHO_PAYLOAD_SIZE, value_parser = parse_echo_payload_size)]
-    echo_payload_size: usize,
-
-    /// Interval between echo messages (e.g., 1s, 500ms)
-    #[arg(long, value_parser = parse_duration)]
-    echo_interval: Option<Duration>,
-
-    /// Timeout for reading echo responses (e.g., 5s)
-    #[arg(long, default_value = "5s", value_parser = parse_duration)]
-    echo_read_timeout: Duration,
-}
-
-fn parse_echo_payload_size(s: &str) -> Result<usize, String> {
-    let size: usize = s
-        .parse()
-        .map_err(|e| format!("invalid payload size: {e}"))?;
-    if size < HEADER_SIZE {
-        return Err(format!(
-            "payload size must be at least {HEADER_SIZE} bytes (header size)"
-        ));
-    }
-    Ok(size)
-}
-
-fn parse_ping_payload_size(s: &str) -> Result<usize, String> {
-    let size: usize = s
-        .parse()
-        .map_err(|e| format!("invalid payload size: {e}"))?;
-    if size > ping::MAX_ICMP_PAYLOAD_SIZE {
-        return Err(format!(
-            "payload size exceeds maximum ICMP payload of {} bytes",
-            ping::MAX_ICMP_PAYLOAD_SIZE
-        ));
-    }
-    Ok(size)
-}
-
-/// Duration suffixes: (suffix, seconds_multiplier, unit_name).
-const DURATION_SUFFIXES: &[(&str, u64, &str)] = &[
-    // "ms" must come before "m" to match correctly.
-    ("ms", 0, "milliseconds"), // Special case: 0 means use millis
-    ("s", 1, "seconds"),
-    ("m", 60, "minutes"),
-    ("h", 3600, "hours"),
-];
-
-fn parse_duration(s: &str) -> Result<Duration, String> {
-    let s = s.trim();
-
-    for &(suffix, multiplier, unit) in DURATION_SUFFIXES {
-        if let Some(num_str) = s.strip_suffix(suffix) {
-            let num: u64 = num_str
-                .parse()
-                .map_err(|e| format!("invalid {unit}: {e}"))?;
-            return Ok(if multiplier == 0 {
-                Duration::from_millis(num)
-            } else {
-                Duration::from_secs(num * multiplier)
-            });
-        }
-    }
-
-    // Default: treat as seconds
-    s.parse::<u64>()
-        .map(Duration::from_secs)
-        .map_err(|e| format!("invalid duration (use 500ms, 30s, 5m, 1h): {e}"))
-}
-
-#[derive(Parser)]
-struct WebsocketArgs {
-    /// Run as echo server (listen for connections)
-    #[arg(long)]
-    server: bool,
-
-    /// Port to listen on (server mode only)
-    #[arg(short = 'p', long, default_value = "9001")]
-    port: u16,
-
-    /// WebSocket URL (ws:// or wss://) - required in client mode
-    #[arg(long, value_name = "URL")]
-    url: Option<Url>,
-
-    /// Number of concurrent connections to establish
-    #[arg(short = 'c', long, default_value = "10")]
-    concurrent: usize,
-
-    /// How long to hold each connection open (e.g., 30s, 5m)
-    #[arg(short = 'd', long, default_value = "30s", value_parser = parse_duration)]
-    duration: Duration,
-
-    /// Connection timeout for establishing connections
-    #[arg(long, default_value = "10s", value_parser = parse_duration)]
-    timeout: Duration,
-
-    /// Interval between ping messages to keep connection alive (e.g., 5s). Ignored in echo mode.
-    #[arg(long, value_parser = parse_duration)]
-    ping_interval: Option<Duration>,
-
-    /// Enable echo mode: send timestamped payloads and verify responses
-    #[arg(long)]
-    echo: bool,
-
-    /// Echo payload size in bytes (minimum 16 for header)
-    #[arg(long, default_value_t = DEFAULT_ECHO_PAYLOAD_SIZE, value_parser = parse_echo_payload_size)]
-    echo_payload_size: usize,
-
-    /// Interval between echo messages (e.g., 1s, 500ms)
-    #[arg(long, value_parser = parse_duration)]
-    echo_interval: Option<Duration>,
-
-    /// Timeout for reading echo responses (e.g., 5s)
-    #[arg(long, default_value = "5s", value_parser = parse_duration)]
-    echo_read_timeout: Duration,
-}
-
-#[derive(Parser)]
-struct PingArgs {
-    /// Target IP address(es) to ping
-    #[arg(long, value_name = "IP", required = true, num_args = 1..)]
-    target: Vec<IpAddr>,
-
-    /// Number of pings per target
-    #[arg(short = 'c', long)]
-    count: Option<usize>,
-
-    /// Run for specified duration instead of count (e.g., 60s, 5m)
-    #[arg(short = 't', long, value_parser = parse_duration, conflicts_with = "count")]
-    duration: Option<Duration>,
-
-    /// Interval between pings (e.g., 1s, 500ms)
-    #[arg(short = 'i', long, default_value = "1s", value_parser = parse_duration)]
-    interval: Duration,
-
-    /// Ping timeout (e.g., 5s)
-    #[arg(long, default_value = "5s", value_parser = parse_duration)]
-    timeout: Duration,
-
-    /// ICMP payload size in bytes (max 65507)
-    #[arg(short = 's', long, default_value = "56", value_parser = parse_ping_payload_size)]
-    payload_size: usize,
-}
-
-/// Simplified metrics summary for Azure log ingestion.
-#[derive(Serialize)]
-struct HttpTestSummary {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    seed: Option<u64>,
-    test_type: &'static str,
-    http_version: String,
-    target_host: String,
-    duration_secs: usize,
-    total_requests: usize,
-    successful_requests: usize,
-    failed_requests: usize,
-    min_response_time_ms: usize,
-    max_response_time_ms: usize,
-    avg_response_time_ms: usize,
-}
-
-impl HttpTestSummary {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Iterating to find our single endpoint"
-    )]
-    fn from_metrics(metrics: &GooseMetrics, http_version: HttpVersion, seed: Option<u64>) -> Self {
-        let (total_requests, successful_requests, failed_requests, min_time, max_time, avg_time) =
-            metrics
-                .requests
-                .values()
-                .next()
-                .map(|r| {
-                    let avg = if r.raw_data.counter > 0 {
-                        r.raw_data.total_time / r.raw_data.counter
-                    } else {
-                        0
-                    };
-                    (
-                        r.raw_data.counter,
-                        r.success_count,
-                        r.fail_count,
-                        r.raw_data.minimum_time,
-                        r.raw_data.maximum_time,
-                        avg,
-                    )
-                })
-                .unwrap_or_default();
-
-        let target_host = metrics
-            .hosts
-            .iter()
-            .next()
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string());
-
-        Self {
-            seed,
-            test_type: "http",
-            http_version: http_version.to_string(),
-            target_host,
-            duration_secs: metrics.duration,
-            total_requests,
-            successful_requests,
-            failed_requests,
-            min_response_time_ms: min_time,
-            max_response_time_ms: max_time,
-            avg_response_time_ms: avg_time,
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     init_logging();
@@ -402,10 +127,10 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         None | Some(Commands::Random) => run_random(cli.config, cli.seed).await?,
-        Some(Commands::Http(args)) => run_http_manual(args).await?,
-        Some(Commands::Tcp(args)) => run_tcp_manual(args).await?,
-        Some(Commands::Websocket(args)) => run_websocket_manual(args).await?,
-        Some(Commands::Ping(args)) => run_ping_manual(args).await?,
+        Some(Commands::Http(args)) => http::run_with_cli_args(args).await?,
+        Some(Commands::Tcp(args)) => tcp::run_with_cli_args(args).await?,
+        Some(Commands::Websocket(args)) => websocket::run_with_cli_args(args).await?,
+        Some(Commands::Ping(args)) => ping::run_with_cli_args(args).await?,
     }
 
     Ok(())
@@ -433,10 +158,8 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
 
     info!(seed, enabled_types = ?config.enabled_types(), "Selecting random test");
 
-    let resolved = selector.select(&config);
-
-    match resolved {
-        ResolvedConfig::Http(ref http) => {
+    match selector.select(&config) {
+        ResolvedConfig::Http(http) => {
             info!(
                 test_type = "http",
                 seed,
@@ -446,8 +169,10 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
                 duration_secs = http.run_time.as_secs(),
                 "Starting HTTP test"
             );
+
+            http::run_with_config(http, seed).await
         }
-        ResolvedConfig::Tcp(ref tcp) => {
+        ResolvedConfig::Tcp(tcp) => {
             info!(
                 test_type = "tcp",
                 seed,
@@ -457,8 +182,10 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
                 echo_mode = tcp.echo_mode,
                 "Starting TCP test"
             );
+
+            tcp::run_with_config(tcp, seed).await
         }
-        ResolvedConfig::Websocket(ref ws) => {
+        ResolvedConfig::Websocket(ws) => {
             info!(
                 test_type = "websocket",
                 seed,
@@ -468,8 +195,10 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
                 echo_mode = ws.echo_mode,
                 "Starting WebSocket test"
             );
+
+            websocket::run_with_config(ws, seed).await
         }
-        ResolvedConfig::Ping(ref ping) => {
+        ResolvedConfig::Ping(ping) => {
             info!(
                 test_type = "ping",
                 seed,
@@ -478,132 +207,10 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
                 interval_ms = ping.interval.as_millis() as u64,
                 "Starting ping test"
             );
+
+            ping::run_with_config(ping, seed).await
         }
     }
-
-    match resolved {
-        ResolvedConfig::Http(http) => run_http_from_config(http, seed).await,
-        ResolvedConfig::Tcp(tcp) => run_tcp_from_config(tcp, seed).await,
-        ResolvedConfig::Websocket(ws) => run_websocket_from_config(ws, seed).await,
-        ResolvedConfig::Ping(ping) => run_ping_from_config(ping, seed).await,
-    }
-}
-
-/// Run HTTP test from resolved config.
-async fn run_http_from_config(config: config::ResolvedHttpConfig, seed: u64) -> anyhow::Result<()> {
-    let http_version = match config.http_version {
-        1 => HttpVersion::Http1,
-        2 => HttpVersion::Http2,
-        _ => HttpVersion::Http1,
-    };
-
-    // Ignore if already set (can happen in tests)
-    let _ = HTTP_VERSION.set(http_version);
-
-    // Build Goose args from resolved config
-    let run_time_secs = config.run_time.as_secs();
-    let address = config.address.to_string();
-    let users = config.users.to_string();
-    let run_time = format!("{run_time_secs}s");
-    let goose_args: &[&str] = &[
-        "--host",
-        &address,
-        "--users",
-        &users,
-        "--run-time",
-        &run_time,
-        "--no-print-metrics",
-        "-qq",
-    ];
-
-    let goose_args_ref: Vec<&str> = goose_args.to_vec();
-    let goose_config = GooseConfiguration::parse_args_default(&goose_args_ref)
-        .map_err(|e| anyhow::anyhow!("Failed to parse Goose arguments: {e}"))?;
-
-    let metrics = GooseAttack::initialize_with_config(goose_config)?
-        .register_scenario(
-            scenario!("LoadTest")
-                .register_transaction(transaction!(setup_http_client).set_on_start())
-                .register_transaction(transaction!(load_test_request)),
-        )
-        .execute()
-        .await?;
-
-    let summary = HttpTestSummary::from_metrics(&metrics, http_version, Some(seed));
-    println!(
-        "{}",
-        serde_json::to_string(&summary).expect("Failed to serialize metrics")
-    );
-
-    Ok(())
-}
-
-/// Run TCP test from resolved config.
-async fn run_tcp_from_config(config: config::ResolvedTcpConfig, seed: u64) -> anyhow::Result<()> {
-    let tcp_config = tcp::TcpTestConfig {
-        target: config.address,
-        concurrent: config.concurrent,
-        hold_duration: config.duration,
-        connect_timeout: config.timeout,
-        echo_mode: config.echo_mode,
-        echo_payload_size: config.echo_payload_size,
-        echo_interval: config.echo_interval,
-        echo_read_timeout: config.echo_read_timeout,
-    };
-
-    let summary = tcp::run(tcp_config).await?;
-    println!(
-        "{}",
-        serde_json::to_string(&WithSeed::new(seed, summary)).expect("Failed to serialize metrics")
-    );
-
-    Ok(())
-}
-
-/// Run WebSocket test from resolved config.
-async fn run_websocket_from_config(
-    config: config::ResolvedWebsocketConfig,
-    seed: u64,
-) -> anyhow::Result<()> {
-    let ws_config = websocket::WebsocketTestConfig {
-        url: config.address,
-        concurrent: config.concurrent,
-        hold_duration: config.duration,
-        connect_timeout: config.timeout,
-        ping_interval: config.ping_interval,
-        echo_mode: config.echo_mode,
-        echo_payload_size: config.echo_payload_size,
-        echo_interval: config.echo_interval,
-        echo_read_timeout: config.echo_read_timeout,
-    };
-
-    let summary = websocket::run(ws_config).await?;
-    println!(
-        "{}",
-        serde_json::to_string(&WithSeed::new(seed, summary)).expect("Failed to serialize metrics")
-    );
-
-    Ok(())
-}
-
-/// Run ping test from resolved config.
-async fn run_ping_from_config(config: config::ResolvedPingConfig, seed: u64) -> anyhow::Result<()> {
-    let ping_config = ping::PingTestConfig {
-        targets: config.targets,
-        count: Some(config.count),
-        duration: None,
-        interval: config.interval,
-        timeout: config.timeout,
-        payload_size: config.payload_size,
-    };
-
-    let summary = ping::run(ping_config).await?;
-    println!(
-        "{}",
-        serde_json::to_string(&WithSeed::new(seed, summary)).expect("Failed to serialize metrics")
-    );
-
-    Ok(())
 }
 
 /// Generic wrapper to add a seed to any test summary for reproducibility.
@@ -618,131 +225,6 @@ impl<T: Serialize> WithSeed<T> {
     fn new(seed: u64, inner: T) -> Self {
         Self { seed, inner }
     }
-}
-
-/// Run HTTP test with manual CLI args.
-async fn run_http_manual(args: HttpArgs) -> anyhow::Result<()> {
-    HTTP_VERSION
-        .set(args.http_version)
-        .expect("HTTP_VERSION already set");
-
-    // Parse Goose configuration from forwarded args
-    let goose_args: Vec<&str> = args.goose_args.iter().map(String::as_str).collect();
-    let config = GooseConfiguration::parse_args_default(&goose_args)
-        .map_err(|e| anyhow::anyhow!("Failed to parse Goose arguments: {e}"))?;
-
-    let metrics = GooseAttack::initialize_with_config(config)?
-        .register_scenario(
-            scenario!("LoadTest")
-                .register_transaction(transaction!(setup_http_client).set_on_start())
-                .register_transaction(transaction!(load_test_request)),
-        )
-        .execute()
-        .await?;
-
-    let http_version = HTTP_VERSION.get().copied().unwrap_or_default();
-    let summary = HttpTestSummary::from_metrics(&metrics, http_version, None);
-    println!(
-        "{}",
-        serde_json::to_string(&summary).expect("Failed to serialize metrics")
-    );
-
-    Ok(())
-}
-
-/// Run TCP test with manual CLI args.
-async fn run_tcp_manual(args: TcpArgs) -> anyhow::Result<()> {
-    if args.server {
-        // Server mode
-        let config = tcp::TcpServerConfig { port: args.port };
-        tcp::run_server(config).await?;
-    } else {
-        // Client mode
-        let target = args.target.ok_or_else(|| {
-            anyhow::anyhow!("--target is required in client mode (or use --server for server mode)")
-        })?;
-
-        let config = tcp::TcpTestConfig {
-            target,
-            concurrent: args.concurrent,
-            hold_duration: args.duration,
-            connect_timeout: args.timeout,
-            echo_mode: args.echo,
-            echo_payload_size: args.echo_payload_size,
-            echo_interval: args.echo_interval,
-            echo_read_timeout: args.echo_read_timeout,
-        };
-
-        let summary = tcp::run(config).await?;
-        println!(
-            "{}",
-            serde_json::to_string(&summary).expect("Failed to serialize metrics")
-        );
-    }
-
-    Ok(())
-}
-
-/// Run WebSocket test with manual CLI args.
-async fn run_websocket_manual(args: WebsocketArgs) -> anyhow::Result<()> {
-    if args.server {
-        // Server mode
-        let config = websocket::WebsocketServerConfig { port: args.port };
-        websocket::run_server(config).await?;
-    } else {
-        // Client mode
-        let url = args.url.ok_or_else(|| {
-            anyhow::anyhow!("--url is required in client mode (or use --server for server mode)")
-        })?;
-
-        let config = websocket::WebsocketTestConfig {
-            url,
-            concurrent: args.concurrent,
-            hold_duration: args.duration,
-            connect_timeout: args.timeout,
-            ping_interval: args.ping_interval,
-            echo_mode: args.echo,
-            echo_payload_size: args.echo_payload_size,
-            echo_interval: args.echo_interval,
-            echo_read_timeout: args.echo_read_timeout,
-        };
-
-        let summary = websocket::run(config).await?;
-        println!(
-            "{}",
-            serde_json::to_string(&summary).expect("Failed to serialize metrics")
-        );
-    }
-
-    Ok(())
-}
-
-/// Run ping test with manual CLI args.
-async fn run_ping_manual(args: PingArgs) -> anyhow::Result<()> {
-    // Ensure at least count or duration is specified
-    let (count, duration) = if args.count.is_none() && args.duration.is_none() {
-        // Default to 10 pings if neither specified
-        (Some(10), None)
-    } else {
-        (args.count, args.duration)
-    };
-
-    let config = ping::PingTestConfig {
-        targets: args.target,
-        count,
-        duration,
-        interval: args.interval,
-        timeout: args.timeout,
-        payload_size: args.payload_size,
-    };
-
-    let summary = ping::run(config).await?;
-    println!(
-        "{}",
-        serde_json::to_string(&summary).expect("Failed to serialize metrics")
-    );
-
-    Ok(())
 }
 
 /// Initializes logging with optional Windows Event Log support.
@@ -783,37 +265,142 @@ fn init_logging() {
     }
 }
 
-/// Configure the HTTP client with the specified HTTP version.
-///
-/// This runs once per user at startup via `set_on_start()`.
-async fn setup_http_client(user: &mut GooseUser) -> TransactionResult {
-    let http_version = HTTP_VERSION.get().copied().unwrap_or_default();
-    let timeout = Duration::from_secs(DEFAULT_TIMEOUT_SECS);
-
-    let builder = http_version.configure_client(timeout);
-    user.set_client_builder(builder).await?;
-
-    Ok(())
+/// Resolved test configuration (one of the test types).
+#[derive(Debug)]
+pub enum ResolvedConfig {
+    Http(ResolvedHttpConfig),
+    Tcp(ResolvedTcpConfig),
+    Websocket(ResolvedWebsocketConfig),
+    Ping(ResolvedPingConfig),
 }
 
-/// Performs an HTTP GET request and validates the response.
-async fn load_test_request(user: &mut GooseUser) -> TransactionResult {
-    let mut goose = user.get("/").await?;
+/// Random test selector.
+pub struct TestSelector {
+    rng: StdRng,
+    seed: u64,
+}
 
-    if let Ok(response) = goose.response
-        && !response.status().is_success()
-    {
-        let status = response.status();
-        let url = user.base_url.as_str();
-
-        tracing::warn!(
-            status = %status,
-            url = %url,
-            "request failed"
-        );
-
-        return user.set_failure(&format!("{status}"), &mut goose.request, None, None);
+impl TestSelector {
+    /// Create a new selector with the given seed, or generate a random one.
+    pub fn new(seed: Option<u64>) -> Self {
+        let seed = seed.unwrap_or_else(rand::random);
+        let rng = StdRng::seed_from_u64(seed);
+        Self { rng, seed }
     }
 
-    Ok(())
+    pub fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    pub fn select(&mut self, config: &LoadTestConfig) -> ResolvedConfig {
+        let types = config.enabled_types();
+        let test_type = types[self.rng.gen_range(0..types.len())];
+
+        match test_type {
+            TestType::Http => ResolvedConfig::Http(self.resolve_http(&config.http)),
+            TestType::Tcp => ResolvedConfig::Tcp(self.resolve_tcp(&config.tcp)),
+            TestType::Websocket => {
+                ResolvedConfig::Websocket(self.resolve_websocket(&config.websocket))
+            }
+            TestType::Ping => ResolvedConfig::Ping(self.resolve_ping(&config.ping)),
+        }
+    }
+
+    fn resolve_http(&mut self, config: &HttpConfig) -> ResolvedHttpConfig {
+        let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
+        let address = Url::parse(addr_str).expect("URL validated during config load");
+        let http_version = config.http_version[self.rng.gen_range(0..config.http_version.len())];
+        let users = config.users.pick(&mut self.rng);
+        let run_time = Duration::from_secs(config.run_time_secs.pick(&mut self.rng));
+
+        ResolvedHttpConfig {
+            address,
+            http_version,
+            users,
+            run_time,
+        }
+    }
+
+    fn resolve_tcp(&mut self, config: &TcpConfig) -> ResolvedTcpConfig {
+        let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
+        let address: SocketAddr = addr_str
+            .parse()
+            .expect("Address validated during config load");
+
+        let concurrent = config.concurrent.pick(&mut self.rng) as usize;
+        let duration = Duration::from_secs(config.duration_secs.pick(&mut self.rng));
+        let timeout = Duration::from_secs(config.timeout_secs.pick(&mut self.rng));
+        let echo_mode = config.echo_mode;
+        let echo_payload_size = config.echo_payload_size.pick(&mut self.rng) as usize;
+        let echo_interval = Some(Duration::from_secs(
+            config.echo_interval_secs.pick(&mut self.rng),
+        ));
+        let echo_read_timeout =
+            Duration::from_secs(config.echo_read_timeout_secs.pick(&mut self.rng));
+
+        ResolvedTcpConfig {
+            address,
+            concurrent,
+            duration,
+            timeout,
+            echo_mode,
+            echo_payload_size,
+            echo_interval,
+            echo_read_timeout,
+        }
+    }
+
+    fn resolve_websocket(&mut self, config: &WebsocketConfig) -> ResolvedWebsocketConfig {
+        let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
+        let address = Url::parse(addr_str).expect("URL validated during config load");
+
+        let concurrent = config.concurrent.pick(&mut self.rng) as usize;
+        let duration = Duration::from_secs(config.duration_secs.pick(&mut self.rng));
+        let timeout = Duration::from_secs(config.timeout_secs.pick(&mut self.rng));
+        let ping_interval = Some(Duration::from_secs(
+            config.ping_interval_secs.pick(&mut self.rng),
+        ));
+        let echo_mode = config.echo_mode;
+        let echo_payload_size = config.echo_payload_size.pick(&mut self.rng) as usize;
+        let echo_interval = Some(Duration::from_secs(
+            config.echo_interval_secs.pick(&mut self.rng),
+        ));
+        let echo_read_timeout =
+            Duration::from_secs(config.echo_read_timeout_secs.pick(&mut self.rng));
+
+        ResolvedWebsocketConfig {
+            address,
+            concurrent,
+            duration,
+            timeout,
+            ping_interval,
+            echo_mode,
+            echo_payload_size,
+            echo_interval,
+            echo_read_timeout,
+        }
+    }
+
+    fn resolve_ping(&mut self, config: &PingConfig) -> ResolvedPingConfig {
+        // Parse all targets
+        let targets: Vec<IpAddr> = config
+            .addresses
+            .iter()
+            .map(|s| s.parse().expect("IP address validated during config load"))
+            .collect();
+
+        // Ensure minimum count of 1 ping
+        let count = (config.count.pick(&mut self.rng) as usize).max(MIN_PING_COUNT);
+        let interval = Duration::from_millis(config.interval_ms.pick(&mut self.rng));
+        let timeout = Duration::from_millis(config.timeout_ms.pick(&mut self.rng));
+        let payload_size = config.payload_size.pick(&mut self.rng) as usize;
+
+        ResolvedPingConfig {
+            targets,
+            count,
+            interval,
+            timeout,
+            payload_size,
+        }
+    }
 }

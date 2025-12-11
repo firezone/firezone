@@ -5,7 +5,9 @@
 
 use crate::echo_payload::{self, EchoPayload};
 use crate::util::{EchoStats, StreamingStats, saturating_usize_to_u32};
+use crate::{DEFAULT_ECHO_PAYLOAD_SIZE, WithSeed};
 use anyhow::Result;
+use clap::Parser;
 use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -88,11 +90,120 @@ pub struct TcpTestSummary {
     pub avg_echo_latency_ms: Option<u64>,
 }
 
-/// Run the TCP connection load test.
-///
-/// Establishes `concurrent` connections and holds each open for `hold_duration`.
-/// In echo mode, sends timestamped payloads and verifies responses.
-pub async fn run(config: TcpTestConfig) -> Result<TcpTestSummary> {
+#[derive(Parser)]
+pub struct TcpArgs {
+    /// Run as echo server (listen for connections)
+    #[arg(long)]
+    server: bool,
+
+    /// Port to listen on (server mode only)
+    #[arg(short = 'p', long, default_value = "9000")]
+    port: u16,
+
+    /// Target address (host:port) - required in client mode
+    #[arg(long, value_name = "ADDR")]
+    target: Option<SocketAddr>,
+
+    /// Number of concurrent connections to establish
+    #[arg(short = 'c', long, default_value = "10")]
+    concurrent: usize,
+
+    /// How long to hold each connection open (e.g., 30s, 5m)
+    #[arg(short = 'd', long, default_value = "30s", value_parser = crate::cli::parse_duration)]
+    duration: Duration,
+
+    /// Connection timeout for establishing connections
+    #[arg(long, default_value = "10s", value_parser = crate::cli::parse_duration)]
+    timeout: Duration,
+
+    /// Enable echo mode: send timestamped payloads and verify responses
+    #[arg(long)]
+    echo: bool,
+
+    /// Echo payload size in bytes (minimum 16 for header)
+    #[arg(long, default_value_t = DEFAULT_ECHO_PAYLOAD_SIZE, value_parser = crate::cli::parse_echo_payload_size)]
+    echo_payload_size: usize,
+
+    /// Interval between echo messages (e.g., 1s, 500ms)
+    #[arg(long, value_parser = crate::cli::parse_duration)]
+    echo_interval: Option<Duration>,
+
+    /// Timeout for reading echo responses (e.g., 5s)
+    #[arg(long, default_value = "5s", value_parser = crate::cli::parse_duration)]
+    echo_read_timeout: Duration,
+}
+
+/// Resolved TCP test parameters (ready to execute).
+#[derive(Debug)]
+pub struct ResolvedTcpConfig {
+    pub address: SocketAddr,
+    pub concurrent: usize,
+    pub duration: Duration,
+    pub timeout: Duration,
+    pub echo_mode: bool,
+    pub echo_payload_size: usize,
+    pub echo_interval: Option<Duration>,
+    pub echo_read_timeout: Duration,
+}
+
+/// Run TCP test with manual CLI args.
+pub async fn run_with_cli_args(args: TcpArgs) -> anyhow::Result<()> {
+    if args.server {
+        // Server mode
+        let config = TcpServerConfig { port: args.port };
+        run_server(config).await?;
+    } else {
+        // Client mode
+        let target = args.target.ok_or_else(|| {
+            anyhow::anyhow!("--target is required in client mode (or use --server for server mode)")
+        })?;
+
+        let config = TcpTestConfig {
+            target,
+            concurrent: args.concurrent,
+            hold_duration: args.duration,
+            connect_timeout: args.timeout,
+            echo_mode: args.echo,
+            echo_payload_size: args.echo_payload_size,
+            echo_interval: args.echo_interval,
+            echo_read_timeout: args.echo_read_timeout,
+        };
+
+        let summary = run(config).await?;
+
+        println!(
+            "{}",
+            serde_json::to_string(&summary).expect("Failed to serialize metrics")
+        );
+    }
+
+    Ok(())
+}
+
+/// Run TCP test from resolved config.
+pub async fn run_with_config(config: ResolvedTcpConfig, seed: u64) -> anyhow::Result<()> {
+    let tcp_config = TcpTestConfig {
+        target: config.address,
+        concurrent: config.concurrent,
+        hold_duration: config.duration,
+        connect_timeout: config.timeout,
+        echo_mode: config.echo_mode,
+        echo_payload_size: config.echo_payload_size,
+        echo_interval: config.echo_interval,
+        echo_read_timeout: config.echo_read_timeout,
+    };
+
+    let summary = run(tcp_config).await?;
+
+    println!(
+        "{}",
+        serde_json::to_string(&WithSeed::new(seed, summary)).expect("Failed to serialize metrics")
+    );
+
+    Ok(())
+}
+
+async fn run(config: TcpTestConfig) -> Result<TcpTestSummary> {
     let (tx, mut rx) = mpsc::channel::<ConnectionResult>(config.concurrent);
     let active_connections = Arc::new(AtomicUsize::new(0));
     let peak_active = Arc::new(AtomicUsize::new(0));
@@ -190,7 +301,7 @@ pub async fn run(config: TcpTestConfig) -> Result<TcpTestSummary> {
         "TCP connection test complete"
     );
 
-    Ok(TcpTestSummary {
+    let summary = TcpTestSummary {
         test_type: "tcp",
         target: config.target.to_string(),
         concurrent_connections: config.concurrent,
@@ -214,7 +325,9 @@ pub async fn run(config: TcpTestConfig) -> Result<TcpTestSummary> {
         min_echo_latency_ms: min_echo_latency,
         max_echo_latency_ms: max_echo_latency,
         avg_echo_latency_ms: avg_echo_latency,
-    })
+    };
+
+    Ok(summary)
 }
 
 /// Run a single TCP connection test.
@@ -359,7 +472,7 @@ pub struct TcpServerConfig {
 ///
 /// Listens for connections and echoes back any received data.
 /// Runs indefinitely until interrupted.
-pub async fn run_server(config: TcpServerConfig) -> anyhow::Result<()> {
+async fn run_server(config: TcpServerConfig) -> anyhow::Result<()> {
     use std::net::Ipv4Addr;
     use tokio::net::TcpListener;
 

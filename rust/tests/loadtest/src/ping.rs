@@ -3,8 +3,10 @@
 //! Uses surge-ping for cross-platform ICMP echo requests.
 //! Note: Requires elevated privileges on Linux/macOS (CAP_NET_RAW or root).
 
+use crate::WithSeed;
 use crate::util::StreamingStats;
 use anyhow::{Context, Result, bail};
+use clap::Parser;
 use serde::Serialize;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -72,8 +74,100 @@ pub struct PingTestSummary {
     pub per_target: Vec<TargetSummary>,
 }
 
+/// Resolved ping test parameters (ready to execute).
+#[derive(Debug)]
+pub struct ResolvedPingConfig {
+    /// Target IP addresses.
+    pub targets: Vec<IpAddr>,
+    /// Number of pings per target.
+    pub count: usize,
+    /// Interval between pings.
+    pub interval: Duration,
+    /// Ping timeout.
+    pub timeout: Duration,
+    /// Payload size.
+    pub payload_size: usize,
+}
+
+#[derive(Parser)]
+pub struct PingArgs {
+    /// Target IP address(es) to ping
+    #[arg(long, value_name = "IP", required = true, num_args = 1..)]
+    target: Vec<IpAddr>,
+
+    /// Number of pings per target
+    #[arg(short = 'c', long)]
+    count: Option<usize>,
+
+    /// Run for specified duration instead of count (e.g., 60s, 5m)
+    #[arg(short = 't', long, value_parser = crate::cli::parse_duration, conflicts_with = "count")]
+    duration: Option<Duration>,
+
+    /// Interval between pings (e.g., 1s, 500ms)
+    #[arg(short = 'i', long, default_value = "1s", value_parser = crate::cli::parse_duration)]
+    interval: Duration,
+
+    /// Ping timeout (e.g., 5s)
+    #[arg(long, default_value = "5s", value_parser = crate::cli::parse_duration)]
+    timeout: Duration,
+
+    /// ICMP payload size in bytes (max 65507)
+    #[arg(short = 's', long, default_value = "56", value_parser = crate::cli::parse_ping_payload_size)]
+    payload_size: usize,
+}
+
+/// Run ping test with manual CLI args.
+pub async fn run_with_cli_args(args: PingArgs) -> anyhow::Result<()> {
+    // Ensure at least count or duration is specified
+    let (count, duration) = if args.count.is_none() && args.duration.is_none() {
+        // Default to 10 pings if neither specified
+        (Some(10), None)
+    } else {
+        (args.count, args.duration)
+    };
+
+    let config = PingTestConfig {
+        targets: args.target,
+        count,
+        duration,
+        interval: args.interval,
+        timeout: args.timeout,
+        payload_size: args.payload_size,
+    };
+
+    let summary = run(config).await?;
+
+    println!(
+        "{}",
+        serde_json::to_string(&summary).expect("Failed to serialize metrics")
+    );
+
+    Ok(())
+}
+
+/// Run ping test from resolved config.
+pub async fn run_with_config(config: ResolvedPingConfig, seed: u64) -> anyhow::Result<()> {
+    let ping_config = PingTestConfig {
+        targets: config.targets,
+        count: Some(config.count),
+        duration: None,
+        interval: config.interval,
+        timeout: config.timeout,
+        payload_size: config.payload_size,
+    };
+
+    let summary = run(ping_config).await?;
+
+    println!(
+        "{}",
+        serde_json::to_string(&WithSeed::new(seed, summary)).expect("Failed to serialize metrics")
+    );
+
+    Ok(())
+}
+
 /// Run the ICMP ping test.
-pub async fn run(config: PingTestConfig) -> Result<PingTestSummary> {
+async fn run(config: PingTestConfig) -> Result<PingTestSummary> {
     // Validate payload size
     if config.payload_size > MAX_ICMP_PAYLOAD_SIZE {
         bail!(

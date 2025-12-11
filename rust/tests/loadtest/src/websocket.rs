@@ -5,7 +5,9 @@
 
 use crate::echo_payload::{self, EchoPayload};
 use crate::util::{EchoStats, StreamingStats, saturating_usize_to_u32};
+use crate::{DEFAULT_ECHO_PAYLOAD_SIZE, WithSeed};
 use anyhow::Result;
+use clap::Parser;
 use futures::{SinkExt, StreamExt};
 use serde::Serialize;
 use std::sync::Arc;
@@ -40,6 +42,67 @@ pub struct WebsocketTestConfig {
     /// Interval between echo messages during hold period
     pub echo_interval: Option<Duration>,
     /// Timeout for reading echo responses
+    pub echo_read_timeout: Duration,
+}
+
+#[derive(Parser)]
+pub struct WebsocketArgs {
+    /// Run as echo server (listen for connections)
+    #[arg(long)]
+    server: bool,
+
+    /// Port to listen on (server mode only)
+    #[arg(short = 'p', long, default_value = "9001")]
+    port: u16,
+
+    /// WebSocket URL (ws:// or wss://) - required in client mode
+    #[arg(long, value_name = "URL")]
+    url: Option<Url>,
+
+    /// Number of concurrent connections to establish
+    #[arg(short = 'c', long, default_value = "10")]
+    concurrent: usize,
+
+    /// How long to hold each connection open (e.g., 30s, 5m)
+    #[arg(short = 'd', long, default_value = "30s", value_parser = crate::cli::parse_duration)]
+    duration: Duration,
+
+    /// Connection timeout for establishing connections
+    #[arg(long, default_value = "10s", value_parser = crate::cli::parse_duration)]
+    timeout: Duration,
+
+    /// Interval between ping messages to keep connection alive (e.g., 5s). Ignored in echo mode.
+    #[arg(long, value_parser = crate::cli::parse_duration)]
+    ping_interval: Option<Duration>,
+
+    /// Enable echo mode: send timestamped payloads and verify responses
+    #[arg(long)]
+    echo: bool,
+
+    /// Echo payload size in bytes (minimum 16 for header)
+    #[arg(long, default_value_t = DEFAULT_ECHO_PAYLOAD_SIZE, value_parser = crate::cli::parse_echo_payload_size)]
+    echo_payload_size: usize,
+
+    /// Interval between echo messages (e.g., 1s, 500ms)
+    #[arg(long, value_parser = crate::cli::parse_duration)]
+    echo_interval: Option<Duration>,
+
+    /// Timeout for reading echo responses (e.g., 5s)
+    #[arg(long, default_value = "5s", value_parser = crate::cli::parse_duration)]
+    echo_read_timeout: Duration,
+}
+
+/// Resolved WebSocket test parameters (ready to execute).
+#[derive(Debug)]
+pub struct ResolvedWebsocketConfig {
+    pub address: Url,
+    pub concurrent: usize,
+    pub duration: Duration,
+    pub timeout: Duration,
+    pub ping_interval: Option<Duration>,
+    pub echo_mode: bool,
+    pub echo_payload_size: usize,
+    pub echo_interval: Option<Duration>,
     pub echo_read_timeout: Duration,
 }
 
@@ -95,12 +158,70 @@ pub struct WebsocketTestSummary {
     pub avg_echo_latency_ms: Option<u64>,
 }
 
+/// Run WebSocket test with manual CLI args.
+pub async fn run_with_cli_args(args: WebsocketArgs) -> anyhow::Result<()> {
+    if args.server {
+        // Server mode
+        let config = WebsocketServerConfig { port: args.port };
+        run_server(config).await?;
+    } else {
+        // Client mode
+        let url = args.url.ok_or_else(|| {
+            anyhow::anyhow!("--url is required in client mode (or use --server for server mode)")
+        })?;
+
+        let config = WebsocketTestConfig {
+            url,
+            concurrent: args.concurrent,
+            hold_duration: args.duration,
+            connect_timeout: args.timeout,
+            ping_interval: args.ping_interval,
+            echo_mode: args.echo,
+            echo_payload_size: args.echo_payload_size,
+            echo_interval: args.echo_interval,
+            echo_read_timeout: args.echo_read_timeout,
+        };
+
+        let summary = run(config).await?;
+        println!(
+            "{}",
+            serde_json::to_string(&summary).expect("Failed to serialize metrics")
+        );
+    }
+
+    Ok(())
+}
+
+/// Run WebSocket test from resolved config.
+pub async fn run_with_config(config: ResolvedWebsocketConfig, seed: u64) -> anyhow::Result<()> {
+    let ws_config = WebsocketTestConfig {
+        url: config.address,
+        concurrent: config.concurrent,
+        hold_duration: config.duration,
+        connect_timeout: config.timeout,
+        ping_interval: config.ping_interval,
+        echo_mode: config.echo_mode,
+        echo_payload_size: config.echo_payload_size,
+        echo_interval: config.echo_interval,
+        echo_read_timeout: config.echo_read_timeout,
+    };
+
+    let summary = run(ws_config).await?;
+
+    println!(
+        "{}",
+        serde_json::to_string(&WithSeed::new(seed, summary)).expect("Failed to serialize metrics")
+    );
+
+    Ok(())
+}
+
 /// Run the WebSocket connection load test.
 ///
 /// Establishes `concurrent` connections and holds each open for `hold_duration`.
 /// In echo mode, sends timestamped payloads and verifies responses.
 /// Otherwise, optionally sends periodic ping messages to keep connections alive.
-pub async fn run(config: WebsocketTestConfig) -> Result<WebsocketTestSummary> {
+async fn run(config: WebsocketTestConfig) -> Result<WebsocketTestSummary> {
     let (tx, mut rx) = mpsc::channel::<ConnectionResult>(config.concurrent);
     let active_connections = Arc::new(AtomicUsize::new(0));
     let peak_active = Arc::new(AtomicUsize::new(0));
@@ -475,7 +596,7 @@ pub struct WebsocketServerConfig {
 ///
 /// Listens for WebSocket connections and echoes back any received messages.
 /// Runs indefinitely until interrupted.
-pub async fn run_server(config: WebsocketServerConfig) -> anyhow::Result<()> {
+async fn run_server(config: WebsocketServerConfig) -> anyhow::Result<()> {
     use axum::{
         Router,
         extract::ws::{Message as AxumMessage, WebSocket, WebSocketUpgrade},
