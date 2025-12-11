@@ -30,10 +30,6 @@ jobs:
     uses: ./.github/workflows/_control-plane.yml
     secrets: inherit
 
-  build-loadtest:
-    uses: ./.github/workflows/_loadtest.yml
-    secrets: inherit
-
   # Re-run CI checks to make sure everything's green, since "Merging as administrator"
   # won't trigger these in the merge group.
   ci:
