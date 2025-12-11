@@ -1,0 +1,86 @@
+# Loadtest Configuration
+#
+# All sections and fields are required. Copy this file and modify as needed.
+# Only test types listed in 'types' will be executed.
+#
+# Usage:
+#   firezone-loadtest                     # Run random test from loadtest.toml
+#   firezone-loadtest --config test.toml  # Use custom config file
+#   firezone-loadtest --seed 12345        # Reproducible random test
+
+# Test types to run. Options: http, tcp, websocket, ping
+types = ["http"]
+
+# HTTP load testing via Goose framework
+[http]
+# Target URLs to test against
+addresses = [
+    "https://example.com",
+]
+# HTTP versions: 1 (HTTP/1.1) or 2 (HTTP/2)
+http_version = [1, 2]
+# Number of concurrent users (random value from range)
+users = "10..100"
+# Test duration in seconds
+run_time_secs = "30..120"
+
+# TCP connection testing
+[tcp]
+# Target addresses (host:port)
+addresses = [
+    "127.0.0.1:8080",
+]
+# Number of concurrent connections
+concurrent = "5..50"
+# How long to hold connections (seconds)
+duration_secs = "30..300"
+# Connection timeout (seconds)
+timeout_secs = "10..10"
+# Enable echo mode for round-trip verification
+echo_mode = false
+# Payload size for echo messages (bytes)
+echo_payload_size = "64..64"
+# Interval between echo messages (seconds)
+echo_interval_secs = "1..1"
+# Timeout for echo responses (seconds)
+echo_read_timeout_secs = "5..5"
+
+# WebSocket connection testing
+[websocket]
+# Target WebSocket URLs
+addresses = [
+    "wss://echo.websocket.org",
+]
+# Number of concurrent connections
+concurrent = "5..50"
+# How long to hold connections (seconds)
+duration_secs = "30..300"
+# Connection timeout (seconds)
+timeout_secs = "5..30"
+# Ping interval (seconds) - ignored if echo_mode is true
+ping_interval_secs = "5..15"
+# Enable echo mode for round-trip verification
+echo_mode = false
+# Payload size for echo messages (bytes)
+echo_payload_size = "64..64"
+# Interval between echo messages (seconds)
+echo_interval_secs = "1..1"
+# Timeout for echo responses (seconds)
+echo_read_timeout_secs = "5..5"
+
+# ICMP ping testing
+# Note: Requires elevated privileges on Linux/macOS (root or CAP_NET_RAW)
+[ping]
+# Target IP addresses (IPv4 or IPv6)
+addresses = [
+    "8.8.8.8",
+    "1.1.1.1",
+]
+# Number of pings per target (minimum 1)
+count = "5..20"
+# Interval between pings (milliseconds)
+interval_ms = "500..2000"
+# Ping timeout (milliseconds)
+timeout_ms = "1000..5000"
+# Payload size (bytes)
+payload_size = "56..1024"
