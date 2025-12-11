@@ -9,7 +9,7 @@ pub const MIN_PING_COUNT: usize = 1;
 use rand::distributions::uniform::SampleRange;
 use rand::prelude::*;
 use serde::Deserialize;
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::path::Path;
 use url::Url;
 
@@ -154,16 +154,6 @@ impl TcpConfig {
             });
         }
 
-        // Validate all addresses can be parsed
-        for addr in &self.addresses {
-            addr.parse::<SocketAddr>()
-                .map_err(|e| ConfigError::InvalidSocketAddr {
-                    section: "tcp".to_string(),
-                    addr: addr.clone(),
-                    error: e.to_string(),
-                })?;
-        }
-
         Ok(())
     }
 }
@@ -274,13 +264,6 @@ pub enum ConfigError {
     InvalidUrl {
         section: String,
         url: String,
-        error: String,
-    },
-
-    #[error("[{section}] invalid address '{addr}': {error}")]
-    InvalidSocketAddr {
-        section: String,
-        addr: String,
         error: String,
     },
 
@@ -480,24 +463,6 @@ mod tests {
         let result = LoadTestConfig::load(&path);
         assert!(
             matches!(result, Err(ConfigError::InvalidUrl { section, .. }) if section == "http")
-        );
-
-        std::fs::remove_file(&path).ok();
-    }
-
-    #[test]
-    fn test_load_invalid_socket_addr() {
-        let dir = std::env::temp_dir();
-        let path = dir.join("invalid_socket_config.toml");
-        let config = example_config_content().replace(
-            r#"addresses = ["127.0.0.1:8080"]"#,
-            r#"addresses = ["not:a:valid:addr"]"#,
-        );
-        std::fs::write(&path, &config).unwrap();
-
-        let result = LoadTestConfig::load(&path);
-        assert!(
-            matches!(result, Err(ConfigError::InvalidSocketAddr { section, .. }) if section == "tcp")
         );
 
         std::fs::remove_file(&path).ok();

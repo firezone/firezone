@@ -57,9 +57,10 @@ use crate::config::{HttpConfig, MIN_PING_COUNT, PingConfig, TcpConfig, TestType,
 use clap::{Parser, Subcommand};
 use config::LoadTestConfig;
 use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
 use rand::{Rng as _, SeedableRng as _};
 use serde::Serialize;
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 use tracing::info;
@@ -300,8 +301,11 @@ impl TestSelector {
     }
 
     fn resolve_http(&mut self, config: &HttpConfig) -> http::TestConfig {
-        let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
-        let address = Url::parse(addr_str).expect("URL validated during config load");
+        let address = config
+            .addresses
+            .choose(&mut self.rng)
+            .expect("should have at least one address");
+        let address = Url::parse(address).expect("URL validated during config load");
         let http_version = config.http_version[self.rng.gen_range(0..config.http_version.len())];
         let users = self.rng.gen_range(config.users);
         let run_time = Duration::from_secs(self.rng.gen_range(config.run_time_secs));
@@ -315,10 +319,10 @@ impl TestSelector {
     }
 
     fn resolve_tcp(&mut self, config: &TcpConfig) -> tcp::TestConfig {
-        let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
-        let address: SocketAddr = addr_str
-            .parse()
-            .expect("Address validated during config load");
+        let address = config
+            .addresses
+            .choose(&mut self.rng)
+            .expect("should have at least one address");
 
         let concurrent = self.rng.gen_range(config.concurrent) as usize;
         let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));
@@ -332,7 +336,7 @@ impl TestSelector {
             Duration::from_secs(self.rng.gen_range(config.echo_read_timeout_secs));
 
         tcp::TestConfig {
-            target: address,
+            target: address.to_owned(),
             concurrent,
             hold_duration: duration,
             connect_timeout: timeout,
@@ -344,8 +348,11 @@ impl TestSelector {
     }
 
     fn resolve_websocket(&mut self, config: &WebsocketConfig) -> websocket::TestConfig {
-        let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
-        let address = Url::parse(addr_str).expect("URL validated during config load");
+        let address = config
+            .addresses
+            .choose(&mut self.rng)
+            .expect("should have at least one address");
+        let address = Url::parse(address).expect("URL validated during config load");
 
         let concurrent = self.rng.gen_range(config.concurrent) as usize;
         let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));

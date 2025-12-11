@@ -9,7 +9,6 @@ use crate::{DEFAULT_ECHO_PAYLOAD_SIZE, WithSeed};
 use anyhow::Result;
 use clap::Parser;
 use serde::Serialize;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -22,8 +21,8 @@ use tracing::{debug, info, trace, warn};
 /// Configuration for TCP connection load testing.
 #[derive(Debug, Clone)]
 pub struct TestConfig {
-    /// Target address (host:port)
-    pub target: SocketAddr,
+    /// Target address
+    pub target: String,
     /// Number of concurrent connections to establish
     pub concurrent: usize,
     /// How long to hold each connection open
@@ -102,7 +101,7 @@ pub struct Args {
 
     /// Target address (host:port) - required in client mode
     #[arg(long, value_name = "ADDR")]
-    target: Option<SocketAddr>,
+    target: Option<String>,
 
     /// Number of concurrent connections to establish
     #[arg(short = 'c', long, default_value = "10")]
@@ -315,7 +314,7 @@ async fn run_single_connection(
 ) -> ConnectionResult {
     let connect_start = Instant::now();
 
-    match timeout(config.connect_timeout, TcpStream::connect(config.target)).await {
+    match timeout(config.connect_timeout, TcpStream::connect(&config.target)).await {
         Ok(Ok(stream)) => {
             let connect_latency = connect_start.elapsed();
             let current = active.fetch_add(1, Ordering::SeqCst) + 1;
