@@ -2,12 +2,12 @@ mod dns_cache;
 pub(crate) mod dns_config;
 mod dns_resource_nat;
 mod gateway_on_client;
-mod pending_tun_update;
+mod pending_update;
 mod resource;
 
 use crate::client::dns_config::DnsConfig;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-use crate::client::pending_tun_update::PendingTunUpdate;
+use crate::client::pending_update::PendingUpdate;
 use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::DnsResource;
@@ -137,7 +137,7 @@ pub struct ClientState {
     /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
-    pending_tun_update: Option<PendingTunUpdate>,
+    pending_tun_update: Option<PendingUpdate<TunConfig>>,
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
@@ -1521,7 +1521,7 @@ impl ClientState {
         match self.pending_tun_update.as_mut() {
             Some(pending) => pending.update_want(new_tun_config.clone()),
             None => {
-                self.pending_tun_update = Some(PendingTunUpdate::new(
+                self.pending_tun_update = Some(PendingUpdate::new(
                     self.tun_config.clone(),
                     new_tun_config.clone(),
                 ))
@@ -1604,7 +1604,7 @@ impl ClientState {
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
         if let Some(pending_tun_update) = self.pending_tun_update.take()
-            && let Some(new_config) = pending_tun_update.into_new_config()
+            && let Some(new_config) = pending_tun_update.into_new()
         {
             tracing::info!(config = ?new_config, "Updating TUN device");
 
