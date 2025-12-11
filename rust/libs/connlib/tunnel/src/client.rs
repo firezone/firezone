@@ -1525,7 +1525,6 @@ impl ClientState {
     }
 
     fn drain_node_events(&mut self) {
-        let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
         let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
         let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
 
@@ -1533,7 +1532,6 @@ impl ClientState {
             match event {
                 snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
                     self.cleanup_connected_gateway(&id);
-                    resources_changed = true;
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -1555,13 +1553,8 @@ impl ClientState {
                 }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online);
-                    resources_changed = true;
                 }
             }
-        }
-
-        if resources_changed {
-            self.resource_list.update(self.resources())
         }
 
         for (conn_id, candidates) in added_ice_candidates.into_iter() {
