@@ -6,6 +6,7 @@
     windows,
     expect(clippy::print_stderr, reason = "CLI tool outputs warnings to stderr")
 )]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 //! Load testing CLI for Firezone VPN.
 //!
