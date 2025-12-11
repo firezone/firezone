@@ -24,7 +24,12 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="11115">
+          Fixes an issue where Firezone would not connect if an IPv6 interface
+          is present but not routable.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.10" date={new Date("2025-12-04")}>
         <ChangeItem pull="10986">
           Fixes a minor race condition that could arise on sign out.

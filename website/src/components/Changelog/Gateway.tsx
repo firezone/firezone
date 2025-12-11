@@ -26,6 +26,10 @@ export default function Gateway() {
         <ChangeItem pull="10972">
           Fixes an issue where IPv6-only DNS resources could not be reached.
         </ChangeItem>
+        <ChangeItem pull="11115">
+          Fixes an issue where Firezone would not connect if an IPv6 interface
+          is present but not routable.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.18" date={new Date("2025-11-10")}>
         <ChangeItem pull="10620">

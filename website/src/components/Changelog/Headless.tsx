@@ -24,6 +24,10 @@ export default function Headless({ os }: { os: OS }) {
           Fixes an issue where concurrent DNS queries with the same ID would be
           dropped.
         </ChangeItem>
+        <ChangeItem pull="11115">
+          Fixes an issue where Firezone would not connect if an IPv6 interface
+          is present but not routable.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.4" date={new Date("2025-10-16")}>
         <ChangeItem pull="10533">

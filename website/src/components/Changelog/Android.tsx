@@ -25,6 +25,10 @@ export default function Android() {
           Fixes an issue where the authentication link would not open in the
           correct app.
         </ChangeItem>
+        <ChangeItem pull="11115">
+          Fixes an issue where Firezone would not connect if an IPv6 interface
+          is present but not routable.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.7" date={new Date("2025-12-05")}>
         <ChangeItem pull="10752">
