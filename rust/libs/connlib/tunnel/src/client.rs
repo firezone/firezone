@@ -138,6 +138,7 @@ pub struct ClientState {
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
     pending_tun_update: Option<PendingUpdate<TunConfig>>,
+    pending_resource_update: Option<PendingUpdate<Vec<ResourceView>>>,
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
@@ -215,6 +216,7 @@ impl ClientState {
             pending_flows: Default::default(),
             dns_resource_nat: Default::default(),
             pending_tun_update: Default::default(),
+            pending_resource_update: Default::default(),
         }
     }
 
@@ -273,7 +275,7 @@ impl ClientState {
         }
 
         self.on_connection_failed(id);
-        self.emit_resources_changed();
+        self.maybe_emit_resources_changed();
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -1570,7 +1572,7 @@ impl ClientState {
         }
 
         if resources_changed {
-            self.emit_resources_changed()
+            self.maybe_emit_resources_changed()
         }
 
         for (conn_id, candidates) in added_ice_candidates.into_iter() {
@@ -1599,7 +1601,7 @@ impl ClientState {
             ),
             status,
         );
-        self.emit_resources_changed();
+        self.maybe_emit_resources_changed();
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
@@ -1609,6 +1611,14 @@ impl ClientState {
             tracing::info!(config = ?new_config, "Updating TUN device");
 
             return Some(ClientEvent::TunInterfaceUpdated(new_config));
+        }
+
+        if let Some(pending_resource_update) = self.pending_resource_update.take()
+            && let Some(resources) = pending_resource_update.into_new()
+        {
+            tracing::debug!(count = %resources.len(), "Updating resource list");
+
+            return Some(ClientEvent::ResourcesChanged { resources });
         }
 
         self.buffered_events
@@ -1686,7 +1696,7 @@ impl ClientState {
 
         self.active_cidr_resources = self.recalculate_active_cidr_resources();
         self.maybe_update_tun_routes();
-        self.emit_resources_changed();
+        self.maybe_emit_resources_changed();
     }
 
     pub fn add_resource(
@@ -1752,7 +1762,7 @@ impl ClientState {
         }
 
         self.maybe_update_tun_routes();
-        self.emit_resources_changed();
+        self.maybe_emit_resources_changed();
         self.dns_cache.flush("Resource added");
     }
 
@@ -1777,21 +1787,17 @@ impl ClientState {
         };
 
         self.maybe_update_tun_routes();
-        self.emit_resources_changed();
+        self.maybe_emit_resources_changed();
         self.dns_cache.flush("Resource removed");
     }
 
-    /// Emit a [`ClientEvent::ResourcesChanged`] event.
-    ///
-    /// Each instance of this event contains the latest state of the resources.
-    /// To not spam clients with multiple updates, we remove all prior instances of that event.
-    fn emit_resources_changed(&mut self) {
-        self.buffered_events
-            .retain(|e| !matches!(e, ClientEvent::ResourcesChanged { .. }));
-        self.buffered_events
-            .push_back(ClientEvent::ResourcesChanged {
-                resources: self.resources(),
-            });
+    fn maybe_emit_resources_changed(&mut self) {
+        let want = self.resources();
+
+        match self.pending_resource_update.as_mut() {
+            Some(pending) => pending.update_want(want),
+            None => self.pending_resource_update = Some(PendingUpdate::new(None, want)),
+        }
     }
 
     fn disable_resource(&mut self, id: ResourceId, now: Instant) {
@@ -1851,7 +1857,7 @@ impl ClientState {
 
             self.node.close_connection(gid, p2p_control::goodbye(), now);
             self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown);
-            self.emit_resources_changed();
+            self.maybe_emit_resources_changed();
         }
     }
 
