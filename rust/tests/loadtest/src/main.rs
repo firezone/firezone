@@ -267,7 +267,7 @@ fn init_logging() {
 
 /// Resolved test configuration (one of the test types).
 #[derive(Debug)]
-pub enum ResolvedConfig {
+enum ResolvedConfig {
     Http(ResolvedHttpConfig),
     Tcp(ResolvedTcpConfig),
     Websocket(ResolvedWebsocketConfig),
@@ -275,24 +275,24 @@ pub enum ResolvedConfig {
 }
 
 /// Random test selector.
-pub struct TestSelector {
+struct TestSelector {
     rng: StdRng,
     seed: u64,
 }
 
 impl TestSelector {
     /// Create a new selector with the given seed, or generate a random one.
-    pub fn new(seed: Option<u64>) -> Self {
+    fn new(seed: Option<u64>) -> Self {
         let seed = seed.unwrap_or_else(rand::random);
         let rng = StdRng::seed_from_u64(seed);
         Self { rng, seed }
     }
 
-    pub fn seed(&self) -> u64 {
+    fn seed(&self) -> u64 {
         self.seed
     }
 
-    pub fn select(&mut self, config: &LoadTestConfig) -> ResolvedConfig {
+    fn select(&mut self, config: &LoadTestConfig) -> ResolvedConfig {
         let types = config.enabled_types();
         let test_type = types[self.rng.gen_range(0..types.len())];
 
