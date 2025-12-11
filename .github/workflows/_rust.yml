@@ -143,7 +143,7 @@ jobs:
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
           TESTCASES_DIR: "libs/connlib/tunnel/testcases"
 
-      - uses: coverallsapp/github-action@v2
+      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: rust/lcov.info
