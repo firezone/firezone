@@ -159,7 +159,7 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
     info!(seed, enabled_types = ?config.enabled_types(), "Selecting random test");
 
     match selector.select(&config) {
-        ResolvedConfig::Http(http) => {
+        AnyTestConfig::Http(http) => {
             info!(
                 test_type = "http",
                 seed,
@@ -172,7 +172,7 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
 
             http::run_with_config(http, seed).await
         }
-        ResolvedConfig::Tcp(tcp) => {
+        AnyTestConfig::Tcp(tcp) => {
             info!(
                 test_type = "tcp",
                 seed,
@@ -185,7 +185,7 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
 
             tcp::run_with_config(tcp, seed).await
         }
-        ResolvedConfig::Websocket(ws) => {
+        AnyTestConfig::Websocket(ws) => {
             info!(
                 test_type = "websocket",
                 seed,
@@ -198,7 +198,7 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
 
             websocket::run_with_config(ws, seed).await
         }
-        ResolvedConfig::Ping(ping) => {
+        AnyTestConfig::Ping(ping) => {
             info!(
                 test_type = "ping",
                 seed,
@@ -267,7 +267,7 @@ fn init_logging() {
 
 /// Resolved test configuration (one of the test types).
 #[derive(Debug)]
-enum ResolvedConfig {
+enum AnyTestConfig {
     Http(http::HttpTestConfig),
     Tcp(tcp::TcpTestConfig),
     Websocket(websocket::WebsocketTestConfig),
@@ -292,17 +292,17 @@ impl TestSelector {
         self.seed
     }
 
-    fn select(&mut self, config: &LoadTestConfig) -> ResolvedConfig {
+    fn select(&mut self, config: &LoadTestConfig) -> AnyTestConfig {
         let types = config.enabled_types();
         let test_type = types[self.rng.gen_range(0..types.len())];
 
         match test_type {
-            TestType::Http => ResolvedConfig::Http(self.resolve_http(&config.http)),
-            TestType::Tcp => ResolvedConfig::Tcp(self.resolve_tcp(&config.tcp)),
+            TestType::Http => AnyTestConfig::Http(self.resolve_http(&config.http)),
+            TestType::Tcp => AnyTestConfig::Tcp(self.resolve_tcp(&config.tcp)),
             TestType::Websocket => {
-                ResolvedConfig::Websocket(self.resolve_websocket(&config.websocket))
+                AnyTestConfig::Websocket(self.resolve_websocket(&config.websocket))
             }
-            TestType::Ping => ResolvedConfig::Ping(self.resolve_ping(&config.ping)),
+            TestType::Ping => AnyTestConfig::Ping(self.resolve_ping(&config.ping)),
         }
     }
 
