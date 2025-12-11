@@ -4,6 +4,7 @@ mod get_user_agent;
 mod login_url;
 
 use anyhow::{Context as _, Result};
+use futures::stream::FuturesUnordered;
 use std::collections::{BTreeMap, VecDeque};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::Arc;
@@ -114,21 +115,26 @@ async fn connect(
     addresses: Vec<SocketAddr>,
     socket_factory: &dyn SocketFactory<TcpSocket>,
 ) -> Result<TcpStream, InternalError> {
-    let mut errors = Vec::with_capacity(addresses.len());
+    use futures::future::TryFutureExt;
 
-    for addr in addresses {
-        let Ok(socket) = socket_factory.bind(addr) else {
-            continue;
-        };
+    let mut sockets = addresses
+        .into_iter()
+        .map(|addr| {
+            async move { socket_factory.bind(addr)?.connect(addr).await }
+                .map_err(move |e| (addr, e))
+        })
+        .collect::<FuturesUnordered<_>>();
 
-        match socket.connect(addr).await {
-            Ok(socket) => return Ok(socket),
-            Err(e) => {
-                errors.push((addr, e));
-            }
+    let mut errors = Vec::new();
+
+    while let Some(result) = sockets.next().await {
+        match result {
+            Ok(stream) => return Ok(stream),
+            Err(e) => errors.push(e),
         }
     }
 
+    // All attempts failed
     Err(InternalError::SocketConnection(errors))
 }
 
