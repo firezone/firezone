@@ -106,8 +106,8 @@ defmodule Domain.Auth do
     |> DB.insert_one_time_passcode()
   end
 
-  def verify_one_time_passcode(account_id, passcode_id, entered_code) do
-    case DB.fetch_one_time_passcode(account_id, passcode_id) do
+  def verify_one_time_passcode(account_id, actor_id, passcode_id, entered_code) do
+    case DB.fetch_one_time_passcode(account_id, actor_id, passcode_id) do
       {:ok, passcode} ->
         if Domain.Crypto.equal?(:argon2, entered_code, passcode.code_hash) do
           :ok = DB.delete_one_time_passcode(passcode)
@@ -481,11 +481,16 @@ defmodule Domain.Auth do
       |> Safe.insert()
     end
 
-    def fetch_one_time_passcode(account_id, id) do
+    def fetch_one_time_passcode(account_id, actor_id, id) do
       from(otp in OneTimePasscode,
+        join: a in assoc(otp, :actor),
         where: otp.account_id == ^account_id,
+        where: otp.actor_id == ^actor_id,
         where: otp.id == ^id,
-        where: otp.expires_at > ^DateTime.utc_now()
+        where: otp.expires_at > ^DateTime.utc_now(),
+        where: is_nil(a.disabled_at),
+        where: a.allow_email_otp_sign_in == true,
+        preload: [actor: a]
       )
       |> Safe.unscoped()
       |> Safe.one()

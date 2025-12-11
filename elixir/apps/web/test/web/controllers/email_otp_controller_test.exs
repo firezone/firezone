@@ -288,10 +288,15 @@ defmodule Web.EmailOTPControllerTest do
       account: account,
       provider: provider
     } do
-      # Set up cookie with a fake passcode_id
+      # Set up cookie with a fake passcode_id and actor_id
       conn =
         conn
-        |> EmailOTP.put_state(provider.id, Ecto.UUID.generate(), "test@example.com")
+        |> EmailOTP.put_state(
+          provider.id,
+          Ecto.UUID.generate(),
+          Ecto.UUID.generate(),
+          "test@example.com"
+        )
         |> recycle_with_cookie(provider.id)
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => "123456"
