@@ -235,7 +235,7 @@ defmodule Domain.Auth do
   end
 
   def fetch_token(account_id, token_id, context_type) do
-    DB.fetch_token_for_use(token_id, account_id, context_type)
+    DB.fetch_token_for_use(account_id, token_id, context_type)
   end
 
   def use_token(encoded_token, %Context{} = context)
