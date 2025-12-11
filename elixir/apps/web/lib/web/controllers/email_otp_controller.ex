@@ -4,7 +4,8 @@ defmodule Web.EmailOTPController do
   """
   use Web, :controller
 
-  alias Domain.{Auth, EmailOTP}
+  alias Domain.Auth
+  alias Domain.EmailOTP
   alias __MODULE__.DB
   alias Web.Session.Redirector
 
