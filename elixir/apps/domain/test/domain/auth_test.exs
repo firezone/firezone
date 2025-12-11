@@ -718,49 +718,94 @@ defmodule Domain.AuthTest do
       assert {:error, :unauthorized} = create_gateway_token(site, subject)
     end
 
-    test "creates an email token with all required fields" do
+    test "creates a one-time passcode" do
       account = account_fixture()
       actor = actor_fixture(account: account)
 
-      attrs = %{
-        type: :email,
-        account_id: account.id,
-        actor_id: actor.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        expires_at: DateTime.add(DateTime.utc_now(), 15, :minute)
-      }
-
-      assert {:ok, token} = create_token(attrs)
-      assert token.type == :email
+      assert {:ok, passcode} = create_one_time_passcode(account, actor)
+      assert passcode.id != nil
+      assert passcode.account_id == account.id
+      assert passcode.actor_id == actor.id
+      assert passcode.code != nil
+      assert String.length(passcode.code) == 5
+      assert passcode.code_hash != nil
+      assert passcode.expires_at != nil
     end
 
-    test "fails to create email token without expires_at" do
+    test "verifies a valid one-time passcode" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      {:ok, passcode} = create_one_time_passcode(account, actor)
+
+      assert {:ok, verified_passcode} =
+               verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+
+      assert verified_passcode.id == passcode.id
+      assert verified_passcode.actor_id == actor.id
+    end
+
+    test "fails to verify one-time passcode with wrong code" do
       account = account_fixture()
       actor = actor_fixture(account: account)
 
-      attrs = %{
-        type: :email,
-        account_id: account.id,
-        actor_id: actor.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32)
-      }
+      {:ok, passcode} = create_one_time_passcode(account, actor)
 
-      assert {:error, changeset} = create_token(attrs)
-      assert "can't be blank" in errors_on(changeset).expires_at
+      assert {:error, :invalid_code} =
+               verify_one_time_passcode(account.id, actor.id, passcode.id, "wrong")
     end
 
-    test "fails to create email token without actor_id" do
+    test "fails to verify one-time passcode with wrong passcode_id" do
       account = account_fixture()
+      actor = actor_fixture(account: account)
 
-      attrs = %{
-        type: :email,
-        account_id: account.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        expires_at: DateTime.add(DateTime.utc_now(), 15, :minute)
-      }
+      {:ok, passcode} = create_one_time_passcode(account, actor)
 
-      assert {:error, changeset} = create_token(attrs)
-      assert "can't be blank" in errors_on(changeset).actor_id
+      assert {:error, :invalid_code} =
+               verify_one_time_passcode(account.id, actor.id, Ecto.UUID.generate(), passcode.code)
+    end
+
+    test "fails to verify one-time passcode with wrong actor_id" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+
+      {:ok, passcode} = create_one_time_passcode(account, actor)
+
+      assert {:error, :invalid_code} =
+               verify_one_time_passcode(
+                 account.id,
+                 Ecto.UUID.generate(),
+                 passcode.id,
+                 passcode.code
+               )
+    end
+
+    test "one-time passcode can only be used once" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      {:ok, passcode} = create_one_time_passcode(account, actor)
+
+      assert {:ok, _} = verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+
+      assert {:error, :invalid_code} =
+               verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+    end
+
+    test "creating a new passcode deletes existing passcodes for the actor" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      {:ok, passcode1} = create_one_time_passcode(account, actor)
+      {:ok, passcode2} = create_one_time_passcode(account, actor)
+
+      # First passcode should no longer be valid
+      assert {:error, :invalid_code} =
+               verify_one_time_passcode(account.id, actor.id, passcode1.id, passcode1.code)
+
+      # Second passcode should still be valid
+      assert {:ok, _} =
+               verify_one_time_passcode(account.id, actor.id, passcode2.id, passcode2.code)
     end
 
     test "fails to create token without type" do

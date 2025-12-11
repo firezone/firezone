@@ -44,6 +44,7 @@ defmodule Domain.Account do
 
     has_many :tokens, Domain.Token
     has_many :gateway_tokens, Domain.GatewayToken
+    has_many :one_time_passcodes, Domain.OneTimePasscode
 
     has_many :google_directories, Domain.Google.Directory
     has_many :google_auth_providers, Domain.Google.AuthProvider

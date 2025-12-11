@@ -72,6 +72,7 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     policies
     resources
     tokens
+    one_time_passcodes
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
   # deploys without alerting.

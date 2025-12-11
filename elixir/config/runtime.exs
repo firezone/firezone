@@ -196,7 +196,10 @@ if config_env() == :prod do
          {"0 9 * * 0", Domain.Workers.OutdatedGateways},
 
          # Delete expired tokens every 5 minutes
-         {"*/5 * * * *", Domain.Workers.DeleteExpiredTokens}
+         {"*/5 * * * *", Domain.Workers.DeleteExpiredTokens},
+
+         # Delete expired one-time passcodes every 5 minutes
+         {"*/5 * * * *", Domain.Workers.DeleteExpiredOneTimePasscodes}
        ]}
     ],
     queues:

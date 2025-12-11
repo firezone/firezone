@@ -90,44 +90,6 @@ defmodule Web.Auth do
   end
 
   @doc """
-  Attempts to execute a callback in the given constant time.
-
-  If the time it takes to execute the callback is less than the timeout,
-  the function will sleep for the remaining time. Otherwise, the function
-  returns immediately.
-  """
-  def execute_with_constant_time(callback, constant_time) do
-    start_time = System.monotonic_time(:millisecond)
-    result = callback.()
-    end_time = System.monotonic_time(:millisecond)
-
-    elapsed_time = end_time - start_time
-    remaining_time = max(0, constant_time - elapsed_time)
-
-    if remaining_time > 0 do
-      :timer.sleep(remaining_time)
-    else
-      log_constant_time_exceeded(constant_time, elapsed_time, remaining_time)
-    end
-
-    result
-  end
-
-  if Mix.env() in [:dev, :test] do
-    def log_constant_time_exceeded(_constant_time, _elapsed_time, _remaining_time) do
-      :ok
-    end
-  else
-    def log_constant_time_exceeded(constant_time, elapsed_time, remaining_time) do
-      Logger.error("Execution took longer than the given constant time",
-        constant_time: constant_time,
-        elapsed_time: elapsed_time,
-        remaining_time: remaining_time
-      )
-    end
-  end
-
-  @doc """
   Returns non-empty parameters that should be persisted during sign in flow.
   """
   def take_sign_in_params(params) do

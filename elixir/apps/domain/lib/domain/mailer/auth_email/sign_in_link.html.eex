@@ -102,6 +102,7 @@
                     <p style="border-radius: 4px; border: 1px solid #e7e7e7; padding: 8px; text-align: center; font-size: 30px">
                       <code><%= @secret %></code>
                     </p>
+                    <%= unless @client_sign_in do %>
                     <p style="margin: 0; line-height: 24px;">
                       Or click the button below
                     </p>
@@ -124,6 +125,7 @@
                       </a>
                     </div>
                     <div role="separator" style="line-height: 16px">&zwj;</div>
+                    <% end %>
                     <p style="margin: 0; font-size: 12px; font-style: italic; line-height: 24px">
                       This email will only be valid for 15 minutes
                     </p>
