@@ -152,7 +152,7 @@ impl HttpTestSummary {
 
 /// Resolved HTTP test parameters (ready to execute).
 #[derive(Debug)]
-pub struct ResolvedHttpConfig {
+pub struct HttpTestConfig {
     pub address: Url,
     pub http_version: u8,
     pub users: u64,
@@ -190,7 +190,7 @@ pub async fn run_with_cli_args(args: HttpArgs) -> anyhow::Result<()> {
 }
 
 /// Run HTTP test from resolved config.
-pub async fn run_with_config(config: ResolvedHttpConfig, seed: u64) -> anyhow::Result<()> {
+pub async fn run_with_config(config: HttpTestConfig, seed: u64) -> anyhow::Result<()> {
     let http_version = match config.http_version {
         1 => HttpVersion::Http1,
         2 => HttpVersion::Http2,

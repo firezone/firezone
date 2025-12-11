@@ -54,7 +54,7 @@ mod util;
 mod websocket;
 
 use crate::config::{HttpConfig, MIN_PING_COUNT, PingConfig, TcpConfig, TestType, WebsocketConfig};
-use crate::http::{HttpArgs, ResolvedHttpConfig};
+use crate::http::HttpArgs;
 use crate::ping::PingArgs;
 use crate::tcp::TcpArgs;
 use crate::websocket::WebsocketArgs;
@@ -268,7 +268,7 @@ fn init_logging() {
 /// Resolved test configuration (one of the test types).
 #[derive(Debug)]
 enum ResolvedConfig {
-    Http(ResolvedHttpConfig),
+    Http(http::HttpTestConfig),
     Tcp(tcp::TcpTestConfig),
     Websocket(websocket::WebsocketTestConfig),
     Ping(ping::PingTestConfig),
@@ -306,14 +306,14 @@ impl TestSelector {
         }
     }
 
-    fn resolve_http(&mut self, config: &HttpConfig) -> ResolvedHttpConfig {
+    fn resolve_http(&mut self, config: &HttpConfig) -> http::HttpTestConfig {
         let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
         let address = Url::parse(addr_str).expect("URL validated during config load");
         let http_version = config.http_version[self.rng.gen_range(0..config.http_version.len())];
         let users = config.users.pick(&mut self.rng);
         let run_time = Duration::from_secs(config.run_time_secs.pick(&mut self.rng));
 
-        ResolvedHttpConfig {
+        http::HttpTestConfig {
             address,
             http_version,
             users,
