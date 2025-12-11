@@ -102,13 +102,13 @@ enum Commands {
     /// Random test from config file (default when no subcommand given)
     Random,
     /// HTTP load testing using Goose
-    Http(http::HttpArgs),
+    Http(http::Args),
     /// TCP connection load testing
-    Tcp(tcp::TcpArgs),
+    Tcp(tcp::Args),
     /// WebSocket connection load testing
-    Websocket(websocket::WebsocketArgs),
+    Websocket(websocket::Args),
     /// ICMP ping testing
-    Ping(ping::PingArgs),
+    Ping(ping::Args),
 }
 
 #[tokio::main]
@@ -264,10 +264,10 @@ fn init_logging() {
 /// Resolved test configuration (one of the test types).
 #[derive(Debug)]
 enum AnyTestConfig {
-    Http(http::HttpTestConfig),
-    Tcp(tcp::TcpTestConfig),
-    Websocket(websocket::WebsocketTestConfig),
-    Ping(ping::PingTestConfig),
+    Http(http::TestConfig),
+    Tcp(tcp::TestConfig),
+    Websocket(websocket::TestConfig),
+    Ping(ping::TestConfig),
 }
 
 /// Random test selector.
@@ -302,14 +302,14 @@ impl TestSelector {
         }
     }
 
-    fn resolve_http(&mut self, config: &HttpConfig) -> http::HttpTestConfig {
+    fn resolve_http(&mut self, config: &HttpConfig) -> http::TestConfig {
         let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
         let address = Url::parse(addr_str).expect("URL validated during config load");
         let http_version = config.http_version[self.rng.gen_range(0..config.http_version.len())];
         let users = config.users.pick(&mut self.rng);
         let run_time = Duration::from_secs(config.run_time_secs.pick(&mut self.rng));
 
-        http::HttpTestConfig {
+        http::TestConfig {
             address,
             http_version,
             users,
@@ -317,7 +317,7 @@ impl TestSelector {
         }
     }
 
-    fn resolve_tcp(&mut self, config: &TcpConfig) -> tcp::TcpTestConfig {
+    fn resolve_tcp(&mut self, config: &TcpConfig) -> tcp::TestConfig {
         let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
         let address: SocketAddr = addr_str
             .parse()
@@ -334,7 +334,7 @@ impl TestSelector {
         let echo_read_timeout =
             Duration::from_secs(config.echo_read_timeout_secs.pick(&mut self.rng));
 
-        tcp::TcpTestConfig {
+        tcp::TestConfig {
             target: address,
             concurrent,
             hold_duration: duration,
@@ -346,7 +346,7 @@ impl TestSelector {
         }
     }
 
-    fn resolve_websocket(&mut self, config: &WebsocketConfig) -> websocket::WebsocketTestConfig {
+    fn resolve_websocket(&mut self, config: &WebsocketConfig) -> websocket::TestConfig {
         let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
         let address = Url::parse(addr_str).expect("URL validated during config load");
 
@@ -364,7 +364,7 @@ impl TestSelector {
         let echo_read_timeout =
             Duration::from_secs(config.echo_read_timeout_secs.pick(&mut self.rng));
 
-        websocket::WebsocketTestConfig {
+        websocket::TestConfig {
             url: address,
             concurrent,
             hold_duration: duration,
@@ -377,7 +377,7 @@ impl TestSelector {
         }
     }
 
-    fn resolve_ping(&mut self, config: &PingConfig) -> ping::PingTestConfig {
+    fn resolve_ping(&mut self, config: &PingConfig) -> ping::TestConfig {
         // Parse all targets
         let targets: Vec<IpAddr> = config
             .addresses
@@ -391,7 +391,7 @@ impl TestSelector {
         let timeout = Duration::from_millis(config.timeout_ms.pick(&mut self.rng));
         let payload_size = config.payload_size.pick(&mut self.rng) as usize;
 
-        ping::PingTestConfig {
+        ping::TestConfig {
             targets,
             count: Some(count),
             interval,

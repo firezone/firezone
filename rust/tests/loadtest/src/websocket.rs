@@ -24,7 +24,7 @@ use url::Url;
 
 /// Configuration for WebSocket load testing.
 #[derive(Debug, Clone)]
-pub struct WebsocketTestConfig {
+pub struct TestConfig {
     /// WebSocket URL (ws:// or wss://)
     pub url: Url,
     /// Number of concurrent connections to establish
@@ -46,7 +46,7 @@ pub struct WebsocketTestConfig {
 }
 
 #[derive(Parser)]
-pub struct WebsocketArgs {
+pub struct Args {
     /// Run as echo server (listen for connections)
     #[arg(long)]
     server: bool,
@@ -145,7 +145,7 @@ pub struct WebsocketTestSummary {
 }
 
 /// Run WebSocket test with manual CLI args.
-pub async fn run_with_cli_args(args: WebsocketArgs) -> anyhow::Result<()> {
+pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
     if args.server {
         // Server mode
         let config = WebsocketServerConfig { port: args.port };
@@ -156,7 +156,7 @@ pub async fn run_with_cli_args(args: WebsocketArgs) -> anyhow::Result<()> {
             anyhow::anyhow!("--url is required in client mode (or use --server for server mode)")
         })?;
 
-        let config = WebsocketTestConfig {
+        let config = TestConfig {
             url,
             concurrent: args.concurrent,
             hold_duration: args.duration,
@@ -179,7 +179,7 @@ pub async fn run_with_cli_args(args: WebsocketArgs) -> anyhow::Result<()> {
 }
 
 /// Run WebSocket test from resolved config.
-pub async fn run_with_config(config: WebsocketTestConfig, seed: u64) -> anyhow::Result<()> {
+pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()> {
     let summary = run(config).await?;
 
     println!(
@@ -195,7 +195,7 @@ pub async fn run_with_config(config: WebsocketTestConfig, seed: u64) -> anyhow::
 /// Establishes `concurrent` connections and holds each open for `hold_duration`.
 /// In echo mode, sends timestamped payloads and verifies responses.
 /// Otherwise, optionally sends periodic ping messages to keep connections alive.
-async fn run(config: WebsocketTestConfig) -> Result<WebsocketTestSummary> {
+async fn run(config: TestConfig) -> Result<WebsocketTestSummary> {
     let (tx, mut rx) = mpsc::channel::<ConnectionResult>(config.concurrent);
     let active_connections = Arc::new(AtomicUsize::new(0));
     let peak_active = Arc::new(AtomicUsize::new(0));
@@ -335,7 +335,7 @@ async fn run(config: WebsocketTestConfig) -> Result<WebsocketTestSummary> {
 /// Run a single WebSocket connection test.
 async fn run_single_connection(
     connection_id: usize,
-    config: &WebsocketTestConfig,
+    config: &TestConfig,
     active: &AtomicUsize,
     peak: &AtomicUsize,
 ) -> ConnectionResult {
@@ -404,7 +404,7 @@ async fn run_single_connection(
 async fn run_ping_loop(
     connection_id: usize,
     mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
-    config: &WebsocketTestConfig,
+    config: &TestConfig,
 ) -> (usize, usize) {
     let mut sent = 0usize;
     let mut received = 0usize;
@@ -456,7 +456,7 @@ async fn run_ping_loop(
 async fn run_echo_loop(
     connection_id: usize,
     mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
-    config: &WebsocketTestConfig,
+    config: &TestConfig,
 ) -> EchoStats {
     let mut stats = EchoStats::default();
     let hold_start = Instant::now();

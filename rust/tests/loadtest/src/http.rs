@@ -30,7 +30,7 @@ See: https://book.goose.rs/getting-started/runtime-options.html
 
 #[derive(Parser)]
 #[command(after_long_help = GOOSE_HELP)]
-pub struct HttpArgs {
+pub struct Args {
     /// HTTP version to use (1 or 2)
     #[arg(long, default_value = "1", value_name = "VERSION")]
     pub http_version: HttpVersion,
@@ -152,7 +152,7 @@ impl HttpTestSummary {
 
 /// Resolved HTTP test parameters (ready to execute).
 #[derive(Debug)]
-pub struct HttpTestConfig {
+pub struct TestConfig {
     pub address: Url,
     pub http_version: u8,
     pub users: u64,
@@ -160,7 +160,7 @@ pub struct HttpTestConfig {
 }
 
 /// Run HTTP test with manual CLI args.
-pub async fn run_with_cli_args(args: HttpArgs) -> anyhow::Result<()> {
+pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
     HTTP_VERSION
         .set(args.http_version)
         .expect("HTTP_VERSION already set");
@@ -190,7 +190,7 @@ pub async fn run_with_cli_args(args: HttpArgs) -> anyhow::Result<()> {
 }
 
 /// Run HTTP test from resolved config.
-pub async fn run_with_config(config: HttpTestConfig, seed: u64) -> anyhow::Result<()> {
+pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()> {
     let http_version = match config.http_version {
         1 => HttpVersion::Http1,
         2 => HttpVersion::Http2,

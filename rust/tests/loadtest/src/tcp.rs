@@ -21,7 +21,7 @@ use tracing::{debug, info, trace, warn};
 
 /// Configuration for TCP connection load testing.
 #[derive(Debug, Clone)]
-pub struct TcpTestConfig {
+pub struct TestConfig {
     /// Target address (host:port)
     pub target: SocketAddr,
     /// Number of concurrent connections to establish
@@ -91,7 +91,7 @@ pub struct TcpTestSummary {
 }
 
 #[derive(Parser)]
-pub struct TcpArgs {
+pub struct Args {
     /// Run as echo server (listen for connections)
     #[arg(long)]
     server: bool,
@@ -134,7 +134,7 @@ pub struct TcpArgs {
 }
 
 /// Run TCP test with manual CLI args.
-pub async fn run_with_cli_args(args: TcpArgs) -> anyhow::Result<()> {
+pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
     if args.server {
         // Server mode
         let config = TcpServerConfig { port: args.port };
@@ -145,7 +145,7 @@ pub async fn run_with_cli_args(args: TcpArgs) -> anyhow::Result<()> {
             anyhow::anyhow!("--target is required in client mode (or use --server for server mode)")
         })?;
 
-        let config = TcpTestConfig {
+        let config = TestConfig {
             target,
             concurrent: args.concurrent,
             hold_duration: args.duration,
@@ -168,7 +168,7 @@ pub async fn run_with_cli_args(args: TcpArgs) -> anyhow::Result<()> {
 }
 
 /// Run TCP test from resolved config.
-pub async fn run_with_config(config: TcpTestConfig, seed: u64) -> anyhow::Result<()> {
+pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()> {
     let summary = run(config).await?;
 
     println!(
@@ -179,7 +179,7 @@ pub async fn run_with_config(config: TcpTestConfig, seed: u64) -> anyhow::Result
     Ok(())
 }
 
-async fn run(config: TcpTestConfig) -> Result<TcpTestSummary> {
+async fn run(config: TestConfig) -> Result<TcpTestSummary> {
     let (tx, mut rx) = mpsc::channel::<ConnectionResult>(config.concurrent);
     let active_connections = Arc::new(AtomicUsize::new(0));
     let peak_active = Arc::new(AtomicUsize::new(0));
@@ -309,7 +309,7 @@ async fn run(config: TcpTestConfig) -> Result<TcpTestSummary> {
 /// Run a single TCP connection test.
 async fn run_single_connection(
     connection_id: usize,
-    config: &TcpTestConfig,
+    config: &TestConfig,
     active: &AtomicUsize,
     peak: &AtomicUsize,
 ) -> ConnectionResult {
@@ -371,7 +371,7 @@ async fn run_single_connection(
 async fn run_echo_loop(
     connection_id: usize,
     mut stream: TcpStream,
-    config: &TcpTestConfig,
+    config: &TestConfig,
 ) -> EchoStats {
     let mut stats = EchoStats::default();
     let hold_start = Instant::now();

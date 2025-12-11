@@ -24,7 +24,7 @@ pub const MAX_ICMP_PAYLOAD_SIZE: usize = 65507;
 
 /// Configuration for ICMP ping testing.
 #[derive(Debug, Clone)]
-pub struct PingTestConfig {
+pub struct TestConfig {
     /// Target IP addresses to ping.
     pub targets: Vec<IpAddr>,
     /// Number of pings per target.
@@ -75,7 +75,7 @@ pub struct PingTestSummary {
 }
 
 #[derive(Parser)]
-pub struct PingArgs {
+pub struct Args {
     /// Target IP address(es) to ping
     #[arg(long, value_name = "IP", required = true, num_args = 1..)]
     target: Vec<IpAddr>,
@@ -102,7 +102,7 @@ pub struct PingArgs {
 }
 
 /// Run ping test with manual CLI args.
-pub async fn run_with_cli_args(args: PingArgs) -> anyhow::Result<()> {
+pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
     // Ensure at least count or duration is specified
     let (count, duration) = if args.count.is_none() && args.duration.is_none() {
         // Default to 10 pings if neither specified
@@ -111,7 +111,7 @@ pub async fn run_with_cli_args(args: PingArgs) -> anyhow::Result<()> {
         (args.count, args.duration)
     };
 
-    let config = PingTestConfig {
+    let config = TestConfig {
         targets: args.target,
         count,
         duration,
@@ -131,7 +131,7 @@ pub async fn run_with_cli_args(args: PingArgs) -> anyhow::Result<()> {
 }
 
 /// Run ping test from resolved config.
-pub async fn run_with_config(config: PingTestConfig, seed: u64) -> anyhow::Result<()> {
+pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()> {
     let summary = run(config).await?;
 
     println!(
@@ -143,7 +143,7 @@ pub async fn run_with_config(config: PingTestConfig, seed: u64) -> anyhow::Resul
 }
 
 /// Run the ICMP ping test.
-async fn run(config: PingTestConfig) -> Result<PingTestSummary> {
+async fn run(config: TestConfig) -> Result<PingTestSummary> {
     // Validate payload size
     if config.payload_size > MAX_ICMP_PAYLOAD_SIZE {
         bail!(
@@ -205,7 +205,7 @@ async fn run(config: PingTestConfig) -> Result<PingTestSummary> {
 async fn ping_target(
     idx: usize,
     target: IpAddr,
-    config: &PingTestConfig,
+    config: &TestConfig,
     client: &Client,
 ) -> TargetResult {
     let mut pinger = client.pinger(target, PingIdentifier(idx as u16)).await;
@@ -279,7 +279,7 @@ async fn ping_target(
 }
 
 /// Build the summary from all target results.
-fn build_summary(config: &PingTestConfig, results: Vec<TargetResult>) -> PingTestSummary {
+fn build_summary(config: &TestConfig, results: Vec<TargetResult>) -> PingTestSummary {
     let mut total_sent = 0usize;
     let mut total_received = 0usize;
     let mut all_rtts = StreamingStats::new();
