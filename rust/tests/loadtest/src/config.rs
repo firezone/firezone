@@ -336,9 +336,16 @@ mod tests {
     #[test]
     fn test_load_missing_file() {
         let result = LoadTestConfig::load(Path::new("/nonexistent/config.toml"));
+
+        #[cfg(unix)]
         assert_eq!(
             format!("{:#}", result.unwrap_err()),
             "Failed to read config file: No such file or directory (os error 2)"
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "Failed to read config file: The system cannot find the path specified. (os error 3)"
         );
     }
 
