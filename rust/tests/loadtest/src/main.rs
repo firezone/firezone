@@ -64,7 +64,6 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 use tracing::info;
-use tracing_subscriber::EnvFilter;
 use url::Url;
 
 /// Default config file name.
@@ -229,6 +228,7 @@ fn init_logging() {
     #[cfg(windows)]
     {
         use tracing_subscriber::layer::SubscriberExt as _;
+        use tracing_subscriber::util::SubscriberInitExt as _;
 
         match logging::windows_event_log::layer("Firezone-Loadtest") {
             Ok(layer) => {
@@ -247,6 +247,8 @@ fn init_logging() {
 
     #[cfg(not(windows))]
     {
+        use tracing_subscriber::EnvFilter;
+
         // Initialize tracing with RUST_LOG env var support
         // Default to info level for this crate, warn for dependencies
         tracing_subscriber::fmt()
