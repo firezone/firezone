@@ -94,22 +94,6 @@ struct LoadtestOutput {
     success: bool,
 }
 
-/// Extract JSON from output that may contain non-JSON lines.
-///
-/// Some tools output progress info before the final JSON summary.
-/// This function finds and returns the JSON object from the output.
-fn extract_json(output: &str) -> &str {
-    // Find the last line that starts with '{' and contains '}'
-    for line in output.lines().rev() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('{') && trimmed.ends_with('}') {
-            return trimmed;
-        }
-    }
-    // Fall back to the whole output if no JSON line found
-    output
-}
-
 /// Run the loadtest binary and return its stdout.
 fn run_loadtest(args: &[&str]) -> String {
     let output = try_run_loadtest(args);
