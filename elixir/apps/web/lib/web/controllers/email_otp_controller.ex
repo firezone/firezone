@@ -65,14 +65,14 @@ defmodule Web.EmailOTPController do
     %{"account_id_or_slug" => account_id_or_slug, "auth_provider_id" => auth_provider_id} = params
     context_type = context_type(params)
 
-    with {:ok, passcode_id, email} <- fetch_state(conn),
+    with {:ok, actor_id, passcode_id, email} <- fetch_state(conn),
          {:ok, account} <- DB.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- DB.fetch_provider_by_id(account, auth_provider_id),
-         {:ok, passcode} <- Auth.verify_one_time_passcode(account.id, passcode_id, entered_code),
-         {:ok, actor} <- DB.fetch_actor_by_id(account, passcode.actor_id),
-         :ok <- check_admin(actor, context_type),
-         {:ok, token} <- create_token(conn, actor, provider, params) do
-      {:ok, %{account: account, actor: actor, token: token, email: email}}
+         {:ok, passcode} <-
+           Auth.verify_one_time_passcode(account.id, actor_id, passcode_id, entered_code),
+         :ok <- check_admin(passcode.actor, context_type),
+         {:ok, token} <- create_token(conn, passcode.actor, provider, params) do
+      {:ok, %{account: account, actor: passcode.actor, token: token, email: email}}
     end
   end
 
@@ -89,8 +89,8 @@ defmodule Web.EmailOTPController do
 
   defp fetch_state(conn) do
     case Web.EmailOTP.fetch_state(conn) do
-      %{"one_time_passcode_id" => passcode_id, "email" => email} ->
-        {:ok, passcode_id, email}
+      %{"actor_id" => actor_id, "one_time_passcode_id" => passcode_id, "email" => email} ->
+        {:ok, actor_id, passcode_id, email}
 
       _ ->
         :error
@@ -98,26 +98,26 @@ defmodule Web.EmailOTPController do
   end
 
   defp maybe_send_email_otp(conn, account, email, params, auth_provider_id) do
-    {passcode_id, error} =
+    {actor_id, passcode_id, error} =
       execute_with_constant_time(
         fn ->
           with {:ok, actor} <- DB.fetch_actor_by_email(account, email),
                {:ok, otp} <- Auth.create_one_time_passcode(account, actor),
                {:ok, _} <- send_email_otp(conn, actor, otp.code, auth_provider_id, params) do
-            {otp.id, nil}
+            {actor.id, otp.id, nil}
           else
             {:error, :rate_limited} ->
-              {Ecto.UUID.generate(), :rate_limited}
+              {Ecto.UUID.generate(), Ecto.UUID.generate(), :rate_limited}
 
             _ ->
-              # Generate dummy ID to prevent oracle attacks
-              {Ecto.UUID.generate(), nil}
+              # Generate dummy IDs to prevent oracle attacks
+              {Ecto.UUID.generate(), Ecto.UUID.generate(), nil}
           end
         end,
         @constant_execution_time
       )
 
-    conn = Web.EmailOTP.put_state(conn, auth_provider_id, passcode_id, email)
+    conn = Web.EmailOTP.put_state(conn, auth_provider_id, actor_id, passcode_id, email)
 
     case error do
       :rate_limited ->
@@ -329,20 +329,6 @@ defmodule Web.EmailOTPController do
       from(a in Actor,
         where:
           a.email == ^email and
-            a.account_id == ^account.id and
-            is_nil(a.disabled_at) and
-            a.allow_email_otp_sign_in == true
-      )
-      |> preload(:account)
-      |> Safe.unscoped()
-      |> Safe.one()
-      |> handle_nil()
-    end
-
-    def fetch_actor_by_id(account, actor_id) do
-      from(a in Actor,
-        where:
-          a.id == ^actor_id and
             a.account_id == ^account.id and
             is_nil(a.disabled_at) and
             a.allow_email_otp_sign_in == true

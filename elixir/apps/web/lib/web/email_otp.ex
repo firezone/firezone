@@ -12,9 +12,9 @@ defmodule Web.EmailOTP do
     http_only: true
   ]
 
-  def put_state(conn, provider_id, passcode_id, email) do
+  def put_state(conn, provider_id, actor_id, passcode_id, email) do
     key = cookie_key(provider_id)
-    value = %{"one_time_passcode_id" => passcode_id, "email" => email}
+    value = %{"actor_id" => actor_id, "one_time_passcode_id" => passcode_id, "email" => email}
     Plug.Conn.put_resp_cookie(conn, key, value, @cookie_options)
   end
 
