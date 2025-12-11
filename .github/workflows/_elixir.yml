@@ -39,6 +39,9 @@ jobs:
           mix test apps/api/test/api/controllers
           mix test apps/domain/test/domain/auth_test.exs
           mix test apps/domain/test/domain/gateway_token_test.exs
+          mix test apps/web/test/web/email_otp_test.exs
+          mix test apps/web/test/web/controllers/email_otp_controller_test.exs
+
           # mix_test="mix test --warnings-as-errors --exclude flaky:true --exclude acceptance:true"
           # $mix_test || $mix_test --failed
       - name: Test Report

@@ -5,25 +5,17 @@ defmodule Web.SignIn.Email do
   def mount(
         %{
           "account_id_or_slug" => account_id_or_slug,
-          "auth_provider_id" => provider_id,
-          "signed_email" => signed_email
+          "auth_provider_id" => provider_id
         } = params,
-        _session,
+        session,
         socket
       ) do
     redirect_params = Web.Auth.take_sign_in_params(params)
-    secret_key_base = socket.endpoint.config(:secret_key_base)
 
     account = DB.get_account_by_id_or_slug(account_id_or_slug)
 
     with %Domain.Account{} = account <- account,
-         {:ok, email} <-
-           Plug.Crypto.verify(
-             secret_key_base,
-             "signed_email",
-             signed_email,
-             max_age: 3600
-           ) do
+         {:ok, email} <- Map.fetch(session, "email") do
       form = to_form(%{"secret" => nil})
 
       verify_action = ~p"/#{account_id_or_slug}/sign_in/email_otp/#{provider_id}/verify"
@@ -83,13 +75,14 @@ defmodule Web.SignIn.Email do
 
             <div>
               <p>
-                If <strong>{@email}</strong> is registered, a sign-in token has been sent.
+                If <strong>{@email}</strong> is registered, a sign-in code has been sent.
               </p>
               <form
                 id="verify-sign-in-token"
                 action={@verify_action}
                 method="post"
                 class="my-4 flex"
+                phx-update="ignore"
                 phx-hook="AttachDisableSubmit"
                 phx-submit={JS.dispatch("form:disable_and_submit", to: "#verify-sign-in-token")}
               >
@@ -111,7 +104,7 @@ defmodule Web.SignIn.Email do
                     "rounded-l border-neutral-300"
                   ]}
                   required
-                  placeholder="Enter token from email"
+                  placeholder="Enter code from email"
                 />
 
                 <button

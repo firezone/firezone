@@ -50,7 +50,7 @@ defmodule Domain.Mailer.AuthEmail do
     |> to(actor.email)
     |> render_body(__MODULE__, :sign_in_link,
       account: actor.account,
-      client_platform: params["client_platform"],
+      client_sign_in: params["as"] == "client",
       sign_in_token_created_at: token_created_at,
       secret: secret,
       sign_in_url: sign_in_url,
