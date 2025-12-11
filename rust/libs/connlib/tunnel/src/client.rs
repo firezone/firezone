@@ -274,10 +274,7 @@ impl ClientState {
         }
 
         self.on_connection_failed(id);
-        {
-            let this = &mut *self;
-            this.resource_list.update(this.resources());
-        };
+        self.resource_list.update(self.resources());
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -1564,10 +1561,7 @@ impl ClientState {
         }
 
         if resources_changed {
-            {
-                let this = &mut *self;
-                this.resource_list.update(this.resources());
-            }
+            self.resource_list.update(self.resources())
         }
 
         for (conn_id, candidates) in added_ice_candidates.into_iter() {
@@ -1596,10 +1590,7 @@ impl ClientState {
             ),
             status,
         );
-        {
-            let this = &mut *self;
-            this.resource_list.update(this.resources());
-        };
+        self.resource_list.update(self.resources());
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
@@ -1690,10 +1681,7 @@ impl ClientState {
 
         self.active_cidr_resources = self.recalculate_active_cidr_resources();
         self.maybe_update_tun_routes();
-        {
-            let this = &mut *self;
-            this.resource_list.update(this.resources());
-        };
+        self.resource_list.update(self.resources());
     }
 
     pub fn add_resource(
@@ -1759,10 +1747,7 @@ impl ClientState {
         }
 
         self.maybe_update_tun_routes();
-        {
-            let this = &mut *self;
-            this.resource_list.update(this.resources());
-        };
+        self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource added");
     }
 
@@ -1848,10 +1833,7 @@ impl ClientState {
 
             self.node.close_connection(gid, p2p_control::goodbye(), now);
             self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown);
-            {
-                let this = &mut *self;
-                this.resource_list.update(this.resources());
-            };
+            self.resource_list.update(self.resources());
         }
     }
 
