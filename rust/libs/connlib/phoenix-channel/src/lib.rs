@@ -4,6 +4,7 @@ mod get_user_agent;
 mod login_url;
 
 use anyhow::{Context as _, Result};
+use futures::stream::FuturesUnordered;
 use std::collections::{BTreeMap, VecDeque};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::Arc;
@@ -114,21 +115,26 @@ async fn connect(
     addresses: Vec<SocketAddr>,
     socket_factory: &dyn SocketFactory<TcpSocket>,
 ) -> Result<TcpStream, InternalError> {
-    let mut errors = Vec::with_capacity(addresses.len());
+    use futures::future::TryFutureExt;
 
-    for addr in addresses {
-        let Ok(socket) = socket_factory.bind(addr) else {
-            continue;
-        };
+    let mut sockets = addresses
+        .into_iter()
+        .map(|addr| {
+            async move { socket_factory.bind(addr)?.connect(addr).await }
+                .map_err(move |e| (addr, e))
+        })
+        .collect::<FuturesUnordered<_>>();
 
-        match socket.connect(addr).await {
-            Ok(socket) => return Ok(socket),
-            Err(e) => {
-                errors.push((addr, e));
-            }
+    let mut errors = Vec::new();
+
+    while let Some(result) = sockets.next().await {
+        match result {
+            Ok(stream) => return Ok(stream),
+            Err(e) => errors.push(e),
         }
     }
 
+    // All attempts failed
     Err(InternalError::SocketConnection(errors))
 }
 
@@ -900,6 +906,10 @@ fn serialize_msg(
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv4Addr, SocketAddrV4};
+
+    use tokio::net::TcpListener;
+
     use super::*;
 
     #[derive(Deserialize, PartialEq, Debug)]
@@ -1043,5 +1053,24 @@ mod tests {
     #[tokio::test]
     async fn can_sleep_0_ms() {
         tokio::time::sleep(Duration::ZERO).await
+    }
+
+    #[tokio::test]
+    async fn connect_resolves_even_if_first_address_is_bogus() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            connect(
+                vec![
+                    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 1), 80)),
+                    listener.local_addr().unwrap(),
+                ],
+                &socket_factory::tcp,
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
     }
 }
