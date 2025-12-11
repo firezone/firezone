@@ -900,6 +900,10 @@ fn serialize_msg(
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv4Addr, SocketAddrV4};
+
+    use tokio::net::TcpListener;
+
     use super::*;
 
     #[derive(Deserialize, PartialEq, Debug)]
@@ -1043,5 +1047,24 @@ mod tests {
     #[tokio::test]
     async fn can_sleep_0_ms() {
         tokio::time::sleep(Duration::ZERO).await
+    }
+
+    #[tokio::test]
+    async fn connect_resolves_even_if_first_address_is_bogus() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            connect(
+                vec![
+                    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 1), 80)),
+                    listener.local_addr().unwrap(),
+                ],
+                &socket_factory::tcp,
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
     }
 }
