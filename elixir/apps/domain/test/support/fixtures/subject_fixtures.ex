@@ -6,6 +6,7 @@ defmodule Domain.SubjectFixtures do
   import Domain.AccountFixtures
   import Domain.ActorFixtures
   import Domain.TokenFixtures
+  import Domain.PortalSessionFixtures
 
   alias Domain.Auth.Context
   alias Domain.Auth.Subject
@@ -33,12 +34,12 @@ defmodule Domain.SubjectFixtures do
           actor_fixture(account: account)
       end
 
-    token_type = Map.get(attrs, :type) || actor_token_type(actor.type)
+    context_type = Map.get_lazy(attrs, :type, fn -> actor_context_type(actor.type) end)
 
     context =
       Map.get_lazy(attrs, :context, fn ->
         %Context{
-          type: token_type,
+          type: context_type,
           remote_ip: Map.get(attrs, :remote_ip, {100, 64, 0, 1}),
           remote_ip_location_region: Map.get(attrs, :remote_ip_location_region, "US"),
           remote_ip_location_city: Map.get(attrs, :remote_ip_location_city, "San Francisco"),
@@ -48,26 +49,50 @@ defmodule Domain.SubjectFixtures do
         }
       end)
 
-    token =
-      Map.get_lazy(attrs, :token, fn ->
-        token_attrs =
-          attrs
-          |> Map.take([:expires_at, :name])
-          |> Enum.into(%{
-            type: token_type,
-            account: account,
-            actor: actor
-          })
+    # Portal sessions for portal context, tokens for client/api_client
+    {record, auth_ref} =
+      case context_type do
+        :portal ->
+          session =
+            Map.get_lazy(attrs, :session, fn ->
+              session_attrs =
+                attrs
+                |> Map.take([:expires_at])
+                |> Enum.into(%{
+                  account: account,
+                  actor: actor
+                })
 
-        token_fixture(token_attrs)
-      end)
+              portal_session_fixture(session_attrs)
+            end)
+
+          {session, %{type: :portal_session, id: session.id}}
+
+        type when type in [:client, :api_client] ->
+          token =
+            Map.get_lazy(attrs, :token, fn ->
+              token_attrs =
+                attrs
+                |> Map.take([:expires_at, :name])
+                |> Enum.into(%{
+                  type: context_type,
+                  account: account,
+                  actor: actor
+                })
+
+              token_fixture(token_attrs)
+            end)
+
+          {token, %{type: :token, id: token.id}}
+      end
 
     %Subject{
       actor: actor,
       account: account,
-      expires_at: token.expires_at,
+      expires_at: record.expires_at,
       context: context,
-      token_id: token.id
+      auth_ref: auth_ref,
+      auth_provider_id: record.auth_provider_id
     }
   end
 
@@ -79,9 +104,9 @@ defmodule Domain.SubjectFixtures do
     subject_fixture(attrs)
   end
 
-  defp actor_token_type(:service_account), do: :client
-  defp actor_token_type(:api_client), do: :api_client
-  defp actor_token_type(_), do: :browser
+  defp actor_context_type(:service_account), do: :client
+  defp actor_context_type(:api_client), do: :api_client
+  defp actor_context_type(_), do: :portal
 
   @doc """
   Build an auth context with sensible defaults.
@@ -89,7 +114,7 @@ defmodule Domain.SubjectFixtures do
   def build_context(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
-    {type, attrs} = Map.pop(attrs, :type, :browser)
+    {type, attrs} = Map.pop(attrs, :type, :portal)
     {user_agent, attrs} = Map.pop(attrs, :user_agent, "Mozilla/5.0")
     {remote_ip, attrs} = Map.pop(attrs, :remote_ip, {100, 64, 0, 1})
 

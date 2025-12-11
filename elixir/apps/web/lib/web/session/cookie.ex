@@ -33,23 +33,23 @@ defmodule Web.Session.Cookie do
   @doc """
   Puts account session data into a per-account cookie.
   """
-  def put_account_cookie(conn, account_id, token_id) do
+  def put_account_cookie(conn, account_id, session_id) do
     cookie_name = cookie_name(account_id)
-    cookie_data = %{"token_id" => token_id}
+    cookie_data = %{"session_id" => session_id}
 
     Plug.Conn.put_resp_cookie(conn, cookie_name, cookie_data, cookie_options())
   end
 
   @doc """
   Fetches account session data from a per-account cookie.
-  Returns `{:ok, token_id}` or `:error`.
+  Returns `{:ok, session_id}` or `:error`.
   """
   def fetch_account_cookie(conn, account_id) do
     cookie_name = cookie_name(account_id)
     conn = Plug.Conn.fetch_cookies(conn, encrypted: [cookie_name])
 
-    with {:ok, %{"token_id" => token_id}} <- Map.fetch(conn.cookies, cookie_name) do
-      {:ok, token_id}
+    with {:ok, %{"session_id" => session_id}} <- Map.fetch(conn.cookies, cookie_name) do
+      {:ok, session_id}
     end
   end
 

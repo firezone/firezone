@@ -71,8 +71,15 @@ defmodule Web.EmailOTPController do
          {:ok, passcode} <-
            Auth.verify_one_time_passcode(account.id, actor_id, passcode_id, entered_code),
          :ok <- check_admin(passcode.actor, context_type),
-         {:ok, token} <- create_token(conn, passcode.actor, provider, params) do
-      {:ok, %{account: account, actor: passcode.actor, token: token, email: email}}
+         {:ok, session_or_token} <-
+           create_session_or_token(conn, passcode.actor, provider, params) do
+      {:ok,
+       %{
+         account: account,
+         actor: passcode.actor,
+         session_or_token: session_or_token,
+         email: email
+       }}
     end
   end
 
@@ -80,7 +87,7 @@ defmodule Web.EmailOTPController do
     context_type = context_type(params)
     conn = Web.EmailOTP.delete_state(conn, params["auth_provider_id"])
     :ok = Domain.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, result.email})
-    signed_in(conn, context_type, result.account, result.actor, result.token, params)
+    signed_in(conn, context_type, result.account, result.actor, result.session_or_token, params)
   end
 
   defp handle_verify_result(conn, error, params) do
@@ -153,7 +160,7 @@ defmodule Web.EmailOTPController do
   defp check_admin(%Domain.Actor{type: :account_user}, :client), do: :ok
   defp check_admin(_actor, _context_type), do: {:error, :not_admin}
 
-  defp create_token(conn, actor, provider, params) do
+  defp create_session_or_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
     type = context_type(params)
@@ -169,28 +176,42 @@ defmodule Web.EmailOTPController do
         :client ->
           provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
 
-        :browser ->
+        :portal ->
           provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
       end
 
-    attrs = %{
-      type: context.type,
-      secret_nonce: params["nonce"],
-      secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-      account_id: actor.account_id,
-      actor_id: actor.id,
-      auth_provider_id: provider.id,
-      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
-    }
+    expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
-    Auth.create_token(attrs)
+    case type do
+      :portal ->
+        Auth.create_portal_session(
+          actor.account_id,
+          actor.id,
+          provider.id,
+          context,
+          expires_at
+        )
+
+      :client ->
+        attrs = %{
+          type: :client,
+          secret_nonce: params["nonce"],
+          secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
+          account_id: actor.account_id,
+          actor_id: actor.id,
+          auth_provider_id: provider.id,
+          expires_at: expires_at
+        }
+
+        Auth.create_token(attrs)
+    end
   end
 
-  # Context: :browser
+  # Context: :portal
   # Store session cookie and redirect to portal or redirect_to parameter
-  defp signed_in(conn, :browser, account, _actor, token, params) do
+  defp signed_in(conn, :portal, account, _actor, session, params) do
     conn
-    |> Web.Session.Cookie.put_account_cookie(account.id, token.id)
+    |> Web.Session.Cookie.put_account_cookie(account.id, session.id)
     |> Redirector.portal_signed_in(account, params)
   end
 
@@ -267,7 +288,7 @@ defmodule Web.EmailOTPController do
   end
 
   defp context_type(%{"as" => "client"}), do: :client
-  defp context_type(_), do: :browser
+  defp context_type(_), do: :portal
 
   # Executes a callback in constant time to prevent timing attacks.
   # If execution is faster than constant_time, sleeps for the remainder.

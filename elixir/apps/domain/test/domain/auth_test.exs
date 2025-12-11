@@ -29,7 +29,7 @@ defmodule Domain.AuthTest do
       assert subject.actor.id == service_account.id
       assert subject.context.type == :client
 
-      assert token = Repo.get_by(Token, id: subject.token_id)
+      assert token = Repo.get_by(Token, id: subject.auth_ref.id)
       assert token.name == "test-token"
       assert token.type == :client
       assert token.account_id == account.id
@@ -52,7 +52,7 @@ defmodule Domain.AuthTest do
       context = build_context(type: :client)
       assert {:ok, subject} = authenticate(encoded_token, context)
 
-      token = Repo.get_by(Token, id: subject.token_id)
+      token = Repo.get_by(Token, id: subject.auth_ref.id)
       assert is_nil(token.expires_at)
     end
 
@@ -126,7 +126,7 @@ defmodule Domain.AuthTest do
       context = build_context(type: :client)
       assert {:ok, subject} = authenticate(encoded_token, context)
 
-      token = Repo.get_by(Token, id: subject.token_id)
+      token = Repo.get_by(Token, id: subject.auth_ref.id)
       assert token.name == "my-custom-token-name"
     end
   end
@@ -152,7 +152,7 @@ defmodule Domain.AuthTest do
       assert subject.actor.id == api_client.id
       assert subject.context.type == :api_client
 
-      assert token = Repo.get_by(Token, id: subject.token_id)
+      assert token = Repo.get_by(Token, id: subject.auth_ref.id)
       assert token.name == "test-token"
       assert token.type == :api_client
       assert token.account_id == account.id
@@ -175,7 +175,7 @@ defmodule Domain.AuthTest do
       context = build_context(type: :api_client)
       assert {:ok, subject} = authenticate(encoded_token, context)
 
-      token = Repo.get_by(Token, id: subject.token_id)
+      token = Repo.get_by(Token, id: subject.auth_ref.id)
       assert is_nil(token.expires_at)
     end
 
@@ -237,7 +237,7 @@ defmodule Domain.AuthTest do
 
   describe "authenticate/2" do
     test "returns error when token is invalid" do
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
 
       assert authenticate("invalid.token", context) == {:error, :invalid_token}
       assert authenticate("foo", context) == {:error, :invalid_token}
@@ -245,37 +245,31 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error for empty token" do
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert authenticate("", context) == {:error, :invalid_token}
     end
 
     test "returns error for token with only nonce" do
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert authenticate("justnonce.", context) == {:error, :invalid_token}
     end
 
     test "returns error for token with only fragment" do
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert authenticate(".justfragment", context) == {:error, :invalid_token}
     end
 
     test "returns error when token is issued for a different context type" do
-      browser_encoded = encode_token(browser_token_fixture())
       client_encoded = encode_token(client_token_fixture())
+      api_client_encoded = encode_token(api_client_token_fixture())
 
-      browser_context = build_context(type: :browser)
       client_context = build_context(type: :client)
+      api_client_context = build_context(type: :api_client)
 
-      # Browser token used with client context
-      assert authenticate(browser_encoded, client_context) == {:error, :invalid_token}
-      # Client token used with browser context
-      assert authenticate(client_encoded, browser_context) == {:error, :invalid_token}
-    end
-
-    test "returns error when browser token used with api_client context" do
-      encoded = encode_token(browser_token_fixture())
-      context = build_context(type: :api_client)
-      assert authenticate(encoded, context) == {:error, :invalid_token}
+      # Client token used with api_client context
+      assert authenticate(client_encoded, api_client_context) == {:error, :invalid_token}
+      # API client token used with client context
+      assert authenticate(api_client_encoded, client_context) == {:error, :invalid_token}
     end
 
     test "returns error when client token used with api_client context" do
@@ -284,15 +278,15 @@ defmodule Domain.AuthTest do
       assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
-    test "returns error when api_client token used with browser context" do
+    test "returns error when api_client token used with client context" do
       encoded = encode_token(api_client_token_fixture())
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when nonce is invalid" do
-      encoded = encode_token(browser_token_fixture(secret_nonce: "correct"))
-      context = build_context(type: :browser)
+      encoded = encode_token(client_token_fixture(secret_nonce: "correct"))
+      context = build_context(type: :client)
 
       # Replace correct nonce with wrong one
       wrong_nonce_token = "wrong" <> String.slice(encoded, 7..-1//1)
@@ -300,31 +294,13 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when nonce is empty but expected non-empty" do
-      encoded = encode_token(browser_token_fixture(secret_nonce: "nonempty"))
-      context = build_context(type: :browser)
+      encoded = encode_token(client_token_fixture(secret_nonce: "nonempty"))
+      context = build_context(type: :client)
 
       # Remove the nonce entirely
       [_nonce, fragment] = String.split(encoded, ".", parts: 2)
       empty_nonce_token = "." <> fragment
       assert authenticate(empty_nonce_token, context) == {:error, :invalid_token}
-    end
-
-    test "returns subject for browser token" do
-      account = account_fixture()
-      actor = actor_fixture(account: account, type: :account_admin_user)
-
-      token = browser_token_fixture(account: account, actor: actor)
-      encoded = encode_token(token)
-
-      context = build_context(type: :browser)
-
-      assert {:ok, subject} = authenticate(encoded, context)
-      assert subject.actor.id == actor.id
-      assert subject.account.id == account.id
-      assert subject.token_id == token.id
-      assert subject.context.remote_ip == context.remote_ip
-      assert subject.context.user_agent == context.user_agent
-      assert subject.expires_at == token.expires_at
     end
 
     test "returns subject for client token" do
@@ -339,7 +315,7 @@ defmodule Domain.AuthTest do
       assert {:ok, subject} = authenticate(encoded, context)
       assert subject.actor.id == actor.id
       assert subject.account.id == account.id
-      assert subject.token_id == token.id
+      assert subject.auth_ref.id == token.id
       assert subject.expires_at == token.expires_at
     end
 
@@ -355,7 +331,7 @@ defmodule Domain.AuthTest do
       assert {:ok, subject} = authenticate(encoded, context)
       assert subject.actor.id == actor.id
       assert subject.account.id == account.id
-      assert subject.token_id == token.id
+      assert subject.auth_ref.id == token.id
     end
 
     test "returns subject for service account token" do
@@ -373,11 +349,11 @@ defmodule Domain.AuthTest do
     end
 
     test "updates last seen fields for token on success" do
-      encoded = encode_token(browser_token_fixture())
+      encoded = encode_token(client_token_fixture())
 
       context =
         build_context(
-          type: :browser,
+          type: :client,
           remote_ip: {192, 168, 1, 100},
           remote_ip_location_region: "UA",
           remote_ip_location_city: "Kyiv",
@@ -388,7 +364,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, subject} = authenticate(encoded, context)
 
-      updated_token = Repo.get_by(Token, id: subject.token_id)
+      updated_token = Repo.get_by(Token, id: subject.auth_ref.id)
       assert updated_token.last_seen_remote_ip.address == context.remote_ip
 
       assert updated_token.last_seen_remote_ip_location_region ==
@@ -401,9 +377,9 @@ defmodule Domain.AuthTest do
     end
 
     test "updates last_seen_at timestamp on each use" do
-      token = browser_token_fixture()
+      token = client_token_fixture()
       encoded = encode_token(token)
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
 
       # First use
       assert {:ok, _} = authenticate(encoded, context)
@@ -425,76 +401,76 @@ defmodule Domain.AuthTest do
     test "returns error when actor is deleted" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      encoded = encode_token(browser_token_fixture(account: account, actor: actor))
+      encoded = encode_token(client_token_fixture(account: account, actor: actor))
 
       Domain.Repo.delete!(actor)
 
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when actor is disabled" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      encoded = encode_token(browser_token_fixture(account: account, actor: actor))
+      encoded = encode_token(client_token_fixture(account: account, actor: actor))
 
       actor
       |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
       |> Domain.Repo.update!()
 
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when token is expired" do
       token =
         token_fixture(
-          type: :browser,
+          type: :client,
           expires_at: DateTime.add(DateTime.utc_now(), -3600, :second)
         )
 
       encoded = encode_token(token)
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when token expired just now" do
       token =
         token_fixture(
-          type: :browser,
+          type: :client,
           expires_at: DateTime.add(DateTime.utc_now(), -1, :second)
         )
 
       encoded = encode_token(token)
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "succeeds when token expires in the future" do
       token =
         token_fixture(
-          type: :browser,
+          type: :client,
           expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
         )
 
       encoded = encode_token(token)
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert {:ok, _subject} = authenticate(encoded, context)
     end
 
     test "returns error when token does not exist in database" do
       # Create and then delete the token
-      token = browser_token_fixture()
+      token = client_token_fixture()
       encoded = encode_token(token)
       Repo.delete!(token)
 
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
     test "returns error when fragment is tampered with" do
-      encoded = encode_token(browser_token_fixture())
-      context = build_context(type: :browser)
+      encoded = encode_token(client_token_fixture())
+      context = build_context(type: :client)
 
       # Tamper with the fragment part
       [nonce, fragment] = String.split(encoded, ".", parts: 2)
@@ -503,33 +479,33 @@ defmodule Domain.AuthTest do
     end
 
     test "handles IPv6 addresses in context" do
-      encoded = encode_token(browser_token_fixture())
+      encoded = encode_token(client_token_fixture())
 
       context =
         build_context(
-          type: :browser,
+          type: :client,
           remote_ip: {0, 0, 0, 0, 0, 0, 0, 1}
         )
 
       assert {:ok, subject} = authenticate(encoded, context)
-      updated_token = Repo.get_by(Token, id: subject.token_id)
+      updated_token = Repo.get_by(Token, id: subject.auth_ref.id)
       assert updated_token.last_seen_remote_ip.address == {0, 0, 0, 0, 0, 0, 0, 1}
     end
 
     test "handles various user agent strings" do
-      encoded = encode_token(browser_token_fixture())
+      encoded = encode_token(client_token_fixture())
 
       # DB has 255 char limit for user_agent
       user_agent = String.duplicate("M", 255)
 
       context =
         build_context(
-          type: :browser,
+          type: :client,
           user_agent: user_agent
         )
 
       assert {:ok, subject} = authenticate(encoded, context)
-      updated_token = Repo.get_by(Token, id: subject.token_id)
+      updated_token = Repo.get_by(Token, id: subject.auth_ref.id)
       assert updated_token.last_seen_user_agent == user_agent
     end
 
@@ -548,72 +524,7 @@ defmodule Domain.AuthTest do
   end
 
   describe "create_token/1" do
-    test "creates a browser token with required attributes" do
-      account = account_fixture()
-      actor = actor_fixture(account: account)
-
-      attrs = %{
-        type: :browser,
-        account_id: account.id,
-        actor_id: actor.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
-      }
-
-      assert {:ok, token} = create_token(attrs)
-      assert token.type == :browser
-      assert token.account_id == account.id
-      assert token.actor_id == actor.id
-      assert token.secret_salt != nil
-      assert token.secret_hash != nil
-    end
-
-    test "fails to create browser token without expires_at" do
-      account = account_fixture()
-      actor = actor_fixture(account: account)
-
-      attrs = %{
-        type: :browser,
-        account_id: account.id,
-        actor_id: actor.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32)
-      }
-
-      assert {:error, changeset} = create_token(attrs)
-      assert "can't be blank" in errors_on(changeset).expires_at
-    end
-
-    test "fails to create browser token without actor_id" do
-      account = account_fixture()
-
-      attrs = %{
-        type: :browser,
-        account_id: account.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
-      }
-
-      assert {:error, changeset} = create_token(attrs)
-      assert "can't be blank" in errors_on(changeset).actor_id
-    end
-
-    test "fails to create browser token with past expires_at" do
-      account = account_fixture()
-      actor = actor_fixture(account: account)
-
-      attrs = %{
-        type: :browser,
-        account_id: account.id,
-        actor_id: actor.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        expires_at: DateTime.add(DateTime.utc_now(), -1, :day)
-      }
-
-      assert {:error, changeset} = create_token(attrs)
-      assert errors_on(changeset).expires_at != []
-    end
-
-    test "creates a client token" do
+    test "creates a client token with required attributes" do
       account = account_fixture()
       actor = actor_fixture(account: account)
 
@@ -622,11 +533,29 @@ defmodule Domain.AuthTest do
         account_id: account.id,
         actor_id: actor.id,
         secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        expires_at: DateTime.add(DateTime.utc_now(), 30, :day)
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
       assert {:ok, token} = create_token(attrs)
       assert token.type == :client
+      assert token.account_id == account.id
+      assert token.actor_id == actor.id
+      assert token.secret_salt != nil
+      assert token.secret_hash != nil
+    end
+
+    test "fails to create client token without actor_id" do
+      account = account_fixture()
+
+      attrs = %{
+        type: :client,
+        account_id: account.id,
+        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+      }
+
+      assert {:error, changeset} = create_token(attrs)
+      assert "can't be blank" in errors_on(changeset).actor_id
     end
 
     test "creates a client token without expires_at" do
@@ -643,19 +572,6 @@ defmodule Domain.AuthTest do
       assert {:ok, token} = create_token(attrs)
       assert token.type == :client
       assert is_nil(token.expires_at)
-    end
-
-    test "fails to create client token without actor_id" do
-      account = account_fixture()
-
-      attrs = %{
-        type: :client,
-        account_id: account.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32)
-      }
-
-      assert {:error, changeset} = create_token(attrs)
-      assert "can't be blank" in errors_on(changeset).actor_id
     end
 
     test "creates an api_client token" do
@@ -825,7 +741,7 @@ defmodule Domain.AuthTest do
       actor = actor_fixture(account: account)
 
       attrs = %{
-        type: :browser,
+        type: :client,
         account_id: account.id,
         actor_id: actor.id,
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
@@ -959,14 +875,14 @@ defmodule Domain.AuthTest do
       subject = subject_fixture(account: account)
 
       attrs = %{
-        type: :browser,
+        type: :client,
         actor_id: subject.actor.id,
         secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
       assert {:ok, token} = create_token(attrs, subject)
-      assert token.type == :browser
+      assert token.type == :client
       assert token.account_id == account.id
       assert token.actor_id == subject.actor.id
     end
@@ -977,7 +893,7 @@ defmodule Domain.AuthTest do
       subject = subject_fixture(account: account)
 
       attrs = %{
-        type: :browser,
+        type: :client,
         account_id: other_account.id,
         actor_id: subject.actor.id,
         secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
@@ -1025,33 +941,33 @@ defmodule Domain.AuthTest do
 
   describe "use_token/2" do
     test "returns token when valid" do
-      token = browser_token_fixture()
+      token = client_token_fixture()
       encoded = encode_token(token)
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
 
       assert {:ok, used_token} = use_token(encoded, context)
       assert used_token.id == token.id
     end
 
     test "returns error for invalid token" do
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
 
       assert {:error, :invalid_token} = use_token("invalid.token", context)
     end
 
     test "returns error for empty string" do
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert {:error, :invalid_token} = use_token("", context)
     end
 
     test "returns error for token without separator" do
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert {:error, :invalid_token} = use_token("notokenhere", context)
     end
 
     test "returns error when token type doesn't match context" do
-      encoded = encode_token(browser_token_fixture())
-      context = build_context(type: :client)
+      encoded = encode_token(client_token_fixture())
+      context = build_context(type: :api_client)
 
       assert {:error, :invalid_token} = use_token(encoded, context)
     end
@@ -1059,32 +975,32 @@ defmodule Domain.AuthTest do
     test "returns error for expired token" do
       token =
         token_fixture(
-          type: :browser,
+          type: :client,
           expires_at: DateTime.add(DateTime.utc_now(), -1, :hour)
         )
 
       encoded = encode_token(token)
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
 
       assert {:error, :invalid_token} = use_token(encoded, context)
     end
 
     test "returns error when token deleted from database" do
-      token = browser_token_fixture()
+      token = client_token_fixture()
       encoded = encode_token(token)
       Repo.delete!(token)
 
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert {:error, :invalid_token} = use_token(encoded, context)
     end
 
     test "updates last_seen fields on token" do
-      token = browser_token_fixture()
+      token = client_token_fixture()
       encoded = encode_token(token)
 
       context =
         build_context(
-          type: :browser,
+          type: :client,
           remote_ip: {10, 0, 0, 1},
           user_agent: "TestAgent/1.0"
         )
@@ -1097,12 +1013,12 @@ defmodule Domain.AuthTest do
     end
 
     test "updates all location fields" do
-      token = browser_token_fixture()
+      token = client_token_fixture()
       encoded = encode_token(token)
 
       context =
         build_context(
-          type: :browser,
+          type: :client,
           remote_ip: {192, 168, 1, 1},
           remote_ip_location_region: "US",
           remote_ip_location_city: "New York",
@@ -1121,9 +1037,9 @@ defmodule Domain.AuthTest do
     end
 
     test "can use token multiple times" do
-      token = browser_token_fixture()
+      token = client_token_fixture()
       encoded = encode_token(token)
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
 
       assert {:ok, _} = use_token(encoded, context)
       assert {:ok, _} = use_token(encoded, context)
@@ -1172,8 +1088,8 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when fragment is wrong" do
-      encoded = encode_token(browser_token_fixture(secret_nonce: "test"))
-      context = build_context(type: :browser)
+      encoded = encode_token(client_token_fixture(secret_nonce: "test"))
+      context = build_context(type: :client)
 
       # Corrupt the fragment
       [nonce, _fragment] = String.split(encoded, ".", parts: 2)
@@ -1189,7 +1105,7 @@ defmodule Domain.AuthTest do
       actor = actor_fixture(account: account)
 
       attrs = %{
-        type: :browser,
+        type: :client,
         account_id: account.id,
         actor_id: actor.id,
         secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
@@ -1212,7 +1128,7 @@ defmodule Domain.AuthTest do
       fragment = Domain.Crypto.random_token(32, encoder: :hex32)
 
       attrs = %{
-        type: :browser,
+        type: :client,
         account_id: account.id,
         actor_id: actor.id,
         secret_fragment: fragment,
@@ -1227,7 +1143,7 @@ defmodule Domain.AuthTest do
       # Prepend nonce to make full token
       full_token = "testnonce" <> encoded_fragment
 
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert {:ok, used_token} = use_token(full_token, context)
       assert used_token.id == token.id
     end
@@ -1257,46 +1173,38 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "socket_id/1" do
+  describe "Domain.Sockets.socket_id/1" do
     test "returns socket id for token id" do
       token_id = Ecto.UUID.generate()
-      assert socket_id(token_id) == "tokens:#{token_id}"
+      assert Domain.Sockets.socket_id(token_id) == "socket:#{token_id}"
     end
 
     test "returns consistent socket id for same token id" do
       token_id = Ecto.UUID.generate()
-      assert socket_id(token_id) == socket_id(token_id)
+      assert Domain.Sockets.socket_id(token_id) == Domain.Sockets.socket_id(token_id)
     end
 
     test "returns different socket ids for different token ids" do
       token_id1 = Ecto.UUID.generate()
       token_id2 = Ecto.UUID.generate()
-      assert socket_id(token_id1) != socket_id(token_id2)
+      assert Domain.Sockets.socket_id(token_id1) != Domain.Sockets.socket_id(token_id2)
     end
 
     test "handles various UUID formats" do
       # Standard UUID
       uuid = "550e8400-e29b-41d4-a716-446655440000"
-      assert socket_id(uuid) == "tokens:550e8400-e29b-41d4-a716-446655440000"
+      assert Domain.Sockets.socket_id(uuid) == "socket:550e8400-e29b-41d4-a716-446655440000"
     end
   end
 
   describe "build_subject/2" do
-    test "builds subject from browser token" do
-      token = browser_token_fixture()
-      context = build_context(type: :browser)
-
-      assert {:ok, subject} = build_subject(token, context)
-      assert subject.token_id == token.id
-      assert subject.context == context
-    end
-
     test "builds subject from client token" do
       token = client_token_fixture()
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
-      assert subject.token_id == token.id
+      assert subject.auth_ref == %{type: :token, id: token.id}
+      assert subject.context == context
     end
 
     test "builds subject from api_client token" do
@@ -1308,39 +1216,39 @@ defmodule Domain.AuthTest do
       context = build_context(type: :api_client)
 
       assert {:ok, subject} = build_subject(token, context)
-      assert subject.token_id == token.id
+      assert subject.auth_ref == %{type: :token, id: token.id}
       assert subject.actor.id == actor.id
     end
 
     test "returns error when actor is disabled" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      token = browser_token_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor)
 
       actor
       |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
       |> Domain.Repo.update!()
 
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert {:error, :not_found} = build_subject(token, context)
     end
 
     test "returns error when actor is deleted" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      token = browser_token_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor)
 
       Domain.Repo.delete!(actor)
 
-      context = build_context(type: :browser)
+      context = build_context(type: :client)
       assert {:error, :not_found} = build_subject(token, context)
     end
 
     test "subject contains correct account" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      token = browser_token_fixture(account: account, actor: actor)
-      context = build_context(type: :browser)
+      token = client_token_fixture(account: account, actor: actor)
+      context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
       assert subject.account.id == account.id
@@ -1349,8 +1257,8 @@ defmodule Domain.AuthTest do
     test "subject contains correct actor" do
       account = account_fixture()
       actor = actor_fixture(account: account, type: :account_admin_user)
-      token = browser_token_fixture(account: account, actor: actor)
-      context = build_context(type: :browser)
+      token = client_token_fixture(account: account, actor: actor)
+      context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
       assert subject.actor.id == actor.id
@@ -1359,8 +1267,8 @@ defmodule Domain.AuthTest do
 
     test "subject contains expires_at from token" do
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
-      token = browser_token_fixture(expires_at: expires_at)
-      context = build_context(type: :browser)
+      token = client_token_fixture(expires_at: expires_at)
+      context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
       assert subject.expires_at == token.expires_at
@@ -1387,11 +1295,11 @@ defmodule Domain.AuthTest do
     end
 
     test "subject context matches provided context" do
-      token = browser_token_fixture()
+      token = client_token_fixture()
 
       context =
         build_context(
-          type: :browser,
+          type: :client,
           remote_ip: {1, 2, 3, 4},
           user_agent: "CustomAgent/2.0"
         )

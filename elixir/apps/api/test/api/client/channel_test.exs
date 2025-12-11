@@ -1,6 +1,8 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Auth, Changes, Presence, PubSub}
+  alias Domain.Changes
+  alias Domain.Presence
+  alias Domain.PubSub
   import ExUnit.CaptureLog
 
   import Domain.AccountFixtures
@@ -55,7 +57,7 @@ defmodule API.Client.ChannelTest do
       membership_fixture(account: account, actor: actor, group: group)
 
     identity = identity_fixture(actor: actor, account: account)
-    subject = subject_fixture(account: account, actor: actor)
+    subject = subject_fixture(account: account, actor: actor, type: :client)
     client = client_fixture(account: account, actor: actor)
 
     site = site_fixture(account: account)
@@ -244,7 +246,7 @@ defmodule API.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      :ok = PubSub.subscribe(Auth.socket_id(subject.token_id))
+      :ok = PubSub.subscribe(Domain.Sockets.socket_id(subject.auth_ref.id))
 
       {:ok, _reply, _socket} =
         API.Client.Socket
@@ -254,7 +256,7 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      token = Repo.get_by(Domain.Token, id: subject.token_id)
+      token = Repo.get_by(Domain.Token, id: subject.auth_ref.id)
 
       data = %{
         "id" => token.id,
@@ -270,7 +272,7 @@ defmodule API.Client.ChannelTest do
         event: "disconnect"
       }
 
-      assert topic == Auth.socket_id(token.id)
+      assert topic == Domain.Sockets.socket_id(token.id)
     end
 
     test "sends list of available resources after join", %{
@@ -2084,7 +2086,7 @@ defmodule API.Client.ChannelTest do
 
       :ok = PubSub.Account.subscribe(gateway.account_id)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      :ok = PubSub.subscribe(Auth.socket_id(gateway_token.id))
+      :ok = PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
 
       # Prime cache
       send(socket.channel_pid, {:created, resource})
@@ -2145,7 +2147,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Auth.socket_id(gateway_token.id))
+      PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
 
       send(socket.channel_pid, {:created, resource})
       send(socket.channel_pid, {:created, policy})
@@ -2199,7 +2201,7 @@ defmodule API.Client.ChannelTest do
       )
 
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Auth.socket_id(gateway_token.id))
+      PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2231,7 +2233,7 @@ defmodule API.Client.ChannelTest do
       assert policy_authorization.resource_id == Ecto.UUID.load!(resource_id)
       assert policy_authorization.gateway_id == gateway.id
       assert policy_authorization.policy_id == policy.id
-      assert policy_authorization.token_id == subject.token_id
+      assert policy_authorization.token_id == subject.auth_ref.id
 
       assert client_id == client.id
       assert Ecto.UUID.load!(resource_id) == resource.id
@@ -2309,7 +2311,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Auth.socket_id(gateway_token.id))
+      PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3110,7 +3112,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      Phoenix.PubSub.subscribe(PubSub, Auth.socket_id(gateway_token.id))
+      Phoenix.PubSub.subscribe(PubSub, Domain.Sockets.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3315,7 +3317,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Auth.socket_id(gateway_token.id))
+      PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(resource.account_id)
 
@@ -3382,7 +3384,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      Phoenix.PubSub.subscribe(PubSub, Auth.socket_id(gateway_token.id))
+      Phoenix.PubSub.subscribe(PubSub, Domain.Sockets.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3433,7 +3435,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Auth.socket_id(gateway_token.id))
+      PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(client.account_id)
 
@@ -3480,7 +3482,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      :ok = PubSub.subscribe(Auth.socket_id(gateway_token.id))
+      :ok = PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
       :ok = PubSub.Account.subscribe(client.account_id)
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)

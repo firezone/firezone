@@ -6,7 +6,7 @@ defmodule Domain.Auth.Context do
   the client and IP address used to perform the action.
   """
   @type t :: %__MODULE__{
-          type: :browser | :client | :relay | :gateway | :api_client,
+          type: :portal | :client | :relay | :gateway | :api_client,
           remote_ip: :inet.ip_address(),
           remote_ip_location_region: String.t(),
           remote_ip_location_city: String.t(),

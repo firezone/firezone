@@ -23,7 +23,7 @@ defmodule Domain.Changes.Hooks.Tokens do
   # This is a special message that disconnects all sockets using this token,
   # such as for LiveViews.
   defp disconnect_socket(token) do
-    topic = Domain.Auth.socket_id(token.id)
+    topic = Domain.Sockets.socket_id(token.id)
     payload = %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect"}
     PubSub.broadcast(topic, payload)
   end

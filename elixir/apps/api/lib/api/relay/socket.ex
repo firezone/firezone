@@ -52,7 +52,7 @@ defmodule API.Relay.Socket do
   end
 
   @impl true
-  def id(socket), do: Auth.socket_id(socket.assigns.token_id)
+  def id(socket), do: Domain.Sockets.socket_id(socket.assigns.token_id)
 
   defp upsert_relay(attrs, %Auth.Context{} = context) do
     changeset = upsert_changeset(attrs, context)

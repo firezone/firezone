@@ -13,6 +13,7 @@ defmodule Domain.Changes.ReplicationConnection do
     "policies" => Hooks.Policies,
     "resources" => Hooks.Resources,
     "tokens" => Hooks.Tokens,
+    "portal_sessions" => Hooks.PortalSessions,
     "google_auth_providers" => Hooks.AuthProviders,
     "okta_auth_providers" => Hooks.AuthProviders,
     "entra_auth_providers" => Hooks.AuthProviders,
