@@ -52,7 +52,7 @@ runs:
       id: toolchain
       with:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
-        components: rustfmt,clippy
+        components: rustfmt,clippy,llvm-tools-preview
         target: ${{ inputs.targets }}
         cache: false # We explicitly configure the cache below because it doesn't forward `cache-targets`.
 

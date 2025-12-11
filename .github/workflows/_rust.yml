@@ -83,7 +83,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tool: ripgrep
+          tool: ripgrep,cargo-llvm-cov
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         if: ${{ runner.os == 'Linux' }}
         env:
@@ -96,8 +96,7 @@ jobs:
 
           set -x
 
-          # First, run all tests.
-          cargo test --all-features ${{ steps.setup-rust.outputs.test-packages }} -- --include-ignored --nocapture
+          cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
 
           # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
           patterns=(
@@ -143,6 +142,25 @@ jobs:
           PROPTEST_CASES: ${{ runner.os == 'Windows' && '0' || '256' }} # Default is only 256. Windows is very slow in GitHub Actions, so only run the regression cases there.
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
           TESTCASES_DIR: "libs/connlib/tunnel/testcases"
+
+      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: rust/lcov.info
+          format: lcov
+          flag-name: rust-${{ matrix.runs-on }}
+          parallel: true
+
+  coverage-finish:
+    name: coverage-finish
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Finalize coverage upload
+        uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel-finished: true
 
   fuzz:
     name: fuzz
