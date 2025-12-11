@@ -31,3 +31,36 @@ where
         Some(self.want)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn emits_initial_update() {
+        let pending = PendingUpdate::new(None, 1);
+
+        assert_eq!(pending.into_new(), Some(1))
+    }
+
+    #[test]
+    fn discards_intermediate_updates() {
+        let mut pending = PendingUpdate::new(None, 1);
+        pending.update_want(2);
+        pending.update_want(4);
+        pending.update_want(3);
+        pending.update_want(2);
+
+        assert_eq!(pending.into_new(), Some(2))
+    }
+
+    #[test]
+    fn emits_no_update_if_equal_to_initial() {
+        let mut pending = PendingUpdate::new(Some(1), 2);
+        pending.update_want(1);
+        pending.update_want(3);
+        pending.update_want(1);
+
+        assert_eq!(pending.into_new(), None);
+    }
+}
