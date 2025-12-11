@@ -66,9 +66,6 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
-#[cfg(windows)]
-const EVENT_LOG_SOURCE: &str = "Firezone-Loadtest";
-
 /// Default config file name.
 const DEFAULT_CONFIG_FILE: &str = "loadtest.toml";
 
@@ -232,7 +229,7 @@ fn init_logging() {
     {
         use tracing_subscriber::layer::SubscriberExt as _;
 
-        match logging::windows_event_log::layer(EVENT_LOG_SOURCE) {
+        match logging::windows_event_log::layer("Firezone-Loadtest") {
             Ok(layer) => {
                 tracing_subscriber::registry().with(layer).init();
             }
