@@ -148,7 +148,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: rust/lcov.info
           format: lcov
-          flag-name: ${{ matrix.runs-on }}
+          flag-name: rust-${{ matrix.runs-on }}
           parallel: true
 
   coverage-finish:
