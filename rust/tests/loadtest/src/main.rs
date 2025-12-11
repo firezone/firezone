@@ -56,7 +56,7 @@ mod websocket;
 use crate::config::{HttpConfig, MIN_PING_COUNT, PingConfig, TcpConfig, TestType, WebsocketConfig};
 use crate::http::{HttpArgs, ResolvedHttpConfig};
 use crate::ping::{PingArgs, ResolvedPingConfig};
-use crate::tcp::{ResolvedTcpConfig, TcpArgs};
+use crate::tcp::TcpArgs;
 use crate::websocket::{ResolvedWebsocketConfig, WebsocketArgs};
 use clap::{Parser, Subcommand};
 use config::LoadTestConfig;
@@ -176,9 +176,9 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
             info!(
                 test_type = "tcp",
                 seed,
-                address = %tcp.address,
+                address = %tcp.target,
                 concurrent = tcp.concurrent,
-                duration_secs = tcp.duration.as_secs(),
+                duration_secs = tcp.hold_duration.as_secs(),
                 echo_mode = tcp.echo_mode,
                 "Starting TCP test"
             );
@@ -269,7 +269,7 @@ fn init_logging() {
 #[derive(Debug)]
 enum ResolvedConfig {
     Http(ResolvedHttpConfig),
-    Tcp(ResolvedTcpConfig),
+    Tcp(tcp::TcpTestConfig),
     Websocket(ResolvedWebsocketConfig),
     Ping(ResolvedPingConfig),
 }
@@ -321,7 +321,7 @@ impl TestSelector {
         }
     }
 
-    fn resolve_tcp(&mut self, config: &TcpConfig) -> ResolvedTcpConfig {
+    fn resolve_tcp(&mut self, config: &TcpConfig) -> tcp::TcpTestConfig {
         let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
         let address: SocketAddr = addr_str
             .parse()
@@ -338,11 +338,11 @@ impl TestSelector {
         let echo_read_timeout =
             Duration::from_secs(config.echo_read_timeout_secs.pick(&mut self.rng));
 
-        ResolvedTcpConfig {
-            address,
+        tcp::TcpTestConfig {
+            target: address,
             concurrent,
-            duration,
-            timeout,
+            hold_duration: duration,
+            connect_timeout: timeout,
             echo_mode,
             echo_payload_size,
             echo_interval,

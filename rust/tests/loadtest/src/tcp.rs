@@ -133,19 +133,6 @@ pub struct TcpArgs {
     echo_read_timeout: Duration,
 }
 
-/// Resolved TCP test parameters (ready to execute).
-#[derive(Debug)]
-pub struct ResolvedTcpConfig {
-    pub address: SocketAddr,
-    pub concurrent: usize,
-    pub duration: Duration,
-    pub timeout: Duration,
-    pub echo_mode: bool,
-    pub echo_payload_size: usize,
-    pub echo_interval: Option<Duration>,
-    pub echo_read_timeout: Duration,
-}
-
 /// Run TCP test with manual CLI args.
 pub async fn run_with_cli_args(args: TcpArgs) -> anyhow::Result<()> {
     if args.server {
@@ -181,19 +168,8 @@ pub async fn run_with_cli_args(args: TcpArgs) -> anyhow::Result<()> {
 }
 
 /// Run TCP test from resolved config.
-pub async fn run_with_config(config: ResolvedTcpConfig, seed: u64) -> anyhow::Result<()> {
-    let tcp_config = TcpTestConfig {
-        target: config.address,
-        concurrent: config.concurrent,
-        hold_duration: config.duration,
-        connect_timeout: config.timeout,
-        echo_mode: config.echo_mode,
-        echo_payload_size: config.echo_payload_size,
-        echo_interval: config.echo_interval,
-        echo_read_timeout: config.echo_read_timeout,
-    };
-
-    let summary = run(tcp_config).await?;
+pub async fn run_with_config(config: TcpTestConfig, seed: u64) -> anyhow::Result<()> {
+    let summary = run(config).await?;
 
     println!(
         "{}",
