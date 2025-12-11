@@ -6,6 +6,7 @@
 /// Minimum ping count (must send at least 1 ping).
 pub const MIN_PING_COUNT: usize = 1;
 
+use rand::distributions::uniform::SampleRange;
 use rand::prelude::*;
 use serde::Deserialize;
 use std::net::{IpAddr, SocketAddr};
@@ -29,47 +30,55 @@ pub struct LoadTestConfig {
 ///
 /// If `step` is specified, valid values are `[min, min+step, min+2*step, ...]` up to `max`.
 /// If `step` is omitted, any integer in `[min, max]` is valid.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub struct Range {
     pub min: u64,
     pub max: u64,
-    pub step: Option<u64>,
 }
 
-impl Range {
-    /// Validate the range configuration.
-    pub fn validate(&self, field_name: &str, section: &str) -> Result<(), ConfigError> {
-        if self.min > self.max {
-            return Err(ConfigError::InvalidRange {
-                section: section.to_string(),
-                field: field_name.to_string(),
-                min: self.min,
-                max: self.max,
-            });
+impl<'de> serde::Deserialize<'de> for Range {
+    fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+
+        let string = String::deserialize(d)?;
+        let parts = string.split("..").collect::<Vec<&str>>();
+
+        if parts.len() != 2 {
+            return Err(D::Error::custom(format!(
+                "Range must be in format 'min..max', got: '{}'",
+                string
+            )));
         }
 
-        if let Some(step) = self.step
-            && step == 0
-        {
-            return Err(ConfigError::ZeroStep {
-                section: section.to_string(),
-                field: field_name.to_string(),
-            });
+        let start = parts[0]
+            .parse::<u64>()
+            .map_err(|e| D::Error::custom(format!("Invalid start value '{}': {}", parts[0], e)))?;
+
+        let end = parts[1]
+            .parse::<u64>()
+            .map_err(|e| D::Error::custom(format!("Invalid end value '{}': {}", parts[1], e)))?;
+
+        if end < start {
+            return Err(D::Error::custom("end must be greater or equal to start"));
         }
 
-        Ok(())
+        Ok(Self {
+            min: start,
+            max: end,
+        })
+    }
+}
+
+impl SampleRange<u64> for Range {
+    fn sample_single<R: RngCore + ?Sized>(self, rng: &mut R) -> u64 {
+        rng.gen_range(std::ops::RangeInclusive::new(self.min, self.max))
     }
 
-    /// Pick a random value from the range.
-    pub fn pick<R: Rng>(&self, rng: &mut R) -> u64 {
-        match self.step {
-            Some(step) => {
-                let num_steps = (self.max - self.min) / step;
-                let chosen_step = rng.gen_range(0..=num_steps);
-                self.min + chosen_step * step
-            }
-            None => rng.gen_range(self.min..=self.max),
-        }
+    fn is_empty(&self) -> bool {
+        self.max - self.min == 0
     }
 }
 
@@ -111,9 +120,6 @@ impl HttpConfig {
                 return Err(ConfigError::InvalidHttpVersion { version: *v });
             }
         }
-
-        self.users.validate("users", "http")?;
-        self.run_time_secs.validate("run_time_secs", "http")?;
 
         Ok(())
     }
@@ -157,16 +163,6 @@ impl TcpConfig {
                     error: e.to_string(),
                 })?;
         }
-
-        self.concurrent.validate("concurrent", "tcp")?;
-        self.duration_secs.validate("duration_secs", "tcp")?;
-        self.timeout_secs.validate("timeout_secs", "tcp")?;
-        self.echo_payload_size
-            .validate("echo_payload_size", "tcp")?;
-        self.echo_interval_secs
-            .validate("echo_interval_secs", "tcp")?;
-        self.echo_read_timeout_secs
-            .validate("echo_read_timeout_secs", "tcp")?;
 
         Ok(())
     }
@@ -212,18 +208,6 @@ impl WebsocketConfig {
             })?;
         }
 
-        self.concurrent.validate("concurrent", "websocket")?;
-        self.duration_secs.validate("duration_secs", "websocket")?;
-        self.timeout_secs.validate("timeout_secs", "websocket")?;
-        self.ping_interval_secs
-            .validate("ping_interval_secs", "websocket")?;
-        self.echo_payload_size
-            .validate("echo_payload_size", "websocket")?;
-        self.echo_interval_secs
-            .validate("echo_interval_secs", "websocket")?;
-        self.echo_read_timeout_secs
-            .validate("echo_read_timeout_secs", "websocket")?;
-
         Ok(())
     }
 }
@@ -261,10 +245,6 @@ impl PingConfig {
                 })?;
         }
 
-        self.count.validate("count", "ping")?;
-        self.interval_ms.validate("interval_ms", "ping")?;
-        self.timeout_ms.validate("timeout_ms", "ping")?;
-        self.payload_size.validate("payload_size", "ping")?;
         if self.payload_size.max as usize > MAX_ICMP_PAYLOAD_SIZE {
             return Err(ConfigError::PayloadSizeTooLarge {
                 size: self.payload_size.max,
@@ -310,17 +290,6 @@ pub enum ConfigError {
         addr: String,
         error: String,
     },
-
-    #[error("[{section}] {field}.min ({min}) is greater than {field}.max ({max})")]
-    InvalidRange {
-        section: String,
-        field: String,
-        min: u64,
-        max: u64,
-    },
-
-    #[error("[{section}] {field}.step cannot be zero")]
-    ZeroStep { section: String, field: String },
 
     #[error("Invalid HTTP version: {version}. Must be 1 or 2.")]
     InvalidHttpVersion { version: u8 },
@@ -435,96 +404,6 @@ mod tests {
         }
 
         result
-    }
-
-    #[test]
-    fn test_range_pick_single_value() {
-        let range = Range {
-            min: 5,
-            max: 5,
-            step: None,
-        };
-        let mut rng = StdRng::seed_from_u64(42);
-        // When min == max, the only possible value is that value
-        assert_eq!(range.pick(&mut rng), 5);
-    }
-
-    #[test]
-    fn test_range_pick_without_step() {
-        let range = Range {
-            min: 10,
-            max: 20,
-            step: None,
-        };
-        let mut rng = StdRng::seed_from_u64(42);
-        // Should produce values in the range [10, 20]
-        for _ in 0..100 {
-            let value = range.pick(&mut rng);
-            assert!((10..=20).contains(&value), "Value {value} out of range");
-        }
-    }
-
-    #[test]
-    fn test_range_pick_with_step() {
-        let range = Range {
-            min: 10,
-            max: 30,
-            step: Some(10),
-        };
-        let mut rng = StdRng::seed_from_u64(42);
-        // Should only produce 10, 20, or 30
-        for _ in 0..100 {
-            let value = range.pick(&mut rng);
-            assert!(
-                value == 10 || value == 20 || value == 30,
-                "Value {value} not a valid step"
-            );
-        }
-    }
-
-    #[test]
-    fn test_range_pick_step_larger_than_range() {
-        let range = Range {
-            min: 5,
-            max: 8,
-            step: Some(10),
-        };
-        let mut rng = StdRng::seed_from_u64(42);
-        // When step > (max - min), only min is valid
-        assert_eq!(range.pick(&mut rng), 5);
-    }
-
-    #[test]
-    fn test_range_validate_min_greater_than_max() {
-        let range = Range {
-            min: 20,
-            max: 10,
-            step: None,
-        };
-        let result = range.validate("test_field", "test_section");
-        assert!(matches!(result, Err(ConfigError::InvalidRange { .. })));
-    }
-
-    #[test]
-    fn test_range_validate_zero_step() {
-        let range = Range {
-            min: 10,
-            max: 20,
-            step: Some(0),
-        };
-        let result = range.validate("test_field", "test_section");
-        assert!(matches!(result, Err(ConfigError::ZeroStep { .. })));
-    }
-
-    #[test]
-    fn test_range_validate_success() {
-        let range = Range {
-            min: 10,
-            max: 100,
-            step: Some(10),
-        };
-        let result = range.validate("test_field", "test_section");
-        assert!(result.is_ok());
     }
 
     #[test]

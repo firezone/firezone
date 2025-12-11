@@ -303,8 +303,8 @@ impl TestSelector {
         let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
         let address = Url::parse(addr_str).expect("URL validated during config load");
         let http_version = config.http_version[self.rng.gen_range(0..config.http_version.len())];
-        let users = config.users.pick(&mut self.rng);
-        let run_time = Duration::from_secs(config.run_time_secs.pick(&mut self.rng));
+        let users = self.rng.gen_range(config.users);
+        let run_time = Duration::from_secs(self.rng.gen_range(config.run_time_secs));
 
         http::TestConfig {
             address,
@@ -320,16 +320,16 @@ impl TestSelector {
             .parse()
             .expect("Address validated during config load");
 
-        let concurrent = config.concurrent.pick(&mut self.rng) as usize;
-        let duration = Duration::from_secs(config.duration_secs.pick(&mut self.rng));
-        let timeout = Duration::from_secs(config.timeout_secs.pick(&mut self.rng));
+        let concurrent = self.rng.gen_range(config.concurrent) as usize;
+        let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));
+        let timeout = Duration::from_secs(self.rng.gen_range(config.timeout_secs));
         let echo_mode = config.echo_mode;
-        let echo_payload_size = config.echo_payload_size.pick(&mut self.rng) as usize;
+        let echo_payload_size = self.rng.gen_range(config.echo_payload_size) as usize;
         let echo_interval = Some(Duration::from_secs(
-            config.echo_interval_secs.pick(&mut self.rng),
+            self.rng.gen_range(config.echo_interval_secs),
         ));
         let echo_read_timeout =
-            Duration::from_secs(config.echo_read_timeout_secs.pick(&mut self.rng));
+            Duration::from_secs(self.rng.gen_range(config.echo_read_timeout_secs));
 
         tcp::TestConfig {
             target: address,
@@ -347,19 +347,19 @@ impl TestSelector {
         let addr_str = &config.addresses[self.rng.gen_range(0..config.addresses.len())];
         let address = Url::parse(addr_str).expect("URL validated during config load");
 
-        let concurrent = config.concurrent.pick(&mut self.rng) as usize;
-        let duration = Duration::from_secs(config.duration_secs.pick(&mut self.rng));
-        let timeout = Duration::from_secs(config.timeout_secs.pick(&mut self.rng));
+        let concurrent = self.rng.gen_range(config.concurrent) as usize;
+        let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));
+        let timeout = Duration::from_secs(self.rng.gen_range(config.timeout_secs));
         let ping_interval = Some(Duration::from_secs(
-            config.ping_interval_secs.pick(&mut self.rng),
+            self.rng.gen_range(config.ping_interval_secs),
         ));
         let echo_mode = config.echo_mode;
-        let echo_payload_size = config.echo_payload_size.pick(&mut self.rng) as usize;
+        let echo_payload_size = self.rng.gen_range(config.echo_payload_size) as usize;
         let echo_interval = Some(Duration::from_secs(
-            config.echo_interval_secs.pick(&mut self.rng),
+            self.rng.gen_range(config.echo_interval_secs),
         ));
         let echo_read_timeout =
-            Duration::from_secs(config.echo_read_timeout_secs.pick(&mut self.rng));
+            Duration::from_secs(self.rng.gen_range(config.echo_read_timeout_secs));
 
         websocket::TestConfig {
             url: address,
@@ -383,10 +383,10 @@ impl TestSelector {
             .collect();
 
         // Ensure minimum count of 1 ping
-        let count = (config.count.pick(&mut self.rng) as usize).max(MIN_PING_COUNT);
-        let interval = Duration::from_millis(config.interval_ms.pick(&mut self.rng));
-        let timeout = Duration::from_millis(config.timeout_ms.pick(&mut self.rng));
-        let payload_size = config.payload_size.pick(&mut self.rng) as usize;
+        let count = (self.rng.gen_range(config.count) as usize).max(MIN_PING_COUNT);
+        let interval = Duration::from_millis(self.rng.gen_range(config.interval_ms));
+        let timeout = Duration::from_millis(self.rng.gen_range(config.timeout_ms));
+        let payload_size = self.rng.gen_range(config.payload_size) as usize;
 
         ping::TestConfig {
             targets,
