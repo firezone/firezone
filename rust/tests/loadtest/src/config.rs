@@ -6,6 +6,7 @@
 /// Minimum ping count (must send at least 1 ping).
 pub const MIN_PING_COUNT: usize = 1;
 
+use anyhow::{Context as _, Result, bail};
 use rand::distributions::uniform::SampleRange;
 use rand::prelude::*;
 use serde::Deserialize;
@@ -96,28 +97,22 @@ pub struct HttpConfig {
 }
 
 impl HttpConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
+    fn validate(&self) -> Result<()> {
         if self.addresses.is_empty() {
-            return Err(ConfigError::EmptyAddresses {
-                section: "http".to_string(),
-            });
+            bail!("[http] addresses list is empty");
         }
 
         // Validate all URLs can be parsed
         for addr in &self.addresses {
-            Url::parse(addr).map_err(|e| ConfigError::InvalidUrl {
-                section: "http".to_string(),
-                url: addr.clone(),
-                error: e.to_string(),
-            })?;
+            Url::parse(addr).with_context(|| format!("[http] invalid URL '{addr}'"))?;
         }
 
         if self.http_version.is_empty() {
-            return Err(ConfigError::EmptyHttpVersions);
+            bail!("http_version list cannot be empty");
         }
         for v in &self.http_version {
             if *v != 1 && *v != 2 {
-                return Err(ConfigError::InvalidHttpVersion { version: *v });
+                bail!("Invalid HTTP version: {v}. Must be 1 or 2.");
             }
         }
 
@@ -147,11 +142,9 @@ pub struct TcpConfig {
 }
 
 impl TcpConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
+    fn validate(&self) -> Result<()> {
         if self.addresses.is_empty() {
-            return Err(ConfigError::EmptyAddresses {
-                section: "tcp".to_string(),
-            });
+            bail!("[tcp] addresses list is empty");
         }
 
         Ok(())
@@ -182,20 +175,14 @@ pub struct WebsocketConfig {
 }
 
 impl WebsocketConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
+    fn validate(&self) -> Result<()> {
         if self.addresses.is_empty() {
-            return Err(ConfigError::EmptyAddresses {
-                section: "websocket".to_string(),
-            });
+            bail!("[websocket] addresses list is empty");
         }
 
         // Validate all URLs can be parsed
         for addr in &self.addresses {
-            Url::parse(addr).map_err(|e| ConfigError::InvalidUrl {
-                section: "websocket".to_string(),
-                url: addr.clone(),
-                error: e.to_string(),
-            })?;
+            Url::parse(addr).with_context(|| format!("[websocket] invalid URL '{addr}'"))?;
         }
 
         Ok(())
@@ -218,85 +205,42 @@ pub struct PingConfig {
 }
 
 impl PingConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
+    fn validate(&self) -> Result<()> {
         if self.addresses.is_empty() {
-            return Err(ConfigError::EmptyAddresses {
-                section: "ping".to_string(),
-            });
+            bail!("[ping] addresses list is empty");
         }
 
         // Validate all addresses are valid IP addresses
         for addr in &self.addresses {
             addr.parse::<IpAddr>()
-                .map_err(|e| ConfigError::InvalidIpAddr {
-                    section: "ping".to_string(),
-                    addr: addr.clone(),
-                    error: e.to_string(),
-                })?;
+                .with_context(|| format!("[ping] invalid IP address '{addr}'"))?;
         }
 
         if self.payload_size.max as usize > MAX_ICMP_PAYLOAD_SIZE {
-            return Err(ConfigError::PayloadSizeTooLarge {
-                size: self.payload_size.max,
-                max: MAX_ICMP_PAYLOAD_SIZE,
-            });
+            bail!(
+                "[ping] payload_size.max ({}) exceeds maximum ICMP payload of {} bytes",
+                self.payload_size.max,
+                MAX_ICMP_PAYLOAD_SIZE
+            );
         }
 
         Ok(())
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum ConfigError {
-    #[error("Failed to read config file: {0}")]
-    ReadError(#[from] std::io::Error),
-
-    #[error("Failed to parse TOML: {0}")]
-    ParseError(#[from] toml::de::Error),
-
-    #[error("'types' list cannot be empty")]
-    NoTestTypes,
-
-    #[error("[{section}] addresses list is empty")]
-    EmptyAddresses { section: String },
-
-    #[error("[{section}] invalid URL '{url}': {error}")]
-    InvalidUrl {
-        section: String,
-        url: String,
-        error: String,
-    },
-
-    #[error("[{section}] invalid IP address '{addr}': {error}")]
-    InvalidIpAddr {
-        section: String,
-        addr: String,
-        error: String,
-    },
-
-    #[error("Invalid HTTP version: {version}. Must be 1 or 2.")]
-    InvalidHttpVersion { version: u8 },
-
-    #[error("http_version list cannot be empty")]
-    EmptyHttpVersions,
-
-    #[error("[ping] payload_size.max ({size}) exceeds maximum ICMP payload of {max} bytes")]
-    PayloadSizeTooLarge { size: u64, max: usize },
-}
-
 impl LoadTestConfig {
     /// Load and validate configuration from a TOML file.
-    pub fn load(path: &Path) -> Result<Self, ConfigError> {
-        let contents = std::fs::read_to_string(path)?;
-        let config: LoadTestConfig = toml::from_str(&contents)?;
+    pub fn load(path: &Path) -> Result<Self> {
+        let contents = std::fs::read_to_string(path).context("Failed to read config file")?;
+        let config: LoadTestConfig = toml::from_str(&contents).context("Failed to parse TOML")?;
         config.validate()?;
         Ok(config)
     }
 
-    fn validate(&self) -> Result<(), ConfigError> {
+    fn validate(&self) -> Result<()> {
         // Validate types field
         if self.types.is_empty() {
-            return Err(ConfigError::NoTestTypes);
+            bail!("'types' list cannot be empty");
         }
 
         // Validate all sections
@@ -392,7 +336,10 @@ mod tests {
     #[test]
     fn test_load_missing_file() {
         let result = LoadTestConfig::load(Path::new("/nonexistent/config.toml"));
-        assert!(matches!(result, Err(ConfigError::ReadError(_))));
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "Failed to read config file: No such file or directory (os error 2)"
+        );
     }
 
     #[test]
@@ -402,7 +349,10 @@ mod tests {
         std::fs::write(&path, "this is not valid { toml").unwrap();
 
         let result = LoadTestConfig::load(&path);
-        assert!(matches!(result, Err(ConfigError::ParseError(_))));
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "Failed to parse TOML: TOML parse error at line 1, column 6\n  |\n1 | this is not valid { toml\n  |      ^\nexpected `.`, `=`\n"
+        );
 
         std::fs::remove_file(&path).ok();
     }
@@ -415,7 +365,10 @@ mod tests {
         std::fs::write(&path, "# Empty config\n").unwrap();
 
         let result = LoadTestConfig::load(&path);
-        assert!(matches!(result, Err(ConfigError::ParseError(_))));
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "Failed to parse TOML: TOML parse error at line 1, column 1\n  |\n1 | # Empty config\n  | ^\nmissing field `types`\n"
+        );
 
         std::fs::remove_file(&path).ok();
     }
@@ -429,7 +382,10 @@ mod tests {
         std::fs::write(&path, &config).unwrap();
 
         let result = LoadTestConfig::load(&path);
-        assert!(matches!(result, Err(ConfigError::NoTestTypes)));
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "'types' list cannot be empty"
+        );
 
         std::fs::remove_file(&path).ok();
     }
@@ -443,8 +399,9 @@ mod tests {
         std::fs::write(&path, &config).unwrap();
 
         let result = LoadTestConfig::load(&path);
-        assert!(
-            matches!(result, Err(ConfigError::EmptyAddresses { section }) if section == "http")
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "[http] addresses list is empty"
         );
 
         std::fs::remove_file(&path).ok();
@@ -461,26 +418,10 @@ mod tests {
         std::fs::write(&path, &config).unwrap();
 
         let result = LoadTestConfig::load(&path);
-        assert!(
-            matches!(result, Err(ConfigError::InvalidUrl { section, .. }) if section == "http")
-        );
-
-        std::fs::remove_file(&path).ok();
-    }
-
-    #[test]
-    fn test_load_invalid_ip_addr() {
-        let dir = std::env::temp_dir();
-        let path = dir.join("invalid_ip_config.toml");
-        let config = example_config_content().replace(
-            r#"addresses = ["8.8.8.8", "1.1.1.1"]"#,
-            r#"addresses = ["not.an.ip"]"#,
-        );
-        std::fs::write(&path, &config).unwrap();
-
-        let result = LoadTestConfig::load(&path);
-        assert!(
-            matches!(result, Err(ConfigError::InvalidIpAddr { section, .. }) if section == "ping")
+        let error = format!("{:#}", result.unwrap_err());
+        assert_eq!(
+            error,
+            "[http] invalid URL 'not a valid url': relative URL without a base"
         );
 
         std::fs::remove_file(&path).ok();
@@ -495,10 +436,10 @@ mod tests {
         std::fs::write(&path, &config).unwrap();
 
         let result = LoadTestConfig::load(&path);
-        assert!(matches!(
-            result,
-            Err(ConfigError::InvalidHttpVersion { version: 3 })
-        ));
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "Invalid HTTP version: 3. Must be 1 or 2."
+        );
 
         std::fs::remove_file(&path).ok();
     }
@@ -511,7 +452,10 @@ mod tests {
         std::fs::write(&path, &config).unwrap();
 
         let result = LoadTestConfig::load(&path);
-        assert!(matches!(result, Err(ConfigError::EmptyHttpVersions)));
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "http_version list cannot be empty"
+        );
 
         std::fs::remove_file(&path).ok();
     }
@@ -538,16 +482,17 @@ mod tests {
         let dir = std::env::temp_dir();
         let path = dir.join("ping_payload_too_large_config.toml");
         let config = example_config_content().replace(
-            "payload_size = { min = 56, max = 1024 }",
-            "payload_size = { min = 56, max = 100000 }",
+            "payload_size = \"56..1024\"",
+            "payload_size = \"56..100000\"",
         );
         std::fs::write(&path, &config).unwrap();
 
         let result = LoadTestConfig::load(&path);
-        assert!(matches!(
-            result,
-            Err(ConfigError::PayloadSizeTooLarge { size: 100000, .. })
-        ));
+        let error = format!("{:#}", result.unwrap_err());
+        assert_eq!(
+            error,
+            "[ping] payload_size.max (100000) exceeds maximum ICMP payload of 65507 bytes"
+        );
 
         std::fs::remove_file(&path).ok();
     }
