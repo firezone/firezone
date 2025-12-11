@@ -25,6 +25,7 @@ defmodule Domain.Repo.Migrations.CreateOneTimePasscodes do
     )
 
     create(index(:one_time_passcodes, [:actor_id]))
+    create(index(:one_time_passcodes, [:expires_at]))
 
     # Delete all email tokens from the tokens table - these are short-lived, so should not cause
     # any real disruption
