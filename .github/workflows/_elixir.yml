@@ -39,15 +39,6 @@ jobs:
           mix coveralls.github --exclude flaky:true --exclude acceptance:true || \
           mix coveralls.github --exclude flaky:true --exclude acceptance:true --failed
 
-      - name: Upload Coverage to Coveralls
-        if: github.event.pull_request.head.repo.full_name == github.repository
-        uses: coverallsapp/github-action@643bc377ffa44ace6394b2b5d0d3950076de9f63 # v2.3.0
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: ./elixir/cover/excoveralls.json
-          base-path: ./elixir
-          flag-name: elixir-tests
-
       - name: Test Report
         if: github.event.pull_request.head.repo.full_name == github.repository && (success() || failure())
         uses: dorny/test-reporter@dc3a92680fcc15842eef52e8c4606ea7ce6bd3f3 # v2.1.1
