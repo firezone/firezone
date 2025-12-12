@@ -7,7 +7,7 @@ defmodule Domain.Workers.CheckAccountLimits do
   use Oban.Worker,
     queue: :default,
     max_attempts: 3,
-    unique: [period: 300]
+    unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
 
   alias Domain.Billing
   alias __MODULE__.DB

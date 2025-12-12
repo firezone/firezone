@@ -7,7 +7,7 @@ defmodule Domain.Workers.OutdatedGateways do
   use Oban.Worker,
     queue: :default,
     max_attempts: 3,
-    unique: [period: 86_400]
+    unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
 
   require Logger
   require OpenTelemetry.Tracer
