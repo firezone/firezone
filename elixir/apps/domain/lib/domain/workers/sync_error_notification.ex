@@ -13,7 +13,7 @@ defmodule Domain.Workers.SyncErrorNotification do
   use Oban.Worker,
     queue: :sync_error_notifications,
     max_attempts: 3,
-    unique: [period: 3600]
+    unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
 
   alias Domain.{Entra, Google, Mailer}
   alias __MODULE__.DB

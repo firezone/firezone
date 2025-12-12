@@ -6,7 +6,7 @@ defmodule Domain.Workers.DeleteExpiredPolicyAuthorizations do
   use Oban.Worker,
     queue: :default,
     max_attempts: 3,
-    unique: [period: :infinity]
+    unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
 
   alias __MODULE__.DB
 
