@@ -27,23 +27,22 @@ jobs:
         run: |
           mix ecto.create
           mix ecto.migrate
-      - name: Run Tests
+      - name: Run Tests with Coverage
         env:
           E2E_DEFAULT_WAIT_SECONDS: 20
           CI_ASSERT_RECEIVE_TIMEOUT_MS: 250
         run: |
-          # TODO: IDP REFACTOR
-          mix test apps/api/test/api/client/channel_test.exs
-          mix test apps/api/test/api/gateway/channel_test.exs
-          mix test apps/api/test/api/relay/channel_test.exs
-          mix test apps/api/test/api/controllers
-          mix test apps/domain/test/domain/auth_test.exs
-          mix test apps/domain/test/domain/gateway_token_test.exs
-          mix test apps/web/test/web/email_otp_test.exs
-          mix test apps/web/test/web/controllers/email_otp_controller_test.exs
-
-          # mix_test="mix test --warnings-as-errors --exclude flaky:true --exclude acceptance:true"
-          # $mix_test || $mix_test --failed
+          # TODO: IDP-REFACTOR make sure to re-enable the --warnings-as-errors flag
+          mix coveralls.github --exclude flaky:true --exclude acceptance:true || \
+          mix coveralls.github --exclude flaky:true --exclude acceptance:true --failed
+      - name: Upload Coverage to Coveralls
+        uses: coverallsapp/github-action@643bc377ffa44ace6394b2b5d0d3950076de9f63 # v2.3.0
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path-to-lcov: ./elixir/cover/excoveralls.json
+          base-path: ./elixir
+          flag-name: elixir-tests
       - name: Test Report
         uses: dorny/test-reporter@dc3a92680fcc15842eef52e8c4606ea7ce6bd3f3 # v2.1.1
         if:
