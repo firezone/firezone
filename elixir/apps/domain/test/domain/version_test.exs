@@ -42,7 +42,7 @@ defmodule Domain.VersionTest do
 
   describe "resource_cannot_change_sites_on_client?/1" do
     test "apple client below version cannot change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.7",
         last_seen_user_agent: "Mac OS X"
       }
@@ -51,7 +51,7 @@ defmodule Domain.VersionTest do
     end
 
     test "apple client at version cannot change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.8",
         last_seen_user_agent: "Mac OS X"
       }
@@ -60,7 +60,7 @@ defmodule Domain.VersionTest do
     end
 
     test "apple client above version can change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.9",
         last_seen_user_agent: "Mac OS X"
       }
@@ -69,7 +69,7 @@ defmodule Domain.VersionTest do
     end
 
     test "android client below version cannot change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.3",
         last_seen_user_agent: "Android"
       }
@@ -78,7 +78,7 @@ defmodule Domain.VersionTest do
     end
 
     test "android client at version cannot change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.4",
         last_seen_user_agent: "Android"
       }
@@ -87,7 +87,7 @@ defmodule Domain.VersionTest do
     end
 
     test "android client above version can change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.5",
         last_seen_user_agent: "Android"
       }
@@ -96,7 +96,7 @@ defmodule Domain.VersionTest do
     end
 
     test "headless client below version cannot change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.3",
         actor: %Domain.Actor{type: :service_account}
       }
@@ -105,7 +105,7 @@ defmodule Domain.VersionTest do
     end
 
     test "headless client at version cannot change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.4",
         actor: %Domain.Actor{type: :service_account}
       }
@@ -114,7 +114,7 @@ defmodule Domain.VersionTest do
     end
 
     test "headless client above version can change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.5",
         actor: %Domain.Actor{type: :service_account}
       }
@@ -123,7 +123,7 @@ defmodule Domain.VersionTest do
     end
 
     test "gui client below version cannot change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.7",
         last_seen_user_agent: "Windows"
       }
@@ -132,7 +132,7 @@ defmodule Domain.VersionTest do
     end
 
     test "gui client at version cannot change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.8",
         last_seen_user_agent: "Windows"
       }
@@ -141,7 +141,7 @@ defmodule Domain.VersionTest do
     end
 
     test "gui client above version can change sites" do
-      client = %Domain.Clients.Client{
+      client = %Domain.Client{
         last_seen_version: "1.5.9",
         last_seen_user_agent: "Windows"
       }

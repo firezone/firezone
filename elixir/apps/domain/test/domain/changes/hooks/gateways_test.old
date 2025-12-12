@@ -1,7 +1,7 @@
 defmodule Domain.Changes.Hooks.GatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Changes.Hooks.Gateways
-  alias Domain.{Changes.Change, Gateways, PubSub}
+  alias Domain.{Changes.Change, Gateway, PubSub}
 
   describe "insert/1" do
     test "returns :ok" do
@@ -32,7 +32,7 @@ defmodule Domain.Changes.Hooks.GatewaysTest do
 
       assert_receive %Change{
         op: :delete,
-        old_struct: %Gateways.Gateway{} = deleted_gateway,
+        old_struct: %Gateway{} = deleted_gateway,
         lsn: 0
       }
 

@@ -1,6 +1,6 @@
 defmodule Web.Live.Resources.EditTest do
   use Web.ConnCase, async: true
-  alias Domain.{Changes, PubSub, Resources}
+  alias Domain.{Changes, PubSub, Resource}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -244,13 +244,13 @@ defmodule Web.Live.Resources.EditTest do
 
     assert_receive %Changes.Change{
       lsn: 0,
-      old_struct: %Resources.Resource{},
-      struct: %Resources.Resource{} = updated_resource
+      old_struct: %Resource{},
+      struct: %Resource{} = updated_resource
     }
 
     assert updated_resource.id == resource.id
 
-    assert updated_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
+    assert updated_resource = Repo.get_by(Domain.Resource, id: resource.id)
     assert updated_resource.name == attrs.name
     assert html =~ "Resource #{updated_resource.name} updated successfully"
 
@@ -291,7 +291,7 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/resources")
 
-    assert updated_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
+    assert updated_resource = Repo.get_by(Domain.Resource, id: resource.id)
     assert updated_resource.name == attrs.name
     assert updated_resource.type == :dns
     assert updated_resource.address == attrs.address
@@ -412,7 +412,7 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/sites/#{site}")
 
-    assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
+    assert saved_resource = Repo.get_by(Domain.Resource, id: resource.id)
     assert saved_resource.name == attrs.name
     assert html =~ "Resource #{saved_resource.name} updated successfully."
 
@@ -463,7 +463,7 @@ defmodule Web.Live.Resources.EditTest do
     assert has_element?(lv, "input[name='resource[filters][tcp][ports]'][disabled]")
     assert has_element?(lv, "input[name='resource[filters][udp][enabled]'][disabled]")
     assert has_element?(lv, "input[name='resource[filters][udp][ports]'][disabled]")
-    assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
+    assert saved_resource = Repo.get_by(Domain.Resource, id: resource.id)
     assert saved_resource.name == resource.name
     assert saved_resource.filters == resource.filters
   end

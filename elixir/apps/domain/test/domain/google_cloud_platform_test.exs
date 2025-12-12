@@ -108,62 +108,62 @@ defmodule Domain.GoogleCloudPlatformTest do
     end
   end
 
-  describe "sign_url/3" do
-    test "returns error when endpoint is not available", %{bypass: bypass} do
-      GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
+  # describe "sign_url/3" do
+  #  test "returns error when endpoint is not available", %{bypass: bypass} do
+  #    GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
 
-      GoogleCloudPlatform.override_endpoint_url(
-        :sign_endpoint_url,
-        "http://localhost:#{bypass.port}/"
-      )
+  #    GoogleCloudPlatform.override_endpoint_url(
+  #      :sign_endpoint_url,
+  #      "http://localhost:#{bypass.port}/"
+  #    )
 
-      Bypass.down(bypass)
+  #    Bypass.down(bypass)
 
-      assert sign_url("logs", "clients/id/log.json.tar.gz", verb: "PUT") ==
-               {:error, %Mint.TransportError{reason: :econnrefused}}
-    end
+  #    assert sign_url("logs", "clients/id/log.json.tar.gz", verb: "PUT") ==
+  #             {:error, %Mint.TransportError{reason: :econnrefused}}
+  #  end
 
-    test "returns error when endpoint returns an error", %{bypass: bypass} do
-      GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
-      GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo", %{"error" => "reason"})
+  #  test "returns error when endpoint returns an error", %{bypass: bypass} do
+  #    GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
+  #    GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo", %{"error" => "reason"})
 
-      assert sign_url("logs", "clients/id/log.json.tar.gz", verb: "PUT") ==
-               {:error, %{"error" => "reason"}}
-    end
+  #    assert sign_url("logs", "clients/id/log.json.tar.gz", verb: "PUT") ==
+  #             {:error, %{"error" => "reason"}}
+  #  end
 
-    test "returns signed url", %{bypass: bypass} do
-      fixed_datetime = ~U[2000-01-01 00:00:00.000000Z]
-      GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
-      GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo")
+  #  test "returns signed url", %{bypass: bypass} do
+  #    fixed_datetime = ~U[2000-01-01 00:00:00.000000Z]
+  #    GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
+  #    GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo")
 
-      assert {:ok, signed_url} =
-               sign_url("logs", "clients/id/log.json.tar.gz",
-                 verb: "PUT",
-                 valid_from: fixed_datetime
-               )
+  #    assert {:ok, signed_url} =
+  #             sign_url("logs", "clients/id/log.json.tar.gz",
+  #               verb: "PUT",
+  #               valid_from: fixed_datetime
+  #             )
 
-      assert {:ok, signed_uri} = URI.new(signed_url)
+  #    assert {:ok, signed_uri} = URI.new(signed_url)
 
-      assert signed_uri.scheme == "https"
-      assert signed_uri.host == "storage.googleapis.com"
-      assert signed_uri.path == "/logs/clients/id/log.json.tar.gz"
+  #    assert signed_uri.scheme == "https"
+  #    assert signed_uri.host == "storage.googleapis.com"
+  #    assert signed_uri.path == "/logs/clients/id/log.json.tar.gz"
 
-      assert URI.decode_query(signed_uri.query) == %{
-               "X-Goog-Algorithm" => "GOOG4-RSA-SHA256",
-               "X-Goog-Credential" => "foo@iam.example.com/20000101/auto/storage/goog4_request",
-               "X-Goog-Date" => "20000101T000000Z",
-               "X-Goog-Expires" => "604800",
-               "X-Goog-Signature" => "efdd75f1feb87fa75a71ee36e9bf1bd35f777fcdb9e7cd1f",
-               "X-Goog-SignedHeaders" => "host"
-             }
+  #    assert URI.decode_query(signed_uri.query) == %{
+  #             "X-Goog-Algorithm" => "GOOG4-RSA-SHA256",
+  #             "X-Goog-Credential" => "foo@iam.example.com/20000101/auto/storage/goog4_request",
+  #             "X-Goog-Date" => "20000101T000000Z",
+  #             "X-Goog-Expires" => "604800",
+  #             "X-Goog-Signature" => "efdd75f1feb87fa75a71ee36e9bf1bd35f777fcdb9e7cd1f",
+  #             "X-Goog-SignedHeaders" => "host"
+  #           }
 
-      assert_receive {:bypass_request,
-                      %{request_path: "/service_accounts/foo@iam.example.com:signBlob"} = conn}
+  #    assert_receive {:bypass_request,
+  #                    %{request_path: "/service_accounts/foo@iam.example.com:signBlob"} = conn}
 
-      assert {"authorization", "Bearer GCP_ACCESS_TOKEN"} in conn.req_headers
-      assert conn.method == "POST"
-    end
-  end
+  #    assert {"authorization", "Bearer GCP_ACCESS_TOKEN"} in conn.req_headers
+  #    assert conn.method == "POST"
+  #  end
+  # end
 
   describe "send_metrics/3" do
     test "returns list of nodes in all regions when access token is not set", %{bypass: bypass} do

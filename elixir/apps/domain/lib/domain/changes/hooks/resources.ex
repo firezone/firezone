@@ -39,7 +39,7 @@ defmodule Domain.Changes.Hooks.Resources do
 
   @impl true
   def on_delete(lsn, old_data) do
-    resource = struct_from_params(Resources.Resource, old_data)
+    resource = struct_from_params(Domain.Resource, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: resource}
 
     PubSub.Account.broadcast(resource.account_id, change)
