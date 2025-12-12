@@ -75,8 +75,8 @@ defmodule Domain.SubjectFixtures do
   Build an admin auth subject.
   """
   def admin_subject_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    subject_fixture(Map.put_new(attrs, :actor, %{type: :account_admin_user}))
+    attrs = Enum.into(attrs, %{actor: %{type: :account_admin_user}})
+    subject_fixture(attrs)
   end
 
   defp actor_token_type(:service_account), do: :client

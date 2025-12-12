@@ -1,0 +1,37 @@
+defmodule Domain.OpsTest do
+  use Domain.DataCase, async: true
+  import Domain.Ops
+
+  describe "delete_disabled_account/1" do
+    test "doesn't delete an account that is not disabled" do
+      account = Fixtures.Accounts.create_account()
+
+      assert_raise Ecto.NoResultsError, fn ->
+        delete_disabled_account(account.id)
+      end
+    end
+
+    test "deletes account along with all related entities" do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_actor(account: account)
+      Fixtures.Auth.create_identity(account: account)
+      Fixtures.Clients.create_client(account: account)
+      Fixtures.Gateways.create_gateway(account: account)
+      Fixtures.Policies.create_policy(account: account)
+      Fixtures.Relays.create_relay(account: account)
+      Fixtures.Resources.create_resource(account: account)
+      Fixtures.Tokens.create_token(account: account)
+
+      Fixtures.Accounts.disable_account(account)
+
+      assert delete_disabled_account(account.id) == :ok
+
+      assert_raise Ecto.NoResultsError, fn ->
+        assert delete_disabled_account(account.id) == :ok
+      end
+
+      refute Repo.one(Domain.Account)
+    end
+  end
+end

@@ -1,7 +1,7 @@
 defmodule Domain.Changes.Hooks.PolicyAuthorizationsTest do
   use Domain.DataCase, async: true
   import Domain.Changes.Hooks.PolicyAuthorizations
-  alias Domain.{Changes.Change, PolicyAuthorizations, PubSub}
+  alias Domain.{Changes.Change, PolicyAuthorization, PubSub}
 
   describe "insert/1" do
     test "returns :ok" do
@@ -35,7 +35,7 @@ defmodule Domain.Changes.Hooks.PolicyAuthorizationsTest do
 
       assert_receive %Change{
         op: :delete,
-        old_struct: %PolicyAuthorizations.PolicyAuthorization{} = policy_authorization,
+        old_struct: %PolicyAuthorization{} = policy_authorization,
         lsn: 0
       }
 
