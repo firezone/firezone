@@ -36,8 +36,8 @@ jobs:
           CI_ASSERT_RECEIVE_TIMEOUT_MS: 250
         run: |
           # TODO: IDP-REFACTOR make sure to re-enable the --warnings-as-errors flag
-          mix coveralls.github --exclude flaky:true --exclude acceptance:true || \
-          mix coveralls.github --exclude flaky:true --exclude acceptance:true --failed
+          mix coveralls.github --parallel --flagname elixir --exclude flaky:true --exclude acceptance:true || \
+          mix coveralls.github --parallel --flagname elixir --exclude flaky:true --exclude acceptance:true --failed
 
       - name: Test Report
         if: github.event.pull_request.head.repo.full_name == github.repository && (success() || failure())
