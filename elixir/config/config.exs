@@ -141,7 +141,10 @@ config :domain, Domain.Tokens,
   key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2",
   salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
 
-config :domain, Domain.Telemetry, metrics_reporter: nil, healthz_port: 4000
+config :domain, Domain.Telemetry,
+  metrics_reporter: nil,
+  enabled: true,
+  healthz_port: 4000
 
 config :domain, Domain.Analytics,
   mixpanel_token: nil,
