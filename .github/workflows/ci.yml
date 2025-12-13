@@ -411,7 +411,7 @@ jobs:
   coverage-finish:
     name: coverage-finish
     needs: [elixir, rust]
-    if: always()
+    if: needs.elixir.result != 'skipped' || needs.rust.result != 'skipped'
     runs-on: ubuntu-24.04
     steps:
       - name: Finalize coverage upload
