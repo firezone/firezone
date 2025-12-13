@@ -596,7 +596,7 @@ pub enum ClientEvent {
     Error(TunnelError),
 }
 
-#[derive(Clone, derive_more::Debug, PartialEq, Eq)]
+#[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
 pub struct TunConfig {
     pub ip: IpConfig,
     /// The map of DNS servers that connlib will use.
@@ -614,7 +614,7 @@ pub struct TunConfig {
     pub ipv6_routes: BTreeSet<Ipv6Network>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IpConfig {
     pub v4: Ipv4Addr,
     pub v6: Ipv6Addr,

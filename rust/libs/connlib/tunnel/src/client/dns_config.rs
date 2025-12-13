@@ -29,7 +29,7 @@ pub(crate) struct DnsConfig {
     mapping: DnsMapping,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct DnsMapping {
     inner: Vec<(IpAddr, dns::Upstream)>,
 }
