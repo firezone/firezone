@@ -64,6 +64,9 @@ class Adapter: @unchecked Sendable {
   /// Network settings for tunnel configuration.
   private var networkSettings: NetworkSettings?
 
+  /// Tracks the last successfully applied network settings to avoid redundant applies
+  private var lastAppliedSettings: NetworkSettings?
+
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: PacketTunnelProvider?
 
@@ -387,6 +390,29 @@ class Adapter: @unchecked Sendable {
     }
   }
 
+  // MARK: - Network Settings
+
+  private func applyNetworkSettingsIfChanged(
+    _ settings: NetworkSettings,
+    completionHandler: (@Sendable () -> Void)? = nil
+  ) {
+    guard settings != lastAppliedSettings else {
+      Log.log("Skipping network settings apply; settings unchanged")
+      completionHandler?()
+      return
+    }
+
+    guard let provider = packetTunnelProvider else {
+      Log.error(AdapterError.invalidSession(nil))
+      completionHandler?()
+      return
+    }
+
+    Log.log("Applying network settings; settings changed")
+    lastAppliedSettings = settings
+    settings.apply(to: provider, completionHandler: completionHandler)
+  }
+
   // MARK: - Event handling
 
   private func handleEvent(_ event: Event) async {
@@ -405,15 +431,9 @@ class Adapter: @unchecked Sendable {
         NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv6Route
       }
 
-      // All decoding succeeded - now apply settings atomically
-      guard let provider = packetTunnelProvider else {
-        Log.error(AdapterError.invalidSession(nil))
-        return
-      }
-
       Log.log("Setting interface config")
 
-      let networkSettings = NetworkSettings(packetTunnelProvider: provider)
+      var networkSettings = NetworkSettings()
       networkSettings.tunnelAddressIPv4 = ipv4
       networkSettings.tunnelAddressIPv6 = ipv6
       networkSettings.dnsAddresses = dns
@@ -422,7 +442,7 @@ class Adapter: @unchecked Sendable {
       networkSettings.setSearchDomain(domain: searchDomain)
       self.networkSettings = networkSettings
 
-      networkSettings.apply {
+      applyNetworkSettingsIfChanged(networkSettings) {
         if firstStart {
           self.startCompletionHandler(nil)
         }
@@ -437,11 +457,12 @@ class Adapter: @unchecked Sendable {
         self.resources = resourceList
       }
 
-      // Apply network settings to flush DNS cache when resources change
-      // This ensures new DNS resources are immediately resolvable
-      if let networkSettings = networkSettings {
-        Log.log("Reapplying network settings to flush DNS cache after resource update")
-        networkSettings.apply()
+      // Update DNS resource addresses to trigger network settings apply when they change
+      // This flushes the DNS cache so new DNS resources are immediately resolvable
+      if var networkSettings = networkSettings {
+        networkSettings.setDnsResourceAddresses(from: resourceList)
+        self.networkSettings = networkSettings
+        applyNetworkSettingsIfChanged(networkSettings)
       }
 
     case .disconnected(let error):
@@ -597,7 +618,8 @@ class Adapter: @unchecked Sendable {
     // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
     // sentinel, which isn't helpful to us.
     private func resetToSystemDNSGettingBindResolvers() -> [String] {
-      guard let networkSettings = networkSettings
+      guard var networkSettings = networkSettings,
+        let provider = packetTunnelProvider
       else {
         // Network Settings hasn't been applied yet, so our sentinel isn't
         // the system's resolver and we can grab the system resolvers directly.
@@ -617,17 +639,24 @@ class Adapter: @unchecked Sendable {
 
       // Set tunnel's matchDomains to a dummy string that will never match any name
       networkSettings.setDummyMatchDomain()
+      self.networkSettings = networkSettings
 
       // Call apply to populate /etc/resolv.conf with the system's default resolvers
-      networkSettings.apply {
-        guard let networkSettings = self.networkSettings else { return }
+      networkSettings.apply(to: provider) {
+        guard var networkSettings = self.networkSettings,
+          let provider = self.packetTunnelProvider
+        else {
+          semaphore.signal()
+          return
+        }
 
         // Only now can we get the system resolvers
         resolversBox.value = BindResolvers.getServers()
 
         // Restore connlib's DNS resolvers
         networkSettings.clearDummyMatchDomain()
-        networkSettings.apply { semaphore.signal() }
+        self.networkSettings = networkSettings
+        networkSettings.apply(to: provider) { semaphore.signal() }
       }
 
       semaphore.wait()

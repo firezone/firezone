@@ -25,6 +25,11 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11141">
+          Fixes an issue where spurious resource updates would result in
+          perceived network interruptions resulting in errors like{" "}
+          <code>ERR_NETWORK_CHANGED</code> in Google Chrome.
+        </ChangeItem>
         <ChangeItem pull="11115">
           Fixes an issue where Firezone would not connect if an IPv6 interface
           is present but not routable.
