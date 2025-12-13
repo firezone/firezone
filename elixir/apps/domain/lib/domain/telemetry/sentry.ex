@@ -6,7 +6,7 @@ defmodule Domain.Telemetry.Sentry do
     "[libcluster:default] unable to connect to",
 
     # These occur under normal operation whenever a particular account or resource can't be found in the DB.
-    "Ecto.NoResultsError: expected at least one result but got none in query:"
+    "expected at least one result but got none in query"
   ]
 
   def before_send(%{original_exception: %{skip_sentry: skip_sentry}}) when skip_sentry do
