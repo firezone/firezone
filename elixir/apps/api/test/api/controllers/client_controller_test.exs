@@ -134,8 +134,8 @@ defmodule API.ClientControllerTest do
                "data" => %{
                  "id" => client.id,
                  "name" => client.name,
-                 "ipv4" => client.ipv4,
-                 "ipv6" => client.ipv6,
+                 "ipv4" => to_string(client.ipv4),
+                 "ipv6" => to_string(client.ipv6),
                  "actor_id" => client.actor_id,
                  "created_at" => client.inserted_at && DateTime.to_iso8601(client.inserted_at),
                  "device_serial" => client.device_serial,
@@ -258,8 +258,8 @@ defmodule API.ClientControllerTest do
                "data" => %{
                  "id" => client.id,
                  "name" => client.name,
-                 "ipv4" => client.ipv4,
-                 "ipv6" => client.ipv6,
+                 "ipv4" => to_string(client.ipv4),
+                 "ipv6" => to_string(client.ipv6),
                  "actor_id" => client.actor_id,
                  "created_at" => client.inserted_at && DateTime.to_iso8601(client.inserted_at),
                  "device_serial" => client.device_serial,

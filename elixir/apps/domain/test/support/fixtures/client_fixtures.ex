@@ -5,6 +5,7 @@ defmodule Domain.ClientFixtures do
 
   import Domain.AccountFixtures
   import Domain.ActorFixtures
+  import Domain.NetworkAddressFixtures
 
   @doc """
   Generate valid client attributes with sensible defaults.
@@ -48,11 +49,17 @@ defmodule Domain.ClientFixtures do
     # Get or create actor
     actor = Map.get(attrs, :actor) || actor_fixture(account: account)
 
+    # Get or create network addresses
+    ipv4_address =
+      Map.get_lazy(attrs, :ipv4, fn -> ipv4_network_address_fixture(account: account) end)
+
+    ipv6_address =
+      Map.get_lazy(attrs, :ipv6, fn -> ipv6_network_address_fixture(account: account) end)
+
     # Build client attrs
     client_attrs =
       attrs
-      |> Map.delete(:account)
-      |> Map.delete(:actor)
+      |> Map.drop([:account, :actor, :ipv4, :ipv6])
       |> valid_client_attrs()
 
     {:ok, client} =
@@ -75,6 +82,8 @@ defmodule Domain.ClientFixtures do
         :firebase_installation_id,
         :verified_at
       ])
+      |> Ecto.Changeset.put_change(:ipv4, ipv4_address.address)
+      |> Ecto.Changeset.put_change(:ipv6, ipv6_address.address)
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:actor, actor)
       |> Domain.Client.changeset()
