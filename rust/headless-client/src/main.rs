@@ -249,9 +249,13 @@ fn try_main() -> Result<()> {
         None => device_id::get_or_create_client().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
+    let tcp_socket_factory = Arc::new(tcp_socket_factory);
+    let udp_socket_factory = Arc::new(UdpSocketFactory::default());
+
     let mut telemetry = if cli.is_telemetry_allowed() {
         let mut telemetry = Telemetry::new();
 
+        telemetry.set_tcp_socket_factory(tcp_socket_factory.clone());
         rt.block_on(telemetry.start(
             cli.api_url.as_ref(),
             RELEASE,
@@ -345,11 +349,11 @@ fn try_main() -> Result<()> {
                     .with_max_elapsed_time(max_partition_time)
                     .build()
             },
-            Arc::new(tcp_socket_factory),
+            tcp_socket_factory.clone(),
         )?;
         let (session, mut event_stream) = client_shared::Session::connect(
-            Arc::new(tcp_socket_factory),
-            Arc::new(UdpSocketFactory::default()),
+            tcp_socket_factory.clone(),
+            udp_socket_factory,
             portal,
             cli.activate_internet_resource,
             rt.handle().clone(),
