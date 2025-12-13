@@ -147,6 +147,11 @@ impl ClientTunnel {
         self.io.reset();
     }
 
+    pub fn suspend(&mut self) {
+        self.role_state.shut_down("suspending", Instant::now());
+        self.io.suspend();
+    }
+
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
         let resolvers = self.role_state.update_system_resolvers(resolvers);
         self.io.update_system_resolvers(resolvers.clone()); // IO needs the system resolvers to bootstrap DoH upstream.
@@ -157,7 +162,7 @@ impl ClientTunnel {
     /// Shut down the Client tunnel.
     pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
-        self.role_state.shut_down(Instant::now());
+        self.role_state.shut_down("exiting", Instant::now());
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
