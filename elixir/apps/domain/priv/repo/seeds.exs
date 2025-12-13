@@ -88,6 +88,44 @@ defmodule Domain.Repo.Seeds do
     {:ok, resource}
   end
 
+  # Generate and create network addresses in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
+  # Returns the IP tuples after creating the network_addresses records
+  defp create_tunnel_ips(account_id) do
+    # CGNAT range: 100.64.0.0 - 100.127.255.255 (100.64.0.0/10)
+    # We use random values within the range
+    ipv4_second = 64 + :rand.uniform(64) - 1
+    ipv4_third = :rand.uniform(256) - 1
+    ipv4_fourth = :rand.uniform(254)
+
+    # fd00:2021:1111::/48 range
+    # Format: fd00:2021:1111:XXXX:XXXX:XXXX:XXXX:XXXX
+    ipv6_4 = :rand.uniform(65536) - 1
+    ipv6_5 = :rand.uniform(65536) - 1
+    ipv6_6 = :rand.uniform(65536) - 1
+    ipv6_7 = :rand.uniform(65536) - 1
+    ipv6_8 = :rand.uniform(65536) - 1
+
+    ipv4 = {100, ipv4_second, ipv4_third, ipv4_fourth}
+    ipv6 = {0xFD00, 0x2021, 0x1111, ipv6_4, ipv6_5, ipv6_6, ipv6_7, ipv6_8}
+
+    # Create network address records that clients/gateways FK to
+    %Domain.Network.Address{
+      account_id: account_id,
+      address: ipv4,
+      type: :ipv4
+    }
+    |> Repo.insert!()
+
+    %Domain.Network.Address{
+      account_id: account_id,
+      address: ipv6,
+      type: :ipv6
+    }
+    |> Repo.insert!()
+
+    {ipv4, ipv6}
+  end
+
   # Helper function to create gateway directly without context module
   defp create_gateway(attrs, context) do
     # Extract version from user agent
@@ -102,6 +140,9 @@ defmodule Domain.Repo.Seeds do
     site_id = attrs["site_id"] || attrs[:site_id]
     site = Repo.get_by!(Site, id: site_id)
 
+    # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
+    {ipv4, ipv6} = create_tunnel_ips(site.account_id)
+
     gateway =
       %Gateway{
         site_id: site_id,
@@ -109,6 +150,8 @@ defmodule Domain.Repo.Seeds do
         name: attrs["name"] || attrs[:name],
         external_id: attrs["external_id"] || attrs[:external_id],
         public_key: attrs["public_key"] || attrs[:public_key],
+        ipv4: ipv4,
+        ipv6: ipv6,
         last_seen_user_agent: context.user_agent,
         last_seen_remote_ip: context.remote_ip,
         last_seen_version: version,
@@ -125,6 +168,9 @@ defmodule Domain.Repo.Seeds do
     version =
       user_agent |> String.split(" connlib/") |> List.last() |> String.split(" ") |> List.first()
 
+    # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
+    {ipv4, ipv6} = create_tunnel_ips(subject.account.id)
+
     client =
       %Client{
         account_id: subject.account.id,
@@ -135,6 +181,8 @@ defmodule Domain.Repo.Seeds do
         identifier_for_vendor: attrs["identifier_for_vendor"] || attrs[:identifier_for_vendor],
         device_uuid: attrs["device_uuid"] || attrs[:device_uuid],
         device_serial: attrs["device_serial"] || attrs[:device_serial],
+        ipv4: ipv4,
+        ipv6: ipv6,
         last_seen_user_agent: user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
         last_seen_version: version,
@@ -546,6 +594,9 @@ defmodule Domain.Repo.Seeds do
         version =
           user_agent |> String.split("/") |> List.last() |> String.split(" ") |> List.first()
 
+        # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
+        {ipv4, ipv6} = create_tunnel_ips(subject.account.id)
+
         _client =
           %Client{
             account_id: subject.account.id,
@@ -554,6 +605,8 @@ defmodule Domain.Repo.Seeds do
             external_id: Ecto.UUID.generate(),
             public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
             identifier_for_vendor: Ecto.UUID.generate(),
+            ipv4: ipv4,
+            ipv6: ipv6,
             last_seen_user_agent: user_agent,
             last_seen_remote_ip: subject.context.remote_ip,
             last_seen_version: version,
@@ -1133,14 +1186,14 @@ defmodule Domain.Repo.Seeds do
     IO.puts("  #{gateway_name}:")
     IO.puts("    External UUID: #{gateway1.external_id}")
     IO.puts("    Public Key: #{gateway1.public_key}")
-    IO.puts("    IPv4: #{gateway1.ipv4} IPv6: #{gateway1.ipv6}")
+    IO.puts("    IPv4: #{:inet.ntoa(gateway1.ipv4)} IPv6: #{:inet.ntoa(gateway1.ipv6)}")
     IO.puts("")
 
     gateway_name = "#{site.name}-#{gateway2.name}"
     IO.puts("  #{gateway_name}:")
     IO.puts("    External UUID: #{gateway1.external_id}")
     IO.puts("    Public Key: #{gateway2.public_key}")
-    IO.puts("    IPv4: #{gateway2.ipv4} IPv6: #{gateway2.ipv6}")
+    IO.puts("    IPv4: #{:inet.ntoa(gateway2.ipv4)} IPv6: #{:inet.ntoa(gateway2.ipv6)}")
     IO.puts("")
 
     {:ok, dns_google_resource} =
