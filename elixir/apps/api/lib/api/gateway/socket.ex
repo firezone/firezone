@@ -103,15 +103,6 @@ defmodule API.Gateway.Socket do
     end
   end
 
-  def finalize_upsert(%Gateway{} = gateway, ipv4, ipv6) do
-    import Ecto.Changeset
-
-    gateway
-    |> change()
-    |> put_change(:ipv4, ipv4)
-    |> put_change(:ipv6, ipv6)
-  end
-
   defmodule DB do
     import Ecto.Query
     alias Domain.{Network, Safe}
@@ -131,21 +122,42 @@ defmodule API.Gateway.Socket do
     end
 
     def upsert_gateway(changeset, _site) do
+      account_id = Ecto.Changeset.get_field(changeset, :account_id)
+      site_id = Ecto.Changeset.get_field(changeset, :site_id)
+      external_id = Ecto.Changeset.get_field(changeset, :external_id)
+
       Ecto.Multi.new()
-      |> Ecto.Multi.insert(:gateway, changeset,
+      |> Ecto.Multi.run(:existing, fn _repo, _changes ->
+        existing =
+          if external_id do
+            from(g in Gateway,
+              where: g.account_id == ^account_id,
+              where: g.site_id == ^site_id,
+              where: g.external_id == ^external_id,
+              select: %{ipv4: g.ipv4, ipv6: g.ipv6}
+            )
+            |> Safe.unscoped()
+            |> Safe.one()
+          end
+
+        {:ok, existing}
+      end)
+      |> resolve_address_multi(:ipv4, account_id)
+      |> resolve_address_multi(:ipv6, account_id)
+      |> Ecto.Multi.insert(
+        :gateway,
+        fn %{ipv4: ipv4, ipv6: ipv6} ->
+          changeset
+          |> Ecto.Changeset.put_change(:ipv4, ipv4)
+          |> Ecto.Changeset.put_change(:ipv6, ipv6)
+        end,
         conflict_target: upsert_conflict_target(),
         on_conflict: upsert_on_conflict(),
         returning: true
       )
-      |> resolve_address_multi(:ipv4)
-      |> resolve_address_multi(:ipv6)
-      |> Ecto.Multi.update(:gateway_with_address, fn
-        %{gateway: %Gateway{} = gateway, ipv4: ipv4, ipv6: ipv6} ->
-          API.Gateway.Socket.finalize_upsert(gateway, ipv4, ipv6)
-      end)
       |> Safe.transact()
       |> case do
-        {:ok, %{gateway_with_address: gateway}} -> {:ok, gateway}
+        {:ok, %{gateway: gateway}} -> {:ok, gateway}
         {:error, :gateway, changeset, _effects_so_far} -> {:error, changeset}
       end
     end
@@ -169,12 +181,12 @@ defmodule API.Gateway.Socket do
       {:replace, conflict_replace_fields}
     end
 
-    defp resolve_address_multi(multi, type) do
-      Ecto.Multi.run(multi, type, fn _repo, %{gateway: %Gateway{} = gateway} ->
-        if address = Map.get(gateway, type) do
-          {:ok, address}
+    defp resolve_address_multi(multi, type, account_id) do
+      Ecto.Multi.run(multi, type, fn _repo, %{existing: existing} ->
+        if existing && Map.get(existing, type) do
+          {:ok, Map.get(existing, type)}
         else
-          {:ok, Network.fetch_next_available_address!(gateway.account_id, type)}
+          {:ok, Network.fetch_next_available_address!(account_id, type)}
         end
       end)
     end

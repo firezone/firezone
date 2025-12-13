@@ -153,6 +153,30 @@ defmodule API.Client.SocketTest do
       assert client.last_seen_remote_ip_location_lon == 30.5167
     end
 
+    test "preserves ipv4 and ipv6 addresses on reconnection" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+
+      # Create existing client with specific IPs
+      existing_client = client_fixture(account: account, actor: actor)
+      original_ipv4 = existing_client.ipv4
+      original_ipv6 = existing_client.ipv6
+
+      # Create a new token for same actor
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      attrs = connect_attrs(token: encoded_token, external_id: existing_client.external_id)
+
+      # Reconnect
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
+      assert client = socket.assigns.client
+
+      # Verify IPs are preserved
+      assert client.ipv4 == original_ipv4
+      assert client.ipv6 == original_ipv6
+    end
+
     test "uses region code to put default coordinates" do
       account = account_fixture()
       actor = actor_fixture(account: account)
