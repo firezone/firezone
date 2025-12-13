@@ -58,7 +58,7 @@
     "@eslint/eslintrc": "^3.3.1",
     "@types/md5": "^2.3.6",
     "eslint": "^9.38.0",
-    "eslint-config-next": "15.5.4",
+    "eslint-config-next": "16.0.3",
     "flowbite-typography": "^1.0.5",
     "hastscript": "^9.0.1",
     "typescript": "5.9.3"
