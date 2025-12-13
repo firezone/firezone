@@ -2,12 +2,12 @@ mod dns_cache;
 pub(crate) mod dns_config;
 mod dns_resource_nat;
 mod gateway_on_client;
-mod pending_tun_update;
 mod resource;
+mod tracked_state;
 
 use crate::client::dns_config::DnsConfig;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-use crate::client::pending_tun_update::PendingTunUpdate;
+use crate::client::tracked_state::TrackedState;
 use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::DnsResource;
@@ -123,7 +123,9 @@ pub struct ClientState {
     dns_cache: DnsCache,
 
     /// Configuration of the TUN device, when it is up.
-    tun_config: Option<TunConfig>,
+    tun_config: TrackedState<TunConfig>,
+    /// Cache of the resource list we emitted to the app.
+    resource_list: TrackedState<Vec<ResourceView>>,
 
     udp_dns_client: l3_udp_dns_client::Client,
     tcp_dns_client: dns_over_tcp::Client,
@@ -137,7 +139,6 @@ pub struct ClientState {
     /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
-    pending_tun_update: Option<PendingTunUpdate>,
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
@@ -214,13 +215,13 @@ impl ClientState {
             dns_streams_by_local_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             dns_resource_nat: Default::default(),
-            pending_tun_update: Default::default(),
+            resource_list: Default::default(),
         }
     }
 
     #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip_config(&self) -> Option<crate::IpConfig> {
-        Some(self.tun_config.as_ref()?.ip)
+        Some(self.tun_config.current()?.ip)
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -273,7 +274,7 @@ impl ClientState {
         }
 
         self.on_connection_failed(id);
-        self.emit_resources_changed();
+        self.resource_list.update(self.resources());
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -399,7 +400,7 @@ impl ClientState {
             return None;
         }
 
-        let tun_config = self.tun_config.as_ref()?;
+        let tun_config = self.tun_config.current()?;
 
         if !tun_config.ip.is_ip(packet.source()) {
             tracing::debug!(?packet, "Dropping packet with bad source IP");
@@ -869,7 +870,7 @@ impl ClientState {
     }
 
     fn initialise_tcp_dns_client(&mut self) {
-        let Some(tun_config) = self.tun_config.as_ref() else {
+        let Some(tun_config) = self.tun_config.current() else {
             return;
         };
 
@@ -1014,7 +1015,7 @@ impl ClientState {
 
         self.dns_cache.flush("DNS servers changed");
 
-        let Some(config) = self.tun_config.clone() else {
+        let Some(config) = self.tun_config.current() else {
             tracing::debug!("Unable to update DNS servers without interface configuration");
             return self.dns_config.system_dns_resolvers();
         };
@@ -1023,7 +1024,7 @@ impl ClientState {
 
         self.maybe_update_tun_config(TunConfig {
             dns_by_sentinel,
-            ..config
+            ..config.clone()
         });
 
         self.dns_config.system_dns_resolvers()
@@ -1046,7 +1047,7 @@ impl ClientState {
         // Create a new `TunConfig` by patching the corresponding fields of the existing one.
         let new_tun_config = self
             .tun_config
-            .as_ref()
+            .current()
             .map(|existing| TunConfig {
                 ip: IpConfig {
                     v4: config.ipv4,
@@ -1470,7 +1471,7 @@ impl ClientState {
     }
 
     fn maybe_update_tun_routes(&mut self) {
-        let Some(config) = self.tun_config.clone() else {
+        let Some(config) = self.tun_config.current() else {
             return;
         };
 
@@ -1482,7 +1483,7 @@ impl ClientState {
         let new_tun_config = TunConfig {
             ipv4_routes,
             ipv6_routes,
-            ..config
+            ..config.clone()
         };
 
         self.maybe_update_tun_config(new_tun_config);
@@ -1509,32 +1510,21 @@ impl ClientState {
     }
 
     fn maybe_update_tun_config(&mut self, new_tun_config: TunConfig) {
-        if Some(&new_tun_config) == self.tun_config.as_ref() {
-            tracing::trace!(current = ?self.tun_config, "TUN device configuration unchanged");
+        if Some(&new_tun_config) == self.tun_config.current() {
+            tracing::trace!(current = ?self.tun_config.current(), "TUN device configuration unchanged");
 
             return;
         }
 
         self.stub_resolver
             .set_search_domain(new_tun_config.search_domain.clone());
-
-        match self.pending_tun_update.as_mut() {
-            Some(pending) => pending.update_want(new_tun_config.clone()),
-            None => {
-                self.pending_tun_update = Some(PendingTunUpdate::new(
-                    self.tun_config.clone(),
-                    new_tun_config.clone(),
-                ))
-            }
-        }
-        self.tun_config = Some(new_tun_config);
+        self.tun_config.update(new_tun_config);
 
         self.initialise_tcp_dns_client(); // We must reset the TCP DNS client because changed CIDR resources (and thus changed routes) might affect which site we connect to.
         self.initialise_tcp_dns_server();
     }
 
     fn drain_node_events(&mut self) {
-        let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
         let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
         let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
 
@@ -1542,7 +1532,6 @@ impl ClientState {
             match event {
                 snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
                     self.cleanup_connected_gateway(&id);
-                    resources_changed = true;
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -1564,13 +1553,8 @@ impl ClientState {
                 }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online);
-                    resources_changed = true;
                 }
             }
-        }
-
-        if resources_changed {
-            self.emit_resources_changed()
         }
 
         for (conn_id, candidates) in added_ice_candidates.into_iter() {
@@ -1599,16 +1583,20 @@ impl ClientState {
             ),
             status,
         );
-        self.emit_resources_changed();
+        self.resource_list.update(self.resources());
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
-        if let Some(pending_tun_update) = self.pending_tun_update.take()
-            && let Some(new_config) = pending_tun_update.into_new_config()
-        {
-            tracing::info!(config = ?new_config, "Updating TUN device");
+        if let Some(config) = self.tun_config.take_pending_update() {
+            tracing::info!(?config, "Updating TUN device");
 
-            return Some(ClientEvent::TunInterfaceUpdated(new_config));
+            return Some(ClientEvent::TunInterfaceUpdated(config));
+        }
+
+        if let Some(resources) = self.resource_list.take_pending_update() {
+            tracing::debug!(count = %resources.len(), "Updating resource list");
+
+            return Some(ClientEvent::ResourcesChanged { resources });
         }
 
         self.buffered_events
@@ -1686,7 +1674,7 @@ impl ClientState {
 
         self.active_cidr_resources = self.recalculate_active_cidr_resources();
         self.maybe_update_tun_routes();
-        self.emit_resources_changed();
+        self.resource_list.update(self.resources());
     }
 
     pub fn add_resource(
@@ -1752,7 +1740,7 @@ impl ClientState {
         }
 
         self.maybe_update_tun_routes();
-        self.emit_resources_changed();
+        self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource added");
     }
 
@@ -1777,21 +1765,8 @@ impl ClientState {
         };
 
         self.maybe_update_tun_routes();
-        self.emit_resources_changed();
+        self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource removed");
-    }
-
-    /// Emit a [`ClientEvent::ResourcesChanged`] event.
-    ///
-    /// Each instance of this event contains the latest state of the resources.
-    /// To not spam clients with multiple updates, we remove all prior instances of that event.
-    fn emit_resources_changed(&mut self) {
-        self.buffered_events
-            .retain(|e| !matches!(e, ClientEvent::ResourcesChanged { .. }));
-        self.buffered_events
-            .push_back(ClientEvent::ResourcesChanged {
-                resources: self.resources(),
-            });
     }
 
     fn disable_resource(&mut self, id: ResourceId, now: Instant) {
@@ -1851,7 +1826,7 @@ impl ClientState {
 
             self.node.close_connection(gid, p2p_control::goodbye(), now);
             self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown);
-            self.emit_resources_changed();
+            self.resource_list.update(self.resources());
         }
     }
 
