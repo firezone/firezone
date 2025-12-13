@@ -8,34 +8,58 @@ import Foundation
 import NetworkExtension
 import os.log
 
-class NetworkSettings: Equatable {
+struct NetworkSettings: Equatable {
   // WireGuard has an 80-byte overhead. We could try setting tunnelOverheadBytes
   // but that's not a reliable way to calculate how big our packets should be,
   // so just use the minimum.
   let mtu: NSNumber = 1280
 
-  // These will only be initialized once and then don't change
-  private weak var packetTunnelProvider: NEPacketTunnelProvider?
-
   // Modifiable values
   public var tunnelAddressIPv4: String?
   public var tunnelAddressIPv6: String?
   public var dnsAddresses: [String] = []
-  public var routes4: [NEIPv4Route] = []
-  public var routes6: [NEIPv6Route] = []
+
+  // Routes are sorted on assignment for stable equality comparison
+  private var _routes4: [NEIPv4Route] = []
+  public var routes4: [NEIPv4Route] {
+    get { _routes4 }
+    set {
+      _routes4 = newValue.sorted {
+        ($0.destinationAddress, $0.destinationSubnetMask) < (
+          $1.destinationAddress, $1.destinationSubnetMask
+        )
+      }
+    }
+  }
+
+  private var _routes6: [NEIPv6Route] = []
+  public var routes6: [NEIPv6Route] {
+    get { _routes6 }
+    set {
+      _routes6 = newValue.sorted {
+        ($0.destinationAddress, $0.destinationNetworkPrefixLength.intValue)
+          < ($1.destinationAddress, $1.destinationNetworkPrefixLength.intValue)
+      }
+    }
+  }
+
+  // DNS resource addresses are sorted on assignment for stable equality comparison
+  // Used to trigger network settings apply when DNS resources change,
+  // which flushes the DNS cache so new DNS resources are immediately resolvable
+  private var dnsResourceAddresses: [String] = []
 
   // Private to ensure we append the search domain if we set it.
   private var matchDomains: [String] = [""]
   private var searchDomains: [String] = [""]
 
-  init(packetTunnelProvider: PacketTunnelProvider?) {
-    self.packetTunnelProvider = packetTunnelProvider
-  }
+  init() {}
 
   static func == (lhs: NetworkSettings, rhs: NetworkSettings) -> Bool {
+    // Routes and dnsResourceAddresses are sorted on assignment, so we can compare directly
     lhs.tunnelAddressIPv4 == rhs.tunnelAddressIPv4
       && lhs.tunnelAddressIPv6 == rhs.tunnelAddressIPv6
       && lhs.dnsAddresses == rhs.dnsAddresses
+      && lhs.dnsResourceAddresses == rhs.dnsResourceAddresses
       && lhs.matchDomains == rhs.matchDomains
       && lhs.searchDomains == rhs.searchDomains
       && lhs.routes4.count == rhs.routes4.count
@@ -50,7 +74,7 @@ class NetworkSettings: Equatable {
       }
   }
 
-  func setSearchDomain(domain: String?) {
+  mutating func setSearchDomain(domain: String?) {
     guard let domain = domain else {
       self.matchDomains = [""]
       self.searchDomains = [""]
@@ -61,17 +85,29 @@ class NetworkSettings: Equatable {
     self.searchDomains = [domain]
   }
 
-  func setDummyMatchDomain() {
+  mutating func setDnsResourceAddresses(from resources: [Resource]) {
+    dnsResourceAddresses = resources.compactMap { resource in
+      if case .dns(let dnsResource) = resource {
+        return dnsResource.address
+      }
+      return nil
+    }.sorted()
+  }
+
+  mutating func setDummyMatchDomain() {
     self.matchDomains = ["firezone-fd0020211111"]
   }
 
-  func clearDummyMatchDomain() {
+  mutating func clearDummyMatchDomain() {
     self.matchDomains = [""]
 
     self.matchDomains.append(contentsOf: self.searchDomains)
   }
 
-  func apply(completionHandler: (@Sendable () -> Void)? = nil) {
+  func apply(
+    to packetTunnelProvider: NEPacketTunnelProvider,
+    completionHandler: (@Sendable () -> Void)? = nil
+  ) {
     // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
     // because the OS doesn't really need this IP address.
     // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
@@ -96,7 +132,7 @@ class NetworkSettings: Equatable {
     tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.mtu = mtu
 
-    packetTunnelProvider?.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
+    packetTunnelProvider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
         Log.error(error)
       }
