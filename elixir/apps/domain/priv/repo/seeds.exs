@@ -90,23 +90,22 @@ defmodule Domain.Repo.Seeds do
 
   # Generate and create network addresses in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
   # Returns the IP tuples after creating the network_addresses records
-  defp create_tunnel_ips(account_id) do
+  # Uses UUID hash for deterministic, unique IPs
+  defp create_tunnel_ips(account_id, uuid) do
+    # Hash the UUID to get deterministic bytes
+    <<ipv4_2, ipv4_3, ipv4_4, ipv6_rest::binary-size(10), _::binary>> =
+      :crypto.hash(:sha256, uuid)
+
     # CGNAT range: 100.64.0.0 - 100.127.255.255 (100.64.0.0/10)
-    # We use random values within the range
-    ipv4_second = 64 + :rand.uniform(64) - 1
-    ipv4_third = :rand.uniform(256) - 1
-    ipv4_fourth = :rand.uniform(254)
+    ipv4_second = 64 + rem(ipv4_2, 64)
+    ipv4_third = ipv4_3
+    ipv4_fourth = rem(ipv4_4, 254) + 1
 
     # fd00:2021:1111::/48 range
-    # Format: fd00:2021:1111:XXXX:XXXX:XXXX:XXXX:XXXX
-    ipv6_4 = :rand.uniform(65536) - 1
-    ipv6_5 = :rand.uniform(65536) - 1
-    ipv6_6 = :rand.uniform(65536) - 1
-    ipv6_7 = :rand.uniform(65536) - 1
-    ipv6_8 = :rand.uniform(65536) - 1
+    <<w4::16, w5::16, w6::16, w7::16, w8::16>> = ipv6_rest
 
     ipv4 = {100, ipv4_second, ipv4_third, ipv4_fourth}
-    ipv6 = {0xFD00, 0x2021, 0x1111, ipv6_4, ipv6_5, ipv6_6, ipv6_7, ipv6_8}
+    ipv6 = {0xFD00, 0x2021, 0x1111, w4, w5, w6, w7, w8}
 
     # Create network address records that clients/gateways FK to
     %Domain.Network.Address{
@@ -139,9 +138,10 @@ defmodule Domain.Repo.Seeds do
     # Get the site to get the account_id
     site_id = attrs["site_id"] || attrs[:site_id]
     site = Repo.get_by!(Site, id: site_id)
+    external_id = attrs["external_id"] || attrs[:external_id]
 
     # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
-    {ipv4, ipv6} = create_tunnel_ips(site.account_id)
+    {ipv4, ipv6} = create_tunnel_ips(site.account_id, external_id)
 
     gateway =
       %Gateway{
@@ -168,8 +168,10 @@ defmodule Domain.Repo.Seeds do
     version =
       user_agent |> String.split(" connlib/") |> List.last() |> String.split(" ") |> List.first()
 
+    external_id = attrs["external_id"] || attrs[:external_id]
+
     # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
-    {ipv4, ipv6} = create_tunnel_ips(subject.account.id)
+    {ipv4, ipv6} = create_tunnel_ips(subject.account.id, external_id)
 
     client =
       %Client{
@@ -594,15 +596,18 @@ defmodule Domain.Repo.Seeds do
         version =
           user_agent |> String.split("/") |> List.last() |> String.split(" ") |> List.first()
 
+        # Generate UUID first so we can use it for deterministic tunnel IPs
+        external_id = Ecto.UUID.generate()
+
         # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
-        {ipv4, ipv6} = create_tunnel_ips(subject.account.id)
+        {ipv4, ipv6} = create_tunnel_ips(subject.account.id, external_id)
 
         _client =
           %Client{
             account_id: subject.account.id,
             actor_id: subject.actor.id,
             name: "My #{client_name} #{i}",
-            external_id: Ecto.UUID.generate(),
+            external_id: external_id,
             public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
             identifier_for_vendor: Ecto.UUID.generate(),
             ipv4: ipv4,
