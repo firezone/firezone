@@ -28,6 +28,24 @@ class NetworkSettings {
   private var matchDomains: [String] = [""]
   private var searchDomains: [String] = [""]
 
+  // Track the last applied settings to avoid redundant applies
+  private var lastAppliedSettings: AppliedSettings?
+
+  private struct AppliedSettings: Equatable {
+    let tunnelAddressIPv4: String?
+    let tunnelAddressIPv6: String?
+    let dnsAddresses: [String]
+    let routes4: [RouteKey]
+    let routes6: [RouteKey]
+    let matchDomains: [String]
+    let searchDomains: [String]
+
+    struct RouteKey: Equatable, Hashable {
+      let address: String
+      let prefix: String
+    }
+  }
+
   init(packetTunnelProvider: PacketTunnelProvider?) {
     self.packetTunnelProvider = packetTunnelProvider
   }
@@ -54,6 +72,26 @@ class NetworkSettings {
   }
 
   func apply(completionHandler: (@Sendable () -> Void)? = nil) {
+    let currentSettings = AppliedSettings(
+      tunnelAddressIPv4: tunnelAddressIPv4,
+      tunnelAddressIPv6: tunnelAddressIPv6,
+      dnsAddresses: dnsAddresses,
+      routes4: routes4.map {
+        AppliedSettings.RouteKey(address: $0.destinationAddress, prefix: $0.destinationSubnetMask)
+      },
+      routes6: routes6.map {
+        AppliedSettings.RouteKey(
+          address: $0.destinationAddress, prefix: $0.destinationNetworkPrefixLength.stringValue)
+      },
+      matchDomains: matchDomains,
+      searchDomains: searchDomains
+    )
+
+    if currentSettings == lastAppliedSettings {
+      completionHandler?()
+      return
+    }
+
     // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
     // because the OS doesn't really need this IP address.
     // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
@@ -77,6 +115,8 @@ class NetworkSettings {
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
     tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.mtu = mtu
+
+    lastAppliedSettings = currentSettings
 
     packetTunnelProvider?.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
