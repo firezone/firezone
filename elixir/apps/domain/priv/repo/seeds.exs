@@ -143,9 +143,6 @@ defmodule Domain.Repo.Seeds do
     # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
     {ipv4, ipv6} = create_tunnel_ips(site.account_id, external_id)
 
-    # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
-    {ipv4, ipv6} = create_tunnel_ips(site.account_id)
-
     gateway =
       %Gateway{
         site_id: site_id,
