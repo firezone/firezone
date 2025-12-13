@@ -63,16 +63,11 @@ defmodule Domain.AuthProviderFixtures do
     # Get or create account
     account = Map.get(attrs, :account) || account_fixture()
 
-    # Create base auth provider
-    auth_provider_id = Ecto.UUID.generate()
-
-    {:ok, _base_provider} =
-      %Domain.AuthProvider{}
-      |> Ecto.Changeset.cast(%{type: :email_otp}, [:type])
-      |> Ecto.Changeset.put_change(:id, auth_provider_id)
-      |> Ecto.Changeset.put_assoc(:account, account)
-      |> Domain.AuthProvider.changeset()
-      |> Domain.Repo.insert()
+    # Get or create base auth provider
+    auth_provider =
+      Map.get_lazy(attrs, :auth_provider, fn ->
+        auth_provider_fixture(type: :email_otp, account: account)
+      end)
 
     # Create email OTP provider
     email_otp_attrs =
@@ -91,8 +86,9 @@ defmodule Domain.AuthProviderFixtures do
         :client_session_lifetime_secs,
         :portal_session_lifetime_secs
       ])
-      |> Ecto.Changeset.put_change(:id, auth_provider_id)
+      |> Ecto.Changeset.put_change(:id, auth_provider.id)
       |> Ecto.Changeset.put_assoc(:account, account)
+      |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)
       |> Domain.EmailOTP.AuthProvider.changeset()
       |> Domain.Repo.insert()
 
@@ -111,16 +107,11 @@ defmodule Domain.AuthProviderFixtures do
     # Get or create account
     account = Map.get(attrs, :account) || account_fixture()
 
-    # Create base auth provider
-    auth_provider_id = Ecto.UUID.generate()
-
-    {:ok, _base_provider} =
-      %Domain.AuthProvider{}
-      |> Ecto.Changeset.cast(%{type: :userpass}, [:type])
-      |> Ecto.Changeset.put_change(:id, auth_provider_id)
-      |> Ecto.Changeset.put_assoc(:account, account)
-      |> Domain.AuthProvider.changeset()
-      |> Domain.Repo.insert()
+    # Get or create base auth provider
+    auth_provider =
+      Map.get_lazy(attrs, :auth_provider, fn ->
+        auth_provider_fixture(type: :userpass, account: account)
+      end)
 
     # Create userpass provider
     userpass_attrs =
@@ -139,7 +130,8 @@ defmodule Domain.AuthProviderFixtures do
         :client_session_lifetime_secs,
         :portal_session_lifetime_secs
       ])
-      |> Ecto.Changeset.put_change(:id, auth_provider_id)
+      |> Ecto.Changeset.put_change(:id, auth_provider.id)
+      |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Domain.Userpass.AuthProvider.changeset()
       |> Domain.Repo.insert()
@@ -166,16 +158,11 @@ defmodule Domain.AuthProviderFixtures do
     # Get or create account
     account = Map.get(attrs, :account) || account_fixture()
 
-    # Create base auth provider
-    auth_provider_id = Ecto.UUID.generate()
-
-    {:ok, _base_provider} =
-      %Domain.AuthProvider{}
-      |> Ecto.Changeset.cast(%{type: :oidc}, [:type])
-      |> Ecto.Changeset.put_change(:id, auth_provider_id)
-      |> Ecto.Changeset.put_assoc(:account, account)
-      |> Domain.AuthProvider.changeset()
-      |> Domain.Repo.insert()
+    # Get or create base auth provider
+    auth_provider =
+      Map.get_lazy(attrs, :auth_provider, fn ->
+        auth_provider_fixture(type: :oidc, account: account)
+      end)
 
     # Create OIDC provider
     oidc_attrs =
@@ -207,7 +194,8 @@ defmodule Domain.AuthProviderFixtures do
         :issuer,
         :is_verified
       ])
-      |> Ecto.Changeset.put_change(:id, auth_provider_id)
+      |> Ecto.Changeset.put_change(:id, auth_provider.id)
+      |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Domain.OIDC.AuthProvider.changeset()
       |> Domain.Repo.insert()
