@@ -32,11 +32,8 @@ defmodule Domain.Application do
       Domain.Billing,
       Domain.Mailer,
       Domain.Mailer.RateLimiter,
-      Domain.ComponentVersions,
-
-      # Observability
-      Domain.Telemetry
-    ] ++ oban() ++ replication()
+      Domain.ComponentVersions
+    ] ++ telemetry() ++ oban() ++ replication()
   end
 
   defp configure_logger do
@@ -67,6 +64,16 @@ defmodule Domain.Application do
       "warn" -> :warn
       "debug" -> :debug
       _ -> :info
+    end
+  end
+
+  defp telemetry do
+    config = Application.fetch_env!(:domain, Domain.Telemetry)
+
+    if config[:enabled] do
+      [Domain.Telemetry]
+    else
+      []
     end
   end
 
