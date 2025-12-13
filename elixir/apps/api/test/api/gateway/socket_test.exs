@@ -1,6 +1,11 @@
 defmodule API.Gateway.SocketTest do
   use API.ChannelCase, async: true
   import API.Gateway.Socket, except: [connect: 3]
+  import Domain.AccountFixtures
+  import Domain.SiteFixtures
+  import Domain.GatewayFixtures
+  import Domain.TokenFixtures
+  import Domain.SubjectFixtures
   alias API.Gateway.Socket
 
   @connlib_version "1.3.0"
@@ -23,8 +28,8 @@ defmodule API.Gateway.SocketTest do
     end
 
     test "creates a new gateway" do
-      token = Fixtures.Sites.create_token()
-      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
+      token = gateway_token_fixture()
+      encrypted_secret = encode_gateway_token(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -43,8 +48,8 @@ defmodule API.Gateway.SocketTest do
     end
 
     test "uses region code to put default coordinates" do
-      token = Fixtures.Sites.create_token()
-      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
+      token = gateway_token_fixture()
+      encrypted_secret = encode_gateway_token(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -59,8 +64,8 @@ defmodule API.Gateway.SocketTest do
     end
 
     test "propagates trace context" do
-      token = Fixtures.Sites.create_token()
-      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
+      token = gateway_token_fixture()
+      encrypted_secret = encode_gateway_token(token)
       attrs = connect_attrs(token: encrypted_secret)
 
       span_ctx = OpenTelemetry.Tracer.start_span("test")
@@ -77,16 +82,16 @@ defmodule API.Gateway.SocketTest do
     end
 
     test "updates existing gateway" do
-      account = Fixtures.Accounts.create_account()
-      site = Fixtures.Sites.create_site(account: account)
-      gateway = Fixtures.Gateways.create_gateway(account: account, site: site)
-      token = Fixtures.Sites.create_token(account: account, site: site)
-      encrypted_secret = Domain.Crypto.encode_token_fragment!(token)
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(account: account, site: site)
+      encrypted_secret = encode_gateway_token(token)
 
       attrs = connect_attrs(token: encrypted_secret, external_id: gateway.external_id)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
-      assert gateway = Repo.one(Domain.Gateways.Gateway)
+      assert gateway = Repo.one(Domain.Gateway)
       assert gateway.id == socket.assigns.gateway.id
     end
 
@@ -98,16 +103,16 @@ defmodule API.Gateway.SocketTest do
 
   describe "id/1" do
     test "creates a channel for a gateway" do
-      subject = Fixtures.Auth.create_subject(type: :client)
-      socket = socket(API.Gateway.Socket, "", %{token_id: subject.token_id})
+      subject = subject_fixture(type: :client)
+      socket = socket(API.Gateway.Socket, "", %{token_id: subject.auth_ref.id})
 
-      assert id(socket) == "sessions:#{subject.token_id}"
+      assert id(socket) == "socket:#{subject.auth_ref.id}"
     end
   end
 
   defp connect_attrs(attrs) do
-    Fixtures.Gateways.gateway_attrs()
-    |> Map.take(~w[external_id public_key]a)
+    valid_gateway_attrs()
+    |> Map.take([:external_id, :public_key])
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end
