@@ -332,10 +332,10 @@ defmodule Domain.Repo.Seeds do
     system_subject = %Auth.Subject{
       account: account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      token_id: Ecto.UUID.generate(),
+      auth_ref: %{type: :client, id: Ecto.UUID.generate()},
       auth_provider_id: nil,
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
-      context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
+      context: %Auth.Context{type: :client, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
     }
 
     {:ok, _email_provider} =
@@ -391,10 +391,10 @@ defmodule Domain.Repo.Seeds do
     other_system_subject = %Auth.Subject{
       account: other_account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      token_id: Ecto.UUID.generate(),
+      auth_ref: %{type: :portal_session, id: Ecto.UUID.generate()},
       auth_provider_id: nil,
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
-      context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
+      context: %Auth.Context{type: :portal, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
     }
 
     {:ok, _other_email_provider} =
@@ -505,7 +505,7 @@ defmodule Domain.Repo.Seeds do
         })
 
       context = %Auth.Context{
-        type: :browser,
+        type: :client,
         user_agent: "Windows/10.0.22631 seeds/1",
         remote_ip: {172, 28, 0, 100},
         remote_ip_location_region: "UA",
@@ -516,7 +516,7 @@ defmodule Domain.Repo.Seeds do
 
       {:ok, token} =
         Repo.insert(%Token{
-          type: :browser,
+          type: :client,
           account_id: account.id,
           actor_id: identity.actor_id,
           expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
@@ -597,7 +597,7 @@ defmodule Domain.Repo.Seeds do
       |> Repo.update!()
 
     _unprivileged_actor_context = %Auth.Context{
-      type: :browser,
+      type: :client,
       user_agent: "iOS/18.1.0 connlib/1.3.5",
       remote_ip: {172, 28, 0, 100},
       remote_ip_location_region: "UA",
@@ -624,11 +624,11 @@ defmodule Domain.Repo.Seeds do
     admin_subject = %Auth.Subject{
       account: account,
       actor: admin_actor,
-      token_id: Ecto.UUID.generate(),
+      auth_ref: %{type: :portal_session, id: Ecto.UUID.generate()},
       auth_provider_id: nil,
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Auth.Context{
-        type: :browser,
+        type: :portal,
         remote_ip: {127, 0, 0, 1},
         user_agent: "seeds/1"
       }
@@ -637,11 +637,11 @@ defmodule Domain.Repo.Seeds do
     unprivileged_subject = %Auth.Subject{
       account: account,
       actor: unprivileged_actor,
-      token_id: unprivileged_client_token.id,
+      auth_ref: %{type: :client, id: unprivileged_client_token.id},
       auth_provider_id: nil,
       expires_at: unprivileged_client_token.expires_at,
       context: %Auth.Context{
-        type: :browser,
+        type: :client,
         remote_ip: {127, 0, 0, 1},
         user_agent: "seeds/1"
       }
@@ -1491,7 +1491,7 @@ defmodule Domain.Repo.Seeds do
         policy_id: policy.id,
         membership_id: membership.id,
         account_id: unprivileged_subject.account.id,
-        token_id: unprivileged_subject.token_id,
+        token_id: unprivileged_subject.auth_ref.id,
         client_remote_ip: {127, 0, 0, 1},
         client_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
         gateway_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}, netmask: nil},

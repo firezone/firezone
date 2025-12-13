@@ -4,6 +4,7 @@ defmodule Domain.Auth do
   import Domain.Changeset
   alias Domain.Token
   alias Domain.OneTimePasscode
+  alias Domain.PortalSession
   alias Domain.Auth.{Subject, Context}
   alias __MODULE__.DB
   require Logger
@@ -121,6 +122,38 @@ defmodule Domain.Auth do
         Domain.Crypto.equal?(:argon2, nil, nil)
         {:error, :invalid_code}
     end
+  end
+
+  # Portal Sessions
+
+  def create_portal_session(
+        account_id,
+        actor_id,
+        auth_provider_id,
+        %Context{} = context,
+        expires_at
+      ) do
+    %PortalSession{
+      account_id: account_id,
+      actor_id: actor_id,
+      auth_provider_id: auth_provider_id,
+      user_agent: context.user_agent,
+      remote_ip: %Postgrex.INET{address: context.remote_ip},
+      remote_ip_location_region: context.remote_ip_location_region,
+      remote_ip_location_city: context.remote_ip_location_city,
+      remote_ip_location_lat: context.remote_ip_location_lat,
+      remote_ip_location_lon: context.remote_ip_location_lon,
+      expires_at: expires_at
+    }
+    |> DB.insert_portal_session()
+  end
+
+  def fetch_portal_session(account_id, session_id) do
+    DB.fetch_portal_session(account_id, session_id)
+  end
+
+  def delete_portal_session(%PortalSession{} = session) do
+    DB.delete_portal_session(session)
   end
 
   # Token encoding/decoding
@@ -251,11 +284,6 @@ defmodule Domain.Auth do
 
   defp validate_required_assocs(changeset) do
     case fetch_field(changeset, :type) do
-      {_data_or_changes, :browser} ->
-        changeset
-        |> validate_required(:actor_id)
-        |> validate_required(:expires_at)
-
       {_data_or_changes, :client} ->
         changeset
         |> validate_required(:actor_id)
@@ -263,11 +291,6 @@ defmodule Domain.Auth do
       {_data_or_changes, :api_client} ->
         changeset
         |> validate_required(:actor_id)
-
-      {_data_or_changes, :email} ->
-        changeset
-        |> validate_required(:actor_id)
-        |> validate_required(:expires_at)
 
       _ ->
         changeset
@@ -342,10 +365,6 @@ defmodule Domain.Auth do
     Domain.Crypto.hash(:sha3_256, nonce <> fragment <> token.secret_salt)
   end
 
-  def socket_id(id) when is_binary(id) do
-    "tokens:#{id}"
-  end
-
   # Authentication
 
   def authenticate(encoded_token, %Context{} = context)
@@ -363,7 +382,7 @@ defmodule Domain.Auth do
   end
 
   def build_subject(%Token{type: type} = token, %Context{} = context)
-      when type in [:browser, :client, :api_client] do
+      when type in [:client, :api_client] do
     account = DB.get_account_by_id!(token.account_id)
 
     with {:ok, actor} <- DB.fetch_active_actor_by_id(token.actor_id) do
@@ -373,8 +392,24 @@ defmodule Domain.Auth do
          account: account,
          expires_at: token.expires_at,
          context: context,
-         token_id: token.id,
+         auth_ref: %{type: :token, id: token.id},
          auth_provider_id: token.auth_provider_id
+       }}
+    end
+  end
+
+  def build_subject(%PortalSession{} = session, %Context{} = context) do
+    account = DB.get_account_by_id!(session.account_id)
+
+    with {:ok, actor} <- DB.fetch_active_actor_by_id(session.actor_id) do
+      {:ok,
+       %Subject{
+         actor: actor,
+         account: account,
+         expires_at: session.expires_at,
+         context: context,
+         auth_ref: %{type: :portal_session, id: session.id},
+         auth_provider_id: session.auth_provider_id
        }}
     end
   end
@@ -515,6 +550,62 @@ defmodule Domain.Auth do
       from(otp in OneTimePasscode,
         where: otp.account_id == ^passcode.account_id,
         where: otp.id == ^passcode.id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      :ok
+    end
+
+    # Portal Session functions
+
+    def insert_portal_session(session) do
+      session
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_portal_session(account_id, id) do
+      enabled_provider_ids = enabled_auth_provider_ids_subquery()
+
+      from(ps in PortalSession,
+        join: a in assoc(ps, :actor),
+        where: ps.account_id == ^account_id,
+        where: ps.id == ^id,
+        where: ps.expires_at > ^DateTime.utc_now(),
+        where: is_nil(a.disabled_at),
+        where: ps.auth_provider_id in subquery(enabled_provider_ids),
+        preload: [actor: a]
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        session -> {:ok, session}
+      end
+    end
+
+    defp enabled_auth_provider_ids_subquery do
+      provider_modules = [
+        Domain.EmailOTP.AuthProvider,
+        Domain.Userpass.AuthProvider,
+        Domain.Google.AuthProvider,
+        Domain.Okta.AuthProvider,
+        Domain.Entra.AuthProvider,
+        Domain.OIDC.AuthProvider
+      ]
+
+      provider_modules
+      |> Enum.map(fn module ->
+        from(p in module, where: p.is_disabled == false, select: p.id)
+      end)
+      |> Enum.reduce(&union_all(&2, ^&1))
+    end
+
+    def delete_portal_session(session) do
+      from(ps in PortalSession,
+        where: ps.account_id == ^session.account_id,
+        where: ps.id == ^session.id
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

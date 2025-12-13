@@ -57,7 +57,7 @@ defmodule API.Gateway.Socket do
   end
 
   @impl true
-  def id(socket), do: Domain.Auth.socket_id(socket.assigns.token_id)
+  def id(socket), do: Domain.Sockets.socket_id(socket.assigns.token_id)
 
   defp upsert_changeset(site, attrs, context) do
     upsert_fields = ~w[external_id name public_key

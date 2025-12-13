@@ -13,7 +13,7 @@ defmodule Domain.TokenFixtures do
   def valid_token_attrs(attrs \\ %{}) do
     attrs =
       Enum.into(attrs, %{
-        type: :browser,
+        type: :client,
         name: "Token #{System.unique_integer([:positive, :monotonic])}",
         secret_nonce: "",
         secret_fragment: generate_secret_fragment(),
@@ -68,9 +68,9 @@ defmodule Domain.TokenFixtures do
 
     changeset = Ecto.Changeset.put_assoc(changeset, :account, account)
 
-    # Associate with actor for browser/client/api_client/email tokens
+    # Associate with actor for client/api_client tokens
     changeset =
-      if type in [:browser, :client, :api_client, :email] do
+      if type in [:client, :api_client] do
         actor = Map.get(attrs, :actor) || actor_fixture(account: account)
         Ecto.Changeset.put_assoc(changeset, :actor, actor)
       else
@@ -86,13 +86,6 @@ defmodule Domain.TokenFixtures do
       end
 
     Domain.Repo.insert!(changeset)
-  end
-
-  @doc """
-  Generate a browser token (default type).
-  """
-  def browser_token_fixture(attrs \\ %{}) do
-    attrs |> Enum.into(%{}) |> Map.put(:type, :browser) |> token_fixture()
   end
 
   @doc """
@@ -147,16 +140,6 @@ defmodule Domain.TokenFixtures do
     Map.put_new_lazy(attrs, :secret_hash, fn ->
       compute_secret_hash(attrs.secret_nonce, attrs.secret_fragment, attrs.secret_salt)
     end)
-  end
-
-  @doc """
-  Generate an email token.
-  """
-  def email_token_fixture(attrs \\ %{}) do
-    attrs
-    |> Enum.into(%{})
-    |> Map.put(:type, :email)
-    |> token_fixture()
   end
 
   @doc """

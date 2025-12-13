@@ -30,8 +30,8 @@ defmodule Web.UserpassController do
          %Domain.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
          {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
-         {:ok, token} <- create_token(conn, actor, provider, params) do
-      signed_in(conn, context_type, account, actor, token, params)
+         {:ok, session_or_token} <- create_session_or_token(conn, actor, provider, params) do
+      signed_in(conn, context_type, account, actor, session_or_token, params)
     else
       error -> handle_error(conn, error, params)
     end
@@ -61,7 +61,7 @@ defmodule Web.UserpassController do
   defp check_admin(%Domain.Actor{type: :account_user}, :client), do: :ok
   defp check_admin(_actor, _context_type), do: {:error, :not_admin}
 
-  defp create_token(conn, actor, provider, params) do
+  defp create_session_or_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
     type = context_type(params)
@@ -77,28 +77,42 @@ defmodule Web.UserpassController do
         :client ->
           provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
 
-        :browser ->
+        :portal ->
           provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
       end
 
-    attrs = %{
-      type: context.type,
-      secret_nonce: params["nonce"],
-      secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-      account_id: actor.account_id,
-      actor_id: actor.id,
-      auth_provider_id: provider.id,
-      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
-    }
+    expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
-    Domain.Auth.create_token(attrs)
+    case type do
+      :portal ->
+        Domain.Auth.create_portal_session(
+          actor.account_id,
+          actor.id,
+          provider.id,
+          context,
+          expires_at
+        )
+
+      :client ->
+        attrs = %{
+          type: :client,
+          secret_nonce: params["nonce"],
+          secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
+          account_id: actor.account_id,
+          actor_id: actor.id,
+          auth_provider_id: provider.id,
+          expires_at: expires_at
+        }
+
+        Domain.Auth.create_token(attrs)
+    end
   end
 
-  # Context: :browser
+  # Context: :portal
   # Store session cookie and redirect to portal or redirect_to parameter
-  defp signed_in(conn, :browser, account, _actor, token, params) do
+  defp signed_in(conn, :portal, account, _actor, session, params) do
     conn
-    |> Web.Session.Cookie.put_account_cookie(account.id, token.id)
+    |> Web.Session.Cookie.put_account_cookie(account.id, session.id)
     |> Redirector.portal_signed_in(account, params)
   end
 
@@ -156,7 +170,7 @@ defmodule Web.UserpassController do
   end
 
   defp context_type(%{"as" => "client"}), do: :client
-  defp context_type(_), do: :browser
+  defp context_type(_), do: :portal
 
   defmodule DB do
     import Ecto.Query

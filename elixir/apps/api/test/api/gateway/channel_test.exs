@@ -1,6 +1,7 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Changes, PubSub}
+  alias Domain.Changes
+  alias Domain.PubSub
   import Domain.Cache.Cacheable, only: [to_cache: 1]
   import ExUnit.CaptureLog
 
@@ -24,7 +25,7 @@ defmodule API.Gateway.ChannelTest do
     group = group_fixture(account: account)
     membership = membership_fixture(account: account, actor: actor, group: group)
 
-    subject = subject_fixture(account: account, actor: actor)
+    subject = subject_fixture(account: account, actor: actor, type: :client)
     client = client_fixture(account: account, actor: actor)
 
     site = site_fixture(account: account)
@@ -338,8 +339,8 @@ defmodule API.Gateway.ChannelTest do
       # Consume the init message from join
       assert_push "init", _init_payload
 
-      # Subscribe to the token's socket topic (Domain.Auth.socket_id returns "tokens:#{id}")
-      socket_topic = Domain.Auth.socket_id(token.id)
+      # Subscribe to the token's socket topic (Domain.Sockets.socket_id returns "tokens:#{id}")
+      socket_topic = Domain.Sockets.socket_id(token.id)
       :ok = PubSub.subscribe(socket_topic)
 
       data = %{
@@ -1949,7 +1950,7 @@ defmodule API.Gateway.ChannelTest do
         )
 
       :ok = Domain.Presence.Clients.connect(client, client_token.id)
-      PubSub.subscribe(Domain.Auth.socket_id(subject.token_id))
+      PubSub.subscribe(Domain.Sockets.socket_id(subject.auth_ref.id))
       :ok = PubSub.Account.subscribe(gateway.account_id)
 
       push(socket, "broadcast_ice_candidates", attrs)
@@ -2003,7 +2004,7 @@ defmodule API.Gateway.ChannelTest do
         )
 
       :ok = Domain.Presence.Clients.connect(client, client_token.id)
-      PubSub.subscribe(Domain.Auth.socket_id(subject.token_id))
+      PubSub.subscribe(Domain.Sockets.socket_id(subject.auth_ref.id))
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 

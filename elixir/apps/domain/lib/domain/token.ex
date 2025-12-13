@@ -13,7 +13,6 @@ defmodule Domain.Token do
 
     field :type, Ecto.Enum,
       values: [
-        :browser,
         :client,
         :api_client
       ]

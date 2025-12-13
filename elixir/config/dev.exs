@@ -61,7 +61,8 @@ config :domain, Oban,
        {worker_dev_schedule, Domain.Workers.CheckAccountLimits},
        {worker_dev_schedule, Domain.Workers.OutdatedGateways},
        {worker_dev_schedule, Domain.Workers.DeleteExpiredTokens},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredOneTimePasscodes}
+       {worker_dev_schedule, Domain.Workers.DeleteExpiredOneTimePasscodes},
+       {worker_dev_schedule, Domain.Workers.DeleteExpiredPortalSessions}
      ]}
   ],
   queues: [

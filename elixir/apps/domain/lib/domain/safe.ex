@@ -638,6 +638,8 @@ defmodule Domain.Safe do
   def permit(_action, Domain.Okta.Directory, :account_admin_user), do: :ok
   def permit(:read, Domain.Okta.Directory, :api_client), do: :ok
 
+  def permit(_action, Domain.PortalSession, :account_admin_user), do: :ok
+
   # Oban.Job permissions - admin only
   def permit(:read, Oban.Job, :account_admin_user), do: :ok
 

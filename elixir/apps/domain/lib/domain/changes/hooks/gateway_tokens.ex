@@ -18,7 +18,7 @@ defmodule Domain.Changes.Hooks.GatewayTokens do
   end
 
   defp disconnect_socket(token) do
-    topic = Domain.Auth.socket_id(token.id)
+    topic = Domain.Sockets.socket_id(token.id)
     payload = %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect"}
     PubSub.broadcast(topic, payload)
   end

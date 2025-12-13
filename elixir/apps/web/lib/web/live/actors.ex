@@ -5,7 +5,9 @@ defmodule Web.Actors do
 
   alias Domain.{
     Actor,
+    Auth,
     ExternalIdentity,
+    PortalSession,
     Token
   }
 
@@ -72,9 +74,16 @@ defmodule Web.Actors do
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
     actor = DB.get_actor!(id, socket.assigns.subject)
 
-    # Load identities and tokens
+    # Load identities and tokens/sessions based on actor type
     identities = DB.get_identities_for_actor(actor.id, socket.assigns.subject)
-    tokens = DB.get_tokens_for_actor(actor.id, socket.assigns.subject)
+
+    # Service accounts use tokens, users use portal sessions
+    {tokens, sessions} =
+      if actor.type == :service_account do
+        {DB.get_tokens_for_actor(actor.id, socket.assigns.subject), []}
+      else
+        {[], DB.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)}
+      end
 
     socket = handle_live_tables_params(socket, params, uri)
 
@@ -84,7 +93,8 @@ defmodule Web.Actors do
         actor: actor,
         active_tab: "identities",
         identities: identities,
-        tokens: tokens
+        tokens: tokens,
+        sessions: sessions
       )
       |> assign_new(:created_token, fn -> nil end)
 
@@ -415,6 +425,25 @@ defmodule Web.Actors do
       end
     else
       {:noreply, put_flash(socket, :error, "Token not found")}
+    end
+  end
+
+  def handle_event("delete_session", %{"id" => session_id}, socket) do
+    session = DB.get_portal_session_by_id(session_id, socket.assigns.subject)
+
+    if session do
+      :ok =
+        Auth.delete_portal_session(%PortalSession{
+          account_id: socket.assigns.account.id,
+          id: session.id
+        })
+
+      # Reload sessions for the actor
+      sessions = DB.get_portal_sessions_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+      socket = assign(socket, sessions: sessions)
+      {:noreply, put_flash(socket, :success_inline, "Session deleted successfully")}
+    else
+      {:noreply, put_flash(socket, :error, "Session not found")}
     end
   end
 
@@ -1057,26 +1086,22 @@ defmodule Web.Actors do
               <% end %>
             </div>
           <% end %>
-          <!-- Sessions/Tokens Tab -->
-          <%= if @actor.type == :service_account or @active_tab == "sessions" do %>
+          <!-- Tokens Tab (Service Accounts only) -->
+          <%= if @actor.type == :service_account do %>
             <div>
-              <%= if @actor.type == :service_account do %>
-                <div class="flex justify-between items-center mb-4">
-                  <h3 class="text-sm font-semibold text-neutral-900">Tokens</h3>
-                  <.add_button patch={
-                    ~p"/#{@account}/actors/#{@actor.id}/add_token?#{query_params(@uri)}"
-                  }>
-                    Add Token
-                  </.add_button>
-                </div>
-              <% end %>
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="text-sm font-semibold text-neutral-900">Tokens</h3>
+                <.add_button patch={
+                  ~p"/#{@account}/actors/#{@actor.id}/add_token?#{query_params(@uri)}"
+                }>
+                  Add Token
+                </.add_button>
+              </div>
 
               <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
                 <%= if @tokens == [] do %>
                   <div class="text-center text-neutral-500 p-8">
-                    {if @actor.type == :service_account,
-                      do: "No tokens to display.",
-                      else: "No sessions to display."}
+                    No tokens to display.
                   </div>
                 <% else %>
                   <div class="divide-y divide-neutral-200">
@@ -1100,11 +1125,7 @@ defmodule Web.Actors do
 
                           <div class="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
                             <div>
-                              <span class="text-xs uppercase text-neutral-500">
-                                {if @actor.type == :service_account,
-                                  do: "Last used",
-                                  else: "Last seen"}
-                              </span>
+                              <span class="text-xs uppercase text-neutral-500">Last used</span>
                               <div class="text-neutral-900">
                                 <.relative_datetime datetime={token.last_seen_at} />
                               </div>
@@ -1149,6 +1170,81 @@ defmodule Web.Actors do
                   </div>
                 <% end %>
               </div>
+            </div>
+          <% end %>
+          <!-- Sessions Tab (Users only) -->
+          <%= if @actor.type != :service_account and @active_tab == "sessions" do %>
+            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
+              <%= if @sessions == [] do %>
+                <div class="text-center text-neutral-500 p-8">
+                  No sessions to display.
+                </div>
+              <% else %>
+                <div class="divide-y divide-neutral-200">
+                  <div :for={session <- @sessions} class="p-4 hover:bg-neutral-50">
+                    <div class="flex items-start justify-between gap-4">
+                      <div class="flex-1 space-y-3">
+                        <%= if session.auth_provider_name do %>
+                          <div class="flex items-center gap-2 min-w-0">
+                            <.provider_icon
+                              type={session.auth_provider_type}
+                              class="w-5 h-5 flex-shrink-0"
+                            />
+                            <div
+                              class="font-medium text-sm text-neutral-900 truncate"
+                              title={session.auth_provider_name}
+                            >
+                              {session.auth_provider_name}
+                            </div>
+                          </div>
+                        <% end %>
+
+                        <div class="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                          <div>
+                            <span class="text-xs uppercase text-neutral-500">Signed in</span>
+                            <div class="text-neutral-900">
+                              <.relative_datetime datetime={session.inserted_at} />
+                            </div>
+                          </div>
+
+                          <div>
+                            <span class="text-xs uppercase text-neutral-500">Location</span>
+                            <div class="text-neutral-900 flex items-center gap-2 min-w-0">
+                              <%= if session_location(session) do %>
+                                <.icon
+                                  name={session_user_agent_icon(session.user_agent)}
+                                  class="w-4 h-4 flex-shrink-0"
+                                />
+                                <span class="truncate" title={session_location(session)}>
+                                  {session_location(session)}
+                                </span>
+                              <% else %>
+                                -
+                              <% end %>
+                            </div>
+                          </div>
+
+                          <div>
+                            <span class="text-xs uppercase text-neutral-500">Expires</span>
+                            <div class="text-neutral-900">
+                              <.relative_datetime datetime={session.expires_at} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        phx-click="delete_session"
+                        phx-value-id={session.id}
+                        class="text-red-600 hover:text-red-800"
+                        data-confirm="Are you sure you want to delete this session?"
+                      >
+                        <.icon name="hero-trash" class="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
             </div>
           <% end %>
         </div>
@@ -1477,6 +1573,36 @@ defmodule Web.Actors do
     end
   end
 
+  # Helper functions for session display
+  defp session_user_agent_icon(user_agent) when is_binary(user_agent) do
+    detect_os_icon(user_agent) || "hero-computer-desktop"
+  end
+
+  defp session_user_agent_icon(_), do: "hero-computer-desktop"
+
+  defp session_location(session) do
+    location =
+      cond do
+        session.remote_ip_location_city && session.remote_ip_location_region ->
+          "#{session.remote_ip_location_city}, #{session.remote_ip_location_region}"
+
+        session.remote_ip_location_region ->
+          session.remote_ip_location_region
+
+        true ->
+          nil
+      end
+
+    ip = if session.remote_ip, do: to_string(session.remote_ip)
+
+    case {location, ip} do
+      {nil, nil} -> nil
+      {nil, ip} -> ip
+      {location, nil} -> location
+      {location, ip} -> "#{location} (#{ip})"
+    end
+  end
+
   defp other_enabled_admins_exist?(actor, subject) do
     case actor do
       %{type: :account_admin_user, account_id: account_id, id: id} ->
@@ -1779,6 +1905,44 @@ defmodule Web.Actors do
     def get_token_by_id(token_id, subject) do
       from(t in Token, as: :tokens)
       |> where([tokens: t], t.id == ^token_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    def get_portal_sessions_for_actor(actor_id, subject) do
+      from(ps in PortalSession, as: :portal_sessions)
+      |> where([portal_sessions: ps], ps.actor_id == ^actor_id)
+      |> join(:left, [portal_sessions: ps], ap in assoc(ps, :auth_provider), as: :auth_provider)
+      |> select_merge([auth_provider: ap], %{
+        auth_provider_type: type(ap.type, :string),
+        auth_provider_name:
+          fragment(
+            """
+            COALESCE(
+              (SELECT name FROM google_auth_providers WHERE id = ?),
+              (SELECT name FROM entra_auth_providers WHERE id = ?),
+              (SELECT name FROM okta_auth_providers WHERE id = ?),
+              (SELECT name FROM oidc_auth_providers WHERE id = ?),
+              (SELECT name FROM userpass_auth_providers WHERE id = ?),
+              (SELECT name FROM email_otp_auth_providers WHERE id = ?)
+            )
+            """,
+            ap.id,
+            ap.id,
+            ap.id,
+            ap.id,
+            ap.id,
+            ap.id
+          )
+      })
+      |> order_by([portal_sessions: ps], desc: ps.inserted_at)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    def get_portal_session_by_id(session_id, subject) do
+      from(ps in PortalSession, as: :portal_sessions)
+      |> where([portal_sessions: ps], ps.id == ^session_id)
       |> Safe.scoped(subject)
       |> Safe.one()
     end
