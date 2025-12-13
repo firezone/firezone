@@ -51,20 +51,10 @@ defmodule Web.ConnCase do
   end
 
   def authorize_conn(conn, %Domain.Actor{} = actor) do
-    {:ok, token} =
-      Domain.Auth.create_token(%{
-        type: :browser,
-        account_id: actor.account_id,
-        actor_id: actor.id,
-        expires_at: DateTime.add(DateTime.utc_now(), 300, :second),
-        secret_fragment: Domain.Crypto.random_token(32),
-        secret_nonce: ""
-      })
-
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0, "FooBar 1.1")
 
     context = %Domain.Auth.Context{
-      type: :browser,
+      type: :portal,
       user_agent: user_agent,
       remote_ip_location_region: "UA",
       remote_ip_location_city: "Kyiv",
@@ -73,11 +63,28 @@ defmodule Web.ConnCase do
       remote_ip: conn.remote_ip
     }
 
-    {:ok, subject} = Domain.Auth.build_subject(token, context)
+    # Fetch the real account from the database
+    account = Domain.Repo.get!(Domain.Account, actor.account_id)
+
+    # Create an auth provider for this account if needed
+    auth_provider = Domain.AuthProviderFixtures.email_otp_provider_fixture(account: account)
+
+    expires_at = DateTime.add(DateTime.utc_now(), 300, :second)
+
+    {:ok, session} =
+      Domain.Auth.create_portal_session(
+        actor.account_id,
+        actor.id,
+        auth_provider.id,
+        context,
+        expires_at
+      )
+
+    {:ok, subject} = Domain.Auth.build_subject(session, context)
 
     # Set the cookie. We need to set it as a response cookie first,
     # then transfer to request cookies for subsequent requests.
-    conn = Web.Session.Cookie.put_account_cookie(conn, actor.account_id, token.id)
+    conn = Web.Session.Cookie.put_account_cookie(conn, actor.account_id, session.id)
     cookie_name = Web.Session.Cookie.cookie_name(actor.account_id)
     cookie_value = conn.resp_cookies[cookie_name].value
 
