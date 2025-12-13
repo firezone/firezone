@@ -95,6 +95,30 @@ defmodule API.Gateway.SocketTest do
       assert gateway.id == socket.assigns.gateway.id
     end
 
+    test "preserves ipv4 and ipv6 addresses on reconnection" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+
+      # Create existing gateway with specific IPs
+      existing_gateway = gateway_fixture(account: account, site: site)
+      original_ipv4 = existing_gateway.ipv4
+      original_ipv6 = existing_gateway.ipv6
+
+      # Create a new token for same site
+      token = gateway_token_fixture(account: account, site: site)
+      encrypted_secret = encode_gateway_token(token)
+
+      attrs = connect_attrs(token: encrypted_secret, external_id: existing_gateway.external_id)
+
+      # Reconnect
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
+      assert gateway = socket.assigns.gateway
+
+      # Verify IPs are preserved
+      assert gateway.ipv4 == original_ipv4
+      assert gateway.ipv6 == original_ipv6
+    end
+
     test "returns error when token is invalid" do
       attrs = connect_attrs(token: "foo")
       assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}

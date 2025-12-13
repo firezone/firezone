@@ -92,16 +92,6 @@ defmodule API.Client.Socket do
     |> put_client_version()
   end
 
-  def finalize_upsert(%Client{} = client, ipv4, ipv6) do
-    import Ecto.Changeset
-
-    client
-    |> change()
-    |> put_change(:ipv4, ipv4)
-    |> put_change(:ipv6, ipv6)
-    |> Domain.Client.changeset()
-  end
-
   defp put_client_version(changeset) do
     import Ecto.Changeset
 
@@ -137,21 +127,42 @@ defmodule API.Client.Socket do
     alias Domain.Client
 
     def upsert_client(changeset, _subject) do
+      account_id = Ecto.Changeset.get_field(changeset, :account_id)
+      actor_id = Ecto.Changeset.get_field(changeset, :actor_id)
+      external_id = Ecto.Changeset.get_field(changeset, :external_id)
+
       Ecto.Multi.new()
-      |> Ecto.Multi.insert(:client, changeset,
+      |> Ecto.Multi.run(:existing, fn _repo, _changes ->
+        existing =
+          if external_id do
+            from(c in Client,
+              where: c.account_id == ^account_id,
+              where: c.actor_id == ^actor_id,
+              where: c.external_id == ^external_id,
+              select: %{ipv4: c.ipv4, ipv6: c.ipv6}
+            )
+            |> Safe.unscoped()
+            |> Safe.one()
+          end
+
+        {:ok, existing}
+      end)
+      |> resolve_address_multi(:ipv4, account_id)
+      |> resolve_address_multi(:ipv6, account_id)
+      |> Ecto.Multi.insert(
+        :client,
+        fn %{ipv4: ipv4, ipv6: ipv6} ->
+          changeset
+          |> Ecto.Changeset.put_change(:ipv4, ipv4)
+          |> Ecto.Changeset.put_change(:ipv6, ipv6)
+        end,
         conflict_target: upsert_conflict_target(),
         on_conflict: upsert_on_conflict(),
         returning: true
       )
-      |> resolve_address_multi(:ipv4)
-      |> resolve_address_multi(:ipv6)
-      |> Ecto.Multi.update(:client_with_address, fn
-        %{client: %Client{} = client, ipv4: ipv4, ipv6: ipv6} ->
-          API.Client.Socket.finalize_upsert(client, ipv4, ipv6)
-      end)
       |> Safe.transact()
       |> case do
-        {:ok, %{client_with_address: client}} -> {:ok, client}
+        {:ok, %{client: client}} -> {:ok, client}
         {:error, :client, changeset, _effects_so_far} -> {:error, changeset}
       end
     end
@@ -205,12 +216,12 @@ defmodule API.Client.Socket do
       )
     end
 
-    defp resolve_address_multi(multi, type) do
-      Ecto.Multi.run(multi, type, fn _repo, %{client: %Client{} = client} ->
-        if address = Map.get(client, type) do
-          {:ok, address}
+    defp resolve_address_multi(multi, type, account_id) do
+      Ecto.Multi.run(multi, type, fn _repo, %{existing: existing} ->
+        if existing && Map.get(existing, type) do
+          {:ok, Map.get(existing, type)}
         else
-          {:ok, Network.fetch_next_available_address!(client.account_id, type)}
+          {:ok, Network.fetch_next_available_address!(account_id, type)}
         end
       end)
     end
