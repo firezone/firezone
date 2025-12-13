@@ -67,13 +67,14 @@ defmodule Web.OIDCController do
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
          {:ok, identity} <- upsert_identity(account, claims, userinfo),
          :ok <- check_admin(identity, context_type),
-         {:ok, token} <- create_token(conn, identity, provider, cookie["params"]) do
+         {:ok, session_or_token} <-
+           create_session_or_token(conn, identity, provider, cookie["params"]) do
       signed_in(
         conn,
         context_type,
         account,
         identity,
-        token,
+        session_or_token,
         provider,
         tokens,
         cookie["params"]
@@ -221,14 +222,14 @@ defmodule Web.OIDCController do
     :ok
   end
 
-  defp validate_context(%{context: context}, :browser)
+  defp validate_context(%{context: context}, :portal)
        when context in [:portal_only, :clients_and_portal] do
     :ok
   end
 
   defp validate_context(_provider, _context_type), do: {:error, :invalid_context}
 
-  defp create_token(conn, identity, provider, params) do
+  defp create_session_or_token(conn, identity, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
     type = context_type(params)
@@ -244,29 +245,43 @@ defmodule Web.OIDCController do
         :client ->
           provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
 
-        :browser ->
+        :portal ->
           provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
       end
 
-    attrs = %{
-      type: context.type,
-      secret_nonce: params["nonce"],
-      secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-      account_id: identity.account_id,
-      actor_id: identity.actor_id,
-      auth_provider_id: provider.id,
-      identity_id: identity.id,
-      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
-    }
+    expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
-    Domain.Auth.create_token(attrs)
+    case type do
+      :portal ->
+        Domain.Auth.create_portal_session(
+          identity.account_id,
+          identity.actor_id,
+          provider.id,
+          context,
+          expires_at
+        )
+
+      :client ->
+        attrs = %{
+          type: :client,
+          secret_nonce: params["nonce"],
+          secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
+          account_id: identity.account_id,
+          actor_id: identity.actor_id,
+          auth_provider_id: provider.id,
+          identity_id: identity.id,
+          expires_at: expires_at
+        }
+
+        Domain.Auth.create_token(attrs)
+    end
   end
 
-  # Context: :browser
+  # Context: :portal
   # Store session cookie and redirect to portal or redirect_to parameter
-  defp signed_in(conn, :browser, account, _identity, token, _provider, _tokens, params) do
+  defp signed_in(conn, :portal, account, _identity, session, _provider, _tokens, params) do
     conn
-    |> Web.Session.Cookie.put_account_cookie(account.id, token.id)
+    |> Web.Session.Cookie.put_account_cookie(account.id, session.id)
     |> Redirector.portal_signed_in(account, params)
   end
 
@@ -284,7 +299,7 @@ defmodule Web.OIDCController do
   end
 
   defp context_type(%{"as" => "client"}), do: :client
-  defp context_type(_), do: :browser
+  defp context_type(_), do: :portal
 
   defp handle_error(conn, {:error, :not_admin}, params) do
     cookie = conn.cookies[cookie_key(params["state"])] || %{}

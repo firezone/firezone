@@ -199,7 +199,10 @@ if config_env() == :prod do
          {"*/5 * * * *", Domain.Workers.DeleteExpiredTokens},
 
          # Delete expired one-time passcodes every 5 minutes
-         {"*/5 * * * *", Domain.Workers.DeleteExpiredOneTimePasscodes}
+         {"*/5 * * * *", Domain.Workers.DeleteExpiredOneTimePasscodes},
+
+         # Delete expired portal sessions every 5 minutes
+         {"*/5 * * * *", Domain.Workers.DeleteExpiredPortalSessions}
        ]}
     ],
     queues:

@@ -21,11 +21,12 @@ defmodule API.Client.Socket do
     OpenTelemetry.Tracer.with_span "client.connect" do
       context = API.Sockets.auth_context(connect_info, :client)
 
-      with {:ok, subject} <- Auth.authenticate(token, context),
+      with {:ok, %{auth_ref: %{type: :token, id: token_id}} = subject} <-
+             Auth.authenticate(token, context),
            changeset = upsert_changeset(subject.actor, subject, attrs),
            {:ok, client} <- DB.upsert_client(changeset, subject) do
         OpenTelemetry.Tracer.set_attributes(%{
-          token_id: subject.token_id,
+          token_id: token_id,
           client_id: client.id,
           lat: client.last_seen_remote_ip_location_lat,
           lon: client.last_seen_remote_ip_location_lon,
@@ -60,7 +61,9 @@ defmodule API.Client.Socket do
 
   @impl true
 
-  def id(socket), do: Auth.socket_id(socket.assigns.subject.token_id)
+  def id(socket) do
+    Domain.Sockets.socket_id(socket.assigns.subject.auth_ref.id)
+  end
 
   defp upsert_changeset(actor, subject, attrs) do
     required_fields = ~w[external_id name public_key]a

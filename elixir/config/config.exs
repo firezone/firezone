@@ -73,6 +73,7 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     resources
     tokens
     one_time_passcodes
+    portal_sessions
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
   # deploys without alerting.
@@ -126,6 +127,7 @@ config :domain, Domain.Changes.ReplicationConnection,
     okta_directories
     google_directories
     relay_tokens
+    portal_sessions
   ],
   # Allow up to 60 seconds of lag before alerting
   warning_threshold: :timer.seconds(60),

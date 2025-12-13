@@ -124,16 +124,24 @@ defmodule Web.Router do
     get "/sign_in/:auth_provider_type/:auth_provider_id", OIDCController, :sign_in
   end
 
-  # Sign in / out routes
+  # Client auth redirect routes (don't need portal session)
+  scope "/:account_id_or_slug", Web do
+    pipe_through [
+      :public,
+      Web.Plugs.FetchAccount
+    ]
+
+    get "/sign_in/client_redirect", SignInController, :client_redirect
+    get "/sign_in/client_auth_error", SignInController, :client_auth_error
+  end
+
+  # Sign out route (needs portal session)
   scope "/:account_id_or_slug", Web do
     pipe_through [
       :public,
       Web.Plugs.FetchAccount,
       Web.Plugs.FetchSubject
     ]
-
-    get "/sign_in/client_redirect", SignInController, :client_redirect
-    get "/sign_in/client_auth_error", SignInController, :client_auth_error
 
     post "/sign_out", SignOutController, :sign_out
   end
