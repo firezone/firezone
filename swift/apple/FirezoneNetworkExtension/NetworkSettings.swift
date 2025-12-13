@@ -8,7 +8,7 @@ import Foundation
 import NetworkExtension
 import os.log
 
-class NetworkSettings {
+class NetworkSettings: Equatable {
   // WireGuard has an 80-byte overhead. We could try setting tunnelOverheadBytes
   // but that's not a reliable way to calculate how big our packets should be,
   // so just use the minimum.
@@ -28,26 +28,26 @@ class NetworkSettings {
   private var matchDomains: [String] = [""]
   private var searchDomains: [String] = [""]
 
-  // Track the last applied settings to avoid redundant applies
-  private var lastAppliedSettings: AppliedSettings?
-
-  private struct AppliedSettings: Equatable {
-    let tunnelAddressIPv4: String?
-    let tunnelAddressIPv6: String?
-    let dnsAddresses: [String]
-    let routes4: [RouteKey]
-    let routes6: [RouteKey]
-    let matchDomains: [String]
-    let searchDomains: [String]
-
-    struct RouteKey: Equatable, Hashable {
-      let address: String
-      let prefix: String
-    }
-  }
-
   init(packetTunnelProvider: PacketTunnelProvider?) {
     self.packetTunnelProvider = packetTunnelProvider
+  }
+
+  static func == (lhs: NetworkSettings, rhs: NetworkSettings) -> Bool {
+    lhs.tunnelAddressIPv4 == rhs.tunnelAddressIPv4
+      && lhs.tunnelAddressIPv6 == rhs.tunnelAddressIPv6
+      && lhs.dnsAddresses == rhs.dnsAddresses
+      && lhs.matchDomains == rhs.matchDomains
+      && lhs.searchDomains == rhs.searchDomains
+      && lhs.routes4.count == rhs.routes4.count
+      && lhs.routes6.count == rhs.routes6.count
+      && zip(lhs.routes4, rhs.routes4).allSatisfy {
+        $0.destinationAddress == $1.destinationAddress
+          && $0.destinationSubnetMask == $1.destinationSubnetMask
+      }
+      && zip(lhs.routes6, rhs.routes6).allSatisfy {
+        $0.destinationAddress == $1.destinationAddress
+          && $0.destinationNetworkPrefixLength == $1.destinationNetworkPrefixLength
+      }
   }
 
   func setSearchDomain(domain: String?) {
@@ -72,26 +72,6 @@ class NetworkSettings {
   }
 
   func apply(completionHandler: (@Sendable () -> Void)? = nil) {
-    let currentSettings = AppliedSettings(
-      tunnelAddressIPv4: tunnelAddressIPv4,
-      tunnelAddressIPv6: tunnelAddressIPv6,
-      dnsAddresses: dnsAddresses,
-      routes4: routes4.map {
-        AppliedSettings.RouteKey(address: $0.destinationAddress, prefix: $0.destinationSubnetMask)
-      },
-      routes6: routes6.map {
-        AppliedSettings.RouteKey(
-          address: $0.destinationAddress, prefix: $0.destinationNetworkPrefixLength.stringValue)
-      },
-      matchDomains: matchDomains,
-      searchDomains: searchDomains
-    )
-
-    if currentSettings == lastAppliedSettings {
-      completionHandler?()
-      return
-    }
-
     // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
     // because the OS doesn't really need this IP address.
     // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
@@ -115,8 +95,6 @@ class NetworkSettings {
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
     tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.mtu = mtu
-
-    lastAppliedSettings = currentSettings
 
     packetTunnelProvider?.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {

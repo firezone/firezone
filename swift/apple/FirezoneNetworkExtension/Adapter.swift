@@ -64,6 +64,9 @@ class Adapter: @unchecked Sendable {
   /// Network settings for tunnel configuration.
   private var networkSettings: NetworkSettings?
 
+  /// Tracks the last successfully applied network settings to avoid redundant applies
+  private var lastAppliedSettings: NetworkSettings?
+
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: PacketTunnelProvider?
 
@@ -387,6 +390,23 @@ class Adapter: @unchecked Sendable {
     }
   }
 
+  // MARK: - Network Settings
+
+  private func applyNetworkSettingsIfChanged(
+    _ settings: NetworkSettings,
+    completionHandler: (@Sendable () -> Void)? = nil
+  ) {
+    guard settings != lastAppliedSettings else {
+      Log.log("Skipping network settings apply; settings unchanged")
+      completionHandler?()
+      return
+    }
+
+    Log.log("Applying network settings; settings changed")
+    lastAppliedSettings = settings
+    settings.apply(completionHandler: completionHandler)
+  }
+
   // MARK: - Event handling
 
   private func handleEvent(_ event: Event) async {
@@ -422,7 +442,7 @@ class Adapter: @unchecked Sendable {
       networkSettings.setSearchDomain(domain: searchDomain)
       self.networkSettings = networkSettings
 
-      networkSettings.apply {
+      applyNetworkSettingsIfChanged(networkSettings) {
         if firstStart {
           self.startCompletionHandler(nil)
         }
@@ -440,8 +460,7 @@ class Adapter: @unchecked Sendable {
       // Apply network settings to flush DNS cache when resources change
       // This ensures new DNS resources are immediately resolvable
       if let networkSettings = networkSettings {
-        Log.log("Reapplying network settings to flush DNS cache after resource update")
-        networkSettings.apply()
+        applyNetworkSettingsIfChanged(networkSettings)
       }
 
     case .disconnected(let error):
