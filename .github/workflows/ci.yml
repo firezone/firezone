@@ -407,3 +407,15 @@ jobs:
         env:
           BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
           BRANCH: "${{ github.head_ref || github.ref_name }}"
+
+  coverage-finish:
+    name: coverage-finish
+    needs: [elixir, rust]
+    if: needs.elixir.result != 'skipped' || needs.rust.result != 'skipped'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Finalize coverage upload
+        uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel-finished: true
