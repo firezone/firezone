@@ -50,8 +50,17 @@ defmodule Web.ConnCase do
     Phoenix.Flash.get(conn.assigns.flash, key)
   end
 
-  def authorize_conn(conn, %Domain.ExternalIdentity{} = identity) do
-    expires_in = DateTime.utc_now() |> DateTime.add(300, :second)
+  def authorize_conn(conn, %Domain.Actor{} = actor) do
+    {:ok, token} =
+      Domain.Auth.create_token(%{
+        type: :browser,
+        account_id: actor.account_id,
+        actor_id: actor.id,
+        expires_at: DateTime.add(DateTime.utc_now(), 300, :second),
+        secret_fragment: Domain.Crypto.random_token(32),
+        secret_nonce: ""
+      })
+
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0, "FooBar 1.1")
 
     context = %Domain.Auth.Context{
@@ -64,13 +73,16 @@ defmodule Web.ConnCase do
       remote_ip: conn.remote_ip
     }
 
-    nonce = "nonce"
-    {:ok, token} = Domain.Auth.create_token(identity, context, nonce, expires_in)
-    encoded_fragment = Domain.Crypto.encode_token_fragment!(token)
     {:ok, subject} = Domain.Auth.build_subject(token, context)
 
+    # Set the cookie. We need to set it as a response cookie first,
+    # then transfer to request cookies for subsequent requests.
+    conn = Web.Session.Cookie.put_account_cookie(conn, actor.account_id, token.id)
+    cookie_name = Web.Session.Cookie.cookie_name(actor.account_id)
+    cookie_value = conn.resp_cookies[cookie_name].value
+
     conn
-    |> Web.Auth.put_account_session(context.type, identity.account_id, nonce <> encoded_fragment)
+    |> put_req_cookie(cookie_name, cookie_value)
     |> Plug.Conn.assign(:account, subject.account)
     |> Plug.Conn.assign(:subject, subject)
   end
