@@ -1,19 +1,20 @@
 defmodule Web.Live.Clients.ShowTest do
   use Web.ConnCase, async: true
 
-  setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.ClientFixtures
+  import Domain.PolicyAuthorizationFixtures
+  import Domain.TokenFixtures
 
-    client = Fixtures.Clients.create_client(account: account, actor: actor, identity: identity)
+  setup do
+    account = account_fixture()
+    actor = admin_actor_fixture(account: account)
+    client = client_fixture(account: account, actor: actor)
 
     %{
       account: account,
       actor: actor,
-      identity: identity,
-      subject: subject,
       client: client
     }
   end
@@ -30,34 +31,34 @@ defmodule Web.Live.Clients.ShowTest do
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must sign in to access this page."}
+                 flash: %{"error" => "You must sign in to access that page."}
                }}}
   end
 
   test "raises NotFoundError for deleted client", %{
     account: account,
+    actor: actor,
     client: client,
-    identity: identity,
     conn: conn
   } do
-    client = Fixtures.Clients.delete_client(client)
+    Repo.delete!(client)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise Ecto.NoResultsError, fn ->
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
     end
   end
 
   test "renders breadcrumbs item", %{
     account: account,
+    actor: actor,
     client: client,
-    identity: identity,
     conn: conn
   } do
     {:ok, _lv, html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
@@ -70,12 +71,11 @@ defmodule Web.Live.Clients.ShowTest do
     account: account,
     client: client,
     actor: actor,
-    identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     table =
@@ -92,6 +92,8 @@ defmodule Web.Live.Clients.ShowTest do
     assert table["last started"]
     assert table["version"] =~ client.last_seen_version
     assert table["user agent"] =~ client.last_seen_user_agent
+    assert table["tunnel interface ipv4 address"] =~ to_string(client.ipv4)
+    assert table["tunnel interface ipv6 address"] =~ to_string(client.ipv6)
 
     table =
       lv
@@ -112,17 +114,15 @@ defmodule Web.Live.Clients.ShowTest do
     account: account,
     actor: actor,
     client: client,
-    identity: identity,
     conn: conn
   } do
-    client_token =
-      Fixtures.Tokens.create_client_token(account: account, actor: actor, identity: identity)
+    client_token = client_token_fixture(account: account, actor: actor)
 
     :ok = Domain.Presence.Clients.connect(client, client_token.id)
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     table =
@@ -138,18 +138,16 @@ defmodule Web.Live.Clients.ShowTest do
     account: account,
     client: client,
     actor: actor,
-    identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     :ok = Domain.Presence.Clients.Actor.subscribe(actor.id)
 
-    client_token =
-      Fixtures.Tokens.create_client_token(account: account, actor: actor, identity: identity)
+    client_token = client_token_fixture(account: account, actor: actor)
 
     assert Domain.Presence.Clients.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
@@ -167,32 +165,32 @@ defmodule Web.Live.Clients.ShowTest do
 
   test "renders client owner", %{
     account: account,
+    actor: actor,
     client: client,
-    identity: identity,
     conn: conn
   } do
-    actor = Repo.preload(client, :actor).actor
+    client_actor = Repo.preload(client, :actor).actor
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     assert lv
            |> element("#client")
            |> render()
            |> vertical_table_to_map()
-           |> Map.fetch!("owner") =~ actor.name
+           |> Map.fetch!("owner") =~ client_actor.name
   end
 
   test "renders policy_authorizations table", %{
     account: account,
-    identity: identity,
+    actor: actor,
     client: client,
     conn: conn
   } do
     policy_authorization =
-      Fixtures.PolicyAuthorizations.create_policy_authorization(
+      policy_authorization_fixture(
         account: account,
         client: client
       )
@@ -202,7 +200,7 @@ defmodule Web.Live.Clients.ShowTest do
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     [row] =
@@ -217,17 +215,17 @@ defmodule Web.Live.Clients.ShowTest do
     assert row["policy"] =~ policy_authorization.policy.resource.name
 
     assert row["gateway"] ==
-             "#{policy_authorization.gateway.site.name}-#{policy_authorization.gateway.name} #{policy_authorization.gateway.last_seen_remote_ip}"
+             "#{policy_authorization.gateway.site.name}-#{policy_authorization.gateway.name} #{policy_authorization.gateway_remote_ip}"
   end
 
   test "does not render policy_authorizations for deleted policies", %{
     account: account,
-    identity: identity,
+    actor: actor,
     client: client,
     conn: conn
   } do
     policy_authorization =
-      Fixtures.PolicyAuthorizations.create_policy_authorization(
+      policy_authorization_fixture(
         account: account,
         client: client
       )
@@ -235,11 +233,11 @@ defmodule Web.Live.Clients.ShowTest do
     policy_authorization =
       Repo.preload(policy_authorization, [:client, gateway: [:site], policy: [:group, :resource]])
 
-    Fixtures.Policies.delete_policy(policy_authorization.policy)
+    Repo.delete!(policy_authorization.policy)
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     assert [] =
@@ -251,12 +249,12 @@ defmodule Web.Live.Clients.ShowTest do
 
   test "does not render policy_authorizations for deleted policy assocs", %{
     account: account,
-    identity: identity,
+    actor: actor,
     client: client,
     conn: conn
   } do
     policy_authorization =
-      Fixtures.PolicyAuthorizations.create_policy_authorization(
+      policy_authorization_fixture(
         account: account,
         client: client
       )
@@ -264,12 +262,12 @@ defmodule Web.Live.Clients.ShowTest do
     policy_authorization =
       Repo.preload(policy_authorization, [:client, gateway: [:site], policy: [:group, :resource]])
 
-    Fixtures.Actors.delete_group(policy_authorization.policy.group)
-    Fixtures.Resources.delete_resource(policy_authorization.policy.resource)
+    Repo.delete!(policy_authorization.policy.group)
+    Repo.delete!(policy_authorization.policy.resource)
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     assert [] ==
@@ -281,13 +279,13 @@ defmodule Web.Live.Clients.ShowTest do
 
   test "allows editing clients", %{
     account: account,
+    actor: actor,
     client: client,
-    identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     assert lv
@@ -299,13 +297,13 @@ defmodule Web.Live.Clients.ShowTest do
 
   test "allows verifying clients", %{
     account: account,
+    actor: actor,
     client: client,
-    identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     assert lv
@@ -320,18 +318,17 @@ defmodule Web.Live.Clients.ShowTest do
 
     refute table["verification"] =~ "Not"
     assert table["verification"] =~ "Verified"
-    assert table["verification"] =~ "by"
   end
 
   test "allows deleting clients", %{
     account: account,
+    actor: actor,
     client: client,
-    identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
     lv
@@ -340,52 +337,6 @@ defmodule Web.Live.Clients.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/clients")
 
-    refute Repo.get(Domain.Clients.Client, client.id)
-  end
-
-  test "renders current sign in method with auth_identity when client online", %{
-    account: account,
-    client: client,
-    actor: actor,
-    identity: identity,
-    conn: conn
-  } do
-    client_token =
-      Fixtures.Tokens.create_client_token(account: account, actor: actor, identity: identity)
-
-    :ok = Domain.Presence.Clients.connect(client, client_token.id)
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/clients/#{client}")
-
-    table =
-      lv
-      |> element("#client")
-      |> render()
-      |> vertical_table_to_map()
-
-    assert table["current sign in method"] =~ identity.provider_identifier
-  end
-
-  test "renders offline message in current sign in method when client offline", %{
-    account: account,
-    client: client,
-    identity: identity,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/clients/#{client}")
-
-    table =
-      lv
-      |> element("#client")
-      |> render()
-      |> vertical_table_to_map()
-
-    assert table["current sign in method"] == "Client is offline - sign in method unavailable"
+    refute Repo.get_by(Domain.Client, id: client.id, account_id: client.account_id)
   end
 end

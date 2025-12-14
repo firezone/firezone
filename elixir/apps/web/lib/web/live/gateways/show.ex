@@ -94,12 +94,14 @@ defmodule Web.Gateways.Show do
               {@gateway.last_seen_user_agent}
             </:value>
           </.vertical_table_row>
-          <!--
-        <.vertical_table_row>
-          <:label>Deployment Method</:label>
-          <:value>TODO: Docker</:value>
-        </.vertical_table_row>
-        -->
+          <.vertical_table_row>
+            <:label>Tunnel Interface IPv4 Address</:label>
+            <:value>{@gateway.ipv4}</:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Tunnel Interface IPv6 Address</:label>
+            <:value>{@gateway.ipv6}</:value>
+          </.vertical_table_row>
         </.vertical_table>
       </:content>
     </.section>

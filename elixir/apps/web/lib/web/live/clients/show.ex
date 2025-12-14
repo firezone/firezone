@@ -128,6 +128,14 @@ defmodule Web.Clients.Show do
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
+            <:label>Tunnel Interface IPv4 Address</:label>
+            <:value>{@client.ipv4}</:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Tunnel Interface IPv6 Address</:label>
+            <:value>{@client.ipv6}</:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
             <:label>Created</:label>
             <:value>
               <.relative_datetime datetime={@client.inserted_at} />

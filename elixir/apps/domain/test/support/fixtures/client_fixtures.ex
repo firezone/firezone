@@ -24,7 +24,10 @@ defmodule Domain.ClientFixtures do
       last_seen_remote_ip: {100, 64, 0, 1},
       last_seen_remote_ip_location_region: "US",
       last_seen_version: "1.3.0",
-      last_seen_at: DateTime.utc_now()
+      last_seen_at: DateTime.utc_now(),
+      device_serial: "SN#{unique_num}",
+      device_uuid: "UUID-#{unique_num}",
+      firebase_installation_id: "firebase_#{unique_num}"
     })
   end
 
