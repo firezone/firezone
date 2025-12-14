@@ -39,9 +39,9 @@
 //! # Windows Event Log
 //!
 //! On Windows, events are logged to the Application Event Log under source
-//! "Firezone-Loadtest". Register the source (as admin) with:
+//! "FirezoneLoadtest". Register the source (as admin) with:
 //! ```powershell
-//! New-EventLog -LogName Application -Source "Firezone-Loadtest"
+//! New-EventLog -LogName Application -Source "FirezoneLoadtest"
 //! ```
 
 mod cli;
@@ -230,7 +230,7 @@ fn init_logging() {
         use tracing_subscriber::layer::SubscriberExt as _;
         use tracing_subscriber::util::SubscriberInitExt as _;
 
-        match logging::windows_event_log::layer("Firezone-Loadtest") {
+        match logging::windows_event_log::layer("FirezoneLoadtest") {
             Ok(layer) => {
                 tracing_subscriber::registry().with(layer).init();
             }
