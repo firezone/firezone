@@ -36,8 +36,8 @@ jobs:
           CI_ASSERT_RECEIVE_TIMEOUT_MS: 250
         run: |
           # TODO: IDP-REFACTOR make sure to re-enable the --warnings-as-errors flag
-          mix coveralls.github --parallel --flagname elixir --exclude flaky:true --exclude acceptance:true || \
-          mix coveralls.github --parallel --flagname elixir --exclude flaky:true --exclude acceptance:true --failed
+          mix coveralls.lcov --exclude flaky:true --exclude acceptance:true || \
+          mix coveralls.lcov --exclude flaky:true --exclude acceptance:true --failed
 
       - name: Test Report
         if: github.event.pull_request.head.repo.full_name == github.repository && (success() || failure())
@@ -46,6 +46,14 @@ jobs:
           name: Elixir Unit Test Report
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
+
+      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: elixir/cover/excoveralls.lcov
+          format: lcov
+          flag-name: elixir
+          parallel: true
 
   type-check:
     runs-on: ubuntu-24.04
