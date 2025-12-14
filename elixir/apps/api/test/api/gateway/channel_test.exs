@@ -103,8 +103,8 @@ defmodule API.Gateway.ChannelTest do
       assert relays == []
 
       assert interface == %{
-               ipv4: gateway.ipv4,
-               ipv6: gateway.ipv6
+               ipv4: gateway.ipv4_address.address,
+               ipv6: gateway.ipv6_address.address
              }
     end
   end
@@ -434,8 +434,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert payload.ref
       assert payload.client_id == client.id
-      assert payload.client_ipv4 == client.ipv4
-      assert payload.client_ipv6 == client.ipv6
+      assert payload.client_ipv4 == client.ipv4_address.address
+      assert payload.client_ipv6 == client.ipv6_address.address
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
 
@@ -501,8 +501,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert payload.ref
       assert payload.client_id == client.id
-      assert payload.client_ipv4 == client.ipv4
-      assert payload.client_ipv6 == client.ipv6
+      assert payload.client_ipv4 == client.ipv4_address.address
+      assert payload.client_ipv6 == client.ipv6_address.address
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
 
@@ -1497,8 +1497,8 @@ defmodule API.Gateway.ChannelTest do
       assert payload.client == %{
                id: client.id,
                peer: %{
-                 ipv4: client.ipv4,
-                 ipv6: client.ipv6,
+                 ipv4: client.ipv4_address.address,
+                 ipv6: client.ipv6_address.address,
                  persistent_keepalive: 25,
                  preshared_key: preshared_key,
                  public_key: client.public_key
@@ -1638,8 +1638,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert payload.client == %{
                id: client.id,
-               ipv4: client.ipv4,
-               ipv6: client.ipv6,
+               ipv4: client.ipv4_address.address,
+               ipv6: client.ipv6_address.address,
                preshared_key: preshared_key,
                public_key: client.public_key,
                version: client.last_seen_version,
@@ -1770,8 +1770,8 @@ defmodule API.Gateway.ChannelTest do
       site_id = gateway.site_id
       gateway_id = gateway.id
       gateway_public_key = gateway.public_key
-      gateway_ipv4 = gateway.ipv4
-      gateway_ipv6 = gateway.ipv6
+      gateway_ipv4 = gateway.ipv4_address.address
+      gateway_ipv6 = gateway.ipv6_address.address
       rid_bytes = Ecto.UUID.dump!(resource.id)
 
       ice_credentials = %{
@@ -1878,8 +1878,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert is_binary(ref)
       assert client_id == client.id
-      assert peer.ipv4 == client.ipv4
-      assert peer.ipv6 == client.ipv6
+      assert peer.ipv4 == client.ipv4_address.address
+      assert peer.ipv6 == client.ipv6_address.address
       assert peer.public_key == client.public_key
       assert peer.persistent_keepalive == 25
       assert peer.preshared_key == preshared_key
