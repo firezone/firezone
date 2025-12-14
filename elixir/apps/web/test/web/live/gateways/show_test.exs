@@ -1,20 +1,20 @@
 defmodule Web.Live.Gateways.ShowTest do
   use Web.ConnCase, async: true
 
-  setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+  import Domain.AccountFixtures
+  import Domain.ActorFixtures
+  import Domain.GatewayFixtures
+  import Domain.TokenFixtures
 
-    gateway = Fixtures.Gateways.create_gateway(account: account, actor: actor, identity: identity)
+  setup do
+    account = account_fixture()
+    actor = admin_actor_fixture(account: account)
+    gateway = gateway_fixture(account: account)
     gateway = Repo.preload(gateway, :site)
 
     %{
       account: account,
       actor: actor,
-      identity: identity,
-      subject: subject,
       gateway: gateway
     }
   end
@@ -31,34 +31,34 @@ defmodule Web.Live.Gateways.ShowTest do
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must sign in to access this page."}
+                 flash: %{"error" => "You must sign in to access that page."}
                }}}
   end
 
   test "raises NotFoundError for deleted gateway", %{
     account: account,
+    actor: actor,
     gateway: gateway,
-    identity: identity,
     conn: conn
   } do
-    gateway = Fixtures.Gateways.delete_gateway(gateway)
+    Repo.delete!(gateway)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise Ecto.NoResultsError, fn ->
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/gateways/#{gateway}")
     end
   end
 
   test "renders breadcrumbs item", %{
     account: account,
+    actor: actor,
     gateway: gateway,
-    identity: identity,
     conn: conn
   } do
     {:ok, _lv, html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
@@ -70,13 +70,13 @@ defmodule Web.Live.Gateways.ShowTest do
 
   test "renders gateway details", %{
     account: account,
+    actor: actor,
     gateway: gateway,
-    identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
     table =
@@ -90,22 +90,24 @@ defmodule Web.Live.Gateways.ShowTest do
     assert table["last started"]
     assert table["last seen remote ip"] =~ to_string(gateway.last_seen_remote_ip)
     assert table["status"] =~ "Offline"
-    assert table["user agent"] =~ gateway.last_seen_user_agent
     assert table["version"] =~ gateway.last_seen_version
+    assert table["user agent"] =~ gateway.last_seen_user_agent
+    assert table["tunnel interface ipv4 address"] =~ to_string(gateway.ipv4)
+    assert table["tunnel interface ipv6 address"] =~ to_string(gateway.ipv6)
   end
 
   test "renders gateway status", %{
     account: account,
+    actor: actor,
     gateway: gateway,
-    identity: identity,
     conn: conn
   } do
-    gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
+    gateway_token = gateway_token_fixture(site: gateway.site, account: account)
     :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
     table =
@@ -119,13 +121,13 @@ defmodule Web.Live.Gateways.ShowTest do
 
   test "allows deleting gateways", %{
     account: account,
+    actor: actor,
     gateway: gateway,
-    identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
     lv
@@ -134,22 +136,22 @@ defmodule Web.Live.Gateways.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/sites/#{gateway.site}")
 
-    refute Repo.get(Domain.Gateways.Gateway, gateway.id)
+    refute Repo.get_by(Domain.Gateway, id: gateway.id, account_id: gateway.account_id)
   end
 
   test "updates gateway status on presence event", %{
     account: account,
+    actor: actor,
     gateway: gateway,
-    identity: identity,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
     :ok = Domain.Presence.Gateways.Site.subscribe(gateway.site.id)
-    gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
+    gateway_token = gateway_token_fixture(site: gateway.site, account: account)
     :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
     assert_receive %{topic: "presences:sites:" <> _}
 
