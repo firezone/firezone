@@ -83,9 +83,6 @@ bytes = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }
 
-[target.'cfg(target_os = "linux")'.dev-dependencies]
-mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
-
 [target.'cfg(windows)'.dev-dependencies]
 ip-packet = { workspace = true }
 tokio = { workspace = true, features = ["net", "time"] }
