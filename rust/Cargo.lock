@@ -870,7 +870,6 @@ dependencies = [
  "known-folders",
  "libc",
  "logging",
- "mutants",
  "netlink-packet-core",
  "netlink-packet-route",
  "nix 0.30.1",
@@ -4648,12 +4647,6 @@ dependencies = [
  "thiserror 2.0.17",
  "windows-sys 0.59.0",
 ]
-
-[[package]]
-name = "mutants"
-version = "0.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc0287524726960e07b119cebd01678f852f147742ae0d925e6a520dca956126"
 
 [[package]]
 name = "nanorand"

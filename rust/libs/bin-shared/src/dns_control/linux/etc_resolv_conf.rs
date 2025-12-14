@@ -35,7 +35,6 @@ impl Default for ResolvPaths {
 ///
 /// This is async because it's called in a Tokio context and it's nice to use their
 /// `fs` module
-#[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
 pub(crate) fn configure(dns_config: &[IpAddr], search_domain: Option<DomainName>) -> Result<()> {
     configure_at_paths(dns_config, search_domain, &ResolvPaths::default())
 }
@@ -43,7 +42,6 @@ pub(crate) fn configure(dns_config: &[IpAddr], search_domain: Option<DomainName>
 /// Revert changes Firezone made to `/etc/resolv.conf`
 ///
 /// Must be sync because it's called in `Drop` impls
-#[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
 pub(crate) fn revert() -> Result<()> {
     revert_at_paths(&ResolvPaths::default())
 }
