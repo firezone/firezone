@@ -50,9 +50,25 @@ jobs:
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: elixir/cover/lcov.info
+          file: elixir/apps/api/cover/lcov.info
           format: lcov
-          flag-name: elixir
+          flag-name: elixir-api
+          parallel: true
+
+      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: elixir/apps/web/cover/lcov.info
+          format: lcov
+          flag-name: elixir-web
+          parallel: true
+
+      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: elixir/apps/domain/cover/lcov.info
+          format: lcov
+          flag-name: elixir-domain
           parallel: true
 
   type-check:
