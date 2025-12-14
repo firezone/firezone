@@ -39,7 +39,7 @@
 //! # Windows Event Log
 //!
 //! On Windows, events are logged to the Application Event Log under source
-//! "Firezone-Loadtest". Register the source (as admin) with:
+//! "FirezoneLoadtest". Register the source (as admin) with:
 //! ```powershell
 //! New-EventLog -LogName Application -Source "FirezoneLoadtest"
 //! ```
