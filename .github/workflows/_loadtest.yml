@@ -65,8 +65,8 @@ jobs:
         if: matrix.os == 'windows'
         shell: pwsh
         run: |
-          New-EventLog -LogName Application -Source "Firezone-Loadtest" -ErrorAction SilentlyContinue
-          Write-Host "Event Log source 'Firezone-Loadtest' registered (or already exists)"
+          New-EventLog -LogName Application -Source "FirezoneLoadtest" -ErrorAction SilentlyContinue
+          Write-Host "Event Log source 'FirezoneLoadtest' registered (or already exists)"
 
       - name: Build loadtest binary
         shell: bash
