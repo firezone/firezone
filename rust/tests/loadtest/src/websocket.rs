@@ -87,11 +87,7 @@ pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()
     Ok(())
 }
 
-/// Run the WebSocket connection load test.
-///
-/// Establishes `concurrent` connections and holds each open for `hold_duration`.
-/// In echo mode, sends timestamped payloads and verifies responses.
-/// Otherwise, optionally sends periodic ping messages to keep connections alive.
+/// Sends random binary data over each connection and verifies echo responses.
 async fn run(config: TestConfig, seed: u64) -> Result<()> {
     tracing::info!(
         url = %config.url,
