@@ -25,58 +25,9 @@ const EVENT_ID_WARNING: u32 = 2;
 const EVENT_ID_INFO: u32 = 3;
 const TYPES_SUPPORTED: u32 = 0x07; // Error | Warning | Information
 
-/// Thread-safe wrapper around the Windows Event Log handle.
-struct EventSourceHandle {
-    handle: Mutex<Option<HANDLE>>,
-}
-
-// SAFETY: Access is serialized via Mutex.
-unsafe impl Send for EventSourceHandle {}
-unsafe impl Sync for EventSourceHandle {}
-
-impl EventSourceHandle {
-    fn new(handle: HANDLE) -> Self {
-        Self {
-            handle: Mutex::new(Some(handle)),
-        }
-    }
-
-    fn report_event(&self, event_type: REPORT_EVENT_TYPE, event_id: u32, message: &str) {
-        let message_wide = to_wide_string(message);
-        let messages = [PCWSTR(message_wide.as_ptr())];
-
-        let Ok(guard) = self.handle.lock() else {
-            return;
-        };
-        let Some(handle) = *guard else {
-            return;
-        };
-
-        // SAFETY: Handle is valid and protected by mutex.
-        unsafe {
-            let _ = ReportEventW(
-                handle,
-                event_type,
-                0,
-                event_id,
-                None,
-                0,
-                Some(&messages),
-                None,
-            );
-        }
-    }
-}
-
-impl Drop for EventSourceHandle {
-    fn drop(&mut self) {
-        if let Some(handle) = self.handle.get_mut().expect("not poisoned").take() {
-            // SAFETY: We own the handle.
-            unsafe {
-                let _ = DeregisterEventSource(handle);
-            }
-        }
-    }
+/// Creates a Windows Event Log layer with filtering from `EVENTLOG_DIRECTIVES` (default: `info`).
+pub fn layer(source: &str) -> Result<Layer> {
+    Layer::new(source)
 }
 
 /// A tracing layer that writes events to the Windows Event Log.
@@ -98,12 +49,6 @@ impl Layer {
             handle: Arc::new(EventSourceHandle::new(handle)),
         })
     }
-}
-
-/// Storage for span fields.
-#[derive(Default)]
-struct SpanFields {
-    fields: Vec<(String, String)>,
 }
 
 impl<S> tracing_subscriber::Layer<S> for Layer
@@ -166,8 +111,20 @@ where
     }
 }
 
+/// Storage for span fields.
+#[derive(Default)]
+struct SpanFields {
+    fields: Vec<(String, String)>,
+}
+
 /// Visitor for recording fields as key-value pairs.
 struct FieldVisitor<'a>(&'a mut Vec<(String, String)>);
+
+/// Visitor for recording event fields, with special handling for "message".
+struct EventVisitor<'a> {
+    message: &'a mut Option<String>,
+    fields: &'a mut Vec<(String, String)>,
+}
 
 impl Visit for FieldVisitor<'_> {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
@@ -177,12 +134,6 @@ impl Visit for FieldVisitor<'_> {
     fn record_str(&mut self, field: &Field, value: &str) {
         self.0.push((field.name().to_owned(), value.to_owned()));
     }
-}
-
-/// Visitor for recording event fields, with special handling for "message".
-struct EventVisitor<'a> {
-    message: &'a mut Option<String>,
-    fields: &'a mut Vec<(String, String)>,
 }
 
 impl Visit for EventVisitor<'_> {
@@ -309,9 +260,58 @@ fn to_wide_string(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// Creates a Windows Event Log layer with filtering from `EVENTLOG_DIRECTIVES` (default: `info`).
-pub fn layer(source: &str) -> Result<Layer> {
-    Layer::new(source)
+/// Thread-safe wrapper around the Windows Event Log handle.
+struct EventSourceHandle {
+    handle: Mutex<Option<HANDLE>>,
+}
+
+// SAFETY: Access is serialized via Mutex.
+unsafe impl Send for EventSourceHandle {}
+unsafe impl Sync for EventSourceHandle {}
+
+impl EventSourceHandle {
+    fn new(handle: HANDLE) -> Self {
+        Self {
+            handle: Mutex::new(Some(handle)),
+        }
+    }
+
+    fn report_event(&self, event_type: REPORT_EVENT_TYPE, event_id: u32, message: &str) {
+        let message_wide = to_wide_string(message);
+        let messages = [PCWSTR(message_wide.as_ptr())];
+
+        let Ok(guard) = self.handle.lock() else {
+            return;
+        };
+        let Some(handle) = *guard else {
+            return;
+        };
+
+        // SAFETY: Handle is valid and protected by mutex.
+        unsafe {
+            let _ = ReportEventW(
+                handle,
+                event_type,
+                0,
+                event_id,
+                None,
+                0,
+                Some(&messages),
+                None,
+            );
+        }
+    }
+}
+
+impl Drop for EventSourceHandle {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.get_mut().expect("not poisoned").take() {
+            // SAFETY: We own the handle.
+            unsafe {
+                let _ = DeregisterEventSource(handle);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
