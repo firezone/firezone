@@ -3,7 +3,6 @@
 //! Tests WebSocket connection establishment and hold time.
 //! Optionally verifies echo responses when connected to an echo server.
 
-use crate::DEFAULT_ECHO_PAYLOAD_SIZE;
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
@@ -18,6 +17,7 @@ use tracing::Instrument;
 use url::Url;
 
 const REPLY_TIMEOUT: Duration = Duration::from_secs(2);
+const MAX_PAYLOAD_SIZE: usize = u16::MAX as usize; // Big enough to definitely spread across multiple IP packets but also small to not consume too many resources.
 
 /// Configuration for WebSocket load testing.
 #[derive(Debug, Clone)]
@@ -30,8 +30,6 @@ pub struct TestConfig {
     pub hold_duration: Duration,
     /// Connection timeout
     pub connect_timeout: Duration,
-    /// Size of echo payload in bytes (minimum 16 for header)
-    pub echo_payload_size: usize,
     /// Interval between echo messages during hold period
     pub echo_interval: Option<Duration>,
 }
@@ -62,10 +60,6 @@ pub struct Args {
     #[arg(long, default_value = "10s", value_parser = crate::cli::parse_duration)]
     timeout: Duration,
 
-    /// Echo payload size in bytes (minimum 16 for header)
-    #[arg(long, default_value_t = DEFAULT_ECHO_PAYLOAD_SIZE, value_parser = crate::cli::parse_echo_payload_size)]
-    echo_payload_size: usize,
-
     /// Interval between echo messages (e.g., 1s, 500ms)
     #[arg(long, value_parser = crate::cli::parse_duration)]
     echo_interval: Option<Duration>,
@@ -88,7 +82,6 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
             concurrent: args.concurrent,
             hold_duration: args.duration,
             connect_timeout: args.timeout,
-            echo_payload_size: args.echo_payload_size,
             echo_interval: args.echo_interval,
         };
 
@@ -168,7 +161,7 @@ async fn run_echo_loop(
     let echo_interval = config.echo_interval.unwrap_or(Duration::from_secs(1));
 
     while hold_start.elapsed() < config.hold_duration {
-        let payload_size = rand::thread_rng().gen_range(0..config.echo_payload_size);
+        let payload_size = rand::thread_rng().gen_range(0..MAX_PAYLOAD_SIZE);
         let mut buffer = vec![0u8; payload_size];
         rand::thread_rng().fill_bytes(&mut buffer);
 

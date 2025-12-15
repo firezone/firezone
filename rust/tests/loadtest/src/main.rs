@@ -302,7 +302,6 @@ impl TestSelector {
         let concurrent = self.rng.gen_range(config.concurrent) as usize;
         let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));
         let timeout = Duration::from_secs(self.rng.gen_range(config.timeout_secs));
-        let echo_payload_size = self.rng.gen_range(config.echo_payload_size) as usize;
         let echo_interval = Some(Duration::from_secs(
             self.rng.gen_range(config.echo_interval_secs),
         ));
@@ -312,7 +311,6 @@ impl TestSelector {
             concurrent,
             hold_duration: duration,
             connect_timeout: timeout,
-            echo_payload_size,
             echo_interval,
         }
     }
