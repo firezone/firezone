@@ -177,8 +177,6 @@ async fn run_single_connection(connection_id: usize, config: TestConfig) -> Resu
     let connect_latency = connect_start.elapsed();
     tracing::debug!(?connect_latency, "WebSocket connection established");
 
-    let hold_start = Instant::now();
-
     let echo_stats = if config.echo_mode {
         run_echo_loop(connection_id, ws, &config).await
     } else {
@@ -187,8 +185,7 @@ async fn run_single_connection(connection_id: usize, config: TestConfig) -> Resu
         EchoStats::default()
     };
 
-    let held_duration = hold_start.elapsed();
-    tracing::debug!(?held_duration, "WebSocket connection closed");
+    tracing::debug!("WebSocket connection closed");
 
     anyhow::ensure!(echo_stats.mismatches == 0, "State mismatches on connection");
 
