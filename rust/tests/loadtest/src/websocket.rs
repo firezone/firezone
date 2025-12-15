@@ -15,6 +15,7 @@ use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use tracing::Instrument;
 use url::Url;
 
 /// Configuration for WebSocket load testing.
@@ -146,8 +147,11 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
     let mut connections = tokio::task::JoinSet::new();
 
     // Spawn one task per concurrent connection
-    for i in 0..config.concurrent {
-        connections.spawn(run_single_connection(i, config.clone()));
+    for id in 0..config.concurrent {
+        connections.spawn(
+            run_single_connection(id, config.clone())
+                .instrument(tracing::info_span!("connection", %id)),
+        );
     }
 
     connections
@@ -169,7 +173,7 @@ async fn run_single_connection(connection_id: usize, config: TestConfig) -> Resu
         .context("Connection failed")?;
 
     let connect_latency = connect_start.elapsed();
-    tracing::trace!(connection = connection_id, url = %config.url, ?connect_latency, "WebSocket connection established");
+    tracing::debug!(?connect_latency, "WebSocket connection established");
 
     let hold_start = Instant::now();
 
@@ -177,12 +181,12 @@ async fn run_single_connection(connection_id: usize, config: TestConfig) -> Resu
         let stats = run_echo_loop(connection_id, ws, &config).await;
         (stats.messages_sent, stats.messages_verified, stats)
     } else {
-        let (sent, received) = run_ping_loop(connection_id, ws, &config).await;
+        let (sent, received) = run_ping_loop(ws, &config).await;
         (sent, received, EchoStats::default())
     };
 
     let held_duration = hold_start.elapsed();
-    tracing::trace!(connection = connection_id, url = %config.url, ?held_duration, "WebSocket connection closed");
+    tracing::debug!(?held_duration, "WebSocket connection closed");
 
     anyhow::ensure!(echo_stats.mismatches == 0, "State mismatches on connection");
 
@@ -191,7 +195,6 @@ async fn run_single_connection(connection_id: usize, config: TestConfig) -> Resu
 
 /// Run the ping/pong loop for a connection (non-echo mode).
 async fn run_ping_loop(
-    connection_id: usize,
     mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
     config: &TestConfig,
 ) -> (usize, usize) {
@@ -204,24 +207,24 @@ async fn run_ping_loop(
         while hold_start.elapsed() < config.hold_duration {
             if ws.send(Message::Ping(vec![].into())).await.is_ok() {
                 sent += 1;
-                tracing::trace!(connection = connection_id, "Sent ping");
+                tracing::trace!("Sent ping");
             }
             // Wait for pong or timeout
             match timeout(interval, ws.next()).await {
                 Ok(Some(Ok(Message::Pong(_)))) => {
                     received += 1;
-                    tracing::trace!(connection = connection_id, "Received pong");
+                    tracing::trace!("Received pong");
                 }
                 Ok(Some(Ok(_))) => {
                     // Other message type, still counts as received
                     received += 1;
                 }
                 Ok(Some(Err(e))) => {
-                    tracing::debug!(connection = connection_id, error = %e, "WebSocket error during hold");
+                    tracing::debug!(error = %e, "WebSocket error during hold");
                     break;
                 }
                 Ok(None) => {
-                    tracing::debug!(connection = connection_id, "WebSocket closed by server");
+                    tracing::debug!("WebSocket closed by server");
                     break;
                 }
                 Err(_) => {
@@ -257,7 +260,7 @@ async fn run_echo_loop(
         let bytes = payload.to_bytes();
 
         if let Err(e) = ws.send(Message::Binary(bytes.clone().into())).await {
-            tracing::warn!(connection = connection_id, error = %e, "Failed to send echo payload");
+            tracing::warn!(error = %e, "Failed to send echo payload");
             stats.mismatches += 1;
             break;
         }
@@ -279,7 +282,7 @@ async fn run_echo_loop(
                         }
                     }
                     Err(e) => {
-                        tracing::warn!(connection = connection_id, error = %e, "Echo verification failed");
+                        tracing::warn!(error = %e, "Echo verification failed");
                         stats.mismatches += 1;
                     }
                 }
@@ -299,7 +302,7 @@ async fn run_echo_loop(
                         }
                     }
                     Err(e) => {
-                        tracing::warn!(connection = connection_id, error = %e, "Echo verification failed (text response)");
+                        tracing::warn!(error = %e, "Echo verification failed (text response)");
                         stats.mismatches += 1;
                     }
                 }
@@ -309,22 +312,22 @@ async fn run_echo_loop(
                 continue;
             }
             Ok(Some(Ok(Message::Close(_)))) => {
-                tracing::debug!(connection = connection_id, "WebSocket closed by server");
+                tracing::debug!("WebSocket closed by server");
                 stats.mismatches += 1;
                 break;
             }
             Ok(Some(Err(e))) => {
-                tracing::warn!(connection = connection_id, error = %e, "WebSocket error during echo");
+                tracing::warn!(error = %e, "WebSocket error during echo");
                 stats.mismatches += 1;
                 break;
             }
             Ok(None) => {
-                tracing::debug!(connection = connection_id, "WebSocket closed by server");
+                tracing::debug!("WebSocket closed by server");
                 stats.mismatches += 1;
                 break;
             }
             Err(_) => {
-                tracing::warn!(connection = connection_id, "Echo response timed out");
+                tracing::warn!("Echo response timed out");
                 stats.mismatches += 1;
             }
             Ok(Some(Ok(Message::Frame(_)))) => {
