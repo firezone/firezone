@@ -229,8 +229,7 @@ async fn run_ping_loop(
         tokio::time::sleep(config.hold_duration).await;
     }
 
-    // Graceful close
-    let _ = ws.close(None).await;
+    ws.close(None).await.context("Failed to close connection")?;
 
     Ok(())
 }
