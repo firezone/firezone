@@ -109,8 +109,19 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     init_logging();
+
+    match try_main().await {
+        Ok(()) => {}
+        Err(e) => {
+            tracing::error!("{e:#}");
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn try_main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     if cli.dump_config {
