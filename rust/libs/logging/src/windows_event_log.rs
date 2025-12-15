@@ -105,11 +105,11 @@ impl Drop for EventSourceHandle {
 }
 
 /// A tracing layer that writes events to the Windows Event Log.
-pub struct WindowsEventLogLayer {
+pub struct Layer {
     handle: Arc<EventSourceHandle>,
 }
 
-impl WindowsEventLogLayer {
+impl Layer {
     fn new(source: &str) -> Result<Self, Error> {
         let _ = try_register_source(source);
 
@@ -132,7 +132,7 @@ struct SpanFields {
     fields: Vec<(String, String)>,
 }
 
-impl<S> Layer<S> for WindowsEventLogLayer
+impl<S> Layer<S> for Layer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
@@ -336,14 +336,14 @@ fn to_wide_string(s: &str) -> Vec<u16> {
 }
 
 /// Creates a Windows Event Log layer with filtering from `EVENTLOG_DIRECTIVES` (default: `info`).
-pub fn layer<S>(source: &str) -> Result<Filtered<WindowsEventLogLayer, EnvFilter, S>, Error>
+pub fn layer<S>(source: &str) -> Result<Filtered<Layer, EnvFilter, S>, Error>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     let directives =
         std::env::var(ENV_EVENTLOG_DIRECTIVES).unwrap_or_else(|_| DEFAULT_DIRECTIVES.to_owned());
 
-    let layer = WindowsEventLogLayer::new(source)?;
+    let layer = Layer::new(source)?;
     let filter = EnvFilter::try_new(directives).map_err(|error| Error::InvalidDirectives {
         directives: directives.to_owned(),
         error: error.to_string(),
