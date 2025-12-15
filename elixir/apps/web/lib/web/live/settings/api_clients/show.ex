@@ -123,11 +123,8 @@ defmodule Web.Settings.ApiClients.Show do
     <.section>
       <:title>API Tokens</:title>
 
-      <:action :if={is_nil(@actor.disabled_at) and @actor.type == :api_client}>
-        <.add_button
-          :if={@actor.type == :api_client}
-          navigate={~p"/#{@account}/settings/api_clients/#{@actor}/new_token"}
-        >
+      <:action :if={is_nil(@actor.disabled_at)}>
+        <.add_button navigate={~p"/#{@account}/settings/api_clients/#{@actor}/new_token"}>
           Create Token
         </.add_button>
       </:action>
@@ -321,32 +318,24 @@ defmodule Web.Settings.ApiClients.Show do
     end
 
     def list_tokens_for(actor, subject, opts \\ []) do
-      case subject.actor.type do
-        :account_admin_user ->
-          from(t in Domain.Token,
-            as: :tokens,
-            where: t.actor_id == ^actor.id,
-            order_by: [desc: t.inserted_at, desc: t.id]
-          )
-          |> Safe.scoped(subject)
-          |> Safe.list(__MODULE__, opts)
-
-        _ ->
-          {:error, :unauthorized}
-      end
+      from(t in Domain.APIToken,
+        as: :tokens,
+        where: t.actor_id == ^actor.id,
+        order_by: [desc: t.inserted_at, desc: t.id]
+      )
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
     end
 
     def delete_all_tokens_for_actor(actor, subject) do
-      query = from(t in Domain.Token, where: t.actor_id == ^actor.id)
+      query = from(t in Domain.APIToken, where: t.actor_id == ^actor.id)
       {count, _} = query |> Safe.scoped(subject) |> Safe.delete_all()
       {:ok, count}
     end
 
     def delete_token(token_id, subject) do
-      import Ecto.Query
-
       result =
-        from(t in Domain.Token,
+        from(t in Domain.APIToken,
           where: t.id == ^token_id,
           where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
         )
@@ -361,7 +350,9 @@ defmodule Web.Settings.ApiClients.Show do
     end
 
     def delete_actor(actor, subject) do
-      Safe.scoped(actor, subject) |> Safe.delete()
+      actor
+      |> Safe.scoped(subject)
+      |> Safe.delete()
     end
 
     def cursor_fields do

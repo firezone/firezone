@@ -21,7 +21,7 @@ defmodule API.Client.Socket do
     OpenTelemetry.Tracer.with_span "client.connect" do
       context = API.Sockets.auth_context(connect_info, :client)
 
-      with {:ok, %{auth_ref: %{type: :token, id: token_id}} = subject} <-
+      with {:ok, %{credential: %{type: :token, id: token_id}} = subject} <-
              Auth.authenticate(token, context),
            changeset = upsert_changeset(subject.actor, subject, attrs),
            {:ok, client} <- DB.upsert_client(changeset, subject) do
@@ -62,7 +62,7 @@ defmodule API.Client.Socket do
   @impl true
 
   def id(socket) do
-    Domain.Sockets.socket_id(socket.assigns.subject.auth_ref.id)
+    Domain.Sockets.socket_id(socket.assigns.subject.credential.id)
   end
 
   defp upsert_changeset(actor, subject, attrs) do

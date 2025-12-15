@@ -1653,7 +1653,7 @@ defmodule API.Gateway.ChannelTest do
              }
 
       assert payload.subject == %{
-               auth_provider_id: subject.auth_provider_id,
+               auth_provider_id: subject.credential.auth_provider_id,
                actor_id: subject.actor.id,
                actor_email: subject.actor.email,
                actor_name: subject.actor.name
@@ -1950,7 +1950,7 @@ defmodule API.Gateway.ChannelTest do
         )
 
       :ok = Domain.Presence.Clients.connect(client, client_token.id)
-      PubSub.subscribe(Domain.Sockets.socket_id(subject.auth_ref.id))
+      PubSub.subscribe(Domain.Sockets.socket_id(subject.credential.id))
       :ok = PubSub.Account.subscribe(gateway.account_id)
 
       push(socket, "broadcast_ice_candidates", attrs)
@@ -2004,7 +2004,7 @@ defmodule API.Gateway.ChannelTest do
         )
 
       :ok = Domain.Presence.Clients.connect(client, client_token.id)
-      PubSub.subscribe(Domain.Sockets.socket_id(subject.auth_ref.id))
+      PubSub.subscribe(Domain.Sockets.socket_id(subject.credential.id))
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
