@@ -7,8 +7,9 @@ defmodule Domain.GatewayTokenTest do
   alias Domain.GatewayToken
 
   describe "changeset/1" do
-    test "returns error when account does not exist" do
-      attrs = attrs(%{account_id: Ecto.UUID.generate(), site_id: Ecto.UUID.generate()})
+    test "returns error when account_id does not match site's account" do
+      site = site_fixture()
+      attrs = attrs(%{account_id: Ecto.UUID.generate(), site_id: site.id})
 
       changeset =
         %GatewayToken{}
@@ -16,7 +17,10 @@ defmodule Domain.GatewayTokenTest do
         |> GatewayToken.changeset()
 
       assert {:error, changeset} = Repo.insert(changeset)
-      assert {:account, {"does not exist", _}} = hd(changeset.errors)
+
+      # The composite FK (account_id, site_id) -> sites(account_id, id) ensures
+      # the account_id must match the site's account
+      assert {:site, {"does not exist", _}} = hd(changeset.errors)
     end
 
     test "returns error when site does not exist" do
