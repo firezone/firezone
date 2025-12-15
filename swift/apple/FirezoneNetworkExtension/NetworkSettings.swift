@@ -18,27 +18,6 @@ struct NetworkSettings {
   private var matchDomains: [String]?
   private var searchDomains: [String]?
 
-  // Default constructor with all fields nullable
-  init(
-    tunnelAddressIPv4: String? = nil,
-    tunnelAddressIPv6: String? = nil,
-    dnsAddresses: [String]? = nil,
-    routes4: [NEIPv4Route]? = nil,
-    routes6: [NEIPv6Route]? = nil,
-    dnsResourceAddresses: [String]? = nil,
-    matchDomains: [String]? = nil,
-    searchDomains: [String]? = nil
-  ) {
-    self.tunnelAddressIPv4 = tunnelAddressIPv4
-    self.tunnelAddressIPv6 = tunnelAddressIPv6
-    self.dnsAddresses = dnsAddresses
-    self.routes4 = routes4
-    self.routes6 = routes6
-    self.dnsResourceAddresses = dnsResourceAddresses
-    self.matchDomains = matchDomains
-    self.searchDomains = searchDomains
-  }
-
   // MARK: - Field-by-field comparison helpers
 
   private static func compareRoutes4(_ lhs: [NEIPv4Route]?, _ rhs: [NEIPv4Route]?) -> Bool {
