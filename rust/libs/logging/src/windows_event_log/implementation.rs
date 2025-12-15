@@ -5,10 +5,10 @@ use anyhow::Result;
 use tracing::field::{Field, Visit};
 use tracing::span::Attributes;
 use tracing::{Event, Id, Level, Subscriber};
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::Filtered;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::{EnvFilter, Layer};
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::EventLog::{
     DeregisterEventSource, EVENTLOG_ERROR_TYPE, EVENTLOG_INFORMATION_TYPE, EVENTLOG_WARNING_TYPE,
