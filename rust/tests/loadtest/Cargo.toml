@@ -16,6 +16,7 @@ clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
 goose = { version = "0.18", default-features = false, features = ["rustls-tls"] }
 gumdrop = "0.8"
+logging = { workspace = true }
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-tls", "gzip", "http2"] }
 serde = { workspace = true, features = ["derive"] }
@@ -28,9 +29,6 @@ toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
-
-[target.'cfg(windows)'.dependencies]
-logging = { workspace = true }
 
 [lints]
 workspace = true
