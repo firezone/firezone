@@ -152,57 +152,10 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
     info!(seed, enabled_types = ?config.enabled_types(), "Selecting random test");
 
     match selector.select(&config) {
-        AnyTestConfig::Http(http) => {
-            info!(
-                test_type = "http",
-                seed,
-                address = %http.address,
-                http_version = http.http_version,
-                users = http.users,
-                duration_secs = http.run_time.as_secs(),
-                "Starting HTTP test"
-            );
-
-            http::run_with_config(http, seed).await
-        }
-        AnyTestConfig::Tcp(tcp) => {
-            info!(
-                test_type = "tcp",
-                seed,
-                address = %tcp.target,
-                concurrent = tcp.concurrent,
-                duration_secs = tcp.hold_duration.as_secs(),
-                echo_mode = tcp.echo_mode,
-                "Starting TCP test"
-            );
-
-            tcp::run_with_config(tcp, seed).await
-        }
-        AnyTestConfig::Websocket(ws) => {
-            info!(
-                test_type = "websocket",
-                seed,
-                url = %ws.url,
-                concurrent = ws.concurrent,
-                duration_secs = ws.hold_duration.as_secs(),
-                echo_mode = ws.echo_mode,
-                "Starting WebSocket test"
-            );
-
-            websocket::run_with_config(ws, seed).await
-        }
-        AnyTestConfig::Ping(ping) => {
-            info!(
-                test_type = "ping",
-                seed,
-                targets = ?ping.targets,
-                count = ping.count,
-                interval_ms = ping.interval.as_millis() as u64,
-                "Starting ping test"
-            );
-
-            ping::run_with_config(ping, seed).await
-        }
+        AnyTestConfig::Http(http) => http::run_with_config(http, seed).await,
+        AnyTestConfig::Tcp(tcp) => tcp::run_with_config(tcp, seed).await,
+        AnyTestConfig::Websocket(ws) => websocket::run_with_config(ws, seed).await,
+        AnyTestConfig::Ping(ping) => ping::run_with_config(ping, seed).await,
     }
 }
 
