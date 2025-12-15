@@ -46,10 +46,6 @@ const EVENT_ID_WARNING: u32 = 2;
 const EVENT_ID_INFO: u32 = 3;
 const TYPES_SUPPORTED: u32 = 0x07; // Error | Warning | Information
 
-/// Environment variable for controlling Windows Event Log filtering.
-pub const ENV_EVENTLOG_DIRECTIVES: &str = "EVENTLOG_DIRECTIVES";
-const DEFAULT_DIRECTIVES: &str = "info";
-
 /// Thread-safe wrapper around the Windows Event Log handle.
 struct EventSourceHandle {
     handle: Mutex<Option<HANDLE>>,
@@ -336,20 +332,11 @@ fn to_wide_string(s: &str) -> Vec<u16> {
 }
 
 /// Creates a Windows Event Log layer with filtering from `EVENTLOG_DIRECTIVES` (default: `info`).
-pub fn layer<S>(source: &str) -> Result<Filtered<Layer, EnvFilter, S>, Error>
+pub fn layer<S>(source: &str) -> Result<Layer<S>, Error>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
-    let directives =
-        std::env::var(ENV_EVENTLOG_DIRECTIVES).unwrap_or_else(|_| DEFAULT_DIRECTIVES.to_owned());
-
-    let layer = Layer::new(source)?;
-    let filter = EnvFilter::try_new(directives).map_err(|error| Error::InvalidDirectives {
-        directives: directives.to_owned(),
-        error: error.to_string(),
-    })?;
-
-    Ok(layer.with_filter(filter))
+    Layer::new(source)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -372,8 +359,6 @@ pub enum Error {
         #[source]
         error: windows::core::Error,
     },
-    #[error("Invalid filter directives '{directives}': {error}")]
-    InvalidDirectives { directives: String, error: String },
 }
 
 #[cfg(test)]
