@@ -160,8 +160,6 @@ pub struct WebsocketConfig {
     pub concurrent: Range,
     /// How long to hold connections in seconds.
     pub duration_secs: Range,
-    /// Connection timeout in seconds.
-    pub timeout_secs: Range,
     /// Interval between echo messages in seconds.
     pub echo_interval_secs: Range,
 }

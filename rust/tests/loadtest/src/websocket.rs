@@ -16,6 +16,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tracing::Instrument;
 use url::Url;
 
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const REPLY_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_PAYLOAD_SIZE: usize = u16::MAX as usize; // Big enough to definitely spread across multiple IP packets but also small to not consume too many resources.
 
@@ -28,8 +29,6 @@ pub struct TestConfig {
     pub concurrent: usize,
     /// How long to hold each connection open
     pub hold_duration: Duration,
-    /// Connection timeout
-    pub connect_timeout: Duration,
     /// Interval between echo messages during hold period
     pub echo_interval: Option<Duration>,
 }
@@ -56,10 +55,6 @@ pub struct Args {
     #[arg(short = 'd', long, default_value = "30s", value_parser = crate::cli::parse_duration)]
     duration: Duration,
 
-    /// Connection timeout for establishing connections
-    #[arg(long, default_value = "10s", value_parser = crate::cli::parse_duration)]
-    timeout: Duration,
-
     /// Interval between echo messages (e.g., 1s, 500ms)
     #[arg(long, value_parser = crate::cli::parse_duration)]
     echo_interval: Option<Duration>,
@@ -81,7 +76,6 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
             url,
             concurrent: args.concurrent,
             hold_duration: args.duration,
-            connect_timeout: args.timeout,
             echo_interval: args.echo_interval,
         };
 
@@ -137,7 +131,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
 async fn run_single_connection(config: TestConfig) -> Result<()> {
     let connect_start = Instant::now();
 
-    let (ws, _response) = timeout(config.connect_timeout, connect_async(config.url.as_str()))
+    let (ws, _response) = timeout(CONNECT_TIMEOUT, connect_async(config.url.as_str()))
         .await
         .context("Connection timed out")?
         .context("Connection failed")?;
