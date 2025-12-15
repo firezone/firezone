@@ -135,12 +135,12 @@ impl EventStream {
             Poll::Pending => {}
         }
 
-        if let Poll::Ready(Some(resources)) = self.resource_list_receiver.poll_next_unpin(cx) {
-            return Poll::Ready(Some(Event::ResourcesUpdated(resources)));
-        }
-
         if let Poll::Ready(Some(Some(config))) = self.tun_config_receiver.poll_next_unpin(cx) {
             return Poll::Ready(Some(Event::TunInterfaceUpdated(config)));
+        }
+
+        if let Poll::Ready(Some(resources)) = self.resource_list_receiver.poll_next_unpin(cx) {
+            return Poll::Ready(Some(Event::ResourcesUpdated(resources)));
         }
 
         Poll::Pending
