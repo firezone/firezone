@@ -1,8 +1,3 @@
-//! WebSocket connection load testing.
-//!
-//! Tests WebSocket connection establishment and hold time.
-//! Optionally verifies echo responses when connected to an echo server.
-
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
