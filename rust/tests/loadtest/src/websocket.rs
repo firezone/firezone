@@ -5,7 +5,6 @@
 
 use crate::DEFAULT_ECHO_PAYLOAD_SIZE;
 use crate::echo_payload::{self, EchoPayload};
-use crate::util::EchoStats;
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
@@ -177,17 +176,13 @@ async fn run_single_connection(connection_id: usize, config: TestConfig) -> Resu
     let connect_latency = connect_start.elapsed();
     tracing::debug!(?connect_latency, "WebSocket connection established");
 
-    let echo_stats = if config.echo_mode {
+    if config.echo_mode {
         run_echo_loop(connection_id, ws, &config).await?
     } else {
         run_ping_loop(ws, &config).await?;
-
-        EchoStats::default()
     };
 
     tracing::debug!("WebSocket connection closed");
-
-    anyhow::ensure!(echo_stats.mismatches == 0, "State mismatches on connection");
 
     Ok(())
 }
@@ -240,8 +235,7 @@ async fn run_echo_loop(
     connection_id: usize,
     mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
     config: &TestConfig,
-) -> Result<EchoStats> {
-    let mut stats = EchoStats::default();
+) -> Result<()> {
     let hold_start = Instant::now();
     let echo_interval = config.echo_interval.unwrap_or(Duration::from_secs(1));
 
@@ -254,8 +248,6 @@ async fn run_echo_loop(
             .await
             .context("Failed to send echo payload")?;
 
-        stats.messages_sent += 1;
-
         // Read response with timeout
         match timeout(config.echo_read_timeout, ws.next())
             .await
@@ -267,10 +259,7 @@ async fn run_echo_loop(
                 let received = echo_payload::verify_echo(&payload, &data)
                     .context("Failed to verify binary echo data")?;
 
-                stats.messages_verified += 1;
-
                 if let Some(latency) = received.round_trip_latency() {
-                    stats.latencies.record(latency);
                     tracing::trace!(
                         connection = connection_id,
                         latency_ms = latency.as_millis(),
@@ -283,10 +272,7 @@ async fn run_echo_loop(
                 let received = echo_payload::verify_echo(&payload, text.as_bytes())
                     .context("Failed to verify text echo data")?;
 
-                stats.messages_verified += 1;
-
                 if let Some(latency) = received.round_trip_latency() {
-                    stats.latencies.record(latency);
                     tracing::trace!(
                         connection = connection_id,
                         latency_ms = latency.as_millis(),
@@ -310,7 +296,7 @@ async fn run_echo_loop(
     // Graceful close
     ws.close(None).await?;
 
-    Ok(stats)
+    Ok(())
 }
 
 /// Configuration for WebSocket echo server.
