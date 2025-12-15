@@ -114,7 +114,10 @@ async fn main() {
 
     match try_main().await {
         Ok(()) => {}
-        Err(e) => tracing::error!("{e:#}"),
+        Err(e) => {
+            tracing::error!("{e:#}");
+            std::process::exit(1);
+        }
     }
 }
 
