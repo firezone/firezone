@@ -5,7 +5,6 @@ import {
   useContext,
   useState,
   useEffect,
-  useCallback,
   ReactNode,
 } from "react";
 
@@ -24,16 +23,19 @@ export const DrawerProvider: React.FC<DrawerProviderProps> = ({ children }) => {
   const [isShown, setIsShown] = useState<boolean>(false);
   const [manualToggle, setManualToggle] = useState<boolean>(false);
 
-  const handleResize = useCallback(() => {
-    const isMedium = window.innerWidth >= 768;
-    setIsShown(isMedium || manualToggle);
-  }, [manualToggle]);
-
   useEffect(() => {
+    const getIsMediumScreen = () => window.innerWidth >= 768;
+
+    const handleResize = () => {
+      setIsShown(getIsMediumScreen() || manualToggle);
+    };
+
+    // Set initial value on mount
     handleResize();
+
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [handleResize]);
+  }, [manualToggle]);
 
   const toggle = () => {
     setIsShown((prevState) => !prevState);
