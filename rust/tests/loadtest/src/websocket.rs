@@ -206,24 +206,22 @@ async fn run_ping_loop(
             if ws.send(Message::Ping(vec![].into())).await.is_ok() {
                 tracing::trace!("Sent ping");
             }
+
             // Wait for pong or timeout
-            match timeout(interval, ws.next()).await {
-                Ok(Some(Ok(Message::Pong(_)))) => {
-                    tracing::trace!("Received pong");
-                }
-                Ok(Some(Ok(_))) => {}
-                Ok(Some(Err(e))) => {
-                    tracing::debug!(error = %e, "WebSocket error during hold");
-                    break;
-                }
-                Ok(None) => {
-                    tracing::debug!("WebSocket closed by server");
-                    break;
-                }
-                Err(_) => {
-                    // Timeout waiting for pong, continue
-                }
+            #[expect(
+                clippy::wildcard_enum_match_arm,
+                reason = "We only care about `Pong` messages"
+            )]
+            match timeout(interval, ws.next())
+                .await
+                .context("Missing pong")?
+                .context("WebSocket stream closed")?
+                .context("Failed to receive message")?
+            {
+                Message::Pong(_) => tracing::trace!("Received pong"),
+                other => anyhow::bail!("Unexpected message: {other:?}"),
             }
+
             tokio::time::sleep(interval).await;
         }
     } else {
