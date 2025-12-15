@@ -342,22 +342,13 @@ where
 {
     let directives =
         std::env::var(ENV_EVENTLOG_DIRECTIVES).unwrap_or_else(|_| DEFAULT_DIRECTIVES.to_owned());
-    layer_with_directives(source, &directives)
-}
 
-/// Creates a Windows Event Log layer with custom filter directives.
-pub fn layer_with_directives<S>(
-    source: &str,
-    directives: &str,
-) -> Result<Filtered<WindowsEventLogLayer, EnvFilter, S>, Error>
-where
-    S: Subscriber + for<'a> LookupSpan<'a>,
-{
     let layer = WindowsEventLogLayer::new(source)?;
     let filter = EnvFilter::try_new(directives).map_err(|error| Error::InvalidDirectives {
         directives: directives.to_owned(),
         error: error.to_string(),
     })?;
+
     Ok(layer.with_filter(filter))
 }
 
