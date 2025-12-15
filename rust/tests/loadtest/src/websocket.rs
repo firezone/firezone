@@ -177,12 +177,12 @@ async fn run_single_connection(connection_id: usize, config: TestConfig) -> Resu
 
     let hold_start = Instant::now();
 
-    let (_, _, echo_stats) = if config.echo_mode {
-        let stats = run_echo_loop(connection_id, ws, &config).await;
-        (stats.messages_sent, stats.messages_verified, stats)
+    let echo_stats = if config.echo_mode {
+        run_echo_loop(connection_id, ws, &config).await
     } else {
-        let (sent, received) = run_ping_loop(ws, &config).await;
-        (sent, received, EchoStats::default())
+        run_ping_loop(ws, &config).await?;
+
+        EchoStats::default()
     };
 
     let held_duration = hold_start.elapsed();
@@ -197,28 +197,21 @@ async fn run_single_connection(connection_id: usize, config: TestConfig) -> Resu
 async fn run_ping_loop(
     mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
     config: &TestConfig,
-) -> (usize, usize) {
-    let mut sent = 0usize;
-    let mut received = 0usize;
+) -> Result<()> {
     let hold_start = Instant::now();
 
     if let Some(interval) = config.ping_interval {
         // Send periodic pings while holding
         while hold_start.elapsed() < config.hold_duration {
             if ws.send(Message::Ping(vec![].into())).await.is_ok() {
-                sent += 1;
                 tracing::trace!("Sent ping");
             }
             // Wait for pong or timeout
             match timeout(interval, ws.next()).await {
                 Ok(Some(Ok(Message::Pong(_)))) => {
-                    received += 1;
                     tracing::trace!("Received pong");
                 }
-                Ok(Some(Ok(_))) => {
-                    // Other message type, still counts as received
-                    received += 1;
-                }
+                Ok(Some(Ok(_))) => {}
                 Ok(Some(Err(e))) => {
                     tracing::debug!(error = %e, "WebSocket error during hold");
                     break;
@@ -241,7 +234,7 @@ async fn run_ping_loop(
     // Graceful close
     let _ = ws.close(None).await;
 
-    (sent, received)
+    Ok(())
 }
 
 /// Run the echo verification loop for a connection.
