@@ -2,10 +2,6 @@
     clippy::print_stdout,
     reason = "CLI tool outputs JSON metrics to stdout"
 )]
-#![cfg_attr(
-    windows,
-    expect(clippy::print_stderr, reason = "CLI tool outputs warnings to stderr")
-)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 //! Load testing CLI for Firezone VPN.
@@ -64,6 +60,10 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 use tracing::info;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::Layer as _;
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::util::SubscriberInitExt as _;
 use url::Url;
 
 /// Default config file name.
@@ -221,44 +221,24 @@ impl<T: Serialize> WithSeed<T> {
 }
 
 /// Initializes logging with optional Windows Event Log support.
-///
-/// On non-Windows platforms, uses RUST_LOG env var for filtering.
-/// Default to info level for this crate, warn for dependencies.
+#[expect(clippy::print_stderr, reason = "CLI tool outputs warnings to stderr")]
 fn init_logging() {
-    #[cfg(windows)]
-    {
-        use tracing_subscriber::layer::SubscriberExt as _;
-        use tracing_subscriber::util::SubscriberInitExt as _;
+    tracing_subscriber::registry()
+        .with(
+            logging::windows_event_log::layer("FirezoneLoadtest")
+                .map(|l| l.boxed())
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to initialize Windows Event log: {e:#}");
 
-        match logging::windows_event_log::layer("FirezoneLoadtest") {
-            Ok(layer) => {
-                tracing_subscriber::registry().with(layer).init();
-            }
-            Err(e) => {
-                eprintln!(
-                    "Warning: Could not initialize Windows Event Log: {e}\n\
-                    Events will not be logged to Event Viewer.\n\
-                    Set EVENTLOG_DIRECTIVES to control Event Log filtering (default: info)."
-                );
-                tracing_subscriber::registry().init();
-            }
-        }
-    }
-
-    #[cfg(not(windows))]
-    {
-        use tracing_subscriber::EnvFilter;
-
-        // Initialize tracing with RUST_LOG env var support
-        // Default to info level for this crate, warn for dependencies
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| EnvFilter::new("firezone_loadtest=info,warn")),
-            )
-            .with_writer(std::io::stderr)
-            .init();
-    }
+                    tracing_subscriber::layer::Identity::new().boxed()
+                }),
+        )
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("firezone_loadtest=info,warn")),
+        )
+        .init();
 }
 
 /// Resolved test configuration (one of the test types).
