@@ -9,12 +9,6 @@ import NetworkExtension
 import os.log
 
 struct NetworkSettings {
-  // WireGuard has an 80-byte overhead. We could try setting tunnelOverheadBytes
-  // but that's not a reliable way to calculate how big our packets should be,
-  // so just use the minimum.
-  let mtu: NSNumber = 1280
-
-  // All fields are private and nullable for flexible construction
   private var tunnelAddressIPv4: String?
   private var tunnelAddressIPv6: String?
   private var dnsAddresses: [String]?
@@ -231,7 +225,7 @@ struct NetworkSettings {
       tunnelNetworkSettings.dnsSettings = dnsSettings
     }
 
-    tunnelNetworkSettings.mtu = mtu
+    tunnelNetworkSettings.mtu = 1280
 
     return tunnelNetworkSettings
   }
