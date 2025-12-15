@@ -188,6 +188,8 @@ async fn run_echo_loop(
 
         let interval = rand::thread_rng().gen_range(Duration::ZERO..config.max_echo_interval);
 
+        tracing::trace!("Next message in {interval:?}");
+
         tokio::time::sleep(interval).await;
     }
 
