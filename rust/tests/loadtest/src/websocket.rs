@@ -267,19 +267,7 @@ async fn run_echo_loop(
                     );
                 }
             }
-            Message::Text(text) => {
-                // Try to verify as text (some servers echo back as text)
-                let received = echo_payload::verify_echo(&payload, text.as_bytes())
-                    .context("Failed to verify text echo data")?;
-
-                if let Some(latency) = received.round_trip_latency() {
-                    tracing::trace!(
-                        connection = connection_id,
-                        latency_ms = latency.as_millis(),
-                        "Echo verified (text)"
-                    );
-                }
-            }
+            Message::Text(_) => anyhow::bail!("Unexpected `Text` message"),
             Message::Close(_) => anyhow::bail!("WebSocket closed by server"),
             Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
         }
