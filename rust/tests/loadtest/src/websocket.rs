@@ -178,7 +178,7 @@ async fn run_single_connection(connection_id: usize, config: TestConfig) -> Resu
     tracing::debug!(?connect_latency, "WebSocket connection established");
 
     let echo_stats = if config.echo_mode {
-        run_echo_loop(connection_id, ws, &config).await
+        run_echo_loop(connection_id, ws, &config).await?
     } else {
         run_ping_loop(ws, &config).await?;
 
@@ -240,7 +240,7 @@ async fn run_echo_loop(
     connection_id: usize,
     mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
     config: &TestConfig,
-) -> EchoStats {
+) -> Result<EchoStats> {
     let mut stats = EchoStats::default();
     let hold_start = Instant::now();
     let echo_interval = config.echo_interval.unwrap_or(Duration::from_secs(1));
@@ -337,9 +337,9 @@ async fn run_echo_loop(
     }
 
     // Graceful close
-    let _ = ws.close(None).await;
+    ws.close(None).await?;
 
-    stats
+    Ok(stats)
 }
 
 /// Configuration for WebSocket echo server.
