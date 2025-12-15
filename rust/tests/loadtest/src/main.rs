@@ -301,15 +301,12 @@ impl TestSelector {
 
         let concurrent = self.rng.gen_range(config.concurrent) as usize;
         let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));
-        let echo_interval = Some(Duration::from_secs(
-            self.rng.gen_range(config.echo_interval_secs),
-        ));
 
         websocket::TestConfig {
             url: address,
             concurrent,
             hold_duration: duration,
-            echo_interval,
+            max_echo_interval: Duration::from_secs(config.max_echo_interval_secs),
         }
     }
 

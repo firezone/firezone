@@ -29,8 +29,8 @@ pub struct TestConfig {
     pub concurrent: usize,
     /// How long to hold each connection open
     pub hold_duration: Duration,
-    /// Interval between echo messages during hold period
-    pub echo_interval: Option<Duration>,
+    /// How long to at most wait between messages. Zero means we won't send any messages.
+    pub max_echo_interval: Duration,
 }
 
 #[derive(Parser)]
@@ -55,9 +55,9 @@ pub struct Args {
     #[arg(short = 'd', long, default_value = "30s", value_parser = crate::cli::parse_duration)]
     duration: Duration,
 
-    /// Interval between echo messages (e.g., 1s, 500ms)
+    /// How long to at most wait between messages. Zero means we won't send any messages.
     #[arg(long, value_parser = crate::cli::parse_duration)]
-    echo_interval: Option<Duration>,
+    max_echo_interval: Option<Duration>,
 }
 
 /// Run WebSocket test with manual CLI args.
@@ -76,7 +76,7 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
             url,
             concurrent: args.concurrent,
             hold_duration: args.duration,
-            echo_interval: args.echo_interval,
+            max_echo_interval: args.max_echo_interval.unwrap_or_default(),
         };
 
         run(config, 0).await?;
@@ -151,8 +151,12 @@ async fn run_echo_loop(
     mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
     config: &TestConfig,
 ) -> Result<()> {
+    if config.max_echo_interval.is_zero() {
+        tokio::time::sleep(config.hold_duration).await;
+        return Ok(());
+    }
+
     let hold_start = Instant::now();
-    let echo_interval = config.echo_interval.unwrap_or(Duration::from_secs(1));
 
     while hold_start.elapsed() < config.hold_duration {
         let payload_size = rand::thread_rng().gen_range(0..MAX_PAYLOAD_SIZE);
@@ -182,13 +186,9 @@ async fn run_echo_loop(
             Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
         }
 
-        // Wait for next interval (if we haven't exceeded hold duration)
-        let remaining = config.hold_duration.saturating_sub(hold_start.elapsed());
-        if remaining > Duration::ZERO && remaining > echo_interval {
-            tokio::time::sleep(echo_interval).await;
-        } else if remaining > Duration::ZERO {
-            tokio::time::sleep(remaining).await;
-        }
+        let interval = rand::thread_rng().gen_range(Duration::ZERO..config.max_echo_interval);
+
+        tokio::time::sleep(interval).await;
     }
 
     // Graceful close

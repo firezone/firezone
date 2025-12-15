@@ -160,8 +160,8 @@ pub struct WebsocketConfig {
     pub concurrent: Range,
     /// How long to hold connections in seconds.
     pub duration_secs: Range,
-    /// Interval between echo messages in seconds.
-    pub echo_interval_secs: Range,
+    /// How long to at most wait between messages. Zero means we won't send any messages.
+    pub max_echo_interval_secs: u64,
 }
 
 impl WebsocketConfig {
