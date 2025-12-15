@@ -205,9 +205,11 @@ async fn run_ping_loop(
     if let Some(interval) = config.ping_interval {
         // Send periodic pings while holding
         while hold_start.elapsed() < config.hold_duration {
-            if ws.send(Message::Ping(vec![].into())).await.is_ok() {
-                tracing::trace!("Sent ping");
-            }
+            ws.send(Message::Ping(vec![].into()))
+                .await
+                .context("Failed to sent ping")?;
+
+            tracing::trace!("Sent ping");
 
             // Wait for pong or timeout
             #[expect(
