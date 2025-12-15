@@ -4,10 +4,10 @@
 //! Optionally verifies echo responses when connected to an echo server.
 
 use crate::DEFAULT_ECHO_PAYLOAD_SIZE;
-use crate::echo_payload::{self, EchoPayload};
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
+use rand::{Rng, RngCore};
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -148,7 +148,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
     // Spawn one task per concurrent connection
     for id in 0..config.concurrent {
         connections.spawn(
-            run_single_connection(id, config.clone())
+            run_single_connection(config.clone())
                 .instrument(tracing::info_span!("connection", %id)),
         );
     }
@@ -165,7 +165,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
 }
 
 /// Run a single WebSocket connection test.
-async fn run_single_connection(connection_id: usize, config: TestConfig) -> Result<()> {
+async fn run_single_connection(config: TestConfig) -> Result<()> {
     let connect_start = Instant::now();
 
     let (ws, _response) = timeout(config.connect_timeout, connect_async(config.url.as_str()))
@@ -177,7 +177,7 @@ async fn run_single_connection(connection_id: usize, config: TestConfig) -> Resu
     tracing::debug!(?connect_latency, "WebSocket connection established");
 
     if config.echo_mode {
-        run_echo_loop(connection_id, ws, &config).await?
+        run_echo_loop(ws, &config).await?
     } else {
         run_ping_loop(ws, &config).await?;
     };
@@ -232,7 +232,6 @@ async fn run_ping_loop(
 
 /// Run the echo verification loop for a connection.
 async fn run_echo_loop(
-    connection_id: usize,
     mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
     config: &TestConfig,
 ) -> Result<()> {
@@ -240,13 +239,15 @@ async fn run_echo_loop(
     let echo_interval = config.echo_interval.unwrap_or(Duration::from_secs(1));
 
     while hold_start.elapsed() < config.hold_duration {
-        // Create and send payload as binary message
-        let payload = EchoPayload::new(connection_id as u64, config.echo_payload_size);
-        let bytes = payload.to_bytes();
+        let payload_size = rand::thread_rng().gen_range(0..config.echo_payload_size);
+        let mut buffer = vec![0u8; payload_size];
+        rand::thread_rng().fill_bytes(&mut buffer);
 
-        ws.send(Message::Binary(bytes.clone().into()))
+        ws.send(Message::Binary(buffer.clone().into()))
             .await
             .context("Failed to send echo payload")?;
+
+        tracing::trace!(len = %buffer.len(), "Sent binary message");
 
         // Read response with timeout
         match timeout(config.echo_read_timeout, ws.next())
@@ -256,16 +257,9 @@ async fn run_echo_loop(
             .context("Failed to read WebSocket message")?
         {
             Message::Binary(data) => {
-                let received = echo_payload::verify_echo(&payload, &data)
-                    .context("Failed to verify binary echo data")?;
+                tracing::trace!("Received binary message");
 
-                if let Some(latency) = received.round_trip_latency() {
-                    tracing::trace!(
-                        connection = connection_id,
-                        latency_ms = latency.as_millis(),
-                        "Echo verified"
-                    );
-                }
+                anyhow::ensure!(data == buffer, "Echo response does not match");
             }
             Message::Text(_) => anyhow::bail!("Unexpected `Text` message"),
             Message::Close(_) => anyhow::bail!("WebSocket closed by server"),
