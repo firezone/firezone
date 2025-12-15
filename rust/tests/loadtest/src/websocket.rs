@@ -160,6 +160,8 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
         .into_iter()
         .collect::<Result<Vec<_>>>()?;
 
+    tracing::info!("WebSocket connection test complete");
+
     Ok(())
 }
 
