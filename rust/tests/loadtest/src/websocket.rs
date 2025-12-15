@@ -28,10 +28,6 @@ pub struct TestConfig {
     pub hold_duration: Duration,
     /// Connection timeout
     pub connect_timeout: Duration,
-    /// Interval between ping messages (None = no pings). Ignored in echo mode.
-    pub ping_interval: Option<Duration>,
-    /// Enable echo mode: send timestamped payloads and verify responses
-    pub echo_mode: bool,
     /// Size of echo payload in bytes (minimum 16 for header)
     pub echo_payload_size: usize,
     /// Interval between echo messages during hold period
@@ -66,14 +62,6 @@ pub struct Args {
     #[arg(long, default_value = "10s", value_parser = crate::cli::parse_duration)]
     timeout: Duration,
 
-    /// Interval between ping messages to keep connection alive (e.g., 5s). Ignored in echo mode.
-    #[arg(long, value_parser = crate::cli::parse_duration)]
-    ping_interval: Option<Duration>,
-
-    /// Enable echo mode: send timestamped payloads and verify responses
-    #[arg(long)]
-    echo: bool,
-
     /// Echo payload size in bytes (minimum 16 for header)
     #[arg(long, default_value_t = DEFAULT_ECHO_PAYLOAD_SIZE, value_parser = crate::cli::parse_echo_payload_size)]
     echo_payload_size: usize,
@@ -104,8 +92,6 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
             concurrent: args.concurrent,
             hold_duration: args.duration,
             connect_timeout: args.timeout,
-            ping_interval: args.ping_interval,
-            echo_mode: args.echo,
             echo_payload_size: args.echo_payload_size,
             echo_interval: args.echo_interval,
             echo_read_timeout: args.echo_read_timeout,
@@ -130,15 +116,10 @@ pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()
 /// In echo mode, sends timestamped payloads and verifies responses.
 /// Otherwise, optionally sends periodic ping messages to keep connections alive.
 async fn run(config: TestConfig, seed: u64) -> Result<()> {
-    if config.echo_mode && config.ping_interval.is_some() {
-        tracing::warn!("ping_interval is ignored when echo_mode is enabled");
-    }
-
     tracing::info!(
         url = %config.url,
         concurrent = config.concurrent,
         hold_duration = ?config.hold_duration,
-        echo_mode = config.echo_mode,
         %seed,
         "Starting WebSocket connection test"
     );
@@ -176,56 +157,9 @@ async fn run_single_connection(config: TestConfig) -> Result<()> {
     let connect_latency = connect_start.elapsed();
     tracing::debug!(?connect_latency, "WebSocket connection established");
 
-    if config.echo_mode {
-        run_echo_loop(ws, &config).await?
-    } else {
-        run_ping_loop(ws, &config).await?;
-    };
+    run_echo_loop(ws, &config).await?;
 
     tracing::debug!("WebSocket connection closed");
-
-    Ok(())
-}
-
-/// Run the ping/pong loop for a connection (non-echo mode).
-async fn run_ping_loop(
-    mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
-    config: &TestConfig,
-) -> Result<()> {
-    let hold_start = Instant::now();
-
-    if let Some(interval) = config.ping_interval {
-        // Send periodic pings while holding
-        while hold_start.elapsed() < config.hold_duration {
-            ws.send(Message::Ping(vec![].into()))
-                .await
-                .context("Failed to sent ping")?;
-
-            tracing::trace!("Sent ping");
-
-            // Wait for pong or timeout
-            #[expect(
-                clippy::wildcard_enum_match_arm,
-                reason = "We only care about `Pong` messages"
-            )]
-            match timeout(interval, ws.next())
-                .await
-                .context("Missing pong")?
-                .context("WebSocket stream closed")?
-                .context("Failed to receive message")?
-            {
-                Message::Pong(_) => tracing::trace!("Received pong"),
-                other => anyhow::bail!("Unexpected message: {other:?}"),
-            }
-
-            tokio::time::sleep(interval).await;
-        }
-    } else {
-        // Just sleep without sending messages
-        tokio::time::sleep(config.hold_duration).await;
-    }
-
-    ws.close(None).await.context("Failed to close connection")?;
 
     Ok(())
 }

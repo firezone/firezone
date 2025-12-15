@@ -162,10 +162,6 @@ pub struct WebsocketConfig {
     pub duration_secs: Range,
     /// Connection timeout in seconds.
     pub timeout_secs: Range,
-    /// Ping interval in seconds. Ignored in echo mode.
-    pub ping_interval_secs: Range,
-    /// Enable echo mode for payload verification.
-    pub echo_mode: bool,
     /// Echo payload size in bytes.
     pub echo_payload_size: Range,
     /// Interval between echo messages in seconds.
