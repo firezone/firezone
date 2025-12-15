@@ -17,6 +17,8 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tracing::Instrument;
 use url::Url;
 
+const REPLY_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// Configuration for WebSocket load testing.
 #[derive(Debug, Clone)]
 pub struct TestConfig {
@@ -32,8 +34,6 @@ pub struct TestConfig {
     pub echo_payload_size: usize,
     /// Interval between echo messages during hold period
     pub echo_interval: Option<Duration>,
-    /// Timeout for reading echo responses
-    pub echo_read_timeout: Duration,
 }
 
 #[derive(Parser)]
@@ -69,10 +69,6 @@ pub struct Args {
     /// Interval between echo messages (e.g., 1s, 500ms)
     #[arg(long, value_parser = crate::cli::parse_duration)]
     echo_interval: Option<Duration>,
-
-    /// Timeout for reading echo responses (e.g., 5s)
-    #[arg(long, default_value = "5s", value_parser = crate::cli::parse_duration)]
-    echo_read_timeout: Duration,
 }
 
 /// Run WebSocket test with manual CLI args.
@@ -94,7 +90,6 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
             connect_timeout: args.timeout,
             echo_payload_size: args.echo_payload_size,
             echo_interval: args.echo_interval,
-            echo_read_timeout: args.echo_read_timeout,
         };
 
         run(config, 0).await?;
@@ -184,7 +179,7 @@ async fn run_echo_loop(
         tracing::trace!(len = %buffer.len(), "Sent binary message");
 
         // Read response with timeout
-        match timeout(config.echo_read_timeout, ws.next())
+        match timeout(REPLY_TIMEOUT, ws.next())
             .await
             .context("Echo response timed out")?
             .context("WebSocket connection closed")?

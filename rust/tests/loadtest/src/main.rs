@@ -306,8 +306,6 @@ impl TestSelector {
         let echo_interval = Some(Duration::from_secs(
             self.rng.gen_range(config.echo_interval_secs),
         ));
-        let echo_read_timeout =
-            Duration::from_secs(self.rng.gen_range(config.echo_read_timeout_secs));
 
         websocket::TestConfig {
             url: address,
@@ -316,7 +314,6 @@ impl TestSelector {
             connect_timeout: timeout,
             echo_payload_size,
             echo_interval,
-            echo_read_timeout,
         }
     }
 

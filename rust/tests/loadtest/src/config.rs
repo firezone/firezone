@@ -166,8 +166,6 @@ pub struct WebsocketConfig {
     pub echo_payload_size: Range,
     /// Interval between echo messages in seconds.
     pub echo_interval_secs: Range,
-    /// Timeout for reading echo responses in seconds.
-    pub echo_read_timeout_secs: Range,
 }
 
 impl WebsocketConfig {
