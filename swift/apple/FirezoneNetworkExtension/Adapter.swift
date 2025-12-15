@@ -62,10 +62,10 @@ class Adapter: @unchecked Sendable {
   private let accountSlug: String
 
   /// Network settings for tunnel configuration.
-  private var networkSettings: NetworkSettings?
+  private var networkSettings: NetworkSettings
 
-  /// Tracks the last successfully applied network settings to avoid redundant applies
-  private var lastAppliedSettings: NetworkSettings?
+  /// Tracks whether we have applied any network settings
+  private var hasAppliedSettings: Bool = false
 
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: PacketTunnelProvider?
@@ -190,6 +190,7 @@ class Adapter: @unchecked Sendable {
     self.internetResourceEnabled = internetResourceEnabled
     self.packetTunnelProvider = packetTunnelProvider
     self.startCompletionHandler = startCompletionHandler
+    self.networkSettings = NetworkSettings()
   }
 
   // Could happen abruptly if the process is killed.
@@ -390,13 +391,13 @@ class Adapter: @unchecked Sendable {
     }
   }
 
-  // MARK: - Network Settings
+  // MARK: - Network settings
 
-  private func applyNetworkSettingsIfChanged(
-    _ settings: NetworkSettings,
+  private func applyNetworkSettings(
+    _ tunnelNetworkSettings: NEPacketTunnelNetworkSettings?,
     completionHandler: (@Sendable () -> Void)? = nil
   ) {
-    guard settings != lastAppliedSettings else {
+    guard let tunnelNetworkSettings = tunnelNetworkSettings else {
       Log.log("Skipping network settings apply; settings unchanged")
       completionHandler?()
       return
@@ -409,8 +410,16 @@ class Adapter: @unchecked Sendable {
     }
 
     Log.log("Applying network settings; settings changed")
-    lastAppliedSettings = settings
-    settings.apply(to: provider, completionHandler: completionHandler)
+
+    provider.setTunnelNetworkSettings(tunnelNetworkSettings) { [weak self] error in
+      if let error = error {
+        Log.error(error)
+      } else {
+        // Mark that we have applied settings successfully
+        self?.hasAppliedSettings = true
+      }
+      completionHandler?()
+    }
   }
 
   // MARK: - Event handling
@@ -421,7 +430,7 @@ class Adapter: @unchecked Sendable {
       let ipv4, let ipv6, let dns, let searchDomain, let ipv4Routes, let ipv6Routes):
       Log.log("Received TunInterfaceUpdated event")
 
-      let firstStart = self.networkSettings == nil
+      let firstStart = !hasAppliedSettings
 
       // Convert UniFFI types to NetworkExtension types
       let routes4 = ipv4Routes.compactMap { cidr in
@@ -433,16 +442,16 @@ class Adapter: @unchecked Sendable {
 
       Log.log("Setting interface config")
 
-      var networkSettings = NetworkSettings()
-      networkSettings.tunnelAddressIPv4 = ipv4
-      networkSettings.tunnelAddressIPv6 = ipv6
-      networkSettings.dnsAddresses = dns
-      networkSettings.routes4 = routes4
-      networkSettings.routes6 = routes6
-      networkSettings.setSearchDomain(domain: searchDomain)
-      self.networkSettings = networkSettings
+      let tunnelNetworkSettings = networkSettings.updateTunInterface(
+        ipv4: ipv4,
+        ipv6: ipv6,
+        dnsAddresses: dns,
+        searchDomain: searchDomain,
+        routes4: routes4,
+        routes6: routes6
+      )
 
-      applyNetworkSettingsIfChanged(networkSettings) {
+      applyNetworkSettings(tunnelNetworkSettings) {
         if firstStart {
           self.startCompletionHandler(nil)
         }
@@ -459,11 +468,8 @@ class Adapter: @unchecked Sendable {
 
       // Update DNS resource addresses to trigger network settings apply when they change
       // This flushes the DNS cache so new DNS resources are immediately resolvable
-      if var networkSettings = networkSettings {
-        networkSettings.setDnsResourceAddresses(from: resourceList)
-        self.networkSettings = networkSettings
-        applyNetworkSettingsIfChanged(networkSettings)
-      }
+      let tunnelNetworkSettings = networkSettings.updateDnsResources(from: resourceList)
+      applyNetworkSettings(tunnelNetworkSettings)
 
     case .disconnected(let error):
       let errorMessage = error.message()
@@ -618,8 +624,8 @@ class Adapter: @unchecked Sendable {
     // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
     // sentinel, which isn't helpful to us.
     private func resetToSystemDNSGettingBindResolvers() -> [String] {
-      guard var networkSettings = networkSettings,
-        let provider = packetTunnelProvider
+      guard let provider = packetTunnelProvider,
+        hasAppliedSettings
       else {
         // Network Settings hasn't been applied yet, so our sentinel isn't
         // the system's resolver and we can grab the system resolvers directly.
@@ -638,14 +644,14 @@ class Adapter: @unchecked Sendable {
       let semaphore = DispatchSemaphore(value: 0)
 
       // Set tunnel's matchDomains to a dummy string that will never match any name
-      networkSettings.setDummyMatchDomain()
-      self.networkSettings = networkSettings
+      let tunnelNetworkSettings = networkSettings.setDummyMatchDomain()
 
       // Call apply to populate /etc/resolv.conf with the system's default resolvers
-      networkSettings.apply(to: provider) {
-        guard var networkSettings = self.networkSettings,
-          let provider = self.packetTunnelProvider
-        else {
+      provider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
+        if let error = error {
+          Log.error(error)
+        }
+        guard let provider = self.packetTunnelProvider else {
           semaphore.signal()
           return
         }
@@ -654,9 +660,13 @@ class Adapter: @unchecked Sendable {
         resolversBox.value = BindResolvers.getServers()
 
         // Restore connlib's DNS resolvers
-        networkSettings.clearDummyMatchDomain()
-        self.networkSettings = networkSettings
-        networkSettings.apply(to: provider) { semaphore.signal() }
+        let tunnelNetworkSettings = self.networkSettings.clearDummyMatchDomain()
+        provider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
+          if let error = error {
+            Log.error(error)
+          }
+          semaphore.signal()
+        }
       }
 
       semaphore.wait()

@@ -8,106 +8,194 @@ import Foundation
 import NetworkExtension
 import os.log
 
-struct NetworkSettings: Equatable {
+struct NetworkSettings {
   // WireGuard has an 80-byte overhead. We could try setting tunnelOverheadBytes
   // but that's not a reliable way to calculate how big our packets should be,
   // so just use the minimum.
   let mtu: NSNumber = 1280
 
-  // Modifiable values
-  public var tunnelAddressIPv4: String?
-  public var tunnelAddressIPv6: String?
-  public var dnsAddresses: [String] = []
+  // All fields are private and nullable for flexible construction
+  private var tunnelAddressIPv4: String?
+  private var tunnelAddressIPv6: String?
+  private var dnsAddresses: [String]?
+  private var routes4: [NEIPv4Route]?
+  private var routes6: [NEIPv6Route]?
+  private var dnsResourceAddresses: [String]?
+  private var matchDomains: [String]?
+  private var searchDomains: [String]?
 
-  // Routes are sorted on assignment for stable equality comparison
-  private var _routes4: [NEIPv4Route] = []
-  public var routes4: [NEIPv4Route] {
-    get { _routes4 }
-    set {
-      _routes4 = newValue.sorted {
-        ($0.destinationAddress, $0.destinationSubnetMask) < (
-          $1.destinationAddress, $1.destinationSubnetMask
-        )
-      }
+  // Default constructor with all fields nullable
+  init(
+    tunnelAddressIPv4: String? = nil,
+    tunnelAddressIPv6: String? = nil,
+    dnsAddresses: [String]? = nil,
+    routes4: [NEIPv4Route]? = nil,
+    routes6: [NEIPv6Route]? = nil,
+    dnsResourceAddresses: [String]? = nil,
+    matchDomains: [String]? = nil,
+    searchDomains: [String]? = nil
+  ) {
+    self.tunnelAddressIPv4 = tunnelAddressIPv4
+    self.tunnelAddressIPv6 = tunnelAddressIPv6
+    self.dnsAddresses = dnsAddresses
+    self.routes4 = routes4
+    self.routes6 = routes6
+    self.dnsResourceAddresses = dnsResourceAddresses
+    self.matchDomains = matchDomains
+    self.searchDomains = searchDomains
+  }
+
+  // MARK: - Field-by-field comparison helpers
+
+  private static func compareRoutes4(_ lhs: [NEIPv4Route]?, _ rhs: [NEIPv4Route]?) -> Bool {
+    guard let lhs = lhs, let rhs = rhs else {
+      return lhs == nil && rhs == nil
+    }
+    guard lhs.count == rhs.count else { return false }
+    return zip(lhs, rhs).allSatisfy {
+      $0.destinationAddress == $1.destinationAddress
+        && $0.destinationSubnetMask == $1.destinationSubnetMask
     }
   }
 
-  private var _routes6: [NEIPv6Route] = []
-  public var routes6: [NEIPv6Route] {
-    get { _routes6 }
-    set {
-      _routes6 = newValue.sorted {
-        ($0.destinationAddress, $0.destinationNetworkPrefixLength.intValue)
-          < ($1.destinationAddress, $1.destinationNetworkPrefixLength.intValue)
-      }
+  private static func compareRoutes6(_ lhs: [NEIPv6Route]?, _ rhs: [NEIPv6Route]?) -> Bool {
+    guard let lhs = lhs, let rhs = rhs else {
+      return lhs == nil && rhs == nil
+    }
+    guard lhs.count == rhs.count else { return false }
+    return zip(lhs, rhs).allSatisfy {
+      $0.destinationAddress == $1.destinationAddress
+        && $0.destinationNetworkPrefixLength == $1.destinationNetworkPrefixLength
     }
   }
 
-  // DNS resource addresses are sorted on assignment for stable equality comparison
-  // Used to trigger network settings apply when DNS resources change,
-  // which flushes the DNS cache so new DNS resources are immediately resolvable
-  private var dnsResourceAddresses: [String] = []
+  // MARK: - Mutable update functions
 
-  // Private to ensure we append the search domain if we set it.
-  private var matchDomains: [String] = [""]
-  private var searchDomains: [String] = [""]
+  /// Update tunnel interface configuration
+  /// Returns NEPacketTunnelNetworkSettings if settings changed, nil if unchanged or build fails
+  mutating func updateTunInterface(
+    ipv4: String?,
+    ipv6: String?,
+    dnsAddresses: [String],
+    searchDomain: String?,
+    routes4: [NEIPv4Route],
+    routes6: [NEIPv6Route]
+  ) -> NEPacketTunnelNetworkSettings? {
+    // Store old values for comparison
+    let oldIPv4 = self.tunnelAddressIPv4
+    let oldIPv6 = self.tunnelAddressIPv6
+    let oldDnsAddresses = self.dnsAddresses
+    let oldMatchDomains = self.matchDomains
+    let oldSearchDomains = self.searchDomains
+    let oldRoutes4 = self.routes4
+    let oldRoutes6 = self.routes6
 
-  init() {}
+    // Update values
+    self.tunnelAddressIPv4 = ipv4
+    self.tunnelAddressIPv6 = ipv6
+    let sortedDnsAddresses = dnsAddresses.sorted()
+    self.dnsAddresses = sortedDnsAddresses
 
-  static func == (lhs: NetworkSettings, rhs: NetworkSettings) -> Bool {
-    // Routes and dnsResourceAddresses are sorted on assignment, so we can compare directly
-    lhs.tunnelAddressIPv4 == rhs.tunnelAddressIPv4
-      && lhs.tunnelAddressIPv6 == rhs.tunnelAddressIPv6
-      && lhs.dnsAddresses == rhs.dnsAddresses
-      && lhs.dnsResourceAddresses == rhs.dnsResourceAddresses
-      && lhs.matchDomains == rhs.matchDomains
-      && lhs.searchDomains == rhs.searchDomains
-      && lhs.routes4.count == rhs.routes4.count
-      && lhs.routes6.count == rhs.routes6.count
-      && zip(lhs.routes4, rhs.routes4).allSatisfy {
-        $0.destinationAddress == $1.destinationAddress
-          && $0.destinationSubnetMask == $1.destinationSubnetMask
-      }
-      && zip(lhs.routes6, rhs.routes6).allSatisfy {
-        $0.destinationAddress == $1.destinationAddress
-          && $0.destinationNetworkPrefixLength == $1.destinationNetworkPrefixLength
-      }
-  }
+    // Set search domain
+    let newMatchDomains: [String]
+    let newSearchDomains: [String]
+    if let searchDomain = searchDomain {
+      newMatchDomains = ["", searchDomain]
+      newSearchDomains = [searchDomain]
+    } else {
+      newMatchDomains = [""]
+      newSearchDomains = [""]
+    }
+    self.matchDomains = newMatchDomains
+    self.searchDomains = newSearchDomains
 
-  mutating func setSearchDomain(domain: String?) {
-    guard let domain = domain else {
-      self.matchDomains = [""]
-      self.searchDomains = [""]
-      return
+    // Sort routes for stable comparison
+    let sortedRoutes4 = routes4.sorted {
+      ($0.destinationAddress, $0.destinationSubnetMask) < (
+        $1.destinationAddress, $1.destinationSubnetMask
+      )
+    }
+    let sortedRoutes6 = routes6.sorted {
+      ($0.destinationAddress, $0.destinationNetworkPrefixLength.intValue)
+        < ($1.destinationAddress, $1.destinationNetworkPrefixLength.intValue)
+    }
+    self.routes4 = sortedRoutes4
+    self.routes6 = sortedRoutes6
+
+    // Check if anything actually changed
+    let hasChanges =
+      oldIPv4 != ipv4
+      || oldIPv6 != ipv6
+      || oldDnsAddresses != sortedDnsAddresses
+      || oldMatchDomains != newMatchDomains
+      || oldSearchDomains != newSearchDomains
+      || !NetworkSettings.compareRoutes4(oldRoutes4, sortedRoutes4)
+      || !NetworkSettings.compareRoutes6(oldRoutes6, sortedRoutes6)
+
+    guard hasChanges else {
+      return nil
     }
 
-    self.matchDomains = ["", domain]
-    self.searchDomains = [domain]
+    return buildNetworkSettings()
   }
 
-  mutating func setDnsResourceAddresses(from resources: [Resource]) {
-    dnsResourceAddresses = resources.compactMap { resource in
+  /// Update DNS resource addresses from resources
+  /// Used to trigger network settings apply when DNS resources change,
+  /// which flushes the DNS cache so new DNS resources are immediately resolvable
+  /// Returns NEPacketTunnelNetworkSettings if settings changed, nil if unchanged or build fails
+  mutating func updateDnsResources(from resources: [Resource]) -> NEPacketTunnelNetworkSettings? {
+    // Store old value for comparison
+    let oldDnsResourceAddresses = self.dnsResourceAddresses
+
+    // Update value
+    let newDnsResourceAddresses = resources.compactMap { resource in
       if case .dns(let dnsResource) = resource {
         return dnsResource.address
       }
       return nil
     }.sorted()
+    self.dnsResourceAddresses = newDnsResourceAddresses
+
+    // Check if anything actually changed
+    guard oldDnsResourceAddresses != newDnsResourceAddresses else {
+      return nil
+    }
+
+    return buildNetworkSettings()
   }
 
-  mutating func setDummyMatchDomain() {
+  /// Set dummy match domain for system DNS retrieval
+  /// Always returns NEPacketTunnelNetworkSettings (these operations must always apply)
+  mutating func setDummyMatchDomain() -> NEPacketTunnelNetworkSettings {
     self.matchDomains = ["firezone-fd0020211111"]
+    // Force unwrap is safe here - we always have tunnel addresses set when this is called
+    return buildNetworkSettings()!
   }
 
-  mutating func clearDummyMatchDomain() {
-    self.matchDomains = [""]
-
-    self.matchDomains.append(contentsOf: self.searchDomains)
+  /// Clear dummy match domain and restore search domains
+  /// Always returns NEPacketTunnelNetworkSettings (these operations must always apply)
+  mutating func clearDummyMatchDomain() -> NEPacketTunnelNetworkSettings {
+    var newMatchDomains = [""]
+    if let searchDomains = self.searchDomains {
+      newMatchDomains.append(contentsOf: searchDomains)
+    }
+    self.matchDomains = newMatchDomains
+    // Force unwrap is safe here - we always have tunnel addresses set when this is called
+    return buildNetworkSettings()!
   }
 
-  func apply(
-    to packetTunnelProvider: NEPacketTunnelProvider,
-    completionHandler: (@Sendable () -> Void)? = nil
-  ) {
+  // MARK: - NEPacketTunnelNetworkSettings Builder
+
+  /// Build NEPacketTunnelNetworkSettings from current state
+  func buildNetworkSettings() -> NEPacketTunnelNetworkSettings? {
+    // Validate we have required fields
+    guard let tunnelAddressIPv4 = tunnelAddressIPv4,
+      let tunnelAddressIPv6 = tunnelAddressIPv6
+    else {
+      Log.warning("Cannot build network settings: missing tunnel addresses")
+      return nil
+    }
+
     // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
     // because the OS doesn't really need this IP address.
     // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
@@ -116,31 +204,40 @@ struct NetworkSettings: Equatable {
 
     // Set tunnel addresses and routes
     let ipv4Settings = NEIPv4Settings(
-      addresses: [tunnelAddressIPv4!], subnetMasks: ["255.255.255.255"])
+      addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
     // This is a hack since macos routing table ignores, for full route, any prefix smaller than 120.
     // Without this, adding a full route, remove the previous default route and leaves the system with none,
     // completely breaking IPv6 on the user's system.
-    let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6!], networkPrefixLengths: [120])
-    let dnsSettings = NEDNSSettings(servers: dnsAddresses)
-    ipv4Settings.includedRoutes = routes4
-    ipv6Settings.includedRoutes = routes6
-    dnsSettings.matchDomains = matchDomains
-    dnsSettings.searchDomains = searchDomains
-    dnsSettings.matchDomainsNoSearch = false
+    let ipv6Settings = NEIPv6Settings(
+      addresses: [tunnelAddressIPv6], networkPrefixLengths: [120])
+
+    // Set routes if available
+    if let routes4 = routes4 {
+      ipv4Settings.includedRoutes = routes4
+    }
+    if let routes6 = routes6 {
+      ipv6Settings.includedRoutes = routes6
+    }
+
     tunnelNetworkSettings.ipv4Settings = ipv4Settings
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
-    tunnelNetworkSettings.dnsSettings = dnsSettings
+
+    // Set DNS settings if we have addresses
+    if let dnsAddresses = dnsAddresses, !dnsAddresses.isEmpty {
+      let dnsSettings = NEDNSSettings(servers: dnsAddresses)
+      dnsSettings.matchDomains = matchDomains ?? [""]
+      dnsSettings.searchDomains = searchDomains ?? [""]
+      dnsSettings.matchDomainsNoSearch = false
+      tunnelNetworkSettings.dnsSettings = dnsSettings
+    }
+
     tunnelNetworkSettings.mtu = mtu
 
-    packetTunnelProvider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
-      if let error = error {
-        Log.error(error)
-      }
-
-      completionHandler?()
-    }
+    return tunnelNetworkSettings
   }
 }
+
+// MARK: - IPv4 Subnet Mask Lookup
 
 // For creating IPv4 routes
 enum IPv4SubnetMaskLookup {
@@ -181,7 +278,8 @@ enum IPv4SubnetMaskLookup {
   ]
 }
 
-// Route convenience helpers.
+// MARK: - Route Convenience Helpers
+
 extension NetworkSettings {
   struct Cidr {
     let address: String
