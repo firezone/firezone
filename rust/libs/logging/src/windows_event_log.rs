@@ -22,6 +22,7 @@
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 
+use anyhow::Result;
 use tracing::field::{Field, Visit};
 use tracing::span::Attributes;
 use tracing::{Event, Id, Level, Subscriber};
@@ -29,7 +30,6 @@ use tracing_subscriber::filter::Filtered;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::{EnvFilter, Layer};
-
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::EventLog::{
     DeregisterEventSource, EVENTLOG_ERROR_TYPE, EVENTLOG_INFORMATION_TYPE, EVENTLOG_WARNING_TYPE,
@@ -106,15 +106,12 @@ pub struct Layer {
 }
 
 impl Layer {
-    fn new(source: &str) -> Result<Self, Error> {
+    fn new(source: &str) -> Result<Self> {
         let _ = try_register_source(source);
 
         let source_wide = to_wide_string(source);
         let handle = unsafe { RegisterEventSourceW(PCWSTR::null(), PCWSTR(source_wide.as_ptr())) }
-            .map_err(|e| Error::OpenSource {
-                source: source.to_owned(),
-                error: e,
-            })?;
+            .with_context(|| format!("Failed to open Event Log source '{source}': {error}. Run as admin or use: New-EventLog -LogName Application -Source \"{source}\""))?;
 
         Ok(Self {
             handle: Arc::new(EventSourceHandle::new(handle)),
@@ -271,7 +268,7 @@ fn format_message(
     output
 }
 
-fn try_register_source(source: &str) -> Result<(), Error> {
+fn try_register_source(source: &str) -> Result<()> {
     let key_path = format!("SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\{source}");
     let key_path_wide = to_wide_string(&key_path);
     let mut hkey = windows::Win32::System::Registry::HKEY::default();
@@ -289,7 +286,7 @@ fn try_register_source(source: &str) -> Result<(), Error> {
             None,
         )
         .ok()
-        .map_err(|e| Error::CreateRegistryKey { error: e })?;
+        .context("Failed to create registry key")?;
 
         let result = (|| {
             RegSetValueExW(
@@ -300,7 +297,7 @@ fn try_register_source(source: &str) -> Result<(), Error> {
                 Some(TYPES_SUPPORTED.to_le_bytes().as_slice()),
             )
             .ok()
-            .map_err(|e| Error::SetRegistryValue { error: e })?;
+            .context("Failed to set registry value")?;
 
             let message_file = "%SystemRoot%\\System32\\EventCreate.exe";
             let message_file_wide = to_wide_string(message_file);
@@ -317,7 +314,7 @@ fn try_register_source(source: &str) -> Result<(), Error> {
                 Some(&message_file_bytes),
             )
             .ok()
-            .map_err(|e| Error::SetRegistryValue { error: e })?;
+            .context("Failed to set registry value")?;
 
             Ok(())
         })();
@@ -332,33 +329,11 @@ fn to_wide_string(s: &str) -> Vec<u16> {
 }
 
 /// Creates a Windows Event Log layer with filtering from `EVENTLOG_DIRECTIVES` (default: `info`).
-pub fn layer<S>(source: &str) -> Result<Layer<S>, Error>
+pub fn layer<S>(source: &str) -> Result<Layer<S>>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     Layer::new(source)
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error(
-        "Failed to open Event Log source '{source}': {error}. Run as admin or use: New-EventLog -LogName Application -Source \"{source}\""
-    )]
-    OpenSource {
-        source: String,
-        #[source]
-        error: windows::core::Error,
-    },
-    #[error("Failed to create registry key: {error}")]
-    CreateRegistryKey {
-        #[source]
-        error: windows::core::Error,
-    },
-    #[error("Failed to set registry value: {error}")]
-    SetRegistryValue {
-        #[source]
-        error: windows::core::Error,
-    },
 }
 
 #[cfg(test)]
