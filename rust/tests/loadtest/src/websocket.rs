@@ -250,81 +250,52 @@ async fn run_echo_loop(
         let payload = EchoPayload::new(connection_id as u64, config.echo_payload_size);
         let bytes = payload.to_bytes();
 
-        if let Err(e) = ws.send(Message::Binary(bytes.clone().into())).await {
-            tracing::warn!(error = %e, "Failed to send echo payload");
-            stats.mismatches += 1;
-            break;
-        }
+        ws.send(Message::Binary(bytes.clone().into()))
+            .await
+            .context("Failed to send echo payload")?;
+
         stats.messages_sent += 1;
 
         // Read response with timeout
-        match timeout(config.echo_read_timeout, ws.next()).await {
-            Ok(Some(Ok(Message::Binary(data)))) => {
-                match echo_payload::verify_echo(&payload, &data) {
-                    Ok(received) => {
-                        stats.messages_verified += 1;
-                        if let Some(latency) = received.round_trip_latency() {
-                            stats.latencies.record(latency);
-                            tracing::trace!(
-                                connection = connection_id,
-                                latency_ms = latency.as_millis(),
-                                "Echo verified"
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Echo verification failed");
-                        stats.mismatches += 1;
-                    }
+        match timeout(config.echo_read_timeout, ws.next())
+            .await
+            .context("Echo response timed out")?
+            .context("WebSocket connection closed")?
+            .context("Failed to read WebSocket message")?
+        {
+            Message::Binary(data) => {
+                let received = echo_payload::verify_echo(&payload, &data)
+                    .context("Failed to verify binary echo data")?;
+
+                stats.messages_verified += 1;
+
+                if let Some(latency) = received.round_trip_latency() {
+                    stats.latencies.record(latency);
+                    tracing::trace!(
+                        connection = connection_id,
+                        latency_ms = latency.as_millis(),
+                        "Echo verified"
+                    );
                 }
             }
-            Ok(Some(Ok(Message::Text(text)))) => {
+            Message::Text(text) => {
                 // Try to verify as text (some servers echo back as text)
-                match echo_payload::verify_echo(&payload, text.as_bytes()) {
-                    Ok(received) => {
-                        stats.messages_verified += 1;
-                        if let Some(latency) = received.round_trip_latency() {
-                            stats.latencies.record(latency);
-                            tracing::trace!(
-                                connection = connection_id,
-                                latency_ms = latency.as_millis(),
-                                "Echo verified (text)"
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Echo verification failed (text response)");
-                        stats.mismatches += 1;
-                    }
+                let received = echo_payload::verify_echo(&payload, text.as_bytes())
+                    .context("Failed to verify text echo data")?;
+
+                stats.messages_verified += 1;
+
+                if let Some(latency) = received.round_trip_latency() {
+                    stats.latencies.record(latency);
+                    tracing::trace!(
+                        connection = connection_id,
+                        latency_ms = latency.as_millis(),
+                        "Echo verified (text)"
+                    );
                 }
             }
-            Ok(Some(Ok(Message::Ping(_)))) | Ok(Some(Ok(Message::Pong(_)))) => {
-                // Ignore ping/pong, don't count as mismatch, try again
-                continue;
-            }
-            Ok(Some(Ok(Message::Close(_)))) => {
-                tracing::debug!("WebSocket closed by server");
-                stats.mismatches += 1;
-                break;
-            }
-            Ok(Some(Err(e))) => {
-                tracing::warn!(error = %e, "WebSocket error during echo");
-                stats.mismatches += 1;
-                break;
-            }
-            Ok(None) => {
-                tracing::debug!("WebSocket closed by server");
-                stats.mismatches += 1;
-                break;
-            }
-            Err(_) => {
-                tracing::warn!("Echo response timed out");
-                stats.mismatches += 1;
-            }
-            Ok(Some(Ok(Message::Frame(_)))) => {
-                // Raw frame, shouldn't normally see this
-                continue;
-            }
+            Message::Close(_) => anyhow::bail!("WebSocket closed by server"),
+            Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
         }
 
         // Wait for next interval (if we haven't exceeded hold duration)
