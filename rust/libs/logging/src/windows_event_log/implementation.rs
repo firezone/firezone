@@ -1,12 +1,10 @@
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use tracing::field::{Field, Visit};
 use tracing::span::Attributes;
 use tracing::{Event, Id, Level, Subscriber};
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::filter::Filtered;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
 use windows::Win32::Foundation::HANDLE;
@@ -25,7 +23,7 @@ const EVENT_ID_WARNING: u32 = 2;
 const EVENT_ID_INFO: u32 = 3;
 const TYPES_SUPPORTED: u32 = 0x07; // Error | Warning | Information
 
-/// Creates a Windows Event Log layer with filtering from `EVENTLOG_DIRECTIVES` (default: `info`).
+/// Creates a Windows Event Log layer for the specified source.
 pub fn layer(source: &str) -> Result<Layer> {
     Layer::new(source)
 }
@@ -43,7 +41,7 @@ impl Layer {
 
         let source_wide = to_wide_string(source);
         let handle = unsafe { RegisterEventSourceW(PCWSTR::null(), PCWSTR(source_wide.as_ptr())) }
-            .with_context(|| format!("Failed to open Event Log source '{source}': {error}. Run as admin or use: New-EventLog -LogName Application -Source \"{source}\""))?;
+            .with_context(|| format!("Failed to open Event Log source '{source}': Run as admin or use: New-EventLog -LogName Application -Source \"{source}\""))?;
 
         Ok(Self {
             handle: Arc::new(EventSourceHandle::new(handle)),
