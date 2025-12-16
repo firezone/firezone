@@ -39,7 +39,6 @@ struct NetworkSettingsTests {
       routes6: []
     )
 
-    #expect(result != nil, "First TUN config should emit settings")
     #expect(result?.ipv4Settings?.addresses.first == "10.0.0.1")
     #expect(result?.ipv6Settings?.addresses.first == "fd00::1")
   }
@@ -95,7 +94,6 @@ struct NetworkSettingsTests {
       routes6: []
     )
 
-    #expect(result != nil, "Changed TUN config field should emit settings")
     #expect(result?.ipv4Settings?.addresses.first == "10.0.0.2")
   }
 
@@ -123,7 +121,6 @@ struct NetworkSettingsTests {
       routes6: []
     )
 
-    #expect(result != nil, "Changed DNS addresses should emit settings")
     #expect(result?.dnsSettings?.servers == ["8.8.8.8"])
   }
 
@@ -155,7 +152,6 @@ struct NetworkSettingsTests {
       routes6: []
     )
 
-    #expect(result != nil, "Changed routes should emit settings")
     #expect(result?.ipv4Settings?.includedRoutes?.count == 2)
   }
 
@@ -203,7 +199,6 @@ struct NetworkSettingsTests {
     // Set dummy match domain
     let result = settings.setDummyMatchDomain()
 
-    #expect(result != nil)
     #expect(result?.dnsSettings?.matchDomains == ["firezone-fd0020211111"])
     #expect(result?.dnsSettings?.searchDomains == ["example.com"])
   }
@@ -228,7 +223,6 @@ struct NetworkSettingsTests {
     // Clear dummy
     let result = settings.clearDummyMatchDomain()
 
-    #expect(result != nil)
     #expect(result?.dnsSettings?.matchDomains == ["", "example.com"])
     #expect(result?.dnsSettings?.searchDomains == ["example.com"])
   }
@@ -253,7 +247,6 @@ struct NetworkSettingsTests {
     // Clear dummy
     let result = settings.clearDummyMatchDomain()
 
-    #expect(result != nil)
     #expect(result?.dnsSettings?.matchDomains == [""])
     #expect(result?.dnsSettings?.searchDomains == [])
   }
