@@ -168,7 +168,7 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
             echo_read_timeout: args.echo_read_timeout,
         };
 
-        let summary = run(config).await?;
+        let summary = run(config, 0).await?;
         println!(
             "{}",
             serde_json::to_string(&summary).expect("Failed to serialize metrics")
@@ -180,7 +180,7 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
 
 /// Run WebSocket test from resolved config.
 pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()> {
-    let summary = run(config).await?;
+    let summary = run(config, seed).await?;
 
     println!(
         "{}",
@@ -195,7 +195,7 @@ pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()
 /// Establishes `concurrent` connections and holds each open for `hold_duration`.
 /// In echo mode, sends timestamped payloads and verifies responses.
 /// Otherwise, optionally sends periodic ping messages to keep connections alive.
-async fn run(config: TestConfig) -> Result<WebsocketTestSummary> {
+async fn run(config: TestConfig, seed: u64) -> Result<WebsocketTestSummary> {
     let (tx, mut rx) = mpsc::channel::<ConnectionResult>(config.concurrent);
     let active_connections = Arc::new(AtomicUsize::new(0));
     let peak_active = Arc::new(AtomicUsize::new(0));
@@ -209,6 +209,7 @@ async fn run(config: TestConfig) -> Result<WebsocketTestSummary> {
         concurrent = config.concurrent,
         hold_duration = ?config.hold_duration,
         echo_mode = config.echo_mode,
+        %seed,
         "Starting WebSocket connection test"
     );
 
