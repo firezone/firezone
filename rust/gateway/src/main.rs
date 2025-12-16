@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, ErrorExt, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
     TunDeviceManager, device_id, http_health_check,
@@ -56,15 +56,18 @@ fn main() -> ExitCode {
         .build()
         .expect("Failed to create tokio runtime");
 
-    match runtime
-        .block_on(try_main(cli, &mut telemetry))
-        .context("Failed to start Gateway")
-    {
+    match runtime.block_on(try_main(cli, &mut telemetry)) {
         Ok(()) => {
             tracing::info!("Goodbye!");
             runtime.block_on(telemetry.stop());
 
             ExitCode::SUCCESS
+        }
+        Err(e) if e.any_is::<EventloopFailed>() => {
+            tracing::error!("{e:#}");
+            runtime.block_on(telemetry.stop_on_crash());
+
+            ExitCode::FAILURE
         }
         Err(e) => {
             tracing::info!("{e:#}");
@@ -233,10 +236,15 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 
     Eventloop::new(tunnel, portal, tun_device_manager, resolver)?
         .run()
-        .await?;
+        .await
+        .context(EventloopFailed)?;
 
     Ok(())
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("Eventloop failed")]
+struct EventloopFailed;
 
 fn tonic_otlp_exporter(
     endpoint: String,
