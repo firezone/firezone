@@ -70,6 +70,10 @@ build: $(GENERATED_DIR)/connlib.swift $(GENERATED_DIR)/connlibFFI.h
 		echo "buildServer.json not found, generating LSP configuration..."; \
 		$(MAKE) lsp; \
 	fi
+	@# Ensure dynamic_build_number.xcconfig exists before Xcode parses the project
+	@if [ ! -f Firezone/xcconfig/dynamic_build_number.xcconfig ]; then \
+		echo "CURRENT_PROJECT_VERSION = $$(date +%s)" > Firezone/xcconfig/dynamic_build_number.xcconfig; \
+	fi
 	@echo "Building Xcode project for ${PLATFORM}, ${ARCH}"
 	@echo "Git SHA: ${GIT_SHA}"
 	@xcodebuild build \
