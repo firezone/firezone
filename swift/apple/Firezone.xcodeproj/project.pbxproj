@@ -9,6 +9,10 @@
 /* Begin PBXBuildFile section */
 		05CF1CF1290B1CEE00CF4755 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
 		05CF1D17290B1FE700CF4755 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */; };
+		A1B2C3D4E5F6A78901234568 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */; };
+		A1B2C3D4E5F6A78901234569 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */; };
+		B1C2D3E4F5A6B78901234568 /* CancellableTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B78901234567 /* CancellableTask.swift */; };
+		B1C2D3E4F5A6B78901234569 /* CancellableTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B78901234567 /* CancellableTask.swift */; };
 		05D3BB2128FDE9C000BC3727 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
 		146C8E809FF744D18C053A79 /* Channel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C09DC14A4A04715A37BC04C /* Channel.swift */; };
 		6571861AB9324D6A9395BDB3 /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
@@ -85,6 +89,8 @@
 
 /* Begin PBXFileReference section */
 		05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathUpdates.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B78901234567 /* CancellableTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CancellableTask.swift; sourceTree = "<group>"; };
 		05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "dev.firezone.firezone.network-extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		05CF1CF6290B1CEE00CF4755 /* FirezoneNetworkExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FirezoneNetworkExtension.entitlements; sourceTree = "<group>"; };
 		05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
@@ -165,6 +171,8 @@
 				177FB893F19457A113042247 /* Adapter.swift */,
 				05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */,
 				8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */,
+				A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */,
+				B1C2D3E4F5A6B78901234567 /* CancellableTask.swift */,
 				6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */,
 			);
 			path = FirezoneNetworkExtension;
@@ -505,6 +513,8 @@
 				8D69392C2BA24FE600AF4396 /* BindResolvers.swift in Sources */,
 				146C8E809FF744D18C053A79 /* Channel.swift in Sources */,
 				C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */,
+				A1B2C3D4E5F6A78901234568 /* NetworkPathUpdates.swift in Sources */,
+				B1C2D3E4F5A6B78901234568 /* CancellableTask.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -521,6 +531,8 @@
 				6571861AB9324D6A9395BDB3 /* SessionEventLoop.swift in Sources */,
 				858AA13A09A55E3B1DD5DEDA /* Adapter.swift in Sources */,
 				CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */,
+				A1B2C3D4E5F6A78901234569 /* NetworkPathUpdates.swift in Sources */,
+				B1C2D3E4F5A6B78901234569 /* CancellableTask.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
