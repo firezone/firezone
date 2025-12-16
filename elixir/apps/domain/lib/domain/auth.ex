@@ -174,8 +174,8 @@ defmodule Domain.Auth do
   The token is encoded as a tuple of {account_id, token_id, secret_fragment}
   which is then signed using Plug.Crypto to ensure it can't be tampered with.
   """
-  def encode_fragment!(%Token{type: :client, secret_nonce: nonce} = token),
-    do: encode_token(token.account_id, token.id, token.secret_fragment, "client", nonce)
+  def encode_fragment!(%Token{type: :client} = token),
+    do: encode_token(token.account_id, token.id, token.secret_fragment, "client")
 
   def encode_fragment!(%Domain.RelayToken{} = token),
     do: encode_token(nil, token.id, token.secret_fragment, "relay")
@@ -186,12 +186,12 @@ defmodule Domain.Auth do
   def encode_fragment!(%Domain.APIToken{} = token),
     do: encode_token(token.account_id, token.id, token.secret_fragment, "api_client")
 
-  defp encode_token(account_id, id, fragment, type, nonce \\ "") do
+  defp encode_token(account_id, id, fragment, type) do
     body = {account_id, id, fragment}
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
-    nonce <> "." <> Plug.Crypto.sign(key_base, salt <> type, body)
+    "." <> Plug.Crypto.sign(key_base, salt <> type, body)
   end
 
   def verify_relay_token(encoded_token) when is_binary(encoded_token) do

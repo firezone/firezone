@@ -951,7 +951,7 @@ defmodule Domain.AuthTest do
   end
 
   describe "encode_fragment!/1" do
-    test "encodes a token with secret_fragment" do
+    test "encodes a client token starting with dot (client will prepend nonce)" do
       account = account_fixture()
       actor = actor_fixture(account: account)
 
@@ -965,26 +965,31 @@ defmodule Domain.AuthTest do
       {:ok, token} = create_token(attrs)
       encoded = encode_fragment!(token)
 
-      assert String.starts_with?(encoded, "testnonce.")
+      # Fragment starts with "." - client will prepend its nonce
+      assert String.starts_with?(encoded, ".")
       assert String.length(encoded) > 10
     end
 
-    test "encoded fragment can be verified with use_token" do
+    test "encoded fragment can be verified with use_token when client prepends nonce" do
       account = account_fixture()
       actor = actor_fixture(account: account)
+      nonce = "testnonce"
 
       attrs = %{
         account_id: account.id,
         actor_id: actor.id,
-        secret_nonce: "testnonce",
+        secret_nonce: nonce,
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
       {:ok, token} = create_token(attrs)
       encoded = encode_fragment!(token)
 
+      # Client prepends the nonce to the fragment
+      full_token = nonce <> encoded
+
       context = build_context(type: :client)
-      assert {:ok, used_token} = use_token(encoded, context)
+      assert {:ok, used_token} = use_token(full_token, context)
       assert used_token.id == token.id
     end
 
