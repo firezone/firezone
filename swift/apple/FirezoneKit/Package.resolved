@@ -1,4 +1,5 @@
 {
+  "originHash" : "a4daf15fa8480d038e9127ba1366f82ecdbf2242355d2bd1ee3fcb6dbc7e5426",
   "pins" : [
     {
       "identity" : "sentry-cocoa",
@@ -10,5 +11,5 @@
       }
     }
   ],
-  "version" : 2
+  "version" : 3
 }
