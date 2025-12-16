@@ -92,8 +92,19 @@ install:
 	@-sudo systemextensionsctl uninstall 47R2M6779T dev.firezone.firezone.network-extension 2>/dev/null || true
 	@-sudo systemextensionsctl uninstall 47R2M6779T dev.firezone.firezone.network-extension-systemextension 2>/dev/null || true
 	@sleep 2
-	@echo "Copying app to /Applications..."
-	@sudo cp -R ~/Library/Developer/Xcode/DerivedData/Firezone-*/Build/Products/$(CONFIGURATION)/Firezone.app /Applications/
+	@echo "Finding build location..."
+	@PRODUCTS_DIR=$$(xcodebuild -project Firezone.xcodeproj -scheme Firezone -configuration $(CONFIGURATION) -showBuildSettings 2>/dev/null | grep ' BUILT_PRODUCTS_DIR = ' | sed 's/.*= //'); \
+	if [ -z "$$PRODUCTS_DIR" ]; then \
+		echo "Error: Could not determine build products directory"; \
+		exit 1; \
+	fi; \
+	if [ ! -d "$$PRODUCTS_DIR/Firezone.app" ]; then \
+		echo "Error: Firezone.app not found at $$PRODUCTS_DIR"; \
+		echo "Run 'make build' first"; \
+		exit 1; \
+	fi; \
+	echo "Copying app from $$PRODUCTS_DIR to /Applications..."; \
+	sudo cp -R "$$PRODUCTS_DIR/Firezone.app" /Applications/
 	@echo "Launching Firezone..."
 	@open /Applications/Firezone.app
 
