@@ -83,6 +83,7 @@ public struct NetworkSettings: Equatable {
 
   public mutating func setDummyMatchDomain() -> NEPacketTunnelNetworkSettings? {
     self.matchDomains = ["firezone-fd0020211111"]
+
     return buildNetworkSettings()
   }
 
@@ -92,6 +93,7 @@ public struct NetworkSettings: Equatable {
     } else {
       self.matchDomains = [""]
     }
+
     return buildNetworkSettings()
   }
 
