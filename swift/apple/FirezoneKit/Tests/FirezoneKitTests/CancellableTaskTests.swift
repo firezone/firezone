@@ -42,16 +42,11 @@ struct CancellableTaskTests {
 
     do {
       let _ = CancellableTask {
-        // Wait long enough that we can dealloc the wrapper
-        // When the CancellableTask is deallocated and calls cancel(),
-        // Task.sleep throws CancellationError and aborts immediately (no need to wait 10 seconds)
-        // The try? suppresses the error since CancellableTask requires a non-throwing closure
-        try? await Task.sleep(for: .seconds(10))
-
-        // After cancellation, Task.isCancelled will be true
-        if Task.isCancelled {
+        do {
+          try await Task.sleep(for: .seconds(10))
+        } catch is CancellationError {
           await wasCancelled.set(true)
-        }
+        } catch { }
       }
       // CancellableTask goes out of scope here, triggering deinit -> cancel
     }
@@ -68,20 +63,17 @@ struct CancellableTaskTests {
     let wasCancelled = Flag()
 
     var task: CancellableTask? = CancellableTask {
-      // Task.sleep throws CancellationError when cancelled
-      // The try? suppresses the error since CancellableTask requires a non-throwing closure
-      try? await Task.sleep(for: .seconds(10))
-
-      // After cancellation, Task.isCancelled will be true
-      if Task.isCancelled {
+      do {
+        try await Task.sleep(for: .seconds(10))
+      } catch is CancellationError {
         await wasCancelled.set(true)
-      }
+      } catch { }
     }
 
     // Set to nil, triggering cancellation
     task = nil
 
-    // Give the cancelled task time to check its cancellation status
+    // Give the cancelled task time to handle the cancellation
     try? await Task.sleep(for: .milliseconds(50))
 
     let taskWasCancelled = await wasCancelled.get()
