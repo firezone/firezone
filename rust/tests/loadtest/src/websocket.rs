@@ -19,7 +19,6 @@ use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
-use tracing::{debug, info, trace, warn};
 use url::Url;
 
 /// Configuration for WebSocket load testing.
@@ -201,10 +200,10 @@ async fn run(config: TestConfig, seed: u64) -> Result<WebsocketTestSummary> {
     let peak_active = Arc::new(AtomicUsize::new(0));
 
     if config.echo_mode && config.ping_interval.is_some() {
-        warn!("ping_interval is ignored when echo_mode is enabled");
+        tracing::warn!("ping_interval is ignored when echo_mode is enabled");
     }
 
-    info!(
+    tracing::info!(
         url = %config.url,
         concurrent = config.concurrent,
         hold_duration = ?config.hold_duration,
@@ -348,7 +347,7 @@ async fn run_single_connection(
             let current = active.fetch_add(1, Ordering::SeqCst) + 1;
             // Update peak if this is a new high water mark
             peak.fetch_max(current, Ordering::SeqCst);
-            trace!(connection = connection_id, url = %config.url, ?connect_latency, "WebSocket connection established");
+            tracing::trace!(connection = connection_id, url = %config.url, ?connect_latency, "WebSocket connection established");
 
             let hold_start = Instant::now();
 
@@ -362,7 +361,7 @@ async fn run_single_connection(
 
             let held_duration = hold_start.elapsed();
             active.fetch_sub(1, Ordering::SeqCst);
-            trace!(connection = connection_id, url = %config.url, ?held_duration, "WebSocket connection closed");
+            tracing::trace!(connection = connection_id, url = %config.url, ?held_duration, "WebSocket connection closed");
 
             // A connection is only successful if there were no echo mismatches
             let success = echo_stats.mismatches == 0;
@@ -377,7 +376,7 @@ async fn run_single_connection(
             }
         }
         Ok(Err(e)) => {
-            debug!(connection = connection_id, url = %config.url, error = %e, "WebSocket connection failed");
+            tracing::debug!(connection = connection_id, url = %config.url, error = %e, "WebSocket connection failed");
             ConnectionResult {
                 success: false,
                 messages_sent: 0,
@@ -388,7 +387,7 @@ async fn run_single_connection(
             }
         }
         Err(_) => {
-            debug!(connection = connection_id, url = %config.url, "WebSocket connection timed out");
+            tracing::debug!(connection = connection_id, url = %config.url, "WebSocket connection timed out");
             ConnectionResult {
                 success: false,
                 messages_sent: 0,
@@ -416,24 +415,24 @@ async fn run_ping_loop(
         while hold_start.elapsed() < config.hold_duration {
             if ws.send(Message::Ping(vec![].into())).await.is_ok() {
                 sent += 1;
-                trace!(connection = connection_id, "Sent ping");
+                tracing::trace!(connection = connection_id, "Sent ping");
             }
             // Wait for pong or timeout
             match timeout(interval, ws.next()).await {
                 Ok(Some(Ok(Message::Pong(_)))) => {
                     received += 1;
-                    trace!(connection = connection_id, "Received pong");
+                    tracing::trace!(connection = connection_id, "Received pong");
                 }
                 Ok(Some(Ok(_))) => {
                     // Other message type, still counts as received
                     received += 1;
                 }
                 Ok(Some(Err(e))) => {
-                    debug!(connection = connection_id, error = %e, "WebSocket error during hold");
+                    tracing::debug!(connection = connection_id, error = %e, "WebSocket error during hold");
                     break;
                 }
                 Ok(None) => {
-                    debug!(connection = connection_id, "WebSocket closed by server");
+                    tracing::debug!(connection = connection_id, "WebSocket closed by server");
                     break;
                 }
                 Err(_) => {
@@ -469,7 +468,7 @@ async fn run_echo_loop(
         let bytes = payload.to_bytes();
 
         if let Err(e) = ws.send(Message::Binary(bytes.clone().into())).await {
-            warn!(connection = connection_id, error = %e, "Failed to send echo payload");
+            tracing::warn!(connection = connection_id, error = %e, "Failed to send echo payload");
             stats.mismatches += 1;
             break;
         }
@@ -483,7 +482,7 @@ async fn run_echo_loop(
                         stats.messages_verified += 1;
                         if let Some(latency) = received.round_trip_latency() {
                             stats.latencies.record(latency);
-                            trace!(
+                            tracing::trace!(
                                 connection = connection_id,
                                 latency_ms = latency.as_millis(),
                                 "Echo verified"
@@ -491,7 +490,7 @@ async fn run_echo_loop(
                         }
                     }
                     Err(e) => {
-                        warn!(connection = connection_id, error = %e, "Echo verification failed");
+                        tracing::warn!(connection = connection_id, error = %e, "Echo verification failed");
                         stats.mismatches += 1;
                     }
                 }
@@ -503,7 +502,7 @@ async fn run_echo_loop(
                         stats.messages_verified += 1;
                         if let Some(latency) = received.round_trip_latency() {
                             stats.latencies.record(latency);
-                            trace!(
+                            tracing::trace!(
                                 connection = connection_id,
                                 latency_ms = latency.as_millis(),
                                 "Echo verified (text)"
@@ -511,7 +510,7 @@ async fn run_echo_loop(
                         }
                     }
                     Err(e) => {
-                        warn!(connection = connection_id, error = %e, "Echo verification failed (text response)");
+                        tracing::warn!(connection = connection_id, error = %e, "Echo verification failed (text response)");
                         stats.mismatches += 1;
                     }
                 }
@@ -521,22 +520,22 @@ async fn run_echo_loop(
                 continue;
             }
             Ok(Some(Ok(Message::Close(_)))) => {
-                debug!(connection = connection_id, "WebSocket closed by server");
+                tracing::debug!(connection = connection_id, "WebSocket closed by server");
                 stats.mismatches += 1;
                 break;
             }
             Ok(Some(Err(e))) => {
-                warn!(connection = connection_id, error = %e, "WebSocket error during echo");
+                tracing::warn!(connection = connection_id, error = %e, "WebSocket error during echo");
                 stats.mismatches += 1;
                 break;
             }
             Ok(None) => {
-                debug!(connection = connection_id, "WebSocket closed by server");
+                tracing::debug!(connection = connection_id, "WebSocket closed by server");
                 stats.mismatches += 1;
                 break;
             }
             Err(_) => {
-                warn!(connection = connection_id, "Echo response timed out");
+                tracing::warn!(connection = connection_id, "Echo response timed out");
                 stats.mismatches += 1;
             }
             Ok(Some(Ok(Message::Frame(_)))) => {
@@ -589,19 +588,19 @@ async fn run_server(config: WebsocketServerConfig) -> anyhow::Result<()> {
         while let Some(msg) = socket.recv().await {
             match msg {
                 Ok(AxumMessage::Text(text)) => {
-                    trace!(len = text.len(), "WebSocket text received");
+                    tracing::trace!(len = text.len(), "WebSocket text received");
                     if socket.send(AxumMessage::Text(text)).await.is_err() {
                         break;
                     }
                 }
                 Ok(AxumMessage::Binary(data)) => {
-                    trace!(len = data.len(), "WebSocket binary received");
+                    tracing::trace!(len = data.len(), "WebSocket binary received");
                     if socket.send(AxumMessage::Binary(data)).await.is_err() {
                         break;
                     }
                 }
                 Ok(AxumMessage::Ping(data)) => {
-                    trace!("WebSocket ping received");
+                    tracing::trace!("WebSocket ping received");
                     if socket.send(AxumMessage::Pong(data)).await.is_err() {
                         break;
                     }
@@ -610,21 +609,21 @@ async fn run_server(config: WebsocketServerConfig) -> anyhow::Result<()> {
                     // Ignore pongs
                 }
                 Ok(AxumMessage::Close(_)) => {
-                    trace!("WebSocket close received");
+                    tracing::trace!("WebSocket close received");
                     break;
                 }
                 Err(e) => {
-                    debug!(error = %e, "WebSocket error");
+                    tracing::debug!(error = %e, "WebSocket error");
                     break;
                 }
             }
         }
-        trace!("WebSocket connection closed");
+        tracing::trace!("WebSocket connection closed");
     }
 
     let router = Router::new().route("/", get(ws_handler));
     let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, config.port)).await?;
-    info!(port = config.port, "WebSocket echo server listening");
+    tracing::info!(port = config.port, "WebSocket echo server listening");
 
     axum::serve(listener, router).await?;
 
