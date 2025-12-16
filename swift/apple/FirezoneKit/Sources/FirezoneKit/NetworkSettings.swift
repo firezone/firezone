@@ -133,24 +133,18 @@ public struct NetworkSettings {
     return buildNetworkSettings()
   }
 
-  /// Set dummy match domain for system DNS retrieval
-  /// Always returns NEPacketTunnelNetworkSettings (these operations must always apply)
-  public mutating func setDummyMatchDomain() -> NEPacketTunnelNetworkSettings {
+  public mutating func setDummyMatchDomain() -> NEPacketTunnelNetworkSettings? {
     self.matchDomains = ["firezone-fd0020211111"]
-    // Force unwrap is safe here - we always have tunnel addresses set when this is called
-    return buildNetworkSettings()!
+    return buildNetworkSettings()
   }
 
-  /// Clear dummy match domain and restore search domains
-  /// Always returns NEPacketTunnelNetworkSettings (these operations must always apply)
-  public mutating func clearDummyMatchDomain() -> NEPacketTunnelNetworkSettings {
+  public mutating func clearDummyMatchDomain() -> NEPacketTunnelNetworkSettings? {
     var newMatchDomains = [""]
     if let searchDomains = self.searchDomains {
       newMatchDomains.append(contentsOf: searchDomains)
     }
     self.matchDomains = newMatchDomains
-    // Force unwrap is safe here - we always have tunnel addresses set when this is called
-    return buildNetworkSettings()!
+    return buildNetworkSettings()
   }
 
   // MARK: - NEPacketTunnelNetworkSettings Builder

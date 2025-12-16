@@ -650,7 +650,12 @@ class Adapter: @unchecked Sendable {
       let semaphore = DispatchSemaphore(value: 0)
 
       // Set tunnel's matchDomains to a dummy string that will never match any name
-      let tunnelNetworkSettings = networkSettings.setDummyMatchDomain()
+      guard let tunnelNetworkSettings = networkSettings.setDummyMatchDomain() else {
+        // This should not be possible as we have checked on `hasAppliedSettings` above.
+        // If we do hit this, it means we don't have tunnel IP addresses yet so no `networkSettings` have been applied yet.
+        semaphore.signal()
+        return BindResolvers.getServers()
+      }
 
       // Call apply to populate /etc/resolv.conf with the system's default resolvers
       provider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
@@ -666,7 +671,11 @@ class Adapter: @unchecked Sendable {
         resolversBox.value = BindResolvers.getServers()
 
         // Restore connlib's DNS resolvers
-        let tunnelNetworkSettings = self.networkSettings.clearDummyMatchDomain()
+        guard let tunnelNetworkSettings = self.networkSettings.clearDummyMatchDomain() else {
+          // This should not be possible as we have applied network settings above if we get here.
+          semaphore.signal()
+          return
+        }
         provider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
           if let error = error {
             Log.error(error)
