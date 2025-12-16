@@ -1,7 +1,7 @@
 defmodule Web.Settings.ApiClients.NewToken do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
-  alias Domain.{Auth, Token}
+  alias Domain.{Auth, APIToken}
   alias __MODULE__.DB
   import Ecto.Changeset
 
@@ -75,7 +75,7 @@ defmodule Web.Settings.ApiClients.NewToken do
     attrs = map_expires_at(attrs)
 
     with {:ok, encoded_token} <-
-           Auth.create_api_client_token(
+           Auth.create_api_token(
              socket.assigns.actor,
              attrs,
              socket.assigns.subject
@@ -97,7 +97,7 @@ defmodule Web.Settings.ApiClients.NewToken do
 
   # Local changeset for form validation
   defp build_token_changeset(attrs) do
-    %Token{}
+    %APIToken{}
     |> cast(attrs, [:name, :expires_at])
   end
 

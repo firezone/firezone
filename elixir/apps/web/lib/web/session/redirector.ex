@@ -101,7 +101,7 @@ defmodule Web.Session.Redirector do
     post_sign_out_url = url(~p"/#{account_or_slug}")
 
     # Delete the portal session for the subject
-    %{type: :portal_session, id: portal_session_id} = subject.auth_ref
+    %{type: :portal_session, id: portal_session_id} = subject.credential
 
     :ok =
       Auth.delete_portal_session(%Domain.PortalSession{

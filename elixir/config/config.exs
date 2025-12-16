@@ -76,6 +76,7 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     portal_sessions
     ipv4_addresses
     ipv6_addresses
+    api_tokens
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
   # deploys without alerting.

@@ -5,7 +5,9 @@ defmodule Domain.Auth do
   alias Domain.Token
   alias Domain.OneTimePasscode
   alias Domain.PortalSession
-  alias Domain.Auth.{Subject, Context}
+  alias Domain.Auth.Context
+  alias Domain.Auth.Credential
+  alias Domain.Auth.Subject
   alias __MODULE__.DB
   require Logger
 
@@ -16,45 +18,55 @@ defmodule Domain.Auth do
         attrs,
         %Subject{account: %{id: account_id}} = subject
       ) do
-    attrs =
-      Map.merge(attrs, %{
-        "type" => :client,
-        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
-        "account_id" => actor.account_id,
-        "actor_id" => actor.id
-      })
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
 
-    with {:ok, token} <- create_token(attrs, subject) do
-      {:ok, encode_fragment!(token)}
-    end
+    %Token{
+      type: :client,
+      account_id: actor.account_id,
+      actor_id: actor.id,
+      secret_nonce: "",
+      secret_fragment: secret_fragment,
+      secret_salt: secret_salt,
+      secret_hash: secret_hash
+    }
+    |> cast(attrs, [:expires_at])
+    |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
+    |> DB.insert_token(subject)
   end
 
-  def create_api_client_token(
+  # API Tokens
+
+  def create_api_token(
         %Domain.Actor{type: :api_client, account_id: account_id} = actor,
         attrs,
         %Subject{account: %{id: account_id}} = subject
       ) do
-    attrs =
-      Map.merge(attrs, %{
-        "type" => :api_client,
-        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
-        "account_id" => actor.account_id,
-        "actor_id" => actor.id
-      })
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
 
-    with {:ok, token} <- create_token(attrs, subject) do
-      {:ok, encode_fragment!(token)}
+    %Domain.APIToken{
+      account_id: actor.account_id,
+      actor_id: actor.id,
+      secret_fragment: secret_fragment,
+      secret_salt: secret_salt,
+      secret_hash: secret_hash
+    }
+    |> cast(attrs, [:name, :expires_at])
+    |> validate_required([:expires_at])
+    |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
+    |> DB.insert_api_token(subject)
+    |> case do
+      {:ok, token} -> {:ok, encode_fragment!(token)}
+      {:error, changeset} -> {:error, changeset}
     end
   end
 
   # Relay Tokens
 
   def create_relay_token do
-    {secret_fragment, secret_nonce, secret_salt, secret_hash} = generate_token_secrets()
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
 
     %Domain.RelayToken{
       secret_fragment: secret_fragment,
-      secret_nonce: secret_nonce,
       secret_salt: secret_salt,
       secret_hash: secret_hash
     }
@@ -64,25 +76,23 @@ defmodule Domain.Auth do
   # Gateway Tokens
 
   def create_gateway_token(%Domain.Site{} = site, %Subject{} = subject) do
-    {secret_fragment, secret_nonce, secret_salt, secret_hash} = generate_token_secrets()
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
 
     %Domain.GatewayToken{
       account_id: site.account_id,
       site_id: site.id,
       secret_fragment: secret_fragment,
-      secret_nonce: secret_nonce,
       secret_salt: secret_salt,
       secret_hash: secret_hash
     }
     |> DB.insert_gateway_token(subject)
   end
 
-  defp generate_token_secrets do
+  defp generate_token_secrets(nonce \\ "") do
     secret_fragment = Domain.Crypto.random_token(32, encoder: :hex32)
-    secret_nonce = Domain.Crypto.random_token(8, encoder: :url_encode64)
     secret_salt = Domain.Crypto.random_token(16)
-    secret_hash = Domain.Crypto.hash(:sha3_256, secret_nonce <> secret_fragment <> secret_salt)
-    {secret_fragment, secret_nonce, secret_salt, secret_hash}
+    secret_hash = Domain.Crypto.hash(:sha3_256, nonce <> secret_fragment <> secret_salt)
+    {secret_fragment, secret_salt, secret_hash}
   end
 
   # One-Time Passcodes
@@ -164,29 +174,24 @@ defmodule Domain.Auth do
   The token is encoded as a tuple of {account_id, token_id, secret_fragment}
   which is then signed using Plug.Crypto to ensure it can't be tampered with.
   """
-  def encode_fragment!(%Token{secret_fragment: fragment, type: type} = token)
-      when not is_nil(fragment) do
-    body = {token.account_id, token.id, fragment}
+  def encode_fragment!(%Token{type: :client, secret_nonce: nonce} = token),
+    do: encode_token(token.account_id, token.id, token.secret_fragment, "client", nonce)
+
+  def encode_fragment!(%Domain.RelayToken{} = token),
+    do: encode_token(nil, token.id, token.secret_fragment, "relay")
+
+  def encode_fragment!(%Domain.GatewayToken{} = token),
+    do: encode_token(token.account_id, token.id, token.secret_fragment, "gateway")
+
+  def encode_fragment!(%Domain.APIToken{} = token),
+    do: encode_token(token.account_id, token.id, token.secret_fragment, "api_client")
+
+  defp encode_token(account_id, id, fragment, type, nonce \\ "") do
+    body = {account_id, id, fragment}
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
-    "." <> Plug.Crypto.sign(key_base, salt <> to_string(type), body)
-  end
-
-  def encode_fragment!(%Domain.RelayToken{} = token) do
-    encode_infrastructure_token(token, "relay", nil)
-  end
-
-  def encode_fragment!(%Domain.GatewayToken{} = token) do
-    encode_infrastructure_token(token, "gateway", token.account_id)
-  end
-
-  defp encode_infrastructure_token(token, type, account_id) do
-    body = {account_id, token.id, token.secret_fragment}
-    config = fetch_config!()
-    key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt)
-    token.secret_nonce <> "." <> Plug.Crypto.sign(key_base, salt <> type, body)
+    nonce <> "." <> Plug.Crypto.sign(key_base, salt <> type, body)
   end
 
   def verify_relay_token(encoded_token) when is_binary(encoded_token) do
@@ -211,7 +216,7 @@ defmodule Domain.Auth do
          {:ok, {account_id, id, fragment}} <-
            decode_infrastructure_token(signed, key_base, base_salt, current_salt, legacy_salt),
          {:ok, token} <- apply_fetch(fetch_fn, account_id, id),
-         :ok <- verify_token_hash(token, nonce, fragment) do
+         :ok <- verify_secret_hash(token, nonce, fragment) do
       {:ok, token}
     else
       _ -> {:error, :invalid_token}
@@ -233,82 +238,38 @@ defmodule Domain.Auth do
     end
   end
 
-  defp verify_token_hash(token, nonce, fragment) do
-    expected_hash = Domain.Crypto.hash(:sha3_256, nonce <> fragment <> token.secret_salt)
-
-    if Plug.Crypto.secure_compare(expected_hash, token.secret_hash) do
-      :ok
-    else
-      :error
-    end
-  end
-
   # Token Management
 
-  def create_token(attrs, subject \\ nil) do
-    changeset = create_token_changeset(%Token{}, attrs, subject)
-    DB.insert_token(changeset)
-  end
-
-  defp create_token_changeset(token, attrs, subject) do
+  # Client token - called from auth controllers
+  def create_token(attrs) do
     changeset =
-      token
-      |> cast(
-        attrs,
-        ~w[name account_id actor_id auth_provider_id secret_fragment secret_nonce expires_at type]a
-      )
-      |> validate_required(~w[type]a)
+      %Token{type: :client}
+      |> cast(attrs, ~w[secret_nonce name account_id actor_id auth_provider_id expires_at]a)
+      # TODO: tokens refactor - enforce this as not null constraint in the DB
+      |> validate_required([:account_id, :actor_id])
+      |> validate_length(:secret_nonce, max: 128)
+      |> validate_format(:secret_nonce, ~r/^[^.]*$/, message: "cannot contain periods")
 
-    changeset =
-      if subject do
-        changeset
-        |> put_change(:account_id, subject.account.id)
-      else
-        changeset
-      end
+    nonce = get_change(changeset, :secret_nonce) || ""
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets(nonce)
 
     changeset
-    |> put_change(:secret_salt, Domain.Crypto.random_token(16))
-    |> validate_format(:secret_nonce, ~r/^[^\.]{0,128}$/)
-    |> validate_required(:secret_fragment)
-    |> put_hash(:secret_fragment, :sha3_256,
-      with_nonce: :secret_nonce,
-      with_salt: :secret_salt,
-      to: :secret_hash
-    )
-    |> delete_change(:secret_nonce)
-    |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
-    |> validate_required(~w[secret_salt secret_hash]a)
-    |> validate_required_assocs()
+    |> put_change(:secret_fragment, secret_fragment)
+    |> put_change(:secret_salt, secret_salt)
+    |> put_change(:secret_hash, secret_hash)
+    |> DB.insert_token()
   end
 
-  defp validate_required_assocs(changeset) do
-    case fetch_field(changeset, :type) do
-      {_data_or_changes, :client} ->
-        changeset
-        |> validate_required(:actor_id)
-
-      {_data_or_changes, :api_client} ->
-        changeset
-        |> validate_required(:actor_id)
-
-      _ ->
-        changeset
-    end
-  end
-
-  def fetch_token(account_id, token_id, context_type) do
-    DB.fetch_token_for_use(account_id, token_id, context_type)
+  def fetch_token(account_id, token_id, %Context{} = context) do
+    DB.fetch_token_for_use(account_id, token_id, context)
   end
 
   def use_token(encoded_token, %Context{} = context)
       when is_binary(encoded_token) do
     with {:ok, {nonce, account_id, id, fragment}} <-
            decode_token_with_context(encoded_token, context),
-         {:ok, token} <- DB.fetch_token_for_use(account_id, id, context.type),
-         :ok <- verify_secret_hash(token, nonce, fragment),
-         changeset = use_token_changeset(token, context),
-         {:ok, token} <- DB.update_token(changeset) do
+         {:ok, token} <- DB.fetch_token_for_use(account_id, id, context),
+         :ok <- verify_secret_hash(token, nonce, fragment) do
       {:ok, token}
     else
       error ->
@@ -338,31 +299,14 @@ defmodule Domain.Auth do
     end
   end
 
-  defp use_token_changeset(%Token{} = token, %Context{} = context) do
-    token
-    |> change()
-    |> put_change(:last_seen_user_agent, context.user_agent)
-    |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
-    |> put_change(:last_seen_remote_ip_location_region, context.remote_ip_location_region)
-    |> put_change(:last_seen_remote_ip_location_city, context.remote_ip_location_city)
-    |> put_change(:last_seen_remote_ip_location_lat, context.remote_ip_location_lat)
-    |> put_change(:last_seen_remote_ip_location_lon, context.remote_ip_location_lon)
-    |> put_change(:last_seen_at, DateTime.utc_now())
-    |> validate_required(~w[last_seen_user_agent last_seen_remote_ip]a)
-  end
-
   defp verify_secret_hash(token, nonce, fragment) do
-    expected_hash = token_secret_hash(token, nonce, fragment)
+    expected_hash = Domain.Crypto.hash(:sha3_256, nonce <> fragment <> token.secret_salt)
 
     if Plug.Crypto.secure_compare(expected_hash, token.secret_hash) do
       :ok
     else
       :error
     end
-  end
-
-  defp token_secret_hash(token, nonce, fragment) do
-    Domain.Crypto.hash(:sha3_256, nonce <> fragment <> token.secret_salt)
   end
 
   # Authentication
@@ -381,35 +325,37 @@ defmodule Domain.Auth do
     end
   end
 
-  def build_subject(%Token{type: type} = token, %Context{} = context)
-      when type in [:client, :api_client] do
-    account = DB.get_account_by_id!(token.account_id)
+  def build_subject(%Token{type: :client} = token, %Context{} = context) do
+    credential = %Credential{type: :token, id: token.id, auth_provider_id: token.auth_provider_id}
+    do_build_subject(token, context, credential)
+  end
 
-    with {:ok, actor} <- DB.fetch_active_actor_by_id(token.actor_id) do
-      {:ok,
-       %Subject{
-         actor: actor,
-         account: account,
-         expires_at: token.expires_at,
-         context: context,
-         auth_ref: %{type: :token, id: token.id},
-         auth_provider_id: token.auth_provider_id
-       }}
-    end
+  def build_subject(%Domain.APIToken{} = token, %Context{} = context) do
+    credential = %Credential{type: :api_token, id: token.id}
+    do_build_subject(token, context, credential)
   end
 
   def build_subject(%PortalSession{} = session, %Context{} = context) do
-    account = DB.get_account_by_id!(session.account_id)
+    credential = %Credential{
+      type: :portal_session,
+      id: session.id,
+      auth_provider_id: session.auth_provider_id
+    }
 
-    with {:ok, actor} <- DB.fetch_active_actor_by_id(session.actor_id) do
+    do_build_subject(session, context, credential)
+  end
+
+  defp do_build_subject(token_or_session, context, credential) do
+    account = DB.get_account_by_id!(token_or_session.account_id)
+
+    with {:ok, actor} <- DB.fetch_active_actor_by_id(token_or_session.actor_id) do
       {:ok,
        %Subject{
          actor: actor,
          account: account,
-         expires_at: session.expires_at,
+         expires_at: token_or_session.expires_at,
          context: context,
-         auth_ref: %{type: :portal_session, id: session.id},
-         auth_provider_id: session.auth_provider_id
+         credential: credential
        }}
     end
   end
@@ -442,9 +388,17 @@ defmodule Domain.Auth do
       end
     end
 
+    # Client
     def insert_token(changeset) do
       changeset
       |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    # Service Account
+    def insert_token(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
       |> Safe.insert()
     end
 
@@ -470,6 +424,12 @@ defmodule Domain.Auth do
       |> Safe.insert()
     end
 
+    def insert_api_token(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+    end
+
     def fetch_gateway_token(account_id, id) do
       from(gt in Domain.GatewayToken,
         where: gt.account_id == ^account_id,
@@ -483,22 +443,35 @@ defmodule Domain.Auth do
       end
     end
 
-    def update_token(changeset) do
-      changeset
-      |> Safe.unscoped()
-      |> Safe.update()
-    end
+    def fetch_token_for_use(account_id, token_id, %Domain.Auth.Context{} = context) do
+      now = DateTime.utc_now()
+      remote_ip = %Postgrex.INET{address: context.remote_ip}
 
-    def fetch_token_for_use(account_id, token_id, context_type) do
-      from(tokens in Token, as: :tokens)
-      |> where(
-        [tokens: tokens],
-        tokens.expires_at > ^DateTime.utc_now() or is_nil(tokens.expires_at)
-      )
+      schema =
+        case context.type do
+          :api_client -> Domain.APIToken
+          :client -> Token
+        end
+
+      from(tokens in schema, as: :tokens)
+      |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
+      |> join(:inner, [tokens: tokens], actor in assoc(tokens, :actor), as: :actor)
+      |> where([tokens: tokens], tokens.expires_at > ^now or is_nil(tokens.expires_at))
       |> where([tokens: tokens], tokens.id == ^token_id)
-      |> where([tokens: tokens], tokens.type == ^context_type)
       |> where([tokens: tokens], tokens.account_id == ^account_id)
-      |> update([tokens: tokens], set: [last_seen_at: ^DateTime.utc_now()])
+      |> where([account: account], is_nil(account.disabled_at))
+      |> where([actor: actor], is_nil(actor.disabled_at))
+      |> update([tokens: tokens],
+        set: [
+          last_seen_at: ^now,
+          last_seen_user_agent: ^context.user_agent,
+          last_seen_remote_ip: ^remote_ip,
+          last_seen_remote_ip_location_region: ^context.remote_ip_location_region,
+          last_seen_remote_ip_location_city: ^context.remote_ip_location_city,
+          last_seen_remote_ip_location_lat: ^context.remote_ip_location_lat,
+          last_seen_remote_ip_location_lon: ^context.remote_ip_location_lon
+        ]
+      )
       |> select([tokens: tokens], tokens)
       |> Safe.unscoped()
       |> Safe.update_all([])
