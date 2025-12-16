@@ -7,7 +7,7 @@ import Foundation
 import NetworkExtension
 import os.log
 
-public struct NetworkSettings {
+public struct NetworkSettings: Equatable {
   private var tunnelAddressIPv4: String?
   private var tunnelAddressIPv6: String?
   private var dnsServers: [String] = []
@@ -18,24 +18,6 @@ public struct NetworkSettings {
   private var searchDomain: String?
 
   public init() {}
-
-  // MARK: - Field-by-field comparison helpers
-
-  private static func compareRoutes4(_ lhs: [NEIPv4Route], _ rhs: [NEIPv4Route]) -> Bool {
-    guard lhs.count == rhs.count else { return false }
-    return zip(lhs, rhs).allSatisfy {
-      $0.destinationAddress == $1.destinationAddress
-        && $0.destinationSubnetMask == $1.destinationSubnetMask
-    }
-  }
-
-  private static func compareRoutes6(_ lhs: [NEIPv6Route], _ rhs: [NEIPv6Route]) -> Bool {
-    guard lhs.count == rhs.count else { return false }
-    return zip(lhs, rhs).allSatisfy {
-      $0.destinationAddress == $1.destinationAddress
-        && $0.destinationNetworkPrefixLength == $1.destinationNetworkPrefixLength
-    }
-  }
 
   // MARK: - Mutable update functions
 
@@ -49,14 +31,7 @@ public struct NetworkSettings {
     routes4: [NEIPv4Route],
     routes6: [NEIPv6Route]
   ) -> NEPacketTunnelNetworkSettings? {
-    // Store old values for comparison
-    let oldIPv4 = self.tunnelAddressIPv4
-    let oldIPv6 = self.tunnelAddressIPv6
-    let olddnsServers = self.dnsServers
-    let oldMatchDomains = self.matchDomains
-    let oldSearchDomain = self.searchDomain
-    let oldRoutes4 = self.routes4
-    let oldRoutes6 = self.routes6
+    let oldSelf = self
 
     // Update values
     self.tunnelAddressIPv4 = ipv4
@@ -79,16 +54,7 @@ public struct NetworkSettings {
     }
 
     // Check if anything actually changed
-    let hasChanges =
-      oldIPv4 != self.tunnelAddressIPv4
-      || oldIPv6 != self.tunnelAddressIPv6
-      || olddnsServers != self.dnsServers
-      || oldMatchDomains != self.matchDomains
-      || oldSearchDomain != self.searchDomain
-      || !NetworkSettings.compareRoutes4(oldRoutes4, self.routes4)
-      || !NetworkSettings.compareRoutes6(oldRoutes6, self.routes6)
-
-    if !hasChanges {
+    if oldSelf == self {
       return nil
     }
 
@@ -102,12 +68,13 @@ public struct NetworkSettings {
   public mutating func updateDnsResources(newDnsResources: [String])
     -> NEPacketTunnelNetworkSettings?
   {
-    let oldDnsResources = self.dnsResources
+    let oldSelf = self
+
+    // Update values
     self.dnsResources = newDnsResources.sorted()
 
-    let hasChanges = oldDnsResources != self.dnsResources
-
-    if !hasChanges {
+    // Check if anything actually changed
+    if oldSelf == self {
       return nil
     }
 
@@ -170,6 +137,36 @@ public struct NetworkSettings {
 
     return tunnelNetworkSettings
   }
+
+  // MARK: - Equatable Conformance
+
+  public static func == (lhs: NetworkSettings, rhs: NetworkSettings) -> Bool {
+    return lhs.tunnelAddressIPv4 == rhs.tunnelAddressIPv4
+      && lhs.tunnelAddressIPv6 == rhs.tunnelAddressIPv6
+      && lhs.dnsServers == rhs.dnsServers
+      && lhs.matchDomains == rhs.matchDomains
+      && lhs.searchDomain == rhs.searchDomain
+      && lhs.dnsResources == rhs.dnsResources
+      && compareRoutes4(lhs.routes4, rhs.routes4)
+      && compareRoutes6(lhs.routes6, rhs.routes6)
+  }
+
+  private static func compareRoutes4(_ lhs: [NEIPv4Route], _ rhs: [NEIPv4Route]) -> Bool {
+    guard lhs.count == rhs.count else { return false }
+    return zip(lhs, rhs).allSatisfy {
+      $0.destinationAddress == $1.destinationAddress
+        && $0.destinationSubnetMask == $1.destinationSubnetMask
+    }
+  }
+
+  private static func compareRoutes6(_ lhs: [NEIPv6Route], _ rhs: [NEIPv6Route]) -> Bool {
+    guard lhs.count == rhs.count else { return false }
+    return zip(lhs, rhs).allSatisfy {
+      $0.destinationAddress == $1.destinationAddress
+        && $0.destinationNetworkPrefixLength == $1.destinationNetworkPrefixLength
+    }
+  }
+
 }
 
 // MARK: - IPv4 Subnet Mask Lookup
