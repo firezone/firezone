@@ -9,7 +9,7 @@ on:
 jobs:
   # Builds images that match what's default in docker-compose.yml for
   # local development.
-  build-data-plane-dev-images:
+  data-plane-dev-images:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     with:
@@ -18,7 +18,7 @@ jobs:
       profile: "debug"
 
   # Builds debug images with release binaries for compatibility tests in case the merge_group was skipped.
-  build-data-plane-test-images:
+  data-plane-test-images:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     with:
@@ -26,21 +26,26 @@ jobs:
       stage: "debug"
       profile: "release"
 
-  build-control-plane-images:
-    uses: ./.github/workflows/_control-plane.yml
-    secrets: inherit
-
-  # Re-run CI checks to make sure everything's green, since "Merging as administrator"
-  # won't trigger these in the merge group.
-  ci:
-    uses: ./.github/workflows/ci.yml
+  # Build data-plane prod images for staging and production environments.
+  data-plane-prod-images:
+    uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     with:
       profile: "release"
       stage: "release"
 
+  # Build control-plane prod images for staging and production environments.
+  control-plane-images:
+    uses: ./.github/workflows/_control-plane.yml
+    secrets: inherit
+
+  # Build loadtest binaries for QA environment.
+  loadtest-binaries:
+    uses: ./.github/workflows/_loadtest.yml
+    secrets: inherit
+
   notify:
-    needs: ci
+    needs: [data-plane-prod-images, control-plane-images, loadtest-binaries]
     runs-on: ubuntu-24.04
     steps:
       - name: Send 'checks-passed' event
@@ -54,3 +59,25 @@ jobs:
             /repos/firezone/infra/dispatches \
             --raw-field "event_type=checks-passed" \
             --field "client_payload[sha]=${{ github.sha }}"
+
+  # To have proper test coverage, we need to run `rust` and `elixir` on `main`.
+
+  rust:
+    uses: ./.github/workflows/_rust.yml
+    secrets: inherit
+
+  elixir:
+    uses: ./.github/workflows/_elixir.yml
+    secrets: inherit
+
+  coverage-finish:
+    name: coverage-finish
+    needs: [elixir, rust]
+    if: needs.elixir.result != 'skipped' || needs.rust.result != 'skipped'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Finalize coverage upload
+        uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel-finished: true
