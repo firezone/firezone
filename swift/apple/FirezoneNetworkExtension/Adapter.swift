@@ -468,7 +468,13 @@ class Adapter: @unchecked Sendable {
 
       // Update DNS resource addresses to trigger network settings apply when they change
       // This flushes the DNS cache so new DNS resources are immediately resolvable
-      let tunnelNetworkSettings = networkSettings.updateDnsResources(from: resourceList)
+      let dnsAddresses = resourceList.compactMap { resource in
+        if case .dns(let dnsResource) = resource {
+          return dnsResource.address
+        }
+        return nil
+      }
+      let tunnelNetworkSettings = networkSettings.updateDnsResources(addresses: dnsAddresses)
       applyNetworkSettings(tunnelNetworkSettings)
 
     case .disconnected(let error):

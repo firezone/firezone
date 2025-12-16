@@ -3,12 +3,11 @@
 //  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 
-import FirezoneKit
 import Foundation
 import NetworkExtension
 import os.log
 
-struct NetworkSettings {
+public struct NetworkSettings {
   private var tunnelAddressIPv4: String?
   private var tunnelAddressIPv6: String?
   private var dnsAddresses: [String]?
@@ -46,7 +45,7 @@ struct NetworkSettings {
 
   /// Update tunnel interface configuration
   /// Returns NEPacketTunnelNetworkSettings if settings changed, nil if unchanged or build fails
-  mutating func updateTunInterface(
+  public mutating func updateTunInterface(
     ipv4: String?,
     ipv6: String?,
     dnsAddresses: [String],
@@ -112,21 +111,18 @@ struct NetworkSettings {
     return buildNetworkSettings()
   }
 
-  /// Update DNS resource addresses from resources
+  /// Update DNS resource addresses
   /// Used to trigger network settings apply when DNS resources change,
   /// which flushes the DNS cache so new DNS resources are immediately resolvable
   /// Returns NEPacketTunnelNetworkSettings if settings changed, nil if unchanged or build fails
-  mutating func updateDnsResources(from resources: [Resource]) -> NEPacketTunnelNetworkSettings? {
+  public mutating func updateDnsResources(addresses: [String])
+    -> NEPacketTunnelNetworkSettings?
+  {
     // Store old value for comparison
     let oldDnsResourceAddresses = self.dnsResourceAddresses
 
     // Update value
-    let newDnsResourceAddresses = resources.compactMap { resource in
-      if case .dns(let dnsResource) = resource {
-        return dnsResource.address
-      }
-      return nil
-    }.sorted()
+    let newDnsResourceAddresses = addresses.sorted()
     self.dnsResourceAddresses = newDnsResourceAddresses
 
     // Check if anything actually changed
@@ -139,7 +135,7 @@ struct NetworkSettings {
 
   /// Set dummy match domain for system DNS retrieval
   /// Always returns NEPacketTunnelNetworkSettings (these operations must always apply)
-  mutating func setDummyMatchDomain() -> NEPacketTunnelNetworkSettings {
+  public mutating func setDummyMatchDomain() -> NEPacketTunnelNetworkSettings {
     self.matchDomains = ["firezone-fd0020211111"]
     // Force unwrap is safe here - we always have tunnel addresses set when this is called
     return buildNetworkSettings()!
@@ -147,7 +143,7 @@ struct NetworkSettings {
 
   /// Clear dummy match domain and restore search domains
   /// Always returns NEPacketTunnelNetworkSettings (these operations must always apply)
-  mutating func clearDummyMatchDomain() -> NEPacketTunnelNetworkSettings {
+  public mutating func clearDummyMatchDomain() -> NEPacketTunnelNetworkSettings {
     var newMatchDomains = [""]
     if let searchDomains = self.searchDomains {
       newMatchDomains.append(contentsOf: searchDomains)
@@ -160,7 +156,7 @@ struct NetworkSettings {
   // MARK: - NEPacketTunnelNetworkSettings Builder
 
   /// Build NEPacketTunnelNetworkSettings from current state
-  func buildNetworkSettings() -> NEPacketTunnelNetworkSettings? {
+  public func buildNetworkSettings() -> NEPacketTunnelNetworkSettings? {
     // Validate we have required fields
     guard let tunnelAddressIPv4 = tunnelAddressIPv4,
       let tunnelAddressIPv6 = tunnelAddressIPv6
@@ -254,11 +250,16 @@ enum IPv4SubnetMaskLookup {
 // MARK: - Route Convenience Helpers
 
 extension NetworkSettings {
-  struct Cidr {
-    let address: String
-    let prefix: Int
+  public struct Cidr {
+    public let address: String
+    public let prefix: Int
 
-    var asNEIPv4Route: NEIPv4Route? {
+    public init(address: String, prefix: Int) {
+      self.address = address
+      self.prefix = prefix
+    }
+
+    public var asNEIPv4Route: NEIPv4Route? {
       guard let subnetMask = IPv4SubnetMaskLookup.table[prefix] else {
         Log.warning("Invalid IPv4 prefix: \(prefix) for address: \(address)")
         return nil
@@ -266,7 +267,7 @@ extension NetworkSettings {
       return NEIPv4Route(destinationAddress: address, subnetMask: subnetMask)
     }
 
-    var asNEIPv6Route: NEIPv6Route? {
+    public var asNEIPv6Route: NEIPv6Route? {
       guard prefix >= 0 && prefix <= 128 else {
         Log.warning("Invalid IPv6 prefix: \(prefix) for address: \(address)")
         return nil
