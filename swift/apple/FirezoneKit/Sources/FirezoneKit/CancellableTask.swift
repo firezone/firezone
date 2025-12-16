@@ -7,10 +7,10 @@ import Foundation
 /// when the property is set to nil or the owner is deallocated (via ARC releasing the wrapper).
 ///
 /// Fully Sendable because Task<Void, Never> is Sendable and the property is immutable.
-final class CancellableTask: Sendable {
+public final class CancellableTask: Sendable {
   private let task: Task<Void, Never>
 
-  init(_ operation: @escaping @Sendable () async -> Void) {
+  public init(_ operation: @escaping @Sendable () async -> Void) {
     self.task = Task(operation: operation)
   }
 
