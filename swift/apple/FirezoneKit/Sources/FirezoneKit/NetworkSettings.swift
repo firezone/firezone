@@ -164,7 +164,6 @@ public struct NetworkSettings: Equatable {
         && $0.destinationNetworkPrefixLength == $1.destinationNetworkPrefixLength
     }
   }
-
 }
 
 // MARK: - IPv4 Subnet Mask Lookup
