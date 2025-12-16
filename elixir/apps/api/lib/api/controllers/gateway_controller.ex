@@ -30,7 +30,7 @@ defmodule API.GatewayController do
     list_opts =
       params
       |> Pagination.params_to_list_opts()
-      |> Keyword.put(:preload, :online?)
+      |> Keyword.put(:preload, [:online?, :ipv4_address, :ipv6_address])
 
     list_opts =
       if site_id = params["site_id"] do
@@ -147,6 +147,7 @@ defmodule API.GatewayController do
       result =
         from(g in Gateway, as: :gateways)
         |> where([gateways: g], g.id == ^id)
+        |> preload([:ipv4_address, :ipv6_address])
         |> Safe.scoped(subject)
         |> Safe.one()
 

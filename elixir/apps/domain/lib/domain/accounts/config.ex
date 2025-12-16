@@ -216,10 +216,9 @@ defmodule Domain.Accounts.Config do
     if has_errors?(changeset, :address) do
       changeset
     else
-      Domain.Network.reserved_cidrs()
-      |> Enum.reduce(changeset, fn {_type, cidr}, changeset ->
-        validate_not_in_cidr(changeset, :address, cidr)
-      end)
+      changeset
+      |> validate_not_in_cidr(:address, Domain.IPv4Address.reserved_cidr())
+      |> validate_not_in_cidr(:address, Domain.IPv6Address.reserved_cidr())
     end
   end
 

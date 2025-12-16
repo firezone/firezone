@@ -88,41 +88,46 @@ defmodule Domain.Repo.Seeds do
     {:ok, resource}
   end
 
-  # Generate and create network addresses in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
-  # Returns the IP tuples after creating the network_addresses records
-  # Uses UUID hash for deterministic, unique IPs
-  defp create_tunnel_ips(account_id, uuid) do
-    # Hash the UUID to get deterministic bytes
-    <<ipv4_2, ipv4_3, ipv4_4, ipv6_rest::binary-size(10), _::binary>> =
-      :crypto.hash(:sha256, uuid)
+  # Allocate tunnel IP addresses for clients/gateways
+  # Uses monotonic counter for sequential unique addresses
+  # Must be called AFTER the client/gateway is created, passing its ID
+  defp create_tunnel_ip_addresses(account_id, opts) do
+    client_id = Keyword.get(opts, :client_id)
+    gateway_id = Keyword.get(opts, :gateway_id)
 
-    # CGNAT range: 100.64.0.0 - 100.127.255.255 (100.64.0.0/10)
-    ipv4_second = 64 + rem(ipv4_2, 64)
-    ipv4_third = ipv4_3
-    ipv4_fourth = rem(ipv4_4, 254) + 1
+    # Offset by 1 since unique_integer starts at 0
+    offset = System.unique_integer([:positive, :monotonic]) + 1
 
-    # fd00:2021:1111::/48 range
-    <<w4::16, w5::16, w6::16, w7::16, w8::16>> = ipv6_rest
+    # CGNAT range: 100.64.0.0/11 - offset into last two octets
+    # Using offset directly, max 8190 addresses (32 * 256 - 2)
+    ipv4_third = rem(div(offset, 256), 32)
+    ipv4_fourth = rem(offset, 256)
 
-    ipv4 = {100, ipv4_second, ipv4_third, ipv4_fourth}
-    ipv6 = {0xFD00, 0x2021, 0x1111, w4, w5, w6, w7, w8}
+    # fd00:2021:1111::/107 range - offset into last word
+    # Using offset directly for simplicity
+    ipv6_w8 = offset
 
-    # Create network address records that clients/gateways FK to
-    %Domain.Network.Address{
+    ipv4 = {100, 64, ipv4_third, ipv4_fourth}
+    ipv6 = {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0, ipv6_w8}
+
+    # Create address records with client/gateway FK
+    %Domain.IPv4Address{
       account_id: account_id,
       address: ipv4,
-      type: :ipv4
+      client_id: client_id,
+      gateway_id: gateway_id
     }
     |> Repo.insert!()
 
-    %Domain.Network.Address{
+    %Domain.IPv6Address{
       account_id: account_id,
       address: ipv6,
-      type: :ipv6
+      client_id: client_id,
+      gateway_id: gateway_id
     }
     |> Repo.insert!()
 
-    {ipv4, ipv6}
+    :ok
   end
 
   # Helper function to create gateway directly without context module
@@ -140,18 +145,14 @@ defmodule Domain.Repo.Seeds do
     site = Repo.get_by!(Site, id: site_id)
     external_id = attrs["external_id"] || attrs[:external_id]
 
-    # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
-    {ipv4, ipv6} = create_tunnel_ips(site.account_id, external_id)
-
+    # First create the gateway
     gateway =
       %Gateway{
         site_id: site_id,
         account_id: site.account_id,
         name: attrs["name"] || attrs[:name],
-        external_id: attrs["external_id"] || attrs[:external_id],
+        external_id: external_id,
         public_key: attrs["public_key"] || attrs[:public_key],
-        ipv4: ipv4,
-        ipv6: ipv6,
         last_seen_user_agent: context.user_agent,
         last_seen_remote_ip: context.remote_ip,
         last_seen_version: version,
@@ -159,7 +160,10 @@ defmodule Domain.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    {:ok, gateway}
+    # Then create tunnel IP addresses with gateway FK
+    create_tunnel_ip_addresses(site.account_id, gateway_id: gateway.id)
+
+    {:ok, Repo.preload(gateway, [:ipv4_address, :ipv6_address])}
   end
 
   # Helper function to create client directly without context module
@@ -170,21 +174,17 @@ defmodule Domain.Repo.Seeds do
 
     external_id = attrs["external_id"] || attrs[:external_id]
 
-    # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
-    {ipv4, ipv6} = create_tunnel_ips(subject.account.id, external_id)
-
+    # First create the client
     client =
       %Client{
         account_id: subject.account.id,
         actor_id: subject.actor.id,
         name: attrs["name"] || attrs[:name],
-        external_id: attrs["external_id"] || attrs[:external_id],
+        external_id: external_id,
         public_key: attrs["public_key"] || attrs[:public_key],
         identifier_for_vendor: attrs["identifier_for_vendor"] || attrs[:identifier_for_vendor],
         device_uuid: attrs["device_uuid"] || attrs[:device_uuid],
         device_serial: attrs["device_serial"] || attrs[:device_serial],
-        ipv4: ipv4,
-        ipv6: ipv6,
         last_seen_user_agent: user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
         last_seen_version: version,
@@ -192,7 +192,10 @@ defmodule Domain.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    {:ok, client}
+    # Then create tunnel IP addresses with client FK
+    create_tunnel_ip_addresses(subject.account.id, client_id: client.id)
+
+    {:ok, Repo.preload(client, [:ipv4_address, :ipv6_address])}
   end
 
   def seed do
@@ -599,10 +602,8 @@ defmodule Domain.Repo.Seeds do
         # Generate UUID first so we can use it for deterministic tunnel IPs
         external_id = Ecto.UUID.generate()
 
-        # Create tunnel IPs in CGNAT range (100.64.0.0/10) and fd00:2021:1111::/48
-        {ipv4, ipv6} = create_tunnel_ips(subject.account.id, external_id)
-
-        _client =
+        # First create the client
+        client =
           %Client{
             account_id: subject.account.id,
             actor_id: subject.actor.id,
@@ -610,14 +611,15 @@ defmodule Domain.Repo.Seeds do
             external_id: external_id,
             public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
             identifier_for_vendor: Ecto.UUID.generate(),
-            ipv4: ipv4,
-            ipv6: ipv6,
             last_seen_user_agent: user_agent,
             last_seen_remote_ip: subject.context.remote_ip,
             last_seen_version: version,
             last_seen_at: DateTime.utc_now()
           }
           |> Repo.insert!()
+
+        # Then create tunnel IP addresses with client FK
+        create_tunnel_ip_addresses(subject.account.id, client_id: client.id)
       end
     end
 
@@ -1191,14 +1193,14 @@ defmodule Domain.Repo.Seeds do
     IO.puts("  #{gateway_name}:")
     IO.puts("    External UUID: #{gateway1.external_id}")
     IO.puts("    Public Key: #{gateway1.public_key}")
-    IO.puts("    IPv4: #{:inet.ntoa(gateway1.ipv4)} IPv6: #{:inet.ntoa(gateway1.ipv6)}")
+    IO.puts("    IPv4: #{gateway1.ipv4_address.address} IPv6: #{gateway1.ipv6_address.address}")
     IO.puts("")
 
     gateway_name = "#{site.name}-#{gateway2.name}"
     IO.puts("  #{gateway_name}:")
     IO.puts("    External UUID: #{gateway1.external_id}")
     IO.puts("    Public Key: #{gateway2.public_key}")
-    IO.puts("    IPv4: #{:inet.ntoa(gateway2.ipv4)} IPv6: #{:inet.ntoa(gateway2.ipv6)}")
+    IO.puts("    IPv4: #{gateway2.ipv4_address.address} IPv6: #{gateway2.ipv6_address.address}")
     IO.puts("")
 
     {:ok, dns_google_resource} =

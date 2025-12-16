@@ -129,11 +129,11 @@ defmodule Web.Clients.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Tunnel Interface IPv4 Address</:label>
-            <:value>{@client.ipv4}</:value>
+            <:value>{@client.ipv4_address.address}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Tunnel Interface IPv6 Address</:label>
-            <:value>{@client.ipv6}</:value>
+            <:value>{@client.ipv6_address.address}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -477,7 +477,7 @@ defmodule Web.Clients.Show do
     def get_client!(id, subject) do
       from(c in Client, as: :clients)
       |> where([clients: c], c.id == ^id)
-      |> preload(:actor)
+      |> preload([:actor, :ipv4_address, :ipv6_address])
       |> Safe.scoped(subject)
       |> Safe.one!()
     end

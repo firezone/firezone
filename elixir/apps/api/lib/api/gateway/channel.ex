@@ -298,8 +298,8 @@ defmodule API.Gateway.Channel do
           resource: Views.Resource.render(resource),
           expires_at: DateTime.to_unix(authorization_expires_at, :second),
           payload: payload,
-          client_ipv4: client.ipv4,
-          client_ipv6: client.ipv6
+          client_ipv4: client.ipv4_address.address,
+          client_ipv6: client.ipv6_address.address
         })
 
         cache =
@@ -392,8 +392,8 @@ defmodule API.Gateway.Channel do
             socket.assigns.gateway.site_id,
             socket.assigns.gateway.id,
             socket.assigns.gateway.public_key,
-            socket.assigns.gateway.ipv4,
-            socket.assigns.gateway.ipv6,
+            socket.assigns.gateway.ipv4_address.address,
+            socket.assigns.gateway.ipv6_address.address,
             preshared_key,
             ice_credentials
           }
