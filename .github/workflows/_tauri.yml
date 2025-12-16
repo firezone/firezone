@@ -69,8 +69,6 @@ jobs:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
           lockfile-dir: ./rust/gui-client
       - uses: ./.github/actions/setup-rust
-        with:
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
         with:
@@ -140,8 +138,6 @@ jobs:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
           lockfile-dir: ./rust/gui-client
       - uses: ./.github/actions/setup-rust
-        with:
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 15
