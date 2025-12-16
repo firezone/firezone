@@ -2959,9 +2959,9 @@ dependencies = [
 
 [[package]]
 name = "gat-lending-iterator"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2aa7048a769ef2a297c7957cae4a27932b7ddf866ad8ba1fb3ac595f137ec10b"
+checksum = "750117b6c895c40a8feee97fc95da9b5eb4b531ad772af2640a810ea1e4d2102"
 
 [[package]]
 name = "gdk"
