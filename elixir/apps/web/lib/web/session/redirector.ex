@@ -10,7 +10,7 @@ defmodule Web.Session.Redirector do
   use Web, :verified_routes
 
   alias Domain.Auth
-  alias Domain.Token
+  alias Domain.ClientToken
 
   @doc """
   Sanitizes and validates a redirect_to parameter.
@@ -61,7 +61,7 @@ defmodule Web.Session.Redirector do
         account,
         actor_name,
         identifier,
-        %Token{} = token,
+        %ClientToken{} = token,
         state
       ) do
     fragment = Domain.Auth.encode_fragment!(token)

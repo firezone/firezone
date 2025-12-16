@@ -1,4 +1,4 @@
-defmodule Domain.Workers.DeleteExpiredTokens do
+defmodule Domain.Workers.DeleteExpiredClientTokens do
   @moduledoc """
   Oban worker that deletes expired tokens.
   """
@@ -23,10 +23,11 @@ defmodule Domain.Workers.DeleteExpiredTokens do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Token}
+    alias Domain.ClientToken
+    alias Domain.Safe
 
     def delete_expired_tokens do
-      from(t in Token, as: :tokens)
+      from(t in ClientToken, as: :tokens)
       |> where([tokens: t], t.expires_at <= ^DateTime.utc_now())
       |> Safe.unscoped()
       |> Safe.delete_all()

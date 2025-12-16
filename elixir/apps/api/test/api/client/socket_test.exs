@@ -4,7 +4,6 @@ defmodule API.Client.SocketTest do
   import Domain.AccountFixtures
   import Domain.ActorFixtures
   import Domain.TokenFixtures
-  import Domain.APITokenFixtures
   import Domain.ClientFixtures
   import Domain.SubjectFixtures
   alias API.Client.Socket
@@ -91,7 +90,7 @@ defmodule API.Client.SocketTest do
       in_one_minute = DateTime.utc_now() |> DateTime.add(60, :second)
 
       {:ok, token} =
-        Domain.Auth.create_service_account_token(
+        Domain.Auth.create_headless_client_token(
           actor,
           %{expires_at: in_one_minute},
           admin_subject

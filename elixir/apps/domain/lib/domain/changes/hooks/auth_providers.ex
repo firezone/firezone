@@ -44,13 +44,14 @@ defmodule Domain.Changes.Hooks.AuthProviders do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Token}
+    alias Domain.ClientToken
+    alias Domain.Safe
 
     # Delete all tokens for a provider and disconnect their sockets
     def delete_tokens_for_provider(provider_id) do
       # Query and delete all tokens for this provider
       # The Tokens hook will handle disconnecting sockets
-      from(t in Token,
+      from(t in ClientToken,
         where: t.auth_provider_id == ^provider_id
       )
       |> Safe.unscoped()

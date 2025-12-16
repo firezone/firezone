@@ -71,7 +71,7 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     gateway_tokens
     policies
     resources
-    tokens
+    client_tokens
     one_time_passcodes
     portal_sessions
     ipv4_addresses
@@ -119,7 +119,7 @@ config :domain, Domain.Changes.ReplicationConnection,
     sites
     policies
     resources
-    tokens
+    client_tokens
     google_auth_providers
     entra_auth_providers
     okta_auth_providers

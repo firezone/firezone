@@ -264,9 +264,9 @@ defmodule Domain.Cache.Gateway do
 
     def fetch_token_by_id(id) do
       result =
-        from(t in Domain.Token,
+        from(t in Domain.ClientToken,
           where: t.id == ^id,
-          where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
+          where: t.expires_at > ^DateTime.utc_now()
         )
         |> Safe.unscoped()
         |> Safe.one()

@@ -2,7 +2,7 @@ defmodule Domain.Auth do
   import Ecto.Changeset
   import Ecto.Query
   import Domain.Changeset
-  alias Domain.Token
+  alias Domain.ClientToken
   alias Domain.OneTimePasscode
   alias Domain.PortalSession
   alias Domain.Auth.Context
@@ -11,17 +11,36 @@ defmodule Domain.Auth do
   alias __MODULE__.DB
   require Logger
 
-  # Tokens
+  # Client Tokens
 
-  def create_service_account_token(
+  # GUI client token - called from auth controllers
+  def create_gui_client_token(attrs) do
+    changeset =
+      %ClientToken{}
+      |> cast(attrs, ~w[secret_nonce account_id actor_id auth_provider_id expires_at]a)
+      |> validate_required([:account_id, :actor_id, :auth_provider_id, :expires_at])
+      |> validate_length(:secret_nonce, max: 128)
+      |> validate_format(:secret_nonce, ~r/^[^.]*$/, message: "cannot contain periods")
+
+    nonce = get_change(changeset, :secret_nonce) || ""
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets(nonce)
+
+    changeset
+    |> put_change(:secret_fragment, secret_fragment)
+    |> put_change(:secret_salt, secret_salt)
+    |> put_change(:secret_hash, secret_hash)
+    |> DB.insert_token()
+  end
+
+  # Headless client token - used with service accounts
+  def create_headless_client_token(
         %Domain.Actor{type: :service_account, account_id: account_id} = actor,
         attrs,
         %Subject{account: %{id: account_id}} = subject
       ) do
     {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
 
-    %Token{
-      type: :client,
+    %ClientToken{
       account_id: actor.account_id,
       actor_id: actor.id,
       secret_nonce: "",
@@ -30,6 +49,7 @@ defmodule Domain.Auth do
       secret_hash: secret_hash
     }
     |> cast(attrs, [:expires_at])
+    |> validate_required([:expires_at])
     |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
     |> DB.insert_token(subject)
   end
@@ -174,7 +194,7 @@ defmodule Domain.Auth do
   The token is encoded as a tuple of {account_id, token_id, secret_fragment}
   which is then signed using Plug.Crypto to ensure it can't be tampered with.
   """
-  def encode_fragment!(%Token{type: :client} = token),
+  def encode_fragment!(%ClientToken{} = token),
     do: encode_token(token.account_id, token.id, token.secret_fragment, "client")
 
   def encode_fragment!(%Domain.RelayToken{} = token),
@@ -236,28 +256,6 @@ defmodule Domain.Auth do
       {:error, _} ->
         Plug.Crypto.verify(key_base, base_salt <> legacy_salt, signed, max_age: :infinity)
     end
-  end
-
-  # Token Management
-
-  # Client token - called from auth controllers
-  def create_token(attrs) do
-    changeset =
-      %Token{type: :client}
-      |> cast(attrs, ~w[secret_nonce name account_id actor_id auth_provider_id expires_at]a)
-      # TODO: tokens refactor - enforce this as not null constraint in the DB
-      |> validate_required([:account_id, :actor_id])
-      |> validate_length(:secret_nonce, max: 128)
-      |> validate_format(:secret_nonce, ~r/^[^.]*$/, message: "cannot contain periods")
-
-    nonce = get_change(changeset, :secret_nonce) || ""
-    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets(nonce)
-
-    changeset
-    |> put_change(:secret_fragment, secret_fragment)
-    |> put_change(:secret_salt, secret_salt)
-    |> put_change(:secret_hash, secret_hash)
-    |> DB.insert_token()
   end
 
   def fetch_token(account_id, token_id, %Context{} = context) do
@@ -325,8 +323,13 @@ defmodule Domain.Auth do
     end
   end
 
-  def build_subject(%Token{type: :client} = token, %Context{} = context) do
-    credential = %Credential{type: :token, id: token.id, auth_provider_id: token.auth_provider_id}
+  def build_subject(%ClientToken{} = token, %Context{} = context) do
+    credential = %Credential{
+      type: :client_token,
+      id: token.id,
+      auth_provider_id: token.auth_provider_id
+    }
+
     do_build_subject(token, context, credential)
   end
 
@@ -369,7 +372,7 @@ defmodule Domain.Auth do
     alias Domain.Safe
     alias Domain.Account
     alias Domain.Actor
-    alias Domain.Token
+    alias Domain.ClientToken
     alias Domain.OneTimePasscode
 
     def get_account_by_id!(id) do
@@ -450,7 +453,7 @@ defmodule Domain.Auth do
       schema =
         case context.type do
           :api_client -> Domain.APIToken
-          :client -> Token
+          :client -> ClientToken
         end
 
       from(tokens in schema, as: :tokens)

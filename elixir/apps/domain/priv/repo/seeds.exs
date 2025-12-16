@@ -26,7 +26,7 @@ defmodule Domain.Repo.Seeds do
     Relay,
     Resource,
     Site,
-    Token,
+    ClientToken,
     Userpass
   }
 
@@ -393,7 +393,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _email_provider} =
       create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, system_subject)
 
-    {:ok, _userpass_provider} =
+    {:ok, userpass_provider} =
       create_auth_provider(
         Userpass.AuthProvider,
         %{name: "Username & Password"},
@@ -566,8 +566,8 @@ defmodule Domain.Repo.Seeds do
       }
 
       {:ok, token} =
-        Repo.insert(%Token{
-          type: :client,
+        Repo.insert(%ClientToken{
+          auth_provider_id: userpass_provider.id,
           account_id: account.id,
           actor_id: identity.actor_id,
           expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
@@ -666,8 +666,8 @@ defmodule Domain.Repo.Seeds do
 
     # Create client token for unprivileged actor so policy authorizations can reference it
     {:ok, unprivileged_client_token} =
-      Repo.insert(%Token{
-        type: :client,
+      Repo.insert(%ClientToken{
+        auth_provider_id: userpass_provider.id,
         account_id: account.id,
         actor_id: unprivileged_actor.id,
         secret_nonce: Ecto.UUID.generate(),
@@ -708,7 +708,6 @@ defmodule Domain.Repo.Seeds do
     nonce = "n"
 
     token_attrs = %{
-      name: "tok-#{Ecto.UUID.generate()}",
       account_id: service_account_actor.account_id,
       actor_id: service_account_actor.id,
       secret_nonce: nonce,
@@ -716,7 +715,8 @@ defmodule Domain.Repo.Seeds do
     }
 
     # Use Auth.create_token which properly sets secret_salt, secret_fragment, and secret_hash
-    {:ok, service_account_token} = Auth.create_token(token_attrs)
+    {:ok, service_account_token} =
+      Auth.create_headless_client_token(service_account_actor, token_attrs, admin_subject)
 
     service_account_token =
       service_account_token
@@ -1086,7 +1086,7 @@ defmodule Domain.Repo.Seeds do
 
     site =
       %Site{account: account}
-      |> Ecto.Changeset.cast(%{name: "mycro-aws-gws", tokens: [%{}]}, [:name])
+      |> Ecto.Changeset.cast(%{name: "mycro-aws-gws"}, [:name])
       |> Domain.Changeset.trim_change([:name])
       |> Domain.Changeset.put_default_value(:name, &NameGenerator.generate/0)
       |> Ecto.Changeset.validate_required([:name])

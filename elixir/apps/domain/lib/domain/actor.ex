@@ -22,7 +22,7 @@ defmodule Domain.Actor do
 
     has_many :identities, Domain.ExternalIdentity, references: :id
     has_many :clients, Domain.Client, preload_order: [desc: :last_seen_at], references: :id
-    has_many :tokens, Domain.Token, references: :id
+    has_many :client_tokens, Domain.ClientToken, references: :id
     has_many :one_time_passcodes, Domain.OneTimePasscode, references: :id
     has_many :memberships, Domain.Membership, on_replace: :delete, references: :id
     has_many :groups, through: [:memberships, :group]
