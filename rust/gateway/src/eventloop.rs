@@ -499,7 +499,9 @@ impl Eventloop {
                 let ipv6_socket = SocketAddr::V6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0));
 
                 let mut attempts = [
-                    // First attempt with both sockets.
+                    // 3 attempts with both sockets.
+                    vec![ipv4_socket, ipv6_socket],
+                    vec![ipv4_socket, ipv6_socket],
                     vec![ipv4_socket, ipv6_socket],
                     // If IPv6 is not available, try with just the IPv4 address.
                     vec![ipv4_socket],
