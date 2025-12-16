@@ -51,7 +51,7 @@ arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
 async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
-axum = { version = "0.8.5", default-features = false }
+axum = { version = "0.8.7", default-features = false }
 aya = { git = "https://github.com/aya-rs/aya" }
 aya-build = { git = "https://github.com/aya-rs/aya" }
 aya-ebpf = { git = "https://github.com/aya-rs/aya" }
