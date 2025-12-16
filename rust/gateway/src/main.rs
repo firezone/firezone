@@ -199,7 +199,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     );
     let portal = PhoenixChannel::disconnected(
         SecretBox::init_with(|| login),
-        get_user_agent(None, "gateway", env!("CARGO_PKG_VERSION")),
+        get_user_agent("gateway", env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),
         || {
