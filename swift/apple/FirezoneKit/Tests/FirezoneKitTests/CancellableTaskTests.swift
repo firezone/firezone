@@ -46,7 +46,7 @@ struct CancellableTaskTests {
           try await Task.sleep(for: .seconds(10))
         } catch is CancellationError {
           await wasCancelled.set(true)
-        } catch { }
+        } catch {}
       }
       // CancellableTask goes out of scope here, triggering deinit -> cancel
     }
@@ -67,7 +67,7 @@ struct CancellableTaskTests {
         try await Task.sleep(for: .seconds(10))
       } catch is CancellationError {
         await wasCancelled.set(true)
-      } catch { }
+      } catch {}
     }
 
     // Set to nil, triggering cancellation
