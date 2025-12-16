@@ -59,6 +59,23 @@ struct NetworkSettingsTests {
     #expect(result?.ipv6Settings?.addresses.first == "fd00::1")
   }
 
+  @Test("Sets DNS servers without DNS resources")
+  func firstTunConfigUpdate() async throws {
+    var settings = NetworkSettings()
+
+    settings.updateDnsResources([])
+    let result = settings.updateTunInterface(
+      ipv4: "10.0.0.1",
+      ipv6: "fd00::1",
+      dnsServers: ["1.1.1.1"],
+      searchDomain: nil,
+      routes4: [],
+      routes6: []
+    )
+
+    #expect(result?.dnsSettings?.servers == ["1.1.1.1"])
+  }
+
   @Test("Updating to same TUN config should not emit settings")
   func sameTunConfigNoUpdate() async throws {
     var settings = NetworkSettings()
