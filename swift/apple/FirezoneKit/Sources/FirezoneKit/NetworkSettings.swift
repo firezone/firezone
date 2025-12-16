@@ -10,19 +10,16 @@ import os.log
 public struct NetworkSettings {
   private var tunnelAddressIPv4: String?
   private var tunnelAddressIPv6: String?
-  private var dnsAddresses: [String]?
-  private var routes4: [NEIPv4Route]?
-  private var routes6: [NEIPv6Route]?
-  private var dnsResourceAddresses: [String]?
-  private var matchDomains: [String]?
-  private var searchDomains: [String]?
+  private var dnsAddresses: [String] = []
+  private var routes4: [NEIPv4Route] = []
+  private var routes6: [NEIPv6Route] = []
+  private var dnsResourceAddresses: [String] = []
+  private var matchDomains: [String] = [""]
+  private var searchDomain: String?
 
   // MARK: - Field-by-field comparison helpers
 
-  private static func compareRoutes4(_ lhs: [NEIPv4Route]?, _ rhs: [NEIPv4Route]?) -> Bool {
-    guard let lhs = lhs, let rhs = rhs else {
-      return lhs == nil && rhs == nil
-    }
+  private static func compareRoutes4(_ lhs: [NEIPv4Route], _ rhs: [NEIPv4Route]) -> Bool {
     guard lhs.count == rhs.count else { return false }
     return zip(lhs, rhs).allSatisfy {
       $0.destinationAddress == $1.destinationAddress
@@ -30,10 +27,7 @@ public struct NetworkSettings {
     }
   }
 
-  private static func compareRoutes6(_ lhs: [NEIPv6Route]?, _ rhs: [NEIPv6Route]?) -> Bool {
-    guard let lhs = lhs, let rhs = rhs else {
-      return lhs == nil && rhs == nil
-    }
+  private static func compareRoutes6(_ lhs: [NEIPv6Route], _ rhs: [NEIPv6Route]) -> Bool {
     guard lhs.count == rhs.count else { return false }
     return zip(lhs, rhs).allSatisfy {
       $0.destinationAddress == $1.destinationAddress
@@ -58,53 +52,41 @@ public struct NetworkSettings {
     let oldIPv6 = self.tunnelAddressIPv6
     let oldDnsAddresses = self.dnsAddresses
     let oldMatchDomains = self.matchDomains
-    let oldSearchDomains = self.searchDomains
+    let oldSearchDomain = self.searchDomain
     let oldRoutes4 = self.routes4
     let oldRoutes6 = self.routes6
 
     // Update values
     self.tunnelAddressIPv4 = ipv4
     self.tunnelAddressIPv6 = ipv6
-    let sortedDnsAddresses = dnsAddresses.sorted()
-    self.dnsAddresses = sortedDnsAddresses
-
-    // Set search domain
-    let newMatchDomains: [String]
-    let newSearchDomains: [String]
+    self.dnsAddresses = dnsAddresses.sorted()
+    self.searchDomain = searchDomain
     if let searchDomain = searchDomain {
-      newMatchDomains = ["", searchDomain]
-      newSearchDomains = [searchDomain]
+      self.matchDomains = ["", searchDomain]
     } else {
-      newMatchDomains = [""]
-      newSearchDomains = [""]
+      self.matchDomains = [""]
     }
-    self.matchDomains = newMatchDomains
-    self.searchDomains = newSearchDomains
-
-    // Sort routes for stable comparison
-    let sortedRoutes4 = routes4.sorted {
+    self.routes4 = routes4.sorted {
       ($0.destinationAddress, $0.destinationSubnetMask) < (
         $1.destinationAddress, $1.destinationSubnetMask
       )
     }
-    let sortedRoutes6 = routes6.sorted {
+    self.routes6 = routes6.sorted {
       ($0.destinationAddress, $0.destinationNetworkPrefixLength.intValue)
         < ($1.destinationAddress, $1.destinationNetworkPrefixLength.intValue)
     }
-    self.routes4 = sortedRoutes4
-    self.routes6 = sortedRoutes6
 
     // Check if anything actually changed
     let hasChanges =
-      oldIPv4 != ipv4
-      || oldIPv6 != ipv6
-      || oldDnsAddresses != sortedDnsAddresses
-      || oldMatchDomains != newMatchDomains
-      || oldSearchDomains != newSearchDomains
-      || !NetworkSettings.compareRoutes4(oldRoutes4, sortedRoutes4)
-      || !NetworkSettings.compareRoutes6(oldRoutes6, sortedRoutes6)
+      oldIPv4 != self.tunnelAddressIPv4
+      || oldIPv6 != self.tunnelAddressIPv6
+      || oldDnsAddresses != self.dnsAddresses
+      || oldMatchDomains != self.matchDomains
+      || oldSearchDomain != self.searchDomain
+      || !NetworkSettings.compareRoutes4(oldRoutes4, self.routes4)
+      || !NetworkSettings.compareRoutes6(oldRoutes6, self.routes6)
 
-    guard hasChanges else {
+    if !hasChanges {
       return nil
     }
 
@@ -118,15 +100,12 @@ public struct NetworkSettings {
   public mutating func updateDnsResources(addresses: [String])
     -> NEPacketTunnelNetworkSettings?
   {
-    // Store old value for comparison
     let oldDnsResourceAddresses = self.dnsResourceAddresses
+    self.dnsResourceAddresses = addresses.sorted()
 
-    // Update value
-    let newDnsResourceAddresses = addresses.sorted()
-    self.dnsResourceAddresses = newDnsResourceAddresses
+    let hasChanges = oldDnsResourceAddresses != self.dnsResourceAddresses
 
-    // Check if anything actually changed
-    guard oldDnsResourceAddresses != newDnsResourceAddresses else {
+    if !hasChanges {
       return nil
     }
 
@@ -139,11 +118,11 @@ public struct NetworkSettings {
   }
 
   public mutating func clearDummyMatchDomain() -> NEPacketTunnelNetworkSettings? {
-    var newMatchDomains = [""]
-    if let searchDomains = self.searchDomains {
-      newMatchDomains.append(contentsOf: searchDomains)
+    if let searchDomain = self.searchDomain {
+      self.matchDomains = ["", searchDomain]
+    } else {
+      self.matchDomains = [""]
     }
-    self.matchDomains = newMatchDomains
     return buildNetworkSettings()
   }
 
@@ -174,22 +153,18 @@ public struct NetworkSettings {
     let ipv6Settings = NEIPv6Settings(
       addresses: [tunnelAddressIPv6], networkPrefixLengths: [120])
 
-    // Set routes if available
-    if let routes4 = routes4 {
-      ipv4Settings.includedRoutes = routes4
-    }
-    if let routes6 = routes6 {
-      ipv6Settings.includedRoutes = routes6
-    }
+    // Set routes
+    ipv4Settings.includedRoutes = routes4
+    ipv6Settings.includedRoutes = routes6
 
     tunnelNetworkSettings.ipv4Settings = ipv4Settings
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
 
     // Set DNS settings if we have addresses
-    if let dnsAddresses = dnsAddresses, !dnsAddresses.isEmpty {
+    if !dnsAddresses.isEmpty {
       let dnsSettings = NEDNSSettings(servers: dnsAddresses)
-      dnsSettings.matchDomains = matchDomains ?? [""]
-      dnsSettings.searchDomains = searchDomains ?? [""]
+      dnsSettings.matchDomains = matchDomains
+      dnsSettings.searchDomains = searchDomain.map { [$0] } ?? []
       dnsSettings.matchDomainsNoSearch = false
       tunnelNetworkSettings.dnsSettings = dnsSettings
     }
