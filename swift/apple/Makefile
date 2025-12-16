@@ -112,6 +112,11 @@ install:
 	@echo "Launching Firezone..."
 	@open /Applications/Firezone.app
 
+.PHONY: test
+test:
+	@echo "Running FirezoneKit tests..."
+	@cd FirezoneKit && swift test
+
 .PHONY: clean
 clean:
 	@echo "Cleaning Xcode build"

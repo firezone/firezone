@@ -58,6 +58,9 @@ class Adapter: @unchecked Sendable {
   private var eventLoopTask: Task<Void, Never>?
   private var eventConsumerTask: Task<Void, Never>?
 
+  /// Task handle for path monitoring - uses CancellableTask for RAII cleanup
+  private var pathMonitorTask: CancellableTask?
+
   // Our local copy of the accountSlug
   private let accountSlug: String
 
@@ -73,9 +76,6 @@ class Adapter: @unchecked Sendable {
   /// Start completion handler, used to signal to the system the interface is ready to use.
   private var startCompletionHandler: (Error?) -> Void
 
-  /// Network routes monitor.
-  private var networkMonitor: NWPathMonitor?
-
   #if os(macOS)
     /// Used for finding system DNS resolvers on macOS when network conditions have changed.
     private let systemConfigurationResolvers = SystemConfigurationResolvers()
@@ -90,7 +90,9 @@ class Adapter: @unchecked Sendable {
   /// This is the primary async primitive used in this class.
   private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
-  /// Primary callback we receive whenever:
+  /// Handles network path updates from NWPathMonitor.
+  ///
+  /// This callback is invoked whenever:
   /// - Network connectivity changes
   /// - System DNS servers change, including when we set them
   /// - Routes change, including when we set them
@@ -127,36 +129,30 @@ class Adapter: @unchecked Sendable {
   /// - https://github.com/firezone/firezone/issues/3343
   /// - https://github.com/firezone/firezone/issues/3235
   /// - https://github.com/firezone/firezone/issues/3175
-  private lazy var pathUpdateHandler: @Sendable (Network.NWPath) -> Void = { [weak self] path in
-    guard let self else { return }
-
-    workQueue.async { [weak self] in
-      guard let self else { return }
-
-      if path.status == .unsatisfied {
-        // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
-        if self.packetTunnelProvider?.reasserting == false {
-          // Tell the UI we're not connected
-          self.packetTunnelProvider?.reasserting = true
-        }
-      } else {
-        if self.packetTunnelProvider?.reasserting == true {
-          self.packetTunnelProvider?.reasserting = false
-        }
-
-        if path.connectivityDifferentFrom(path: lastPath) {
-          // Tell connlib to reset network state and DNS resolvers, but only do so if our connectivity has
-          // meaningfully changed. On darwin, this is needed to send packets
-          // out of a different interface even when 0.0.0.0 is used as the source.
-          // If our primary interface changes, we can be certain the old socket shouldn't be
-          // used anymore.
-          self.sendCommand(.reset("primary network path changed"))
-        }
-
-        setSystemDefaultResolvers(path)
-
-        lastPath = path
+  private func handlePathUpdate(_ path: Network.NWPath) {
+    if path.status == .unsatisfied {
+      // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
+      if self.packetTunnelProvider?.reasserting == false {
+        // Tell the UI we're not connected
+        self.packetTunnelProvider?.reasserting = true
       }
+    } else {
+      if self.packetTunnelProvider?.reasserting == true {
+        self.packetTunnelProvider?.reasserting = false
+      }
+
+      if path.connectivityDifferentFrom(path: lastPath) {
+        // Tell connlib to reset network state and DNS resolvers, but only do so if our connectivity has
+        // meaningfully changed. On darwin, this is needed to send packets
+        // out of a different interface even when 0.0.0.0 is used as the source.
+        // If our primary interface changes, we can be certain the old socket shouldn't be
+        // used anymore.
+        self.sendCommand(.reset("primary network path changed"))
+      }
+
+      setSystemDefaultResolvers(path)
+
+      lastPath = path
     }
   }
 
@@ -197,15 +193,14 @@ class Adapter: @unchecked Sendable {
   deinit {
     Log.log("Adapter.deinit")
 
-    // Cancel network monitor
-    networkMonitor?.cancel()
-    networkMonitor = nil
-
     // Cancel all Tasks - this triggers cooperative cancellation
     // Event loop checks Task.isCancelled in its polling loop
     // Event consumer will exit when eventSender.deinit closes the stream
     eventLoopTask?.cancel()
     eventConsumerTask?.cancel()
+
+    // pathMonitorTask cleanup is handled automatically by CancellableTask.deinit
+    // which cancels the Task, triggering onTermination -> monitor.cancel()
   }
 
   func start() throws {
@@ -328,8 +323,9 @@ class Adapter: @unchecked Sendable {
 
     sendCommand(.disconnect)
 
-    networkMonitor?.cancel()
-    networkMonitor = nil
+    // Cancel path monitoring - CancellableTask.deinit triggers Task cancellation
+    // -> onTermination -> monitor.cancel()
+    pathMonitorTask = nil
 
     // Tasks will finish naturally after disconnect command is processed
     // No need to cancel them here - they'll clean up via their defer blocks
@@ -505,9 +501,16 @@ class Adapter: @unchecked Sendable {
   }
 
   private func startNetworkPathMonitoring() {
-    networkMonitor = NWPathMonitor()
-    networkMonitor?.pathUpdateHandler = self.pathUpdateHandler
-    networkMonitor?.start(queue: workQueue)
+    // Start path monitoring using AsyncStream with RAII cleanup via CancellableTask
+    pathMonitorTask = CancellableTask { [weak self] in
+      for await path in networkPathUpdates() {
+        guard let self else { break }
+        // Dispatch to workQueue for thread safety with other Adapter operations
+        self.workQueue.async { [weak self] in
+          self?.handlePathUpdate(path)
+        }
+      }
+    }
   }
 
   private func setSystemDefaultResolvers(_ path: Network.NWPath) {
