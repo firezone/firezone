@@ -59,7 +59,6 @@ use serde::Serialize;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
-use tracing::info;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer as _;
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -154,13 +153,13 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
         );
     }
 
-    info!(config = %config_path.display(), "Loading config");
+    tracing::info!(config = %config_path.display(), "Loading config");
 
     let config = LoadTestConfig::load(&config_path)?;
     let mut selector = TestSelector::new(seed);
     let seed = selector.seed();
 
-    info!(seed, enabled_types = ?config.enabled_types(), "Selecting random test");
+    tracing::info!(seed, enabled_types = ?config.enabled_types(), "Selecting random test");
 
     match selector.select(&config) {
         AnyTestConfig::Http(http) => http::run_with_config(http, seed).await,

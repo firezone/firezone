@@ -86,7 +86,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y shfmt
+          sudo apt-get install -y shfmt shellcheck
           pnpm i --frozen-lockfile --dir ./.github
       - name: Run pre-commit
         run: |

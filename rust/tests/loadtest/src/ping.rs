@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use surge_ping::{Client, Config, ICMP, PingIdentifier, PingSequence};
 use tokio::sync::mpsc;
-use tracing::{debug, info, trace};
 
 /// Maximum ICMP payload size in bytes.
 ///
@@ -152,7 +151,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<PingTestSummary> {
         );
     }
 
-    info!(
+    tracing::info!(
         targets = ?config.targets,
         count = ?config.count,
         duration = ?config.duration,
@@ -240,10 +239,10 @@ async fn ping_target(
             Ok((_packet, rtt)) => {
                 packets_received += 1;
                 rtts.record(rtt);
-                trace!(target = %target, seq, rtt_ms = rtt.as_secs_f64() * 1000.0, "Ping reply");
+                tracing::trace!(target = %target, seq, rtt_ms = rtt.as_secs_f64() * 1000.0, "Ping reply");
             }
             Err(e) => {
-                debug!(target = %target, seq, error = %e, "Ping failed");
+                tracing::debug!(target = %target, seq, error = %e, "Ping failed");
             }
         }
 
