@@ -1231,7 +1231,10 @@ defmodule Web.CoreComponents do
 
     ~H"""
     <span
-      class={["inline-flex items-center rounded border border-neutral-200 overflow-hidden", @class]}
+      class={[
+        "inline-flex items-center rounded border border-neutral-200 overflow-hidden mr-1",
+        @class
+      ]}
       data-group-id={@group.id}
     >
       <span class={~w[
