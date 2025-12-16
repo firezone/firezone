@@ -1,6 +1,11 @@
 repos:
   - repo: local
     hooks:
+      - id: no-tracing-macro-imports
+        name: "rust: no direct tracing macro imports"
+        entry: "bash -c 'if grep -E \"use tracing::(trace|debug|info|warn|error)[^_]|use tracing::\\{[^}]*(trace|debug|info|warn|error)[^_]\" \"$@\"; then echo \"Error: Do not import tracing macros directly\"; exit 1; fi' --"
+        language: system
+        types: [rust]
       - id: codespell
         name: "python: codespell"
         args: [--config=.github/codespellrc]
