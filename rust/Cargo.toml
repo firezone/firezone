@@ -65,7 +65,7 @@ bnum = "0.13.0"
 boringtun = { version = "0.6", default-features = false }
 bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
-bytes = { version = "1.9.0", default-features = false }
+bytes = { version = "1.11.0", default-features = false }
 caps = "0.5.6"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = "4.5.50"
