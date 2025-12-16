@@ -218,7 +218,7 @@ defmodule Domain.Repo.Seeds do
             import Ecto.Query
 
             # Filter out virtual fields that can't be persisted
-            virtual_fields = [:secret_nonce, :secret_fragment]
+            virtual_fields = [:secret_fragment]
 
             db_changes = Map.drop(changeset.changes, virtual_fields)
 
@@ -232,7 +232,7 @@ defmodule Domain.Repo.Seeds do
             import Ecto.Query
 
             # Filter out virtual fields that can't be persisted
-            virtual_fields = [:secret_nonce, :secret_fragment]
+            virtual_fields = [:secret_fragment]
 
             db_changes = Map.drop(changeset.changes, virtual_fields)
 
@@ -385,8 +385,7 @@ defmodule Domain.Repo.Seeds do
     system_subject = %Auth.Subject{
       account: account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      auth_ref: %{type: :client, id: Ecto.UUID.generate()},
-      auth_provider_id: nil,
+      credential: %Auth.Credential{type: :token, id: Ecto.UUID.generate()},
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Auth.Context{type: :client, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
     }
@@ -444,8 +443,7 @@ defmodule Domain.Repo.Seeds do
     other_system_subject = %Auth.Subject{
       account: other_account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      auth_ref: %{type: :portal_session, id: Ecto.UUID.generate()},
-      auth_provider_id: nil,
+      credential: %Auth.Credential{type: :portal_session, id: Ecto.UUID.generate()},
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Auth.Context{type: :portal, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
     }
@@ -684,8 +682,7 @@ defmodule Domain.Repo.Seeds do
     admin_subject = %Auth.Subject{
       account: account,
       actor: admin_actor,
-      auth_ref: %{type: :portal_session, id: Ecto.UUID.generate()},
-      auth_provider_id: nil,
+      credential: %Auth.Credential{type: :portal_session, id: Ecto.UUID.generate()},
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Auth.Context{
         type: :portal,
@@ -697,8 +694,7 @@ defmodule Domain.Repo.Seeds do
     unprivileged_subject = %Auth.Subject{
       account: account,
       actor: unprivileged_actor,
-      auth_ref: %{type: :client, id: unprivileged_client_token.id},
-      auth_provider_id: nil,
+      credential: %Auth.Credential{type: :token, id: unprivileged_client_token.id},
       expires_at: unprivileged_client_token.expires_at,
       context: %Auth.Context{
         type: :client,
@@ -713,15 +709,13 @@ defmodule Domain.Repo.Seeds do
 
     token_attrs = %{
       name: "tok-#{Ecto.UUID.generate()}",
-      type: :client,
       account_id: service_account_actor.account_id,
       actor_id: service_account_actor.id,
       secret_nonce: nonce,
-      secret_fragment: Crypto.random_token(32, encoder: :hex32),
       expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
     }
 
-    # Use Auth.create_token which properly sets secret_salt and secret_hash
+    # Use Auth.create_token which properly sets secret_salt, secret_fragment, and secret_hash
     {:ok, service_account_token} = Auth.create_token(token_attrs)
 
     service_account_token =
@@ -1014,14 +1008,12 @@ defmodule Domain.Repo.Seeds do
     IO.puts("")
 
     # Create relay token manually
-    secret_nonce = ""
     secret_fragment = Crypto.random_token(32, encoder: :hex32)
     secret_salt = Crypto.random_token(16)
-    secret_hash = Crypto.hash(:sha3_256, secret_nonce <> secret_fragment <> secret_salt)
+    secret_hash = Crypto.hash(:sha3_256, secret_fragment <> secret_salt)
 
     global_relay_token =
       %Domain.RelayToken{
-        secret_nonce: secret_nonce,
         secret_fragment: secret_fragment,
         secret_salt: secret_salt,
         secret_hash: secret_hash
@@ -1034,7 +1026,6 @@ defmodule Domain.Repo.Seeds do
       |> maybe_repo_update.(
         id: Ecto.UUID.cast!("e82fcdc1-057a-4015-b90b-3b18f0f28053"),
         secret_salt: "lZWUdgh-syLGVDsZEu_29A",
-        secret_nonce: "",
         secret_fragment: "C14NGA87EJRR03G4QPR07A9C6G784TSSTHSF4TI5T0GD8D6L0VRG====",
         secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
       )
@@ -1105,16 +1096,14 @@ defmodule Domain.Repo.Seeds do
       |> Repo.insert!()
 
     # Create gateway token manually
-    secret_nonce = ""
     secret_fragment = Crypto.random_token(32, encoder: :hex32)
     secret_salt = Crypto.random_token(16)
-    secret_hash = Crypto.hash(:sha3_256, secret_nonce <> secret_fragment <> secret_salt)
+    secret_hash = Crypto.hash(:sha3_256, secret_fragment <> secret_salt)
 
     gateway_token =
       %Domain.GatewayToken{
         account_id: site.account_id,
         site_id: site.id,
-        secret_nonce: secret_nonce,
         secret_fragment: secret_fragment,
         secret_salt: secret_salt,
         secret_hash: secret_hash
@@ -1127,7 +1116,6 @@ defmodule Domain.Repo.Seeds do
       |> maybe_repo_update.(
         id: Ecto.UUID.cast!("2274560b-e97b-45e4-8b34-679c7617e98d"),
         secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
-        secret_nonce: "",
         secret_fragment: "O02L7US2J3VINOMPR9J6IL88QIQP6UO8AQVO6U5IPL0VJC22JGH0====",
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
       )
@@ -1551,7 +1539,7 @@ defmodule Domain.Repo.Seeds do
         policy_id: policy.id,
         membership_id: membership.id,
         account_id: unprivileged_subject.account.id,
-        token_id: unprivileged_subject.auth_ref.id,
+        token_id: unprivileged_subject.credential.id,
         client_remote_ip: {127, 0, 0, 1},
         client_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
         gateway_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}, netmask: nil},

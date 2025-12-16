@@ -263,9 +263,7 @@ defmodule Web.OIDCController do
 
       :client ->
         attrs = %{
-          type: :client,
           secret_nonce: params["nonce"],
-          secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
           account_id: identity.account_id,
           actor_id: identity.actor_id,
           auth_provider_id: provider.id,

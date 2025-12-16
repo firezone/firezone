@@ -24,7 +24,7 @@ defmodule Domain.TokenFixtures do
     attrs
     |> Map.put_new(
       :secret_hash,
-      compute_secret_hash(attrs.secret_nonce, attrs.secret_fragment, attrs.secret_salt)
+      compute_secret_hash(attrs.secret_fragment, attrs.secret_salt, attrs.secret_nonce)
     )
   end
 
@@ -96,13 +96,6 @@ defmodule Domain.TokenFixtures do
   end
 
   @doc """
-  Generate an API client token.
-  """
-  def api_client_token_fixture(attrs \\ %{}) do
-    attrs |> Enum.into(%{}) |> Map.put(:type, :api_client) |> token_fixture()
-  end
-
-  @doc """
   Generate a relay token using Domain.RelayToken schema.
   """
   def relay_token_fixture(attrs \\ %{}) do
@@ -133,12 +126,11 @@ defmodule Domain.TokenFixtures do
   defp infrastructure_token_secrets(attrs) do
     attrs =
       attrs
-      |> Map.put_new_lazy(:secret_nonce, &generate_secret_nonce/0)
       |> Map.put_new_lazy(:secret_fragment, &generate_secret_fragment/0)
       |> Map.put_new_lazy(:secret_salt, &generate_salt/0)
 
     Map.put_new_lazy(attrs, :secret_hash, fn ->
-      compute_secret_hash(attrs.secret_nonce, attrs.secret_fragment, attrs.secret_salt)
+      compute_secret_hash(attrs.secret_fragment, attrs.secret_salt)
     end)
   end
 
@@ -177,7 +169,7 @@ defmodule Domain.TokenFixtures do
     salt = Keyword.fetch!(config, :salt) <> type
     body = {account_id, token.id, token.secret_fragment}
 
-    token.secret_nonce <> "." <> Plug.Crypto.sign(key_base, salt, body)
+    "." <> Plug.Crypto.sign(key_base, salt, body)
   end
 
   # Private helpers
@@ -187,17 +179,12 @@ defmodule Domain.TokenFixtures do
     |> Base.encode64()
   end
 
-  defp generate_secret_nonce do
-    :crypto.strong_rand_bytes(8)
-    |> Base.url_encode64(padding: false)
-  end
-
   defp generate_secret_fragment do
     :crypto.strong_rand_bytes(32)
     |> Base.hex_encode32(case: :upper, padding: true)
   end
 
-  defp compute_secret_hash(nonce, fragment, salt) do
+  defp compute_secret_hash(fragment, salt, nonce \\ "") do
     :crypto.hash(:sha3_256, nonce <> fragment <> salt)
     |> Base.encode16(case: :lower)
   end

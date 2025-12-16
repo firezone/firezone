@@ -1,6 +1,7 @@
 defmodule API.ConnCase do
   use ExUnit.CaseTemplate
   use Domain.CaseTemplate
+  import Domain.APITokenFixtures
 
   using do
     quote do
@@ -36,21 +37,10 @@ defmodule API.ConnCase do
     {:ok, conn: conn, user_agent: user_agent}
   end
 
-  def authorize_conn(conn, %Domain.Actor{} = actor) do
-    expires_in = DateTime.utc_now() |> DateTime.add(300, :second)
-    {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0)
-
-    attrs = %{
-      "name" => "conn_case_token",
-      "expires_at" => expires_in,
-      "type" => :api_client,
-      "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
-      "account_id" => actor.account_id,
-      "actor_id" => actor.id
-    }
-
-    {:ok, token} = Domain.Auth.create_token(attrs)
-    encoded_fragment = Domain.Auth.encode_fragment!(token)
+  def authorize_conn(conn, %Domain.Actor{account: account} = actor) do
+    expires_at = DateTime.utc_now() |> DateTime.add(300, :second)
+    api_token = api_token_fixture(actor: actor, account: account, expires_at: expires_at)
+    encoded_fragment = encode_api_token(api_token)
 
     Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> encoded_fragment)
   end

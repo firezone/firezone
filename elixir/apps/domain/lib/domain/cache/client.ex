@@ -100,7 +100,7 @@ defmodule Domain.Cache.Client do
       for({_id, %{resource_id: ^rid_bytes} = p} <- cache.policies, do: p)
       |> longest_conforming_policy_for_client(
         client,
-        subject.auth_provider_id,
+        subject.credential.auth_provider_id,
         subject.expires_at
       )
 
@@ -162,7 +162,7 @@ defmodule Domain.Cache.Client do
 
     connectable_resources =
       cache.policies
-      |> conforming_resource_ids(client, subject.auth_provider_id)
+      |> conforming_resource_ids(client, subject.credential.auth_provider_id)
       |> adapted_resources(cache.resources, client)
 
     added = connectable_resources -- cache.connectable_resources

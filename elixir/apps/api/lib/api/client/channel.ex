@@ -58,7 +58,7 @@ defmodule API.Client.Channel do
     socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
 
     # Track client's presence
-    :ok = Presence.Clients.connect(socket.assigns.client, socket.assigns.subject.auth_ref.id)
+    :ok = Presence.Clients.connect(socket.assigns.client, socket.assigns.subject.credential.id)
 
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
@@ -1075,7 +1075,7 @@ defmodule API.Client.Channel do
          %Auth.Subject{
            account: %{id: account_id},
            actor: %{id: actor_id},
-           auth_ref: %{id: token_id},
+           credential: %{id: token_id},
            context: %Auth.Context{
              remote_ip: client_remote_ip,
              user_agent: client_user_agent

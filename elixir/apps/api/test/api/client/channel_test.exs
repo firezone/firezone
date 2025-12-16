@@ -246,7 +246,7 @@ defmodule API.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      :ok = PubSub.subscribe(Domain.Sockets.socket_id(subject.auth_ref.id))
+      :ok = PubSub.subscribe(Domain.Sockets.socket_id(subject.credential.id))
 
       {:ok, _reply, _socket} =
         API.Client.Socket
@@ -256,7 +256,7 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      token = Repo.get_by(Domain.Token, id: subject.auth_ref.id)
+      token = Repo.get_by(Domain.Token, id: subject.credential.id)
 
       data = %{
         "id" => token.id,
@@ -2233,7 +2233,7 @@ defmodule API.Client.ChannelTest do
       assert policy_authorization.resource_id == Ecto.UUID.load!(resource_id)
       assert policy_authorization.gateway_id == gateway.id
       assert policy_authorization.policy_id == policy.id
-      assert policy_authorization.token_id == subject.auth_ref.id
+      assert policy_authorization.token_id == subject.credential.id
 
       assert client_id == client.id
       assert Ecto.UUID.load!(resource_id) == resource.id

@@ -198,6 +198,9 @@ if config_env() == :prod do
          # Delete expired tokens every 5 minutes
          {"*/5 * * * *", Domain.Workers.DeleteExpiredTokens},
 
+         # Delete expired API tokens every 5 minutes
+         {"*/5 * * * *", Domain.Workers.DeleteExpiredAPITokens},
+
          # Delete expired one-time passcodes every 5 minutes
          {"*/5 * * * *", Domain.Workers.DeleteExpiredOneTimePasscodes},
 

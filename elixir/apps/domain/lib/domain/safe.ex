@@ -614,7 +614,7 @@ defmodule Domain.Safe do
   def permit(_action, Domain.ExternalIdentity, :account_admin_user), do: :ok
   def permit(_action, Domain.ExternalIdentity, :api_client), do: :ok
   def permit(_action, Domain.Token, :account_admin_user), do: :ok
-  def permit(_action, Domain.Token, :api_client), do: :ok
+  def permit(_action, Domain.APIToken, :account_admin_user), do: :ok
   def permit(_action, Domain.Directory, :account_admin_user), do: :ok
   def permit(:read, Domain.Directory, :api_client), do: :ok
   def permit(_action, Domain.AuthProvider, :account_admin_user), do: :ok
@@ -705,7 +705,7 @@ defmodule Domain.Safe do
       "actor_type" => to_string(subject.actor.type),
       "actor_email" => subject.actor.email,
       "actor_id" => subject.actor.id,
-      "auth_provider_id" => subject.auth_provider_id
+      "auth_provider_id" => subject.credential.auth_provider_id
     }
 
     message = JSON.encode!(subject_info)

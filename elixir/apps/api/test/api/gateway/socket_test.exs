@@ -128,9 +128,9 @@ defmodule API.Gateway.SocketTest do
   describe "id/1" do
     test "creates a channel for a gateway" do
       subject = subject_fixture(type: :client)
-      socket = socket(API.Gateway.Socket, "", %{token_id: subject.auth_ref.id})
+      socket = socket(API.Gateway.Socket, "", %{token_id: subject.credential.id})
 
-      assert id(socket) == "socket:#{subject.auth_ref.id}"
+      assert id(socket) == "socket:#{subject.credential.id}"
     end
   end
 
