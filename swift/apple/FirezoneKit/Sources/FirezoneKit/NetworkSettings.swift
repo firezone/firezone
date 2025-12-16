@@ -166,7 +166,7 @@ public struct NetworkSettings {
     if !dnsServers.isEmpty {
       let dnsSettings = NEDNSSettings(servers: dnsServers)
       dnsSettings.matchDomains = matchDomains
-      dnsSettings.searchDomains = searchDomain.map { [$0] } ?? []
+      dnsSettings.searchDomains = searchDomain.map { [$0] } ?? [""]
       dnsSettings.matchDomainsNoSearch = false
       tunnelNetworkSettings.dnsSettings = dnsSettings
     }

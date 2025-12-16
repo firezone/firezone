@@ -287,7 +287,7 @@ struct NetworkSettingsTests {
     let result = settings.clearDummyMatchDomain()
 
     #expect(result?.dnsSettings?.matchDomains == [""])
-    #expect(result?.dnsSettings?.searchDomains == [])
+    #expect(result?.dnsSettings?.searchDomains == [""])
   }
 
   // MARK: - Order Independence Tests
