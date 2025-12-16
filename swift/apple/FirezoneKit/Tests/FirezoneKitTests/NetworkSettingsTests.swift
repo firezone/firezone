@@ -184,59 +184,14 @@ struct NetworkSettingsTests {
     #expect(result == nil, "Identical DNS resource list should not emit settings")
   }
 
-  // MARK: - Dummy Match Domain Operations
+  // MARK: - Order Independence Tests
 
-  @Test("Set dummy match domain always emits settings")
-  func setDummyMatchDomain() async throws {
+  @Test("DNS address order should not matter")
+  func dnsAddressOrderIndependence() async throws {
     var settings = NetworkSettings()
 
-    // Configure TUN first
+    // First update with DNS in one order
     _ = settings.updateTunInterface(
-      ipv4: "10.0.0.1",
-      ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
-      searchDomain: nil,
-      routes4: [],
-      routes6: []
-    )
-
-    let result = settings.setDummyMatchDomain()
-
-    #expect(result.dnsSettings?.matchDomains == ["firezone-fd0020211111"])
-  }
-
-  @Test("Clear dummy match domain always emits settings")
-  func clearDummyMatchDomain() async throws {
-    var settings = NetworkSettings()
-
-    // Configure TUN with search domain
-    _ = settings.updateTunInterface(
-      ipv4: "10.0.0.1",
-      ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
-      searchDomain: "example.com",
-      routes4: [],
-      routes6: []
-    )
-
-    // Set dummy
-    _ = settings.setDummyMatchDomain()
-
-    // Clear dummy
-    let result = settings.clearDummyMatchDomain()
-
-    #expect(
-      result.dnsSettings?.matchDomains == ["", "example.com"],
-      "Should restore search domain after clearing dummy")
-  }
-
-  // MARK: - Helper Tests
-
-  @Test("DNS addresses are sorted")
-  func dnsAddressesSorted() async throws {
-    var settings = NetworkSettings()
-
-    let result = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
       dnsAddresses: ["8.8.8.8", "1.1.1.1"],
@@ -245,17 +200,28 @@ struct NetworkSettingsTests {
       routes6: []
     )
 
-    #expect(result?.dnsSettings?.servers == ["1.1.1.1", "8.8.8.8"])
+    // Second update with same DNS in different order should not emit settings
+    let result = settings.updateTunInterface(
+      ipv4: "10.0.0.1",
+      ipv6: "fd00::1",
+      dnsAddresses: ["1.1.1.1", "8.8.8.8"],
+      searchDomain: nil,
+      routes4: [],
+      routes6: []
+    )
+
+    #expect(result == nil, "DNS address order should not matter")
   }
 
-  @Test("Routes are sorted")
-  func routesSorted() async throws {
+  @Test("Route order should not matter")
+  func routeOrderIndependence() async throws {
     var settings = NetworkSettings()
 
-    let route1 = NEIPv4Route(destinationAddress: "192.168.2.0", subnetMask: "255.255.255.0")
-    let route2 = NEIPv4Route(destinationAddress: "192.168.1.0", subnetMask: "255.255.255.0")
+    let route1 = NEIPv4Route(destinationAddress: "192.168.1.0", subnetMask: "255.255.255.0")
+    let route2 = NEIPv4Route(destinationAddress: "192.168.2.0", subnetMask: "255.255.255.0")
 
-    let result = settings.updateTunInterface(
+    // First update with routes in one order
+    _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
       dnsAddresses: ["1.1.1.1"],
@@ -264,7 +230,16 @@ struct NetworkSettingsTests {
       routes6: []
     )
 
-    let routes = result?.ipv4Settings?.includedRoutes
-    #expect(routes?.first?.destinationAddress == "192.168.1.0", "Routes should be sorted")
+    // Second update with same routes in different order should not emit settings
+    let result = settings.updateTunInterface(
+      ipv4: "10.0.0.1",
+      ipv6: "fd00::1",
+      dnsAddresses: ["1.1.1.1"],
+      searchDomain: nil,
+      routes4: [route2, route1],
+      routes6: []
+    )
+
+    #expect(result == nil, "Route order should not matter")
   }
 }
