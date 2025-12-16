@@ -237,6 +237,9 @@ defmodule API.Gateway.Channel do
       subject: %Auth.Subject{} = subject
     } = payload
 
+    # Preload addresses in case client was received via PubSub without them
+    client = DB.preload_client_addresses(client)
+
     ref =
       encode_ref(socket, {
         channel_pid,
@@ -280,6 +283,9 @@ defmodule API.Gateway.Channel do
       authorization_expires_at: authorization_expires_at,
       client_payload: payload
     } = attrs
+
+    # Preload addresses in case client was received via PubSub without them
+    client = DB.preload_client_addresses(client)
 
     case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
@@ -328,6 +334,9 @@ defmodule API.Gateway.Channel do
       client_payload: payload,
       client_preshared_key: preshared_key
     } = attrs
+
+    # Preload addresses in case client was received via PubSub without them
+    client = DB.preload_client_addresses(client)
 
     case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
@@ -724,11 +733,16 @@ defmodule API.Gateway.Channel do
     import Ecto.Query
     alias Domain.Safe
     alias Domain.Account
+    alias Domain.Client
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
       |> Safe.unscoped()
       |> Safe.one!()
+    end
+
+    def preload_client_addresses(%Client{} = client) do
+      Safe.preload(client, [:ipv4_address, :ipv6_address])
     end
   end
 end
