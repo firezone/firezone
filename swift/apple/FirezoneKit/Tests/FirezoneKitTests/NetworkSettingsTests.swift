@@ -57,6 +57,8 @@ struct NetworkSettingsTests {
 
     #expect(result?.ipv4Settings?.addresses.first == "10.0.0.1")
     #expect(result?.ipv6Settings?.addresses.first == "fd00::1")
+    #expect(result?.dnsSettings?.servers == ["1.1.1.1"])
+    #expect(result?.dnsSettings?.searchDomains == [""])
   }
 
   @Test("Sets DNS servers without DNS resources")
