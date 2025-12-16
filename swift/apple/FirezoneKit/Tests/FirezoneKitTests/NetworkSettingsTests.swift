@@ -184,6 +184,80 @@ struct NetworkSettingsTests {
     #expect(result == nil, "Identical DNS resource list should not emit settings")
   }
 
+  // MARK: - Dummy Match Domain Tests
+
+  @Test("Set dummy match domain")
+  func setDummyMatchDomain() async throws {
+    var settings = NetworkSettings()
+
+    // Configure TUN first
+    _ = settings.updateTunInterface(
+      ipv4: "10.0.0.1",
+      ipv6: "fd00::1",
+      dnsAddresses: ["1.1.1.1"],
+      searchDomain: "example.com",
+      routes4: [],
+      routes6: []
+    )
+
+    // Set dummy match domain
+    let result = settings.setDummyMatchDomain()
+
+    #expect(result != nil)
+    #expect(result?.dnsSettings?.matchDomains == ["firezone-fd0020211111"])
+    #expect(result?.dnsSettings?.searchDomains == ["example.com"])
+  }
+
+  @Test("Clear dummy match domain restores original")
+  func clearDummyMatchDomain() async throws {
+    var settings = NetworkSettings()
+
+    // Configure TUN with search domain
+    _ = settings.updateTunInterface(
+      ipv4: "10.0.0.1",
+      ipv6: "fd00::1",
+      dnsAddresses: ["1.1.1.1"],
+      searchDomain: "example.com",
+      routes4: [],
+      routes6: []
+    )
+
+    // Set dummy
+    _ = settings.setDummyMatchDomain()
+
+    // Clear dummy
+    let result = settings.clearDummyMatchDomain()
+
+    #expect(result != nil)
+    #expect(result?.dnsSettings?.matchDomains == ["", "example.com"])
+    #expect(result?.dnsSettings?.searchDomains == ["example.com"])
+  }
+
+  @Test("Clear dummy match domain without search domain")
+  func clearDummyMatchDomainNoSearchDomain() async throws {
+    var settings = NetworkSettings()
+
+    // Configure TUN without search domain
+    _ = settings.updateTunInterface(
+      ipv4: "10.0.0.1",
+      ipv6: "fd00::1",
+      dnsAddresses: ["1.1.1.1"],
+      searchDomain: nil,
+      routes4: [],
+      routes6: []
+    )
+
+    // Set dummy
+    _ = settings.setDummyMatchDomain()
+
+    // Clear dummy
+    let result = settings.clearDummyMatchDomain()
+
+    #expect(result != nil)
+    #expect(result?.dnsSettings?.matchDomains == [""])
+    #expect(result?.dnsSettings?.searchDomains == [])
+  }
+
   // MARK: - Order Independence Tests
 
   @Test("DNS address order should not matter")
