@@ -62,7 +62,7 @@ class Adapter: @unchecked Sendable {
   private let accountSlug: String
 
   /// Network settings for tunnel configuration.
-  private let networkSettings: NetworkSettings
+  private var networkSettings: NetworkSettings
 
   /// Tracks whether we have applied any network settings
   private var hasAppliedSettings: Bool = false
@@ -448,7 +448,7 @@ class Adapter: @unchecked Sendable {
         let tunnelNetworkSettings = self.networkSettings.updateTunInterface(
           ipv4: ipv4,
           ipv6: ipv6,
-          dnsAddresses: dns,
+          dnsServers: dns,
           searchDomain: searchDomain,
           routes4: routes4,
           routes6: routes6
@@ -476,7 +476,7 @@ class Adapter: @unchecked Sendable {
           }
           return nil
         }
-        let tunnelNetworkSettings = self.networkSettings.updateDnsResources(addresses: dnsAddresses)
+        let tunnelNetworkSettings = self.networkSettings.updateDnsResources(newDnsResources: dnsAddresses)
         self.applyNetworkSettings(tunnelNetworkSettings)
       }
 
