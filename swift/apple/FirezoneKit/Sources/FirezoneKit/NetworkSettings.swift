@@ -7,12 +7,12 @@ import Foundation
 import NetworkExtension
 import os.log
 
-public struct NetworkSettings: Equatable {
+public struct NetworkSettings: Equatable, Sendable {
   private var tunnelAddressIPv4: String?
   private var tunnelAddressIPv6: String?
   private var dnsServers: [String] = []
-  private var routes4: [NEIPv4Route] = []
-  private var routes6: [NEIPv6Route] = []
+  private var routes4: [Cidr] = []
+  private var routes6: [Cidr] = []
   private var dnsResources: [String] = []
   private var matchDomains: [String] = [""]
   private var searchDomain: String?
@@ -28,8 +28,8 @@ public struct NetworkSettings: Equatable {
     ipv6: String?,
     dnsServers: [String],
     searchDomain: String?,
-    routes4: [NEIPv4Route],
-    routes6: [NEIPv6Route]
+    routes4: [Cidr],
+    routes6: [Cidr]
   ) -> NEPacketTunnelNetworkSettings? {
     let oldSelf = self
 
@@ -38,16 +38,9 @@ public struct NetworkSettings: Equatable {
     self.tunnelAddressIPv6 = ipv6
     self.dnsServers = dnsServers
     self.searchDomain = searchDomain
-    self.matchDomains = searchDomain.map{ ["", $0] } ?? [""]
-    self.routes4 = routes4.sorted {
-      ($0.destinationAddress, $0.destinationSubnetMask) < (
-        $1.destinationAddress, $1.destinationSubnetMask
-      )
-    }
-    self.routes6 = routes6.sorted {
-      ($0.destinationAddress, $0.destinationNetworkPrefixLength.intValue)
-        < ($1.destinationAddress, $1.destinationNetworkPrefixLength.intValue)
-    }
+    self.matchDomains = searchDomain.map { ["", $0] } ?? [""]
+    self.routes4 = routes4.sorted { ($0.address, $0.prefix) < ($1.address, $1.prefix) }
+    self.routes6 = routes6.sorted { ($0.address, $0.prefix) < ($1.address, $1.prefix) }
 
     // Check if anything actually changed
     if oldSelf == self {
@@ -96,7 +89,7 @@ public struct NetworkSettings: Equatable {
   // MARK: - NEPacketTunnelNetworkSettings Builder
 
   /// Build NEPacketTunnelNetworkSettings from current state
-  private func buildNetworkSettings() -> NEPacketTunnelNetworkSettings? {
+  public func buildNetworkSettings() -> NEPacketTunnelNetworkSettings? {
     // Validate we have required fields
     guard let tunnelAddressIPv4 = tunnelAddressIPv4,
       let tunnelAddressIPv6 = tunnelAddressIPv6
@@ -108,14 +101,14 @@ public struct NetworkSettings: Equatable {
     // Set tunnel addresses and routes
     let ipv4Settings = NEIPv4Settings(
       addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
-    ipv4Settings.includedRoutes = routes4
+    ipv4Settings.includedRoutes = routes4.compactMap { $0.asNEIPv4Route }
 
     // This is a hack since macos routing table ignores, for full route, any prefix smaller than 120.
     // Without this, adding a full route, remove the previous default route and leaves the system with none,
     // completely breaking IPv6 on the user's system.
     let ipv6Settings = NEIPv6Settings(
       addresses: [tunnelAddressIPv6], networkPrefixLengths: [120])
-    ipv6Settings.includedRoutes = routes6
+    ipv6Settings.includedRoutes = routes6.compactMap { $0.asNEIPv6Route }
 
     let dnsSettings = NEDNSSettings(servers: dnsServers)
     dnsSettings.matchDomains = matchDomains
@@ -134,35 +127,6 @@ public struct NetworkSettings: Equatable {
     tunnelNetworkSettings.mtu = 1280
 
     return tunnelNetworkSettings
-  }
-
-  // MARK: - Equatable Conformance
-
-  public static func == (lhs: NetworkSettings, rhs: NetworkSettings) -> Bool {
-    return lhs.tunnelAddressIPv4 == rhs.tunnelAddressIPv4
-      && lhs.tunnelAddressIPv6 == rhs.tunnelAddressIPv6
-      && lhs.dnsServers == rhs.dnsServers
-      && lhs.matchDomains == rhs.matchDomains
-      && lhs.searchDomain == rhs.searchDomain
-      && lhs.dnsResources == rhs.dnsResources
-      && compareRoutes4(lhs.routes4, rhs.routes4)
-      && compareRoutes6(lhs.routes6, rhs.routes6)
-  }
-
-  private static func compareRoutes4(_ lhs: [NEIPv4Route], _ rhs: [NEIPv4Route]) -> Bool {
-    guard lhs.count == rhs.count else { return false }
-    return zip(lhs, rhs).allSatisfy {
-      $0.destinationAddress == $1.destinationAddress
-        && $0.destinationSubnetMask == $1.destinationSubnetMask
-    }
-  }
-
-  private static func compareRoutes6(_ lhs: [NEIPv6Route], _ rhs: [NEIPv6Route]) -> Bool {
-    guard lhs.count == rhs.count else { return false }
-    return zip(lhs, rhs).allSatisfy {
-      $0.destinationAddress == $1.destinationAddress
-        && $0.destinationNetworkPrefixLength == $1.destinationNetworkPrefixLength
-    }
   }
 }
 
@@ -210,7 +174,7 @@ enum IPv4SubnetMaskLookup {
 // MARK: - Route Convenience Helpers
 
 extension NetworkSettings {
-  public struct Cidr {
+  public struct Cidr: Equatable, Sendable {
     public let address: String
     public let prefix: Int
 
