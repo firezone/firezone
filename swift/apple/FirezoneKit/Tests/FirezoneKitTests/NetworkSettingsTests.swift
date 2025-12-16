@@ -63,6 +63,8 @@ struct NetworkSettingsTests {
     #expect(result?.ipv6Settings?.addresses.first == "fd00::1")
     #expect(result?.dnsSettings?.servers == ["1.1.1.1"])
     #expect(result?.dnsSettings?.searchDomains == [""])
+    #expect(result?.dnsSettings?.matchDomains == [""])
+    #expect(result?.dnsSettings?.matchDomainsNoSearch == false)
   }
 
   @Test("Sets DNS servers without DNS resources")
@@ -80,6 +82,24 @@ struct NetworkSettingsTests {
     )
 
     #expect(result?.dnsSettings?.servers == ["1.1.1.1"])
+  }
+
+  @Test("Sets DNS servers without DNS resources")
+  func setDnsConfigWithoutServers() async throws {
+    var settings = NetworkSettings()
+
+    let result = settings.updateTunInterface(
+      ipv4: "10.0.0.1",
+      ipv6: "fd00::1",
+      dnsServers: [],
+      searchDomain: "example.com",
+      routes4: [],
+      routes6: []
+    )
+
+    #expect(result?.dnsSettings?.searchDomains == ["example.com"])
+    #expect(result?.dnsSettings?.matchDomains == ["", "example.com"])
+    #expect(result?.dnsSettings?.matchDomainsNoSearch == false)
   }
 
   @Test("Updating to same TUN config should not emit settings")

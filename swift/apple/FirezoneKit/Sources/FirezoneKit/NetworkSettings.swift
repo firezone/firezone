@@ -140,37 +140,32 @@ public struct NetworkSettings {
       return nil
     }
 
+    // Set tunnel addresses and routes
+    let ipv4Settings = NEIPv4Settings(
+      addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
+    ipv4Settings.includedRoutes = routes4
+
+    // This is a hack since macos routing table ignores, for full route, any prefix smaller than 120.
+    // Without this, adding a full route, remove the previous default route and leaves the system with none,
+    // completely breaking IPv6 on the user's system.
+    let ipv6Settings = NEIPv6Settings(
+      addresses: [tunnelAddressIPv6], networkPrefixLengths: [120])
+    ipv6Settings.includedRoutes = routes6
+
+    let dnsSettings = NEDNSSettings(servers: dnsServers)
+    dnsSettings.matchDomains = matchDomains
+    dnsSettings.searchDomains = searchDomain.map { [$0] } ?? [""]
+    dnsSettings.matchDomainsNoSearch = false
+
     // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
     // because the OS doesn't really need this IP address.
     // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
     // NEPacketTunnelNetworkSettings inheriting from NETunnelNetworkSettings.
     let tunnelNetworkSettings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
 
-    // Set tunnel addresses and routes
-    let ipv4Settings = NEIPv4Settings(
-      addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
-    // This is a hack since macos routing table ignores, for full route, any prefix smaller than 120.
-    // Without this, adding a full route, remove the previous default route and leaves the system with none,
-    // completely breaking IPv6 on the user's system.
-    let ipv6Settings = NEIPv6Settings(
-      addresses: [tunnelAddressIPv6], networkPrefixLengths: [120])
-
-    // Set routes
-    ipv4Settings.includedRoutes = routes4
-    ipv6Settings.includedRoutes = routes6
-
     tunnelNetworkSettings.ipv4Settings = ipv4Settings
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
-
-    // Set DNS settings if we have addresses
-    if !dnsServers.isEmpty {
-      let dnsSettings = NEDNSSettings(servers: dnsServers)
-      dnsSettings.matchDomains = matchDomains
-      dnsSettings.searchDomains = searchDomain.map { [$0] } ?? [""]
-      dnsSettings.matchDomainsNoSearch = false
-      tunnelNetworkSettings.dnsSettings = dnsSettings
-    }
-
+    tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.mtu = 1280
 
     return tunnelNetworkSettings
