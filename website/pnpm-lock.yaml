@@ -69,7 +69,7 @@ importers:
         specifier: ^2.71.1
         version: 2.71.1
       next:
-        specifier: ^15.5.8
+        specifier: ^15.5.9
         version: 15.5.9(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       next-hubspot:
         specifier: ^2.0.0
