@@ -1,16 +1,26 @@
-[tools]
-# Need to be defined here, not in .tool-versions as we're installing python-specific tools
-# and asdf does not support this
-"pipx:codespell" = "latest"
-"pipx:pre-commit" = "latest"
+[tasks.setup]
+description = "Install linting tools from version-pinned files (managed by Dependabot)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
 
-[settings]
-auto_install = true
+# Install Python tools from requirements.txt
+while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" =~ ^# ]] && continue
+    pkg="${line%%==*}"
+    pipx install "$line" || pipx upgrade "$pkg"
+done < .github/requirements.txt
+
+# Install Node.js tools from package.json
+cd .github && pnpm install --frozen-lockfile
+"""
 
 [tasks.lint]
+depends = ["setup"]
 description = "Run pre-commit hooks on all files"
 run = "pre-commit run --all-files --config .github/pre-commit-config.yaml"
 
 [tasks.lint-staged]
+depends = ["setup"]
 description = "Run pre-commit hooks on staged files only"
 run = "pre-commit run --config .github/pre-commit-config.yaml"
