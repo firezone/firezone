@@ -210,11 +210,11 @@ struct NetworkSettingsTests {
       routes6: []
     )
 
-    // First DNS resources update (empty list)
-    _ = settings.updateDnsResources(newDnsResources: [])
+    // First DNS resources update
+    _ = settings.updateDnsResources(newDnsResources: ["example.com"])
 
-    // Second DNS resources update with same empty list
-    let result = settings.updateDnsResources(newDnsResources: [])
+    // Second DNS resources update with same list
+    let result = settings.updateDnsResources(newDnsResources: ["example.com"])
 
     #expect(result == nil, "Identical DNS resource list should not emit settings")
   }
