@@ -426,10 +426,11 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(SRCROOT)/Firezone/xcconfig/dynamic_build_number.xcconfig",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Set the project (build) version to the current epoch so that it monotonically increases\nseconds_since_epoch=$(date +%s)\necho \"CURRENT_PROJECT_VERSION = $seconds_since_epoch\" > Firezone/xcconfig/dynamic_build_number.xcconfig\n";
+			shellScript = "# Set the project (build) version to the current epoch so that it monotonically increases\nseconds_since_epoch=$(date +%s)\necho \"CURRENT_PROJECT_VERSION = $seconds_since_epoch\" > \"${SRCROOT}/Firezone/xcconfig/dynamic_build_number.xcconfig\"\n";
 		};
 		8D70FAE62D4971E900216473 /* Static Analysis */ = {
 			isa = PBXShellScriptBuildPhase;
