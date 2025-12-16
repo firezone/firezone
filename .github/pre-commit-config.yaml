@@ -14,19 +14,7 @@ repos:
         pass_filenames: false
       - id: prettier
         name: Prettier
-        entry: pnpm
-        args:
-          [
-            "--dir",
-            ".github",
-            "exec",
-            "prettier",
-            "--ignore-path",
-            "../.prettierignore",
-            "--check",
-            "--ignore-unknown",
-            "../",
-          ]
+        entry: bash -c 'cd .github && git -C .. ls-files "*.md" "*.json" "*.yaml" "*.yml" "*.css" "*.js" "*.ts" "*.tsx" | sed "s|^|../|" | xargs pnpm exec prettier --ignore-path ../.prettierignore --check --ignore-unknown --no-error-on-unmatched-pattern'
         language: system
         pass_filenames: false
 
