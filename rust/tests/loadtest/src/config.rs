@@ -358,7 +358,7 @@ mod tests {
         let result = LoadTestConfig::load(&path);
         assert_eq!(
             format!("{:#}", result.unwrap_err()),
-            "Failed to parse TOML: TOML parse error at line 1, column 6\n  |\n1 | this is not valid { toml\n  |      ^\nexpected `.`, `=`\n"
+            "Failed to parse TOML: TOML parse error at line 1, column 6\n  |\n1 | this is not valid { toml\n  |      ^\nkey with no value, expected `=`\n"
         );
 
         std::fs::remove_file(&path).ok();
