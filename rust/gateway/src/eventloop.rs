@@ -499,9 +499,7 @@ impl Eventloop {
                 let ipv6_socket = SocketAddr::V6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0));
 
                 let mut attempts = [
-                    // 3 attempts with both sockets, in case they are still busy and we are waiting for them to clean up
-                    vec![ipv4_socket, ipv6_socket],
-                    vec![ipv4_socket, ipv6_socket],
+                    // First attempt with both sockets.
                     vec![ipv4_socket, ipv6_socket],
                     // If IPv6 is not available, try with just the IPv4 address.
                     vec![ipv4_socket],
@@ -515,10 +513,14 @@ impl Eventloop {
 
                     match tunnel.rebind_dns(attempt) {
                         Ok(()) => break,
-                        Err(e) => tracing::debug!("{e:#}"),
+                        Err(mut e) => {
+                            for e in e.drain() {
+                                tracing::debug!("Failed to bind DNS server: {e:#}")
+                            }
+                        }
                     }
 
-                    tokio::time::sleep(Duration::from_millis(100)).await
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
             IngressMessages::ResourceUpdated(resource_description) => {

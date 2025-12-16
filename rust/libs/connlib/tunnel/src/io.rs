@@ -199,21 +199,34 @@ impl Io {
         }
     }
 
-    pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<()> {
+    pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<(), TunnelError> {
         tracing::debug!(?sockets, "Rebinding DNS servers");
 
         self.udp_dns_server.clear();
         self.tcp_dns_server.clear();
 
+        let mut error = TunnelError::default();
+
         for socket in sockets {
             let mut udp = l4_udp_dns_server::Server::default();
             let mut tcp = l4_tcp_dns_server::Server::default();
 
-            udp.rebind(socket)?;
-            tcp.rebind(socket)?;
+            if let Err(e) = udp.rebind(socket) {
+                error.push(e);
+            };
+            if let Err(e) = tcp.rebind(socket) {
+                error.push(e);
+            };
 
             self.udp_dns_server.insert(socket, udp);
             self.tcp_dns_server.insert(socket, tcp);
+        }
+
+        if !error.is_empty() {
+            self.udp_dns_server.clear();
+            self.tcp_dns_server.clear();
+
+            return Err(error);
         }
 
         Ok(())
