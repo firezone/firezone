@@ -187,7 +187,7 @@ impl TunDeviceManager {
             ])
             .await
             {
-                Ok(()) => tracing::debug!("Successfully created routing rule for IPv6"),
+                Ok(()) => tracing::debug!("Successfully created routing rules for IPv6"),
                 Err(e) => tracing::warn!("Failed to add IPv6 routing rules: {e}"),
             }
         }
