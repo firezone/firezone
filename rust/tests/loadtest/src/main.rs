@@ -196,7 +196,11 @@ fn init_logging() {
                     tracing_subscriber::layer::Identity::new().boxed()
                 }),
         )
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .event_format(logging::Format::new()),
+        )
         .with(
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new("firezone_loadtest=info,warn")),
