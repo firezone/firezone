@@ -17,6 +17,8 @@ public struct NetworkSettings {
   private var matchDomains: [String] = [""]
   private var searchDomain: String?
 
+  public init() {}
+
   // MARK: - Field-by-field comparison helpers
 
   private static func compareRoutes4(_ lhs: [NEIPv4Route], _ rhs: [NEIPv4Route]) -> Bool {
