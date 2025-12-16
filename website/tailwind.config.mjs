@@ -1,5 +1,5 @@
-/** @type {import('tailwindcss').Config} */
 import flowbite from "flowbite-react/plugin/tailwindcss";
+import flowbiteTypography from "flowbite-typography";
 
 const firezoneColors = {
   // See our brand palette in Figma.
@@ -65,7 +65,7 @@ const firezoneColors = {
 };
 
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+const tailwindConfig = {
   darkMode: "class",
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -87,7 +87,7 @@ module.exports = {
         // Simple 16 column grid
         16: "repeat(16, minmax(0, 1fr))",
       },
-      typography: ({ theme }) => ({
+      typography: () => ({
         firezone: {
           css: {
             "--tw-format-body": firezoneColors["night-rider"][800],
@@ -136,5 +136,7 @@ module.exports = {
       },
     },
   },
-  plugins: [flowbite, require("flowbite-typography")],
+  plugins: [flowbite, flowbiteTypography],
 };
+
+export default tailwindConfig;

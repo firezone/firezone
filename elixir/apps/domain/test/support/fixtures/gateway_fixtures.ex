@@ -5,7 +5,8 @@ defmodule Domain.GatewayFixtures do
 
   import Domain.AccountFixtures
   import Domain.SiteFixtures
-  import Domain.NetworkAddressFixtures
+  import Domain.IPv4AddressFixtures
+  import Domain.IPv6AddressFixtures
 
   @doc """
   Generate valid gateway attributes with sensible defaults.
@@ -46,28 +47,10 @@ defmodule Domain.GatewayFixtures do
     # Get or create site
     site = Map.get(attrs, :site) || site_fixture(account: account)
 
-    # Create network addresses for IPv4 and IPv6 if not provided
-    ipv4_address =
-      if Map.has_key?(attrs, :ipv4) do
-        Map.get(attrs, :ipv4)
-      else
-        ipv4_network_address_fixture(account: account)
-      end
-
-    ipv6_address =
-      if Map.has_key?(attrs, :ipv6) do
-        Map.get(attrs, :ipv6)
-      else
-        ipv6_network_address_fixture(account: account)
-      end
-
     # Build gateway attrs
     gateway_attrs =
       attrs
-      |> Map.delete(:account)
-      |> Map.delete(:site)
-      |> Map.delete(:ipv4)
-      |> Map.delete(:ipv6)
+      |> Map.drop([:account, :site, :ipv4_address, :ipv6_address])
       |> valid_gateway_attrs()
 
     {:ok, gateway} =
@@ -85,14 +68,17 @@ defmodule Domain.GatewayFixtures do
         :last_seen_version,
         :last_seen_at
       ])
-      |> Ecto.Changeset.put_change(:ipv4, ipv4_address.address)
-      |> Ecto.Changeset.put_change(:ipv6, ipv6_address.address)
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:site, site)
       |> Domain.Gateway.changeset()
       |> Domain.Repo.insert()
 
-    gateway
+    # Create address records for the gateway (unless explicitly set to nil)
+    Map.get_lazy(attrs, :ipv4_address, fn -> ipv4_address_fixture(gateway: gateway) end)
+    Map.get_lazy(attrs, :ipv6_address, fn -> ipv6_address_fixture(gateway: gateway) end)
+
+    # Return gateway with addresses preloaded
+    Domain.Repo.preload(gateway, [:ipv4_address, :ipv6_address])
   end
 
   @doc """

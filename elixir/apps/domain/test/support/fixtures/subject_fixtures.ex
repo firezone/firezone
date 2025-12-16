@@ -6,9 +6,11 @@ defmodule Domain.SubjectFixtures do
   import Domain.AccountFixtures
   import Domain.ActorFixtures
   import Domain.TokenFixtures
+  import Domain.APITokenFixtures
   import Domain.PortalSessionFixtures
 
   alias Domain.Auth.Context
+  alias Domain.Auth.Credential
   alias Domain.Auth.Subject
 
   @doc """
@@ -49,8 +51,8 @@ defmodule Domain.SubjectFixtures do
         }
       end)
 
-    # Portal sessions for portal context, tokens for client/api_client
-    {record, auth_ref} =
+    # Portal sessions for portal context, client tokens for client, api tokens for api_client
+    {expires_at, credential} =
       case context_type do
         :portal ->
           session =
@@ -58,41 +60,60 @@ defmodule Domain.SubjectFixtures do
               session_attrs =
                 attrs
                 |> Map.take([:expires_at])
-                |> Enum.into(%{
-                  account: account,
-                  actor: actor
-                })
+                |> Enum.into(%{account: account, actor: actor})
 
               portal_session_fixture(session_attrs)
             end)
 
-          {session, %{type: :portal_session, id: session.id}}
+          credential = %Credential{
+            type: :portal_session,
+            id: session.id,
+            auth_provider_id: session.auth_provider_id
+          }
 
-        type when type in [:client, :api_client] ->
+          {session.expires_at, credential}
+
+        :client ->
           token =
             Map.get_lazy(attrs, :token, fn ->
               token_attrs =
                 attrs
                 |> Map.take([:expires_at, :name])
-                |> Enum.into(%{
-                  type: context_type,
-                  account: account,
-                  actor: actor
-                })
+                |> Enum.into(%{type: :client, account: account, actor: actor})
 
               token_fixture(token_attrs)
             end)
 
-          {token, %{type: :token, id: token.id}}
+          credential = %Credential{
+            type: :token,
+            id: token.id,
+            auth_provider_id: token.auth_provider_id
+          }
+
+          {token.expires_at, credential}
+
+        :api_client ->
+          token =
+            Map.get_lazy(attrs, :token, fn ->
+              token_attrs =
+                attrs
+                |> Map.take([:expires_at, :name])
+                |> Enum.into(%{account: account, actor: actor})
+
+              api_token_fixture(token_attrs)
+            end)
+
+          credential = %Credential{type: :api_token, id: token.id}
+
+          {token.expires_at, credential}
       end
 
     %Subject{
       actor: actor,
       account: account,
-      expires_at: record.expires_at,
+      expires_at: expires_at,
       context: context,
-      auth_ref: auth_ref,
-      auth_provider_id: record.auth_provider_id
+      credential: credential
     }
   end
 

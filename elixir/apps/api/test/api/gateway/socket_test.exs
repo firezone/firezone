@@ -101,8 +101,8 @@ defmodule API.Gateway.SocketTest do
 
       # Create existing gateway with specific IPs
       existing_gateway = gateway_fixture(account: account, site: site)
-      original_ipv4 = existing_gateway.ipv4
-      original_ipv6 = existing_gateway.ipv6
+      original_ipv4 = existing_gateway.ipv4_address.address
+      original_ipv6 = existing_gateway.ipv6_address.address
 
       # Create a new token for same site
       token = gateway_token_fixture(account: account, site: site)
@@ -115,8 +115,8 @@ defmodule API.Gateway.SocketTest do
       assert gateway = socket.assigns.gateway
 
       # Verify IPs are preserved
-      assert gateway.ipv4 == original_ipv4
-      assert gateway.ipv6 == original_ipv6
+      assert gateway.ipv4_address.address == original_ipv4
+      assert gateway.ipv6_address.address == original_ipv6
     end
 
     test "returns error when token is invalid" do
@@ -128,9 +128,9 @@ defmodule API.Gateway.SocketTest do
   describe "id/1" do
     test "creates a channel for a gateway" do
       subject = subject_fixture(type: :client)
-      socket = socket(API.Gateway.Socket, "", %{token_id: subject.auth_ref.id})
+      socket = socket(API.Gateway.Socket, "", %{token_id: subject.credential.id})
 
-      assert id(socket) == "socket:#{subject.auth_ref.id}"
+      assert id(socket) == "socket:#{subject.credential.id}"
     end
   end
 

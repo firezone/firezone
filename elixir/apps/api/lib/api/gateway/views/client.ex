@@ -19,8 +19,8 @@ defmodule API.Gateway.Views.Client do
       id: client.id,
       public_key: client.public_key,
       preshared_key: preshared_key,
-      ipv4: client.ipv4,
-      ipv6: client.ipv6,
+      ipv4: client.ipv4_address.address,
+      ipv6: client.ipv6_address.address,
       version: client_version,
       device_serial: client.device_serial,
       device_os_name: os_name,
@@ -40,8 +40,8 @@ defmodule API.Gateway.Views.Client do
         persistent_keepalive: 25,
         public_key: client.public_key,
         preshared_key: preshared_key,
-        ipv4: client.ipv4,
-        ipv6: client.ipv6
+        ipv4: client.ipv4_address.address,
+        ipv6: client.ipv6_address.address
       }
     }
   end

@@ -14,6 +14,8 @@ public final class Log {
       return Logger(subsystem: "dev.firezone.firezone", category: "app")
     case "dev.firezone.firezone.network-extension":
       return Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
+    case nil:
+      return Logger(subsystem: "dev.firezone.firezone", category: "tests")
     default:
       fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
     }
@@ -26,6 +28,8 @@ public final class Log {
       folderURL = SharedAccess.appLogFolderURL
     case "dev.firezone.firezone.network-extension":
       folderURL = SharedAccess.tunnelLogFolderURL
+    case nil:
+      folderURL = nil
     default:
       fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
     }

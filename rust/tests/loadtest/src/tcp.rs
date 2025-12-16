@@ -16,7 +16,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
-use tracing::{debug, info, trace, warn};
 
 /// Configuration for TCP connection load testing.
 #[derive(Debug, Clone)]
@@ -155,7 +154,7 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
             echo_read_timeout: args.echo_read_timeout,
         };
 
-        let summary = run(config).await?;
+        let summary = run(config, 0).await?;
 
         println!(
             "{}",
@@ -168,7 +167,7 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
 
 /// Run TCP test from resolved config.
 pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()> {
-    let summary = run(config).await?;
+    let summary = run(config, seed).await?;
 
     println!(
         "{}",
@@ -178,16 +177,17 @@ pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()
     Ok(())
 }
 
-async fn run(config: TestConfig) -> Result<TcpTestSummary> {
+async fn run(config: TestConfig, seed: u64) -> Result<TcpTestSummary> {
     let (tx, mut rx) = mpsc::channel::<ConnectionResult>(config.concurrent);
     let active_connections = Arc::new(AtomicUsize::new(0));
     let peak_active = Arc::new(AtomicUsize::new(0));
 
-    info!(
+    tracing::info!(
         target = %config.target,
         concurrent = config.concurrent,
         hold_duration = ?config.hold_duration,
         echo_mode = config.echo_mode,
+        %seed,
         "Starting TCP connection test"
     );
 
@@ -320,7 +320,7 @@ async fn run_single_connection(
             let current = active.fetch_add(1, Ordering::SeqCst) + 1;
             // Update peak if this is a new high water mark
             peak.fetch_max(current, Ordering::SeqCst);
-            trace!(connection = connection_id, target = %config.target, ?connect_latency, "TCP connection established");
+            tracing::trace!(connection = connection_id, target = %config.target, ?connect_latency, "TCP connection established");
 
             let hold_start = Instant::now();
             let echo_stats = if config.echo_mode {
@@ -333,7 +333,7 @@ async fn run_single_connection(
             let held_duration = hold_start.elapsed();
 
             active.fetch_sub(1, Ordering::SeqCst);
-            trace!(connection = connection_id, target = %config.target, ?held_duration, "TCP connection closed");
+            tracing::trace!(connection = connection_id, target = %config.target, ?held_duration, "TCP connection closed");
 
             // A connection is only successful if there were no echo mismatches
             let success = echo_stats.mismatches == 0;
@@ -346,7 +346,7 @@ async fn run_single_connection(
             }
         }
         Ok(Err(e)) => {
-            debug!(connection = connection_id, target = %config.target, error = %e, "TCP connection failed");
+            tracing::debug!(connection = connection_id, target = %config.target, error = %e, "TCP connection failed");
             ConnectionResult {
                 success: false,
                 connect_latency: connect_start.elapsed(),
@@ -355,7 +355,7 @@ async fn run_single_connection(
             }
         }
         Err(_) => {
-            debug!(connection = connection_id, target = %config.target, "TCP connection timed out");
+            tracing::debug!(connection = connection_id, target = %config.target, "TCP connection timed out");
             ConnectionResult {
                 success: false,
                 connect_latency: connect_start.elapsed(),
@@ -382,12 +382,12 @@ async fn run_echo_loop(
         let bytes = payload.to_bytes();
 
         if let Err(e) = stream.write_all(&bytes).await {
-            warn!(connection = connection_id, error = %e, "Failed to send echo payload");
+            tracing::warn!(connection = connection_id, error = %e, "Failed to send echo payload");
             stats.mismatches += 1;
             break;
         }
         if let Err(e) = stream.flush().await {
-            warn!(connection = connection_id, error = %e, "Failed to flush echo payload");
+            tracing::warn!(connection = connection_id, error = %e, "Failed to flush echo payload");
             stats.mismatches += 1;
             break;
         }
@@ -401,7 +401,7 @@ async fn run_echo_loop(
                     stats.messages_verified += 1;
                     if let Some(latency) = received.round_trip_latency() {
                         stats.latencies.record(latency);
-                        trace!(
+                        tracing::trace!(
                             connection = connection_id,
                             latency_ms = latency.as_millis(),
                             "Echo verified"
@@ -409,17 +409,17 @@ async fn run_echo_loop(
                     }
                 }
                 Err(e) => {
-                    warn!(connection = connection_id, error = %e, "Echo verification failed");
+                    tracing::warn!(connection = connection_id, error = %e, "Echo verification failed");
                     stats.mismatches += 1;
                 }
             },
             Ok(Err(e)) => {
-                warn!(connection = connection_id, error = %e, "Failed to read echo response");
+                tracing::warn!(connection = connection_id, error = %e, "Failed to read echo response");
                 stats.mismatches += 1;
                 break;
             }
             Err(_) => {
-                warn!(connection = connection_id, "Echo response timed out");
+                tracing::warn!(connection = connection_id, "Echo response timed out");
                 stats.mismatches += 1;
             }
         }
@@ -452,17 +452,17 @@ async fn run_server(config: TcpServerConfig) -> anyhow::Result<()> {
     use tokio::net::TcpListener;
 
     let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, config.port)).await?;
-    info!(port = config.port, "TCP echo server listening");
+    tracing::info!(port = config.port, "TCP echo server listening");
 
     loop {
         let (stream, addr) = listener.accept().await?;
-        debug!(%addr, "TCP connection accepted");
+        tracing::debug!(%addr, "TCP connection accepted");
 
         tokio::spawn(async move {
             if let Err(e) = handle_echo_connection(stream).await {
-                debug!(%addr, error = %e, "TCP connection error");
+                tracing::debug!(%addr, error = %e, "TCP connection error");
             }
-            trace!(%addr, "TCP connection closed");
+            tracing::trace!(%addr, "TCP connection closed");
         });
     }
 }
@@ -480,7 +480,7 @@ async fn handle_echo_connection(mut stream: TcpStream) -> anyhow::Result<()> {
 
         stream.write_all(&buf[..n]).await?;
         stream.flush().await?;
-        trace!(bytes = n, "TCP echoed");
+        tracing::trace!(bytes = n, "TCP echoed");
     }
 
     Ok(())

@@ -23,6 +23,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  test:
+    runs-on: macos-15
+    env:
+      XCODE_VERSION: "26.0"
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - run: swift test
+        working-directory: swift/apple/FirezoneKit
+
   build:
     name: ${{ matrix.job_name }}
     needs: update-release-draft

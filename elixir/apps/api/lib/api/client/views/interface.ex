@@ -38,8 +38,8 @@ defmodule API.Client.Views.Interface do
       search_domain: client.account.config.search_domain,
       upstream_do53: upstream_do53,
       upstream_doh: upstream_doh,
-      ipv4: client.ipv4,
-      ipv6: client.ipv6,
+      ipv4: client.ipv4_address.address,
+      ipv6: client.ipv6_address.address,
 
       # Legacy field
       upstream_dns: upstream_dns

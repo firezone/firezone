@@ -11,11 +11,7 @@ defmodule Domain.Token do
     belongs_to :account, Domain.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
-    field :type, Ecto.Enum,
-      values: [
-        :client,
-        :api_client
-      ]
+    field :type, Ecto.Enum, values: [:client]
 
     field :name, :string
 
