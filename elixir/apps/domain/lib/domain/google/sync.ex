@@ -77,8 +77,9 @@ defmodule Domain.Google.Sync do
 
   defp get_access_token!(directory) do
     Logger.debug("Getting access token", google_directory_id: directory.id)
+    key = service_account_key(directory)
 
-    case Google.APIClient.get_access_token(directory.impersonation_email) do
+    case Google.APIClient.get_access_token(directory.impersonation_email, key) do
       {:ok, %{body: %{"access_token" => access_token}}} ->
         Logger.debug("Successfully obtained access token", google_directory_id: directory.id)
         access_token
@@ -107,6 +108,17 @@ defmodule Domain.Google.Sync do
           cause: error,
           directory_id: directory.id,
           step: :get_access_token
+    end
+  end
+
+  defp service_account_key(directory) do
+    case directory.legacy_service_account_key do
+      key when is_map(key) and map_size(key) > 0 ->
+        key
+
+      _ ->
+        config = Domain.Config.fetch_env!(:domain, Google.APIClient)
+        config[:service_account_key] |> JSON.decode!()
     end
   end
 

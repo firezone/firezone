@@ -1,8 +1,7 @@
 defmodule Domain.Google.APIClient do
-  def get_access_token(impersonation_email) do
+  def get_access_token(impersonation_email, key) do
     config = Domain.Config.fetch_env!(:domain, __MODULE__)
     token_endpoint = config[:token_endpoint]
-    key = config[:service_account_key] |> JSON.decode!()
     iss = key["client_email"]
     private_key = key["private_key"]
 
