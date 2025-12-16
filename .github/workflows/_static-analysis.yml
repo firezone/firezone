@@ -69,11 +69,11 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3.5.1
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        name: Restore pipx cache
-        id: pipx-cache
+        name: Restore pip cache
+        id: pip-cache
         with:
-          path: ~/.local/pipx
-          key: ubuntu-24.04-${{ runner.arch }}-pipx-${{ hashFiles('.github/requirements.txt') }}
+          path: ~/.cache/pip
+          key: ubuntu-24.04-${{ runner.arch }}-pip-${{ hashFiles('.github/requirements.txt') }}
       - uses: ./.github/actions/setup-node
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
@@ -81,8 +81,8 @@ jobs:
       - name: Run linters
         run: SKIP=no-commit-to-branch mise run lint
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        if: ${{ steps.pipx-cache.outputs.cache-hit != 'true' }}
-        name: Save pipx cache
+        if: ${{ steps.pip-cache.outputs.cache-hit != 'true' }}
+        name: Save pip cache
         with:
-          path: ~/.local/pipx
-          key: ${{ steps.pipx-cache.outputs.cache-primary-key }}
+          path: ~/.cache/pip
+          key: ${{ steps.pip-cache.outputs.cache-primary-key }}

@@ -1,17 +1,7 @@
 [tasks.setup]
 description = "Install linting tools from version-pinned files (managed by Dependabot)"
 run = """
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Install Python tools from requirements.txt
-while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" =~ ^# ]] && continue
-    pkg="${line%%==*}"
-    pipx install "$line" || pipx upgrade "$pkg"
-done < .github/requirements.txt
-
-# Install Node.js tools from package.json
+pip install -r .github/requirements.txt
 cd .github && pnpm install --frozen-lockfile
 """
 
