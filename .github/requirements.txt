@@ -1,2 +1,0 @@
-pre-commit==4.4.0
-codespell==2.4.1

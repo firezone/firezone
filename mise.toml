@@ -1,7 +1,6 @@
 [tools]
 # Need to be defined here, not in .tool-versions as we're installing python-specific tools
 # and asdf does not support this
-# TODO: Use this instead of .github/requirements.txt for CI pre-commit job
 "pipx:codespell" = "latest"
 "pipx:pre-commit" = "latest"
 
