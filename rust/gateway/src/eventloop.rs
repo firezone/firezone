@@ -498,10 +498,28 @@ impl Eventloop {
                 let ipv4_socket = SocketAddr::V4(SocketAddrV4::new(interface.ipv4, 53535));
                 let ipv6_socket = SocketAddr::V6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0));
 
-                tunnel
-                    .rebind_dns(vec![ipv4_socket, ipv6_socket])
-                    .context("Failed to bind DNS server")
-                    .inspect_err(|e| tracing::debug!("{e:#}"))?;
+                let mut attempts = [
+                    // 3 attempts with both sockets, in case they are still busy and we are waiting for them to clean up
+                    vec![ipv4_socket, ipv6_socket],
+                    vec![ipv4_socket, ipv6_socket],
+                    vec![ipv4_socket, ipv6_socket],
+                    // If IPv6 is not available, try with just the IPv4 address.
+                    vec![ipv4_socket],
+                ]
+                .into_iter();
+
+                loop {
+                    let Some(attempt) = attempts.next() else {
+                        anyhow::bail!("Failed to bind DNS servers on TUN interface");
+                    };
+
+                    match tunnel.rebind_dns(attempt) {
+                        Ok(()) => break,
+                        Err(e) => tracing::debug!("{e:#}"),
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(100)).await
+                }
             }
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
