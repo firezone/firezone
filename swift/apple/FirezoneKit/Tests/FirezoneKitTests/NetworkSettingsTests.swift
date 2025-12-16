@@ -269,7 +269,7 @@ struct NetworkSettingsTests {
 
   // MARK: - Order Independence Tests
 
-  @Test("DNS address order should not matter")
+  @Test("DNS address order matters")
   func dnsAddressOrderIndependence() async throws {
     var settings = NetworkSettings()
 
@@ -283,7 +283,7 @@ struct NetworkSettingsTests {
       routes6: []
     )
 
-    // Second update with same DNS in different order should not emit settings
+    // Second update with same DNS in different order should emit settings
     let result = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
@@ -293,7 +293,7 @@ struct NetworkSettingsTests {
       routes6: []
     )
 
-    #expect(result == nil, "DNS address order should not matter")
+    #expect(result?.dnsSettings?.servers == ["1.1.1.1", "8.8.8.8"])
   }
 
   @Test("Route order should not matter")

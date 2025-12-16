@@ -61,7 +61,7 @@ public struct NetworkSettings {
     // Update values
     self.tunnelAddressIPv4 = ipv4
     self.tunnelAddressIPv6 = ipv6
-    self.dnsAddresses = dnsAddresses.sorted()
+    self.dnsAddresses = dnsAddresses
     self.searchDomain = searchDomain
     if let searchDomain = searchDomain {
       self.matchDomains = ["", searchDomain]
