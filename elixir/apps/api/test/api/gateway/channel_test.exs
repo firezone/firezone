@@ -1666,6 +1666,72 @@ defmodule API.Gateway.ChannelTest do
                DateTime.truncate(expires_at, :second)
     end
 
+    test "authorize_flow preloads client addresses when not already loaded", %{
+      client: client,
+      account: account,
+      actor: actor,
+      gateway: gateway,
+      resource: resource,
+      socket: socket,
+      subject: subject,
+      group: group
+    } do
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          group: group
+        )
+
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      preshared_key = "PSK"
+
+      ice_credentials = %{
+        client: %{username: "A", password: "B"},
+        gateway: %{username: "C", password: "D"}
+      }
+
+      # Simulate a client received via PubSub without preloaded addresses
+      # by explicitly setting the associations to NotLoaded
+      client_without_preloads = %{
+        client
+        | ipv4_address: %Ecto.Association.NotLoaded{
+            __field__: :ipv4_address,
+            __owner__: Domain.Client,
+            __cardinality__: :one
+          },
+          ipv6_address: %Ecto.Association.NotLoaded{
+            __field__: :ipv6_address,
+            __owner__: Domain.Client,
+            __cardinality__: :one
+          }
+      }
+
+      send(
+        socket.channel_pid,
+        {{:authorize_policy, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client_without_preloads,
+           resource: to_cache(resource),
+           policy_authorization_id: policy_authorization.id,
+           authorization_expires_at: expires_at,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key,
+           subject: subject
+         }}
+      )
+
+      # Should successfully push authorize_flow with the addresses loaded
+      assert_push "authorize_flow", payload
+
+      assert payload.client.ipv4 == client.ipv4_address.address
+      assert payload.client.ipv6 == client.ipv6_address.address
+    end
+
     test "authorize_flow tracks policy authorization and sends reject_access when policy authorization is deleted",
          %{
            account: account,
