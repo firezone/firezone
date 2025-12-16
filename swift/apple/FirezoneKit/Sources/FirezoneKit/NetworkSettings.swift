@@ -131,7 +131,7 @@ public struct NetworkSettings {
   // MARK: - NEPacketTunnelNetworkSettings Builder
 
   /// Build NEPacketTunnelNetworkSettings from current state
-  public func buildNetworkSettings() -> NEPacketTunnelNetworkSettings? {
+  private func buildNetworkSettings() -> NEPacketTunnelNetworkSettings? {
     // Validate we have required fields
     guard let tunnelAddressIPv4 = tunnelAddressIPv4,
       let tunnelAddressIPv6 = tunnelAddressIPv6
