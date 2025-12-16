@@ -50,7 +50,7 @@ struct NetworkSettingsTests {
   func firstTunConfigUpdate() async throws {
     var settings = NetworkSettings()
 
-    let result = settings.updateTunInterface(
+    let payload = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
       dnsServers: ["1.1.1.1"],
@@ -58,6 +58,7 @@ struct NetworkSettingsTests {
       routes4: [],
       routes6: []
     )
+    let result = payload?.build()
 
     #expect(result?.ipv4Settings?.addresses.first == "10.0.0.1")
     #expect(result?.ipv6Settings?.addresses.first == "fd00::1")
@@ -72,7 +73,7 @@ struct NetworkSettingsTests {
     var settings = NetworkSettings()
 
     _ = settings.updateDnsResources(newDnsResources: [])
-    let result = settings.updateTunInterface(
+    let payload = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
       dnsServers: ["1.1.1.1"],
@@ -80,6 +81,7 @@ struct NetworkSettingsTests {
       routes4: [],
       routes6: []
     )
+    let result = payload?.build()
 
     #expect(result?.dnsSettings?.servers == ["1.1.1.1"])
   }
@@ -88,7 +90,7 @@ struct NetworkSettingsTests {
   func setDnsConfigWithoutServers() async throws {
     var settings = NetworkSettings()
 
-    let result = settings.updateTunInterface(
+    let payload = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
       dnsServers: [],
@@ -96,6 +98,7 @@ struct NetworkSettingsTests {
       routes4: [],
       routes6: []
     )
+    let result = payload?.build()
 
     #expect(result?.dnsSettings?.searchDomains == ["example.com"])
     #expect(result?.dnsSettings?.matchDomains == ["", "example.com"])
@@ -144,7 +147,7 @@ struct NetworkSettingsTests {
     )
 
     // Second update with different IPv4
-    let result = settings.updateTunInterface(
+    let payload = settings.updateTunInterface(
       ipv4: "10.0.0.2",
       ipv6: "fd00::1",
       dnsServers: ["1.1.1.1"],
@@ -152,6 +155,7 @@ struct NetworkSettingsTests {
       routes4: [],
       routes6: []
     )
+    let result = payload?.build()
 
     #expect(result?.ipv4Settings?.addresses.first == "10.0.0.2")
   }
@@ -171,7 +175,7 @@ struct NetworkSettingsTests {
     )
 
     // Second update with different DNS
-    let result = settings.updateTunInterface(
+    let payload = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
       dnsServers: ["8.8.8.8"],
@@ -179,6 +183,7 @@ struct NetworkSettingsTests {
       routes4: [],
       routes6: []
     )
+    let result = payload?.build()
 
     #expect(result?.dnsSettings?.servers == ["8.8.8.8"])
   }
@@ -187,7 +192,7 @@ struct NetworkSettingsTests {
   func routeChange() async throws {
     var settings = NetworkSettings()
 
-    let route1 = NEIPv4Route(destinationAddress: "192.168.1.0", subnetMask: "255.255.255.0")
+    let route1 = NetworkSettings.Cidr(address: "192.168.1.0", prefix: 24)
 
     // First update
     _ = settings.updateTunInterface(
@@ -199,10 +204,10 @@ struct NetworkSettingsTests {
       routes6: []
     )
 
-    let route2 = NEIPv4Route(destinationAddress: "192.168.2.0", subnetMask: "255.255.255.0")
+    let route2 = NetworkSettings.Cidr(address: "192.168.2.0", prefix: 24)
 
     // Second update with additional route
-    let result = settings.updateTunInterface(
+    let payload = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
       dnsServers: ["1.1.1.1"],
@@ -210,6 +215,7 @@ struct NetworkSettingsTests {
       routes4: [route1, route2],
       routes6: []
     )
+    let result = payload?.build()
 
     #expect(result?.ipv4Settings?.includedRoutes?.count == 2)
   }
@@ -256,7 +262,8 @@ struct NetworkSettingsTests {
     )
 
     // Set dummy match domain
-    let result = settings.setDummyMatchDomain()
+    let payload = settings.setDummyMatchDomain()
+    let result = payload?.build()
 
     #expect(result?.dnsSettings?.matchDomains == ["firezone-fd0020211111"])
     #expect(result?.dnsSettings?.searchDomains == ["example.com"])
@@ -280,7 +287,8 @@ struct NetworkSettingsTests {
     _ = settings.setDummyMatchDomain()
 
     // Clear dummy
-    let result = settings.clearDummyMatchDomain()
+    let payload = settings.clearDummyMatchDomain()
+    let result = payload?.build()
 
     #expect(result?.dnsSettings?.matchDomains == ["", "example.com"])
     #expect(result?.dnsSettings?.searchDomains == ["example.com"])
@@ -304,7 +312,8 @@ struct NetworkSettingsTests {
     _ = settings.setDummyMatchDomain()
 
     // Clear dummy
-    let result = settings.clearDummyMatchDomain()
+    let payload = settings.clearDummyMatchDomain()
+    let result = payload?.build()
 
     #expect(result?.dnsSettings?.matchDomains == [""])
     #expect(result?.dnsSettings?.searchDomains == [""])
@@ -327,7 +336,7 @@ struct NetworkSettingsTests {
     )
 
     // Second update with same DNS in different order should emit settings
-    let result = settings.updateTunInterface(
+    let payload = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
       dnsServers: ["1.1.1.1", "8.8.8.8"],
@@ -335,6 +344,7 @@ struct NetworkSettingsTests {
       routes4: [],
       routes6: []
     )
+    let result = payload?.build()
 
     #expect(result?.dnsSettings?.servers == ["1.1.1.1", "8.8.8.8"])
   }
@@ -343,8 +353,8 @@ struct NetworkSettingsTests {
   func routeOrderIndependence() async throws {
     var settings = NetworkSettings()
 
-    let route1 = NEIPv4Route(destinationAddress: "192.168.1.0", subnetMask: "255.255.255.0")
-    let route2 = NEIPv4Route(destinationAddress: "192.168.2.0", subnetMask: "255.255.255.0")
+    let route1 = NetworkSettings.Cidr(address: "192.168.1.0", prefix: 24)
+    let route2 = NetworkSettings.Cidr(address: "192.168.2.0", prefix: 24)
 
     // First update with routes in one order
     _ = settings.updateTunInterface(

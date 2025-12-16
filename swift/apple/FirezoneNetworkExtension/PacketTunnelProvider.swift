@@ -17,6 +17,8 @@ enum PacketTunnelProviderError: Error {
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
+  /// Task for consuming commands from Adapter. Uses CancellableTask for RAII cleanup.
+  private var commandConsumerTask: CancellableTask?
 
   enum LogExportState {
     case inProgress(TunnelLogArchive)
@@ -121,8 +123,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let internetResourceEnabled =
       enabled != nil ? enabled == "true" : (tunnelConfiguration?.internetResourceEnabled ?? false)
 
-    // Create the adapter synchronously - it stores completionHandler internally
-    // and will call it (along with startLogCleanupTask) when startup succeeds
+    // Create command channel for Adapter -> Provider communication
+    let (commandSender, commandReceiver): (Sender<ProviderCommand>, Receiver<ProviderCommand>) =
+      Channel.create()
+
     let adapter: Adapter
     do {
       adapter = try Adapter(
@@ -132,8 +136,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         logFilter: logFilter,
         accountSlug: accountSlug,
         internetResourceEnabled: internetResourceEnabled,
-        packetTunnelProvider: self,
-        startCompletionHandler: completionHandler
+        providerCommandSender: commandSender
       )
     } catch {
       Log.error(error)
@@ -144,17 +147,26 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Store adapter reference so it's accessible to wake() and stopTunnel()
     self.adapter = adapter
 
+    // Start command consumer loop
+    let handler = CommandHandler(self)
+    commandConsumerTask = CancellableTask { @Sendable in
+      for await command in commandReceiver.stream {
+        handler.handle(command)
+      }
+      Log.log("Provider command consumer finished")
+    }
+
     // Start the adapter asynchronously. The Task only captures Sendable values:
-    // - adapter: @unchecked Sendable
+    // - adapter: actor (Sendable)
     // - completionHandler: @Sendable
     // - accountSlug: String (Sendable)
-    Task {
+    Task { @Sendable in
       // Set account slug for telemetry (async)
       await Telemetry.setAccountSlug(accountSlug)
 
       do {
         try await adapter.start()
-        // On success, Adapter internally calls completionHandler(nil) and startLogCleanupTask()
+        completionHandler(nil)
       } catch {
         Log.error(error)
         completionHandler(error)
@@ -174,7 +186,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   override func wake() {
-    adapter?.reset(reason: "awoke from sleep")
+    let adapter = self.adapter
+    Task { @Sendable in
+      await adapter?.reset(reason: "awoke from sleep")
+    }
   }
 
   // This can be called by the system, or initiated by connlib.
@@ -187,9 +202,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     logCleanupTask = nil
 
+    // Cancel command consumer - CancellableTask handles cancellation on deinit
+    commandConsumerTask = nil
+
     // handles both connlib-initiated and user-initiated stops
-    adapter?.stop()
-    completionHandler()
+    let adapter = self.adapter
+    Task { @Sendable in
+      await adapter?.stop()
+      completionHandler()
+    }
   }
 
   // It would be helpful to be able to encapsulate Errors here. To do that
@@ -207,23 +228,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         tunnelConfiguration.save()
         self.tunnelConfiguration = tunnelConfiguration
 
-        self.adapter?.setInternetResourceEnabled(tunnelConfiguration.internetResourceEnabled)
+        let adapter = self.adapter
+        Task { @Sendable in
+          await adapter?.setInternetResourceEnabled(tunnelConfiguration.internetResourceEnabled)
+        }
         completionHandler?(nil)
 
       case .signOut:
         do { try Token.delete() } catch { Log.error(error) }
         completionHandler?(nil)
       case .getResourceList(let hash):
-        guard let adapter = adapter
-        else {
+        guard let adapter else {
           Log.warning("Adapter is nil")
           completionHandler?(nil)
-
           return
         }
 
         // Use hash comparison to only return resources if they've changed
-        adapter.getResourcesIfVersionDifferentFrom(hash: hash) { resourceData in
+        Task { @Sendable in
+          let resourceData = await adapter.getResourcesIfVersionDifferentFrom(hash: hash)
           completionHandler?(resourceData)
         }
       case .clearLogs:
@@ -409,6 +432,77 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do { try token.save() } catch { Log.error(error) }
     }
   #endif
+
+  // MARK: - Provider command handling
+
+  /// Sendable wrapper for handling provider commands from a concurrent task.
+  ///
+  /// Nested inside PacketTunnelProvider to make the coupling explicit and ensure
+  /// it can only be created with a valid provider reference. Marked @unchecked Sendable
+  /// because PacketTunnelProvider is not Sendable (framework limitation), but the
+  /// methods called (cancelTunnelWithError, setTunnelNetworkSettings, reasserting)
+  /// are designed for cross-thread access by NEPacketTunnelProvider.
+  final class CommandHandler: @unchecked Sendable {
+    private weak var provider: PacketTunnelProvider?
+
+    fileprivate init(_ provider: PacketTunnelProvider) {
+      self.provider = provider
+    }
+
+    func handle(_ command: ProviderCommand) {
+      guard let provider else {
+        Log.warning("CommandHandler: provider deallocated, dropping command")
+        // Respond to channels to prevent callers from hanging indefinitely
+        switch command {
+        case .getReasserting(let sender):
+          sender.send(false)
+        case .applyNetworkSettings(_, let sender):
+          sender.send("Provider unavailable")
+        case .cancelWithError, .setReasserting, .startLogCleanupTask:
+          break  // Fire-and-forget commands, no response needed
+        }
+        return
+      }
+      // NEPacketTunnelProvider properties like `reasserting` require main-thread access.
+      // Without this, property reads silently fail and channel responses never arrive.
+      DispatchQueue.main.async {
+        provider.handleProviderCommand(command)
+      }
+    }
+  }
+
+  /// Handle commands from the Adapter via channel.
+  private func handleProviderCommand(_ command: ProviderCommand) {
+    switch command {
+    case .cancelWithError(let sendableError):
+      if let sendableError {
+        let error: Error =
+          sendableError.isAuthenticationError
+          ? FirezoneKit.ConnlibError.sessionExpired(sendableError.message)
+          : NSError(
+            domain: "Firezone", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: sendableError.message])
+        cancelTunnelWithError(error)
+      } else {
+        cancelTunnelWithError(nil)
+      }
+
+    case .setReasserting(let value):
+      reasserting = value
+
+    case .getReasserting(let responseSender):
+      responseSender.send(reasserting)
+
+    case .startLogCleanupTask:
+      startLogCleanupTask()
+
+    case .applyNetworkSettings(let payload, let responseSender):
+      let neSettings = payload.build()
+      setTunnelNetworkSettings(neSettings) { error in
+        responseSender.send(error?.localizedDescription)
+      }
+    }
+  }
 }
 
 // Increase usefulness of TunnelConfiguration now that we're over the IPC barrier
