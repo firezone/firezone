@@ -62,7 +62,7 @@ class Adapter: @unchecked Sendable {
   private let accountSlug: String
 
   /// Network settings for tunnel configuration.
-  private let networkSettings: LockedState<NetworkSettings>
+  private let networkSettings: NetworkSettings
 
   /// Tracks whether we have applied any network settings
   private var hasAppliedSettings: Bool = false
@@ -190,7 +190,7 @@ class Adapter: @unchecked Sendable {
     self.internetResourceEnabled = internetResourceEnabled
     self.packetTunnelProvider = packetTunnelProvider
     self.startCompletionHandler = startCompletionHandler
-    self.networkSettings = LockedState(initialState: NetworkSettings())
+    self.networkSettings = NetworkSettings()
   }
 
   // Could happen abruptly if the process is killed.
@@ -430,20 +430,22 @@ class Adapter: @unchecked Sendable {
       let ipv4, let ipv6, let dns, let searchDomain, let ipv4Routes, let ipv6Routes):
       Log.log("Received TunInterfaceUpdated event")
 
-      let firstStart = !hasAppliedSettings
+      workQueue.async { [weak self] in
+        guard let self = self else { return }
 
-      // Convert UniFFI types to NetworkExtension types
-      let routes4 = ipv4Routes.compactMap { cidr in
-        NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv4Route
-      }
-      let routes6 = ipv6Routes.compactMap { cidr in
-        NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv6Route
-      }
+        let firstStart = !self.hasAppliedSettings
 
-      Log.log("Setting interface config")
+        // Convert UniFFI types to NetworkExtension types
+        let routes4 = ipv4Routes.compactMap { cidr in
+          NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv4Route
+        }
+        let routes6 = ipv6Routes.compactMap { cidr in
+          NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv6Route
+        }
 
-      let tunnelNetworkSettings = networkSettings.withLock { settings in
-        settings.updateTunInterface(
+        Log.log("Setting interface config")
+
+        let tunnelNetworkSettings = self.networkSettings.updateTunInterface(
           ipv4: ipv4,
           ipv6: ipv6,
           dnsAddresses: dns,
@@ -451,35 +453,32 @@ class Adapter: @unchecked Sendable {
           routes4: routes4,
           routes6: routes6
         )
-      }
 
-      applyNetworkSettings(tunnelNetworkSettings) {
-        if firstStart {
-          self.startCompletionHandler(nil)
+        self.applyNetworkSettings(tunnelNetworkSettings) {
+          if firstStart {
+            self.startCompletionHandler(nil)
+          }
         }
       }
 
     case .resourcesUpdated(let resourceList):
       Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")
 
-      // Store resource list
       workQueue.async { [weak self] in
         guard let self = self else { return }
         self.resources = resourceList
-      }
 
-      // Update DNS resource addresses to trigger network settings apply when they change
-      // This flushes the DNS cache so new DNS resources are immediately resolvable
-      let dnsAddresses = resourceList.compactMap { resource in
-        if case .dns(let dnsResource) = resource {
-          return dnsResource.address
+        // Update DNS resource addresses to trigger network settings apply when they change
+        // This flushes the DNS cache so new DNS resources are immediately resolvable
+        let dnsAddresses = resourceList.compactMap { resource in
+          if case .dns(let dnsResource) = resource {
+            return dnsResource.address
+          }
+          return nil
         }
-        return nil
+        let tunnelNetworkSettings = self.networkSettings.updateDnsResources(addresses: dnsAddresses)
+        self.applyNetworkSettings(tunnelNetworkSettings)
       }
-      let tunnelNetworkSettings = networkSettings.withLock { settings in
-        settings.updateDnsResources(addresses: dnsAddresses)
-      }
-      applyNetworkSettings(tunnelNetworkSettings)
 
     case .disconnected(let error):
       let errorMessage = error.message()
@@ -654,7 +653,7 @@ class Adapter: @unchecked Sendable {
       let semaphore = DispatchSemaphore(value: 0)
 
       // Set tunnel's matchDomains to a dummy string that will never match any name
-      guard let tunnelNetworkSettings = networkSettings.withLock({ $0.setDummyMatchDomain() })
+      guard let tunnelNetworkSettings = networkSettings.setDummyMatchDomain()
       else {
         // This should not be possible as we have checked on `hasAppliedSettings` above.
         // If we do hit this, it means we don't have tunnel IP addresses yet so no `networkSettings` have been applied yet.
@@ -677,7 +676,7 @@ class Adapter: @unchecked Sendable {
 
         // Restore connlib's DNS resolvers
         guard
-          let tunnelNetworkSettings = self.networkSettings.withLock({ $0.clearDummyMatchDomain() })
+          let tunnelNetworkSettings = self.networkSettings.clearDummyMatchDomain()
         else {
           // This should not be possible as we have applied network settings above if we get here.
           semaphore.signal()
