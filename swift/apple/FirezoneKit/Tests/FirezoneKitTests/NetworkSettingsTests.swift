@@ -19,7 +19,9 @@ struct NetworkSettingsTests {
     var settings = NetworkSettings()
 
     // Update DNS resources before TUN config (should not emit)
-    let result1 = settings.updateDnsResources(addresses: ["dns1.example.com", "dns2.example.com"])
+    let result1 = settings.updateDnsResources(newDnsResources: [
+      "dns1.example.com", "dns2.example.com",
+    ])
     #expect(result1 == nil, "Should not emit settings without tunnel addresses")
 
     // Configure TUN
@@ -34,11 +36,13 @@ struct NetworkSettingsTests {
     #expect(result2 != nil, "Should emit settings after TUN config")
 
     // Update DNS resources again with same values (should not emit because unchanged)
-    let result3 = settings.updateDnsResources(addresses: ["dns1.example.com", "dns2.example.com"])
+    let result3 = settings.updateDnsResources(newDnsResources: [
+      "dns1.example.com", "dns2.example.com",
+    ])
     #expect(result3 == nil, "Should not emit settings when DNS resources unchanged")
 
     // Update DNS resources with different values (should emit)
-    let result4 = settings.updateDnsResources(addresses: ["dns3.example.com"])
+    let result4 = settings.updateDnsResources(newDnsResources: ["dns3.example.com"])
     #expect(result4 != nil, "Should emit settings when DNS resources changed")
   }
 
@@ -62,10 +66,10 @@ struct NetworkSettingsTests {
   }
 
   @Test("Sets DNS servers without DNS resources")
-  func firstTunConfigUpdate() async throws {
+  func setsDnsServersWithoutResources() async throws {
     var settings = NetworkSettings()
 
-    settings.updateDnsResources([])
+    let _ = settings.updateDnsResources(newDnsResources: [])
     let result = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
@@ -207,10 +211,10 @@ struct NetworkSettingsTests {
     )
 
     // First DNS resources update (empty list)
-    _ = settings.updateDnsResources(addresses: [])
+    _ = settings.updateDnsResources(newDnsResources: [])
 
     // Second DNS resources update with same empty list
-    let result = settings.updateDnsResources(addresses: [])
+    let result = settings.updateDnsResources(newDnsResources: [])
 
     #expect(result == nil, "Identical DNS resource list should not emit settings")
   }
