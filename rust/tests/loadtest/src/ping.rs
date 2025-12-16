@@ -120,7 +120,7 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
         payload_size: args.payload_size,
     };
 
-    let summary = run(config).await?;
+    let summary = run(config, 0).await?;
 
     println!(
         "{}",
@@ -132,7 +132,7 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
 
 /// Run ping test from resolved config.
 pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()> {
-    let summary = run(config).await?;
+    let summary = run(config, seed).await?;
 
     println!(
         "{}",
@@ -143,7 +143,7 @@ pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()
 }
 
 /// Run the ICMP ping test.
-async fn run(config: TestConfig) -> Result<PingTestSummary> {
+async fn run(config: TestConfig, seed: u64) -> Result<PingTestSummary> {
     // Validate payload size
     if config.payload_size > MAX_ICMP_PAYLOAD_SIZE {
         bail!(
@@ -158,6 +158,7 @@ async fn run(config: TestConfig) -> Result<PingTestSummary> {
         duration = ?config.duration,
         interval = ?config.interval,
         payload_size = config.payload_size,
+        %seed,
         "Starting ICMP ping test"
     );
 

@@ -216,6 +216,14 @@ pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()
         "-qq",
     ];
 
+    tracing::info!(
+        address = %config.address,
+        concurrent = config.users,
+        hold_duration = ?config.run_time,
+        %seed,
+        "Starting HTTP connection test"
+    );
+
     let goose_args_ref: Vec<&str> = goose_args.to_vec();
     let goose_config = GooseConfiguration::parse_args_default(&goose_args_ref)
         .map_err(|e| anyhow::anyhow!("Failed to parse Goose arguments: {e}"))?;
