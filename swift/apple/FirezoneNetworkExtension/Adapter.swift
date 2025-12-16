@@ -472,7 +472,8 @@ class Adapter: @unchecked Sendable {
           }
           return nil
         }
-        let tunnelNetworkSettings = self.networkSettings.updateDnsResources(newDnsResources: dnsAddresses)
+        let tunnelNetworkSettings = self.networkSettings.updateDnsResources(
+          newDnsResources: dnsAddresses)
         self.applyNetworkSettings(tunnelNetworkSettings)
       }
 

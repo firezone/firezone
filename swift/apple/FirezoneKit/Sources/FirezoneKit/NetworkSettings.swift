@@ -38,7 +38,7 @@ public struct NetworkSettings: Equatable {
     self.tunnelAddressIPv6 = ipv6
     self.dnsServers = dnsServers
     self.searchDomain = searchDomain
-    self.matchDomains = searchDomain.map{ ["", $0] } ?? [""]
+    self.matchDomains = searchDomain.map { ["", $0] } ?? [""]
     self.routes4 = routes4.sorted {
       ($0.destinationAddress, $0.destinationSubnetMask) < (
         $1.destinationAddress, $1.destinationSubnetMask
