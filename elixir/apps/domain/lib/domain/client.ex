@@ -13,8 +13,8 @@ defmodule Domain.Client do
           name: String.t(),
           public_key: String.t(),
           psk_base: binary(),
-          ipv4: Domain.Types.IP.t(),
-          ipv6: Domain.Types.IP.t(),
+          ipv4_address: Domain.IPv4Address.t(),
+          ipv6_address: Domain.IPv6Address.t(),
 
           # TODO: Remove fields redundant with Subject.Context
           last_seen_user_agent: String.t(),
@@ -48,9 +48,6 @@ defmodule Domain.Client do
     field :public_key, :string
     field :psk_base, :binary, read_after_writes: true
 
-    field :ipv4, Domain.Types.IP
-    field :ipv6, Domain.Types.IP
-
     field :last_seen_user_agent, :string
     field :last_seen_remote_ip, Domain.Types.IP
     field :last_seen_remote_ip_location_region, :string
@@ -63,6 +60,9 @@ defmodule Domain.Client do
     field :online?, :boolean, virtual: true
 
     belongs_to :actor, Domain.Actor
+
+    has_one :ipv4_address, Domain.IPv4Address, references: :id
+    has_one :ipv6_address, Domain.IPv6Address, references: :id
 
     # Hardware Identifiers
     field :device_serial, :string
@@ -80,6 +80,7 @@ defmodule Domain.Client do
     changeset
     |> trim_change(~w[name external_id]a)
     |> validate_length(:name, min: 1, max: 255)
+    |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
     |> unique_constraint([:actor_id, :public_key],
       name: :clients_account_id_actor_id_public_key_index
@@ -87,7 +88,5 @@ defmodule Domain.Client do
     |> unique_constraint([:actor_id, :external_id],
       name: :clients_account_id_actor_id_external_id_index
     )
-    |> unique_constraint(:ipv4, name: :clients_account_id_ipv4_index)
-    |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
   end
 end

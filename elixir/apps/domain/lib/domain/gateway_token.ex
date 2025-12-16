@@ -17,7 +17,6 @@ defmodule Domain.GatewayToken do
 
     # Used only during creation
     field :secret_fragment, :string, virtual: true, redact: true
-    field :secret_nonce, :string, virtual: true, redact: true
 
     timestamps(updated_at: false)
   end

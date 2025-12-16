@@ -4,6 +4,7 @@ defmodule API.Client.SocketTest do
   import Domain.AccountFixtures
   import Domain.ActorFixtures
   import Domain.TokenFixtures
+  import Domain.APITokenFixtures
   import Domain.ClientFixtures
   import Domain.SubjectFixtures
   alias API.Client.Socket
@@ -54,8 +55,8 @@ defmodule API.Client.SocketTest do
 
     test "returns error when token is created for a different context" do
       # api_client tokens should not be usable for client socket
-      token = api_client_token_fixture()
-      encoded_token = encode_token(token)
+      token = api_token_fixture()
+      encoded_token = encode_api_token(token)
 
       attrs = connect_attrs(token: encoded_token)
 
@@ -89,12 +90,14 @@ defmodule API.Client.SocketTest do
 
       in_one_minute = DateTime.utc_now() |> DateTime.add(60, :second)
 
-      {:ok, encoded_token} =
+      {:ok, token} =
         Domain.Auth.create_service_account_token(
           actor,
-          %{"expires_at" => in_one_minute},
+          %{expires_at: in_one_minute},
           admin_subject
         )
+
+      encoded_token = Domain.Auth.encode_fragment!(token)
 
       attrs = connect_attrs(token: encoded_token)
 
@@ -159,8 +162,8 @@ defmodule API.Client.SocketTest do
 
       # Create existing client with specific IPs
       existing_client = client_fixture(account: account, actor: actor)
-      original_ipv4 = existing_client.ipv4
-      original_ipv6 = existing_client.ipv6
+      original_ipv4 = existing_client.ipv4_address.address
+      original_ipv6 = existing_client.ipv6_address.address
 
       # Create a new token for same actor
       token = client_token_fixture(account: account, actor: actor)
@@ -173,8 +176,8 @@ defmodule API.Client.SocketTest do
       assert client = socket.assigns.client
 
       # Verify IPs are preserved
-      assert client.ipv4 == original_ipv4
-      assert client.ipv6 == original_ipv6
+      assert client.ipv4_address.address == original_ipv4
+      assert client.ipv6_address.address == original_ipv6
     end
 
     test "uses region code to put default coordinates" do
@@ -207,7 +210,7 @@ defmodule API.Client.SocketTest do
       subject = subject_fixture(type: :client)
       socket = socket(API.Client.Socket, "", %{subject: subject})
 
-      assert id(socket) == "socket:#{subject.auth_ref.id}"
+      assert id(socket) == "socket:#{subject.credential.id}"
     end
   end
 

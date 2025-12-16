@@ -1,24 +1,21 @@
 defmodule Domain.Auth.Subject do
   alias Domain.Auth.Context
+  alias Domain.Auth.Credential
 
   @type actor :: %Domain.Actor{}
-
-  @type auth_ref :: %{type: :portal_session | :token, id: Ecto.UUID.t()}
 
   @type t :: %__MODULE__{
           actor: actor(),
           account: %Domain.Account{},
-          auth_ref: auth_ref(),
-          auth_provider_id: Ecto.UUID.t() | nil,
+          credential: Credential.t(),
           expires_at: DateTime.t(),
           context: Context.t()
         }
 
-  @enforce_keys [:actor, :account, :auth_ref, :expires_at, :context]
+  @enforce_keys [:actor, :account, :credential, :expires_at, :context]
   defstruct actor: nil,
             account: nil,
-            auth_ref: nil,
-            auth_provider_id: nil,
+            credential: nil,
             expires_at: nil,
             context: nil
 end

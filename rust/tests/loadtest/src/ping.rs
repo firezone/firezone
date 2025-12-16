@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use surge_ping::{Client, Config, ICMP, PingIdentifier, PingSequence};
 use tokio::sync::mpsc;
-use tracing::{debug, info, trace};
 
 /// Maximum ICMP payload size in bytes.
 ///
@@ -120,7 +119,7 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
         payload_size: args.payload_size,
     };
 
-    let summary = run(config).await?;
+    let summary = run(config, 0).await?;
 
     println!(
         "{}",
@@ -132,7 +131,7 @@ pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
 
 /// Run ping test from resolved config.
 pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()> {
-    let summary = run(config).await?;
+    let summary = run(config, seed).await?;
 
     println!(
         "{}",
@@ -143,7 +142,7 @@ pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()
 }
 
 /// Run the ICMP ping test.
-async fn run(config: TestConfig) -> Result<PingTestSummary> {
+async fn run(config: TestConfig, seed: u64) -> Result<PingTestSummary> {
     // Validate payload size
     if config.payload_size > MAX_ICMP_PAYLOAD_SIZE {
         bail!(
@@ -152,12 +151,13 @@ async fn run(config: TestConfig) -> Result<PingTestSummary> {
         );
     }
 
-    info!(
+    tracing::info!(
         targets = ?config.targets,
         count = ?config.count,
         duration = ?config.duration,
         interval = ?config.interval,
         payload_size = config.payload_size,
+        %seed,
         "Starting ICMP ping test"
     );
 
@@ -239,10 +239,10 @@ async fn ping_target(
             Ok((_packet, rtt)) => {
                 packets_received += 1;
                 rtts.record(rtt);
-                trace!(target = %target, seq, rtt_ms = rtt.as_secs_f64() * 1000.0, "Ping reply");
+                tracing::trace!(target = %target, seq, rtt_ms = rtt.as_secs_f64() * 1000.0, "Ping reply");
             }
             Err(e) => {
-                debug!(target = %target, seq, error = %e, "Ping failed");
+                tracing::debug!(target = %target, seq, error = %e, "Ping failed");
             }
         }
 

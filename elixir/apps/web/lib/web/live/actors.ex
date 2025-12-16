@@ -1485,19 +1485,10 @@ defmodule Web.Actors do
         {:error, :invalid_date}
 
       expires_at ->
-        # Generate a random token fragment
-        secret_fragment = Domain.Crypto.random_token(32, encoder: :hex32)
-
         # Build the token attributes
-        attrs = %{
-          "type" => :client,
-          "actor_id" => actor.id,
-          "account_id" => subject.account.id,
-          "expires_at" => expires_at,
-          "secret_fragment" => secret_fragment
-        }
+        attrs = %{"expires_at" => expires_at}
 
-        case Domain.Auth.create_token(attrs, subject) do
+        case Domain.Auth.create_service_account_token(actor, attrs, subject) do
           {:ok, token} ->
             encoded_token = Domain.Auth.encode_fragment!(token)
             {:ok, {token, encoded_token}}

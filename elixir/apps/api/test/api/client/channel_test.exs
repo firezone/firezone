@@ -246,7 +246,7 @@ defmodule API.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      :ok = PubSub.subscribe(Domain.Sockets.socket_id(subject.auth_ref.id))
+      :ok = PubSub.subscribe(Domain.Sockets.socket_id(subject.credential.id))
 
       {:ok, _reply, _socket} =
         API.Client.Socket
@@ -256,7 +256,7 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      token = Repo.get_by(Domain.Token, id: subject.auth_ref.id)
+      token = Repo.get_by(Domain.Token, id: subject.credential.id)
 
       data = %{
         "id" => token.id,
@@ -375,8 +375,8 @@ defmodule API.Client.ChannelTest do
       refute Enum.any?(resources, &(&1.id == offline_resource.id))
 
       assert interface == %{
-               ipv4: client.ipv4,
-               ipv6: client.ipv6,
+               ipv4: client.ipv4_address.address,
+               ipv6: client.ipv6_address.address,
                upstream_dns: [
                  %{address: "[1:2:3:4:5:6:7:8]:53", protocol: :ip_port},
                  %{protocol: :ip_port, address: "1.1.1.1:53"},
@@ -952,8 +952,8 @@ defmodule API.Client.ChannelTest do
 
       assert payload == %{
                interface: %{
-                 ipv4: client.ipv4,
-                 ipv6: client.ipv6,
+                 ipv4: client.ipv4_address.address,
+                 ipv6: client.ipv6_address.address,
                  search_domain: "new.example.com",
                  upstream_dns: [
                    %{address: "[1:2:3:4:5:6:7:8]:53", protocol: :ip_port},
@@ -2233,7 +2233,7 @@ defmodule API.Client.ChannelTest do
       assert policy_authorization.resource_id == Ecto.UUID.load!(resource_id)
       assert policy_authorization.gateway_id == gateway.id
       assert policy_authorization.policy_id == policy.id
-      assert policy_authorization.token_id == subject.auth_ref.id
+      assert policy_authorization.token_id == subject.credential.id
 
       assert client_id == client.id
       assert Ecto.UUID.load!(resource_id) == resource.id
@@ -2242,14 +2242,15 @@ defmodule API.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, resource_id, gateway.site_id, gateway.id, gateway.public_key,
-         gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials}
+         gateway.ipv4_address.address, gateway.ipv6_address.address, preshared_key,
+         ice_credentials}
       )
 
       gateway_group_id = gateway.site_id
       gateway_id = gateway.id
       gateway_public_key = gateway.public_key
-      gateway_ipv4 = gateway.ipv4
-      gateway_ipv6 = gateway.ipv6
+      gateway_ipv4 = gateway.ipv4_address.address
+      gateway_ipv6 = gateway.ipv6_address.address
 
       resource_id = Ecto.UUID.load!(resource_id)
 

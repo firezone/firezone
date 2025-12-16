@@ -11,7 +11,6 @@ import rehypeSlug from "rehype-slug";
 
 // Add anchor links to headings with IDs
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
-import { s } from "hastscript";
 
 // Highlight.js languages
 import langElixir from "highlight.js/lib/languages/elixir";

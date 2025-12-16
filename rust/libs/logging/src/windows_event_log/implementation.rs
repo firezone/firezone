@@ -86,25 +86,16 @@ where
             fields: &mut fields,
         });
 
-        let spans: Vec<_> = ctx
-            .event_scope(event)
-            .map(|scope| {
-                scope
-                    .from_root()
-                    .map(|span| {
-                        let name = span.name();
-                        let fields = span
-                            .extensions()
-                            .get::<SpanFields>()
-                            .map(|f| f.fields.clone())
-                            .unwrap_or_default();
-                        (name, fields)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        // Collect all span fields
+        if let Some(scope) = ctx.event_scope(event) {
+            for span in scope.from_root() {
+                if let Some(span_fields) = span.extensions().get::<SpanFields>() {
+                    fields.extend(span_fields.fields.iter().cloned());
+                }
+            }
+        }
 
-        let output = format_message(message.as_deref(), &spans, &fields);
+        let output = format_message(message.as_deref(), &fields);
         self.handle.report_event(event_type, event_id, &output);
     }
 }
@@ -154,45 +145,19 @@ impl Visit for EventVisitor<'_> {
     }
 }
 
-fn format_message(
-    message: Option<&str>,
-    spans: &[(&str, Vec<(String, String)>)],
-    fields: &[(String, String)],
-) -> String {
+fn format_message(message: Option<&str>, fields: &[(String, String)]) -> String {
     let mut output = String::new();
 
     if let Some(msg) = message {
         output.push_str(msg);
     }
 
-    if !spans.is_empty() {
-        if !output.is_empty() {
-            output.push('\n');
-        }
-        let span_str = spans
-            .iter()
-            .map(|(name, fields)| {
-                if fields.is_empty() {
-                    (*name).to_owned()
-                } else {
-                    let fields_str = fields
-                        .iter()
-                        .map(|(k, v)| format!("{k}={v}"))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    format!("{name}({fields_str})")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" / ");
-        let _ = write!(output, "span: {span_str}");
-    }
-
+    // Append all fields at the end
     for (key, value) in fields {
         if !output.is_empty() {
-            output.push('\n');
+            output.push(' ');
         }
-        let _ = write!(output, "{key}: {value}");
+        let _ = write!(output, "{key}={value}");
     }
 
     output
@@ -318,57 +283,50 @@ mod tests {
 
     #[test]
     fn format_message_with_all_parts() {
-        let spans = vec![
-            ("span1", vec![("id".to_owned(), "123".to_owned())]),
-            ("span2", vec![]),
-        ];
         let fields = vec![
+            ("id".to_owned(), "123".to_owned()),
             ("count".to_owned(), "42".to_owned()),
             ("name".to_owned(), "test".to_owned()),
         ];
 
-        let output = format_message(Some("test message"), &spans, &fields);
+        let output = format_message(Some("test message"), &fields);
 
-        assert!(output.contains("test message"));
-        assert!(output.contains("span: span1(id=123) / span2"));
-        assert!(output.contains("count: 42"));
-        assert!(output.contains("name: test"));
+        assert_eq!(output, "test message id=123 count=42 name=test");
     }
 
     #[test]
-    fn format_message_without_spans() {
-        let output = format_message(Some("test"), &[], &[]);
+    fn format_message_without_fields() {
+        let output = format_message(Some("test"), &[]);
+
         assert_eq!(output, "test");
     }
 
     #[test]
     fn format_message_without_message() {
         let fields = vec![("key".to_owned(), "value".to_owned())];
-        let output = format_message(None, &[], &fields);
-        assert_eq!(output, "key: value");
+
+        let output = format_message(None, &fields);
+
+        assert_eq!(output, "key=value");
     }
 
     #[test]
-    fn format_message_nested_spans() {
-        let spans = vec![
-            ("root", vec![]),
-            ("middle", vec![("a".to_owned(), "1".to_owned())]),
-            (
-                "leaf",
-                vec![
-                    ("b".to_owned(), "2".to_owned()),
-                    ("c".to_owned(), "3".to_owned()),
-                ],
-            ),
+    fn format_message_multiple_fields() {
+        let fields = vec![
+            ("a".to_owned(), "1".to_owned()),
+            ("b".to_owned(), "2".to_owned()),
+            ("c".to_owned(), "3".to_owned()),
         ];
 
-        let output = format_message(None, &spans, &[]);
-        assert_eq!(output, "span: root / middle(a=1) / leaf(b=2, c=3)");
+        let output = format_message(None, &fields);
+
+        assert_eq!(output, "a=1 b=2 c=3");
     }
 
     #[test]
     fn to_wide_string_null_terminated() {
         let wide = to_wide_string("test");
+
         assert_eq!(wide.len(), 5);
         assert_eq!(wide[4], 0);
     }
@@ -377,6 +335,7 @@ mod tests {
     fn to_wide_string_unicode() {
         let wide = to_wide_string("héllo 日本語");
         assert_eq!(*wide.last().unwrap(), 0);
+
         let back = String::from_utf16(&wide[..wide.len() - 1]).unwrap();
         assert_eq!(back, "héllo 日本語");
     }

@@ -1,6 +1,11 @@
 repos:
   - repo: local
     hooks:
+      - id: no-tracing-macro-imports
+        name: "rust: no direct tracing macro imports"
+        entry: "bash -c 'if grep -E \"use tracing::(trace|debug|info|warn|error)[^_]|use tracing::\\{[^}]*(trace|debug|info|warn|error)[^_]\" \"$@\"; then echo \"Error: Do not import tracing macros\"; exit 1; fi' --"
+        language: system
+        types: [rust]
       - id: codespell
         name: "python: codespell"
         args: [--config=.github/codespellrc]
@@ -9,19 +14,7 @@ repos:
         pass_filenames: false
       - id: prettier
         name: Prettier
-        entry: pnpm
-        args:
-          [
-            "--dir",
-            ".github",
-            "exec",
-            "prettier",
-            "--ignore-path",
-            "../.prettierignore",
-            "--check",
-            "--ignore-unknown",
-            "../",
-          ]
+        entry: bash -c 'cd .github && git -C .. ls-files "*.md" "*.json" "*.yaml" "*.yml" "*.css" "*.js" "*.ts" "*.tsx" | sed "s|^|../|" | xargs pnpm exec prettier --ignore-path ../.prettierignore --check --ignore-unknown --no-error-on-unmatched-pattern'
         language: system
         pass_filenames: false
 
@@ -48,11 +41,14 @@ repos:
           - '^(?!((chore|feat|feature|bug|fix|build|ci|docs|style|refactor|perf|test|revert)\/[@a-zA-Z0-9\-\.\/]+)$).*'
 
   # Third party pre-commit hooks
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.10.0
+  - repo: local
     hooks:
       - id: shellcheck
+        name: ShellCheck
+        entry: shellcheck
         args: ["--severity=warning"]
+        language: system
+        types: [shell]
         exclude: ^.*/gradlew$
   - repo: https://github.com/pecigonzalo/pre-commit-shfmt
     rev: v2.2.0
