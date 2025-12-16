@@ -10,10 +10,10 @@ import os.log
 public struct NetworkSettings {
   private var tunnelAddressIPv4: String?
   private var tunnelAddressIPv6: String?
-  private var dnsAddresses: [String] = []
+  private var dnsServers: [String] = []
   private var routes4: [NEIPv4Route] = []
   private var routes6: [NEIPv6Route] = []
-  private var dnsResourceAddresses: [String] = []
+  private var dnsResources: [String] = []
   private var matchDomains: [String] = [""]
   private var searchDomain: String?
 
@@ -44,7 +44,7 @@ public struct NetworkSettings {
   public mutating func updateTunInterface(
     ipv4: String?,
     ipv6: String?,
-    dnsAddresses: [String],
+    dnsServers: [String],
     searchDomain: String?,
     routes4: [NEIPv4Route],
     routes6: [NEIPv6Route]
@@ -52,7 +52,7 @@ public struct NetworkSettings {
     // Store old values for comparison
     let oldIPv4 = self.tunnelAddressIPv4
     let oldIPv6 = self.tunnelAddressIPv6
-    let oldDnsAddresses = self.dnsAddresses
+    let olddnsServers = self.dnsServers
     let oldMatchDomains = self.matchDomains
     let oldSearchDomain = self.searchDomain
     let oldRoutes4 = self.routes4
@@ -61,7 +61,7 @@ public struct NetworkSettings {
     // Update values
     self.tunnelAddressIPv4 = ipv4
     self.tunnelAddressIPv6 = ipv6
-    self.dnsAddresses = dnsAddresses
+    self.dnsServers = dnsServers
     self.searchDomain = searchDomain
     if let searchDomain = searchDomain {
       self.matchDomains = ["", searchDomain]
@@ -82,7 +82,7 @@ public struct NetworkSettings {
     let hasChanges =
       oldIPv4 != self.tunnelAddressIPv4
       || oldIPv6 != self.tunnelAddressIPv6
-      || oldDnsAddresses != self.dnsAddresses
+      || olddnsServers != self.dnsServers
       || oldMatchDomains != self.matchDomains
       || oldSearchDomain != self.searchDomain
       || !NetworkSettings.compareRoutes4(oldRoutes4, self.routes4)
@@ -99,13 +99,13 @@ public struct NetworkSettings {
   /// Used to trigger network settings apply when DNS resources change,
   /// which flushes the DNS cache so new DNS resources are immediately resolvable
   /// Returns NEPacketTunnelNetworkSettings if settings changed, nil if unchanged or build fails
-  public mutating func updateDnsResources(addresses: [String])
+  public mutating func updateDnsResources(newDnsResources: [String])
     -> NEPacketTunnelNetworkSettings?
   {
-    let oldDnsResourceAddresses = self.dnsResourceAddresses
-    self.dnsResourceAddresses = addresses.sorted()
+    let oldDnsResources = self.dnsResources
+    self.dnsResources = newDnsResources.sorted()
 
-    let hasChanges = oldDnsResourceAddresses != self.dnsResourceAddresses
+    let hasChanges = oldDnsResources != self.dnsResources
 
     if !hasChanges {
       return nil
@@ -163,8 +163,8 @@ public struct NetworkSettings {
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
 
     // Set DNS settings if we have addresses
-    if !dnsAddresses.isEmpty {
-      let dnsSettings = NEDNSSettings(servers: dnsAddresses)
+    if !dnsServers.isEmpty {
+      let dnsSettings = NEDNSSettings(servers: dnsServers)
       dnsSettings.matchDomains = matchDomains
       dnsSettings.searchDomains = searchDomain.map { [$0] } ?? []
       dnsSettings.matchDomainsNoSearch = false

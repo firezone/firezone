@@ -26,7 +26,7 @@ struct NetworkSettingsTests {
     let result2 = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [],
       routes6: []
@@ -49,7 +49,7 @@ struct NetworkSettingsTests {
     let result = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [],
       routes6: []
@@ -67,7 +67,7 @@ struct NetworkSettingsTests {
     _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1", "8.8.8.8"],
+      dnsServers: ["1.1.1.1", "8.8.8.8"],
       searchDomain: "example.com",
       routes4: [],
       routes6: []
@@ -77,7 +77,7 @@ struct NetworkSettingsTests {
     let result = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1", "8.8.8.8"],
+      dnsServers: ["1.1.1.1", "8.8.8.8"],
       searchDomain: "example.com",
       routes4: [],
       routes6: []
@@ -94,7 +94,7 @@ struct NetworkSettingsTests {
     _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [],
       routes6: []
@@ -104,7 +104,7 @@ struct NetworkSettingsTests {
     let result = settings.updateTunInterface(
       ipv4: "10.0.0.2",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [],
       routes6: []
@@ -121,7 +121,7 @@ struct NetworkSettingsTests {
     _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [],
       routes6: []
@@ -131,7 +131,7 @@ struct NetworkSettingsTests {
     let result = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["8.8.8.8"],
+      dnsServers: ["8.8.8.8"],
       searchDomain: nil,
       routes4: [],
       routes6: []
@@ -150,7 +150,7 @@ struct NetworkSettingsTests {
     _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [route1],
       routes6: []
@@ -162,7 +162,7 @@ struct NetworkSettingsTests {
     let result = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [route1, route2],
       routes6: []
@@ -181,7 +181,7 @@ struct NetworkSettingsTests {
     _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [],
       routes6: []
@@ -206,7 +206,7 @@ struct NetworkSettingsTests {
     _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: "example.com",
       routes4: [],
       routes6: []
@@ -227,7 +227,7 @@ struct NetworkSettingsTests {
     _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: "example.com",
       routes4: [],
       routes6: []
@@ -251,7 +251,7 @@ struct NetworkSettingsTests {
     _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [],
       routes6: []
@@ -277,7 +277,7 @@ struct NetworkSettingsTests {
     _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["8.8.8.8", "1.1.1.1"],
+      dnsServers: ["8.8.8.8", "1.1.1.1"],
       searchDomain: nil,
       routes4: [],
       routes6: []
@@ -287,7 +287,7 @@ struct NetworkSettingsTests {
     let result = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1", "8.8.8.8"],
+      dnsServers: ["1.1.1.1", "8.8.8.8"],
       searchDomain: nil,
       routes4: [],
       routes6: []
@@ -307,7 +307,7 @@ struct NetworkSettingsTests {
     _ = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [route1, route2],
       routes6: []
@@ -317,7 +317,7 @@ struct NetworkSettingsTests {
     let result = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",
-      dnsAddresses: ["1.1.1.1"],
+      dnsServers: ["1.1.1.1"],
       searchDomain: nil,
       routes4: [route2, route1],
       routes6: []
