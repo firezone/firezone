@@ -269,11 +269,9 @@ skip = [
     "syn",
     "thiserror",
     "thiserror-impl",
-    "tokio-tungstenite",  # goose uses 0.27.0, phoenix-channel uses 0.28.0
     "toml",
     "toml_datetime",
     "toml_edit",
-    "tungstenite",        # goose uses 0.27.0, phoenix-channel uses 0.28.0
     "wasi",
     "webpki-roots",
     "which",
