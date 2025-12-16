@@ -89,22 +89,12 @@ defmodule Domain.Repo.Seeds do
   end
 
   # Allocate tunnel IP addresses for clients/gateways
-  # When STATIC_SEEDS is set, uses deterministic UUID-based IPs for local development
-  # Otherwise uses monotonic counter for sequential unique addresses
+  # Uses monotonic counter for sequential unique addresses
   # Must be called AFTER the client/gateway is created, passing its ID
-  defp create_tunnel_ip_addresses(account_id, uuid, opts) do
+  defp create_tunnel_ip_addresses(account_id, opts) do
     client_id = Keyword.get(opts, :client_id)
     gateway_id = Keyword.get(opts, :gateway_id)
 
-    if System.get_env("STATIC_SEEDS") == "true" do
-      create_static_tunnel_ip_addresses(account_id, uuid, client_id, gateway_id)
-    else
-      create_sequential_tunnel_ip_addresses(account_id, client_id, gateway_id)
-    end
-  end
-
-  # Generate sequential IPs using monotonic counter (for non-static seeds)
-  defp create_sequential_tunnel_ip_addresses(account_id, client_id, gateway_id) do
     # Offset by 1 since unique_integer starts at 0
     offset = System.unique_integer([:positive, :monotonic]) + 1
 
@@ -119,43 +109,6 @@ defmodule Domain.Repo.Seeds do
 
     ipv4 = {100, 64, ipv4_third, ipv4_fourth}
     ipv6 = {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0, ipv6_w8}
-
-    # Create address records with client/gateway FK
-    %Domain.IPv4Address{
-      account_id: account_id,
-      address: ipv4,
-      client_id: client_id,
-      gateway_id: gateway_id
-    }
-    |> Repo.insert!()
-
-    %Domain.IPv6Address{
-      account_id: account_id,
-      address: ipv6,
-      client_id: client_id,
-      gateway_id: gateway_id
-    }
-    |> Repo.insert!()
-
-    :ok
-  end
-
-  # Generate deterministic IPs based on UUID hash for static seeds
-  defp create_static_tunnel_ip_addresses(account_id, uuid, client_id, gateway_id) do
-    # Hash the UUID to get deterministic bytes
-    <<ipv4_2, ipv4_3, ipv4_4, ipv6_rest::binary-size(10), _::binary>> =
-      :crypto.hash(:sha256, uuid)
-
-    # CGNAT range: 100.64.0.0 - 100.127.255.255 (100.64.0.0/10)
-    ipv4_second = 64 + rem(ipv4_2, 64)
-    ipv4_third = ipv4_3
-    ipv4_fourth = rem(ipv4_4, 254) + 1
-
-    # fd00:2021:1111::/48 range
-    <<w4::16, w5::16, w6::16, w7::16, w8::16>> = ipv6_rest
-
-    ipv4 = {100, ipv4_second, ipv4_third, ipv4_fourth}
-    ipv6 = {0xFD00, 0x2021, 0x1111, w4, w5, w6, w7, w8}
 
     # Create address records with client/gateway FK
     %Domain.IPv4Address{
@@ -208,7 +161,7 @@ defmodule Domain.Repo.Seeds do
       |> Repo.insert!()
 
     # Then create tunnel IP addresses with gateway FK
-    create_tunnel_ip_addresses(site.account_id, external_id, gateway_id: gateway.id)
+    create_tunnel_ip_addresses(site.account_id, gateway_id: gateway.id)
 
     {:ok, Repo.preload(gateway, [:ipv4_address, :ipv6_address])}
   end
@@ -240,7 +193,7 @@ defmodule Domain.Repo.Seeds do
       |> Repo.insert!()
 
     # Then create tunnel IP addresses with client FK
-    create_tunnel_ip_addresses(subject.account.id, external_id, client_id: client.id)
+    create_tunnel_ip_addresses(subject.account.id, client_id: client.id)
 
     {:ok, Repo.preload(client, [:ipv4_address, :ipv6_address])}
   end
@@ -666,7 +619,7 @@ defmodule Domain.Repo.Seeds do
           |> Repo.insert!()
 
         # Then create tunnel IP addresses with client FK
-        create_tunnel_ip_addresses(subject.account.id, external_id, client_id: client.id)
+        create_tunnel_ip_addresses(subject.account.id, client_id: client.id)
       end
     end
 
