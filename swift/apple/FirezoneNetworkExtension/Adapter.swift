@@ -62,7 +62,7 @@ class Adapter: @unchecked Sendable {
   private let accountSlug: String
 
   /// Network settings for tunnel configuration.
-  private var networkSettings: NetworkSettings
+  private let networkSettings: LockedState<NetworkSettings>
 
   /// Tracks whether we have applied any network settings
   private var hasAppliedSettings: Bool = false
@@ -190,7 +190,7 @@ class Adapter: @unchecked Sendable {
     self.internetResourceEnabled = internetResourceEnabled
     self.packetTunnelProvider = packetTunnelProvider
     self.startCompletionHandler = startCompletionHandler
-    self.networkSettings = NetworkSettings()
+    self.networkSettings = LockedState(initialState: NetworkSettings())
   }
 
   // Could happen abruptly if the process is killed.
@@ -442,14 +442,16 @@ class Adapter: @unchecked Sendable {
 
       Log.log("Setting interface config")
 
-      let tunnelNetworkSettings = networkSettings.updateTunInterface(
-        ipv4: ipv4,
-        ipv6: ipv6,
-        dnsAddresses: dns,
-        searchDomain: searchDomain,
-        routes4: routes4,
-        routes6: routes6
-      )
+      let tunnelNetworkSettings = networkSettings.withLock { settings in
+        settings.updateTunInterface(
+          ipv4: ipv4,
+          ipv6: ipv6,
+          dnsAddresses: dns,
+          searchDomain: searchDomain,
+          routes4: routes4,
+          routes6: routes6
+        )
+      }
 
       applyNetworkSettings(tunnelNetworkSettings) {
         if firstStart {
@@ -474,7 +476,9 @@ class Adapter: @unchecked Sendable {
         }
         return nil
       }
-      let tunnelNetworkSettings = networkSettings.updateDnsResources(addresses: dnsAddresses)
+      let tunnelNetworkSettings = networkSettings.withLock { settings in
+        settings.updateDnsResources(addresses: dnsAddresses)
+      }
       applyNetworkSettings(tunnelNetworkSettings)
 
     case .disconnected(let error):
@@ -650,7 +654,8 @@ class Adapter: @unchecked Sendable {
       let semaphore = DispatchSemaphore(value: 0)
 
       // Set tunnel's matchDomains to a dummy string that will never match any name
-      guard let tunnelNetworkSettings = networkSettings.setDummyMatchDomain() else {
+      guard let tunnelNetworkSettings = networkSettings.withLock({ $0.setDummyMatchDomain() })
+      else {
         // This should not be possible as we have checked on `hasAppliedSettings` above.
         // If we do hit this, it means we don't have tunnel IP addresses yet so no `networkSettings` have been applied yet.
         semaphore.signal()
@@ -671,7 +676,9 @@ class Adapter: @unchecked Sendable {
         resolversBox.value = BindResolvers.getServers()
 
         // Restore connlib's DNS resolvers
-        guard let tunnelNetworkSettings = self.networkSettings.clearDummyMatchDomain() else {
+        guard
+          let tunnelNetworkSettings = self.networkSettings.withLock({ $0.clearDummyMatchDomain() })
+        else {
           // This should not be possible as we have applied network settings above if we get here.
           semaphore.signal()
           return
