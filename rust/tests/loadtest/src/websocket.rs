@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
-use rand::{Rng, RngCore};
+use rand::{Rng, RngCore, SeedableRng};
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -102,7 +102,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
     // Spawn one task per concurrent connection
     for id in 0..config.concurrent {
         connections.spawn(
-            run_single_connection(config.clone())
+            run_single_connection(config.clone(), seed + id as u64)
                 .instrument(tracing::info_span!("connection", %id)),
         );
     }
@@ -119,7 +119,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
 }
 
 /// Run a single WebSocket connection test.
-async fn run_single_connection(config: TestConfig) -> Result<()> {
+async fn run_single_connection(config: TestConfig, seed: u64) -> Result<()> {
     let connect_start = Instant::now();
 
     let (ws, _response) = timeout(CONNECT_TIMEOUT, connect_async(config.url.as_str()))
@@ -130,7 +130,7 @@ async fn run_single_connection(config: TestConfig) -> Result<()> {
     let connect_latency = connect_start.elapsed();
     tracing::debug!(?connect_latency, "WebSocket connection established");
 
-    run_echo_loop(ws, &config).await?;
+    run_echo_loop(ws, &config, seed).await?;
 
     tracing::debug!("WebSocket connection closed");
 
@@ -141,18 +141,21 @@ async fn run_single_connection(config: TestConfig) -> Result<()> {
 async fn run_echo_loop(
     mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
     config: &TestConfig,
+    seed: u64,
 ) -> Result<()> {
     if config.max_echo_interval.is_zero() {
         tokio::time::sleep(config.hold_duration).await;
         return Ok(());
     }
 
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
     let hold_start = Instant::now();
 
     while hold_start.elapsed() < config.hold_duration {
-        let payload_size = rand::thread_rng().gen_range(0..MAX_PAYLOAD_SIZE);
+        let payload_size = rng.gen_range(0..MAX_PAYLOAD_SIZE);
         let mut buffer = vec![0u8; payload_size];
-        rand::thread_rng().fill_bytes(&mut buffer);
+        rng.fill_bytes(&mut buffer);
 
         ws.send(Message::Binary(buffer.clone().into()))
             .await
@@ -177,7 +180,7 @@ async fn run_echo_loop(
             Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
         }
 
-        let interval = rand::thread_rng().gen_range(Duration::ZERO..config.max_echo_interval);
+        let interval = rng.gen_range(Duration::ZERO..config.max_echo_interval);
 
         tracing::trace!("Next message in {interval:?}");
 
