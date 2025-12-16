@@ -92,8 +92,8 @@ defmodule Web.Live.Gateways.ShowTest do
     assert table["status"] =~ "Offline"
     assert table["version"] =~ gateway.last_seen_version
     assert table["user agent"] =~ gateway.last_seen_user_agent
-    assert table["tunnel interface ipv4 address"] =~ to_string(gateway.ipv4)
-    assert table["tunnel interface ipv6 address"] =~ to_string(gateway.ipv6)
+    assert table["tunnel interface ipv4 address"] =~ to_string(gateway.ipv4_address.address)
+    assert table["tunnel interface ipv6 address"] =~ to_string(gateway.ipv6_address.address)
   end
 
   test "renders gateway status", %{

@@ -123,8 +123,10 @@ defmodule API.Client.Socket do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Network}
     alias Domain.Client
+    alias Domain.IPv4Address
+    alias Domain.IPv6Address
+    alias Domain.Safe
 
     def upsert_client(changeset, _subject) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)
@@ -132,14 +134,14 @@ defmodule API.Client.Socket do
       external_id = Ecto.Changeset.get_field(changeset, :external_id)
 
       Ecto.Multi.new()
-      |> Ecto.Multi.run(:existing, fn _repo, _changes ->
+      |> Ecto.Multi.run(:existing_client, fn _repo, _changes ->
         existing =
           if external_id do
             from(c in Client,
               where: c.account_id == ^account_id,
               where: c.actor_id == ^actor_id,
               where: c.external_id == ^external_id,
-              select: %{ipv4: c.ipv4, ipv6: c.ipv6}
+              preload: [:ipv4_address, :ipv6_address]
             )
             |> Safe.unscoped()
             |> Safe.one()
@@ -147,23 +149,34 @@ defmodule API.Client.Socket do
 
         {:ok, existing}
       end)
-      |> resolve_address_multi(:ipv4, account_id)
-      |> resolve_address_multi(:ipv6, account_id)
       |> Ecto.Multi.insert(
         :client,
-        fn %{ipv4: ipv4, ipv6: ipv6} ->
-          changeset
-          |> Ecto.Changeset.put_change(:ipv4, ipv4)
-          |> Ecto.Changeset.put_change(:ipv6, ipv6)
-        end,
+        changeset,
         conflict_target: upsert_conflict_target(),
         on_conflict: upsert_on_conflict(),
         returning: true
       )
+      |> Ecto.Multi.run(:ipv4_address, fn _repo, %{existing_client: existing, client: client} ->
+        if existing do
+          {:ok, existing.ipv4_address}
+        else
+          IPv4Address.allocate_next_available_address(account_id, client_id: client.id)
+        end
+      end)
+      |> Ecto.Multi.run(:ipv6_address, fn _repo, %{existing_client: existing, client: client} ->
+        if existing do
+          {:ok, existing.ipv6_address}
+        else
+          IPv6Address.allocate_next_available_address(account_id, client_id: client.id)
+        end
+      end)
       |> Safe.transact()
       |> case do
-        {:ok, %{client: client}} -> {:ok, client}
-        {:error, :client, changeset, _effects_so_far} -> {:error, changeset}
+        {:ok, %{client: client, ipv4_address: ipv4_address, ipv6_address: ipv6_address}} ->
+          {:ok, %{client | ipv4_address: ipv4_address, ipv6_address: ipv6_address}}
+
+        {:error, :client, changeset, _effects_so_far} ->
+          {:error, changeset}
       end
     end
 
@@ -214,16 +227,6 @@ defmodule API.Client.Socket do
             )
         ]
       )
-    end
-
-    defp resolve_address_multi(multi, type, account_id) do
-      Ecto.Multi.run(multi, type, fn _repo, %{existing: existing} ->
-        if existing && Map.get(existing, type) do
-          {:ok, Map.get(existing, type)}
-        else
-          {:ok, Network.fetch_next_available_address!(account_id, type)}
-        end
-      end)
     end
   end
 end

@@ -24,6 +24,8 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
     "gateways" => Domain.Gateway,
     "google_auth_providers" => Domain.Google.AuthProvider,
     "google_directories" => Domain.Google.Directory,
+    "ipv4_addresses" => Domain.IPv4Address,
+    "ipv6_addresses" => Domain.IPv6Address,
     "oidc_auth_providers" => Domain.OIDC.AuthProvider,
     "okta_auth_providers" => Domain.Okta.AuthProvider,
     "okta_directories" => Domain.Okta.Directory,

@@ -92,8 +92,8 @@ defmodule Web.Live.Clients.ShowTest do
     assert table["last started"]
     assert table["version"] =~ client.last_seen_version
     assert table["user agent"] =~ client.last_seen_user_agent
-    assert table["tunnel interface ipv4 address"] =~ to_string(client.ipv4)
-    assert table["tunnel interface ipv6 address"] =~ to_string(client.ipv6)
+    assert table["tunnel interface ipv4 address"] =~ to_string(client.ipv4_address.address)
+    assert table["tunnel interface ipv6 address"] =~ to_string(client.ipv6_address.address)
 
     table =
       lv

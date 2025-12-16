@@ -159,8 +159,8 @@ defmodule API.Client.SocketTest do
 
       # Create existing client with specific IPs
       existing_client = client_fixture(account: account, actor: actor)
-      original_ipv4 = existing_client.ipv4
-      original_ipv6 = existing_client.ipv6
+      original_ipv4 = existing_client.ipv4_address.address
+      original_ipv6 = existing_client.ipv6_address.address
 
       # Create a new token for same actor
       token = client_token_fixture(account: account, actor: actor)
@@ -173,8 +173,8 @@ defmodule API.Client.SocketTest do
       assert client = socket.assigns.client
 
       # Verify IPs are preserved
-      assert client.ipv4 == original_ipv4
-      assert client.ipv6 == original_ipv6
+      assert client.ipv4_address.address == original_ipv4
+      assert client.ipv6_address.address == original_ipv6
     end
 
     test "uses region code to put default coordinates" do

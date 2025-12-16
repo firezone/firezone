@@ -96,11 +96,11 @@ defmodule Web.Gateways.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Tunnel Interface IPv4 Address</:label>
-            <:value>{@gateway.ipv4}</:value>
+            <:value>{@gateway.ipv4_address.address}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Tunnel Interface IPv6 Address</:label>
-            <:value>{@gateway.ipv6}</:value>
+            <:value>{@gateway.ipv6_address.address}</:value>
           </.vertical_table_row>
         </.vertical_table>
       </:content>
@@ -183,7 +183,7 @@ defmodule Web.Gateways.Show do
     def get_gateway!(id, subject) do
       from(g in Gateway, as: :gateways)
       |> where([gateways: g], g.id == ^id)
-      |> preload(:site)
+      |> preload([:site, :ipv4_address, :ipv6_address])
       |> Safe.scoped(subject)
       |> Safe.one!()
     end

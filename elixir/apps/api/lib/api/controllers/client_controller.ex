@@ -32,7 +32,7 @@ defmodule API.ClientController do
     list_opts =
       params
       |> Pagination.params_to_list_opts()
-      |> Keyword.put(:preload, :online?)
+      |> Keyword.put(:preload, [:online?, :ipv4_address, :ipv6_address])
 
     with {:ok, clients, metadata} <- DB.list_clients(conn.assigns.subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
@@ -211,6 +211,7 @@ defmodule API.ClientController do
       result =
         from(c in Client, as: :clients)
         |> where([clients: c], c.id == ^id)
+        |> preload([:ipv4_address, :ipv6_address])
         |> Safe.scoped(subject)
         |> Safe.one()
 

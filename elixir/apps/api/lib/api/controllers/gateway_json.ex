@@ -22,8 +22,8 @@ defmodule API.GatewayJSON do
     %{
       id: gateway.id,
       name: gateway.name,
-      ipv4: gateway.ipv4,
-      ipv6: gateway.ipv6,
+      ipv4: gateway.ipv4_address.address,
+      ipv6: gateway.ipv6_address.address,
       online: gateway.online?
     }
   end

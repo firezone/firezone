@@ -5,7 +5,8 @@ defmodule Domain.ClientFixtures do
 
   import Domain.AccountFixtures
   import Domain.ActorFixtures
-  import Domain.NetworkAddressFixtures
+  import Domain.IPv4AddressFixtures
+  import Domain.IPv6AddressFixtures
 
   @doc """
   Generate valid client attributes with sensible defaults.
@@ -52,17 +53,10 @@ defmodule Domain.ClientFixtures do
     # Get or create actor
     actor = Map.get(attrs, :actor) || actor_fixture(account: account)
 
-    # Get or create network addresses
-    ipv4_address =
-      Map.get_lazy(attrs, :ipv4, fn -> ipv4_network_address_fixture(account: account) end)
-
-    ipv6_address =
-      Map.get_lazy(attrs, :ipv6, fn -> ipv6_network_address_fixture(account: account) end)
-
     # Build client attrs
     client_attrs =
       attrs
-      |> Map.drop([:account, :actor, :ipv4, :ipv6])
+      |> Map.drop([:account, :actor, :ipv4_address, :ipv6_address])
       |> valid_client_attrs()
 
     {:ok, client} =
@@ -85,14 +79,17 @@ defmodule Domain.ClientFixtures do
         :firebase_installation_id,
         :verified_at
       ])
-      |> Ecto.Changeset.put_change(:ipv4, ipv4_address.address)
-      |> Ecto.Changeset.put_change(:ipv6, ipv6_address.address)
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:actor, actor)
       |> Domain.Client.changeset()
       |> Domain.Repo.insert()
 
-    client
+    # Create address records for the client (unless explicitly set to nil)
+    Map.get_lazy(attrs, :ipv4_address, fn -> ipv4_address_fixture(client: client) end)
+    Map.get_lazy(attrs, :ipv6_address, fn -> ipv6_address_fixture(client: client) end)
+
+    # Return client with addresses preloaded
+    Domain.Repo.preload(client, [:ipv4_address, :ipv6_address])
   end
 
   @doc """

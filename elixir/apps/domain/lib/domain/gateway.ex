@@ -13,8 +13,8 @@ defmodule Domain.Gateway do
           name: String.t(),
           public_key: String.t(),
           psk_base: binary(),
-          ipv4: Domain.Types.IP.t(),
-          ipv6: Domain.Types.IP.t(),
+          ipv4_address: Domain.IPv4Address.t(),
+          ipv6_address: Domain.IPv6Address.t(),
           last_seen_user_agent: String.t(),
           last_seen_remote_ip: Domain.Types.IP.t(),
           last_seen_remote_ip_location_region: String.t(),
@@ -41,9 +41,6 @@ defmodule Domain.Gateway do
     field :public_key, :string
     field :psk_base, :binary, read_after_writes: true
 
-    field :ipv4, Domain.Types.IP
-    field :ipv6, Domain.Types.IP
-
     field :last_seen_user_agent, :string
     field :last_seen_remote_ip, Domain.Types.IP
     field :last_seen_remote_ip_location_region, :string
@@ -57,6 +54,9 @@ defmodule Domain.Gateway do
 
     belongs_to :site, Domain.Site
 
+    has_one :ipv4_address, Domain.IPv4Address, references: :id
+    has_one :ipv6_address, Domain.IPv6Address, references: :id
+
     timestamps()
   end
 
@@ -67,9 +67,9 @@ defmodule Domain.Gateway do
     |> unique_constraint(:name, name: :gateways_site_id_name_index)
     |> unique_constraint([:public_key])
     |> unique_constraint(:external_id)
-    |> unique_constraint(:ipv4)
-    |> unique_constraint(:ipv6)
     |> unique_constraint(:public_key, name: :gateways_account_id_public_key_index)
+    |> assoc_constraint(:account)
+    |> assoc_constraint(:site)
   end
 
   # Utility functions moved from Domain.Gateways

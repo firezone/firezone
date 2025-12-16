@@ -132,8 +132,8 @@ defmodule API.GatewayControllerTest do
                "data" => %{
                  "id" => gateway.id,
                  "name" => gateway.name,
-                 "ipv4" => Domain.Types.IP.to_string(gateway.ipv4),
-                 "ipv6" => Domain.Types.IP.to_string(gateway.ipv6),
+                 "ipv4" => Domain.Types.IP.to_string(gateway.ipv4_address.address),
+                 "ipv6" => Domain.Types.IP.to_string(gateway.ipv6_address.address),
                  "online" => false
                }
              }
@@ -169,8 +169,8 @@ defmodule API.GatewayControllerTest do
                "data" => %{
                  "id" => gateway.id,
                  "name" => gateway.name,
-                 "ipv4" => Domain.Types.IP.to_string(gateway.ipv4),
-                 "ipv6" => Domain.Types.IP.to_string(gateway.ipv6),
+                 "ipv4" => Domain.Types.IP.to_string(gateway.ipv4_address.address),
+                 "ipv6" => Domain.Types.IP.to_string(gateway.ipv6_address.address),
                  "online" => false
                }
              }

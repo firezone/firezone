@@ -29,7 +29,8 @@ defmodule Domain.Account do
     has_many :auth_providers, Domain.AuthProvider
     has_many :external_identities, Domain.ExternalIdentity
 
-    has_many :network_addresses, Domain.Network.Address
+    has_many :ipv4_addresses, Domain.IPv4Address
+    has_many :ipv6_addresses, Domain.IPv6Address
 
     has_many :policies, Domain.Policy
 
