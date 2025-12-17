@@ -112,6 +112,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
     Ok(())
 }
 
+#[tracing::instrument(err)]
 async fn run_single_connection(client: reqwest::Client, address: String) -> Result<()> {
     tracing::trace!("Sending GET request");
 
