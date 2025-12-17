@@ -331,7 +331,7 @@ defmodule Web.Policies.New do
           %{
             directory_name:
               fragment(
-                "COALESCE(?, ?, ?, 'Firezone')",
+                "COALESCE(?, ?, ?)",
                 gd.name,
                 ed.name,
                 od.name
@@ -366,7 +366,7 @@ defmodule Web.Policies.New do
           %{
             directory_name:
               fragment(
-                "COALESCE(?, ?, ?, 'Firezone')",
+                "COALESCE(?, ?, ?)",
                 gd.name,
                 ed.name,
                 od.name
@@ -411,7 +411,7 @@ defmodule Web.Policies.New do
 
       label =
         cond do
-          group_synced?(group) -> "Synced from #{group.directory_name}"
+          group_synced?(group) -> "Synced from #{directory_display_name(group)}"
           group_managed?(group) -> "Managed by Firezone"
           true -> "Manually managed"
         end
@@ -420,7 +420,10 @@ defmodule Web.Policies.New do
     end
 
     defp group_option(group), do: {group.id, group.name, group}
-    defp group_synced?(group), do: not is_nil(group.directory_id)
+    defp group_synced?(group), do: not is_nil(group.idp_id)
     defp group_managed?(group), do: group.type == :managed
+
+    defp directory_display_name(%{directory_name: name}) when not is_nil(name), do: name
+    defp directory_display_name(_), do: "Unknown"
   end
 end
