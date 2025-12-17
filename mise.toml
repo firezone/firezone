@@ -1,4 +1,4 @@
-[tasks.setup]
+[tasks.lint-setup]
 description = "Install linting tools from version-pinned files (managed by Dependabot)"
 run = """
 pip install -r .github/requirements.txt
