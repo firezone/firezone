@@ -128,6 +128,7 @@ jobs:
           - name: download-ipv4-only
             script: download
             gateway_disable_ipv6: 1
+            min_gateway_version: 1.4.19
           - script: download-packet-loss
             rust_log: debug
           - script: download-roaming-network
