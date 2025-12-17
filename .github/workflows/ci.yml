@@ -197,7 +197,7 @@ jobs:
     if: needs.rust.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - run: gh run cancel ${{ github.run_id }
+      - run: gh run cancel ${{ github.run_id }}
 
   tauri:
     needs: planner
