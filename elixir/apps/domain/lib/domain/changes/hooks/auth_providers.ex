@@ -8,10 +8,11 @@ defmodule Domain.Changes.Hooks.AuthProviders do
   @impl true
   def on_update(
         _lsn,
-        %{"is_disabled" => false, "id" => provider_id},
+        %{"is_disabled" => false, "id" => provider_id, "account_id" => account_id},
         %{"is_disabled" => true}
       ) do
-    DB.delete_tokens_for_provider(provider_id)
+    DB.delete_client_tokens_for_provider(account_id, provider_id)
+    DB.delete_portal_sessions_for_provider(account_id, provider_id)
 
     :ok
   end
@@ -20,7 +21,8 @@ defmodule Domain.Changes.Hooks.AuthProviders do
         _lsn,
         %{
           "client_session_lifetime_secs" => old_client_lifetime,
-          "portal_session_lifetime_secs" => old_portal_lifetime
+          "portal_session_lifetime_secs" => old_portal_lifetime,
+          "account_id" => account_id
         },
         %{
           "client_session_lifetime_secs" => new_client_lifetime,
@@ -30,7 +32,8 @@ defmodule Domain.Changes.Hooks.AuthProviders do
       )
       when old_client_lifetime != new_client_lifetime or
              old_portal_lifetime != new_portal_lifetime do
-    DB.delete_tokens_for_provider(provider_id)
+    DB.delete_client_tokens_for_provider(account_id, provider_id)
+    DB.delete_portal_sessions_for_provider(account_id, provider_id)
 
     :ok
   end
@@ -45,14 +48,23 @@ defmodule Domain.Changes.Hooks.AuthProviders do
   defmodule DB do
     import Ecto.Query
     alias Domain.ClientToken
+    alias Domain.PortalSession
     alias Domain.Safe
 
-    # Delete all tokens for a provider and disconnect their sockets
-    def delete_tokens_for_provider(provider_id) do
-      # Query and delete all tokens for this provider
-      # The Tokens hook will handle disconnecting sockets
-      from(t in ClientToken,
-        where: t.auth_provider_id == ^provider_id
+    # Delete all client tokens for a provider and disconnect their sockets
+    def delete_client_tokens_for_provider(account_id, provider_id) do
+      # The ClientTokens hook will handle disconnecting sockets
+      from(c in ClientToken,
+        where: c.account_id == ^account_id and c.auth_provider_id == ^provider_id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    def delete_portal_sessions_for_provider(account_id, provider_id) do
+      # The ClientTokens hook will handle disconnecting sockets
+      from(p in PortalSession,
+        where: p.account_id == ^account_id and p.auth_provider_id == ^provider_id
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

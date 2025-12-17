@@ -262,7 +262,7 @@ defmodule Domain.Cache.Gateway do
       end
     end
 
-    def fetch_token_by_id(id) do
+    def fetch_client_token_by_id(id) do
       result =
         from(t in Domain.ClientToken,
           where: t.id == ^id,
@@ -354,7 +354,7 @@ defmodule Domain.Cache.Gateway do
 
     def reauthorize_policy_authorization(%Domain.PolicyAuthorization{} = policy_authorization) do
       with client when not is_nil(client) <- fetch_client_by_id!(policy_authorization.client_id),
-           {:ok, token} <- fetch_token_by_id(policy_authorization.token_id),
+           {:ok, token} <- fetch_client_token_by_id(policy_authorization.token_id),
            {:ok, gateway} <- fetch_gateway_by_id(policy_authorization.gateway_id),
            # We only want to reauthorize the resource for this gateway if the resource is still connected to its
            # site.

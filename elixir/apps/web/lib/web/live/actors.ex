@@ -78,7 +78,7 @@ defmodule Web.Actors do
     # Service accounts use tokens, users use portal sessions
     {tokens, sessions} =
       if actor.type == :service_account do
-        {DB.get_tokens_for_actor(actor.id, socket.assigns.subject), []}
+        {DB.get_client_tokens_for_actor(actor.id, socket.assigns.subject), []}
       else
         {[], DB.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)}
       end
@@ -408,13 +408,13 @@ defmodule Web.Actors do
   end
 
   def handle_event("delete_token", %{"id" => token_id}, socket) do
-    token = DB.get_token_by_id(token_id, socket.assigns.subject)
+    token = DB.get_client_token_by_id(token_id, socket.assigns.subject)
 
     if token do
       case DB.delete(token, socket.assigns.subject) do
         {:ok, _} ->
           # Reload tokens for the actor
-          tokens = DB.get_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+          tokens = DB.get_client_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
           socket = assign(socket, tokens: tokens)
           {:noreply, put_flash(socket, :success_inline, "Token deleted successfully")}
 
@@ -1812,10 +1812,10 @@ defmodule Web.Actors do
     end
 
     # For service accounts
-    def get_tokens_for_actor(actor_id, subject) do
-      from(t in ClientToken, as: :tokens)
-      |> where([tokens: t], t.actor_id == ^actor_id)
-      |> order_by([tokens: t], desc: t.inserted_at)
+    def get_client_tokens_for_actor(actor_id, subject) do
+      from(c in ClientToken, as: :client_tokens)
+      |> where([client_tokens: c], c.actor_id == ^actor_id)
+      |> order_by([client_tokens: c], desc: c.inserted_at)
       |> Safe.scoped(subject)
       |> Safe.all()
     end
@@ -1827,9 +1827,9 @@ defmodule Web.Actors do
       |> Safe.one()
     end
 
-    def get_token_by_id(token_id, subject) do
-      from(t in ClientToken, as: :tokens)
-      |> where([tokens: t], t.id == ^token_id)
+    def get_client_token_by_id(token_id, subject) do
+      from(c in ClientToken, as: :client_tokens)
+      |> where([client_tokens: c], c.id == ^token_id)
       |> Safe.scoped(subject)
       |> Safe.one()
     end

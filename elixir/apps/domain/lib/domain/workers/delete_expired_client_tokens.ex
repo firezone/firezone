@@ -14,9 +14,9 @@ defmodule Domain.Workers.DeleteExpiredClientTokens do
 
   @impl Oban.Worker
   def perform(_job) do
-    {count, _} = DB.delete_expired_tokens()
+    {count, _} = DB.delete_expired_client_tokens()
 
-    Logger.info("Deleted #{count} expired tokens")
+    Logger.info("Deleted #{count} expired client_tokens")
 
     :ok
   end
@@ -26,9 +26,9 @@ defmodule Domain.Workers.DeleteExpiredClientTokens do
     alias Domain.ClientToken
     alias Domain.Safe
 
-    def delete_expired_tokens do
-      from(t in ClientToken, as: :tokens)
-      |> where([tokens: t], t.expires_at <= ^DateTime.utc_now())
+    def delete_expired_client_tokens do
+      from(c in ClientToken, as: :client_tokens)
+      |> where([client_tokens: c], c.expires_at <= ^DateTime.utc_now())
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

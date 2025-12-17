@@ -111,6 +111,7 @@ config :domain, Domain.Changes.ReplicationConnection,
   #   3. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
+    actors
     memberships
     clients
     policy_authorizations
