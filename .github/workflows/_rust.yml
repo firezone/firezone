@@ -56,6 +56,13 @@ jobs:
       - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
         shell: bash
 
+  monitor-static-analysis:
+    needs: [static-analysis]
+    if: needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+
   test:
     name: test-${{ matrix.runs-on }}
     strategy:
