@@ -144,7 +144,7 @@ jobs:
         if: ${{ matrix.test.min_client_version }}
         continue-on-error: true
         run: |
-          ACTUAL_VERSION=$(docker run ${{ inputs.client_image }}:${{ inputs.client_tag }} firezone-headless-client --version | awk '{print $2}')
+          ACTUAL_VERSION=$(docker run --privileged ${{ inputs.client_image }}:${{ inputs.client_tag }} firezone-headless-client --version | awk '{print $2}')
           MIN_VERSION="${{ matrix.test.min_client_version }}"
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
@@ -153,7 +153,7 @@ jobs:
         if: ${{ matrix.test.min_gateway_version }}
         continue-on-error: true
         run: |
-          ACTUAL_VERSION=$(docker run ${{ inputs.gateway_image }}:${{ inputs.gateway_tag }} firezone-gateway --version | awk '{print $2}')
+          ACTUAL_VERSION=$(docker run --privileged ${{ inputs.gateway_image }}:${{ inputs.gateway_tag }} firezone-gateway --version | awk '{print $2}')
           MIN_VERSION="${{ matrix.test.min_gateway_version }}"
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
