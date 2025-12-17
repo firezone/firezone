@@ -7,7 +7,6 @@ defmodule Web.Resources.Show do
 
   def mount(%{"id" => id} = params, _session, socket) do
     resource = get_resource!(id, socket.assigns.subject)
-    {:ok, groups_peek} = DB.peek_resource_groups([resource], 3, socket.assigns.subject)
 
     if connected?(socket) do
       :ok = PubSub.Account.subscribe(resource.account_id)
@@ -18,7 +17,6 @@ defmodule Web.Resources.Show do
         socket,
         page_title: "Resource #{resource.name}",
         resource: resource,
-        groups_peek: Map.fetch!(groups_peek, resource.id),
         params: Map.take(params, ["site_id"])
       )
       |> assign_live_table("policy_authorizations",
@@ -46,7 +44,12 @@ defmodule Web.Resources.Show do
 
   def handle_params(params, uri, socket) do
     socket = handle_live_tables_params(socket, params, uri)
-    {:noreply, socket}
+    {:noreply, assign(socket, return_to: uri_path(uri))}
+  end
+
+  defp uri_path(uri) do
+    parsed = URI.parse(uri)
+    "#{parsed.path}?#{parsed.query}"
   end
 
   def handle_policies_update!(socket, list_opts) do
@@ -229,7 +232,7 @@ defmodule Web.Resources.Show do
             </.link>
           </:col>
           <:col :let={policy} label="group">
-            <.group_badge account={@account} group={policy.group} return_to={@current_path} />
+            <.group_badge account={@account} group={policy.group} return_to={@return_to} />
           </:col>
           <:col :let={policy} label="status">
             <%= if is_nil(policy.disabled_at) do %>
@@ -305,7 +308,7 @@ defmodule Web.Resources.Show do
             owned by
             <.link
               navigate={
-                ~p"/#{@account}/actors/#{policy_authorization.client.actor_id}?#{[return_to: @current_path]}"
+                ~p"/#{@account}/actors/#{policy_authorization.client.actor_id}?#{[return_to: @return_to]}"
               }
               class={[link_style()]}
             >
@@ -431,37 +434,6 @@ defmodule Web.Resources.Show do
       |> preload([:site, :policies])
       |> Safe.scoped(subject)
       |> Safe.one!()
-    end
-
-    def peek_resource_groups(resources, limit, subject) do
-      resource_ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
-
-      groups_by_resource =
-        from(p in Policy, as: :policies)
-        |> join(:inner, [policies: p], g in Domain.Group,
-          on: g.id == p.group_id,
-          as: :groups
-        )
-        |> where([policies: p], p.resource_id in ^resource_ids)
-        |> where([policies: p], is_nil(p.disabled_at))
-        |> select([policies: p, groups: g], {p.resource_id, g})
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-
-      peek =
-        Enum.into(resources, %{}, fn resource ->
-          all_groups = Map.get(groups_by_resource, resource.id, [])
-          peek_groups = Enum.take(all_groups, limit)
-
-          {resource.id,
-           %{
-             items: peek_groups,
-             count: length(all_groups)
-           }}
-        end)
-
-      {:ok, peek}
     end
 
     def delete_resource(resource, subject) do

@@ -39,9 +39,20 @@ defmodule Web.LiveTable do
   slot :action, doc: "the slot for showing user actions in the last table column"
   slot :empty, doc: "the slot for showing a message or content when there are no rows"
 
+  slot :notice,
+    doc: "the slot for showing a notice in the filter bar (e.g. active filter description)" do
+    attr :type, :string, doc: "the type of notice: info, warning, danger"
+  end
+
   def live_table(assigns) do
     ~H"""
-    <.resource_filter stale={@stale} live_table_id={@id} form={@filter} filters={@filters} />
+    <.resource_filter
+      stale={@stale}
+      live_table_id={@id}
+      form={@filter}
+      filters={@filters}
+      notice={@notice}
+    />
     <div class="overflow-x-auto">
       <table class={["w-full text-sm text-left text-neutral-500 table-fixed"]} id={@id}>
         <.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
@@ -141,31 +152,42 @@ defmodule Web.LiveTable do
   defp normalize_value(_, nil),
     do: nil
 
+  defp notice_style("info"), do: "bg-blue-100 text-neutral-900"
+  defp notice_style("warning"), do: "bg-yellow-100 text-neutral-900"
+  defp notice_style("danger"), do: "bg-red-100 text-neutral-900"
+  defp notice_style(_), do: "bg-neutral-100 text-neutral-900"
+
   defp resource_filter(assigns) do
     ~H"""
-    <.form
-      :if={@filters != []}
-      id={"#{@live_table_id}-filters"}
-      for={@form}
-      phx-change="filter"
-      onkeydown="return event.key != 'Enter';"
-    >
-      <.input type="hidden" name="table_id" value={@live_table_id} />
+    <div class="mb-2 space-y-2 md:space-y-0 md:gap-2 md:flex md:justify-between md:items-center">
+      <div class="flex items-center gap-2">
+        <.button
+          :if={@stale}
+          id={"#{@live_table_id}-reload-btn"}
+          type="button"
+          style="info"
+          title="The table data has changed."
+          phx-click="reload"
+          phx-value-table_id={@live_table_id}
+        >
+          <.icon name="hero-arrow-path" class="mr-1 w-3.5 h-3.5" /> Reload
+        </.button>
+        <%= for notice <- @notice do %>
+          <span class={["text-sm px-3 py-1.5 rounded", notice_style(notice[:type])]}>
+            {render_slot(notice)}
+          </span>
+        <% end %>
+      </div>
 
-      <div class="mb-2 space-y-2 md:space-y-0 md:gap-2 md:flex md:justify-between">
-        <div>
-          <.button
-            :if={@stale}
-            id={"#{@live_table_id}-reload-btn"}
-            type="button"
-            style="info"
-            title="The table data has changed."
-            phx-click="reload"
-            phx-value-table_id={@live_table_id}
-          >
-            <.icon name="hero-arrow-path" class="mr-1 w-3.5 h-3.5" /> Reload
-          </.button>
-        </div>
+      <.form
+        :if={@filters != []}
+        id={"#{@live_table_id}-filters"}
+        for={@form}
+        phx-change="filter"
+        phx-debounce="100"
+        onkeydown="return event.key != 'Enter';"
+      >
+        <.input type="hidden" name="table_id" value={@live_table_id} />
 
         <div class="space-y-2 md:space-y-0 md:gap-1 md:flex">
           <.filter
@@ -175,8 +197,8 @@ defmodule Web.LiveTable do
             filter={filter}
           />
         </div>
-      </div>
-    </.form>
+      </.form>
+    </div>
     """
   end
 
@@ -894,9 +916,10 @@ defmodule Web.LiveTable do
 
   defp put_filter_to_params(params, id, filter) do
     filter_params = flatten_filter(filter, "#{id}_filter", %{})
+    filter_keys = Map.keys(filter) |> Enum.map(&"#{id}_filter[#{&1}]")
 
     params
-    |> Map.reject(fn {key, _} -> String.starts_with?(key, "#{id}_filter") end)
+    |> Map.drop(filter_keys)
     |> Map.merge(filter_params)
   end
 
