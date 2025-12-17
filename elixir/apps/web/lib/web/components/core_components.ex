@@ -1489,10 +1489,12 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Helper function to get provider type from group
-  Groups now have directory_type field that indicates the provider
+  Helper function to get provider type from group.
+  Groups have a directory_type field that indicates the provider.
+  If the group has idp_id but no directory_type, it's synced but we can't determine the provider.
   """
   def provider_type_from_group(%{directory_type: type}) when not is_nil(type), do: to_string(type)
+  def provider_type_from_group(%{idp_id: idp_id}) when not is_nil(idp_id), do: "unknown"
   def provider_type_from_group(_), do: "firezone"
 
   @doc """
@@ -1556,6 +1558,12 @@ defmodule Web.CoreComponents do
   def provider_icon(%{type: "userpass"} = assigns) do
     ~H"""
     <.icon name="hero-key" {@rest} />
+    """
+  end
+
+  def provider_icon(%{type: "unknown"} = assigns) do
+    ~H"""
+    <.icon name="hero-question-mark-circle" {@rest} />
     """
   end
 
