@@ -81,7 +81,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
     let client = build_client(&config)?;
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
-    let num_connections = rng.gen_range(0..=config.max_connections);
+    let num_connections = rng.gen_range(1..=config.max_connections);
 
     tracing::info!(
         url = %config.address,
