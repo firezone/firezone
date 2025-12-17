@@ -278,24 +278,6 @@ BEGIN
     RAISE NOTICE 'Step 8: Migrating actor groups for account %', v_account_id;
 
     -- Update groups for Google Workspace
-    UPDATE actor_groups g
-    SET idp_id = g.provider_identifier
-    FROM legacy_auth_providers p
-    WHERE g.provider_id = p.id
-      AND g.account_id = v_account_id
-      AND p.adapter = 'google_workspace'
-      AND p.adapter_state->'claims'->>'hd' IS NOT NULL;
-
-    -- Update groups for Okta
-    UPDATE actor_groups g
-    SET idp_id = g.provider_identifier
-    FROM legacy_auth_providers p
-    WHERE g.provider_id = p.id
-      AND g.account_id = v_account_id
-      AND p.adapter = 'okta'
-      AND p.adapter_state->'claims'->>'iss' IS NOT NULL;
-
-    -- Update groups for Microsoft Entra
     -- Handle entity_type and strip prefixes (OU: = org_unit, G: = group)
     UPDATE actor_groups g
     SET
@@ -307,7 +289,35 @@ BEGIN
       entity_type = CASE
         WHEN g.provider_identifier LIKE 'OU:%' THEN 'org_unit'
         WHEN g.provider_identifier LIKE 'G:%' THEN 'group'
-        ELSE NULL
+        ELSE entity_type
+      END
+    FROM legacy_auth_providers p
+    WHERE g.provider_id = p.id
+      AND g.account_id = v_account_id
+      AND p.adapter = 'google_workspace'
+      AND p.adapter_state->'claims'->>'hd' IS NOT NULL;
+
+    -- Update groups for Okta
+    -- Strip G: prefix for groups (Okta doesn't have org units)
+    UPDATE actor_groups g
+    SET
+      idp_id = CASE
+        WHEN g.provider_identifier LIKE 'G:%' THEN SUBSTRING(g.provider_identifier FROM 3)
+        ELSE g.provider_identifier
+      END
+    FROM legacy_auth_providers p
+    WHERE g.provider_id = p.id
+      AND g.account_id = v_account_id
+      AND p.adapter = 'okta'
+      AND p.adapter_state->'claims'->>'iss' IS NOT NULL;
+
+    -- Update groups for Microsoft Entra
+    -- Strip G: prefix for groups (Entra doesn't have org units)
+    UPDATE actor_groups g
+    SET
+      idp_id = CASE
+        WHEN g.provider_identifier LIKE 'G:%' THEN SUBSTRING(g.provider_identifier FROM 3)
+        ELSE g.provider_identifier
       END
     FROM legacy_auth_providers p
     WHERE g.provider_id = p.id
