@@ -220,7 +220,7 @@ jobs:
 
   monitor-static-analysis:
     needs: [static-analysis]
-    if: needs.static-analysis.result == 'failure' == 'failurehub.event_name == 'merge_group'
+    if: needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
       - run: gh run cancel ${{ github.run_id }}
@@ -282,7 +282,7 @@ jobs:
 
   monitor-data-plane-perf:
     needs: [data-plane-perf]
-    if: data-needs.plane-perf.result == 'failure' == 'failurehub.event_name == 'merge_group'
+    if: needs.data-plane-perf.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
       - run: gh run cancel ${{ github.run_id }}
