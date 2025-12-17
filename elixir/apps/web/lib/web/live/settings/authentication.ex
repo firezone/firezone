@@ -70,9 +70,18 @@ defmodule Web.Settings.Authentication do
       when type in @edit_types do
     schema = AuthProvider.module!(type)
     provider = DB.get_provider!(schema, id, socket.assigns.subject)
-    changeset = changeset(provider, %{is_verified: true}, socket)
+    is_legacy = Map.get(provider, :is_legacy, false)
 
-    {:noreply, assign(socket, provider_name: provider.name, type: type, form: to_form(changeset))}
+    # Legacy providers can't be verified (must be deleted and recreated)
+    changeset = changeset(provider, %{is_verified: not is_legacy}, socket)
+
+    {:noreply,
+     assign(socket,
+       provider_name: provider.name,
+       type: type,
+       form: to_form(changeset),
+       is_legacy: is_legacy
+     )}
   end
 
   # Default handler
@@ -460,6 +469,7 @@ defmodule Web.Settings.Authentication do
       <:title icon={@type}>Add {titleize(@type)} Provider</:title>
       <:body>
         <.provider_form
+          account_id={@account.id}
           verification_error={@verification_error}
           form={@form}
           type={@type}
@@ -474,15 +484,23 @@ defmodule Web.Settings.Authentication do
       :if={@live_action == :edit}
       id="edit-auth-provider-modal"
       on_close="close_modal"
-      confirm_disabled={not @form.source.valid? or Enum.empty?(@form.source.changes)}
+      confirm_disabled={
+        not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
+      }
     >
       <:title icon={@type}>Edit {@provider_name}</:title>
       <:body>
+        <.flash :if={assigns[:is_legacy]} kind={:warning_inline}>
+          This provider uses legacy configuration. We recommend setting up a new authentication provider
+          for your identity service to take advantage of improved security and features.
+        </.flash>
         <.provider_form
+          account_id={@account.id}
           verification_error={@verification_error}
           form={@form}
           type={@type}
           submit_event="submit_provider"
+          is_legacy={assigns[:is_legacy]}
         />
       </:body>
       <:confirm_button
@@ -569,6 +587,9 @@ defmodule Web.Settings.Authentication do
           <%= if Map.has_key?(@provider, :is_default) && @provider.is_default do %>
             <.badge type="primary" class="flex-shrink-0">DEFAULT</.badge>
           <% end %>
+          <%= if Map.get(@provider, :is_legacy) do %>
+            <.badge type="warning" class="flex-shrink-0">LEGACY</.badge>
+          <% end %>
         </div>
         <div class="flex items-center gap-1">
           <.button_with_confirmation
@@ -626,8 +647,12 @@ defmodule Web.Settings.Authentication do
                   <.icon name="hero-trash" class="w-4 h-4" /> Delete
                   <:dialog_title>Delete Authentication Provider</:dialog_title>
                   <:dialog_content>
-                    Are you sure you want to delete <strong>{@provider.name}</strong>?
-                    This action cannot be undone.
+                    <p>
+                      Are you sure you want to delete <strong>{@provider.name}</strong>? This action cannot be undone.
+                    </p>
+                    <p>
+                      This will immediately sign out all users authenticated via this provider.
+                    </p>
                   </:dialog_content>
                   <:dialog_confirm_button>Delete</:dialog_confirm_button>
                   <:dialog_cancel_button>Cancel</:dialog_cancel_button>
@@ -689,7 +714,27 @@ defmodule Web.Settings.Authentication do
     """
   end
 
+  attr :account_id, :string, required: true
+  attr :form, :any, required: true
+  attr :type, :string, required: true
+  attr :submit_event, :string, required: true
+  attr :verification_error, :any, default: nil
+  attr :is_legacy, :boolean, default: false
+
   defp provider_form(assigns) do
+    # Build the redirect URI based on legacy status
+    redirect_uri =
+      if assigns[:is_legacy] do
+        account_id = assigns.account_id
+        provider_id = Ecto.Changeset.get_field(assigns.form.source, :id)
+
+        Web.Endpoint.url() <> "/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"
+      else
+        Web.Endpoint.url() <> "/auth/oidc/callback"
+      end
+
+    assigns = assign(assigns, :redirect_uri, redirect_uri)
+
     ~H"""
     <.form
       id="auth-provider-form"
@@ -821,11 +866,11 @@ defmodule Web.Settings.Authentication do
         <div :if={@type in ["okta", "oidc"]}>
           <label class="block text-sm text-neutral-900 mb-2">Redirect URI</label>
           <div class="flex" id="redirect-uri" phx-hook="CopyClipboard">
-            <span id="redirect-uri-text" class="hidden">{url(~p"/auth/oidc/callback")}</span>
+            <span id="redirect-uri-text" class="hidden">{@redirect_uri}</span>
             <input
               type="text"
               readonly
-              value={url(~p"/auth/oidc/callback")}
+              value={@redirect_uri}
               class="block w-full rounded-l-md border-0 py-1.5 text-neutral-900 shadow-sm ring-1 ring-inset ring-neutral-300 bg-neutral-50 cursor-default sm:text-sm sm:leading-6"
             />
             <button
@@ -847,7 +892,7 @@ defmodule Web.Settings.Authentication do
         </div>
 
         <div
-          :if={@type in ["entra", "google", "okta", "oidc"]}
+          :if={@type in ["entra", "google", "okta", "oidc"] and not @is_legacy}
           class="p-4 border-2 border-accent-200 bg-accent-50 rounded-lg"
         >
           <.flash :if={@verification_error} kind={:error}>
