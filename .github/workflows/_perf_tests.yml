@@ -29,7 +29,6 @@ jobs:
       RELAY_TAG: ${{ github.sha }}
       FIREZONE_INC_BUF: true
     strategy:
-      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         test:
           - tcp-client2server
