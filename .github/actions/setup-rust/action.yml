@@ -2,8 +2,6 @@
 name: "Setup Rust"
 description: "Sets up the correct Rust version and caching via sccache and a GCP backend"
 inputs:
-  sccache_azure_connection_string:
-    description: "Azure connection string for sccache"
   targets:
     description: "Additional targets to install"
     required: false
@@ -63,15 +61,10 @@ runs:
         cache-targets: false # Don't cache `target` directory, we use sccache for that.
         save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
 
-    # We use Azure Blob Storage for sccache because credits and GHA cache is too small (10 GB).
-    # For this to work, you need an Azure Storage account and a blob container named `sccache`.
-    # The connection string here can be found under Storage Account -> Settings -> Security + networking -> Access keys.
     - name: Configure sccache
       shell: bash
       run: |
-        echo "SCCACHE_GHA_ENABLED=false" >> $GITHUB_ENV
-        echo "SCCACHE_AZURE_CONNECTION_STRING=${{ inputs.sccache_azure_connection_string }}" >> $GITHUB_ENV
-        echo "SCCACHE_AZURE_BLOB_CONTAINER=sccache" >> $GITHUB_ENV
+        echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
         echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
 
     - name: Install nightly Rust to use for certain tools (fuzzing, cargo-udeps)
