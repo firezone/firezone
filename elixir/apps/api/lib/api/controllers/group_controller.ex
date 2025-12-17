@@ -61,8 +61,6 @@ defmodule API.GroupController do
 
   # Create a new Group
   def create(conn, %{"group" => params}) do
-    params = Map.put(params, "type", "static")
-
     with changeset <- create_group_changeset(conn.assigns.subject.account, params),
          {:ok, group} <- DB.insert_group(changeset, conn.assigns.subject) do
       conn
@@ -78,8 +76,8 @@ defmodule API.GroupController do
 
   defp create_group_changeset(account, attrs) do
     %Group{account_id: account.id}
-    |> cast(attrs, [:name, :type])
-    |> validate_required([:name, :type])
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
   end
 
   operation :update,
@@ -126,17 +124,17 @@ defmodule API.GroupController do
     {:error, :update_managed_group}
   end
 
-  defp update_group_changeset(%Group{type: :static, directory_id: nil} = group, attrs) do
+  defp update_group_changeset(%Group{idp_id: idp_id}, _attrs) when not is_nil(idp_id) do
+    {:error, :update_synced_group}
+  end
+
+  defp update_group_changeset(%Group{type: :static, idp_id: nil} = group, attrs) do
     changeset =
       group
       |> cast(attrs, [:name])
       |> validate_required([:name])
 
     {:changeset, changeset}
-  end
-
-  defp update_group_changeset(%Group{}, _attrs) do
-    {:error, :update_synced_group}
   end
 
   operation :delete,
