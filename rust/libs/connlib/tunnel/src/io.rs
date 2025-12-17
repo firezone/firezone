@@ -730,8 +730,8 @@ mod tests {
         let mut io = Io::for_test();
 
         let result = io.rebind_dns(vec![
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 55555), // This one will almost definitely work.
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), 55555), // This one will fail.
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 40000), // This one will almost definitely work.
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), 40000), // This one will fail.
         ]);
 
         assert_eq!(
@@ -741,8 +741,8 @@ mod tests {
                 .map(|e| format!("{e:#}"))
                 .collect::<Vec<_>>(),
             vec![
-                "Failed to bind UDP socket on 1.1.1.1:55555: Cannot assign requested address (os error 99)",
-                "Failed to bind TCP listener on 1.1.1.1:55555: Cannot assign requested address (os error 99)"
+                "Failed to bind UDP socket on 1.1.1.1:40000: Cannot assign requested address (os error 99)",
+                "Failed to bind TCP listener on 1.1.1.1:40000: Cannot assign requested address (os error 99)"
             ]
         );
         assert!(io.udp_dns_server.is_empty());
