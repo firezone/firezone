@@ -152,6 +152,8 @@ impl TunDeviceManager {
             .await
             .context("Failed to set default MTU")?;
 
+        tracing::debug!(%ipv4, %ipv6, "Setting tunnel interface IPs");
+
         let res_v4 = handle.address().add(index, ipv4.into(), 32).execute().await;
         let res_v6 = handle
             .address()
