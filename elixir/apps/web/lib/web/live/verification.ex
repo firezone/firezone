@@ -4,47 +4,33 @@ defmodule Web.Verification do
   alias Domain.Entra
 
   def mount(_params, session, socket) do
-    # Store session data for later use in handle_params
-    socket =
-      assign(socket,
-        session_verification_token: Map.get(session, "verification_token"),
-        session_verification_code: Map.get(session, "verification_code")
-      )
+    # Store verification data from session - uses a single :verification key
+    # that contains all verification info with a :type discriminator
+    verification = Map.get(session, "verification", %{})
 
-    {:ok, socket}
+    {:ok, assign(socket, verification: verification)}
   end
 
-  def handle_params(params, _uri, socket) do
-    # Check if this is an Entra admin consent callback (has admin_consent or state params)
-    if Map.has_key?(params, "admin_consent") || Map.has_key?(params, "tenant") do
-      # Entra admin consent from Microsoft redirect
-      handle_entra_admin_consent(params, socket)
-    else
-      # Check if this is an OIDC verification (from session)
-      verification_token = socket.assigns[:session_verification_token]
-      verification_code = socket.assigns[:session_verification_code]
+  def handle_params(_params, _uri, socket) do
+    case socket.assigns.verification do
+      %{"type" => "oidc", "token" => token, "code" => code} ->
+        handle_oidc_verification(token, code, socket)
 
-      if verification_token && verification_code do
-        handle_oidc_verification(verification_token, verification_code, socket)
-      else
+      %{"type" => "entra"} = verification ->
+        handle_entra_verification(verification, socket)
+
+      _ ->
         {:noreply,
          assign(socket,
            page_title: "Verification",
            verified: false,
            error: "Missing verification information"
          )}
-      end
     end
   end
 
   defp handle_oidc_verification(verification_token, verification_code, socket) do
-    socket =
-      assign(socket,
-        page_title: "Verification",
-        verified: false,
-        error: nil,
-        verification_type: :oidc
-      )
+    socket = assign(socket, page_title: "Verification", verified: false, error: nil)
 
     # Only broadcast on WebSocket connection, not initial HTTP request
     if connected?(socket) do
@@ -61,59 +47,41 @@ defmodule Web.Verification do
     {:noreply, socket}
   end
 
-  defp handle_entra_admin_consent(params, socket) do
-    {verification_token, verification_type} = parse_state(params["state"])
+  defp handle_entra_verification(verification, socket) do
+    token = verification["token"]
+    admin_consent = verification["admin_consent"]
+    tenant_id = verification["tenant_id"]
+    entra_type = verification["entra_type"]
+    error_param = verification["error"]
+    error_description = verification["error_description"]
 
-    error = detect_consent_error(params, verification_token)
+    error = detect_consent_error(admin_consent, tenant_id, token, error_param, error_description)
 
-    socket =
-      assign(socket,
-        page_title: "Verification",
-        verified: false,
-        error: error,
-        verification_type: verification_type
-      )
+    socket = assign(socket, page_title: "Verification", verified: false, error: error)
 
-    tenant_id = params["tenant"]
-
-    if verification_token && tenant_id && !error && verification_type do
-      dispatch_verification(socket, verification_type, verification_token, tenant_id)
+    if token && tenant_id && !error && entra_type do
+      dispatch_entra_verification(socket, entra_type, token, tenant_id)
     else
       {:noreply, socket}
     end
   end
 
-  defp parse_state(nil), do: {nil, nil}
-
-  defp parse_state(state) do
-    case String.split(state, ":") do
-      ["entra-admin-consent", token] -> {token, :directory_sync}
-      ["entra-verification", token] -> {token, :auth_provider}
-      _ -> {nil, nil}
-    end
-  end
-
-  defp detect_consent_error(params, verification_token) do
-    error_param = params["error"]
-    error_description = params["error_description"]
-    admin_consent = params["admin_consent"]
-    tenant_id = params["tenant"]
-
+  defp detect_consent_error(admin_consent, tenant_id, token, error_param, error_description) do
     cond do
       error_param -> error_description || error_param
       admin_consent != "True" -> "Admin consent was not granted"
       !tenant_id -> "Missing tenant information"
-      !verification_token -> "Invalid state parameter"
+      !token -> "Invalid state parameter"
       true -> nil
     end
   end
 
-  defp dispatch_verification(socket, :directory_sync, verification_token, tenant_id) do
-    handle_directory_sync_verification(socket, verification_token, tenant_id)
+  defp dispatch_entra_verification(socket, "directory_sync", token, tenant_id) do
+    handle_directory_sync_verification(socket, token, tenant_id)
   end
 
-  defp dispatch_verification(socket, :auth_provider, verification_token, tenant_id) do
-    handle_auth_provider_verification(socket, verification_token, tenant_id)
+  defp dispatch_entra_verification(socket, "auth_provider", token, tenant_id) do
+    handle_auth_provider_verification(socket, token, tenant_id)
   end
 
   def handle_info(:success, socket) do

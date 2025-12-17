@@ -1268,8 +1268,8 @@ defmodule Web.Settings.DirectorySync do
     config = Domain.Config.fetch_env!(:domain, Entra.APIClient)
     client_id = config[:client_id]
 
-    # Build admin consent URL
-    redirect_uri = url(~p"/verification")
+    # Build admin consent URL - route through /auth/oidc/callback so admins only need one redirect URI
+    redirect_uri = url(~p"/auth/oidc/callback")
 
     # Use .default scope to request all configured application permissions
     params = %{
