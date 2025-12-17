@@ -127,6 +127,6 @@ defmodule Web.Session.Redirector do
   end
 
   defp default_portal_path(%Domain.Account{} = account) do
-    ~p"/#{account.id}/sites"
+    ~p"/#{account}/sites"
   end
 end
