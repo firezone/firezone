@@ -19,6 +19,9 @@ concurrency:
   group: "ci-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   planner:
     runs-on: ubuntu-latest
@@ -133,8 +136,6 @@ jobs:
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - name: Check if all jobs are successful
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
 
@@ -154,13 +155,10 @@ jobs:
 
   monitor-kotlin:
     needs: [kotlin]
-    if: always() && github.event_name == 'merge_group'
+    if: needs.kotlin.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.kotlin.result }}
+      - run: gh run cancel ${{ github.run_id }}
 
   swift:
     needs: planner
@@ -170,13 +168,10 @@ jobs:
 
   monitor-swift:
     needs: [swift]
-    if: always() && github.event_name == 'merge_group'
+    if: needs.swift.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.swift.result }}
+      - run: gh run cancel ${{ github.run_id }}
 
   elixir:
     needs: planner
@@ -186,13 +181,10 @@ jobs:
 
   monitor-elixir:
     needs: [elixir]
-    if: always() && github.event_name == 'merge_group'
+    if: needs.elixir.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.elixir.result }}
+      - run: gh run cancel ${{ github.run_id }}
 
   rust:
     needs: planner
@@ -202,13 +194,10 @@ jobs:
 
   monitor-rust:
     needs: [rust]
-    if: always() && github.event_name == 'merge_group'
+    if: needs.rust.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.rust.result }}
+      - run: gh run cancel ${{ github.run_id }
 
   tauri:
     needs: planner
@@ -218,13 +207,10 @@ jobs:
 
   monitor-tauri:
     needs: [tauri]
-    if: always() && github.event_name == 'merge_group'
+    if: needs.tauri.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.tauri.result }}
+      - run: gh run cancel ${{ github.run_id }}
 
   static-analysis:
     needs: planner
@@ -234,13 +220,10 @@ jobs:
 
   monitor-static-analysis:
     needs: [static-analysis]
-    if: always() && github.event_name == 'merge_group'
+    if: needs.static-analysis.result == 'failure' == 'failurehub.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.static-analysis.result }}
+      - run: gh run cancel ${{ github.run_id }}
 
   codeql:
     needs: planner
@@ -250,13 +233,10 @@ jobs:
 
   monitor-codeql:
     needs: [codeql]
-    if: always() && github.event_name == 'merge_group'
+    if: needs.codeql.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.codeql.result }}
+      - run: gh run cancel ${{ github.run_id }}
 
   control-plane:
     needs: planner
@@ -266,13 +246,10 @@ jobs:
 
   monitor-control-plane:
     needs: [control-plane]
-    if: always() && github.event_name == 'merge_group'
+    if: needs.control-plane.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.control-plane.result }}
+      - run: gh run cancel ${{ github.run_id }}
 
   data-plane:
     needs: planner
@@ -287,13 +264,10 @@ jobs:
 
   monitor-data-plane:
     needs: [data-plane]
-    if: always() && github.event_name == 'merge_group'
+    if: needs.data-plane.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.data-plane.result }}
+      - run: gh run cancel ${{ github.run_id }}
 
   data-plane-perf:
     needs: planner
@@ -308,13 +282,10 @@ jobs:
 
   monitor-data-plane-perf:
     needs: [data-plane-perf]
-    if: always() && github.event_name == 'merge_group'
+    if: data-needs.plane-perf.result == 'failure' == 'failurehub.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.data-plane-perf.result }}
+      - run: gh run cancel ${{ github.run_id }}
 
   loadtest:
     needs: planner
@@ -324,13 +295,10 @@ jobs:
 
   monitor-loadtest:
     needs: [loadtest]
-    if: always() && github.event_name == 'merge_group'
+    if: needs.loadtest.result == 'failure' && github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/cancel-run-on-failure
-        with:
-          job_result: ${{ needs.loadtest.result }}
+      - run: gh run cancel ${{ github.run_id }}
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
