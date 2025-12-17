@@ -60,6 +60,160 @@ jobs:
             --raw-field "event_type=checks-passed" \
             --field "client_payload[sha]=${{ github.sha }}"
 
+  perf-tests:
+    name: perf-tests
+    needs: [control-plane-images, data-plane-prod-images]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      API_IMAGE: "ghcr.io/firezone/api"
+      API_TAG: ${{ github.sha }}
+      WEB_IMAGE: "ghcr.io/firezone/web"
+      WEB_TAG: ${{ github.sha }}
+      ELIXIR_IMAGE: "ghcr.io/firezone/elixir"
+      ELIXIR_TAG: ${{ github.sha }}
+      GATEWAY_IMAGE: "ghcr.io/firezone/perf/gateway"
+      GATEWAY_TAG: ${{ github.sha }}
+      CLIENT_IMAGE: "ghcr.io/firezone/perf/client"
+      CLIENT_TAG: ${{ github.sha }}
+      RELAY_IMAGE: "ghcr.io/firezone/perf/relay"
+      RELAY_TAG: ${{ github.sha }}
+      FIREZONE_INC_BUF: true
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        test:
+          - tcp-client2server
+          - tcp-server2client
+          - udp-client2server
+          - udp-server2client
+        flavour:
+          - direct
+          - relayed
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: ./.github/actions/ghcr-docker-login
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-docker
+      - name: Seed database
+        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
+      - name: Increase max UDP buffer sizes
+        run: |
+          sudo sysctl -w net.core.wmem_max=16777216 # 16 MB
+          sudo sysctl -w net.core.rmem_max=134217728 # 128 MB
+      - name: Start docker compose in the background
+        run: |
+          if [ "${{ matrix.flavour }}" = "relayed" ]; then
+            echo "CLIENT_MASQUERADE=random" >> "$GITHUB_ENV"
+            echo "UDP_BITRATE=300M" >> "$GITHUB_ENV"
+          fi
+
+          docker compose build client-router gateway-router relay-1-router relay-2-router api-router
+
+          # Start services in the same order each time for the tests
+          docker compose up -d iperf3
+          docker compose up -d api web domain --no-build
+          docker compose up -d relay-1 relay-2 --no-build
+          docker compose up -d gateway --no-build
+          docker compose up -d client --no-build
+          docker compose up -d network-config
+      - name: "Performance test: ${{ matrix.flavour }}-${{ matrix.test }}"
+        timeout-minutes: 5
+        env:
+          TEST_NAME: ${{ matrix.flavour }}-${{ matrix.test }}
+        run: |
+          ./scripts/tests/perf/${{ matrix.test }}.sh
+          jq '{ "${{ matrix.flavour }}-${{ matrix.test }}": { "retransmits": { "value": (.end.sum_sent.retransmits // -1) }, "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.flavour }}-${{ matrix.test }}.json > ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
+      - name: "Save performance test results: ${{ matrix.flavour }}-${{ matrix.test }}"
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          overwrite: true
+          name: ${{ matrix.flavour }}-${{ matrix.test }}-${{ github.sha }}-iperf3results
+          path: ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
+      - name: Show Client logs
+        if: "!cancelled()"
+        run: docker compose logs client
+      - name: Show Relay-1 logs
+        if: "!cancelled()"
+        run: docker compose logs relay-1
+      - name: Show Relay-2 logs
+        if: "!cancelled()"
+        run: docker compose logs relay-2
+      - name: Show Gateway logs
+        if: "!cancelled()"
+        run: docker compose logs gateway
+      - name: Show API logs
+        if: "!cancelled()"
+        run: docker compose logs api
+      - name: Show iperf3 logs
+        if: "!cancelled()"
+        run: docker compose logs iperf3
+
+      - name: Ensure no warnings are logged
+        if: "!cancelled()"
+        run: |
+          docker compose logs client |
+            grep "WARN" && exit 1 || exit 0
+
+          docker compose logs gateway |
+            grep "WARN" && exit 1 || exit 0
+
+          # BTF doesn't load for veth interfaces
+          docker compose logs relay-1 | \
+            grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
+            grep "WARN" && exit 1 || exit 0
+          docker compose logs relay-2 | \
+            grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
+            grep "WARN" && exit 1 || exit 0
+
+      - name: Ensure no UDP socket errors
+        if: "!cancelled() && startsWith(matrix.test, 'tcp')"
+        run: |
+          docker compose exec client /bin/sh -c 'nstat -s' |
+            grep -i "error" && exit 1 || exit 0
+
+          docker compose exec gateway /bin/sh -c 'nstat -s' |
+            grep -i "error" && exit 1 || exit 0
+
+  upload-bencher:
+    continue-on-error: true
+    needs: perf-tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+      checks: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: bencherdev/bencher@main
+      - name: Download performance test results
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: "*-${{ github.sha }}-iperf3results"
+          merge-multiple: true
+          path: ./${{ github.sha }}
+      - name: Merge benchmarks results into one report
+        run: jq -s 'reduce .[] as $item ({}; . * $item)' ./${{ github.sha }}/*.bmf.json > bmf.json
+      - name: Report results to bencher
+        run: |
+          bencher run \
+            --project firezone-1l75jv1z \
+            --testbed github-actions \
+            --file bmf.json \
+            --adapter json \
+            --branch "${{ env.BRANCH }}" \
+            --branch-start-point "${{ github.base_ref }}" \
+            --github-actions ${{ secrets.GITHUB_TOKEN }} \
+            --ci-only-on-alert
+        env:
+          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+          BRANCH: "${{ github.head_ref || github.ref_name }}"
+
   # To have proper test coverage, we need to run `rust` and `elixir` on `main`.
 
   rust:
