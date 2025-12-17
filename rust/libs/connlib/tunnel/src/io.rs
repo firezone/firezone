@@ -211,15 +211,22 @@ impl Io {
             let mut udp = l4_udp_dns_server::Server::default();
             let mut tcp = l4_tcp_dns_server::Server::default();
 
-            if let Err(e) = udp.rebind(socket) {
-                error.push(e);
+            match udp.rebind(socket) {
+                Ok(()) => {
+                    self.udp_dns_server.insert(socket, udp);
+                }
+                Err(e) => {
+                    error.push(e);
+                }
             };
-            if let Err(e) = tcp.rebind(socket) {
-                error.push(e);
+            match tcp.rebind(socket) {
+                Ok(()) => {
+                    self.tcp_dns_server.insert(socket, tcp);
+                }
+                Err(e) => {
+                    error.push(e);
+                }
             };
-
-            self.udp_dns_server.insert(socket, udp);
-            self.tcp_dns_server.insert(socket, tcp);
         }
 
         if !error.is_empty() {
