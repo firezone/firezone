@@ -23,15 +23,6 @@ public class DeviceMetadata {
     #endif
   }
 
-  public static func getOSVersion() -> String {
-    // Returns the OS version. Must be valid ASCII.
-    // See https://github.com/firezone/firezone/issues/3034
-    // See https://github.com/firezone/firezone/issues/5467
-    let osVersion = ProcessInfo.processInfo.operatingSystemVersion
-
-    return "\(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)"
-  }
-
   #if os(iOS)
     @MainActor
     public static func getIdentifierForVendor() -> String? {
