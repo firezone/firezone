@@ -13,7 +13,7 @@ started.
   - [Ensure Everything Works](#ensure-everything-works)
 - [Developer Environment Setup](#developer-environment-setup)
   - [Git Commit Signing](#git-commit-signing)
-  - [asdf-vm](#asdf-vm-setup)
+  - [Developer tools](#developer-tools)
   - [Pre-commit](#pre-commit)
   - [Elixir Development](#elixir-development)
   - [Rust Development](#rust-development)
@@ -156,9 +156,8 @@ for any local, non-Docker development or testing.
 We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
 before code is committed.
 
-- Install pre-commit and other Python packages with `pip install -r .github/requirements.txt`
+- Install [Mise](https://mise.jdx.dev/) which will automatically install pre-commit and other required tools (see `mise.toml`)
 - Install the repo-specific checks with `pre-commit install --config .github/pre-commit-config.yaml`
-  (As in `.github/workflows/_static-analysis.yml`)
 
 ### Elixir Development
 
@@ -261,7 +260,7 @@ git commit -m "$COMMIT_MSG"
 This should run automatically when you run `git commit`, but in case it doesn't:
 
 ```bash
-pre-commit run --all-files
+mise run lint
 ```
 
 ## Logging and sensitive info
