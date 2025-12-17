@@ -650,9 +650,16 @@ defmodule Domain.Google.Sync do
 
     def batch_upsert_groups(account_id, directory_id, last_synced_at, group_attrs, entity_type) do
       # Convert to raw SQL to support conditional updates based on last_synced_at
-      query = build_group_upsert_query(length(group_attrs), entity_type)
+      query = build_group_upsert_query(length(group_attrs))
 
-      params = build_group_upsert_params(account_id, directory_id, last_synced_at, group_attrs)
+      params =
+        build_group_upsert_params(
+          account_id,
+          directory_id,
+          last_synced_at,
+          group_attrs,
+          entity_type
+        )
 
       case Safe.unscoped() |> Safe.query(query, params) do
         {:ok, %Postgrex.Result{num_rows: num_rows}} ->
@@ -663,7 +670,7 @@ defmodule Domain.Google.Sync do
       end
     end
 
-    defp build_group_upsert_query(count, entity_type) do
+    defp build_group_upsert_query(count) do
       # Each group has 2 fields: idp_id, name
       values_clause =
         for i <- 1..count, base = (i - 1) * 2 do
@@ -675,6 +682,7 @@ defmodule Domain.Google.Sync do
       account_id = offset + 1
       directory_id = offset + 2
       last_synced_at = offset + 3
+      entity_type = offset + 4
 
       """
       WITH input_data (idp_id, name) AS (
@@ -693,7 +701,7 @@ defmodule Domain.Google.Sync do
         $#{last_synced_at},
         $#{last_synced_at},
         'static',
-        '#{entity_type}',
+        $#{entity_type},
         $#{last_synced_at}
       FROM input_data id
       ON CONFLICT (account_id, idp_id) WHERE idp_id IS NOT NULL
@@ -721,7 +729,13 @@ defmodule Domain.Google.Sync do
       """
     end
 
-    defp build_group_upsert_params(account_id, directory_id, last_synced_at, group_attrs) do
+    defp build_group_upsert_params(
+           account_id,
+           directory_id,
+           last_synced_at,
+           group_attrs,
+           entity_type
+         ) do
       group_params =
         group_attrs
         |> Enum.flat_map(fn attrs ->
@@ -733,7 +747,8 @@ defmodule Domain.Google.Sync do
         [
           Ecto.UUID.dump!(account_id),
           Ecto.UUID.dump!(directory_id),
-          last_synced_at
+          last_synced_at,
+          to_string(entity_type)
         ]
     end
 
