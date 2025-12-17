@@ -16,3 +16,11 @@ pub mod macos;
 pub use macos as platform;
 
 pub use platform::TunDeviceManager;
+
+/// The supported IP stack of the TUN device
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TunIpStack {
+    V4Only,
+    V6Only,
+    Dual,
+}

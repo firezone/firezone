@@ -1,4 +1,5 @@
 use crate::TUNNEL_NAME;
+use crate::tun_device_manager::TunIpStack;
 use crate::windows::TUNNEL_UUID;
 use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
 use anyhow::{Context as _, Result};
@@ -80,7 +81,7 @@ impl TunDeviceManager {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
+    pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<TunIpStack> {
         let luid = self
             .luid
             .context("Cannot set IPs prior to creating an adapter")?;
@@ -94,10 +95,19 @@ impl TunDeviceManager {
 
         tracing::debug!(%ipv4, %ipv6, "Setting tunnel interface IPs");
 
-        try_set_ip(luid, IpAddr::V4(ipv4)).context("Failed to set IPv4 address")?;
-        try_set_ip(luid, IpAddr::V6(ipv6)).context("Failed to set IPv6 address")?;
+        let success_v4 =
+            try_set_ip(luid, IpAddr::V4(ipv4)).context("Failed to set IPv4 address")?;
+        let success_v6 =
+            try_set_ip(luid, IpAddr::V6(ipv6)).context("Failed to set IPv6 address")?;
 
-        Ok(())
+        let tun_ip_stack = match (success_v4, success_v6) {
+            (true, true) => TunIpStack::Dual,
+            (true, false) => TunIpStack::V4Only,
+            (false, true) => TunIpStack::V6Only,
+            (false, false) => anyhow::bail!("Failed to set IPv4 and IPv6 address on TUN device"),
+        };
+
+        Ok(tun_ip_stack)
     }
 
     #[expect(clippy::unused_async, reason = "Must match Linux API")]
@@ -551,7 +561,7 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
     Ok(())
 }
 
-fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
+fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<bool> {
     // Safety: Docs don't mention anything in regards to safety of this function.
     let mut row = unsafe {
         let mut row: MIB_UNICASTIPADDRESS_ROW = std::mem::zeroed();
@@ -577,21 +587,25 @@ fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
     }
 
     // Safety: Docs don't mention anything about safety other than having to use `InitializeUnicastIpAddressEntry` and we did that.
-    match unsafe { CreateUnicastIpAddressEntry(&row) }.ok() {
-        Ok(()) => {}
+    let success = match unsafe { CreateUnicastIpAddressEntry(&row) }.ok() {
+        Ok(()) => true,
         Err(e) if e.code() == NOT_SUPPORTED => {
             tracing::debug!(%ip, "Failed to set interface IP: IP stack not supported?");
+
+            false
         }
         Err(e) if e.code() == NOT_FOUND => {
             tracing::debug!(%ip, "Failed to set interface IP: IP stack disabled?");
+
+            false
         }
-        Err(e) if e.code() == OBJECT_EXISTS => {} // Happens if we are trying to set the exact same IP.
+        Err(e) if e.code() == OBJECT_EXISTS => true, // Happens if we are trying to set the exact same IP.
         Err(e) => {
             return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"));
         }
-    }
+    };
 
-    Ok(())
+    Ok(success)
 }
 
 /// Installs the DLL in %LOCALAPPDATA% and returns the DLL's absolute path
