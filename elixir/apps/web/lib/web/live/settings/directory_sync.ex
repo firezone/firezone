@@ -32,6 +32,8 @@ defmodule Web.Settings.DirectorySync do
   }
 
   def mount(_params, _session, socket) do
+    socket = assign(socket, page_title: "Directory Sync")
+
     if connected?(socket) do
       :ok = PubSub.Account.subscribe(socket.assigns.subject.account.id)
     end

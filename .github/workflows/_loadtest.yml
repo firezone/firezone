@@ -49,7 +49,6 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.target }}
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'linux'

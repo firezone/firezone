@@ -77,7 +77,6 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.rust-targets }}
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - run: ${{ matrix.build-script }}
         env:
           IOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}"

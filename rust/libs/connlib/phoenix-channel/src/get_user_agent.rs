@@ -1,8 +1,4 @@
-pub fn get_user_agent(
-    os_version_override: Option<String>,
-    component_name: &str,
-    app_version: &str,
-) -> String {
+pub fn get_user_agent(component_name: &str, app_version: &str) -> String {
     // Note: we could switch to sys-info and get the hostname
     // but we lose the arch
     // and neither of the libraries provide the kernel version.
@@ -10,14 +6,10 @@ pub fn get_user_agent(
     // and keep implementing things that we are missing on top
     let info = os_info::get();
 
-    // iOS returns "Unknown", but we already know we're on iOS here
-    #[cfg(target_os = "ios")]
-    let os_type = "iOS";
-    #[cfg(not(target_os = "ios"))]
     let os_type = info.os_type();
-
-    let os_version = os_version_override.unwrap_or(info.version().to_string());
+    let os_version = info.version().to_string();
     let additional_info = additional_info();
+
     format!("{os_type}/{os_version} {component_name}/{app_version}{additional_info}")
 }
 
