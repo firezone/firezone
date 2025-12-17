@@ -19,13 +19,16 @@ concurrency:
   group: "ci-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   planner:
     runs-on: ubuntu-latest
     outputs:
       jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - name: Plan jobs to run
         id: plan
         run: |
@@ -131,10 +134,8 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - name: Check if all jobs are successful
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
 
@@ -151,42 +152,104 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
+
+  monitor-kotlin:
+    needs: [kotlin]
+    if: needs.kotlin.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+
   swift:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'swift')
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
+
+  monitor-swift:
+    needs: [swift]
+    if: needs.swift.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+
   elixir:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
     uses: ./.github/workflows/_elixir.yml
     secrets: inherit
+
+  monitor-elixir:
+    needs: [elixir]
+    if: needs.elixir.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+
   rust:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'rust')
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
+
+  monitor-rust:
+    needs: [rust]
+    if: needs.rust.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+
   tauri:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
     uses: ./.github/workflows/_tauri.yml
     secrets: inherit
+
+  monitor-tauri:
+    needs: [tauri]
+    if: needs.tauri.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+
   static-analysis:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'static-analysis')
     uses: ./.github/workflows/_static-analysis.yml
     secrets: inherit
+
+  monitor-static-analysis:
+    needs: [static-analysis]
+    if: needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+
   codeql:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
+  monitor-codeql:
+    needs: [codeql]
+    if: needs.codeql.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+
   control-plane:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'control-plane')
     uses: ./.github/workflows/_control-plane.yml
     secrets: inherit
+
+  monitor-control-plane:
+    needs: [control-plane]
+    if: needs.control-plane.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
 
   data-plane:
     needs: planner
@@ -199,6 +262,13 @@ jobs:
       profile: ${{ inputs.profile || 'debug' }}
       stage: ${{ inputs.stage || 'debug' }}
 
+  monitor-data-plane:
+    needs: [data-plane]
+    if: needs.data-plane.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+
   data-plane-perf:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'data-plane-perf')
@@ -210,11 +280,25 @@ jobs:
       profile: "release"
       stage: "debug" # Only the debug images have perf tooling
 
+  monitor-data-plane-perf:
+    needs: [data-plane-perf]
+    if: needs.data-plane-perf.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+
   loadtest:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'loadtest')
     uses: ./.github/workflows/_loadtest.yml
     secrets: inherit
+
+  monitor-loadtest:
+    needs: [loadtest]
+    if: needs.loadtest.result == 'failure' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
