@@ -3,7 +3,6 @@
 //  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
-//
 // Reads system resolvers from libresolv, similar to reading /etc/resolv.conf but this also works on iOS
 
 import FirezoneKit

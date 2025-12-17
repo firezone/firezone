@@ -112,32 +112,47 @@ if [ "$notarize" = "true" ]; then
     private_key_path="$temp_dir/firezone-api-key.p8"
     base64_decode "$API_KEY" "$private_key_path"
 
-    # Submit DMG to be notarized. Can take a few minutes. Notarizes embedded app bundle as well.
+    # Submit both DMG and PKG in parallel (each can take several minutes)
+    echo "Submitting DMG and PKG for notarization in parallel..."
+
     xcrun notarytool submit "$dmg_path" \
         --key "$private_key_path" \
         --key-id "$API_KEY_ID" \
         --issuer "$ISSUER_ID" \
-        --wait
+        --wait &
+    dmg_pid=$!
 
-    # Staple notarization ticket to app bundle
-    xcrun stapler staple "$dmg_path"
-
-    # Verify notarization
-    xcrun stapler validate "$dmg_path"
-
-    echo "Disk image notarized!"
-
-    # Submit PKG to be notarized. Can take a few minutes. Notarizes embedded app bundle as well.
     xcrun notarytool submit "$staging_pkg_path" \
         --key "$private_key_path" \
         --key-id "$API_KEY_ID" \
         --issuer "$ISSUER_ID" \
-        --wait
+        --wait &
+    pkg_pid=$!
 
-    # Staple notarization ticket to app bundle
+    # Wait for both notarization jobs to complete
+    dmg_exit=0
+    pkg_exit=0
+    wait $dmg_pid || dmg_exit=$?
+    wait $pkg_pid || pkg_exit=$?
+
+    if [ $dmg_exit -ne 0 ]; then
+        echo "DMG notarization failed with exit code $dmg_exit"
+        rm "$private_key_path"
+        exit $dmg_exit
+    fi
+
+    if [ $pkg_exit -ne 0 ]; then
+        echo "PKG notarization failed with exit code $pkg_exit"
+        rm "$private_key_path"
+        exit $pkg_exit
+    fi
+
+    # Staple and verify both (these are fast, sequential is fine)
+    xcrun stapler staple "$dmg_path"
+    xcrun stapler validate "$dmg_path"
+    echo "Disk image notarized!"
+
     xcrun stapler staple "$staging_pkg_path"
-
-    # Verify notarization
     xcrun stapler validate "$staging_pkg_path"
 
     echo "Installer PKG notarized!"
