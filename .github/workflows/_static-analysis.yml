@@ -79,7 +79,7 @@ jobs:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
           lockfile-dir: ./.github
       - name: Run linters
-        run: SKIP=no-commit-to-branch mise run lint
+        run: mise run lint
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         if: ${{ steps.pip-cache.outputs.cache-hit != 'true' }}
         name: Save pip cache
