@@ -293,7 +293,6 @@ class TunnelService : VpnService() {
                             accountSlug = config.accountSlug,
                             deviceId = deviceId(),
                             deviceName = getDeviceName(),
-                            osVersion = Build.VERSION.RELEASE,
                             logDir = getLogDir(),
                             logFilter = config.logFilter,
                             isInternetResourceActive = resourceState.isEnabled(),

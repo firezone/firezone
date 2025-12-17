@@ -240,7 +240,7 @@ async fn try_main(args: Args) -> Result<()> {
 
     let mut channel = PhoenixChannel::disconnected(
         SecretBox::init_with(|| login),
-        get_user_agent(None, "relay", env!("CARGO_PKG_VERSION")),
+        get_user_agent("relay", env!("CARGO_PKG_VERSION")),
         "relay",
         JoinMessage {
             stamp_secret: server.auth_secret().expose_secret().to_string(),
