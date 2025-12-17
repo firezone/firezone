@@ -34,6 +34,15 @@ jobs:
       profile: "release"
       stage: "release"
 
+  # Build data-plane perf images for perf-tests
+  data-plane-perf-images:
+    uses: ./.github/workflows/_data-plane.yml
+    secrets: inherit
+    with:
+      image_prefix: "perf"
+      profile: "release"
+      stage: "debug" # Only the debug images have perf tooling
+
   # Build control-plane prod images for staging and production environments.
   control-plane-images:
     uses: ./.github/workflows/_control-plane.yml
@@ -60,8 +69,8 @@ jobs:
             --raw-field "event_type=checks-passed" \
             --field "client_payload[sha]=${{ github.sha }}"
 
-  perf_tests:
-    needs: [data-plane-prod-images, control-plane-images]
+  perf-tests:
+    needs: [data-plane-perf-images, control-plane-images]
     uses: ./.github/workflows/_perf_tests.yml
     secrets: inherit
 
