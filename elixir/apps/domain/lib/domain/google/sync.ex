@@ -117,6 +117,9 @@ defmodule Domain.Google.Sync do
     # Then sync groups and their members
     sync_groups(directory, access_token, synced_at)
 
+    # Finally sync organization units
+    sync_org_units(directory, access_token, synced_at)
+
     :ok
   end
 
@@ -287,6 +290,61 @@ defmodule Domain.Google.Sync do
     end
   end
 
+  defp sync_org_units(directory, access_token, synced_at) do
+    Logger.debug("Streaming organization units", google_directory_id: directory.id)
+
+    Google.APIClient.stream_organization_units(access_token)
+    |> Stream.each(fn
+      {:error, error} ->
+        Logger.debug("Failed to stream organization units",
+          google_directory_id: directory.id,
+          error: inspect(error)
+        )
+
+        raise Google.SyncError,
+          reason: "Failed to stream organization units",
+          cause: error,
+          directory_id: directory.id,
+          step: :stream_org_units
+
+      org_units when is_list(org_units) ->
+        Logger.debug("Received organization units page",
+          google_directory_id: directory.id,
+          count: length(org_units)
+        )
+
+        # Build org unit attrs - validate required fields
+        org_unit_attrs =
+          Enum.map(org_units, fn org_unit ->
+            unless org_unit["orgUnitId"] do
+              raise Google.SyncError,
+                reason: "Organization unit missing required 'orgUnitId' field",
+                cause: org_unit,
+                directory_id: directory.id,
+                step: :process_org_unit
+            end
+
+            unless org_unit["name"] do
+              raise Google.SyncError,
+                reason: "Organization unit missing required 'name' field",
+                cause: org_unit,
+                directory_id: directory.id,
+                step: :process_org_unit
+            end
+
+            %{
+              idp_id: org_unit["orgUnitId"],
+              name: org_unit["name"]
+            }
+          end)
+
+        unless Enum.empty?(org_unit_attrs) do
+          batch_upsert_org_units(directory, synced_at, org_unit_attrs)
+        end
+    end)
+    |> Stream.run()
+  end
+
   defp batch_upsert_identities(directory, synced_at, identities) do
     account_id = directory.account_id
     directory_id = directory.id
@@ -312,7 +370,7 @@ defmodule Domain.Google.Sync do
     directory_id = directory.id
 
     {:ok, %{upserted_groups: count}} =
-      DB.batch_upsert_groups(account_id, directory_id, synced_at, groups)
+      DB.batch_upsert_groups(account_id, directory_id, synced_at, groups, :group)
 
     Logger.debug("Upserted #{count} groups", google_directory_id: directory.id)
     :ok
@@ -336,6 +394,17 @@ defmodule Domain.Google.Sync do
 
         :error
     end
+  end
+
+  defp batch_upsert_org_units(directory, synced_at, org_units) do
+    account_id = directory.account_id
+    directory_id = directory.id
+
+    {:ok, %{upserted_groups: count}} =
+      DB.batch_upsert_groups(account_id, directory_id, synced_at, org_units, :org_unit)
+
+    Logger.debug("Upserted #{count} organization units", google_directory_id: directory.id)
+    :ok
   end
 
   defp delete_unsynced(directory, synced_at) do
@@ -576,14 +645,21 @@ defmodule Domain.Google.Sync do
         ]
     end
 
-    def batch_upsert_groups(_account_id, _directory_id, _last_synced_at, []),
+    def batch_upsert_groups(_account_id, _directory_id, _last_synced_at, [], _entity_type),
       do: {:ok, %{upserted_groups: 0}}
 
-    def batch_upsert_groups(account_id, directory_id, last_synced_at, group_attrs) do
+    def batch_upsert_groups(account_id, directory_id, last_synced_at, group_attrs, entity_type) do
       # Convert to raw SQL to support conditional updates based on last_synced_at
       query = build_group_upsert_query(length(group_attrs))
 
-      params = build_group_upsert_params(account_id, directory_id, last_synced_at, group_attrs)
+      params =
+        build_group_upsert_params(
+          account_id,
+          directory_id,
+          last_synced_at,
+          group_attrs,
+          entity_type
+        )
 
       case Safe.unscoped() |> Safe.query(query, params) do
         {:ok, %Postgrex.Result{num_rows: num_rows}} ->
@@ -606,6 +682,7 @@ defmodule Domain.Google.Sync do
       account_id = offset + 1
       directory_id = offset + 2
       last_synced_at = offset + 3
+      entity_type = offset + 4
 
       """
       WITH input_data (idp_id, name) AS (
@@ -613,7 +690,7 @@ defmodule Domain.Google.Sync do
       )
       INSERT INTO groups (
         id, name, directory_id, idp_id, account_id,
-        inserted_at, updated_at, type, last_synced_at
+        inserted_at, updated_at, type, entity_type, last_synced_at
       )
       SELECT
         uuid_generate_v4(),
@@ -624,6 +701,7 @@ defmodule Domain.Google.Sync do
         $#{last_synced_at},
         $#{last_synced_at},
         'static',
+        $#{entity_type},
         $#{last_synced_at}
       FROM input_data id
       ON CONFLICT (account_id, idp_id) WHERE idp_id IS NOT NULL
@@ -651,7 +729,13 @@ defmodule Domain.Google.Sync do
       """
     end
 
-    defp build_group_upsert_params(account_id, directory_id, last_synced_at, group_attrs) do
+    defp build_group_upsert_params(
+           account_id,
+           directory_id,
+           last_synced_at,
+           group_attrs,
+           entity_type
+         ) do
       group_params =
         group_attrs
         |> Enum.flat_map(fn attrs ->
@@ -663,7 +747,8 @@ defmodule Domain.Google.Sync do
         [
           Ecto.UUID.dump!(account_id),
           Ecto.UUID.dump!(directory_id),
-          last_synced_at
+          last_synced_at,
+          to_string(entity_type)
         ]
     end
 
