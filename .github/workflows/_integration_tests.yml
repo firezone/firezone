@@ -237,6 +237,7 @@ jobs:
           # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
           docker compose logs gateway | \
             grep --invert "I/O error (os error 5)" | \
+            ${{ matrix.test.gateway_disable_ipv6 == 1 && 'grep --invert "Failed to add route: Received a netlink error message Permission denied (os error 13) route=fd00:2021:1111::/107" |' || '' }} \
             grep "WARN" && exit 1 || exit 0
       - name: Show Gateway logs
         if: "!cancelled()"
