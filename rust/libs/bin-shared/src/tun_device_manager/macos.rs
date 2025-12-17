@@ -4,6 +4,8 @@ use anyhow::{Result, bail};
 use ip_network::{Ipv4Network, Ipv6Network};
 use tun::Tun;
 
+use crate::tun_device_manager::TunIpStack;
+
 pub struct TunDeviceManager {}
 
 impl TunDeviceManager {
@@ -19,7 +21,7 @@ impl TunDeviceManager {
         clippy::unused_async,
         reason = "Signture must match other operating systems"
     )]
-    pub async fn set_ips(&mut self, _ipv4: Ipv4Addr, _ipv6: Ipv6Addr) -> Result<()> {
+    pub async fn set_ips(&mut self, _ipv4: Ipv4Addr, _ipv6: Ipv6Addr) -> Result<TunIpStack> {
         bail!("Not implemented")
     }
 

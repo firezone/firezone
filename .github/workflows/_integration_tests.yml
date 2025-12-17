@@ -125,6 +125,10 @@ jobs:
             rust_log: debug,flow_logs=trace
             single_relay: true # Force single relay
             min_gateway_version: 1.4.18
+          - name: download-ipv4-only
+            script: download
+            gateway_disable_ipv6: 1
+            min_gateway_version: 1.4.19
           - script: download-packet-loss
             rust_log: debug
           - script: download-roaming-network
@@ -140,8 +144,11 @@ jobs:
         if: ${{ matrix.test.min_client_version }}
         continue-on-error: true
         run: |
-          ACTUAL_VERSION=$(docker run ${{ inputs.client_image }}:${{ inputs.client_tag }} firezone-headless-client --version | awk '{print $2}')
+          ACTUAL_VERSION=$(docker run --privileged ${{ inputs.client_image }}:${{ inputs.client_tag }} firezone-headless-client --version | awk '{print $2}')
           MIN_VERSION="${{ matrix.test.min_client_version }}"
+
+          echo "ACTUAL_VERSION=${ACTUAL_VERSION}"
+          echo "MIN_VERSION=${MIN_VERSION}"
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
       - name: Check minimum gateway version
@@ -149,14 +156,18 @@ jobs:
         if: ${{ matrix.test.min_gateway_version }}
         continue-on-error: true
         run: |
-          ACTUAL_VERSION=$(docker run ${{ inputs.gateway_image }}:${{ inputs.gateway_tag }} firezone-gateway --version | awk '{print $2}')
+          ACTUAL_VERSION=$(docker run --privileged ${{ inputs.gateway_image }}:${{ inputs.gateway_tag }} firezone-gateway --version | awk '{print $2}')
           MIN_VERSION="${{ matrix.test.min_gateway_version }}"
+
+          echo "ACTUAL_VERSION=${ACTUAL_VERSION}"
+          echo "MIN_VERSION=${MIN_VERSION}"
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
       - uses: ./.github/actions/setup-docker
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
       - name: Start docker compose in the background
+        if: ${{ steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure' }} # Run if version checks succeed or are skipped
         run: |
           set -xe
 
@@ -170,6 +181,10 @@ jobs:
 
           if [[ -n "${{ matrix.test.gateway_masquerade }}" ]]; then
             export GATEWAY_MASQUERADE="${{ matrix.test.gateway_masquerade }}"
+          fi
+
+          if [[ -n "${{ matrix.test.gateway_disable_ipv6 }}" ]]; then
+            export GATEWAY_DISABLE_IPV6="${{ matrix.test.gateway_disable_ipv6 }}"
           fi
 
           docker compose build client-router gateway-router relay-1-router relay-2-router api-router
@@ -229,6 +244,7 @@ jobs:
           # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
           docker compose logs gateway | \
             grep --invert "I/O error (os error 5)" | \
+            ${{ matrix.test.gateway_disable_ipv6 == 1 && 'grep --invert "Failed to add route: Received a netlink error message Permission denied (os error 13) route=fd00:2021:1111::/107" |' || '' }} \
             grep "WARN" && exit 1 || exit 0
       - name: Show Gateway logs
         if: "!cancelled()"
@@ -239,7 +255,7 @@ jobs:
         run: docker compose logs api
 
       - name: Ensure no eBPF checksum errors on relay-1
-        if: "!cancelled()"
+        if: "!cancelled() && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"
         run: |
           set -xe
 
@@ -256,7 +272,7 @@ jobs:
           path: ./relay-1-packets.pcap
 
       - name: Ensure no eBPF checksum errors on relay-2
-        if: "!cancelled() && !matrix.test.single_relay"
+        if: "!cancelled() && !matrix.test.single_relay && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"
         run: |
           set -xe
 

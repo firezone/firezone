@@ -256,7 +256,7 @@ services:
 
         # Add static route to internet subnet via router
         ip -4 route add 203.0.113.0/24 via 172.31.0.254
-        ip -6 route add 203:0:113::/64 via 172:31:0::254
+        ip -6 route add 203:0:113::/64 via 172:31:0::254 || true
 
         # Disable checksum offloading so that checksums are correct when they reach the relay
         apk add --no-cache ethtool iproute2
@@ -281,8 +281,8 @@ services:
       - NET_ADMIN
     sysctls:
       - net.ipv4.ip_forward=1
-      - net.ipv6.conf.all.disable_ipv6=0
-      - net.ipv6.conf.default.disable_ipv6=0
+      - net.ipv6.conf.all.disable_ipv6=${GATEWAY_DISABLE_IPV6:-0}
+      - net.ipv6.conf.default.disable_ipv6=${GATEWAY_DISABLE_IPV6:-0}
       - net.ipv6.conf.all.forwarding=1
       - net.ipv6.conf.default.forwarding=1
     devices:
