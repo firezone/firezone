@@ -125,7 +125,6 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.target }}
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Build binaries
         shell: bash
         run: |
@@ -258,7 +257,6 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Install dependencies
         run: ${{ matrix.arch.install_dependencies }}
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
