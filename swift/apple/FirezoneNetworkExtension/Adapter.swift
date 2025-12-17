@@ -226,7 +226,6 @@ class Adapter: @unchecked Sendable {
     }
     semaphore.wait()
 
-    let osVersion = DeviceMetadata.getOSVersion()
     let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
 
     #if os(iOS)
@@ -256,7 +255,6 @@ class Adapter: @unchecked Sendable {
         deviceId: deviceId,
         accountSlug: accountSlug,
         deviceName: deviceName,
-        osVersion: osVersion,
         logDir: logDir,
         logFilter: logFilter,
         deviceInfo: deviceInfo,
