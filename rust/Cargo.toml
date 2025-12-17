@@ -145,7 +145,7 @@ quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
 quote = "1.0"
 rand = "0.8.5"
 rand_core = "0.6.4"
-rangemap = "1.6.0"
+rangemap = "1.7.0"
 reqwest = { version = "0.12.24", default-features = false }
 resolv-conf = "0.7.5"
 ringbuffer = "0.16.0"
