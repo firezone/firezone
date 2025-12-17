@@ -44,6 +44,20 @@ defmodule Web.OIDCController do
     end
   end
 
+  # Handle Entra admin consent callback (returns admin_consent & tenant instead of code)
+  def callback(conn, %{"state" => state, "admin_consent" => _, "tenant" => _} = params) do
+    case String.split(state, ":", parts: 2) do
+      ["entra-verification", verification_token] ->
+        handle_entra_verification_callback(conn, verification_token, params)
+
+      ["entra-admin-consent", verification_token] ->
+        handle_entra_verification_callback(conn, verification_token, params)
+
+      _ ->
+        handle_error(conn, :invalid_callback_params, params)
+    end
+  end
+
   def callback(conn, params) do
     conn
     |> delete_resp_cookie(cookie_key(params["state"]))
@@ -85,10 +99,36 @@ defmodule Web.OIDCController do
   end
 
   defp handle_verification_callback(conn, verification_token, code, _params) do
-    # Store verification info in session for the LiveView to pick up
+    # Store OIDC verification info in session for the LiveView to pick up
     conn
-    |> put_session(:verification_token, verification_token)
-    |> put_session(:verification_code, code)
+    |> put_session(:verification, %{
+      "type" => "oidc",
+      "token" => verification_token,
+      "code" => code
+    })
+    |> redirect(to: ~p"/verification")
+  end
+
+  defp handle_entra_verification_callback(conn, verification_token, params) do
+    # Determine Entra verification subtype from state prefix
+    entra_type =
+      case String.split(params["state"], ":", parts: 2) do
+        ["entra-admin-consent", _] -> "directory_sync"
+        ["entra-verification", _] -> "auth_provider"
+        _ -> nil
+      end
+
+    # Store Entra admin consent info in session for the LiveView to pick up
+    conn
+    |> put_session(:verification, %{
+      "type" => "entra",
+      "entra_type" => entra_type,
+      "token" => verification_token,
+      "admin_consent" => params["admin_consent"],
+      "tenant_id" => params["tenant"],
+      "error" => params["error"],
+      "error_description" => params["error_description"]
+    })
     |> redirect(to: ~p"/verification")
   end
 

@@ -171,14 +171,15 @@ defmodule Web.OIDC do
   """
   def setup_verification("entra", opts) do
     # For Entra, use admin consent endpoint to pre-check organization-wide consent
+    # We route through /auth/oidc/callback so admins only need to configure one redirect URI
     token = Domain.Crypto.random_token(32)
     state = "entra-verification:#{token}"
 
     config = verification_config_for_type("entra", opts)
     client_id = config[:client_id]
 
-    # Build admin consent URL pointing to our unified verification handler
-    redirect_uri = url(~p"/verification")
+    # Build admin consent URL pointing to our unified OIDC callback
+    redirect_uri = callback_url()
     scope = "openid email profile"
 
     params = %{
