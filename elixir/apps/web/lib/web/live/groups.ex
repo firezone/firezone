@@ -270,7 +270,16 @@ defmodule Web.Groups do
             <.provider_icon type={provider_type_from_group(group)} class="w-8 h-8" />
           </:col>
           <:col :let={group} field={{:groups, :name}} label="group" class="w-3/12">
-            {group.name}
+            <span class="flex items-center gap-2">
+              {group.name}
+              <span
+                :if={group.entity_type == :org_unit}
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-600"
+                title="Organizational Unit"
+              >
+                OU
+              </span>
+            </span>
           </:col>
           <:col :let={group} field={{:member_counts, :count}} label="members">
             {group.member_count}
@@ -419,6 +428,12 @@ defmodule Web.Groups do
                 <p class="text-xs font-medium text-neutral-500 uppercase">ID</p>
                 <p class="text-sm text-neutral-900 font-mono truncate" title={@group.id}>
                   {@group.id}
+                </p>
+              </div>
+              <div :if={@group.entity_type == :org_unit}>
+                <p class="text-xs font-medium text-neutral-500 uppercase">Type</p>
+                <p class="text-sm text-neutral-900">
+                  Org Unit
                 </p>
               </div>
               <div>

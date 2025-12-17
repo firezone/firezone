@@ -102,7 +102,40 @@ defmodule API.GroupControllerTest do
       assert json_response(conn, 200) == %{
                "data" => %{
                  "id" => group.id,
-                 "name" => group.name
+                 "name" => group.name,
+                 "entity_type" => "group",
+                 "directory_id" => nil,
+                 "idp_id" => nil,
+                 "last_synced_at" => nil,
+                 "inserted_at" => DateTime.to_iso8601(group.inserted_at),
+                 "updated_at" => DateTime.to_iso8601(group.updated_at)
+               }
+             }
+    end
+
+    test "returns a synced group with directory_id and idp_id", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = synced_group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups/#{group.id}")
+
+      assert json_response(conn, 200) == %{
+               "data" => %{
+                 "id" => group.id,
+                 "name" => group.name,
+                 "entity_type" => "group",
+                 "directory_id" => group.directory_id,
+                 "idp_id" => group.idp_id,
+                 "last_synced_at" => DateTime.to_iso8601(group.last_synced_at),
+                 "inserted_at" => DateTime.to_iso8601(group.inserted_at),
+                 "updated_at" => DateTime.to_iso8601(group.updated_at)
                }
              }
     end
@@ -160,6 +193,30 @@ defmodule API.GroupControllerTest do
 
       assert resp["data"]["name"] == attrs["name"]
     end
+
+    test "ignores protected fields on create", %{conn: conn, actor: actor} do
+      attrs = %{
+        "name" => "Test Group",
+        "idp_id" => "should-be-ignored",
+        "directory_id" => "00000000-0000-0000-0000-000000000000",
+        "entity_type" => "org_unit",
+        "last_synced_at" => "2024-01-01T00:00:00Z"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/groups", group: attrs)
+
+      assert resp = json_response(conn, 201)
+
+      assert resp["data"]["name"] == attrs["name"]
+      assert resp["data"]["idp_id"] == nil
+      assert resp["data"]["directory_id"] == nil
+      assert resp["data"]["entity_type"] == "group"
+      assert resp["data"]["last_synced_at"] == nil
+    end
   end
 
   describe "update/2" do
@@ -182,21 +239,22 @@ defmodule API.GroupControllerTest do
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
     end
 
-    test "returns error on when attempting to edit a synced group", %{
+    test "returns error when attempting to edit a synced group", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      group = synced_group_fixture(account: account)
+      group = group_fixture(account: account, idp_id: "external-group-id")
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/groups/#{group.id}")
+        |> put("/groups/#{group.id}", group: %{"name" => "New Name"})
 
-      assert resp = json_response(conn, 422)
-      assert resp == %{"error" => %{"reason" => "Cannot update a synced group"}}
+      assert json_response(conn, 422) == %{
+               "error" => %{"reason" => "Cannot update a synced group"}
+             }
     end
 
     test "updates an actor group", %{conn: conn, account: account, actor: actor} do
@@ -236,7 +294,13 @@ defmodule API.GroupControllerTest do
       assert json_response(conn, 200) == %{
                "data" => %{
                  "id" => group.id,
-                 "name" => group.name
+                 "name" => group.name,
+                 "entity_type" => "group",
+                 "directory_id" => nil,
+                 "idp_id" => nil,
+                 "last_synced_at" => nil,
+                 "inserted_at" => DateTime.to_iso8601(group.inserted_at),
+                 "updated_at" => DateTime.to_iso8601(group.updated_at)
                }
              }
 
