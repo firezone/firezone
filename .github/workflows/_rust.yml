@@ -62,6 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: gh run cancel ${{ github.run_id }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
     name: test-${{ matrix.runs-on }}
