@@ -722,6 +722,33 @@ mod tests {
         }
     }
 
+    #[cfg(unix)] // Windows has different error messages.
+    #[tokio::test]
+    async fn rebind_dns_clears_all_servers_on_failure() {
+        let _guard = logging::test("debug");
+
+        let mut io = Io::for_test();
+
+        let result = io.rebind_dns(vec![
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 55555), // This one will almost definitely work.
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), 55555), // This one will fail.
+        ]);
+
+        assert_eq!(
+            result
+                .unwrap_err()
+                .drain()
+                .map(|e| format!("{e:#}"))
+                .collect::<Vec<_>>(),
+            vec![
+                "Failed to bind UDP socket on 1.1.1.1:55555: Cannot assign requested address (os error 99)",
+                "Failed to bind TCP listener on 1.1.1.1:55555: Cannot assign requested address (os error 99)"
+            ]
+        );
+        assert!(io.udp_dns_server.is_empty());
+        assert!(io.tcp_dns_server.is_empty());
+    }
+
     fn example_com_recursive_query() -> dns::RecursiveQuery {
         dns::RecursiveQuery {
             server: dns::Upstream::DoH {
