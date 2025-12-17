@@ -282,7 +282,7 @@ defmodule Domain.Changes.ReplicationConnectionTest do
         "gateways" => Domain.Changes.Hooks.Gateways,
         "policies" => Domain.Changes.Hooks.Policies,
         "resources" => Domain.Changes.Hooks.Resources,
-        "tokens" => Domain.Changes.Hooks.Tokens
+        "client_tokens" => Domain.Changes.Hooks.ClientTokens
       }
 
       # Verify the mapping includes all expected tables
@@ -291,12 +291,12 @@ defmodule Domain.Changes.ReplicationConnectionTest do
                  "accounts",
                  "memberships",
                  "clients",
+                 "client_tokens",
                  "policy_authorizations",
                  "sites",
                  "gateways",
                  "policies",
-                 "resources",
-                 "tokens"
+                 "resources"
                ]
                |> Enum.sort()
     end

@@ -256,16 +256,15 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      token = Repo.get_by(Domain.Token, id: subject.credential.id)
+      token = Repo.get_by(Domain.ClientToken, id: subject.credential.id)
 
       data = %{
         "id" => token.id,
         "account_id" => token.account_id,
-        "type" => token.type,
         "expires_at" => token.expires_at
       }
 
-      Domain.Changes.Hooks.Tokens.on_delete(100, data)
+      Domain.Changes.Hooks.ClientTokens.on_delete(100, data)
 
       assert_receive %Phoenix.Socket.Broadcast{
         topic: topic,

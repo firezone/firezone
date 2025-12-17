@@ -36,7 +36,7 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
     "portal_sessions" => Domain.PortalSession,
     "resources" => Domain.Resource,
     "sites" => Domain.Site,
-    "tokens" => Domain.Token,
+    "client_tokens" => Domain.ClientToken,
     "userpass_auth_providers" => Domain.Userpass.AuthProvider
   }
 

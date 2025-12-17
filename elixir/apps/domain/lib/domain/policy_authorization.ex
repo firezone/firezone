@@ -31,7 +31,7 @@ defmodule Domain.PolicyAuthorization do
     belongs_to :client, Domain.Client
     belongs_to :gateway, Domain.Gateway
     belongs_to :resource, Domain.Resource
-    belongs_to :token, Domain.Token
+    belongs_to :token, Domain.ClientToken
     belongs_to :membership, Domain.Membership
 
     # TODO: These can be removed since we don't use them

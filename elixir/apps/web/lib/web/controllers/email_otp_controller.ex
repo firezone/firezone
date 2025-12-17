@@ -203,7 +203,7 @@ defmodule Web.EmailOTPController do
           expires_at: expires_at
         }
 
-        Auth.create_token(attrs)
+        Auth.create_gui_client_token(attrs)
     end
   end
 
