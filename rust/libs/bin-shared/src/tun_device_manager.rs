@@ -2,6 +2,8 @@
 
 #[cfg(target_os = "linux")]
 pub mod linux;
+use std::fmt;
+
 #[cfg(target_os = "linux")]
 pub use linux as platform;
 
@@ -23,4 +25,14 @@ pub enum TunIpStack {
     V4Only,
     V6Only,
     Dual,
+}
+
+impl fmt::Display for TunIpStack {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TunIpStack::V4Only => write!(f, "V4Only"),
+            TunIpStack::V6Only => write!(f, "V6Only"),
+            TunIpStack::Dual => write!(f, "Dual"),
+        }
+    }
 }

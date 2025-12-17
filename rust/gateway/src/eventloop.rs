@@ -486,10 +486,14 @@ impl Eventloop {
                     }
                 }
 
-                self.tun_device_manager
+                let tun_ip_stack = self
+                    .tun_device_manager
                     .set_ips(interface.ipv4, interface.ipv6)
                     .await
                     .context("Failed to set TUN interface IPs")?;
+
+                tracing::debug!(stack = %tun_ip_stack, "Initialized TUN device");
+
                 self.tun_device_manager
                     .set_routes(vec![IPV4_TUNNEL], vec![IPV6_TUNNEL])
                     .await
@@ -498,15 +502,13 @@ impl Eventloop {
                 let ipv4_socket = SocketAddr::V4(SocketAddrV4::new(interface.ipv4, 53535));
                 let ipv6_socket = SocketAddr::V6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0));
 
-                let mut attempts = [
-                    // 3 attempts with both sockets.
-                    vec![ipv4_socket, ipv6_socket],
-                    vec![ipv4_socket, ipv6_socket],
-                    vec![ipv4_socket, ipv6_socket],
-                    // If IPv6 is not available, try with just the IPv4 address.
-                    vec![ipv4_socket],
-                ]
-                .into_iter();
+                let addresses = match tun_ip_stack {
+                    bin_shared::TunIpStack::V4Only => vec![ipv4_socket],
+                    bin_shared::TunIpStack::V6Only => vec![ipv6_socket],
+                    bin_shared::TunIpStack::Dual => vec![ipv4_socket, ipv6_socket],
+                };
+
+                let mut attempts = std::iter::repeat_n(addresses, 3);
 
                 loop {
                     let Some(attempt) = attempts.next() else {
