@@ -22,7 +22,13 @@ defmodule API.GroupJSON do
   defp data(%Group{} = group) do
     %{
       id: group.id,
-      name: group.name
+      name: group.name,
+      entity_type: group.entity_type,
+      directory_id: group.directory_id,
+      idp_id: group.idp_id,
+      last_synced_at: group.last_synced_at,
+      inserted_at: group.inserted_at,
+      updated_at: group.updated_at
     }
   end
 end
