@@ -722,7 +722,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)] // Windows has different error messages.
     #[tokio::test]
     async fn rebind_dns_clears_all_servers_on_failure() {
         let _guard = logging::test("debug");
@@ -738,11 +737,11 @@ mod tests {
             result
                 .unwrap_err()
                 .drain()
-                .map(|e| format!("{e:#}"))
+                .map(|e| e.to_string())
                 .collect::<Vec<_>>(),
             vec![
-                "Failed to bind UDP socket on 1.1.1.1:40000: Cannot assign requested address (os error 99)",
-                "Failed to bind TCP listener on 1.1.1.1:40000: Cannot assign requested address (os error 99)"
+                "Failed to bind UDP socket on 1.1.1.1:40000",
+                "Failed to bind TCP listener on 1.1.1.1:40000"
             ]
         );
         assert!(io.udp_dns_server.is_empty());
