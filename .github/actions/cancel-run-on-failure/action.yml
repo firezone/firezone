@@ -1,0 +1,13 @@
+name: Cancel Run on Failure
+description: Cancels workflow run if a job fails
+inputs:
+  job_result:
+    description: The result of the job to monitor
+    required: true
+runs:
+  using: composite
+  steps:
+    - run: '[ "${{ inputs.job_result }}" = "failure" ] && gh run cancel ${{ github.run_id }} || true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}

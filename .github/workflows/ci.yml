@@ -19,9 +19,6 @@ concurrency:
   group: "ci-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
-env:
-  GH_TOKEN: ${{ github.token }}
-
 jobs:
   planner:
     runs-on: ubuntu-latest
@@ -136,6 +133,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Check if all jobs are successful
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
 
@@ -158,7 +157,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.kotlin.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.kotlin.result }}
 
   swift:
     needs: planner
@@ -171,7 +172,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.swift.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.swift.result }}
 
   elixir:
     needs: planner
@@ -184,7 +187,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.elixir.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.elixir.result }}
 
   rust:
     needs: planner
@@ -197,7 +202,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.rust.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.rust.result }}
 
   tauri:
     needs: planner
@@ -210,7 +217,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.tauri.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.tauri.result }}
 
   static-analysis:
     needs: planner
@@ -223,7 +232,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.static-analysis.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.static-analysis.result }}
 
   codeql:
     needs: planner
@@ -236,7 +247,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.codeql.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.codeql.result }}
 
   control-plane:
     needs: planner
@@ -249,7 +262,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.control-plane.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.control-plane.result }}
 
   data-plane:
     needs: planner
@@ -267,7 +282,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.data-plane.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.data-plane.result }}
 
   data-plane-perf:
     needs: planner
@@ -285,7 +302,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.data-plane-perf.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.data-plane-perf.result }}
 
   loadtest:
     needs: planner
@@ -298,7 +317,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: '[ "${{ needs.loadtest.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
+      - uses: ./.github/actions/cancel-run-on-failure
+        with:
+          job_result: ${{ needs.loadtest.result }}
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
@@ -309,13 +330,6 @@ jobs:
       client_image: ${{ needs.data-plane.outputs.client_image }}
       relay_image: ${{ needs.data-plane.outputs.relay_image }}
       http_test_server_image: ${{ needs.data-plane.outputs.http_test_server_image }}
-
-  monitor-integration-tests:
-    needs: [integration-tests]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: '[ "${{ needs.integration-tests.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
 
   compatibility-tests:
     strategy:
@@ -344,13 +358,6 @@ jobs:
       gateway_tag: ${{ matrix.gateway.tag }}
       client_image: ${{ matrix.client.image }}
       client_tag: ${{ matrix.client.tag }}
-
-  monitor-compatibility-tests:
-    needs: [compatibility-tests]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: '[ "${{ needs.compatibility-tests.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
 
   perf-tests:
     name: perf-tests
@@ -470,13 +477,6 @@ jobs:
 
           docker compose exec gateway /bin/sh -c 'nstat -s' |
             grep -i "error" && exit 1 || exit 0
-
-  monitor-perf-tests:
-    needs: [perf-tests]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: '[ "${{ needs.perf-tests.result }}" = "failure" ] && gh run cancel ${{ github.run_id }}'
 
   upload-bencher:
     continue-on-error: true
