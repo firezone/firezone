@@ -4,6 +4,7 @@ defmodule Domain.Changes.ReplicationConnection do
 
   @tables_to_hooks %{
     "accounts" => Hooks.Accounts,
+    "actors" => Hooks.Actors,
     "memberships" => Hooks.Memberships,
     "clients" => Hooks.Clients,
     "policy_authorizations" => Hooks.PolicyAuthorizations,
@@ -12,7 +13,7 @@ defmodule Domain.Changes.ReplicationConnection do
     "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,
     "resources" => Hooks.Resources,
-    "tokens" => Hooks.Tokens,
+    "client_tokens" => Hooks.ClientTokens,
     "portal_sessions" => Hooks.PortalSessions,
     "google_auth_providers" => Hooks.AuthProviders,
     "okta_auth_providers" => Hooks.AuthProviders,

@@ -50,7 +50,7 @@ defmodule Web.AcceptanceCase.Auth do
     authenticate(session, token)
   end
 
-  def authenticate(session, %Domain.Token{} = token) do
+  def authenticate(session, %Domain.ClientToken{} = token) do
     options = Web.Session.options()
 
     key = Keyword.fetch!(options, :key)

@@ -2,14 +2,13 @@ defmodule Domain.AuthTest do
   use Domain.DataCase, async: true
   import Domain.Auth
   import Domain.TokenFixtures
-  import Domain.APITokenFixtures
   import Domain.SubjectFixtures
   import Domain.AccountFixtures
   import Domain.ActorFixtures
   import Domain.AuthProviderFixtures
-  alias Domain.Token
+  alias Domain.ClientToken
 
-  describe "create_service_account_token/3" do
+  describe "create_headless_client_token/3" do
     test "returns valid client token for a given service account" do
       account = account_fixture()
       service_account = actor_fixture(account: account, type: :service_account)
@@ -18,7 +17,7 @@ defmodule Domain.AuthTest do
       one_day = DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second)
 
       assert {:ok, token} =
-               create_service_account_token(
+               create_headless_client_token(
                  service_account,
                  %{expires_at: one_day},
                  admin_subject
@@ -31,40 +30,24 @@ defmodule Domain.AuthTest do
       assert subject.actor.id == service_account.id
       assert subject.context.type == :client
 
-      assert db_token = Repo.get_by(Token, id: subject.credential.id)
-      assert db_token.type == :client
+      assert db_token = Repo.get_by(ClientToken, id: subject.credential.id)
       assert db_token.account_id == account.id
       assert db_token.actor_id == service_account.id
       assert DateTime.truncate(db_token.expires_at, :second) == one_day
-    end
-
-    test "creates token without expiration" do
-      account = account_fixture()
-      service_account = actor_fixture(account: account, type: :service_account)
-      admin_subject = admin_subject_fixture(account: account)
-
-      assert {:ok, token} =
-               create_service_account_token(
-                 service_account,
-                 %{},
-                 admin_subject
-               )
-
-      encoded_token = encode_fragment!(token)
-      context = build_context(type: :client)
-      assert {:ok, subject} = authenticate(encoded_token, context)
-
-      db_token = Repo.get_by(Token, id: subject.credential.id)
-      assert is_nil(db_token.expires_at)
     end
 
     test "token can be used multiple times" do
       account = account_fixture()
       service_account = actor_fixture(account: account, type: :service_account)
       admin_subject = admin_subject_fixture(account: account)
+      expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
       assert {:ok, token} =
-               create_service_account_token(service_account, %{}, admin_subject)
+               create_headless_client_token(
+                 service_account,
+                 %{expires_at: expires_at},
+                 admin_subject
+               )
 
       encoded_token = encode_fragment!(token)
       context = build_context(type: :client)
@@ -78,9 +61,10 @@ defmodule Domain.AuthTest do
     test "raises an error when trying to create a token for a different account" do
       service_account = actor_fixture(type: :service_account)
       admin_subject = admin_subject_fixture()
+      expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
       assert_raise FunctionClauseError, fn ->
-        create_service_account_token(service_account, %{}, admin_subject)
+        create_headless_client_token(service_account, %{expires_at: expires_at}, admin_subject)
       end
     end
 
@@ -90,7 +74,7 @@ defmodule Domain.AuthTest do
       admin_subject = admin_subject_fixture(account: account)
 
       assert_raise FunctionClauseError, fn ->
-        create_service_account_token(regular_user, %{}, admin_subject)
+        create_headless_client_token(regular_user, %{}, admin_subject)
       end
     end
 
@@ -100,7 +84,7 @@ defmodule Domain.AuthTest do
       admin_subject = admin_subject_fixture(account: account)
 
       assert_raise FunctionClauseError, fn ->
-        create_service_account_token(admin_user, %{}, admin_subject)
+        create_headless_client_token(admin_user, %{}, admin_subject)
       end
     end
 
@@ -110,7 +94,7 @@ defmodule Domain.AuthTest do
       admin_subject = admin_subject_fixture(account: account)
 
       assert_raise FunctionClauseError, fn ->
-        create_service_account_token(api_client, %{}, admin_subject)
+        create_headless_client_token(api_client, %{}, admin_subject)
       end
     end
   end
@@ -303,9 +287,14 @@ defmodule Domain.AuthTest do
       account = account_fixture()
       service_account = actor_fixture(account: account, type: :service_account)
       admin_subject = admin_subject_fixture(account: account)
+      expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
       assert {:ok, token} =
-               create_service_account_token(service_account, %{}, admin_subject)
+               create_headless_client_token(
+                 service_account,
+                 %{expires_at: expires_at},
+                 admin_subject
+               )
 
       encoded_token = encode_fragment!(token)
       context = build_context(type: :client)
@@ -330,7 +319,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, subject} = authenticate(encoded, context)
 
-      updated_token = Repo.get_by(Token, id: subject.credential.id)
+      updated_token = Repo.get_by(ClientToken, id: subject.credential.id)
       assert updated_token.last_seen_remote_ip.address == context.remote_ip
 
       assert updated_token.last_seen_remote_ip_location_region ==
@@ -349,14 +338,14 @@ defmodule Domain.AuthTest do
 
       # First use
       assert {:ok, _} = authenticate(encoded, context)
-      token_after_first = Repo.get_by(Token, id: token.id)
+      token_after_first = Repo.get_by(ClientToken, id: token.id)
 
       # Small delay to ensure timestamp difference
       Process.sleep(10)
 
       # Second use
       assert {:ok, _} = authenticate(encoded, context)
-      token_after_second = Repo.get_by(Token, id: token.id)
+      token_after_second = Repo.get_by(ClientToken, id: token.id)
 
       assert DateTime.compare(token_after_second.last_seen_at, token_after_first.last_seen_at) in [
                :gt,
@@ -390,10 +379,7 @@ defmodule Domain.AuthTest do
 
     test "returns error when token is expired" do
       token =
-        token_fixture(
-          type: :client,
-          expires_at: DateTime.add(DateTime.utc_now(), -3600, :second)
-        )
+        client_token_fixture(expires_at: DateTime.add(DateTime.utc_now(), -3600, :second))
 
       encoded = encode_token(token)
       context = build_context(type: :client)
@@ -402,10 +388,7 @@ defmodule Domain.AuthTest do
 
     test "returns error when token expired just now" do
       token =
-        token_fixture(
-          type: :client,
-          expires_at: DateTime.add(DateTime.utc_now(), -1, :second)
-        )
+        client_token_fixture(expires_at: DateTime.add(DateTime.utc_now(), -1, :second))
 
       encoded = encode_token(token)
       context = build_context(type: :client)
@@ -414,10 +397,7 @@ defmodule Domain.AuthTest do
 
     test "succeeds when token expires in the future" do
       token =
-        token_fixture(
-          type: :client,
-          expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
-        )
+        client_token_fixture(expires_at: DateTime.add(DateTime.utc_now(), 3600, :second))
 
       encoded = encode_token(token)
       context = build_context(type: :client)
@@ -454,7 +434,7 @@ defmodule Domain.AuthTest do
         )
 
       assert {:ok, subject} = authenticate(encoded, context)
-      updated_token = Repo.get_by(Token, id: subject.credential.id)
+      updated_token = Repo.get_by(ClientToken, id: subject.credential.id)
       assert updated_token.last_seen_remote_ip.address == {0, 0, 0, 0, 0, 0, 0, 1}
     end
 
@@ -471,7 +451,7 @@ defmodule Domain.AuthTest do
         )
 
       assert {:ok, subject} = authenticate(encoded, context)
-      updated_token = Repo.get_by(Token, id: subject.credential.id)
+      updated_token = Repo.get_by(ClientToken, id: subject.credential.id)
       assert updated_token.last_seen_user_agent == user_agent
     end
 
@@ -489,20 +469,22 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "create_token/1" do
+  describe "create_gui_client_token/1" do
     test "creates a client token with required attributes" do
       account = account_fixture()
       actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
 
       attrs = %{
         account_id: account.id,
         actor_id: actor.id,
+        auth_provider_id: auth_provider.id,
         secret_nonce: "testnonce",
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      assert {:ok, token} = create_token(attrs)
-      assert token.type == :client
+      assert {:ok, token} = create_gui_client_token(attrs)
+      assert token.__struct__ == ClientToken
       assert token.account_id == account.id
       assert token.actor_id == actor.id
       assert token.secret_salt != nil
@@ -510,79 +492,82 @@ defmodule Domain.AuthTest do
       assert token.secret_fragment != nil
     end
 
-    test "creates a client token without expires_at" do
+    test "fails to create client token without actor_id" do
+      account = account_fixture()
+      auth_provider = auth_provider_fixture(account: account)
+
+      attrs = %{
+        account_id: account.id,
+        auth_provider_id: auth_provider.id,
+        secret_nonce: "",
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+      }
+
+      assert {:error, changeset} = create_gui_client_token(attrs)
+      assert "can't be blank" in errors_on(changeset).actor_id
+    end
+
+    test "fails to create client token without auth_provider_id" do
       account = account_fixture()
       actor = actor_fixture(account: account)
 
       attrs = %{
         account_id: account.id,
         actor_id: actor.id,
-        secret_nonce: "testnonce"
-      }
-
-      assert {:ok, token} = create_token(attrs)
-      assert token.type == :client
-      assert is_nil(token.expires_at)
-    end
-
-    test "fails to create client token without actor_id" do
-      account = account_fixture()
-
-      attrs = %{
-        account_id: account.id,
         secret_nonce: "",
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      assert {:error, changeset} = create_token(attrs)
-      assert "can't be blank" in errors_on(changeset).actor_id
+      assert {:error, changeset} = create_gui_client_token(attrs)
+      assert "can't be blank" in errors_on(changeset).auth_provider_id
     end
 
     test "fails when nonce contains period" do
       account = account_fixture()
       actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
 
       attrs = %{
-        type: :client,
         account_id: account.id,
         actor_id: actor.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
+        auth_provider_id: auth_provider.id,
         secret_nonce: "invalid.nonce"
       }
 
-      assert {:error, changeset} = create_token(attrs)
+      assert {:error, changeset} = create_gui_client_token(attrs)
       assert errors_on(changeset).secret_nonce != []
     end
 
     test "fails when nonce is too long" do
       account = account_fixture()
       actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
 
       attrs = %{
-        type: :client,
         account_id: account.id,
         actor_id: actor.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
+        auth_provider_id: auth_provider.id,
         secret_nonce: String.duplicate("a", 129)
       }
 
-      assert {:error, changeset} = create_token(attrs)
+      assert {:error, changeset} = create_gui_client_token(attrs)
       assert errors_on(changeset).secret_nonce != []
     end
 
     test "allows nonce at maximum length" do
       account = account_fixture()
       actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
 
       attrs = %{
-        type: :client,
         account_id: account.id,
         actor_id: actor.id,
-        secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
-        secret_nonce: String.duplicate("a", 128)
+        auth_provider_id: auth_provider.id,
+        secret_nonce: String.duplicate("a", 128),
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      assert {:ok, _token} = create_token(attrs)
+      assert {:ok, _token} = create_gui_client_token(attrs)
     end
 
     test "creates an api token for api_client actor" do
@@ -729,45 +714,36 @@ defmodule Domain.AuthTest do
     test "creates token with custom nonce" do
       account = account_fixture()
       actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
 
       attrs = %{
         account_id: account.id,
         actor_id: actor.id,
-        secret_nonce: "my-custom-nonce"
+        auth_provider_id: auth_provider.id,
+        secret_nonce: "my-custom-nonce",
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      assert {:ok, token} = create_token(attrs)
+      assert {:ok, token} = create_gui_client_token(attrs)
       assert token.secret_hash != nil
       assert token.secret_nonce == "my-custom-nonce"
-    end
-
-    test "creates token with name" do
-      account = account_fixture()
-      actor = actor_fixture(account: account)
-
-      attrs = %{
-        account_id: account.id,
-        actor_id: actor.id,
-        secret_nonce: "testnonce",
-        name: "My Token"
-      }
-
-      assert {:ok, token} = create_token(attrs)
-      assert token.name == "My Token"
     end
 
     test "generates unique secret_salt for each token" do
       account = account_fixture()
       actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
 
       base_attrs = %{
         account_id: account.id,
         actor_id: actor.id,
-        secret_nonce: "testnonce"
+        auth_provider_id: auth_provider.id,
+        secret_nonce: "testnonce",
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      {:ok, token1} = create_token(base_attrs)
-      {:ok, token2} = create_token(base_attrs)
+      {:ok, token1} = create_gui_client_token(base_attrs)
+      {:ok, token2} = create_gui_client_token(base_attrs)
 
       assert token1.secret_salt != token2.secret_salt
     end
@@ -775,15 +751,18 @@ defmodule Domain.AuthTest do
     test "generates unique secret_hash for same nonce with different salt" do
       account = account_fixture()
       actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
 
       attrs = %{
         account_id: account.id,
         actor_id: actor.id,
-        secret_nonce: "testnonce"
+        auth_provider_id: auth_provider.id,
+        secret_nonce: "testnonce",
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      {:ok, token1} = create_token(attrs)
-      {:ok, token2} = create_token(attrs)
+      {:ok, token1} = create_gui_client_token(attrs)
+      {:ok, token2} = create_gui_client_token(attrs)
 
       # Same nonce but different salts/fragments should produce different hashes
       assert token1.secret_hash != token2.secret_hash
@@ -825,10 +804,7 @@ defmodule Domain.AuthTest do
 
     test "returns error for expired token" do
       token =
-        token_fixture(
-          type: :client,
-          expires_at: DateTime.add(DateTime.utc_now(), -1, :hour)
-        )
+        client_token_fixture(expires_at: DateTime.add(DateTime.utc_now(), -1, :hour))
 
       encoded = encode_token(token)
       context = build_context(type: :client)
@@ -858,7 +834,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _used_token} = use_token(encoded, context)
 
-      updated_token = Repo.get_by(Token, id: token.id)
+      updated_token = Repo.get_by(ClientToken, id: token.id)
       assert updated_token.last_seen_remote_ip.address == {10, 0, 0, 1}
       assert updated_token.last_seen_user_agent == "TestAgent/1.0"
     end
@@ -880,7 +856,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _} = use_token(encoded, context)
 
-      updated_token = Repo.get_by(Token, id: token.id)
+      updated_token = Repo.get_by(ClientToken, id: token.id)
       assert updated_token.last_seen_remote_ip_location_region == "US"
       assert updated_token.last_seen_remote_ip_location_city == "New York"
       assert updated_token.last_seen_remote_ip_location_lat == 40.7128
@@ -954,15 +930,17 @@ defmodule Domain.AuthTest do
     test "encodes a client token starting with dot (client will prepend nonce)" do
       account = account_fixture()
       actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
 
       attrs = %{
         account_id: account.id,
         actor_id: actor.id,
+        auth_provider_id: auth_provider.id,
         secret_nonce: "testnonce",
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      {:ok, token} = create_token(attrs)
+      {:ok, token} = create_gui_client_token(attrs)
       encoded = encode_fragment!(token)
 
       # Fragment starts with "." - client will prepend its nonce
@@ -973,16 +951,18 @@ defmodule Domain.AuthTest do
     test "encoded fragment can be verified with use_token when client prepends nonce" do
       account = account_fixture()
       actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
       nonce = "testnonce"
 
       attrs = %{
         account_id: account.id,
         actor_id: actor.id,
+        auth_provider_id: auth_provider.id,
         secret_nonce: nonce,
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      {:ok, token} = create_token(attrs)
+      {:ok, token} = create_gui_client_token(attrs)
       encoded = encode_fragment!(token)
 
       # Client prepends the nonce to the fragment
@@ -1048,7 +1028,7 @@ defmodule Domain.AuthTest do
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
-      assert subject.credential.type == :token
+      assert subject.credential.type == :client_token
       assert subject.credential.id == token.id
       assert subject.context == context
     end
@@ -1119,14 +1099,6 @@ defmodule Domain.AuthTest do
 
       assert {:ok, subject} = build_subject(token, context)
       assert subject.expires_at == token.expires_at
-    end
-
-    test "subject contains nil expires_at when token has no expiration" do
-      token = client_token_fixture(expires_at: nil)
-      context = build_context(type: :client)
-
-      assert {:ok, subject} = build_subject(token, context)
-      assert is_nil(subject.expires_at)
     end
 
     test "subject contains auth_provider_id from token" do

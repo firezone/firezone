@@ -1,25 +1,17 @@
-defmodule Domain.Token do
+defmodule Domain.ClientToken do
   use Ecto.Schema
   import Ecto.Changeset
-  import Domain.Changeset
 
   @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
-  schema "tokens" do
+  schema "client_tokens" do
     belongs_to :account, Domain.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
-    field :type, Ecto.Enum, values: [:client]
-
-    field :name, :string
-
-    # track which auth provider was used to authenticate
-    belongs_to :auth_provider, Domain.AuthProvider
-
-    # set for browser and client tokens
     belongs_to :actor, Domain.Actor
+    belongs_to :auth_provider, Domain.AuthProvider
 
     # we store just hash(nonce+fragment+salt)
     field :secret_nonce, :string, virtual: true, redact: true
@@ -37,6 +29,7 @@ defmodule Domain.Token do
 
     field :expires_at, :utc_datetime_usec
 
+    # Allows for convenient mapping of the corresponding auth provider for display
     field :auth_provider_name, :string, virtual: true
     field :auth_provider_type, :string, virtual: true
 
@@ -45,12 +38,8 @@ defmodule Domain.Token do
 
   def changeset(changeset) do
     changeset
-    |> validate_length(:name, max: 255)
-    |> trim_change(:name)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
     |> assoc_constraint(:auth_provider)
-    |> check_constraint(:type, name: :type_must_be_valid)
-    |> unique_constraint(:secret_hash)
   end
 end

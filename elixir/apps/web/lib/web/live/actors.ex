@@ -3,13 +3,11 @@ defmodule Web.Actors do
 
   alias __MODULE__.DB
 
-  alias Domain.{
-    Actor,
-    Auth,
-    ExternalIdentity,
-    PortalSession,
-    Token
-  }
+  alias Domain.Actor
+  alias Domain.Auth
+  alias Domain.ExternalIdentity
+  alias Domain.PortalSession
+  alias Domain.ClientToken
 
   import Ecto.Changeset
 
@@ -39,7 +37,7 @@ defmodule Web.Actors do
 
   # Add User Modal
   def handle_params(params, uri, %{assigns: %{live_action: :add_user}} = socket) do
-    changeset = changeset(%Domain.Actor{}, %{type: :account_user})
+    changeset = changeset(%Actor{}, %{type: :account_user})
     socket = handle_live_tables_params(socket, params, uri)
 
     {:noreply,
@@ -52,7 +50,7 @@ defmodule Web.Actors do
   # Add Service Account Modal
   def handle_params(params, uri, %{assigns: %{live_action: :add_service_account}} = socket) do
     # Create an actor struct with type already set
-    actor = %Domain.Actor{type: :service_account}
+    actor = %Actor{type: :service_account}
     changeset = changeset(actor, %{})
     socket = handle_live_tables_params(socket, params, uri)
 
@@ -80,7 +78,7 @@ defmodule Web.Actors do
     # Service accounts use tokens, users use portal sessions
     {tokens, sessions} =
       if actor.type == :service_account do
-        {DB.get_tokens_for_actor(actor.id, socket.assigns.subject), []}
+        {DB.get_client_tokens_for_actor(actor.id, socket.assigns.subject), []}
       else
         {[], DB.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)}
       end
@@ -184,7 +182,7 @@ defmodule Web.Actors do
   end
 
   def handle_event("create_user", %{"actor" => attrs}, socket) do
-    changeset = changeset(%Domain.Actor{}, attrs)
+    changeset = changeset(%Actor{}, attrs)
     actor_type = get_change(changeset, :type) || :account_user
     account = socket.assigns.account
 
@@ -221,7 +219,7 @@ defmodule Web.Actors do
     # Check billing limits
     if Domain.Billing.can_create_service_accounts?(account) do
       attrs = Map.put(attrs, "type", "service_account")
-      changeset = changeset(%Domain.Actor{type: :service_account}, attrs)
+      changeset = changeset(%Actor{type: :service_account}, attrs)
       token_expiration = Map.get(params, "token_expiration")
 
       result =
@@ -410,13 +408,13 @@ defmodule Web.Actors do
   end
 
   def handle_event("delete_token", %{"id" => token_id}, socket) do
-    token = DB.get_token_by_id(token_id, socket.assigns.subject)
+    token = DB.get_client_token_by_id(token_id, socket.assigns.subject)
 
     if token do
       case DB.delete(token, socket.assigns.subject) do
         {:ok, _} ->
           # Reload tokens for the actor
-          tokens = DB.get_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+          tokens = DB.get_client_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
           socket = assign(socket, tokens: tokens)
           {:noreply, put_flash(socket, :success_inline, "Token deleted successfully")}
 
@@ -1488,9 +1486,9 @@ defmodule Web.Actors do
         # Build the token attributes
         attrs = %{"expires_at" => expires_at}
 
-        case Domain.Auth.create_service_account_token(actor, attrs, subject) do
+        case Auth.create_headless_client_token(actor, attrs, subject) do
           {:ok, token} ->
-            encoded_token = Domain.Auth.encode_fragment!(token)
+            encoded_token = Auth.encode_fragment!(token)
             {:ok, {token, encoded_token}}
 
           error ->
@@ -1606,12 +1604,14 @@ defmodule Web.Actors do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, ExternalIdentity}
+    alias Domain.ExternalIdentity
+    alias Domain.Actor
+    alias Domain.Safe
     alias Domain.Directory
     alias Domain.Repo.Filter
 
     def all do
-      from(actors in Domain.Actor, as: :actors)
+      from(actors in Actor, as: :actors)
       |> select_merge([actors: actors], %{
         email:
           fragment(
@@ -1811,77 +1811,11 @@ defmodule Web.Actors do
       |> Safe.exists?()
     end
 
-    def get_tokens_for_actor(actor_id, subject) do
-      from(t in Token, as: :tokens)
-      |> where([tokens: t], t.actor_id == ^actor_id)
-      |> join(:left, [tokens: t], ap in assoc(t, :auth_provider), as: :auth_provider)
-      |> join(:left, [auth_provider: ap], gap in Domain.Google.AuthProvider,
-        on: gap.id == ap.id,
-        as: :google_auth_provider
-      )
-      |> join(:left, [auth_provider: ap], eap in Domain.Entra.AuthProvider,
-        on: eap.id == ap.id,
-        as: :entra_auth_provider
-      )
-      |> join(:left, [auth_provider: ap], oap in Domain.Okta.AuthProvider,
-        on: oap.id == ap.id,
-        as: :okta_auth_provider
-      )
-      |> join(:left, [auth_provider: ap], oidcap in Domain.OIDC.AuthProvider,
-        on: oidcap.id == ap.id,
-        as: :oidc_auth_provider
-      )
-      |> join(:left, [auth_provider: ap], uap in Domain.Userpass.AuthProvider,
-        on: uap.id == ap.id,
-        as: :userpass_auth_provider
-      )
-      |> join(:left, [auth_provider: ap], eoap in Domain.EmailOTP.AuthProvider,
-        on: eoap.id == ap.id,
-        as: :email_otp_auth_provider
-      )
-      |> select_merge(
-        [
-          google_auth_provider: gap,
-          entra_auth_provider: eap,
-          okta_auth_provider: oap,
-          oidc_auth_provider: oidcap,
-          userpass_auth_provider: uap,
-          email_otp_auth_provider: eoap
-        ],
-        %{
-          auth_provider_name:
-            fragment(
-              "COALESCE(?, ?, ?, ?, ?, ?)",
-              gap.name,
-              eap.name,
-              oap.name,
-              oidcap.name,
-              uap.name,
-              eoap.name
-            ),
-          auth_provider_type:
-            fragment(
-              """
-              CASE
-                WHEN ? IS NOT NULL THEN 'google'
-                WHEN ? IS NOT NULL THEN 'entra'
-                WHEN ? IS NOT NULL THEN 'okta'
-                WHEN ? IS NOT NULL THEN 'oidc'
-                WHEN ? IS NOT NULL THEN 'userpass'
-                WHEN ? IS NOT NULL THEN 'email_otp'
-                ELSE NULL
-              END
-              """,
-              gap.id,
-              eap.id,
-              oap.id,
-              oidcap.id,
-              uap.id,
-              eoap.id
-            )
-        }
-      )
-      |> order_by([tokens: t], desc: t.inserted_at)
+    # For service accounts
+    def get_client_tokens_for_actor(actor_id, subject) do
+      from(c in ClientToken, as: :client_tokens)
+      |> where([client_tokens: c], c.actor_id == ^actor_id)
+      |> order_by([client_tokens: c], desc: c.inserted_at)
       |> Safe.scoped(subject)
       |> Safe.all()
     end
@@ -1893,9 +1827,9 @@ defmodule Web.Actors do
       |> Safe.one()
     end
 
-    def get_token_by_id(token_id, subject) do
-      from(t in Token, as: :tokens)
-      |> where([tokens: t], t.id == ^token_id)
+    def get_client_token_by_id(token_id, subject) do
+      from(c in ClientToken, as: :client_tokens)
+      |> where([client_tokens: c], c.id == ^token_id)
       |> Safe.scoped(subject)
       |> Safe.one()
     end

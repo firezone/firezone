@@ -1,7 +1,7 @@
 defmodule API.ConnCase do
   use ExUnit.CaseTemplate
   use Domain.CaseTemplate
-  import Domain.APITokenFixtures
+  import Domain.TokenFixtures
 
   using do
     quote do

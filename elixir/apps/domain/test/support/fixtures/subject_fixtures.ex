@@ -6,7 +6,6 @@ defmodule Domain.SubjectFixtures do
   import Domain.AccountFixtures
   import Domain.ActorFixtures
   import Domain.TokenFixtures
-  import Domain.APITokenFixtures
   import Domain.PortalSessionFixtures
 
   alias Domain.Auth.Context
@@ -78,14 +77,14 @@ defmodule Domain.SubjectFixtures do
             Map.get_lazy(attrs, :token, fn ->
               token_attrs =
                 attrs
-                |> Map.take([:expires_at, :name])
-                |> Enum.into(%{type: :client, account: account, actor: actor})
+                |> Map.take([:expires_at])
+                |> Enum.into(%{account: account, actor: actor})
 
-              token_fixture(token_attrs)
+              client_token_fixture(token_attrs)
             end)
 
           credential = %Credential{
-            type: :token,
+            type: :client_token,
             id: token.id,
             auth_provider_id: token.auth_provider_id
           }

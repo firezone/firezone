@@ -196,7 +196,7 @@ if config_env() == :prod do
          {"0 9 * * 0", Domain.Workers.OutdatedGateways},
 
          # Delete expired tokens every 5 minutes
-         {"*/5 * * * *", Domain.Workers.DeleteExpiredTokens},
+         {"*/5 * * * *", Domain.Workers.DeleteExpiredClientTokens},
 
          # Delete expired API tokens every 5 minutes
          {"*/5 * * * *", Domain.Workers.DeleteExpiredAPITokens},

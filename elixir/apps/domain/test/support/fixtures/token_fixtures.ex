@@ -3,6 +3,7 @@ defmodule Domain.TokenFixtures do
   Test helpers for creating tokens and related data.
   """
 
+  import Ecto.Changeset
   import Domain.AccountFixtures
   import Domain.ActorFixtures
   import Domain.SiteFixtures
@@ -10,11 +11,9 @@ defmodule Domain.TokenFixtures do
   @doc """
   Generate valid token attributes with sensible defaults.
   """
-  def valid_token_attrs(attrs \\ %{}) do
+  def valid_client_token_attrs(attrs \\ %{}) do
     attrs =
       Enum.into(attrs, %{
-        type: :client,
-        name: "Token #{System.unique_integer([:positive, :monotonic])}",
         secret_nonce: "",
         secret_fragment: generate_secret_fragment(),
         secret_salt: generate_salt(),
@@ -36,22 +35,19 @@ defmodule Domain.TokenFixtures do
 
   ## Examples
 
-      token = token_fixture()
       token = client_token_fixture()
       encoded = encode_token(token)
 
   """
-  def token_fixture(attrs \\ %{}) do
-    attrs = valid_token_attrs(attrs)
-    type = attrs.type
+  def client_token_fixture(attrs \\ %{}) do
+    attrs = valid_client_token_attrs(attrs)
 
     account = Map.get(attrs, :account) || account_fixture()
+    actor = Map.get(attrs, :actor) || actor_fixture(account: account)
 
     changeset =
-      %Domain.Token{}
+      %Domain.ClientToken{}
       |> Ecto.Changeset.cast(attrs, [
-        :type,
-        :name,
         :secret_nonce,
         :secret_fragment,
         :secret_salt,
@@ -65,17 +61,8 @@ defmodule Domain.TokenFixtures do
         :last_seen_at,
         :expires_at
       ])
-
-    changeset = Ecto.Changeset.put_assoc(changeset, :account, account)
-
-    # Associate with actor for client/api_client tokens
-    changeset =
-      if type in [:client, :api_client] do
-        actor = Map.get(attrs, :actor) || actor_fixture(account: account)
-        Ecto.Changeset.put_assoc(changeset, :actor, actor)
-      else
-        changeset
-      end
+      |> Ecto.Changeset.put_assoc(:account, account)
+      |> Ecto.Changeset.put_assoc(:actor, actor)
 
     # Optionally associate with auth_provider
     changeset =
@@ -86,13 +73,6 @@ defmodule Domain.TokenFixtures do
       end
 
     Domain.Repo.insert!(changeset)
-  end
-
-  @doc """
-  Generate a client token.
-  """
-  def client_token_fixture(attrs \\ %{}) do
-    attrs |> Enum.into(%{}) |> Map.put(:type, :client) |> token_fixture()
   end
 
   @doc """
@@ -123,6 +103,51 @@ defmodule Domain.TokenFixtures do
     |> Domain.Repo.insert!()
   end
 
+  def valid_api_token_attrs do
+    %{
+      name: "Test API Token",
+      secret_fragment: generate_secret_fragment(),
+      secret_salt: generate_salt(),
+      expires_at: DateTime.utc_now() |> DateTime.add(30, :day)
+    }
+  end
+
+  @doc """
+  Build an API token with sensible defaults.
+  """
+  def api_token_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, valid_api_token_attrs())
+
+    account = Map.get_lazy(attrs, :account, &account_fixture/0)
+
+    actor =
+      Map.get_lazy(attrs, :actor, fn -> actor_fixture(account: account, type: :api_client) end)
+
+    attrs =
+      attrs
+      |> Map.put_new_lazy(:secret_hash, fn ->
+        compute_secret_hash(attrs.secret_fragment, attrs.secret_salt)
+      end)
+
+    %Domain.APIToken{}
+    |> change(attrs)
+    |> put_assoc(:account, account)
+    |> put_assoc(:actor, actor)
+    |> Domain.Repo.insert!()
+  end
+
+  @doc """
+  Encode an API token for use in authentication.
+  """
+  def encode_api_token(token) do
+    config = Domain.Config.fetch_env!(:domain, Domain.Tokens)
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt) <> "api_client"
+    body = {token.account_id, token.id, token.secret_fragment}
+
+    "." <> Plug.Crypto.sign(key_base, salt, body)
+  end
+
   defp infrastructure_token_secrets(attrs) do
     attrs =
       attrs
@@ -142,7 +167,7 @@ defmodule Domain.TokenFixtures do
   def encode_token(token) do
     config = Domain.Config.fetch_env!(:domain, Domain.Tokens)
     key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt) <> to_string(token.type)
+    salt = Keyword.fetch!(config, :salt) <> "client"
     body = {token.account_id, token.id, token.secret_fragment}
     nonce = token.secret_nonce || ""
 

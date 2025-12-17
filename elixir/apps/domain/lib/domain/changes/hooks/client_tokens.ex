@@ -1,4 +1,4 @@
-defmodule Domain.Changes.Hooks.Tokens do
+defmodule Domain.Changes.Hooks.ClientTokens do
   @behaviour Domain.Changes.Hooks
   alias Domain.PubSub
   import Domain.SchemaHelpers
@@ -11,7 +11,7 @@ defmodule Domain.Changes.Hooks.Tokens do
 
   @impl true
   def on_delete(_lsn, old_data) do
-    token = struct_from_params(Domain.Token, old_data)
+    token = struct_from_params(Domain.ClientToken, old_data)
 
     # We don't need to broadcast deleted tokens since the disconnect_socket/1
     # function will handle any disconnects for us directly.

@@ -2,7 +2,7 @@ defmodule Domain.Workers.DeleteExpiredAPITokensTest do
   use Domain.DataCase, async: true
   use Oban.Testing, repo: Domain.Repo
 
-  import Domain.APITokenFixtures
+  import Domain.TokenFixtures
 
   alias Domain.APIToken
   alias Domain.Workers.DeleteExpiredAPITokens

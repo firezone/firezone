@@ -349,7 +349,7 @@ defmodule API.Gateway.ChannelTest do
         "type" => "site"
       }
 
-      Changes.Hooks.Tokens.on_delete(100, data)
+      Changes.Hooks.GatewayTokens.on_delete(100, data)
 
       assert_receive %Phoenix.Socket.Broadcast{
         topic: topic,
@@ -2009,8 +2009,7 @@ defmodule API.Gateway.ChannelTest do
       client_actor = service_account_fixture(account: account)
 
       client_token =
-        token_fixture(
-          type: :client,
+        client_token_fixture(
           account: account,
           actor: client_actor
         )
@@ -2063,8 +2062,7 @@ defmodule API.Gateway.ChannelTest do
       client_actor = service_account_fixture(account: account)
 
       client_token =
-        token_fixture(
-          type: :client,
+        client_token_fixture(
           account: account,
           actor: client_actor
         )

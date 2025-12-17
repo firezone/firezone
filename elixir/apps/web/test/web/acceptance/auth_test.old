@@ -89,7 +89,7 @@ defmodule Web.Acceptance.AuthTest do
     |> visit(~p"/#{account}/actors")
 
     tokens =
-      Domain.Token.Query.all()
+      Domain.ClientToken.Query.all()
       |> Domain.Repo.all()
 
     {:ok, _count} = Domain.Tokens.delete_tokens_for(identity)

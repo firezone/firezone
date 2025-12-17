@@ -271,7 +271,7 @@ defmodule Web.OIDCController do
           expires_at: expires_at
         }
 
-        Domain.Auth.create_token(attrs)
+        Domain.Auth.create_gui_client_token(attrs)
     end
   end
 
