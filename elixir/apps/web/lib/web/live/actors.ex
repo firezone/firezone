@@ -1388,7 +1388,7 @@ defmodule Web.Actors do
       </div>
       <span
         :if={@actor.identity_count > 0}
-        class="absolute top-0 left-0 inline-flex items-center justify-center w-3.5 h-3.5 text-[6px] font-semibold text-white bg-neutral-800 rounded-full"
+        class="absolute top-0 left-0 inline-flex items-center justify-center w-3.5 h-3.5 text-[8px] font-semibold text-white bg-neutral-800 rounded-full"
       >
         {@actor.identity_count}
       </span>
