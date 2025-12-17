@@ -125,6 +125,9 @@ jobs:
             rust_log: debug,flow_logs=trace
             single_relay: true # Force single relay
             min_gateway_version: 1.4.18
+          - name: download-ipv4-only
+            script: download
+            gateway_disable_ipv6: 1
           - script: download-packet-loss
             rust_log: debug
           - script: download-roaming-network
@@ -170,6 +173,10 @@ jobs:
 
           if [[ -n "${{ matrix.test.gateway_masquerade }}" ]]; then
             export GATEWAY_MASQUERADE="${{ matrix.test.gateway_masquerade }}"
+          fi
+
+          if [[ -n "${{ matrix.test.gateway_disable_ipv6 }}" ]]; then
+            export GATEWAY_DISABLE_IPV6="${{ matrix.test.gateway_disable_ipv6 }}"
           fi
 
           docker compose build client-router gateway-router relay-1-router relay-2-router api-router
