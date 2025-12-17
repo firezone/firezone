@@ -429,8 +429,8 @@ defmodule Web.Groups do
               </div>
               <div>
                 <p class="text-xs font-medium text-neutral-500 uppercase">Directory</p>
-                <p class="text-sm text-neutral-900 truncate" title={@group.directory_name}>
-                  {@group.directory_name}
+                <p class="text-sm text-neutral-900 truncate" title={directory_display_name(@group)}>
+                  {directory_display_name(@group)}
                 </p>
               </div>
               <div>
@@ -704,11 +704,15 @@ defmodule Web.Groups do
   end
 
   defp editable_group?(%{type: :managed, name: "Everyone"}), do: false
-  defp editable_group?(%{directory_id: nil}), do: true
+  defp editable_group?(%{idp_id: nil}), do: true
   defp editable_group?(_group), do: false
 
   defp deletable_group?(%{name: "Everyone"}), do: false
   defp deletable_group?(_group), do: true
+
+  defp directory_display_name(%{directory_name: name}) when not is_nil(name), do: name
+  defp directory_display_name(%{idp_id: idp_id}) when not is_nil(idp_id), do: "Unknown"
+  defp directory_display_name(_), do: "Firezone"
 
   defp get_idp_id(nil), do: nil
 
@@ -1084,7 +1088,7 @@ defmodule Web.Groups do
           %{
             directory_name:
               fragment(
-                "COALESCE(?, ?, ?, 'Firezone')",
+                "COALESCE(?, ?, ?)",
                 gd.name,
                 ed.name,
                 od.name
