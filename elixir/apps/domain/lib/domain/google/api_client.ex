@@ -97,6 +97,20 @@ defmodule Domain.Google.APIClient do
     stream_pages(path, query, access_token, "members")
   end
 
+  @doc """
+  Streams organization units from the Google Workspace directory.
+  Returns a stream that yields pages of organization units.
+  """
+  def stream_organization_units(access_token) do
+    query =
+      URI.encode_query(%{
+        "type" => "all"
+      })
+
+    path = "/admin/directory/v1/customer/my_customer/orgunits"
+    stream_pages(path, query, access_token, "organizationUnits")
+  end
+
   defp get(path, access_token) do
     config = Domain.Config.fetch_env!(:domain, __MODULE__)
 
