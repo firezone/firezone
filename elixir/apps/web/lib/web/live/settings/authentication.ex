@@ -45,6 +45,8 @@ defmodule Web.Settings.Authentication do
   }
 
   def mount(_params, _session, socket) do
+    socket = assign(socket, page_title: "Authentication")
+
     {:ok, init(socket)}
   end
 
