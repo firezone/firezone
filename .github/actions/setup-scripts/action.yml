@@ -1,0 +1,9 @@
+name: "Setup Scripts"
+description: "Copies shared helper scripts to /usr/local/bin"
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        sudo cp "$GITHUB_ACTION_PATH/retry.sh" /usr/local/bin/retry
+        sudo chmod +x /usr/local/bin/retry

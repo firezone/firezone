@@ -121,6 +121,8 @@
     }
 
     static func downloadURL() -> URL {
+      // Static URL literal is guaranteed valid
+      // swiftlint:disable:next force_unwrapping
       return URL(string: "https://www.firezone.dev/dl/firezone-client-macos/latest")!
     }
   }

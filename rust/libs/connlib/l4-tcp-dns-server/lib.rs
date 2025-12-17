@@ -9,7 +9,7 @@ use futures::{
 use std::{
     collections::HashMap,
     io,
-    net::{SocketAddr, ToSocketAddrs},
+    net::SocketAddr,
     task::{Context, Poll},
 };
 use tokio::{
@@ -171,9 +171,9 @@ pub struct Query {
     pub message: dns_types::Query,
 }
 
-fn make_tcp_listener(socket: impl ToSocketAddrs) -> Result<TcpListener> {
-    let tcp_listener =
-        std::net::TcpListener::bind(socket).context("Failed to bind TCP listener")?;
+fn make_tcp_listener(socket: SocketAddr) -> Result<TcpListener> {
+    let tcp_listener = std::net::TcpListener::bind(socket)
+        .with_context(|| format!("Failed to bind TCP listener on {socket}"))?;
     tcp_listener
         .set_nonblocking(true)
         .context("Failed to set listener to non-blocking")?;

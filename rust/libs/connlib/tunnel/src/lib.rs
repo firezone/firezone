@@ -103,7 +103,7 @@ impl<TRoleState> Tunnel<TRoleState> {
         self.io.set_tun(tun);
     }
 
-    pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<()> {
+    pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<(), TunnelError> {
         self.io.rebind_dns(sockets)
     }
 }
@@ -319,10 +319,12 @@ impl GatewayTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
+        flow_logs: bool,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
             role_state: GatewayState::new(
+                flow_logs,
                 rand::random(),
                 Instant::now(),
                 SystemTime::now()
@@ -583,7 +585,7 @@ pub enum ClientEvent {
     },
     ConnectionIntent {
         resource: ResourceId,
-        connected_gateway_ids: BTreeSet<GatewayId>,
+        preferred_gateways: Vec<GatewayId>,
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {

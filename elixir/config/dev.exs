@@ -1,24 +1,50 @@
 import Config
 
-###############################
-##### Domain ##################
-###############################
+# Local vars
+web_port = System.get_env("PHOENIX_WEB_PORT", "13443") |> String.to_integer()
+api_port = System.get_env("PHOENIX_API_PORT", "13001") |> String.to_integer()
 
-config :domain, Domain.Repo,
+# DATABASE_SSL can be "true", "false", or a JSON object with SSL options
+db_ssl =
+  case System.get_env("DATABASE_SSL", "false") do
+    "true" -> true
+    "false" -> false
+    json -> json |> JSON.decode!() |> Portal.Config.Dumper.dump_ssl_opts()
+  end
+
+db_opts = [
   database: System.get_env("DATABASE_NAME", "firezone_dev"),
   username: System.get_env("DATABASE_USER", "postgres"),
   hostname: System.get_env("DATABASE_HOST", "localhost"),
   port: String.to_integer(System.get_env("DATABASE_PORT", "5432")),
-  password: System.get_env("DATABASE_PASSWORD", "postgres")
+  password: System.get_env("DATABASE_PASSWORD", "postgres"),
+  ssl: db_ssl
+]
 
-config :domain, outbound_email_adapter_configured?: true
+###############################
+##### Portal ##################
+###############################
 
-config :domain, run_manual_migrations: true
+config :portal, Portal.Repo, db_opts
 
-config :domain, Domain.ComponentVersions,
+config :portal, Portal.ChangeLogs.ReplicationConnection,
+  replication_slot_name: db_opts[:database] <> "_clog_slot",
+  publication_name: db_opts[:database] <> "_clog_pub",
+  connection_opts: db_opts
+
+config :portal, Portal.Changes.ReplicationConnection,
+  replication_slot_name: db_opts[:database] <> "_changes_slot",
+  publication_name: db_opts[:database] <> "_changes_pub",
+  connection_opts: db_opts
+
+config :portal, outbound_email_adapter_configured?: true
+
+config :portal, run_manual_migrations: true
+
+config :portal, Portal.ComponentVersions,
   firezone_releases_url: "http://localhost:3000/api/releases"
 
-config :domain, Domain.Billing,
+config :portal, Portal.Billing,
   enabled: System.get_env("BILLING_ENABLED", "false") == "true",
   secret_key: System.get_env("STRIPE_SECRET_KEY", "sk_dev_1111"),
   webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111"),
@@ -29,10 +55,10 @@ worker_dev_schedule = System.get_env("WORKER_DEV_SCHEDULE", "* * * * *")
 
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
-config :domain, Oban,
+config :portal, Oban,
   plugins: [
-    # Keep the last 90 days of completed, cancelled, and discarded jobs
-    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90},
+    # Keep the last 7 days of completed, cancelled, and discarded jobs
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
 
     # Rescue jobs that have been stuck in executing state due to node crashes,
     # deploys, or other issues. Jobs will be moved back to available state
@@ -42,28 +68,28 @@ config :domain, Oban,
     # Periodic jobs
     {Oban.Plugins.Cron,
      crontab: [
-       {worker_dev_schedule, Domain.Entra.Scheduler},
-       {worker_dev_schedule, Domain.Google.Scheduler},
-       {worker_dev_schedule, Domain.Okta.Scheduler},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Entra.Scheduler},
+       {worker_dev_schedule, Portal.Google.Scheduler},
+       {worker_dev_schedule, Portal.Okta.Scheduler},
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "daily"}},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "google", frequency: "daily"}},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "three_days"}},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "google", frequency: "three_days"}},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "weekly"}},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "google", frequency: "weekly"}},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredPolicyAuthorizations},
-       {worker_dev_schedule, Domain.Workers.CheckAccountLimits},
-       {worker_dev_schedule, Domain.Workers.OutdatedGateways},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredTokens},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredAPITokens},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredOneTimePasscodes},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredPortalSessions}
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredPolicyAuthorizations},
+       {worker_dev_schedule, Portal.Workers.CheckAccountLimits},
+       {worker_dev_schedule, Portal.Workers.OutdatedGateways},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredClientTokens},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredAPITokens},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions}
      ]}
   ],
   queues: [
@@ -77,22 +103,21 @@ config :domain, Oban,
     sync_error_notifications: 1
   ],
   engine: Oban.Engines.Basic,
-  repo: Domain.Repo
+  repo: Portal.Repo
 
-config :domain, Domain.Okta.AuthProvider,
-  redirect_uri: "https://localhost:13443/auth/oidc/callback"
+config :portal, Portal.Okta.AuthProvider,
+  redirect_uri: "https://localhost:#{web_port}/auth/oidc/callback"
 
 ###############################
-##### Web #####################
+##### PortalWeb Endpoint ######
 ###############################
 
-config :web, dev_routes: true
+config :portal, dev_routes: true
 
-config :web, Web.Endpoint,
-  url: [scheme: "https", host: "localhost", port: 13443],
+config :portal, PortalWeb.Endpoint,
+  url: [scheme: "https", host: "localhost", port: web_port],
   https: [
-    port: 13_443,
-    cipher_suite: :strong,
+    port: web_port,
     certfile: "priv/cert/selfsigned.pem",
     keyfile: "priv/cert/selfsigned_key.pem"
   ],
@@ -105,57 +130,45 @@ config :web, Web.Endpoint,
     "//localhost"
   ],
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:web, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:web, ~w(--watch)]}
+    esbuild: {Esbuild, :install_and_run, [:portal, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:portal, ~w(--watch)]}
   ],
   live_reload: [
     web_console_logger: true,
     patterns: [
-      ~r"apps/config/.*(exs)$",
-      ~r"apps/domain/lib/domain/.*(ex|eex|heex)$",
-      ~r"apps/web/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
-      ~r"apps/web/priv/gettext/.*(po)$",
-      ~r"apps/web/lib/web/.*(ex|eex|heex)$"
+      ~r"config/.*(exs)$",
+      ~r"lib/portal/.*(ex|eex|heex)$",
+      ~r"lib/portal_web/.*(ex|eex|heex)$",
+      ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
+      ~r"priv/gettext/.*(po)$"
     ]
   ],
-  reloadable_apps: [:domain, :web],
+  reloadable_apps: [:portal],
   server: true
 
-config :web,
-  api_external_url: "http://localhost:13001"
+config :portal,
+  api_external_url: "http://localhost:#{api_port}"
 
-root_path =
-  __ENV__.file
-  |> Path.dirname()
-  |> Path.join("..")
-  |> Path.expand()
+config :phoenix_live_reload, :dirs, [File.cwd!()]
 
-config :phoenix_live_reload, :dirs, [
-  Path.join([root_path, "apps", "domain"]),
-  Path.join([root_path, "apps", "web"]),
-  Path.join([root_path, "apps", "api"])
-]
-
-config :web, Web.Plugs.SecureHeaders,
+config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}' https://api-js.mixpanel.com",
-    "img-src 'self' data: https://www.gravatar.com https://track.hubspot.com https://www.firezone.dev",
+    "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
+    "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline' http://cdn.mxpnl.com http://*.hs-analytics.net https://cdn.tailwindcss.com/"
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/"
   ]
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`
 # to the `docker run` command. Works on Docker v20.10 and above.
-config :web, api_url_override: "ws://host.docker.internal:13001/"
+config :portal, api_url_override: "ws://host.docker.internal:#{api_port}/"
 
 ###############################
-##### API #####################
+##### PortalAPI Endpoint ######
 ###############################
 
-config :api, dev_routes: true
-
-config :api, API.Endpoint,
-  http: [port: 13_001],
+config :portal, PortalAPI.Endpoint,
+  http: [port: api_port],
   debug_errors: true,
   code_reloader: true,
   check_origin: ["//10.0.2.2", "//127.0.0.1", "//localhost"],
@@ -166,10 +179,20 @@ config :api, API.Endpoint,
 ##### Third-party configs #####
 ###############################
 
+config :geolix,
+  # Download from maxmind.com (requires free account)
+  databases: [
+    %{
+      id: :city,
+      adapter: Geolix.Adapter.MMDB2,
+      source: Path.expand("../priv/geoip/GeoLite2-City.mmdb", __DIR__)
+    }
+  ]
+
 # Include only message and custom metadata in development logs
 # This filters out Phoenix's automatic metadata like pid, request_id, etc.
 config :logger, :default_formatter,
-  format: {Web.LogFormatter, :format},
+  format: {PortalWeb.LogFormatter, :format},
   metadata: :all
 
 # Disable caching for OpenAPI spec to ensure it is refreshed
@@ -182,12 +205,7 @@ config :phoenix, :stacktrace_depth, 20
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 
-config :domain, Domain.Mailer, adapter: Swoosh.Adapters.Local
-
-config :workos, WorkOS.Client,
-  api_key: System.get_env("WORKOS_API_KEY"),
-  client_id: System.get_env("WORKOS_CLIENT_ID"),
-  baseurl: System.get_env("WORKOS_BASE_URL", "https://api.workos.com")
+config :portal, Portal.Mailer, adapter: Swoosh.Adapters.Local
 
 config :sentry,
   environment_name: :dev

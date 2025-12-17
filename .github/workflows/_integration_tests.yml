@@ -3,27 +3,11 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
-      domain_image:
+      portal_image:
         required: false
         type: string
-        default: "ghcr.io/firezone/domain"
-      domain_tag:
-        required: false
-        type: string
-        default: ${{ github.sha }}
-      api_image:
-        required: false
-        type: string
-        default: "ghcr.io/firezone/api"
-      api_tag:
-        required: false
-        type: string
-        default: ${{ github.sha }}
-      web_image:
-        required: false
-        type: string
-        default: "ghcr.io/firezone/web"
-      web_tag:
+        default: "ghcr.io/firezone/portal"
+      portal_tag:
         required: false
         type: string
         default: ${{ github.sha }}
@@ -80,12 +64,8 @@ jobs:
       id-token: write
       pull-requests: write
     env:
-      DOMAIN_IMAGE: ${{ inputs.domain_image }}
-      DOMAIN_TAG: ${{ inputs.domain_tag }}
-      API_IMAGE: ${{ inputs.api_image }}
-      API_TAG: ${{ inputs.api_tag }}
-      WEB_IMAGE: ${{ inputs.web_image }}
-      WEB_TAG: ${{ inputs.web_tag }}
+      PORTAL_IMAGE: ${{ inputs.portal_image }}
+      PORTAL_TAG: ${{ inputs.portal_tag }}
       RELAY_IMAGE: ${{ inputs.relay_image }}
       RELAY_TAG: ${{ inputs.relay_tag }}
       GATEWAY_IMAGE: ${{ inputs.gateway_image }}
@@ -105,11 +85,11 @@ jobs:
             min_client_version: 1.5.4
           - script: download-rst
             min_gateway_version: 1.4.18
-          - script: curl-api-down
-          - script: curl-api-restart
+          - script: curl-portal-down
+          - script: curl-portal-restart
           - script: curl-ecn
           - script: dns
-          - script: dns-api-down
+          - script: dns-portal-down
           - script: dns-nm
           - script: dns-two-resources
           - name: dns-systemd-resolved
@@ -125,13 +105,17 @@ jobs:
             rust_log: debug,flow_logs=trace
             single_relay: true # Force single relay
             min_gateway_version: 1.4.18
+          - name: download-ipv4-only
+            script: download
+            gateway_disable_ipv6: 1
+            min_gateway_version: 1.4.19
           - script: download-packet-loss
             rust_log: debug
           - script: download-roaming-network
             min_gateway_version: 1.4.18
             rust_log: debug,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: ./.github/actions/ghcr-docker-login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -140,8 +124,11 @@ jobs:
         if: ${{ matrix.test.min_client_version }}
         continue-on-error: true
         run: |
-          ACTUAL_VERSION=$(docker run ${{ inputs.client_image }}:${{ inputs.client_tag }} firezone-headless-client --version | awk '{print $2}')
+          ACTUAL_VERSION=$(docker run --privileged ${{ inputs.client_image }}:${{ inputs.client_tag }} firezone-headless-client --version | awk '{print $2}')
           MIN_VERSION="${{ matrix.test.min_client_version }}"
+
+          echo "ACTUAL_VERSION=${ACTUAL_VERSION}"
+          echo "MIN_VERSION=${MIN_VERSION}"
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
       - name: Check minimum gateway version
@@ -149,14 +136,19 @@ jobs:
         if: ${{ matrix.test.min_gateway_version }}
         continue-on-error: true
         run: |
-          ACTUAL_VERSION=$(docker run ${{ inputs.gateway_image }}:${{ inputs.gateway_tag }} firezone-gateway --version | awk '{print $2}')
+          ACTUAL_VERSION=$(docker run --privileged ${{ inputs.gateway_image }}:${{ inputs.gateway_tag }} firezone-gateway --version | awk '{print $2}')
           MIN_VERSION="${{ matrix.test.min_gateway_version }}"
+
+          echo "ACTUAL_VERSION=${ACTUAL_VERSION}"
+          echo "MIN_VERSION=${MIN_VERSION}"
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
       - uses: ./.github/actions/setup-docker
+      - uses: ./.github/actions/setup-scripts
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
+        run: docker compose run elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Start docker compose in the background
+        if: ${{ steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure' }} # Run if version checks succeed or are skipped
         run: |
           set -xe
 
@@ -172,19 +164,24 @@ jobs:
             export GATEWAY_MASQUERADE="${{ matrix.test.gateway_masquerade }}"
           fi
 
-          docker compose build client-router gateway-router relay-1-router relay-2-router api-router
+          if [[ -n "${{ matrix.test.gateway_disable_ipv6 }}" ]]; then
+            export GATEWAY_DISABLE_IPV6="${{ matrix.test.gateway_disable_ipv6 }}"
+          fi
+
+          docker compose build client-router gateway-router relay-1-router relay-2-router portal-router
 
           # Start one-by-one to avoid variability in service startup order
-          docker compose up -d dns.httpbin.search.test --no-build
-          docker compose up -d httpbin --no-build
-          docker compose up -d download.httpbin --no-build
-          docker compose up -d api web domain --no-build
-          docker compose up -d otel --no-build
-          docker compose up -d relay-1 --no-build
-          docker compose up -d relay-2 --no-build
-          docker compose up -d gateway --no-build
-          docker compose up -d client --no-build
-          docker compose up -d network-config
+          # Retries are used because network I/O is flaky in GitHub Actions runners
+          retry docker compose up -d dns.httpbin.search.test --no-build
+          retry docker compose up -d httpbin --no-build
+          retry docker compose up -d download.httpbin --no-build
+          retry docker compose up -d portal --no-build
+          retry docker compose up -d otel --no-build
+          retry docker compose up -d relay-1 --no-build
+          retry docker compose up -d relay-2 --no-build
+          retry docker compose up -d gateway --no-build
+          retry docker compose up -d client --no-build
+          retry docker compose up -d network-config
 
           docker compose exec -d relay-1 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
           docker compose exec -d relay-2 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
@@ -229,17 +226,18 @@ jobs:
           # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
           docker compose logs gateway | \
             grep --invert "I/O error (os error 5)" | \
+            ${{ matrix.test.gateway_disable_ipv6 == 1 && 'grep --invert "Failed to add route: Received a netlink error message Permission denied (os error 13) route=fd00:2021:1111::/107" |' || '' }} \
             grep "WARN" && exit 1 || exit 0
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway
 
-      - name: Show API logs
+      - name: Show Portal logs
         if: "!cancelled()"
-        run: docker compose logs api
+        run: docker compose logs portal
 
       - name: Ensure no eBPF checksum errors on relay-1
-        if: "!cancelled()"
+        if: "!cancelled() && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"
         run: |
           set -xe
 
@@ -248,7 +246,7 @@ jobs:
 
           ! tcpdump -nnnr ./relay-1-packets.pcap -v | grep "bad \w* cksum"
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: "!success()"
         with:
           overwrite: true
@@ -256,7 +254,7 @@ jobs:
           path: ./relay-1-packets.pcap
 
       - name: Ensure no eBPF checksum errors on relay-2
-        if: "!cancelled() && !matrix.test.single_relay"
+        if: "!cancelled() && !matrix.test.single_relay && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"
         run: |
           set -xe
 
@@ -265,7 +263,7 @@ jobs:
 
           ! tcpdump -nnnr ./relay-2-packets.pcap -v | grep "bad \w* cksum"
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: "!success() && !matrix.test.single_relay"
         with:
           overwrite: true

@@ -173,6 +173,8 @@ struct FirezoneApp: App {
           string: "x-apple.systempreferences:com.apple.preferences.softwareupdate"
         )
 
+        // Static URL literal is guaranteed valid
+        // swiftlint:disable:next force_unwrapping
         Task { await NSWorkspace.shared.openAsync(softwareUpdateURL!) }
       }
     }

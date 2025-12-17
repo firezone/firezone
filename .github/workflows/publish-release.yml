@@ -26,7 +26,7 @@ jobs:
       # Needed to upload artifacts to a release
       packages: write
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - name: Login to GitHub Container Registry
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
@@ -64,7 +64,7 @@ jobs:
           echo "major_minor_version=$MAJOR_MINOR_VERSION" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Pull and push
         run: |
           set -xe
@@ -90,13 +90,14 @@ jobs:
           - identifier: Firezone.Client.Headless
             tag_prefix: headless-client
     steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - id: get-version
         run: |
           version=${{ inputs.release_name || github.event.release.name }}
           version=${version#${{ matrix.tag_prefix }}-}
           echo "version=$version" >> "$GITHUB_OUTPUT"
         shell: bash
-      - uses: vedantmgoyal9/winget-releaser@19e706d4c9121098010096f9c495a70a7518b30f # main
+      - uses: ./.github/actions/winget-releaser
         if: ${{ startsWith((inputs.release_name || github.event.release.name), matrix.tag_prefix) }}
         with:
           identifier: ${{ matrix.identifier }}
@@ -122,7 +123,7 @@ jobs:
           - tag_prefix: android-client
             component: android-client
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-gpg
@@ -170,7 +171,7 @@ jobs:
           - component: android-client
             projects: android-client
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/create-sentry-release
@@ -190,7 +191,7 @@ jobs:
           - tag_prefix: gui-client
             deb_name: firezone-client-gui
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-depth: 0
 

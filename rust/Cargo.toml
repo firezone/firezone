@@ -12,6 +12,7 @@ members = [
     "libs/connlib/bufferpool",
     "libs/connlib/dns-over-tcp",
     "libs/connlib/dns-types",
+    "libs/connlib/etc-hosts-dns-client",
     "libs/connlib/etherparse-ext",
     "libs/connlib/ip-packet",
     "libs/connlib/l3-tcp",
@@ -51,7 +52,7 @@ arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
 async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
-axum = { version = "0.8.7", default-features = false }
+axum = { version = "0.8.8", default-features = false }
 aya = { git = "https://github.com/aya-rs/aya" }
 aya-build = { git = "https://github.com/aya-rs/aya" }
 aya-ebpf = { git = "https://github.com/aya-rs/aya" }
@@ -68,12 +69,13 @@ bytecodec = "0.5.0"
 bytes = { version = "1.11.0", default-features = false }
 caps = "0.5.6"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-clap = "4.5.50"
+clap = "4.5.54"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
 crossbeam-queue = "0.3.12"
 dashmap = "6.1.0"
-derive_more = { version = "2.0.1", default-features = false }
+dbus-secret-service-keyring-store = { version = "0.3.0", features = ["crypto-rust"] }
+derive_more = { version = "2.1.1", default-features = false }
 difference = "2.0.0"
 dirs = "6.0.0"
 divan = "0.1.21"
@@ -82,6 +84,7 @@ dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1"
+etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 firezone-headless-client = { path = "headless-client" }
@@ -96,30 +99,30 @@ hex-display = "0.3.0"
 hex-literal = "1.1.0"
 hickory-resolver = "0.25.2"
 hmac = "0.12.1"
-http = "1.3.1"
+http = "1.4.0"
 http-body-util = "0.1.3"
 http-client = { path = "libs/http-client" }
 humantime = "2.3"
-hyper = "1.7.0"
-hyper-util = "0.1.17"
+hyper = "1.8.1"
+hyper-util = "0.1.19"
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 itertools = "0.14"
 jni = "0.21.1"
-keyring = "3.6.3"
+keyring-core = "0.7.0"
 known-folders = "1.4.0"
 l3-tcp = { path = "libs/connlib/l3-tcp" }
 l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-client = { path = "libs/connlib/l4-udp-dns-client" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
-libc = "0.2.176"
+libc = "0.2.180"
 libfuzzer-sys = "0.4"
 log = "0.4"
 logging = { path = "libs/logging" }
 lru = "0.16.1"
-mio = "1.1.0"
+mio = "1.1.1"
 moka = "0.12.11"
 native-dialog = "0.7.0"
 netlink-packet-core = "0.8.1"
@@ -145,21 +148,21 @@ quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
 quote = "1.0"
 rand = "0.8.5"
 rand_core = "0.6.4"
-rangemap = "1.6.0"
-reqwest = { version = "0.12.24", default-features = false }
-resolv-conf = "0.7.5"
+rangemap = "1.7.1"
+reqwest = { version = "0.12.28", default-features = false }
+resolv-conf = "0.7.6"
 ringbuffer = "0.16.0"
 roxmltree = "0.21"
 rpassword = "7.4.0"
 rtnetlink = { version = "0.19.0", default-features = false, features = ["tokio_socket"] }
-rustls = { version = "0.23.34", default-features = false, features = ["ring"] }
-rustls-pki-types = "1.13.0"
+rustls = { version = "0.23.36", default-features = false, features = ["ring"] }
+rustls-pki-types = "1.13.2"
 sadness-generator = "0.6.0"
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.10"
 semver = "1.0.27"
-sentry = { version = "0.45.0", default-features = false }
-sentry-tracing = "0.45.0"
+sentry = { version = "0.46.0", default-features = false }
+sentry-tracing = "0.46.0"
 serde = "1.0.228"
 serde_json = "1.0.145"
 serde_variant = "0.1.3"
@@ -177,7 +180,7 @@ static_assertions = "1.1.0"
 str0m = { version = "0.9.0", default-features = false, features = ["sha1"] }
 strum = { version = "0.27.2", features = ["derive"] }
 stun_codec = "0.4.0"
-subprocess = "0.2.9"
+subprocess = "0.2.13"
 subtle = "2.5.0"
 supports-color = "3.0.2"
 swift-bridge = "0.1.57"
@@ -189,7 +192,7 @@ tauri-plugin-dialog = "2.4.2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-opener = "2.5.2"
 tauri-plugin-shell = "2.3.3"
-tauri-runtime = "2.7.1"
+tauri-runtime = "2.9.2"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 tauri-utils = "2.8.0"
 telemetry = { path = "libs/telemetry" }
@@ -202,28 +205,29 @@ tokio = "1.48.0"
 tokio-rustls = { version = "0.26.4", default-features = false }
 tokio-stream = "0.1.17"
 tokio-tungstenite = "0.28.0"
-tokio-util = "0.7.17"
+tokio-util = "0.7.18"
 toml = "0.9"
 tracing = { version = "0.1.40" }
-tracing-appender = "0.2.3"
-tracing-core = "0.1.34"
-tracing-journald = "0.3.1"
+tracing-appender = "0.2.4"
+tracing-core = "0.1.36"
+tracing-journald = "0.3.2"
 tracing-log = "0.2.0"
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "v0.1.x" } # Contains `dbg!` but for `tracing`.
 tracing-opentelemetry = "0.31.0"
 tracing-stackdriver = "0.12.0"
-tracing-subscriber = { version = "0.3.20", features = ["parking_lot"] }
+tracing-subscriber = { version = "0.3.22", features = ["parking_lot"] }
 trackable = "1.3.0"
 tun = { path = "libs/connlib/tun" }
 tunnel = { path = "libs/connlib/tunnel" }
 uniffi = "0.30.0"
 url = "2.5.2"
-uuid = "1.18.1"
+uuid = "1.19.0"
 webpki-roots = "1.0.4"
 which = "4.4.2"
 windows = "0.61.3"
 windows-core = "0.61.1"
 windows-implement = "0.60.0"
+windows-native-keyring-store = "0.4.0"
 windows-service = "0.8.0"
 winreg = "0.55.0"
 zbus = "5.12.0"

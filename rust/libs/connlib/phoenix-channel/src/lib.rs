@@ -3,16 +3,17 @@
 mod get_user_agent;
 mod login_url;
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use futures::stream::FuturesUnordered;
-use std::collections::{BTreeMap, VecDeque};
-use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
 
 use backoff::ExponentialBackoff;
+use backoff::ExponentialBackoffBuilder;
 use backoff::backoff::Backoff;
 use base64::Engine;
 use futures::future::BoxFuture;
@@ -20,7 +21,7 @@ use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
 use logging::err_with_src;
 use rand_core::{OsRng, RngCore};
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::{ExposeSecret as _, SecretString};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
@@ -34,14 +35,19 @@ use url::Url;
 pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
 pub use tokio_tungstenite::tungstenite::http::StatusCode;
+use tokio_tungstenite::tungstenite::http::header::RETRY_AFTER;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
-pub struct PhoenixChannel<TInitReq, TInboundMsg, TFinish> {
+const INITIAL_CONNECT_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
+const INITIAL_CONNECT_INTERVAL: Duration = Duration::from_secs(1);
+
+pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     state: State,
     waker: Option<Waker>,
     pending_joins: VecDeque<String>,
-    pending_messages: VecDeque<String>,
+    pending_messages: VecDeque<PhoenixMessage<TOutboundMsg>>,
+    pending_heartbeat: Option<String>,
     next_request_id: u64,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 
@@ -52,13 +58,17 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TFinish> {
     pending_join_requests: BTreeMap<OutboundRequestId, Instant>,
 
     // Stored here to allow re-connecting.
-    url_prototype: SecretBox<LoginUrl<TFinish>>,
+    url_prototype: LoginUrl<TFinish>,
     last_url: Option<Url>,
     user_agent: String,
+    /// The authentication token, sent via X-Authorization header.
+    token: SecretString,
+    make_initial_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
-    reconnect_backoff: Option<ExponentialBackoff>,
+    backoff: Option<ExponentialBackoff>,
+    was_connected: bool,
 
-    resolved_addresses: Vec<IpAddr>,
+    resolved_addresses: BTreeSet<IpAddr>,
 
     login: &'static str,
     init_req: TInitReq,
@@ -82,10 +92,12 @@ impl State {
         addresses: Vec<SocketAddr>,
         host: String,
         user_agent: String,
+        token: SecretString,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
         Self::Connecting(
-            create_and_connect_websocket(url, addresses, host, user_agent, socket_factory).boxed(),
+            create_and_connect_websocket(url, addresses, host, user_agent, token, socket_factory)
+                .boxed(),
         )
     }
 }
@@ -95,16 +107,24 @@ async fn create_and_connect_websocket(
     addresses: Vec<SocketAddr>,
     host: String,
     user_agent: String,
+    token: SecretString,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
     tracing::debug!(%host, ?addresses, %user_agent, "Connecting to portal");
 
     let duration = Duration::from_secs(5);
-    let socket = tokio::time::timeout(duration, connect(addresses, &*socket_factory))
+    let socket = tokio::time::timeout(duration, connect(addresses.clone(), &*socket_factory))
         .await
-        .map_err(|_| InternalError::Timeout { duration })??;
+        .map_err(|_| {
+            InternalError::SocketConnection(
+                addresses
+                    .into_iter()
+                    .map(|addr| (addr, io::Error::from(io::ErrorKind::TimedOut)))
+                    .collect(),
+            )
+        })??;
 
-    let (stream, _) = client_async_tls(make_request(url, host, user_agent), socket)
+    let (stream, _) = client_async_tls(make_request(url, host, user_agent, &token), socket)
         .await
         .map_err(InternalError::WebSocket)?;
 
@@ -115,6 +135,10 @@ async fn connect(
     addresses: Vec<SocketAddr>,
     socket_factory: &dyn SocketFactory<TcpSocket>,
 ) -> Result<TcpStream, InternalError> {
+    if addresses.is_empty() {
+        return Err(InternalError::NoAddresses);
+    }
+
     use futures::future::TryFutureExt;
 
     let mut sockets = addresses
@@ -140,10 +164,8 @@ async fn connect(
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Failed to establish WebSocket connection: {0}")]
-    Client(StatusCode),
-    #[error("Authentication token expired")]
-    TokenExpired,
+    #[error("Authentication token invalid")]
+    InvalidToken,
     #[error(
         "Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}"
     )]
@@ -157,8 +179,7 @@ pub enum Error {
 impl Error {
     pub fn is_authentication_error(&self) -> bool {
         match self {
-            Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
-            Error::TokenExpired => true,
+            Error::InvalidToken => true,
             Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
             Error::FatalIo(_) => false,
@@ -173,8 +194,56 @@ enum InternalError {
     CloseMessage,
     StreamClosed,
     RoomJoinTimedOut,
-    SocketConnection(Vec<(SocketAddr, std::io::Error)>),
-    Timeout { duration: Duration },
+    SocketConnection(Vec<(SocketAddr, io::Error)>),
+    NoAddresses,
+}
+
+impl InternalError {
+    /// Parses a Retry-After header value into a Duration.
+    ///
+    /// The header can be either:
+    /// - A number of seconds (e.g., "120")
+    /// - An HTTP date in IMF-fixdate format (e.g., "Wed, 21 Oct 2015 07:28:00 GMT")
+    pub(crate) fn parse_retry_after_header(&self) -> Option<Duration> {
+        let Self::WebSocket(tungstenite::Error::Http(response)) = self else {
+            return None;
+        };
+
+        let header = response.headers().get(RETRY_AFTER)?;
+        let value = header.to_str().ok()?;
+        let duration = parse_retry_after_value(value)?;
+
+        Some(duration)
+    }
+
+    pub(crate) fn failed_ips(&self) -> Vec<(IpAddr, &io::Error)> {
+        let Self::SocketConnection(errors) = self else {
+            return Vec::default();
+        };
+
+        errors.iter().map(|(s, e)| (s.ip(), e)).collect()
+    }
+}
+
+fn parse_retry_after_value(value: &str) -> Option<Duration> {
+    // Try parsing as seconds first (most common for 429 responses)
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    // Try parsing as HTTP date (IMF-fixdate format: "Wed, 21 Oct 2015 07:28:00 GMT")
+    if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
+        let now = chrono::Utc::now();
+        let retry_at = date.to_utc();
+        let duration = retry_at
+            .signed_duration_since(now)
+            .to_std()
+            .unwrap_or(Duration::ZERO);
+
+        return Some(duration);
+    }
+
+    None
 }
 
 impl fmt::Display for InternalError {
@@ -204,10 +273,8 @@ impl fmt::Display for InternalError {
                         .join(", ")
                 )
             }
-            InternalError::Timeout { duration, .. } => {
-                write!(f, "operation timed out after {duration:?}")
-            }
             InternalError::RoomJoinTimedOut => write!(f, "room join timed out"),
+            InternalError::NoAddresses => write!(f, "no IP addresses available"),
         }
     }
 }
@@ -221,8 +288,8 @@ impl std::error::Error for InternalError {
             InternalError::SocketConnection(_) => None,
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
-            InternalError::Timeout { .. } => None,
             InternalError::RoomJoinTimedOut => None,
+            InternalError::NoAddresses => None,
         }
     }
 }
@@ -255,9 +322,11 @@ impl fmt::Display for OutboundRequestId {
 #[error("Cannot close websocket while we are connecting")]
 pub struct Connecting;
 
-impl<TInitReq, TInboundMsg, TFinish> PhoenixChannel<TInitReq, TInboundMsg, TFinish>
+impl<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
+    PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
 where
     TInitReq: Serialize + Clone,
+    TOutboundMsg: Serialize + PartialEq + fmt::Debug,
     TInboundMsg: DeserializeOwned,
     TFinish: IntoIterator<Item = (&'static str, String)>,
 {
@@ -266,51 +335,46 @@ where
     /// You must explicitly call [`PhoenixChannel::connect`] to establish a connection.
     ///
     /// The provided URL must contain a host.
-    /// Additionally, you must already provide any query parameters required for authentication.
     pub fn disconnected(
-        url: SecretBox<LoginUrl<TFinish>>,
+        url: LoginUrl<TFinish>,
+        token: SecretString,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
         make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-    ) -> Result<Self> {
-        let host_and_port = url.expose_secret().host_and_port();
-
-        // Statically resolve the host in the URL to a set of addresses.
-        // We use these when connecting the socket to avoid a dependency on DNS resolution later on.
-        let resolved_addresses = host_and_port
-            .to_socket_addrs()
-            .with_context(|| format!("Failed to resolve '{}'", host_and_port.0))?
-            .map(|addr| addr.ip())
-            .collect();
-
-        Ok(Self {
+    ) -> Self {
+        Self {
+            make_initial_backoff: Box::new(make_initial_backoff),
             make_reconnect_backoff: Box::new(make_reconnect_backoff),
-            reconnect_backoff: None,
+            backoff: None,
+            was_connected: false,
             url_prototype: url,
             user_agent,
+            token,
             state: State::Closed,
             socket_factory,
             waker: None,
             pending_joins: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
             pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
+            pending_heartbeat: None,
             _phantom: PhantomData,
             heartbeat: tokio::time::interval(Duration::from_secs(30)),
             next_request_id: 0,
             pending_join_requests: Default::default(),
             login,
             init_req,
-            resolved_addresses,
+            resolved_addresses: Default::default(),
             last_url: None,
-        })
+        }
     }
 
     /// Join the provided room.
     ///
     /// If successful, a [`Event::JoinedRoom`] event will be emitted.
-    pub fn join(&mut self, topic: impl Into<String>, payload: impl Serialize) {
-        let (request_id, msg) = self.make_message(topic, EgressControlMessage::PhxJoin(payload));
+    pub fn join(&mut self, topic: impl Into<String>, payload: TInitReq) {
+        let (request_id, msg) =
+            self.make_control_message(topic, EgressControlMessage::PhxJoin(payload));
 
         self.pending_joins.push_back(msg);
         self.pending_join_requests
@@ -318,7 +382,7 @@ where
     }
 
     /// Send a message to a topic.
-    pub fn send(&mut self, topic: impl Into<String>, message: impl Serialize) -> OutboundRequestId {
+    pub fn send(&mut self, topic: impl Into<String>, message: TOutboundMsg) {
         if self.pending_messages.len() > MAX_BUFFERED_MESSAGES {
             self.pending_messages.clear();
 
@@ -327,15 +391,29 @@ where
             );
         }
 
-        let (id, msg) = self.make_message(topic, message);
-        self.pending_messages.push_back(msg);
+        if self.pending_messages.iter().any(|m| match &m.payload {
+            Payload::Message(m) => m == &message,
+            Payload::Reply(_) => false,
+            Payload::Error(_) => false,
+            Payload::Close(_) => false,
+            Payload::Disconnect { .. } => false,
+        }) {
+            tracing::debug!(?message, "Refusing to queue exact duplicate");
+            return;
+        }
 
-        id
+        let request_id = self.fetch_add_request_id();
+
+        self.pending_messages.push_back(PhoenixMessage::new_message(
+            topic,
+            message,
+            Some(request_id),
+        ));
     }
 
     /// Establishes a new connection, dropping the current one if any exists.
     pub fn connect(&mut self, params: TFinish) {
-        let url = self.url_prototype.expose_secret().to_url(params);
+        let url = self.url_prototype.to_url(params);
 
         if matches!(self.state, State::Connecting(_)) && Some(&url) == self.last_url.as_ref() {
             tracing::debug!("We are already connecting");
@@ -343,15 +421,17 @@ where
         }
 
         // 1. Reset the backoff.
-        self.reconnect_backoff = None;
+        self.backoff = None;
 
         // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
+        let token = self.token.clone();
         self.state = State::connect(
             url.clone(),
             self.socket_addresses(),
             self.host(),
             user_agent,
+            token,
             self.socket_factory.clone(),
         );
         self.last_url = Some(url);
@@ -363,21 +443,23 @@ where
     }
 
     pub fn url(&self) -> String {
-        self.url_prototype.expose_secret().base_url()
+        self.url_prototype.base_url()
     }
 
     pub fn host(&self) -> String {
-        self.url_prototype
-            .expose_secret()
-            .host_and_port()
-            .0
-            .to_owned()
+        self.url_prototype.host_and_port().0.to_owned()
     }
 
-    pub fn update_ips(&mut self, ips: Vec<IpAddr>) {
-        tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, new = ?ips, "Updating resolved IPs");
+    pub fn update_ips(&mut self, ips: impl IntoIterator<Item = IpAddr>) {
+        let new = BTreeSet::from_iter(ips);
 
-        self.resolved_addresses = ips;
+        if new == self.resolved_addresses {
+            return;
+        }
+
+        tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, ?new, "Updating resolved IPs");
+
+        self.resolved_addresses = new;
     }
 
     /// Initiate a graceful close of the connection.
@@ -427,6 +509,7 @@ where
                         .expect("should have last URL if we receive connection error")
                         .clone();
                     let user_agent = self.user_agent.clone();
+                    let token = self.token.clone();
                     let socket_factory = self.socket_factory.clone();
 
                     self.state = State::Connecting(Box::pin(async move {
@@ -436,6 +519,7 @@ where
                             socket_addresses,
                             host,
                             user_agent,
+                            token,
                             socket_factory,
                         )
                         .await
@@ -445,7 +529,8 @@ where
                 }
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
-                        self.reconnect_backoff = None;
+                        self.backoff = None;
+                        self.was_connected = true;
                         self.heartbeat.reset();
                         self.state = State::Connected(stream);
 
@@ -454,44 +539,57 @@ where
                         self.pending_joins.clear();
                         self.pending_join_requests.clear();
 
-                        let (host, _) = self.url_prototype.expose_secret().host_and_port();
+                        let (host, _) = self.url_prototype.host_and_port();
 
                         tracing::info!(%host, "Connected to portal");
                         self.join(self.login, self.init_req.clone());
 
                         continue;
                     }
-                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
-                        if r.status().is_client_error() =>
-                    {
-                        return Poll::Ready(Err(Error::Client(r.status())));
+                    Poll::Ready(Err(InternalError::NoAddresses)) => {
+                        // Fixed 1s interval to avoid busy-looping in case DNS resolution fails / is not possible.
+                        self.state = State::Reconnect {
+                            backoff: Duration::from_secs(1),
+                        };
+
+                        return Poll::Ready(Ok(Event::NoAddresses));
                     }
-                    // Unfortunately, the underlying error gets stringified by tungstenite so we cannot match on anything other than the string.
-                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Io(io))))
-                        if io.to_string().starts_with("invalid peer certificate") =>
+                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
+                        if r.status() == StatusCode::UNAUTHORIZED =>
                     {
-                        return Poll::Ready(Err(Error::FatalIo(io)));
+                        return Poll::Ready(Err(Error::InvalidToken));
                     }
                     Poll::Ready(Err(e)) => {
-                        let backoff = match self.reconnect_backoff.as_mut() {
-                            Some(reconnect_backoff) => reconnect_backoff
-                                .next_backoff()
-                                .ok_or_else(|| Error::MaxRetriesReached {
-                                    final_error: err_with_src(&e).to_string(),
-                                })?,
+                        let backoff = match e.parse_retry_after_header() {
+                            Some(duration) => duration,
                             None => {
-                                self.reconnect_backoff = Some((self.make_reconnect_backoff)());
+                                let backoff =
+                                    self.backoff.get_or_insert_with(if self.was_connected {
+                                        &self.make_reconnect_backoff
+                                    } else {
+                                        &self.make_initial_backoff
+                                    });
 
-                                Duration::ZERO
+                                backoff
+                                    .next_backoff()
+                                    .ok_or_else(|| Error::MaxRetriesReached {
+                                        final_error: e.to_string(),
+                                    })?
                             }
                         };
+
+                        for (ip, error) in e.failed_ips() {
+                            if self.resolved_addresses.remove(&ip) {
+                                tracing::debug!(%ip, "Discarding failed IP: {error}");
+                            }
+                        }
 
                         self.state = State::Reconnect { backoff };
 
                         return Poll::Ready(Ok(Event::Hiccup {
                             backoff,
                             max_elapsed_time: self
-                                .reconnect_backoff
+                                .backoff
                                 .as_ref()
                                 .and_then(|b| b.max_elapsed_time),
                             error: anyhow::Error::new(e)
@@ -515,6 +613,19 @@ where
             // Priority 2: Keep local buffers small and send pending messages.
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
+                    if let Some(heartbeat) = self.pending_heartbeat.take() {
+                        match stream.start_send_unpin(Message::Text(heartbeat.clone().into())) {
+                            Ok(()) => {
+                                tracing::trace!(target: "wire::api::send", %heartbeat);
+                            }
+                            Err(e) => {
+                                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                            }
+                        }
+
+                        continue;
+                    }
+
                     if let Some(join) = self.pending_joins.pop_front() {
                         match stream.start_send_unpin(Message::Text(join.clone().into())) {
                             Ok(()) => {
@@ -533,9 +644,15 @@ where
 
                     if self.pending_join_requests.is_empty() {
                         if let Some(msg) = self.pending_messages.pop_front() {
-                            match stream.start_send_unpin(Message::Text(msg.clone().into())) {
+                            let serialized_msg = serde_json::to_string(&msg)
+                                .map_err(io::Error::other)
+                                .map_err(Error::FatalIo)?;
+
+                            match stream
+                                .start_send_unpin(Message::Text(serialized_msg.clone().into()))
+                            {
                                 Ok(()) => {
-                                    tracing::trace!(target: "wire::api::send", %msg);
+                                    tracing::trace!(target: "wire::api::send", msg = %serialized_msg);
 
                                     self.heartbeat.reset()
                                 }
@@ -649,7 +766,7 @@ where
                             },
                             _,
                         ) => {
-                            return Poll::Ready(Err(Error::TokenExpired));
+                            return Poll::Ready(Err(Error::InvalidToken));
                         }
                     }
                 }
@@ -676,7 +793,10 @@ where
             // Priority 4: Handle heartbeats.
             match self.heartbeat.poll_tick(cx) {
                 Poll::Ready(_) => {
-                    self.send("phoenix", EgressControlMessage::<()>::Heartbeat(Empty {}));
+                    let (_, heartbeat) = self
+                        .make_control_message("phoenix", EgressControlMessage::Heartbeat(Empty {}));
+
+                    self.pending_heartbeat = Some(heartbeat);
 
                     return Poll::Ready(Ok(Event::HeartbeatSent));
                 }
@@ -694,10 +814,10 @@ where
         self.state = State::Connecting(future::ready(Err(e)).boxed())
     }
 
-    fn make_message(
+    fn make_control_message(
         &mut self,
         topic: impl Into<String>,
-        payload: impl Serialize,
+        payload: EgressControlMessage<TInitReq>,
     ) -> (OutboundRequestId, String) {
         let request_id = self.fetch_add_request_id();
 
@@ -716,13 +836,25 @@ where
     }
 
     fn socket_addresses(&self) -> Vec<SocketAddr> {
-        let port = self.url_prototype.expose_secret().host_and_port().1;
+        let (host, port) = self.url_prototype.host_and_port();
 
         self.resolved_addresses
             .iter()
-            .map(|ip| SocketAddr::new(*ip, port))
+            .copied()
+            .chain(host.parse::<IpAddr>().ok())
+            .map(|ip| SocketAddr::new(ip, port))
             .collect()
     }
+}
+
+fn make_initial_backoff() -> ExponentialBackoff {
+    ExponentialBackoffBuilder::default()
+        .with_initial_interval(INITIAL_CONNECT_INTERVAL)
+        .with_max_interval(INITIAL_CONNECT_INTERVAL)
+        .with_multiplier(1.0)
+        .with_randomization_factor(0.0)
+        .with_max_elapsed_time(Some(INITIAL_CONNECT_MAX_ELAPSED_TIME))
+        .build()
 }
 
 #[derive(Debug)]
@@ -750,6 +882,11 @@ pub enum Event<TInboundMsg> {
         max_elapsed_time: Option<Duration>,
         error: anyhow::Error,
     },
+    /// We don't have any addresses to connect to.
+    ///
+    /// Upon receiving this event, you should re-resolve the [`host`](PhoenixChannel::host)
+    /// and provide new IPs for it via [`PhoenixChannel::update_ips`].
+    NoAddresses,
     /// The connection was closed successfully.
     Closed,
 }
@@ -864,7 +1001,7 @@ impl<T> PhoenixMessage<T> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(url: Url, host: String, user_agent: String) -> Request {
+fn make_request(url: Url, host: String, user_agent: String, token: &SecretString) -> Request {
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
@@ -879,6 +1016,10 @@ fn make_request(url: Url, host: String, user_agent: String) -> Request {
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
         .header("User-Agent", user_agent)
+        .header(
+            "X-Authorization",
+            format!("Bearer {}", token.expose_secret()),
+        )
         .uri(url.to_string())
         .body(())
         .expect("should always be able to build a request if we only pass strings to it")
@@ -1072,5 +1213,53 @@ mod tests {
         .await
         .unwrap()
         .unwrap();
+    }
+
+    #[test]
+    fn parse_retry_after_seconds() {
+        assert_eq!(
+            parse_retry_after_value("120"),
+            Some(Duration::from_secs(120))
+        );
+        assert_eq!(parse_retry_after_value("0"), Some(Duration::from_secs(0)));
+        assert_eq!(
+            parse_retry_after_value("3600"),
+            Some(Duration::from_secs(3600))
+        );
+    }
+
+    #[test]
+    fn parse_retry_after_http_date_in_future() {
+        // Create a date 60 seconds in the future
+        let future_date = chrono::Utc::now() + chrono::Duration::seconds(60);
+        let date_str = future_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+        let result = parse_retry_after_value(&date_str);
+        assert!(result.is_some(), "should parse future HTTP date");
+
+        let duration = result.unwrap();
+        // Allow some tolerance for test execution time
+        assert!(
+            duration >= Duration::from_secs(58) && duration <= Duration::from_secs(62),
+            "duration should be approximately 60 seconds, got {duration:?}"
+        );
+    }
+
+    #[test]
+    fn parse_retry_after_http_date_in_past() {
+        // Create a date 60 seconds in the past
+        let past_date = chrono::Utc::now() - chrono::Duration::seconds(60);
+        let date_str = past_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+        let result = parse_retry_after_value(&date_str);
+        assert_eq!(result, Some(Duration::ZERO), "past date should return zero");
+    }
+
+    #[test]
+    fn parse_retry_after_invalid() {
+        assert_eq!(parse_retry_after_value("invalid"), None);
+        assert_eq!(parse_retry_after_value(""), None);
+        assert_eq!(parse_retry_after_value("-1"), None);
+        assert_eq!(parse_retry_after_value("12.5"), None);
     }
 }

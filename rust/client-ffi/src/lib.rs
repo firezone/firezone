@@ -13,7 +13,7 @@ use backoff::ExponentialBackoffBuilder;
 use logging::sentry_layer;
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
-use secrecy::{SecretBox, SecretString};
+use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use telemetry::{Telemetry, analytics};
 use tokio::sync::Mutex;
@@ -161,7 +161,6 @@ impl Session {
         device_id: String,
         account_slug: String,
         device_name: String,
-        os_version: String,
         log_dir: String,
         log_filter: String,
         device_info: DeviceInfo,
@@ -177,7 +176,6 @@ impl Session {
             device_id,
             account_slug,
             Some(device_name),
-            Some(os_version),
             log_dir,
             log_filter,
             device_info,
@@ -202,7 +200,6 @@ impl Session {
         device_id: String,
         account_slug: String,
         device_name: Option<String>,
-        os_version: Option<String>,
         log_dir: String,
         log_filter: String,
         device_info: DeviceInfo,
@@ -218,7 +215,6 @@ impl Session {
             device_id,
             account_slug,
             device_name,
-            os_version,
             log_dir,
             log_filter,
             device_info,
@@ -249,7 +245,6 @@ impl Session {
         device_id: String,
         account_slug: String,
         device_name: Option<String>,
-        os_version: Option<String>,
         log_dir: String,
         log_filter: String,
         device_info: DeviceInfo,
@@ -264,7 +259,6 @@ impl Session {
             device_id,
             account_slug,
             device_name,
-            os_version,
             log_dir,
             log_filter,
             device_info,
@@ -451,7 +445,6 @@ fn connect(
     device_id: String,
     account_slug: String,
     device_name: Option<String>,
-    os_version: Option<String>,
     log_dir: String,
     log_filter: String,
     device_info: DeviceInfo,
@@ -486,7 +479,6 @@ fn connect(
 
     let url = LoginUrl::client(
         api_url.as_str(),
-        &secret,
         device_id.clone(),
         device_name,
         device_info,
@@ -496,8 +488,9 @@ fn connect(
     let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
     let portal = PhoenixChannel::disconnected(
-        SecretBox::init_with(|| url),
-        get_user_agent(os_version, platform::COMPONENT, platform::VERSION),
+        url,
+        secret,
+        get_user_agent(platform::COMPONENT, platform::VERSION),
         "client",
         (),
         || {
@@ -506,13 +499,13 @@ fn connect(
                 .build()
         },
         tcp_socket_factory.clone(),
-    )
-    .context("Failed to create `PhoenixChannel`")?;
+    );
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
         udp_socket_factory,
         portal,
         is_internet_resource_active,
+        Vec::default(),
         runtime.handle().clone(),
     );
 

@@ -1,2 +1,3 @@
-# GUI client
-pnpm 10.18.3
+pnpm             10.18.3
+nodejs           24.13.0
+cargo:cargo-sort 2.0.2

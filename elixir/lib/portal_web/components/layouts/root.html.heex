@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en" style="scrollbar-gutter: stable;">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=client-width, initial-scale=1" />
+    <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
+    <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
+    <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
+    <link rel="manifest" href={~p"/site.webmanifest"} />
+    <meta name="theme-color" content="#331700" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title suffix=" · Firezone">
+      {assigns[:page_title] || "Firezone"}
+    </.live_title>
+    <link
+      phx-track-static
+      rel="stylesheet"
+      nonce={@conn.private[:csp_nonce]}
+      href={~p"/assets/app.css"}
+    />
+    <link
+      phx-track-static
+      rel="stylesheet"
+      nonce={@conn.private[:csp_nonce]}
+      href={~p"/assets/main.css"}
+    />
+    <script
+      defer
+      phx-track-static
+      type="text/javascript"
+      nonce={@conn.private[:csp_nonce]}
+      src={~p"/assets/app.js"}
+    >
+    </script>
+  </head>
+  <body class="bg-neutral-50">
+    {@inner_content}
+  </body>
+</html>

@@ -15,6 +15,7 @@ npm-debug.log
 
 # Development environment configuration
 **/.env
+**/.envrc
 .oidc_env.json
 
 # Built packages

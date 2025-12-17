@@ -11,6 +11,37 @@ export default function GUI({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11625">
+          Fails faster when the initial connection to the control plane cannot
+          be established, allowing the user to retry sooner.
+        </ChangeItem>
+        <ChangeItem pull="11584">
+          Improves connection reliability on systems where certain UDP socket
+          features are unavailable.
+        </ChangeItem>
+        <ChangeItem pull="11627">
+          Fixes an issue where reconnections would fail if the portal host is an
+          IP address.
+        </ChangeItem>
+        <ChangeItem pull="11626">
+          Fixes an issue where reconnecting to the portal would fail if the DNS
+          resolver list was empty due to a network reset or other edge case.
+        </ChangeItem>
+        <ChangeItem pull="11595">
+          Passes the authentication token in the x-authorization header instead
+          of in the URL, improving rate limiting for users behind shared IPs.
+        </ChangeItem>
+        <ChangeItem pull="11594">
+          Implements retry with exponential backoff on 429 (Too Many Requests)
+          responses from the portal.
+        </ChangeItem>
+        <ChangeItem pull="11654">
+          Implements retry with exponential backoff for anything but 401
+          responses. For example, this allows Firezone to automatically sign-in
+          even if Internet Access is gated by a captive portal.
+        </ChangeItem>
+      </Unreleased>
+      <Entry version="1.5.9" date={new Date("2025-12-23")}>
         {os == OS.Linux && (
           <ChangeItem pull="10742">
             Fixes an issue where CIDR/IP resources whose routes conflict with
@@ -34,7 +65,16 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where Firezone would not connect if an IPv6 interface
           is present but not routable.
         </ChangeItem>
-      </Unreleased>
+        {os == OS.Linux && (
+          <ChangeItem pull="11243">
+            Fixes an issue where upgrading from version 1.5.8 on Fedora fails
+            due to a bad scriptlet. To uninstall version 1.5.8, use{" "}
+            <code>
+              sudo dnf remove firezone-client-gui --setopt=tsflags=noscripts
+            </code>
+          </ChangeItem>
+        )}
+      </Entry>
       <Entry version="1.5.8" date={new Date("2025-10-16")}>
         <ChangeItem pull="10509">
           Fixes an issue where the Internet Resource could be briefly active on

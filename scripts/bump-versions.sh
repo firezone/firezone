@@ -100,8 +100,8 @@ function update_version_variables() {
 # 6. Run `scripts/bump-versions.sh apple` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function apple() {
-    current_apple_client_version="1.5.10"
-    next_apple_client_version="1.5.11"
+    current_apple_client_version="1.5.12"
+    next_apple_client_version="1.5.13"
 
     update_changelog "website/src/components/Changelog/Apple.tsx" "$current_apple_client_version"
     update_version_marker "mark:current-apple-version" "$current_apple_client_version"
@@ -134,8 +134,8 @@ function apple() {
 # 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function android() {
-    current_android_client_version="1.5.7"
-    next_android_client_version="1.5.8"
+    current_android_client_version="1.5.8"
+    next_android_client_version="1.5.9"
 
     update_changelog "website/src/components/Changelog/Android.tsx" "$current_android_client_version"
     update_version_marker "mark:current-android-version" "$current_android_client_version"
@@ -157,8 +157,8 @@ function android() {
 # 4. Run `scripts/bump-versions.sh gui` to update the versions in the codebase.
 # 5. Commit the changes and open a PR.
 function gui() {
-    current_gui_client_version="1.5.8"
-    next_gui_client_version="1.5.9"
+    current_gui_client_version="1.5.9"
+    next_gui_client_version="1.5.10"
 
     update_changelog "website/src/components/Changelog/GUI.tsx" "$current_gui_client_version"
     update_version_marker "mark:current-gui-version" "$current_gui_client_version"
@@ -179,8 +179,8 @@ function gui() {
 # 3. Run `scripts/bump-versions.sh headless` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function headless() {
-    current_headless_client_version="1.5.4"
-    next_headless_client_version="1.5.5"
+    current_headless_client_version="1.5.6"
+    next_headless_client_version="1.5.7"
 
     update_changelog "website/src/components/Changelog/Headless.tsx" "$current_headless_client_version"
     update_version_marker "mark:current-headless-version" "$current_headless_client_version"
@@ -201,8 +201,8 @@ function headless() {
 # 3. Run `scripts/bump-versions.sh gateway` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function gateway() {
-    current_gateway_version="1.4.18"
-    next_gateway_version="1.4.19"
+    current_gateway_version="1.4.19"
+    next_gateway_version="1.4.20"
 
     update_changelog "website/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
     update_version_marker "mark:current-gateway-version" "$current_gateway_version"

@@ -27,6 +27,8 @@ enum VPNConfigurationManagerError: Error {
 public final class VPNConfigurationManager {
   let manager: NETunnelProviderManager
 
+  // App cannot run without bundle identifier - force unwrap is safe
+  // swiftlint:disable:next force_unwrapping
   public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
   static let bundleDescription = "Firezone"
 
@@ -55,6 +57,7 @@ public final class VPNConfigurationManager {
   nonisolated public static func legacyConfiguration(
     protocolConfiguration: NETunnelProviderProtocol?
   )
+    // swiftlint:disable:next discouraged_optional_collection - nil means no legacy config exists
     -> [String: String]?
   {
     guard let protocolConfiguration = protocolConfiguration,

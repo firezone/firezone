@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gateway"
 # mark:next-gateway-version
-version = "1.4.19"
+version = "1.4.20"
 edition = { workspace = true }
 license = { workspace = true }
 description = "Gateway for the Firezone zero-trust access product."
@@ -36,6 +36,7 @@ either = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true }
+humantime = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 libc = { workspace = true, features = ["std", "const-extern-fn", "extra_traits"] }

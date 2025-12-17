@@ -52,6 +52,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   override func startTunnel(
+    // swiftlint:disable:next discouraged_optional_collection - Apple API signature
     options: [String: NSObject]?,
     completionHandler: @escaping @Sendable (Error?) -> Void
   ) {
@@ -106,7 +107,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         enabled != nil ? enabled == "true" : (tunnelConfiguration?.internetResourceEnabled ?? false)
 
       // Create the adapter with all configuration
-      let adapter = Adapter(
+      let adapter = try Adapter(
         apiURL: apiURL,
         token: token,
         deviceId: id,
@@ -184,7 +185,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       case .getLogFolderSize:
         getLogFolderSize(completionHandler)
       case .exportLogs:
-        exportLogs(completionHandler!)
+        guard let handler = completionHandler else {
+          Log.warning("exportLogs requires a completion handler")
+          return
+        }
+        exportLogs(handler)
       }
     } catch {
       Log.error(error)
@@ -192,6 +197,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
+  // swiftlint:disable:next discouraged_optional_collection - matches Apple API parameter type
   func loadAndSaveToken(from options: [String: NSObject]?) -> Token? {
     let passedToken = options?["token"] as? String
 
@@ -276,9 +282,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do {
         // Move the `latest` symlink out of the way before creating the archive.
         // Apple's implementation of zip appears to not be able to handle symlinks well
-        let _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
+        _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
         defer {
-          let _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
+          _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
         }
 
         try tunnelLogArchive.archive()

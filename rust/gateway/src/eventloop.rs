@@ -80,17 +80,16 @@ enum PortalCommand {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel,
-        mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
+        portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
     ) -> Result<Self> {
-        portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
-
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
 
         tokio::spawn(phoenix_channel_event_loop(
             portal,
+            PublicKeyParam(tunnel.public_key().to_bytes()),
             portal_event_tx,
             portal_cmd_rx,
             resolver.clone(),
@@ -486,10 +485,14 @@ impl Eventloop {
                     }
                 }
 
-                self.tun_device_manager
+                let tun_ip_stack = self
+                    .tun_device_manager
                     .set_ips(interface.ipv4, interface.ipv6)
                     .await
                     .context("Failed to set TUN interface IPs")?;
+
+                tracing::debug!(stack = %tun_ip_stack, "Initialized TUN device");
+
                 self.tun_device_manager
                     .set_routes(vec![IPV4_TUNNEL], vec![IPV6_TUNNEL])
                     .await
@@ -498,10 +501,30 @@ impl Eventloop {
                 let ipv4_socket = SocketAddr::V4(SocketAddrV4::new(interface.ipv4, 53535));
                 let ipv6_socket = SocketAddr::V6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0));
 
-                tunnel
-                    .rebind_dns(vec![ipv4_socket, ipv6_socket])
-                    .context("Failed to bind DNS server")
-                    .inspect_err(|e| tracing::debug!("{e:#}"))?;
+                let addresses = match tun_ip_stack {
+                    bin_shared::TunIpStack::V4Only => vec![ipv4_socket],
+                    bin_shared::TunIpStack::V6Only => vec![ipv6_socket],
+                    bin_shared::TunIpStack::Dual => vec![ipv4_socket, ipv6_socket],
+                };
+
+                let mut attempts = std::iter::repeat_n(addresses, 3);
+
+                loop {
+                    let Some(attempt) = attempts.next() else {
+                        anyhow::bail!("Failed to bind DNS servers on TUN interface");
+                    };
+
+                    match tunnel.rebind_dns(attempt) {
+                        Ok(()) => break,
+                        Err(mut e) => {
+                            for e in e.drain() {
+                                tracing::debug!("Failed to bind DNS server: {e:#}")
+                            }
+                        }
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
             }
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
@@ -687,13 +710,17 @@ impl Eventloop {
 }
 
 async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
+    mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    param: PublicKeyParam,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     resolver: TokioResolver,
 ) {
     use futures::future::Either;
     use futures::future::select;
+
+    update_portal_host_ips(&mut portal, &resolver).await;
+    portal.connect(param);
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
@@ -741,20 +768,9 @@ async fn phoenix_channel_event_loop(
                     ?max_elapsed_time,
                     "Hiccup in portal connection: {error:#}"
                 );
-
-                let ips = match resolver
-                    .lookup_ip(portal.host())
-                    .await
-                    .context("Failed to lookup portal host")
-                {
-                    Ok(ips) => ips.into_iter().collect(),
-                    Err(e) => {
-                        tracing::debug!(host = %portal.host(), "{e:#}");
-                        continue;
-                    }
-                };
-
-                portal.update_ips(ips);
+            }
+            Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
+                update_portal_host_ips(&mut portal, &resolver).await
             }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
@@ -776,6 +792,25 @@ async fn phoenix_channel_event_loop(
             }
         }
     }
+}
+
+async fn update_portal_host_ips(
+    portal: &mut PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    resolver: &TokioResolver,
+) {
+    let ips = match resolver
+        .lookup_ip(portal.host())
+        .await
+        .context("Failed to lookup portal host")
+    {
+        Ok(ips) => ips,
+        Err(e) => {
+            tracing::debug!(host = %portal.host(), "{e:#}");
+            return;
+        }
+    };
+
+    portal.update_ips(ips);
 }
 
 async fn resolve(domain: DomainName) -> Result<Vec<IpAddr>> {

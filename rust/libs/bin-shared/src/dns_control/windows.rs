@@ -15,7 +15,7 @@
 
 use crate::DnsController;
 use crate::windows::{CREATE_NO_WINDOW, TUNNEL_UUID, error::EPT_S_NOT_REGISTERED};
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, ErrorExt as _, Result};
 use dns_types::DomainName;
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 use windows::Win32::System::GroupPolicy::{RP_FORCE, RefreshPolicyEx};
@@ -24,7 +24,7 @@ use windows::Win32::System::GroupPolicy::{RP_FORCE, RefreshPolicyEx};
 // Copied from the deep link schema
 const FZ_MAGIC: &str = "firezone-fd0020211111";
 
-#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
 pub enum DnsControlMethod {
     /// Explicitly disable DNS control.
     ///
@@ -32,13 +32,8 @@ pub enum DnsControlMethod {
     /// use NRPT, not disable DNS control.
     Disabled,
     /// NRPT, the only DNS control method we use on Windows.
+    #[default]
     Nrpt,
-}
-
-impl Default for DnsControlMethod {
-    fn default() -> Self {
-        Self::Nrpt
-    }
 }
 
 impl DnsController {
@@ -59,8 +54,7 @@ impl DnsController {
         match refresh_group_policy() {
             Ok(()) => {}
             Err(e)
-                if e.root_cause()
-                    .downcast_ref::<windows::core::Error>()
+                if e.any_downcast_ref::<windows::core::Error>()
                     .is_some_and(|e| e.code() == EPT_S_NOT_REGISTERED) =>
             {
                 // This may happen if we make this syscall multiple times in a row (which we do as we shut down).

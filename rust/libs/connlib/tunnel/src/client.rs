@@ -2,11 +2,13 @@ mod dns_cache;
 pub(crate) mod dns_config;
 mod dns_resource_nat;
 mod gateway_on_client;
+mod pending_flows;
 mod resource;
 mod tracked_state;
 
 use crate::client::dns_config::DnsConfig;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
+use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
 use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
@@ -15,7 +17,7 @@ pub(crate) use resource::{CidrResource, InternetResource, Resource};
 
 use dns_resource_nat::DnsResourceNat;
 use dns_types::ResponseCode;
-use ringbuffer::{AllocRingBuffer, RingBuffer};
+use ringbuffer::RingBuffer;
 use secrecy::ExposeSecret as _;
 use telemetry::{analytics, feature_flags};
 
@@ -24,7 +26,6 @@ use crate::dns::{DnsResourceRecord, StubResolver};
 use crate::messages::Interface as InterfaceConfig;
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
-use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::{Context, ErrorExt};
 use connlib_model::{
@@ -38,11 +39,10 @@ use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 
 use crate::ClientEvent;
-use lru::LruCache;
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
@@ -79,12 +79,6 @@ pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
     Err(_) => unreachable!(),
 };
 
-/// How many gateways we at most remember that we connected to.
-///
-/// 100 has been chosen as a pretty arbitrary value.
-/// We only store [`GatewayId`]s so the memory footprint is negligible.
-const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = NonZeroUsize::new(100).expect("100 > 0");
-
 /// How many concurrent TCP DNS clients we can server _per_ sentinel DNS server IP.
 const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
 
@@ -99,12 +93,18 @@ pub struct ClientState {
     /// All gateways we are connected to and the associated, connection-specific state.
     peers: PeerStore<GatewayId, GatewayOnClient>,
     /// Tracks the flows to resources that we are currently trying to establish.
-    pending_flows: HashMap<ResourceId, PendingFlow>,
+    pending_flows: PendingFlows,
     dns_resource_nat: DnsResourceNat,
-    /// Tracks which gateway to use for a particular Resource.
-    resources_gateways: HashMap<ResourceId, GatewayId>,
-    /// The site a gateway belongs to.
-    gateways_site: HashMap<GatewayId, SiteId>,
+    /// Tracks the resources we have been authorized for and which Gateway to use to access them.
+    ///
+    /// This state persists across `reset`s so we can re-connect to the same Gateway.
+    authorized_resources: HashMap<ResourceId, GatewayId>,
+    /// Tracks which gateways are in a site.
+    ///
+    /// This state gets populated as we connect to various Gateways.
+    /// Gateways are bound to a single site, hence this state is never cleaned up.
+    /// An entry in this data structure does _not_ mean that we are connected to the Gateway / site.
+    gateways_by_site: HashMap<SiteId, HashSet<GatewayId>>,
     /// The online/offline status of a site.
     sites_status: HashMap<SiteId, ResourceStatus>,
 
@@ -134,53 +134,10 @@ pub struct ClientState {
     dns_streams_by_local_upstream_and_query_id:
         HashMap<(dns::Transport, SocketAddr, SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
-    /// Stores the gateways we recently connected to.
-    ///
-    /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
-    recently_connected_gateways: LruCache<GatewayId, ()>,
-
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
-}
-
-struct PendingFlow {
-    last_intent_sent_at: Instant,
-    resource_packets: UniquePacketBuffer,
-    dns_queries: AllocRingBuffer<DnsQueryForSite>,
-}
-
-impl PendingFlow {
-    /// How many packets we will at most buffer in a [`PendingFlow`].
-    ///
-    /// `PendingFlow`s are per _resource_ (which could be Internet Resource or wildcard DNS resources).
-    /// Thus, we may receive a fair few packets before we can send them.
-    const CAPACITY_POW_2: usize = 7; // 2^7 = 128
-
-    fn new(now: Instant, trigger: ConnectionTrigger) -> Self {
-        let mut this = Self {
-            last_intent_sent_at: now,
-            resource_packets: UniquePacketBuffer::with_capacity_power_of_2(
-                Self::CAPACITY_POW_2,
-                "pending-flow-resources",
-            ),
-            dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
-        };
-        this.push(trigger);
-
-        this
-    }
-
-    fn push(&mut self, trigger: ConnectionTrigger) {
-        match trigger {
-            ConnectionTrigger::PacketForResource(packet) => self.resource_packets.push(packet),
-            ConnectionTrigger::DnsQueryForSite(query) => {
-                self.dns_queries.enqueue(query);
-            }
-            ConnectionTrigger::IcmpDestinationUnreachableProhibited => {}
-        }
-    }
 }
 
 impl ClientState {
@@ -192,7 +149,7 @@ impl ClientState {
         unix_ts: Duration,
     ) -> Self {
         Self {
-            resources_gateways: Default::default(),
+            authorized_resources: Default::default(),
             active_cidr_resources: IpNetworkTable::new(),
             resources_by_id: Default::default(),
             peers: Default::default(),
@@ -202,12 +159,11 @@ impl ClientState {
             buffered_packets: Default::default(),
             node: ClientNode::new(seed, now, unix_ts),
             sites_status: Default::default(),
-            gateways_site: Default::default(),
+            gateways_by_site: Default::default(),
             stub_resolver: StubResolver::new(records),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
             is_internet_resource_active,
-            recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             buffered_dns_queries: Default::default(),
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
@@ -314,7 +270,7 @@ impl ClientState {
                     .resolve_resource_by_ip(&packet.destination())
                     .context("IP is not associated with a DNS resource domain")?;
                 let gateway_id = self
-                    .resources_gateways
+                    .authorized_resources
                     .get(resource)
                     .context("No gateway for resource")?;
 
@@ -337,7 +293,7 @@ impl ClientState {
             self.stub_resolver
                 .resolved_resources()
                 .map(|(domain, resource, proxy_ips)| {
-                    let gateway = self.resources_gateways.get(resource);
+                    let gateway = self.authorized_resources.get(resource);
 
                     (domain, resource, proxy_ips, gateway)
                 })
@@ -375,7 +331,7 @@ impl ClientState {
     }
 
     fn is_cidr_resource_connected(&self, resource: &ResourceId) -> bool {
-        let Some(gateway_id) = self.resources_gateways.get(resource) else {
+        let Some(gateway_id) = self.authorized_resources.get(resource) else {
             return false;
         };
 
@@ -580,7 +536,7 @@ impl ClientState {
             };
 
             let Some(peer) =
-                peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+                peer_by_resource_mut(&self.authorized_resources, &mut self.peers, resource)
             else {
                 self.on_not_connected_resource(resource, packet, now);
                 return None;
@@ -656,15 +612,6 @@ impl ClientState {
             return Ok(Ok(()));
         };
 
-        if let Some(old_gateway_id) = self.resources_gateways.insert(rid, gid)
-            && self.peers.get(&old_gateway_id).is_some()
-        {
-            assert_eq!(
-                old_gateway_id, gid,
-                "Resources are not expected to change gateways without a previous message, resource_id = {rid}"
-            )
-        }
-
         match self.node.upsert_connection(
             gid,
             gateway_key,
@@ -682,9 +629,11 @@ impl ClientState {
             Ok(()) => {}
             Err(e) => return Ok(Err(e)),
         };
-        self.resources_gateways.insert(rid, gid);
-        self.gateways_site.insert(gid, site_id);
-        self.recently_connected_gateways.put(gid, ());
+        self.authorized_resources.insert(rid, gid);
+        self.gateways_by_site
+            .entry(site_id)
+            .or_default()
+            .insert(gid);
 
         if self.peers.get(&gid).is_none() {
             self.peers
@@ -698,9 +647,9 @@ impl ClientState {
 
         // Deal with buffered packets
 
-        // 1. Buffered packets for resources
-        let buffered_resource_packets = pending_flow.resource_packets;
+        let (buffered_resource_packets, dns_queries) = pending_flow.into_buffered_packets();
 
+        // 1. Buffered packets for resources
         match resource {
             Resource::Cidr(_) | Resource::Internet(_) => {
                 self.peers
@@ -724,7 +673,7 @@ impl ClientState {
 
         // If we are making this connection because we want to send a DNS query to the Gateway,
         // mark it as "used" through the DNS resource ID.
-        if !pending_flow.dns_queries.is_empty() {
+        if !dns_queries.is_empty() {
             self.peers.add_ips_with_resource(
                 &gid,
                 [
@@ -736,7 +685,7 @@ impl ClientState {
         }
 
         // 2. Buffered UDP DNS queries for the Gateway
-        for query in pending_flow.dns_queries {
+        for query in dns_queries {
             let gateway = self.peers.get(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
 
             let upstream = gateway.tun_dns_server_endpoint(query.local.ip());
@@ -805,68 +754,47 @@ impl ClientState {
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
         self.pending_flows.remove(&resource);
-        let Some(disconnected_gateway) = self.resources_gateways.remove(&resource) else {
+        let Some(disconnected_gateway) = self.authorized_resources.remove(&resource) else {
             return;
         };
         self.cleanup_connected_gateway(&disconnected_gateway);
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
-    fn on_not_connected_resource(
-        &mut self,
-        rid: ResourceId,
-        trigger: impl Into<ConnectionTrigger>,
-        now: Instant,
-    ) {
-        use std::collections::hash_map::Entry;
+    fn preferred_gateways(&self, resource: ResourceId) -> Vec<GatewayId> {
+        #[expect(clippy::disallowed_methods, reason = "We are sorting anyway")]
+        self.gateways_by_site
+            .values()
+            .flatten()
+            .copied()
+            .unique()
+            .sorted_by(|left, right| {
+                let prefer_authorized = self
+                    .authorized_resources
+                    .get(&resource)
+                    .map(|g| match g {
+                        g if g == left => Ordering::Less,
+                        g if g == right => Ordering::Greater,
+                        _ => Ordering::Equal,
+                    })
+                    .unwrap_or(Ordering::Equal);
+                let prefer_connected = match (self.peers.get(left), self.peers.get(right)) {
+                    (None, None) => Ordering::Equal,
+                    (Some(_), Some(_)) => Ordering::Equal,
+                    (None, Some(_)) => Ordering::Greater,
+                    (Some(_), None) => Ordering::Less,
+                };
 
-        let trigger = trigger.into();
-        let trigger_name = trigger.name();
+                let default_ordering = left.cmp(right);
 
-        if !self.resources_by_id.contains_key(&rid) {
-            tracing::debug!(%rid, "Resource not found, skipping connection intent");
-            return;
-        }
-
-        match self.pending_flows.entry(rid) {
-            Entry::Vacant(v) => {
-                v.insert(PendingFlow::new(now, trigger));
-            }
-            Entry::Occupied(mut o) => {
-                let pending_flow = o.get_mut();
-                pending_flow.push(trigger);
-
-                let time_since_last_intent = now.duration_since(pending_flow.last_intent_sent_at);
-
-                if time_since_last_intent < Duration::from_secs(2) {
-                    tracing::trace!(?time_since_last_intent, "Skipping connection intent");
-                    return;
-                }
-
-                pending_flow.last_intent_sent_at = now;
-            }
-        }
-
-        tracing::debug!(trigger = %trigger_name, "Sending connection intent");
-
-        self.buffered_events
-            .push_back(ClientEvent::ConnectionIntent {
-                resource: rid,
-                connected_gateway_ids: self.connected_gateway_ids(),
+                prefer_authorized
+                    .then(prefer_connected)
+                    .then(default_ordering) // This makes it deterministic, even though we are using `HashSets
             })
-    }
-
-    // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
-    // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
-    fn connected_gateway_ids(&self) -> BTreeSet<GatewayId> {
-        self.recently_connected_gateways
-            .iter()
-            .map(|(g, _)| *g)
             .collect()
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
-        self.resources_gateways.get(resource).copied()
+        self.authorized_resources.get(resource).copied()
     }
 
     fn initialise_tcp_dns_client(&mut self) {
@@ -928,7 +856,7 @@ impl ClientState {
     fn cleanup_connected_gateway(&mut self, disconnected_gateway: &GatewayId) {
         self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown);
         self.peers.remove(disconnected_gateway);
-        self.resources_gateways
+        self.authorized_resources
             .retain(|_, g| g != disconnected_gateway);
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
     }
@@ -1384,16 +1312,16 @@ impl ClientState {
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
                 let Some(gateway) =
-                    peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+                    peer_by_resource_mut(&self.authorized_resources, &mut self.peers, resource)
                 else {
                     self.on_not_connected_resource(
                         resource,
-                        ConnectionTrigger::DnsQueryForSite(DnsQueryForSite {
+                        DnsQueryForSite {
                             local,
                             remote,
                             transport,
                             message,
-                        }),
+                        },
                         now,
                     );
                     return None;
@@ -1574,15 +1502,18 @@ impl ClientState {
         }
     }
 
-    fn update_site_status_by_gateway(&mut self, gateway_id: &GatewayId, status: ResourceStatus) {
-        // Note: we can do this because in theory we shouldn't have multiple gateways for the same site
-        // connected at the same time.
-        self.sites_status.insert(
-            *self.gateways_site.get(gateway_id).expect(
-                "if we're updating a site status there should be an associated site to a gateway",
-            ),
-            status,
-        );
+    fn update_site_status_by_gateway(&mut self, gid: &GatewayId, status: ResourceStatus) {
+        #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
+        let Some((sid, _)) = self
+            .gateways_by_site
+            .iter()
+            .find(|(_, gateways)| gateways.contains(gid))
+        else {
+            tracing::warn!(%gid, "Cannot update status of unknown site");
+            return;
+        };
+
+        self.sites_status.insert(*sid, status);
         self.resource_list.update(self.resources());
     }
 
@@ -1597,6 +1528,13 @@ impl ClientState {
             tracing::debug!(count = %resources.len(), "Updating resource list");
 
             return Some(ClientEvent::ResourcesChanged { resources });
+        }
+
+        if let Some(resource) = self.pending_flows.poll_connection_intents() {
+            return Some(ClientEvent::ConnectionIntent {
+                resource,
+                preferred_gateways: self.preferred_gateways(resource),
+            });
         }
 
         self.buffered_events
@@ -1614,9 +1552,6 @@ impl ClientState {
         self.node.reset(now); // Clear all network connections.
         self.peers.clear(); // Clear all state associated with Gateways.
 
-        self.resources_gateways.clear(); // Clear Resource <> Gateway mapping (we will re-create this as new flows are authorized).
-
-        self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events();
 
@@ -1788,7 +1723,8 @@ impl ClientState {
 
         self.pending_flows.remove(&id);
 
-        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, id) else {
+        let Some(peer) = peer_by_resource_mut(&self.authorized_resources, &mut self.peers, id)
+        else {
             return;
         };
 
@@ -1808,7 +1744,7 @@ impl ClientState {
         // We remove all empty allowed ips entry since there's no resource that corresponds to it
         peer.allowed_ips.retain(|_, r| !r.is_empty());
 
-        self.resources_gateways.remove(&id);
+        self.authorized_resources.remove(&id);
 
         // Clear DNS resource NAT state for all domains resolved for this DNS resource.
         for domain in self
@@ -1838,6 +1774,16 @@ impl ClientState {
     ) {
         self.node.update_relays(to_remove, &to_add, now);
         self.drain_node_events(); // Ensure all state changes are fully-propagated.
+    }
+
+    fn on_not_connected_resource(
+        &mut self,
+        resource: ResourceId,
+        trigger: impl Into<ConnectionTrigger>,
+        now: Instant,
+    ) {
+        self.pending_flows
+            .on_not_connected_resource(resource, trigger, &self.resources_by_id, now);
     }
 }
 
@@ -1918,43 +1864,6 @@ fn into_udp_dns_packet(
     .ok()
 }
 
-/// What triggered us to establish a connection to a Gateway.
-enum ConnectionTrigger {
-    /// A packet received on the TUN device with a destination IP that maps to one of our resources.
-    PacketForResource(IpPacket),
-    /// A DNS query that needs to be resolved within a particular site that we aren't connected to yet.
-    DnsQueryForSite(DnsQueryForSite),
-    /// We have received an ICMP error that is marked as "access prohibited".
-    ///
-    /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
-    IcmpDestinationUnreachableProhibited,
-}
-
-struct DnsQueryForSite {
-    local: SocketAddr,
-    remote: SocketAddr,
-    transport: dns::Transport,
-    message: dns_types::Query,
-}
-
-impl ConnectionTrigger {
-    fn name(&self) -> &'static str {
-        match self {
-            ConnectionTrigger::PacketForResource(_) => "packet-for-resource",
-            ConnectionTrigger::DnsQueryForSite(_) => "dns-query-for-site",
-            ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
-                "icmp-destination-unreachable-prohibited"
-            }
-        }
-    }
-}
-
-impl From<IpPacket> for ConnectionTrigger {
-    fn from(v: IpPacket) -> Self {
-        Self::PacketForResource(v)
-    }
-}
-
 pub struct IpProvider {
     ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
     ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
@@ -2033,6 +1942,62 @@ mod tests {
         assert!(is_definitely_not_a_resource(ip("ff02::2")))
     }
 
+    #[test]
+    fn prefers_already_connected_gateways() {
+        let mut state = ClientState::for_test();
+        state.gateways_by_site.insert(
+            SiteId::from_u128(1),
+            HashSet::from([GatewayId::from_u128(10), GatewayId::from_u128(20)]),
+        );
+        state.gateways_by_site.insert(
+            SiteId::from_u128(2),
+            HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
+        );
+        state.peers.insert(peer(GatewayId::from_u128(30)), &[]);
+
+        let preferred_gateways = state.preferred_gateways(ResourceId::from_u128(100));
+
+        assert_eq!(
+            preferred_gateways,
+            vec![
+                GatewayId::from_u128(30),
+                GatewayId::from_u128(10),
+                GatewayId::from_u128(20),
+                GatewayId::from_u128(40)
+            ]
+        );
+    }
+
+    #[test]
+    fn remembers_preference_for_authorized_resource_after_reset() {
+        let mut state = ClientState::for_test();
+        state.gateways_by_site.insert(
+            SiteId::from_u128(1),
+            HashSet::from([GatewayId::from_u128(10), GatewayId::from_u128(20)]),
+        );
+        state.gateways_by_site.insert(
+            SiteId::from_u128(2),
+            HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
+        );
+        state.peers.insert(peer(GatewayId::from_u128(30)), &[]);
+        state
+            .authorized_resources
+            .insert(ResourceId::from_u128(100), GatewayId::from_u128(30));
+
+        state.reset(Instant::now(), "test");
+        let preferred_gateways = state.preferred_gateways(ResourceId::from_u128(100));
+
+        assert_eq!(
+            preferred_gateways,
+            vec![
+                GatewayId::from_u128(30),
+                GatewayId::from_u128(10),
+                GatewayId::from_u128(20),
+                GatewayId::from_u128(40)
+            ]
+        );
+    }
+
     impl ClientState {
         pub fn for_test() -> ClientState {
             ClientState::new(
@@ -2047,6 +2012,16 @@ mod tests {
 
     fn ip(addr: &str) -> IpAddr {
         addr.parse().unwrap()
+    }
+
+    fn peer(id: GatewayId) -> GatewayOnClient {
+        GatewayOnClient::new(
+            id,
+            IpConfig {
+                v4: Ipv4Addr::LOCALHOST,
+                v6: Ipv6Addr::LOCALHOST,
+            },
+        )
     }
 }
 
@@ -2239,11 +2214,12 @@ mod proptests {
 
         let first_resource = resources_online.first().unwrap();
         client_state
-            .resources_gateways
+            .authorized_resources
             .insert(first_resource.id(), gateway);
-        client_state
-            .gateways_site
-            .insert(gateway, first_resource.sites().iter().next().unwrap().id);
+        client_state.gateways_by_site.insert(
+            first_resource.sites().iter().next().unwrap().id,
+            HashSet::from([gateway]),
+        );
 
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
 
@@ -2273,11 +2249,12 @@ mod proptests {
         }
         let first_resources = resources.first().unwrap();
         client_state
-            .resources_gateways
+            .authorized_resources
             .insert(first_resources.id(), gateway);
-        client_state
-            .gateways_site
-            .insert(gateway, first_resources.sites().iter().next().unwrap().id);
+        client_state.gateways_by_site.insert(
+            first_resources.sites().iter().next().unwrap().id,
+            HashSet::from([gateway]),
+        );
 
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Unknown);

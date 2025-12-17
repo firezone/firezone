@@ -10,27 +10,28 @@ import SupportOptions from "@/components/SupportOptions";
 
 Firezone supports email authentication using a one-time password (OTP).
 
-This connector is enabled by default for all plans and is designed to get you up
+This provider is enabled by default for all plans and is designed to get you up
 and running with Firezone quickly. For production deployments, we recommend
 setting up [Universal OIDC](/kb/authenticate/oidc),
-[Google Workspace](/kb/authenticate/google),
-[Microsoft Entra ID](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta).
+[Google](/kb/authenticate/google), [Entra](/kb/authenticate/entra), or
+[Okta](/kb/authenticate/okta) authentication for a more seamless user experience
+and improved security.
 
-Firezone's OTP-based email authentication connector sends a one-time password to
+Firezone's OTP-based email authentication provider sends a one-time password to
 the user's email each time authentication is requested. This password is
 short-lived and can only be used to authenticate once.
 
 <Alert color="warning">
-  User / group sync is **not supported** with the Email (OTP) connector. See the
-  [Google Workspace](/kb/authenticate/google), [Microsoft Entra
-  ID](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta) connectors for
-  automatic directory sync.
+  Users and groups must be managed manually with the Email / OTP provider. See
+  the [Google](/kb/directory-sync/google), [Entra](/kb/directory-sync/entra), or
+  [Okta](/kb/directory-sync/okta) guides for setting up automated user and group
+  management with those providers.
 </Alert>
 
 ## Disabling email authentication
 
-The email authentication connector can be **disabled completely** for your
-account, forcing all users and admins to authenticate with another connector.
+The email authentication provider can be **disabled completely** for your
+account, forcing all users and admins to authenticate with another provider.
 This can increase security by reducing the number of potential entrypoints into
 your Firezone account.
 
@@ -39,9 +40,9 @@ provider in the list, and then click `Disable` in the upper-right.
 
 <Alert color="warning">
   Disabling the email provider can lead to issues signing in if all of your
-  other connectors stop working. For that reason, you may want to leave the
-  email authentication connector enabled with at least one admin assigned for
-  recovery purposes.
+  other providers stop working. For that reason, you may want to leave the email
+  authentication provider enabled with at least one admin assigned for recovery
+  purposes.
 </Alert>
 
 <SupportOptions />

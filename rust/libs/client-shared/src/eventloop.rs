@@ -99,7 +99,8 @@ impl Eventloop {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         is_internet_resource_active: bool,
-        mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
+        dns_servers: Vec<IpAddr>,
+        portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -114,13 +115,13 @@ impl Eventloop {
             is_internet_resource_active,
         );
 
-        portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
-
         tokio::spawn(phoenix_channel_event_loop(
             portal,
+            PublicKeyParam(tunnel.public_key().to_bytes()),
             portal_event_tx,
             portal_cmd_rx,
             udp_socket_factory.clone(),
+            dns_servers,
         ));
 
         Self {
@@ -274,13 +275,13 @@ impl Eventloop {
                     .context("Failed to send message to portal")?;
             }
             ClientEvent::ConnectionIntent {
-                connected_gateway_ids,
+                preferred_gateways,
                 resource,
             } => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::CreateFlow {
                         resource_id: resource,
-                        connected_gateway_ids,
+                        preferred_gateways,
                     }))
                     .await
                     .context("Failed to send message to portal")?;
@@ -423,10 +424,8 @@ impl Eventloop {
                     Instant::now(),
                 ) {
                     Ok(Ok(())) => {}
-                    Ok(Err(snownet::NoTurnServers {})) => {
-                        tracing::debug!(
-                            "Failed to request new connection: No TURN servers available"
-                        );
+                    Ok(Err(e @ snownet::NoTurnServers {})) => {
+                        tracing::debug!("Failed to handle flow created: {e}");
 
                         // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
                         self.portal_cmd_tx
@@ -437,7 +436,7 @@ impl Eventloop {
                             .context("Failed to connect phoenix-channel")?;
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to request new connection: {e:#}");
+                        tracing::warn!("Failed to handle flow created: {e:#}");
                     }
                 };
             }
@@ -488,46 +487,69 @@ impl Eventloop {
 }
 
 async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
+    mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    param: PublicKeyParam,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    dns_servers: Vec<IpAddr>,
 ) {
     use futures::future::Either;
     use futures::future::select;
     use std::future::poll_fn;
 
-    let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), vec![]);
+    let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), dns_servers);
+
+    let ips = resolve_portal_host_ips(portal.host(), &udp_dns_client).await;
+    portal.update_ips(ips);
+    portal.connect(param);
 
     loop {
-        match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
-            Either::Left((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
+        // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
+        // This allows `NoAddresses` events to use the updated `UdpDnsClient` to resolve the domain.
+        match select(pin!(cmd_rx.recv()), poll_fn(|cx| portal.poll(cx))).await {
+            Either::Left((Some(PortalCommand::Send(msg)), _)) => {
+                portal.send(PHOENIX_TOPIC, msg);
+            }
+            Either::Left((Some(PortalCommand::Connect(param)), _)) => {
+                portal.connect(param);
+            }
+            Either::Left((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
+                udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);
+            }
+            Either::Left((None, _)) => {
+                tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");
+
+                break;
+            }
+            Either::Right((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
                 if event_tx.send(Ok(msg)).await.is_err() {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
 
                     break;
                 }
             }
-            Either::Left((Ok(phoenix_channel::Event::SuccessResponse { .. }), _)) => {}
-            Either::Left((Ok(phoenix_channel::Event::ErrorResponse { res, req_id, topic }), _)) => {
-                match res {
-                    ErrorReply::Disabled => {
-                        tracing::debug!(%req_id, "Functionality is disabled");
-                    }
-                    ErrorReply::UnmatchedTopic => {
-                        portal.join(topic, ());
-                    }
-                    reason @ (ErrorReply::InvalidVersion | ErrorReply::Other) => {
-                        tracing::debug!(%req_id, %reason, "Request failed");
-                    }
+            Either::Right((Ok(phoenix_channel::Event::SuccessResponse { .. }), _)) => {}
+            Either::Right((
+                Ok(phoenix_channel::Event::ErrorResponse { res, req_id, topic }),
+                _,
+            )) => match res {
+                ErrorReply::Disabled => {
+                    tracing::debug!(%req_id, "Functionality is disabled");
                 }
-            }
-            Either::Left((Ok(phoenix_channel::Event::HeartbeatSent), _)) => {}
-            Either::Left((Ok(phoenix_channel::Event::JoinedRoom { .. }), _)) => {}
-            Either::Left((Ok(phoenix_channel::Event::Closed), _)) => {
+                ErrorReply::UnmatchedTopic => {
+                    portal.join(topic, ());
+                }
+                reason @ (ErrorReply::InvalidVersion | ErrorReply::Other) => {
+                    tracing::debug!(%req_id, %reason, "Request failed");
+                }
+            },
+            Either::Right((Ok(phoenix_channel::Event::HeartbeatSent), _)) => {}
+            Either::Right((Ok(phoenix_channel::Event::JoinedRoom { .. }), _)) => {}
+            Either::Right((Ok(phoenix_channel::Event::Closed), _)) => {
                 unimplemented!("Client never actively closes the portal connection")
             }
-            Either::Left((
+            Either::Right((
                 Ok(phoenix_channel::Event::Hiccup {
                     backoff,
                     max_elapsed_time,
@@ -540,42 +562,47 @@ async fn phoenix_channel_event_loop(
                     ?max_elapsed_time,
                     "Hiccup in portal connection: {error:#}"
                 );
-
-                let ips = match udp_dns_client
-                    .resolve(portal.host())
-                    .await
-                    .context("Failed to lookup portal host")
-                {
-                    Ok(ips) => ips.into_iter().collect(),
-                    Err(e) => {
-                        tracing::debug!(host = %portal.host(), "{e:#}");
-                        continue;
-                    }
-                };
-
+            }
+            Either::Right((Ok(phoenix_channel::Event::NoAddresses), _)) => {
+                let ips = resolve_portal_host_ips(portal.host(), &udp_dns_client).await;
                 portal.update_ips(ips);
             }
-            Either::Left((Err(e), _)) => {
+            Either::Right((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
-
-                break;
-            }
-            Either::Right((Some(PortalCommand::Send(msg)), _)) => {
-                portal.send(PHOENIX_TOPIC, msg);
-            }
-            Either::Right((Some(PortalCommand::Connect(param)), _)) => {
-                portal.connect(param);
-            }
-            Either::Right((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
-                udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);
-            }
-            Either::Right((None, _)) => {
-                tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");
 
                 break;
             }
         }
     }
+}
+
+/// Re-resolves the IPs of the portal hostname.
+///
+/// We combine the result of two sources here:
+///
+/// - We make UDP DNS queries to our configured system resolvers.
+/// - We read `/etc/hosts`.
+///
+/// If any of these fail, we simply default to an empty list of IPs.
+/// This is fine as this routine will be triggered again if we ever run out of IPs to use.
+async fn resolve_portal_host_ips(
+    host: String,
+    udp_dns_client: &UdpDnsClient,
+) -> impl IntoIterator<Item = IpAddr> {
+    let udp_ips = udp_dns_client
+        .resolve(host.clone())
+        .await
+        .context("Failed to lookup portal host via UDP DNS")
+        .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
+        .unwrap_or_default();
+
+    let etc_hosts_ips = etc_hosts_dns_client::resolve(host.clone())
+        .await
+        .context("Failed to lookup portal host from `/etc/hosts`")
+        .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
+        .unwrap_or_default();
+
+    udp_ips.into_iter().chain(etc_hosts_ips)
 }
 
 fn is_unreachable(e: &io::Error) -> bool {

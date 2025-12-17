@@ -76,10 +76,10 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.4.19
+          - release_name: gateway-1.4.20
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.5.5
+          - release_name: headless-client-1.5.7
             config_name: release-drafter-headless-client.yml
 
     steps:
@@ -112,20 +112,24 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.5]
+        release_name: [headless-client-1.5.7]
         # mark:next-headless-version
-        version: [1.5.5]
+        version: [1.5.7]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ inputs.sha }}
-      - uses: ./.github/actions/setup-rust
+          fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
+      - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.target }}
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-rust-target-workspace-cache
+        with:
+          key: ${{ matrix.package }}-${{ inputs.stage }}-${{ inputs.profile }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build binaries
         shell: bash
         run: |
@@ -137,10 +141,12 @@ jobs:
             PROFILE=""
           fi
 
-          cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }}
+          cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
           mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
       - uses: ./.github/actions/setup-azure-sign-tool
+        if: inputs.profile == 'release'
       - name: Sign the binary
+        if: inputs.profile == 'release'
         shell: bash
         env:
           AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
@@ -183,48 +189,20 @@ jobs:
           - target: x86_64-unknown-linux-musl
             shortname: x86_64
             platform: linux/amd64
-            install_dependencies: |
-              sudo apt-get install musl-tools
           - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
             shortname: aarch64
             platform: linux/arm64
-            install_dependencies: |
-              # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
-              # Find some other way to keep these updated.
-              if [[ ! -x /tmp/toolchain/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc ]]; then
-                curl -fsSL https://github.com/firezone/musl-toolchains/releases/download/1/aarch64-linux-musl-cross.tgz -o /tmp/aarch64-linux-musl-cross.tgz
-                mkdir -p /tmp/toolchain
-                tar -xzf /tmp/aarch64-linux-musl-cross.tgz -C /tmp/toolchain
-              fi
-
-              CC=/tmp/toolchain/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
-
-              echo "CC_aarch64_unknown_linux_musl=$CC" >> $GITHUB_ENV
-              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=$CC" >> $GITHUB_ENV
           - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
             platform: linux/arm/v7
             shortname: armv7
-            install_dependencies: |
-              # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
-              # Find some other way to keep these updated.
-              if [[ ! -x /tmp/toolchain/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc ]]; then
-                curl -fsSL https://github.com/firezone/musl-toolchains/releases/download/1/arm-linux-musleabihf-cross.tgz -o /tmp/arm-linux-musleabihf-cross.tgz
-                mkdir -p /tmp/toolchain
-                tar -xzf /tmp/arm-linux-musleabihf-cross.tgz -C /tmp/toolchain
-              fi
-
-              CC=/tmp/toolchain/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc
-
-              echo "CC_armv7_unknown_linux_musleabihf=$CC" >> $GITHUB_ENV
-              echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER=$CC" >> $GITHUB_ENV
         name:
           - package: firezone-headless-client
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.5
+            release_name: headless-client-1.5.7
             # mark:next-headless-version
-            version: 1.5.5
+            version: 1.5.7
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -232,9 +210,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.4.19
+            release_name: gateway-1.4.20
             # mark:next-gateway-version
-            version: 1.4.19
+            version: 1.4.20
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -248,20 +226,27 @@ jobs:
       gateway_image: ${{ steps.image-name.outputs.gateway_image }}
       http_test_server_image: ${{ steps.image-name.outputs.http-test-server_image }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ inputs.sha }}
+          fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
       - uses: ./.github/actions/ghcr-docker-login
         id: login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-musl
+        with:
+          target: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.arch.target }}
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - name: Install dependencies
-        run: ${{ matrix.arch.install_dependencies }}
-      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
+      - uses: ./.github/actions/setup-rust-nightly
+        if: matrix.name.package == 'firezone-relay'
+      - uses: ./.github/actions/setup-rust-target-workspace-cache
+        with:
+          key: ${{ matrix.name.package }}-${{ inputs.stage }}-${{ inputs.profile }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
         with:
           tool: bpf-linker,cargo-deb
         env:
@@ -276,11 +261,14 @@ jobs:
             PROFILE=""
           fi
 
-          cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }} --verbose
 
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
           sha256sum ${{ matrix.name.package }} > ${{ matrix.name.package }}.sha256sum.txt
+
+          # Used for release artifact
+          cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
       # For pushing built images to Google Cloud Storage
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
@@ -294,13 +282,6 @@ jobs:
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
         run: |
           set -e
-          gcloud storage cp \
-            "${{ matrix.name.package }}" \
-            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
-
-          gcloud storage cp \
-            "${{ matrix.name.package }}".sha256sum.txt \
-            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
 
           az storage blob upload \
             --container-name binaries \
@@ -328,25 +309,12 @@ jobs:
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NAME: ${{ matrix.name.release_name }}
+          ARTIFACT_PATH: ${{ env.BINARY_DEST_PATH }}
         run: |
           set -xe
 
-          # Only clobber existing release assets if the release is a draft
-          is_draft=$(gh release view ${{ matrix.name.release_name }} --json isDraft --jq '.isDraft' | tr -d '\n')
-          if [[ "$is_draft" == "true" ]]; then
-            clobber="--clobber"
-          else
-            clobber=""
-          fi
-
-          # Used for release artifact
-          cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
-          cp ${{ matrix.name.package }}.sha256sum.txt "$BINARY_DEST_PATH".sha256sum.txt
-          gh release upload ${{ matrix.name.release_name }} \
-            "$BINARY_DEST_PATH" \
-            "$BINARY_DEST_PATH".sha256sum.txt \
-            "$clobber" \
-            --repo ${{ github.repository }}
+          ../scripts/upload/github-release.sh
 
           az storage blob upload-batch \
             --destination apt \
@@ -357,7 +325,7 @@ jobs:
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
       - name: Upload `.deb` artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
           path: rust/${{ env.BINARY_DEST_PATH }}.deb
@@ -365,10 +333,10 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}
           # We only version client and gateway
@@ -422,7 +390,7 @@ jobs:
           digest="${{ github.ref == 'refs/heads/main' && steps.build_rw.outputs.digest || steps.build_ro.outputs.digest }}"
           touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           overwrite: true
           name: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ inputs.sha }}-digest-${{ matrix.arch.shortname }}
@@ -453,13 +421,13 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.4.19
+            version: 1.4.20
           - name: client
             # mark:next-client-version
             version: 1.0.6
           - name: http-test-server
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ inputs.sha }}
       - uses: ./.github/actions/ghcr-docker-login
@@ -467,7 +435,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download digests
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}-${{ inputs.sha }}-digest-*
           merge-multiple: true
@@ -475,10 +443,10 @@ jobs:
       - name: Display structure of downloaded artifacts
         run: ls -R /tmp/digests
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}
           tags: |

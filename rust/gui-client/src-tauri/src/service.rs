@@ -21,7 +21,7 @@ use futures::{
 };
 use logging::{FilterReloadHandle, err_with_src};
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use std::{
     io::{self, Write},
     mem,
@@ -636,7 +636,6 @@ impl<'a> Handler<'a> {
 
         let url = LoginUrl::client(
             Url::parse(api_url).context("Failed to parse URL")?,
-            &token,
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -647,10 +646,10 @@ impl<'a> Handler<'a> {
         )
         .context("Failed to create `LoginUrl`")?;
 
-        // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
-            SecretBox::init_with(|| url),
-            get_user_agent(None, "gui-client", env!("CARGO_PKG_VERSION")),
+            url,
+            token,
+            get_user_agent("gui-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
             || {
@@ -659,7 +658,7 @@ impl<'a> Handler<'a> {
                     .build()
             },
             Arc::new(tcp_socket_factory),
-        )?;
+        );
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
@@ -668,14 +667,11 @@ impl<'a> Handler<'a> {
             Arc::new(UdpSocketFactory::default()),
             portal,
             is_internet_resource_active,
+            dns,
             tokio::runtime::Handle::current(),
         );
 
         analytics::new_session(device_id.id, api_url.to_string());
-
-        // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
-        tracing::debug!(?dns, "Calling `set_dns`...");
-        connlib.set_dns(dns);
 
         let tun = self
             .tun_device

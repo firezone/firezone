@@ -199,21 +199,41 @@ impl Io {
         }
     }
 
-    pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<()> {
+    pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<(), TunnelError> {
         tracing::debug!(?sockets, "Rebinding DNS servers");
 
         self.udp_dns_server.clear();
         self.tcp_dns_server.clear();
 
+        let mut error = TunnelError::default();
+
         for socket in sockets {
             let mut udp = l4_udp_dns_server::Server::default();
             let mut tcp = l4_tcp_dns_server::Server::default();
 
-            udp.rebind(socket)?;
-            tcp.rebind(socket)?;
+            match udp.rebind(socket) {
+                Ok(()) => {
+                    self.udp_dns_server.insert(socket, udp);
+                }
+                Err(e) => {
+                    error.push(e);
+                }
+            };
+            match tcp.rebind(socket) {
+                Ok(()) => {
+                    self.tcp_dns_server.insert(socket, tcp);
+                }
+                Err(e) => {
+                    error.push(e);
+                }
+            };
+        }
 
-            self.udp_dns_server.insert(socket, udp);
-            self.tcp_dns_server.insert(socket, tcp);
+        if !error.is_empty() {
+            self.udp_dns_server.clear();
+            self.tcp_dns_server.clear();
+
+            return Err(error);
         }
 
         Ok(())
@@ -700,6 +720,32 @@ mod tests {
                 dns_types::ResponseCode::NOERROR
             );
         }
+    }
+
+    #[tokio::test]
+    async fn rebind_dns_clears_all_servers_on_failure() {
+        let _guard = logging::test("debug");
+
+        let mut io = Io::for_test();
+
+        let result = io.rebind_dns(vec![
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 40000), // This one will almost definitely work.
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), 40000), // This one will fail.
+        ]);
+
+        assert_eq!(
+            result
+                .unwrap_err()
+                .drain()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>(),
+            vec![
+                "Failed to bind UDP socket on 1.1.1.1:40000",
+                "Failed to bind TCP listener on 1.1.1.1:40000"
+            ]
+        );
+        assert!(io.udp_dns_server.is_empty());
+        assert!(io.tcp_dns_server.is_empty());
     }
 
     fn example_com_recursive_query() -> dns::RecursiveQuery {

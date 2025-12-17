@@ -1,39 +1,60 @@
-# HTTPS dev certs
-priv/pki/authorities/local/
+# macOS cruft
+.DS_Store
 
 # The directory Mix will write compiled artifacts to.
-_build/
+/_build/
 
 # If you run "mix test --cover", coverage assets end up here.
-cover/
+/cover/
 
 # The directory Mix downloads your dependencies sources to.
-deps/
+/deps/
+
+# Where 3rd-party dependencies like ExDoc output generated docs.
+/doc/
+
+# Ignore .fetch files in case you like to edit your project deps locally.
+/.fetch
 
 # If the VM crashes, it generates a dump, let's ignore it too.
 erl_crash.dump
 
-# The directory NPM downloads your dependencies sources to.
+# Also ignore archive artifacts (built via "mix archive.build").
+*.ez
+
+# Ignore package tarball (built via "mix hex.build").
+portal-*.tar
+
+# NPM/Node.js
+npm-debug.log
 /assets/node_modules/
+/assets/lib/node_modules/
+/assets/bin/
+/assets/tmp/
 
 # Since we are building assets from assets/,
 # we ignore priv/static. You may want to comment
 # this depending on your deployment strategy.
-/priv/static/
-apps/*/priv/static/
+/priv/static/assets/
+/priv/static/dist/
+/priv/static/cache_manifest.json
+/priv/static/uploads/
+
+# HTTPS dev certs
+/priv/pki/authorities/local/
+/priv/cert/
 
 # Dialyxir output
 /priv/plts/
 
+# MaxMind DB files
+/priv/geoip/
+
 # Test screenshots
-apps/*/screenshots
+/screenshots/
 
 # WG configs generated in acceptance tests
 *.conf
 
-# Uploads
-apps/web/priv/static/uploads
-
 # ElixirLS
-# ElixirLS uses this directory to store its state.
 .elixir_ls/

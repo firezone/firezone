@@ -14,7 +14,7 @@ use logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
@@ -23,6 +23,7 @@ use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use telemetry::{RELAY_DSN, Telemetry};
+use tokio::sync::mpsc;
 use tracing::Subscriber;
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
@@ -31,7 +32,7 @@ use url::Url;
 
 const STATS_LOG_INTERVAL: Duration = Duration::from_secs(10);
 
-const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 15);
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -231,16 +232,16 @@ async fn try_main(args: Args) -> Result<()> {
 
     let login = LoginUrl::relay(
         args.api_url.clone(),
-        &args.token,
         args.name.clone(),
         args.listen_port,
         args.public_ip4_addr,
         args.public_ip6_addr,
     )?;
 
-    let mut channel = PhoenixChannel::disconnected(
-        SecretBox::init_with(|| login),
-        get_user_agent(None, "relay", env!("CARGO_PKG_VERSION")),
+    let channel = PhoenixChannel::disconnected(
+        login,
+        args.token.clone(),
+        get_user_agent("relay", env!("CARGO_PKG_VERSION")),
         "relay",
         JoinMessage {
             stamp_secret: server.auth_secret().expose_secret().to_string(),
@@ -251,8 +252,7 @@ async fn try_main(args: Args) -> Result<()> {
                 .build()
         },
         Arc::new(socket_factory::tcp),
-    )?;
-    channel.connect(NoParams);
+    );
 
     let mut eventloop = Eventloop::new(server, ebpf, channel, public_addr, last_heartbeat_sent)?;
 
@@ -388,7 +388,7 @@ where
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum IngressMessage {
+enum IngressMessages {
     Init(Init),
 }
 
@@ -416,7 +416,7 @@ struct Eventloop<R> {
     sockets: Sockets,
 
     server: Server<R>,
-    channel: Option<PhoenixChannel<JoinMessage, IngressMessage, NoParams>>,
+    event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     sleep: Sleep,
 
     ebpf: Option<ebpf::Program>,
@@ -425,8 +425,6 @@ struct Eventloop<R> {
 
     stats_log_interval: tokio::time::Interval,
     last_num_bytes_relayed: u64,
-
-    last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
 
     buffer: [u8; MAX_UDP_SIZE],
 }
@@ -438,7 +436,7 @@ where
     fn new(
         server: Server<R>,
         ebpf: Option<ebpf::Program>,
-        channel: PhoenixChannel<JoinMessage, IngressMessage, NoParams>,
+        portal: PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
         public_address: IpStack,
         last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
     ) -> Result<Self> {
@@ -465,16 +463,22 @@ where
                 })?;
         }
 
+        let (event_tx, event_rx) = mpsc::channel(128);
+        tokio::spawn(phoenix_channel_event_loop(
+            portal,
+            event_tx,
+            last_heartbeat_sent,
+        ));
+
         Ok(Self {
             server,
-            channel: Some(channel),
+            event_rx,
             sleep: Sleep::default(),
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
             sockets,
             ebpf,
             buffer: [0u8; MAX_UDP_SIZE],
-            last_heartbeat_sent,
             sigterm: signals::Terminate::new()?,
         })
     }
@@ -651,14 +655,21 @@ where
             }
 
             // Priority 5: Handle portal messages
-            match self.channel.as_mut().map(|c| c.poll(cx)) {
-                Some(Poll::Ready(result)) => {
-                    let event = result.context("Portal connection failed")?;
-                    self.handle_portal_event(event);
-
+            match self.event_rx.poll_recv(cx) {
+                Poll::Ready(Some(Ok(IngressMessages::Init(Init {})))) => {
                     ready = true;
                 }
-                Some(Poll::Pending) | None => {}
+                Poll::Ready(Some(Err(e))) => {
+                    return Poll::Ready(Err(
+                        anyhow::Error::new(e).context("Portal connection failed")
+                    ));
+                }
+                Poll::Ready(None) => {
+                    return Poll::Ready(Err(anyhow::Error::msg(
+                        "Portal connection task terminated",
+                    )));
+                }
+                Poll::Pending => {}
             }
 
             match self.sigterm.poll_recv(cx) {
@@ -718,37 +729,70 @@ where
 
         Ok(())
     }
+}
 
-    fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessage>) {
-        match event {
-            Event::SuccessResponse { .. } => {}
-            Event::JoinedRoom { topic } => {
+async fn phoenix_channel_event_loop(
+    mut portal: PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
+    event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
+    last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
+) {
+    update_portal_host_ips(&mut portal).await;
+    portal.connect(NoParams);
+
+    loop {
+        match std::future::poll_fn(|cx| portal.poll(cx)).await {
+            Ok(Event::SuccessResponse { .. }) => {}
+            Ok(Event::JoinedRoom { topic }) => {
                 tracing::info!(target: "relay", "Successfully joined room '{topic}'");
             }
-            Event::ErrorResponse { topic, req_id, res } => {
+            Ok(Event::ErrorResponse { topic, req_id, res }) => {
                 tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {res:?}");
             }
-            Event::HeartbeatSent => {
+            Ok(Event::HeartbeatSent) => {
                 tracing::debug!(target: "relay", "Heartbeat sent to portal");
-                *self
-                    .last_heartbeat_sent
+                *last_heartbeat_sent
                     .lock()
                     .unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
             }
-            Event::InboundMessage {
-                msg: IngressMessage::Init(Init {}),
-                ..
-            } => {}
-            Event::Closed => {
-                self.channel = None;
+            Ok(Event::InboundMessage { msg, .. }) => {
+                if event_tx.send(Ok(msg)).await.is_err() {
+                    tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
+                    break;
+                }
             }
-            Event::Hiccup {
+            Ok(Event::Closed) => break,
+            Ok(Event::NoAddresses) => update_portal_host_ips(&mut portal).await,
+            Ok(Event::Hiccup {
                 backoff,
                 max_elapsed_time,
                 error,
-            } => tracing::warn!(?backoff, ?max_elapsed_time, "{error:#}"),
+            }) => tracing::warn!(?backoff, ?max_elapsed_time, "{error:#}"),
+            Err(e) => {
+                let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
+
+                break;
+            }
         }
     }
+}
+
+async fn update_portal_host_ips(
+    portal: &mut PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
+) {
+    let host = portal.host();
+
+    let ips = match tokio::net::lookup_host(format!("{host}:0"))
+        .await
+        .context("Failed to lookup portal host")
+    {
+        Ok(sockets) => sockets.map(|s| s.ip()),
+        Err(e) => {
+            tracing::warn!(%host, "{e:#}");
+            return;
+        }
+    };
+
+    portal.update_ips(ips);
 }
 
 fn fmt_human_throughput(mut throughput: f64) -> String {
@@ -832,12 +876,12 @@ mod tests {
     }
 
     #[test]
-    fn given_last_heartbeat_older_than_15_min_is_not_healthy() {
-        let now = Instant::now() + Duration::from_hours(1); // Advance to the future to avoid underflow.
+    fn given_last_heartbeat_older_than_24_hours_is_not_healthy() {
+        let now = Instant::now() + Duration::from_hours(48); // Advance to the future to avoid underflow.
 
         let is_healthy = is_healthy(
             now,
-            Arc::new(Mutex::new(Some(now - Duration::from_secs(60 * 15)))),
+            Arc::new(Mutex::new(Some(now - Duration::from_hours(24)))),
         );
 
         assert!(!is_healthy)

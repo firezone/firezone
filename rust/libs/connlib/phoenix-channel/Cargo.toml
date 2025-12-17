@@ -9,6 +9,7 @@ license = { workspace = true }
 anyhow = { workspace = true }
 backoff = { workspace = true }
 base64 = { workspace = true }
+chrono = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true }
@@ -34,7 +35,7 @@ tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-hostname = "0.4.0"
+hostname = "0.4.2"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "tracing"] }

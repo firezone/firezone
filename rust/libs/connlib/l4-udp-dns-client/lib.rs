@@ -42,7 +42,9 @@ impl UdpDnsClient {
         let host = host.into();
 
         async move {
-            let host =
+            anyhow::ensure!(!servers.is_empty(), "No servers specified");
+
+            let domain =
                 DomainName::vec_from_str(host.as_ref()).context("Failed to parse domain name")?;
 
             let ips = servers
@@ -54,12 +56,12 @@ impl UdpDnsClient {
                         send_query(
                             socket_factory.clone(),
                             socket,
-                            dns_types::Query::new(host.clone(), dns_types::RecordType::A),
+                            dns_types::Query::new(domain.clone(), dns_types::RecordType::A),
                         ),
                         send_query(
                             socket_factory.clone(),
                             socket,
-                            dns_types::Query::new(host.clone(), dns_types::RecordType::AAAA),
+                            dns_types::Query::new(domain.clone(), dns_types::RecordType::AAAA),
                         ),
                     ]
                 })
@@ -75,9 +77,11 @@ impl UdpDnsClient {
                         .filter_map(dns_types::records::extract_ip)
                         .collect::<Vec<_>>()
                 })
-                .collect::<BTreeSet<_>>(); // Make them unique.
+                .collect::<BTreeSet<_>>() // Make them unique.
+                .into_iter()
+                .collect();
 
-            Ok(Vec::from_iter(ips))
+            Ok(ips)
         }
     }
 }
@@ -160,5 +164,14 @@ mod tests {
 
         assert!(!ips.is_empty());
         assert!(now.elapsed() >= UdpDnsClient::TIMEOUT) // Still need to wait for the unreachable server.
+    }
+
+    #[tokio::test]
+    async fn fails_without_servers() {
+        let client = UdpDnsClient::new(Arc::new(socket_factory::udp), vec![]);
+
+        let ips = client.resolve("example.com").await;
+
+        assert_eq!(ips.unwrap_err().to_string(), "No servers specified")
     }
 }

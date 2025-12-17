@@ -1,0 +1,61 @@
+
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/oidc.ex:72,1687D24
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:38,17684C4
+Config.CSRFRoute: CSRF via Action Reuse,lib/portal_web/router.ex:109,17FA088
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal/types/filter.ex:22,1E1F28F
+DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:172,1FD0413
+SQL.Query: SQL injection,lib/portal/safe.ex:285,224B461
+DOS.BinToAtom: Unsafe atom interpolation,lib/portal/account.ex:83,2831B26
+Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
+Config.Headers: Missing Secure Browser Headers,lib/portal_api/router.ex:15,464028
+Config.Secrets: Hardcoded Secret,config/config.exs:208,4700588
+Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:4,490DB25
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:48,49E8E80
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:20,4C29336
+SQL.Query: SQL injection,lib/portal/safe.ex:291,4C5F170
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/email_otp.ex:65,5078E69
+Config.Secrets: Hardcoded Secret,config/config.exs:106,56F4E1B
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:24,5775968
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:33,58DA1AC
+Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/client_auth.ex:42,5F2F213
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/mailer.ex:62,6EFEB9E
+Config.Secrets: Hardcoded Secret,config/config.exs:207,7165BCA
+Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:13,7269EC9
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:28,7369D64
+
+Config.Secrets: Hardcoded Secret,config/config.exs:209,8DFEA3
+
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/mailer.ex:49,2064866
+Config.Secrets: Hardcoded Secret,config/config.exs:201,3CFE1A
+Config.Secrets: Hardcoded Secret,config/config.exs:202,43A0604
+
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:375,2E0A7AD
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:217,3560D02
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:371,46EE6C5
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:212,5B50F1B
+
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:31,135D3E7
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:72,3660523
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:41,4C6E35C
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:66,58F0C9B
+Config.Secrets: Hardcoded Secret,config/config.exs:206,611CC2E
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:51,68184B9
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,74777AB
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:75,780F62D
+Config.Secrets: Hardcoded Secret,config/config.exs:205,E9FD90
+
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:366,2BF900
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:211,52B9024
+Config.Secrets: Hardcoded Secret,config/config.exs:104,61C15AF
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:216,69DCAC0
+Config.Secrets: Hardcoded Secret,config/config.exs:203,6ED2CC5
+Config.Secrets: Hardcoded Secret,config/config.exs:204,7F38DEB
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:370,7F8C06D
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:40,1D07B78
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:30,75F2F69
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:50,7DE9449
+
+DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:171,3D848A0
+
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:72,476160D
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,696A7C1

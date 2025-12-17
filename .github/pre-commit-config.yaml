@@ -25,21 +25,14 @@ repos:
       - id: mixed-line-ending
         args: ["--fix=lf"]
         description: Forces to replace line ending by the UNIX 'lf' character.
-        exclude: "(^website/public/images/|^kotlin/android/gradlew.bat|^rust/windows-client/wintun/|^elixir/apps/web/priv/static/)"
+        exclude: "(^website/public/images/|^kotlin/android/gradlew.bat|^rust/windows-client/wintun/|^elixir/priv/static/)"
       - id: check-yaml
       - id: check-merge-conflict
       - id: end-of-file-fixer
-        exclude: (^website/public/images/|^elixir/apps/web/priv/static/|^swift/apple/FirezoneNetworkExtension/Connlib/Generated/)
+        exclude: (^website/public/images/|^elixir/priv/static/|^swift/apple/FirezoneNetworkExtension/Connlib/Generated/)
       - id: trailing-whitespace
         exclude: (^website/public/images/|^swift/apple/FirezoneNetworkExtension/Connlib/Generated/)
       - id: check-merge-conflict
-      - id: no-commit-to-branch
-        args:
-          - -b
-          - master
-          - --pattern
-          - '^(?!((chore|feat|feature|bug|fix|build|ci|docs|style|refactor|perf|test|revert)\/[@a-zA-Z0-9\-\.\/]+)$).*'
-
   # Third party pre-commit hooks
   - repo: local
     hooks:
@@ -62,3 +55,11 @@ repos:
     hooks:
       - id: cargo-sort
         args: ["--check", "--workspace", "rust/"]
+  - repo: local
+    hooks:
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: system
+        types: [yaml]
+        files: ^\.github/workflows/

@@ -1,5 +1,4 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
-use secrecy::{CloneableSecret, ExposeSecret as _, SecretString, zeroize::Zeroize};
 use serde::Deserialize;
 use sha2::Digest as _;
 use std::{
@@ -44,14 +43,6 @@ pub struct LoginUrl<TFinish> {
     phantom: PhantomData<TFinish>,
 }
 
-impl<TFinish> Zeroize for LoginUrl<TFinish> {
-    fn zeroize(&mut self) {
-        let placeholder = Url::parse("http://a.com")
-            .expect("placeholder URL should always be valid, it's hard-coded");
-        let _ = std::mem::replace(&mut self.url, placeholder);
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct PublicKeyParam(pub [u8; 32]);
 
@@ -76,12 +67,9 @@ impl IntoIterator for NoParams {
     }
 }
 
-impl<TFinish> CloneableSecret for LoginUrl<TFinish> where TFinish: Clone {}
-
 impl LoginUrl<PublicKeyParam> {
     pub fn client<E>(
         url: impl TryInto<Url, Error = E>,
-        firezone_token: &SecretString,
         device_id: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
@@ -98,7 +86,6 @@ impl LoginUrl<PublicKeyParam> {
 
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
-            firezone_token,
             "client",
             Some(external_id),
             Some(device_name),
@@ -120,7 +107,6 @@ impl LoginUrl<PublicKeyParam> {
 
     pub fn gateway<E>(
         url: impl TryInto<Url, Error = E>,
-        firezone_token: &SecretString,
         device_id: String,
         device_name: Option<String>,
     ) -> Result<Self, LoginUrlError<E>> {
@@ -135,7 +121,6 @@ impl LoginUrl<PublicKeyParam> {
 
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
-            firezone_token,
             "gateway",
             Some(external_id),
             Some(device_name),
@@ -159,7 +144,6 @@ impl LoginUrl<PublicKeyParam> {
 impl LoginUrl<NoParams> {
     pub fn relay<E>(
         url: impl TryInto<Url, Error = E>,
-        firezone_token: &SecretString,
         device_name: Option<String>,
         listen_port: u16,
         ipv4_address: Option<Ipv4Addr>,
@@ -167,7 +151,6 @@ impl LoginUrl<NoParams> {
     ) -> Result<Self, LoginUrlError<E>> {
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
-            firezone_token,
             "relay",
             None,
             device_name,
@@ -255,7 +238,6 @@ fn get_host_name() -> Option<String> {
 
 fn get_websocket_path<E>(
     mut api_url: Url,
-    token: &SecretString,
     mode: &str,
     external_id: Option<String>,
     name: Option<String>,
@@ -279,7 +261,6 @@ fn get_websocket_path<E>(
     {
         let mut query_pairs = api_url.query_pairs_mut();
         query_pairs.clear();
-        query_pairs.append_pair("token", token.expose_secret());
 
         if let Some(external_id) = external_id {
             query_pairs.append_pair("external_id", &external_id);
@@ -334,7 +315,6 @@ mod tests {
     fn base_url_removes_params_and_path() {
         let login_url = LoginUrl::client(
             "wss://api.firez.one",
-            &SecretString::from("foobar"),
             "some-id".to_owned(),
             None,
             DeviceInfo::default(),

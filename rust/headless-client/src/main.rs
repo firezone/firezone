@@ -16,7 +16,7 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::PhoenixChannel;
 use phoenix_channel::get_user_agent;
 use phoenix_channel::{DeviceInfo, LoginUrl};
-use secrecy::{SecretBox, SecretString};
+use secrecy::SecretString;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -215,7 +215,12 @@ fn try_main() -> Result<()> {
         .as_deref()
         .map(|dir| logging::file::layer(dir, "firezone-headless-client"))
         .unzip();
-    logging::setup_global_subscriber(layer, false).context("Failed to set up logging")?;
+    logging::setup_global_subscriber(
+        std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
+        layer,
+        false,
+    )
+    .context("Failed to set up logging")?;
 
     // Deactivate DNS control before starting telemetry or connecting to the portal,
     // in case a previous run of Firezone left DNS control on and messed anything up.
@@ -279,7 +284,6 @@ fn try_main() -> Result<()> {
 
     let url = LoginUrl::client(
         cli.api_url.clone(),
-        &token,
         firezone_id.clone(),
         cli.firezone_name,
         DeviceInfo {
@@ -336,8 +340,9 @@ fn try_main() -> Result<()> {
         // for an Internet connection if it launches us at startup.
         // When running interactively, it is useful for the user to see that we can't reach the portal.
         let portal = PhoenixChannel::disconnected(
-            SecretBox::init_with(|| url),
-            get_user_agent(None, "headless-client", env!("CARGO_PKG_VERSION")),
+            url,
+            token,
+            get_user_agent("headless-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
             move || {
@@ -346,12 +351,13 @@ fn try_main() -> Result<()> {
                     .build()
             },
             Arc::new(tcp_socket_factory),
-        )?;
+        );
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
             cli.activate_internet_resource,
+            dns_controller.system_resolvers(),
             rt.handle().clone(),
         );
 
@@ -372,7 +378,6 @@ fn try_main() -> Result<()> {
 
         let tun = tun_device.make_tun()?;
         session.set_tun(tun);
-        session.set_dns(dns_controller.system_resolvers());
 
         let result = loop {
             let event = tokio::select! {

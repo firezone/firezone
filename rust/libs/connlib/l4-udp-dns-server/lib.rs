@@ -11,7 +11,7 @@ use futures::{
 };
 use std::{
     io,
-    net::{SocketAddr, ToSocketAddrs},
+    net::SocketAddr,
     sync::{Arc, Weak},
     task::{Context, Poll},
 };
@@ -148,8 +148,9 @@ pub struct Query {
     pub message: dns_types::Query,
 }
 
-fn make_udp_socket(socket: impl ToSocketAddrs) -> Result<UdpSocket> {
-    let udp_socket = std::net::UdpSocket::bind(socket).context("Failed to bind UDP socket")?;
+fn make_udp_socket(socket: SocketAddr) -> Result<UdpSocket> {
+    let udp_socket = std::net::UdpSocket::bind(socket)
+        .with_context(|| format!("Failed to bind UDP socket on {socket}"))?;
     udp_socket
         .set_nonblocking(true)
         .context("Failed to set socket as non-blocking")?;

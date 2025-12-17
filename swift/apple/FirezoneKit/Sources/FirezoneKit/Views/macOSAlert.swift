@@ -183,11 +183,13 @@
       switch domain {
       case NEVPNErrorDomain:
         // SAFETY: These are the same error type
+        // swiftlint:disable:next force_unwrapping
         let code = NEVPNError.Code(rawValue: self.code)!
         let err = NEVPNError(code)
         return err.userMessage()
       case OSSystemExtensionErrorDomain:
         // SAFETY: These are the same error types
+        // swiftlint:disable:next force_unwrapping
         let code = OSSystemExtensionError.Code(rawValue: self.code)!
         let err = OSSystemExtensionError(code)
         return err.userMessage()

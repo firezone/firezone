@@ -68,11 +68,6 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
 
-    let send_buf_size = socket.send_buffer_size()?;
-    let recv_buf_size = socket.recv_buffer_size()?;
-
-    tracing::trace!(addr = %std_addr, %send_buf_size, %recv_buf_size, "Created new UDP socket");
-
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
     let socket = UdpSocket::new(socket)?;
@@ -161,14 +156,22 @@ impl std::os::fd::AsFd for TcpSocket {
 
 pub struct UdpSocket {
     inner: tokio::net::UdpSocket,
-    state: quinn_udp::UdpSocketState,
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
+    port: u16,
+}
+
+/// A UDP socket with performance optimisations for fast send & receive.
+pub struct PerfUdpSocket {
+    inner: tokio::net::UdpSocket,
+    state: quinn_udp::UdpSocketState,
 
     /// A buffer pool for batches of incoming UDP packets.
     buffer_pool: BufferPool<Vec<u8>>,
 
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
+    source_ip_resolver:
+        Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
     port: u16,
 }
 
@@ -178,10 +181,22 @@ impl UdpSocket {
         let port = socket_addr.port();
 
         Ok(UdpSocket {
-            state: quinn_udp::UdpSocketState::new(quinn_udp::UdpSockRef::from(&inner))?,
             port,
             inner,
             source_ip_resolver: None,
+        })
+    }
+
+    /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
+    pub fn into_perf(self) -> io::Result<PerfUdpSocket> {
+        let socket_addr = self.inner.local_addr()?;
+
+        let quinn_ref = quinn_udp::UdpSockRef::from(&self.inner);
+        let quinn_state = quinn_udp::UdpSocketState::new(quinn_ref)?;
+
+        Ok(PerfUdpSocket {
+            inner: self.inner,
+            state: quinn_state,
             buffer_pool: BufferPool::new(
                 u16::MAX as usize,
                 match socket_addr.ip() {
@@ -197,29 +212,9 @@ impl UdpSocket {
                 .with_unit("{batches}")
                 .with_boundaries((1..32_u64).map(|i| i as f64).collect())
                 .build(),
+            source_ip_resolver: self.source_ip_resolver,
+            port: self.port,
         })
-    }
-
-    pub fn set_buffer_sizes(
-        &mut self,
-        requested_send_buffer_size: usize,
-        requested_recv_buffer_size: usize,
-    ) -> io::Result<()> {
-        let socket = socket2::SockRef::from(&self.inner);
-
-        socket.set_send_buffer_size(requested_send_buffer_size)?;
-        socket.set_recv_buffer_size(requested_recv_buffer_size)?;
-
-        let send_buffer_size = socket.send_buffer_size()?;
-        let recv_buffer_size = socket.recv_buffer_size()?;
-
-        tracing::debug!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "Set UDP socket buffer sizes");
-
-        Ok(())
-    }
-
-    pub fn port(&self) -> u16 {
-        self.port
     }
 
     /// Configures a new source IP resolver for this UDP socket.
@@ -269,7 +264,7 @@ pub struct DatagramOut {
     pub ecn: Ecn,
 }
 
-impl UdpSocket {
+impl PerfUdpSocket {
     pub async fn recv_from(&self) -> Result<DatagramSegmentIter> {
         // Stack-allocate arrays for buffers and meta. The size is implied from the const-generic default on `DatagramSegmentIter`.
         let mut bufs = std::array::from_fn(|_| self.buffer_pool.pull());
@@ -327,6 +322,24 @@ impl UdpSocket {
 
             attempt += 1;
         }
+    }
+
+    pub fn set_buffer_sizes(
+        &mut self,
+        requested_send_buffer_size: usize,
+        requested_recv_buffer_size: usize,
+    ) -> io::Result<()> {
+        let socket = socket2::SockRef::from(&self.inner);
+
+        socket.set_send_buffer_size(requested_send_buffer_size)?;
+        socket.set_recv_buffer_size(requested_recv_buffer_size)?;
+
+        let send_buffer_size = socket.send_buffer_size()?;
+        let recv_buffer_size = socket.recv_buffer_size()?;
+
+        tracing::debug!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "Set UDP socket buffer sizes");
+
+        Ok(())
     }
 
     async fn send_transmit(&self, transmit: &Transmit<'_>) -> Result<()> {
@@ -398,49 +411,6 @@ impl UdpSocket {
         segment_size * max_segments
     }
 
-    /// Performs a single request-response handshake with the specified destination socket address.
-    ///
-    /// This consumes `self` because we want to enforce that we only receive a single message on this socket.
-    /// UDP is stateless and therefore, anybody can just send a packet to our socket.
-    ///
-    /// To simulate a handshake, we therefore only wait for a single message arriving on this socket,
-    /// after that, we discard it, freeing up the used source port.
-    ///
-    /// This is similar to the `connect` functionality but that one doesn't seem to work reliably in a cross-platform way.
-    ///
-    /// TODO: Should we make a type-safe API to ensure only one "mode" of the socket can be used?
-    pub async fn handshake<const BUF_SIZE: usize>(
-        self,
-        dst: SocketAddr,
-        payload: &[u8],
-    ) -> io::Result<Vec<u8>> {
-        let transmit = self
-            .prepare_transmit(dst, None, payload, payload.len(), Ecn::NonEct)
-            .map_err(|e| io::Error::other(format!("{e:#}")))?;
-
-        self.inner
-            .async_io(Interest::WRITABLE, || {
-                self.state.try_send((&self.inner).into(), &transmit)
-            })
-            .await?;
-
-        let mut buffer = vec![0u8; BUF_SIZE];
-
-        let (num_received, sender) = self.inner.recv_from(&mut buffer).await?;
-
-        // Even though scopes are technically important for link-local IPv6 addresses, they can be ignored for our purposes.
-        // We only want to ensure that the reply is from the expected source after we have already received the packet.
-        if !is_equal_modulo_scope_for_ipv6_link_local(dst, sender) {
-            return Err(io::Error::other(format!(
-                "Unexpected reply source: {sender}; expected: {dst}"
-            )));
-        }
-
-        buffer.truncate(num_received);
-
-        Ok(buffer)
-    }
-
     fn prepare_transmit<'a>(
         &self,
         dst: SocketAddr,
@@ -485,6 +455,41 @@ impl UdpSocket {
         let src = (resolver)(dst)?;
 
         Ok(Some(src))
+    }
+}
+
+impl UdpSocket {
+    /// Performs a single request-response handshake with the specified destination socket address.
+    ///
+    /// This consumes `self` because we want to enforce that we only receive a single message on this socket.
+    /// UDP is stateless and therefore, anybody can just send a packet to the destination.
+    ///
+    /// To simulate a handshake, we therefore only wait for a single message arriving on this socket,
+    /// after that, we discard it, freeing up the used source port.
+    ///
+    /// This is similar to the `connect` functionality but that one doesn't seem to work reliably in a cross-platform way.
+    pub async fn handshake<const BUF_SIZE: usize>(
+        self,
+        dst: SocketAddr,
+        payload: &[u8],
+    ) -> io::Result<Vec<u8>> {
+        self.inner.send_to(payload, dst).await?;
+
+        let mut buffer = vec![0u8; BUF_SIZE];
+
+        let (num_received, sender) = self.inner.recv_from(&mut buffer).await?;
+
+        // Even though scopes are technically important for link-local IPv6 addresses, they can be ignored for our purposes.
+        // We only want to ensure that the reply is from the expected source after we have already received the packet.
+        if !is_equal_modulo_scope_for_ipv6_link_local(dst, sender) {
+            return Err(io::Error::other(format!(
+                "Unexpected reply source: {sender}; expected: {dst}"
+            )));
+        }
+
+        buffer.truncate(num_received);
+
+        Ok(buffer)
     }
 }
 
