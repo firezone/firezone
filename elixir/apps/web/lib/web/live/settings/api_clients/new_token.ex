@@ -71,7 +71,7 @@ defmodule Web.Settings.ApiClients.NewToken do
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
-  def handle_event("submit", %{"token" => attrs}, socket) do
+  def handle_event("submit", %{"api_token" => attrs}, socket) do
     attrs = map_expires_at(attrs)
 
     with {:ok, encoded_token} <-
