@@ -255,7 +255,7 @@ jobs:
         run: docker compose logs api
 
       - name: Ensure no eBPF checksum errors on relay-1
-        if: "!cancelled()"
+        if: "!cancelled() && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"
         run: |
           set -xe
 
@@ -272,7 +272,7 @@ jobs:
           path: ./relay-1-packets.pcap
 
       - name: Ensure no eBPF checksum errors on relay-2
-        if: "!cancelled() && !matrix.test.single_relay"
+        if: "!cancelled() && !matrix.test.single_relay && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"
         run: |
           set -xe
 
