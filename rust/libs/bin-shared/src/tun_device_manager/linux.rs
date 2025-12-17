@@ -1,6 +1,6 @@
 //! Virtual network interface
 
-use crate::FIREZONE_MARK;
+use crate::{FIREZONE_MARK, tun_device_manager::TunIpStack};
 use anyhow::{Context as _, Result};
 use futures::{
     SinkExt, StreamExt, TryStreamExt,
@@ -131,7 +131,7 @@ impl TunDeviceManager {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
+    pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<TunIpStack> {
         let handle = &self.connection.handle;
         let index = tun_device_index(handle).await?;
 
@@ -151,6 +151,8 @@ impl TunDeviceManager {
             .execute()
             .await
             .context("Failed to set default MTU")?;
+
+        tracing::debug!(%ipv4, %ipv6, "Setting tunnel interface IPs");
 
         let res_v4 = handle.address().add(index, ipv4.into(), 32).execute().await;
         let res_v6 = handle
@@ -192,9 +194,24 @@ impl TunDeviceManager {
             }
         }
 
-        res_v4.or(res_v6)?;
+        let tun_ip_stack = match (res_v4, res_v6) {
+            (Ok(()), Ok(())) => TunIpStack::Dual,
+            (Ok(()), Err(e)) => {
+                tracing::debug!("Failed to set IPv6 address on TUN device: {e}");
 
-        Ok(())
+                TunIpStack::V4Only
+            }
+            (Err(e), Ok(())) => {
+                tracing::debug!("Failed to set IPv4 address on TUN device: {e}");
+
+                TunIpStack::V6Only
+            }
+            (Err(e_v4), Err(e_v6)) => {
+                anyhow::bail!("Failed to set IPv4 and IPv6 address on TUN device: {e_v4} | {e_v6}")
+            }
+        };
+
+        Ok(tun_ip_stack)
     }
 
     pub async fn set_routes(

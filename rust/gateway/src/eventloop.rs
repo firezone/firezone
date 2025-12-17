@@ -486,10 +486,14 @@ impl Eventloop {
                     }
                 }
 
-                self.tun_device_manager
+                let tun_ip_stack = self
+                    .tun_device_manager
                     .set_ips(interface.ipv4, interface.ipv6)
                     .await
                     .context("Failed to set TUN interface IPs")?;
+
+                tracing::debug!(stack = %tun_ip_stack, "Initialized TUN device");
+
                 self.tun_device_manager
                     .set_routes(vec![IPV4_TUNNEL], vec![IPV6_TUNNEL])
                     .await
@@ -498,10 +502,30 @@ impl Eventloop {
                 let ipv4_socket = SocketAddr::V4(SocketAddrV4::new(interface.ipv4, 53535));
                 let ipv6_socket = SocketAddr::V6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0));
 
-                tunnel
-                    .rebind_dns(vec![ipv4_socket, ipv6_socket])
-                    .context("Failed to bind DNS server")
-                    .inspect_err(|e| tracing::debug!("{e:#}"))?;
+                let addresses = match tun_ip_stack {
+                    bin_shared::TunIpStack::V4Only => vec![ipv4_socket],
+                    bin_shared::TunIpStack::V6Only => vec![ipv6_socket],
+                    bin_shared::TunIpStack::Dual => vec![ipv4_socket, ipv6_socket],
+                };
+
+                let mut attempts = std::iter::repeat_n(addresses, 3);
+
+                loop {
+                    let Some(attempt) = attempts.next() else {
+                        anyhow::bail!("Failed to bind DNS servers on TUN interface");
+                    };
+
+                    match tunnel.rebind_dns(attempt) {
+                        Ok(()) => break,
+                        Err(mut e) => {
+                            for e in e.drain() {
+                                tracing::debug!("Failed to bind DNS server: {e:#}")
+                            }
+                        }
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
             }
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);

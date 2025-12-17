@@ -30,6 +30,10 @@ export default function Gateway() {
           Fixes an issue where Firezone would not connect if an IPv6 interface
           is present but not routable.
         </ChangeItem>
+        <ChangeItem pull="11208">
+          Fixes an issue where the Gateway would not boot up if IPv6 was
+          disabled on the system.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.18" date={new Date("2025-11-10")}>
         <ChangeItem pull="10620">
