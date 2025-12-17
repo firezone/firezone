@@ -285,35 +285,18 @@ defmodule Web.Settings.DirectorySync do
     if stored_token && Plug.Crypto.secure_compare(stored_token, state_token) do
       send(pid, :success)
 
-      # After admin consent, verify we can actually access the directory using client credentials
-      config = Domain.Config.fetch_env!(:domain, Entra.APIClient)
-      client_id = config[:client_id]
+      # Verification was already done in verification.ex before broadcasting
+      attrs = %{
+        "is_verified" => true,
+        "tenant_id" => tenant_id
+      }
 
-      with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
-             Entra.APIClient.get_access_token(tenant_id),
-           {:ok, %Req.Response{status: 200, body: %{"value" => [service_principal | _]}}} <-
-             Entra.APIClient.get_service_principal(access_token, client_id),
-           {:ok, %Req.Response{status: 200, body: %{"value" => _assignments}}} <-
-             Entra.APIClient.list_app_role_assignments(
-               access_token,
-               service_principal["id"]
-             ) do
-        attrs = %{
-          "is_verified" => true,
-          "tenant_id" => tenant_id
-        }
+      changeset =
+        socket.assigns.form.source
+        |> apply_changes()
+        |> changeset(attrs)
 
-        changeset =
-          socket.assigns.form.source
-          |> apply_changes()
-          |> changeset(attrs)
-
-        {:noreply, assign(socket, form: to_form(changeset), verification_error: nil)}
-      else
-        error ->
-          msg = parse_entra_verification_error(error)
-          {:noreply, assign(socket, verification_error: msg)}
-      end
+      {:noreply, assign(socket, form: to_form(changeset), verification_error: nil)}
     else
       send(pid, {:error, :token_mismatch})
       error = "Failed to verify directory: token mismatch"
@@ -1234,7 +1217,8 @@ defmodule Web.Settings.DirectorySync do
     with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
            Google.APIClient.get_access_token(impersonation_email),
          {:ok, %Req.Response{status: 200, body: body}} <-
-           Google.APIClient.get_customer(access_token) do
+           Google.APIClient.get_customer(access_token),
+         :ok <- Google.APIClient.test_connection(access_token, body["customerDomain"]) do
       changeset =
         changeset
         |> apply_changes()
@@ -1380,94 +1364,12 @@ defmodule Web.Settings.DirectorySync do
     "Google service is currently unavailable (HTTP #{status}). Please try again later."
   end
 
+  defp parse_google_verification_error({:error, reason}) do
+    "Failed to verify directory access: #{inspect(reason)}"
+  end
+
   defp parse_google_verification_error(error) do
     Logger.error("Unknown Google verification error", error: inspect(error))
-
-    "Unknown error during verification. Please try again. If the problem persists, contact support."
-  end
-
-  defp parse_entra_verification_error({:ok, %Req.Response{status: 400, body: body}}) do
-    error = body["error"]
-    error_description = body["error_description"]
-    error_message = get_in(body, ["error", "message"])
-
-    cond do
-      error == "invalid_request" && error_description ->
-        "Invalid request: #{error_description}. Please check your Entra configuration."
-
-      error == "invalid_client" ->
-        "Invalid client credentials. Please verify your Application (client) ID and client secret are correct."
-
-      error == "invalid_scope" ->
-        "Invalid or insufficient permissions. Ensure the application has User.Read.All and Group.Read.All API permissions granted."
-
-      error_message ->
-        "Configuration error: #{error_message}"
-
-      error_description ->
-        error_description
-
-      true ->
-        "HTTP 400 Bad Request. Please check your Entra configuration."
-    end
-  end
-
-  defp parse_entra_verification_error({:ok, %Req.Response{status: 401, body: body}}) do
-    error = body["error"]
-    error_description = body["error_description"]
-    error_codes = body["error_codes"] || []
-
-    cond do
-      70_002 in error_codes || error == "invalid_client" ->
-        "Invalid client credentials. The Application (client) ID or client secret is incorrect."
-
-      7_000_218 in error_codes ->
-        "Invalid client secret. The secret may have expired or been entered incorrectly."
-
-      90_002 in error_codes || error == "invalid_tenant" ->
-        "Tenant not found. Please verify your Tenant ID is correct."
-
-      error_description ->
-        "Authentication failed: #{error_description}"
-
-      true ->
-        "HTTP 401 Unauthorized. Please check your client credentials and tenant ID."
-    end
-  end
-
-  defp parse_entra_verification_error({:ok, %Req.Response{status: 403, body: body}}) do
-    error_code = get_in(body, ["error", "code"])
-    error_message = get_in(body, ["error", "message"]) || "Forbidden"
-
-    case error_code do
-      "Authorization_RequestDenied" ->
-        "Permission denied. Ensure the application has been granted admin consent for User.Read.All and Group.Read.All permissions."
-
-      "Forbidden" ->
-        "Access forbidden. The application may not have the required permissions or admin consent."
-
-      _ ->
-        "Access denied: #{error_message}. Ensure proper API permissions are configured and admin consent is granted."
-    end
-  end
-
-  defp parse_entra_verification_error({:ok, %Req.Response{status: 404, body: body}}) do
-    error_message = get_in(body, ["error", "message"])
-
-    if error_message do
-      "Resource not found: #{error_message}. Please verify your Tenant ID and API endpoints are correct."
-    else
-      "HTTP 404 Not Found. Please verify your Tenant ID is correct and the Microsoft Graph API is accessible."
-    end
-  end
-
-  defp parse_entra_verification_error({:ok, %Req.Response{status: status}})
-       when status >= 500 do
-    "Microsoft service is currently unavailable (HTTP #{status}). Please try again later."
-  end
-
-  defp parse_entra_verification_error(error) do
-    Logger.error("Unknown Entra verification error", error: inspect(error))
 
     "Unknown error during verification. Please try again. If the problem persists, contact support."
   end

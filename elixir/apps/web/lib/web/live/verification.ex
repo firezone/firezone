@@ -141,7 +141,7 @@ defmodule Web.Verification do
       client_id = config[:client_id]
 
       case verify_directory_access(tenant_id, client_id) do
-        {:ok, _} ->
+        {:ok, :verified} ->
           # Broadcast success to DirectorySync LiveView
           Domain.PubSub.broadcast(
             "entra-admin-consent:#{verification_token}",
@@ -152,9 +152,9 @@ defmodule Web.Verification do
           Process.send_after(self(), :timeout, 5_000)
           {:noreply, socket}
 
-        {:error, reason} ->
-          {:noreply,
-           assign(socket, error: "Failed to verify directory access: #{inspect(reason)}")}
+        error ->
+          error_message = format_entra_verification_error(error)
+          {:noreply, assign(socket, error: error_message)}
       end
     else
       # On initial HTTP request, just return socket
@@ -191,9 +191,35 @@ defmodule Web.Verification do
            Entra.APIClient.list_app_role_assignments(
              access_token,
              service_principal["id"]
-           ) do
+           ),
+         :ok <- Entra.APIClient.test_connection(access_token) do
       {:ok, :verified}
     end
+  end
+
+  defp format_entra_verification_error({:ok, %Req.Response{status: 401, body: body}}) do
+    error_message = get_in(body, ["error", "message"])
+
+    "Unauthorized: #{error_message || "Invalid credentials"}. " <>
+      "Ensure the application has the required API permissions."
+  end
+
+  defp format_entra_verification_error({:ok, %Req.Response{status: 403, body: body}}) do
+    error_message = get_in(body, ["error", "message"]) || "forbidden"
+
+    "Access denied: #{error_message}. " <>
+      "Ensure the application has Directory.Read.All and Group.Read.All permissions with admin consent. " <>
+      "If you just granted access, please wait a minute or two and try again."
+  end
+
+  defp format_entra_verification_error({:ok, %Req.Response{status: status, body: body}})
+       when status >= 400 do
+    error_message = get_in(body, ["error", "message"]) || body["error_description"]
+    "Verification failed (HTTP #{status}): #{error_message || "Unknown error"}"
+  end
+
+  defp format_entra_verification_error({:error, reason}) do
+    "Failed to verify directory access: #{inspect(reason)}"
   end
 
   def render(assigns) do
