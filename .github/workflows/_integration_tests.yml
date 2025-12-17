@@ -147,6 +147,9 @@ jobs:
           ACTUAL_VERSION=$(docker run --privileged ${{ inputs.client_image }}:${{ inputs.client_tag }} firezone-headless-client --version | awk '{print $2}')
           MIN_VERSION="${{ matrix.test.min_client_version }}"
 
+          echo "ACTUAL_VERSION=${ACTUAL_VERSION}"
+          echo "MIN_VERSION=${MIN_VERSION}"
+
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
       - name: Check minimum gateway version
         id: gateway_version_check
@@ -155,6 +158,9 @@ jobs:
         run: |
           ACTUAL_VERSION=$(docker run --privileged ${{ inputs.gateway_image }}:${{ inputs.gateway_tag }} firezone-gateway --version | awk '{print $2}')
           MIN_VERSION="${{ matrix.test.min_gateway_version }}"
+
+          echo "ACTUAL_VERSION=${ACTUAL_VERSION}"
+          echo "MIN_VERSION=${MIN_VERSION}"
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
       - uses: ./.github/actions/setup-docker
