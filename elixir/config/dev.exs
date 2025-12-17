@@ -4,12 +4,25 @@ import Config
 ##### Domain ##################
 ###############################
 
-config :domain, Domain.Repo,
+db_opts = [
   database: System.get_env("DATABASE_NAME", "firezone_dev"),
   username: System.get_env("DATABASE_USER", "postgres"),
   hostname: System.get_env("DATABASE_HOST", "localhost"),
   port: String.to_integer(System.get_env("DATABASE_PORT", "5432")),
   password: System.get_env("DATABASE_PASSWORD", "postgres")
+]
+
+config :domain, Domain.Repo, db_opts
+
+config :domain, Domain.ChangeLogs.ReplicationConnection,
+  replication_slot_name: db_opts[:database] <> "_clog_slot",
+  publication_name: db_opts[:database] <> "_clog_pub",
+  connection_opts: db_opts
+
+config :domain, Domain.Changes.ReplicationConnection,
+  replication_slot_name: db_opts[:database] <> "_changes_slot",
+  publication_name: db_opts[:database] <> "_changes_pub",
+  connection_opts: db_opts
 
 config :domain, outbound_email_adapter_configured?: true
 
