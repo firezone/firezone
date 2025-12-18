@@ -206,52 +206,6 @@ defmodule Domain.Repo.Seeds do
     # Ensure seeds are deterministic
     :rand.seed(:exsss, {1, 2, 3})
 
-    # This function is used to update fields if STATIC_SEEDS is set,
-    # which helps with static docker-compose environment for local development.
-    maybe_repo_update = fn resource, values ->
-      if System.get_env("STATIC_SEEDS") == "true" do
-        changeset = Ecto.Changeset.change(resource, values)
-
-        # RelayToken and GatewayToken have virtual fields that cannot be persisted
-        case resource do
-          %Domain.RelayToken{id: id} when not is_nil(id) ->
-            import Ecto.Query
-
-            # Filter out virtual fields that can't be persisted
-            virtual_fields = [:secret_fragment]
-
-            db_changes = Map.drop(changeset.changes, virtual_fields)
-
-            from(rt in Domain.RelayToken, where: rt.id == ^id)
-            |> Repo.update_all(set: Enum.to_list(db_changes))
-
-            struct(resource, changeset.changes)
-
-          %Domain.GatewayToken{account_id: account_id, id: id}
-          when not is_nil(account_id) and not is_nil(id) ->
-            import Ecto.Query
-
-            # Filter out virtual fields that can't be persisted
-            virtual_fields = [:secret_fragment]
-
-            db_changes = Map.drop(changeset.changes, virtual_fields)
-
-            from(gt in Domain.GatewayToken,
-              where: gt.account_id == ^account_id,
-              where: gt.id == ^id
-            )
-            |> Repo.update_all(set: Enum.to_list(db_changes))
-
-            struct(resource, changeset.changes)
-
-          _ ->
-            Repo.update!(changeset)
-        end
-      else
-        resource
-      end
-    end
-
     account =
       %Account{}
       |> cast(
@@ -266,42 +220,32 @@ defmodule Domain.Repo.Seeds do
         [:name, :legal_name, :slug]
       )
       |> cast_embed(:config)
+      |> put_change(:id, "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
+      |> put_change(:features, %{
+        policy_conditions: true,
+        multi_site_resources: true,
+        traffic_filters: true,
+        idp_sync: true,
+        rest_api: true,
+        internet_resource: true
+      })
+      |> put_change(:metadata, %{
+        stripe: %{
+          customer_id: "cus_PZKIfcHB6SSBA4",
+          subscription_id: "sub_1OkGm2ADeNU9NGxvbrCCw6m3",
+          product_name: "Enterprise",
+          billing_email: "fin@firez.one",
+          support_type: "email"
+        }
+      })
+      |> put_change(:limits, %{
+        users_count: 15,
+        monthly_active_users_count: 10,
+        service_accounts_count: 10,
+        sites_count: 3,
+        account_admin_users_count: 5
+      })
       |> Repo.insert!()
-
-    account =
-      account
-      |> Ecto.Changeset.change(
-        features: %{
-          policy_conditions: true,
-          multi_site_resources: true,
-          traffic_filters: true,
-          idp_sync: true,
-          rest_api: true,
-          internet_resource: true
-        }
-      )
-      |> Repo.update!()
-
-    account =
-      maybe_repo_update.(account,
-        id: Ecto.UUID.cast!("c89bcc8c-9392-4dae-a40d-888aef6d28e0"),
-        metadata: %{
-          stripe: %{
-            customer_id: "cus_PZKIfcHB6SSBA4",
-            subscription_id: "sub_1OkGm2ADeNU9NGxvbrCCw6m3",
-            product_name: "Enterprise",
-            billing_email: "fin@firez.one",
-            support_type: "email"
-          }
-        },
-        limits: %{
-          users_count: 15,
-          monthly_active_users_count: 10,
-          service_accounts_count: 10,
-          sites_count: 3,
-          account_admin_users_count: 5
-        }
-      )
 
     other_account =
       %Account{}
@@ -313,12 +257,8 @@ defmodule Domain.Repo.Seeds do
         },
         [:name, :legal_name, :slug]
       )
+      |> put_change(:id, "9b9290bf-e1bc-4dd3-b401-511908262690")
       |> Repo.insert!()
-
-    other_account =
-      maybe_repo_update.(other_account,
-        id: Ecto.UUID.cast!("9b9290bf-e1bc-4dd3-b401-511908262690")
-      )
 
     IO.puts("Created accounts: ")
 
@@ -571,8 +511,6 @@ defmodule Domain.Repo.Seeds do
           account_id: account.id,
           actor_id: identity.actor_id,
           expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
-          secret_nonce: "n",
-          secret_fragment: Crypto.random_token(32),
           secret_salt: Crypto.random_token(16),
           secret_hash: "placeholder"
         })
@@ -703,31 +641,18 @@ defmodule Domain.Repo.Seeds do
       }
     }
 
-    # Create service account token using Auth module for proper handling
-    # Use nonce "n" for backwards compatibility with old static seeds
-    nonce = "n"
-
-    token_attrs = %{
-      account_id: service_account_actor.account_id,
-      actor_id: service_account_actor.id,
-      secret_nonce: nonce,
-      expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
-    }
-
-    # Use Auth.create_token which properly sets secret_salt, secret_fragment, and secret_hash
-    {:ok, service_account_token} =
-      Auth.create_headless_client_token(service_account_actor, token_attrs, admin_subject)
-
     service_account_token =
-      service_account_token
-      |> maybe_repo_update.(
-        id: Ecto.UUID.cast!("7da7d1cd-111c-44a7-b5ac-4027b9d230e5"),
+      %ClientToken{
+        id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
+        account_id: service_account_actor.account_id,
+        actor_id: service_account_actor.id,
         secret_salt: "kKKA7dtf3TJk0-1O2D9N1w",
-        secret_fragment: "AiIy_6pBk-WLeRAPzzkCFXNqIZKWBs2Ddw_2vgIQvFg",
-        secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5"
-      )
+        secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5",
+        expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
+      }
+      |> Repo.insert!()
 
-    service_account_actor_encoded_token = nonce <> Auth.encode_fragment!(service_account_token)
+    service_account_actor_encoded_token = "n" <> Auth.encode_fragment!(service_account_token)
 
     # Email tokens are generated during sign-in flow, not pre-generated
     unprivileged_actor_email_token = "<generated during sign-in>"
@@ -1007,28 +932,14 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
-    # Create relay token manually
-    secret_fragment = Crypto.random_token(32, encoder: :hex32)
-    secret_salt = Crypto.random_token(16)
-    secret_hash = Crypto.hash(:sha3_256, secret_fragment <> secret_salt)
-
+    # Create relay token with static values
     global_relay_token =
       %Domain.RelayToken{
-        secret_fragment: secret_fragment,
-        secret_salt: secret_salt,
-        secret_hash: secret_hash
-      }
-      |> Ecto.Changeset.change()
-      |> Repo.insert!()
-
-    global_relay_token =
-      global_relay_token
-      |> maybe_repo_update.(
-        id: Ecto.UUID.cast!("e82fcdc1-057a-4015-b90b-3b18f0f28053"),
+        id: "e82fcdc1-057a-4015-b90b-3b18f0f28053",
         secret_salt: "lZWUdgh-syLGVDsZEu_29A",
-        secret_fragment: "C14NGA87EJRR03G4QPR07A9C6G784TSSTHSF4TI5T0GD8D6L0VRG====",
         secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
-      )
+      }
+      |> Repo.insert!()
 
     global_relay_encoded_token =
       Auth.encode_fragment!(global_relay_token)
@@ -1095,30 +1006,16 @@ defmodule Domain.Repo.Seeds do
       |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Repo.insert!()
 
-    # Create gateway token manually
-    secret_fragment = Crypto.random_token(32, encoder: :hex32)
-    secret_salt = Crypto.random_token(16)
-    secret_hash = Crypto.hash(:sha3_256, secret_fragment <> secret_salt)
-
+    # Create gateway token with static values
     gateway_token =
       %Domain.GatewayToken{
+        id: "2274560b-e97b-45e4-8b34-679c7617e98d",
         account_id: site.account_id,
         site_id: site.id,
-        secret_fragment: secret_fragment,
-        secret_salt: secret_salt,
-        secret_hash: secret_hash
-      }
-      |> Ecto.Changeset.change()
-      |> Repo.insert!()
-
-    gateway_token =
-      gateway_token
-      |> maybe_repo_update.(
-        id: Ecto.UUID.cast!("2274560b-e97b-45e4-8b34-679c7617e98d"),
         secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
-        secret_fragment: "O02L7US2J3VINOMPR9J6IL88QIQP6UO8AQVO6U5IPL0VJC22JGH0====",
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
-      )
+      }
+      |> Repo.insert!()
 
     gateway_encoded_token = Auth.encode_fragment!(gateway_token)
 
