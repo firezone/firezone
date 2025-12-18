@@ -83,7 +83,8 @@ runs:
         {
           "features": {
             "containerd-snapshotter": true
-          }
+          },
+          "max-download-attempts": 5
         }
         EOF
 
