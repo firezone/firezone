@@ -26,7 +26,7 @@ defmodule Web.Plugs.RedirectIfAuthenticatedTest do
         |> RedirectIfAuthenticated.call([])
 
       assert conn.halted
-      assert redirected_to(conn) == ~p"/#{account.id}/sites"
+      assert redirected_to(conn) == ~p"/#{account.slug}/sites"
     end
 
     test "does not redirect authenticated user when as=client param is set", %{
