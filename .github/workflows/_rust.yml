@@ -90,7 +90,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: rust/lcov.info
           format: lcov
-          flag-name: rust-${{ matrix.runs-on }}
+          flag-name: rust-test-${{ matrix.runs-on }}
           parallel: true
 
   tunnel_test:
@@ -163,7 +163,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: rust/lcov.info
           format: lcov
-          flag-name: rust-${{ matrix.runs-on }}
+          flag-name: rust-tunnel-test
           parallel: true
 
   fuzz:
