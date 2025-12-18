@@ -34,6 +34,15 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where Firezone would not connect if an IPv6 interface
           is present but not routable.
         </ChangeItem>
+        {os == OS.Linux && (
+          <ChangeItem pull="11243">
+            Fixes an issue where upgrading from version 1.5.8 on Fedora fails
+            due to a bad scriptlet. To uninstall version 1.5.8, use{" "}
+            <code>
+              sudo dnf remove firezone-client-gui --setopt=tsflags=noscripts
+            </code>
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-10-16")}>
         <ChangeItem pull="10509">

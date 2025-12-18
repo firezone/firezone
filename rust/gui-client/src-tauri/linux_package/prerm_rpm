@@ -9,7 +9,7 @@ SERVICE_NAME="firezone-client-tunnel"
 # If we are being upgraded, this will be 1.
 # In that case, we do _not_ want to stop the systemd service, otherwise the user will be greeted with "Firezone Tunnel service is not running".
 if [ "$1" == 1 ]; then
-    return
+    exit 0
 fi
 
 sudo systemctl disable "$SERVICE_NAME"

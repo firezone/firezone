@@ -145,6 +145,17 @@ jobs:
             exit 1
           fi
 
+  shell:
+    name: shell-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: bats-core/bats-action@42fcc8700f773c075a16a90eb11674c0318ad507 # v3.0.1
+        id: setup-bats
+      - run: bats scripts/tests/bats
+        env:
+          BATS_LIB_PATH: ${{ steps.setup-bats.outputs.lib-path }}
+
   kotlin:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
