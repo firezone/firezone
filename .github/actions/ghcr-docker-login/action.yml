@@ -15,8 +15,30 @@ runs:
   using: "composite"
   steps:
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ inputs.github_token }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_ACTOR: ${{ github.actor }}
+      run: |
+        set -euo pipefail
+
+        max_attempts=5
+        attempt=1
+
+        while [ $attempt -le $max_attempts ]; do
+          echo "Attempting to login to ghcr.io (attempt $attempt/$max_attempts)..."
+          if echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin; then
+            echo "Successfully logged in to ghcr.io"
+            exit 0
+          fi
+
+          if [ $attempt -lt $max_attempts ]; then
+            echo "Login failed, retrying in 5 seconds..."
+            sleep 5
+          fi
+
+          attempt=$((attempt + 1))
+        done
+
+        echo "Failed to login to ghcr.io after $max_attempts attempts"
+        exit 1
