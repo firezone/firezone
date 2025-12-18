@@ -55,10 +55,10 @@ Prerequisites:
 
 Steps:
 
-- Use static seeds to provision account ID that corresponds to staging setup on Stripe:
+- Reset and seed the database (seeds use static IDs that correspond to staging setup on Stripe):
 
   ```
-  STATIC_SEEDS=true mix do ecto.reset, ecto.seed
+  mix do ecto.reset, ecto.seed
   ```
 
 - Start Stripe CLI webhook proxy:
