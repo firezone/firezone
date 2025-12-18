@@ -31,8 +31,17 @@ defmodule Web.Clients.Index do
   end
 
   def handle_params(params, uri, socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket =
+      socket
+      |> assign(:current_path, uri_path(uri))
+      |> handle_live_tables_params(params, uri)
+
     {:noreply, socket}
+  end
+
+  defp uri_path(uri) do
+    %URI{path: path, query: query} = URI.parse(uri)
+    "#{path}?#{query}"
   end
 
   def handle_clients_update!(socket, list_opts) do
