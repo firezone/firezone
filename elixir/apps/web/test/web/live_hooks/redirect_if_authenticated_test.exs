@@ -28,7 +28,7 @@ defmodule Web.LiveHooks.RedirectIfAuthenticatedTest do
       assert {:halt, redirected_socket} =
                RedirectIfAuthenticated.on_mount(:default, %{}, %{}, socket)
 
-      expected_path = "/#{account.id}/sites"
+      expected_path = "/#{account.slug}/sites"
       assert {:redirect, %{to: ^expected_path}} = redirected_socket.redirected
     end
 
