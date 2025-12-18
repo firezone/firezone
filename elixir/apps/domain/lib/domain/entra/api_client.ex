@@ -35,11 +35,7 @@ defmodule Domain.Entra.APIClient do
   This is needed to query appRoleAssignedTo for group assignment.
   """
   def get_service_principal(access_token, client_id) do
-    query =
-      URI.encode_query(%{
-        "$filter" => "appId eq '#{client_id}'",
-        "$select" => "id,appId"
-      })
+    query = URI.encode_query(%{"$filter" => "appId eq '#{client_id}'", "$select" => "id,appId"})
 
     get("/v1.0/servicePrincipals", query, access_token)
   end
@@ -80,11 +76,7 @@ defmodule Domain.Entra.APIClient do
   Returns a stream that yields pages of groups.
   """
   def stream_groups(access_token) do
-    query =
-      URI.encode_query(%{
-        "$top" => "999",
-        "$select" => "id,displayName"
-      })
+    query = URI.encode_query(%{"$top" => "999", "$select" => "id,displayName"})
 
     path = "/v1.0/groups"
     stream_pages(path, query, access_token)
@@ -199,13 +191,47 @@ defmodule Domain.Entra.APIClient do
   This is used to verify the Directory.Read.All permission is granted and working.
   """
   def list_users(access_token) do
-    query =
-      URI.encode_query(%{
-        "$top" => "1",
-        "$select" => "id,displayName"
-      })
+    query = URI.encode_query(%{"$top" => "1", "$select" => "id,displayName"})
 
     get("/v1.0/users", query, access_token)
+  end
+
+  @doc """
+  Fetches groups from Microsoft Graph API with a limit of 1.
+  This is used to verify the Group.Read.All permission is granted and working.
+  """
+  def list_groups(access_token) do
+    query = URI.encode_query(%{"$top" => "1", "$select" => "id,displayName"})
+
+    get("/v1.0/groups", query, access_token)
+  end
+
+  @doc """
+  Tests connection by verifying access to all required Microsoft Graph endpoints.
+
+  Makes minimal API calls ($top=1) to verify the application has
+  proper permissions for users and groups endpoints.
+  """
+  @spec test_connection(String.t()) :: :ok | {:error, term()}
+  def test_connection(access_token) do
+    with :ok <- test_users(access_token),
+         :ok <- test_groups(access_token) do
+      :ok
+    end
+  end
+
+  defp test_users(access_token) do
+    case list_users(access_token) do
+      {:ok, %Req.Response{status: 200}} -> :ok
+      other -> other
+    end
+  end
+
+  defp test_groups(access_token) do
+    case list_groups(access_token) do
+      {:ok, %Req.Response{status: 200}} -> :ok
+      other -> other
+    end
   end
 
   @doc """

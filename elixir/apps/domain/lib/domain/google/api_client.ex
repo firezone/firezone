@@ -50,6 +50,56 @@ defmodule Domain.Google.APIClient do
   end
 
   @doc """
+  Tests connection by verifying access to all required Google Workspace endpoints.
+
+  Makes minimal API calls (maxResults=1) to verify the service account has
+  proper permissions for users, groups, and organization units endpoints.
+  """
+  @spec test_connection(String.t(), String.t()) :: :ok | {:error, term()}
+  def test_connection(access_token, domain) do
+    with :ok <- test_users(access_token, domain),
+         :ok <- test_groups(access_token, domain),
+         :ok <- test_org_units(access_token) do
+      :ok
+    end
+  end
+
+  defp test_users(access_token, domain) do
+    test_endpoint(
+      "/admin/directory/v1/users",
+      access_token,
+      %{"customer" => "my_customer", "domain" => domain, "maxResults" => "1"}
+    )
+  end
+
+  defp test_groups(access_token, domain) do
+    test_endpoint(
+      "/admin/directory/v1/groups",
+      access_token,
+      %{"customer" => "my_customer", "domain" => domain, "maxResults" => "1"}
+    )
+  end
+
+  defp test_org_units(access_token) do
+    test_endpoint(
+      "/admin/directory/v1/customer/my_customer/orgunits",
+      access_token,
+      %{"type" => "all"}
+    )
+  end
+
+  defp test_endpoint(path, access_token, params) do
+    config = Domain.Config.fetch_env!(:domain, __MODULE__)
+    query = URI.encode_query(params)
+    url = "#{config[:endpoint]}#{path}?#{query}"
+
+    case Req.get(url, headers: [Authorization: "Bearer #{access_token}"]) do
+      {:ok, %Req.Response{status: 200}} -> :ok
+      other -> other
+    end
+  end
+
+  @doc """
   Streams users from the Google Workspace directory.
   Returns a stream that yields pages of users.
   """
