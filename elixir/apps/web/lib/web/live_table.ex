@@ -571,8 +571,7 @@ defmodule Web.LiveTable do
 
     case callback.(socket, list_opts) do
       {:error, _reason} ->
-        uri = URI.parse(socket.assigns.uri)
-        push_navigate(socket, to: uri.path)
+        push_navigate(socket, to: socket.assigns.current_path)
 
       {:ok, socket} ->
         :ok = maybe_notify_test_pid(id)
@@ -597,9 +596,7 @@ defmodule Web.LiveTable do
   re-query the list of items using query parameters and update the socket assigns
   with the new state.
   """
-  def handle_live_tables_params(socket, params, uri) do
-    socket = assign(socket, uri: uri)
-
+  def handle_live_tables_params(socket, params, _uri) do
     Enum.reduce(socket.assigns.live_table_ids, socket, fn id, socket ->
       handle_live_table_params(socket, params, id)
     end)
@@ -861,10 +858,8 @@ defmodule Web.LiveTable do
   defp reverse_order_by(nil), do: nil
 
   def update_query_params(socket, update_fun) when is_function(update_fun, 1) do
-    uri = URI.parse(socket.assigns.uri)
-
     query =
-      URI.decode_query(uri.query || "")
+      socket.assigns.query_params
       |> update_fun.()
       |> Enum.flat_map(fn
         {key, values} when is_list(values) -> Enum.map(values, &{"#{key}[]", &1})
@@ -873,7 +868,8 @@ defmodule Web.LiveTable do
       end)
       |> URI.encode_query(:rfc3986)
 
-    {:noreply, push_patch(socket, to: String.trim_trailing("#{uri.path}?#{query}", "?"))}
+    path = socket.assigns.current_path
+    {:noreply, push_patch(socket, to: String.trim_trailing("#{path}?#{query}", "?"))}
   end
 
   defp put_cursor_to_params(params, id, cursor) do

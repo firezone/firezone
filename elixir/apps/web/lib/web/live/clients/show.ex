@@ -105,7 +105,7 @@ defmodule Web.Clients.Show do
             <:label>Owner</:label>
             <:value>
               <.link
-                navigate={~p"/#{@account}/actors/#{@client.actor.id}?#{[return_to: @current_path]}"}
+                navigate={~p"/#{@account}/actors/#{@client.actor.id}?#{[return_to: @return_to]}"}
                 class={[link_style()]}
               >
                 {@client.actor.name}
@@ -333,7 +333,7 @@ defmodule Web.Clients.Show do
             <p class="mt-2">
               To prevent the client owner from logging in again,
               <.link
-                navigate={~p"/#{@account}/actors/#{@client.actor_id}?#{[return_to: @current_path]}"}
+                navigate={~p"/#{@account}/actors/#{@client.actor_id}?#{[return_to: @return_to]}"}
                 class={link_style()}
               >
                 disable the owning actor

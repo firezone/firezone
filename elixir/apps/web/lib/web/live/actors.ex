@@ -153,13 +153,15 @@ defmodule Web.Actors do
   end
 
   def handle_event("select_type", %{"type" => type}, socket) do
+    query_params = socket.assigns.query_params
+
     path =
       case type do
         "user" ->
-          ~p"/#{socket.assigns.account}/actors/add_user?#{query_params(socket.assigns.uri)}"
+          ~p"/#{socket.assigns.account}/actors/add_user?#{query_params}"
 
         "service_account" ->
-          ~p"/#{socket.assigns.account}/actors/add_service_account?#{query_params(socket.assigns.uri)}"
+          ~p"/#{socket.assigns.account}/actors/add_service_account?#{query_params}"
       end
 
     {:noreply, push_patch(socket, to: path)}
@@ -197,13 +199,14 @@ defmodule Web.Actors do
       true ->
         case DB.create(changeset, socket.assigns.subject) do
           {:ok, actor} ->
-            params = query_params(socket.assigns.uri)
-
             socket =
               socket
               |> put_flash(:success, "User created successfully")
               |> reload_live_table!("actors")
-              |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+              |> push_patch(
+                to:
+                  ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
+              )
 
             {:noreply, socket}
 
@@ -232,23 +235,23 @@ defmodule Web.Actors do
 
       case result do
         {:ok, {actor, {:ok, nil}}} ->
-          params = query_params(socket.assigns.uri)
-
           socket =
             socket
             |> reload_live_table!("actors")
-            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+            |> push_patch(
+              to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
+            )
 
           {:noreply, socket}
 
         {:ok, {actor, {:ok, {_token, encoded_token}}}} ->
-          params = query_params(socket.assigns.uri)
-
           socket =
             socket
             |> reload_live_table!("actors")
             |> assign(created_token: encoded_token)
-            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+            |> push_patch(
+              to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
+            )
 
           {:noreply, socket}
 
@@ -286,8 +289,7 @@ defmodule Web.Actors do
             |> put_flash(:success_inline, "Actor updated successfully")
             |> reload_live_table!("actors")
             |> push_patch(
-              to:
-                ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{query_params(socket.assigns.uri)}"
+              to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
             )
 
           {:noreply, socket}
@@ -396,8 +398,7 @@ defmodule Web.Actors do
           socket
           |> assign(created_token: encoded_token)
           |> push_patch(
-            to:
-              ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{query_params(socket.assigns.uri)}"
+            to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
           )
 
         {:noreply, socket}
@@ -532,7 +533,7 @@ defmodule Web.Actors do
       </:action>
 
       <:action>
-        <.add_button navigate={~p"/#{@account}/actors/add?#{query_params(@uri)}"}>
+        <.add_button navigate={~p"/#{@account}/actors/add?#{@query_params}"}>
           Add Actor
         </.add_button>
       </:action>
@@ -546,7 +547,7 @@ defmodule Web.Actors do
           id="actors"
           rows={@actors}
           row_id={&"actor-#{&1.id}"}
-          row_patch={&row_patch_path(&1, @uri)}
+          row_patch={&row_patch_path(&1, @query_params)}
           filters={@filters_by_table_id["actors"]}
           filter={@filter_form_by_table_id["actors"]}
           ordered_by={@order_by_table_id["actors"]}
@@ -865,7 +866,7 @@ defmodule Web.Actors do
                 <:content>
                   <div class="py-1">
                     <.link
-                      navigate={~p"/#{@account}/actors/#{@actor.id}/edit?#{query_params(@uri)}"}
+                      navigate={~p"/#{@account}/actors/#{@actor.id}/edit?#{@query_params}"}
                       class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
                     >
                       <.icon name="hero-pencil" class="w-4 h-4" /> Edit
@@ -1089,9 +1090,7 @@ defmodule Web.Actors do
             <div>
               <div class="flex justify-between items-center mb-4">
                 <h3 class="text-sm font-semibold text-neutral-900">Tokens</h3>
-                <.add_button patch={
-                  ~p"/#{@account}/actors/#{@actor.id}/add_token?#{query_params(@uri)}"
-                }>
+                <.add_button patch={~p"/#{@account}/actors/#{@actor.id}/add_token?#{@query_params}"}>
                   Add Token
                 </.add_button>
               </div>
@@ -1254,7 +1253,7 @@ defmodule Web.Actors do
       :if={@live_action == :edit}
       id="edit-actor-modal"
       on_close="close_modal"
-      on_back={JS.patch(~p"/#{@account}/actors/#{@actor}?#{query_params(@uri)}")}
+      on_back={JS.patch(~p"/#{@account}/actors/#{@actor}?#{@query_params}")}
       confirm_disabled={not @form.source.valid?}
     >
       <:title>Edit {@actor.name}</:title>
@@ -1435,24 +1434,15 @@ defmodule Web.Actors do
   end
 
   # Navigation helpers
-  defp query_params(uri) do
-    uri = URI.parse(uri)
-    if uri.query, do: URI.decode_query(uri.query), else: %{}
-  end
-
-  defp row_patch_path(actor, uri) do
-    params = query_params(uri)
-    ~p"/#{actor.account_id}/actors/#{actor.id}?#{params}"
+  defp row_patch_path(actor, query_params) do
+    ~p"/#{actor.account_id}/actors/#{actor.id}?#{query_params}"
   end
 
   defp close_modal(socket) do
-    # If we have a modal_return_to path from our global hook, navigate there
-    # Otherwise go to actors index
-    if return_to = Map.get(socket.assigns, :modal_return_to) do
+    if return_to = socket.assigns.query_params["return_to"] do
       push_navigate(socket, to: return_to)
     else
-      params = query_params(socket.assigns.uri)
-      push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")
+      push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{socket.assigns.query_params}")
     end
   end
 

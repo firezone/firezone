@@ -82,7 +82,7 @@ defmodule Web.Policies.Index do
             </.link>
           </:col>
           <:col :let={policy} label="group" class="w-3/12">
-            <.group_badge account={@account} group={policy.group} return_to={@current_path} />
+            <.group_badge account={@account} group={policy.group} return_to={@return_to} />
           </:col>
           <:col :let={policy} label="resource" class="w-2/12">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>
