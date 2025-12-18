@@ -162,7 +162,7 @@ jobs:
 
   swift:
     needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'swift')
+    if: contains(needs.planner.outputs.jobs_to_run, 'swift') && github.event_name != 'merge_group
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
 
@@ -201,7 +201,7 @@ jobs:
 
   tauri:
     needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
+    if: contains(needs.planner.outputs.jobs_to_run, 'tauri') && github.event_name != 'merge_group
     uses: ./.github/workflows/_tauri.yml
     secrets: inherit
 
