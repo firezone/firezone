@@ -112,9 +112,14 @@ jobs:
           tool: bpf-linker
       - name: Tunnel proptest
         shell: bash
+        run: cargo llvm-cov --features proptest --package tunnel --lcov --output-path lcov.info -- --nocapture tunnel_test transitions_and_state_are_deterministic
+        env:
+          PROPTEST_VERBOSE: 0 # Otherwise the output is very long.
+          PROPTEST_CASES: 256
+          CARGO_PROFILE_TEST_OPT_LEVEL: 2 # Otherwise the tests take forever.
+      - name: Check coverage
+        shell: bash
         run: |
-          cargo llvm-cov --features proptest --package tunnel --lcov --output-path lcov.info -- --nocapture tunnel_test transitions_and_state_are_deterministic
-
           # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
           patterns=(
             "SendIcmpPacket"
@@ -150,11 +155,7 @@ jobs:
             echo "$missing_patterns"
             exit 1
           fi
-
         env:
-          PROPTEST_VERBOSE: 0 # Otherwise the output is very long.
-          PROPTEST_CASES: 256
-          CARGO_PROFILE_TEST_OPT_LEVEL: 2 # Otherwise the tests take forever.
           TESTCASES_DIR: "libs/connlib/tunnel/testcases"
 
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
