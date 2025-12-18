@@ -2,7 +2,7 @@ name: Setup musl toolchain
 description: Install musl toolchain for cross-compilation based on the target triple
 inputs:
   target:
-    description: 'Rust target triple (e.g., x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, armv7-unknown-linux-musleabihf)'
+    description: "Rust target triple (e.g., x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, armv7-unknown-linux-musleabihf)"
     required: true
 runs:
   using: composite
