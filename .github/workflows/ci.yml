@@ -156,6 +156,7 @@ jobs:
     if: "!cancelled() && needs.kotlin.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   swift:
@@ -169,6 +170,7 @@ jobs:
     if: "!cancelled() && needs.swift.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   elixir:
@@ -182,6 +184,7 @@ jobs:
     if: "!cancelled() && needs.elixir.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   rust:
@@ -195,6 +198,7 @@ jobs:
     if: "!cancelled() && needs.rust.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   tauri:
@@ -208,6 +212,7 @@ jobs:
     if: "!cancelled() && needs.tauri.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   static-analysis:
@@ -221,6 +226,7 @@ jobs:
     if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   codeql:
@@ -234,6 +240,7 @@ jobs:
     if: "!cancelled() && needs.codeql.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   control-plane:
@@ -247,6 +254,7 @@ jobs:
     if: "!cancelled() && needs.control-plane.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   data-plane:
@@ -265,6 +273,7 @@ jobs:
     if: "!cancelled() && needs.data-plane.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   loadtest:
@@ -278,6 +287,7 @@ jobs:
     if: "!cancelled() && needs.loadtest.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   integration-tests:
