@@ -70,7 +70,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tool: ripgrep,cargo-llvm-cov
+          tool: cargo-llvm-cov
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         if: ${{ runner.os == 'Linux' }}
         env:
@@ -79,11 +79,42 @@ jobs:
           tool: bpf-linker
       - name: "cargo test"
         shell: bash
+        run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture --skip tunnel_test
+        env:
+          # <https://github.com/rust-lang/cargo/issues/5999>
+          # Needed to create tunnel interfaces in unit tests
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
+
+      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: rust/lcov.info
+          format: lcov
+          flag-name: rust-${{ matrix.runs-on }}
+          parallel: true
+
+  tunnel_test:
+    name: tunnel-test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: ./.github/actions/setup-rust
+        id: setup-rust
+      - uses: ./.github/actions/setup-tauri-v2
+      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: ripgrep,cargo-llvm-cov
+      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: bpf-linker
+      - name: Tunnel proptest
+        shell: bash
         run: |
-
-          set -x
-
-          cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
+          cargo llvm-cov --features proptest --package tunnel --lcov --output-path lcov.info -- --nocapture tunnel_test
 
           # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
           patterns=(
@@ -122,11 +153,8 @@ jobs:
           fi
 
         env:
-          # <https://github.com/rust-lang/cargo/issues/5999>
-          # Needed to create tunnel interfaces in unit tests
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           PROPTEST_VERBOSE: 0 # Otherwise the output is very long.
-          PROPTEST_CASES: ${{ runner.os == 'Windows' && '0' || '256' }} # Default is only 256. Windows is very slow in GitHub Actions, so only run the regression cases there.
+          PROPTEST_CASES: 256
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
           TESTCASES_DIR: "libs/connlib/tunnel/testcases"
 
