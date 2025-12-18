@@ -227,6 +227,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
                 ]}
                 value={@search_query}
                 phx-change="search"
+                phx-debounce="300"
                 phx-target={@myself}
               />
             </div>

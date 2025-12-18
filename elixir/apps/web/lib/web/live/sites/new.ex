@@ -28,6 +28,7 @@ defmodule Web.Sites.New do
                   label="Name"
                   field={@form[:name]}
                   placeholder="Enter a name for this Site"
+                  phx-debounce="300"
                   required
                 />
               </div>

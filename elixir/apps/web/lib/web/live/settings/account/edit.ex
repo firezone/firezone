@@ -33,7 +33,13 @@ defmodule Web.Settings.Account.Edit do
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
-                <.input label="Name" field={@form[:name]} placeholder="Account Name" required />
+                <.input
+                  label="Name"
+                  field={@form[:name]}
+                  placeholder="Account Name"
+                  phx-debounce="300"
+                  required
+                />
               </div>
             </div>
             <.submit_button>

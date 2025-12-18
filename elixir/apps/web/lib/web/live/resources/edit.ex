@@ -137,6 +137,7 @@ defmodule Web.Resources.Edit do
                 }
                 class={is_nil(@form[:type].value) && "cursor-not-allowed"}
                 disabled={is_nil(@form[:type].value)}
+                phx-debounce="300"
                 required
               />
 
@@ -178,6 +179,7 @@ defmodule Web.Resources.Edit do
                 type="text"
                 label="Address Description"
                 placeholder="Enter a description or URL"
+                phx-debounce="300"
               />
               <p class="mt-2 text-xs text-neutral-500">
                 Optional description or URL to show in Clients to help users access this Resource.
@@ -190,6 +192,7 @@ defmodule Web.Resources.Edit do
               type="text"
               label="Name"
               placeholder="Name this resource"
+              phx-debounce="300"
               required
             />
 

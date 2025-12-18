@@ -12,6 +12,7 @@ defmodule Web.Settings.ApiClients.Components do
         label="Name"
         field={@form[:name]}
         placeholder="E.g. 'GitHub Actions' or 'Terraform'"
+        phx-debounce="300"
         required
       />
       <p class="mt-2 text-xs text-neutral-500">
@@ -26,7 +27,12 @@ defmodule Web.Settings.ApiClients.Components do
   def api_token_form(assigns) do
     ~H"""
     <div>
-      <.input label="Name" field={@form[:name]} placeholder="Name for this token (optional)" />
+      <.input
+        label="Name"
+        field={@form[:name]}
+        placeholder="Name for this token (optional)"
+        phx-debounce="300"
+      />
     </div>
 
     <div>
