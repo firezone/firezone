@@ -292,13 +292,6 @@ jobs:
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
         run: |
           set -e
-          gcloud storage cp \
-            "${{ matrix.name.package }}" \
-            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
-
-          gcloud storage cp \
-            "${{ matrix.name.package }}".sha256sum.txt \
-            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
 
           az storage blob upload \
             --container-name binaries \
