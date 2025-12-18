@@ -67,18 +67,17 @@ jobs:
           IOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_NE_PROVISIONING_PROFILE }}"
       - run: scripts/upload/app-store-connect.sh
         if: "${{ github.event_name == 'workflow_dispatch' }}"
-      - name: Setup sentry CLI
+      - name: Remove excluded paths before Sentry upload
         if: "${{ github.event_name == 'workflow_dispatch' }}"
-        uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+        run: rm -f "${{ runner.temp }}/dmg/Applications"
+      - uses: ./.github/actions/upload-sentry-debug-files
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
         with:
-          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          organization: firezone-inc
-      - name: Upload debug symbols to Sentry
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
-        run: |
-          rm -f "${{ runner.temp }}/dmg/Applications"
-          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
-          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ./rust/target
+          sentry-auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          sentry-project: apple-client
+          paths: |
+            ${{ runner.temp }}
+            ./rust/target
 
   build-macos-appstore:
     name: build-macos-appstore
@@ -104,18 +103,17 @@ jobs:
           MACOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_MACOS_NE_PROVISIONING_PROFILE }}"
       - run: scripts/upload/app-store-connect.sh
         if: "${{ github.event_name == 'workflow_dispatch' }}"
-      - name: Setup sentry CLI
+      - name: Remove excluded paths before Sentry upload
         if: "${{ github.event_name == 'workflow_dispatch' }}"
-        uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+        run: rm -f "${{ runner.temp }}/dmg/Applications"
+      - uses: ./.github/actions/upload-sentry-debug-files
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
         with:
-          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          organization: firezone-inc
-      - name: Upload debug symbols to Sentry
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
-        run: |
-          rm -f "${{ runner.temp }}/dmg/Applications"
-          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
-          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ./rust/target
+          sentry-auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          sentry-project: apple-client
+          paths: |
+            ${{ runner.temp }}
+            ./rust/target
 
   build-macos-standalone:
     name: build-macos-standalone
@@ -171,15 +169,14 @@ jobs:
         env:
           ARTIFACT_PATH: "${{ env.PKG_ARTIFACT_PATH }}"
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-      - name: Setup sentry CLI
+      - name: Remove excluded paths before Sentry upload
         if: "${{ github.event_name == 'workflow_dispatch' }}"
-        uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+        run: rm -f "${{ runner.temp }}/dmg/Applications"
+      - uses: ./.github/actions/upload-sentry-debug-files
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
         with:
-          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          organization: firezone-inc
-      - name: Upload debug symbols to Sentry
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
-        run: |
-          rm -f "${{ runner.temp }}/dmg/Applications"
-          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
-          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ./rust/target
+          sentry-auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          sentry-project: apple-client
+          paths: |
+            ${{ runner.temp }}
+            ./rust/target
