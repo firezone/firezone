@@ -20,6 +20,7 @@ defmodule Domain.Repo.Migrations.CreateGoogleDirectories do
       add(:error_message, :text)
       add(:error_email_count, :integer, default: 0, null: false)
       add(:is_verified, :boolean, default: false, null: false)
+      add(:legacy_service_account_key, :map)
 
       add(:created_by, :string, null: false)
       add(:created_by_subject, :map)

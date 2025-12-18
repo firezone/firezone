@@ -479,6 +479,50 @@ BEGIN
       AND p.adapter = 'google_workspace'
     ON CONFLICT (id) DO NOTHING;
 
+    -- Step 9d2: Migrate Google Workspace providers with service_account_json_key to google_directories
+    -- First, create the parent Directory record
+    INSERT INTO directories (account_id, id, type)
+    SELECT
+      p.account_id,
+      gen_random_uuid(),
+      'google'
+    FROM legacy_auth_providers p
+    WHERE p.account_id = v_account_id
+      AND p.adapter = 'google_workspace'
+      AND p.adapter_config->>'service_account_json_key' IS NOT NULL
+    ON CONFLICT DO NOTHING;
+
+    -- Then, create the google_directories record with the same id
+    INSERT INTO google_directories (
+      id,
+      account_id,
+      domain,
+      name,
+      impersonation_email,
+      is_verified,
+      legacy_service_account_key,
+      created_by,
+      inserted_at,
+      updated_at
+    )
+    SELECT
+      d.id,
+      p.account_id,
+      COALESCE(p.adapter_state->'claims'->>'hd', ''),
+      COALESCE(p.name || ' Directory', 'Google Directory'),
+      COALESCE(p.adapter_state->'userinfo'->>'email', ''),
+      false,
+      (p.adapter_config->>'service_account_json_key')::jsonb,
+      'system',
+      NOW(),
+      NOW()
+    FROM legacy_auth_providers p
+    JOIN directories d ON d.account_id = p.account_id AND d.type = 'google'
+    WHERE p.account_id = v_account_id
+      AND p.adapter = 'google_workspace'
+      AND p.adapter_config->>'service_account_json_key' IS NOT NULL
+    ON CONFLICT (id) DO NOTHING;
+
     -- Step 9e: Migrate Microsoft Entra providers as OIDC providers
     INSERT INTO auth_providers (id, account_id, type)
     SELECT p.id, p.account_id, 'oidc'
