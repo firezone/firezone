@@ -32,7 +32,13 @@ defmodule Web.Sites.Edit do
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-              <.input label="Name" field={@form[:name]} placeholder="Name of this Site" required />
+              <.input
+                label="Name"
+                field={@form[:name]}
+                placeholder="Name of this Site"
+                phx-debounce="300"
+                required
+              />
             </div>
             <.submit_button>
               Save

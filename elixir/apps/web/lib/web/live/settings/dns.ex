@@ -65,7 +65,11 @@ defmodule Web.Settings.DNS do
 
             <div class="mb-8">
               <.inputs_for :let={config_form} field={@form[:config]}>
-                <.input field={config_form[:search_domain]} placeholder="E.g. example.com" />
+                <.input
+                  field={config_form[:search_domain]}
+                  placeholder="E.g. example.com"
+                  phx-debounce="300"
+                />
                 <p class="mt-2 text-sm text-neutral-500">
                   Enter a valid FQDN to append to single-label DNS queries. The
                   resulting FQDN will be used to match against DNS Resources in
@@ -224,6 +228,7 @@ defmodule Web.Settings.DNS do
                             label="IP Address"
                             field={address_form[:address]}
                             placeholder="E.g. 1.1.1.1"
+                            phx-debounce="300"
                           />
                         </div>
                         <div class="justify-self-end">

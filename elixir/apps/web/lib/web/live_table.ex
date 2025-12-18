@@ -148,7 +148,6 @@ defmodule Web.LiveTable do
       id={"#{@live_table_id}-filters"}
       for={@form}
       phx-change="filter"
-      phx-debounce="100"
       onkeydown="return event.key != 'Enter';"
     >
       <.input type="hidden" name="table_id" value={@live_table_id} />
@@ -215,6 +214,7 @@ defmodule Web.LiveTable do
           id={@form[@filter.name].id}
           value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
           placeholder={"Search by " <> @filter.title}
+          phx-debounce="300"
           class={[
             "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
             "block w-full md:w-72 pl-10 p-2",
@@ -248,6 +248,7 @@ defmodule Web.LiveTable do
           id={@form[@filter.name].id}
           value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
           placeholder={"Search by " <> @filter.title}
+          phx-debounce="300"
           class={[
             "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
             "block w-full md:w-72 pl-10 p-2",
