@@ -26,6 +26,7 @@ defmodule Domain.Google.Directory do
     field :error_message, :string
     field :error_email_count, :integer, default: 0, read_after_writes: true
     field :is_verified, :boolean, default: false, read_after_writes: true
+    field :legacy_service_account_key, :map
 
     timestamps()
   end

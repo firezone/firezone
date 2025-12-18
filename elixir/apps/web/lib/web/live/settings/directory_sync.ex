@@ -91,6 +91,10 @@ defmodule Web.Settings.DirectorySync do
         nil
       end
 
+    # Check if this is a legacy Google directory (has legacy_service_account_key)
+    is_legacy =
+      type == "google" && directory.legacy_service_account_key != nil
+
     {:noreply,
      assign(socket,
        directory: directory,
@@ -98,7 +102,8 @@ defmodule Web.Settings.DirectorySync do
        verifying: false,
        type: type,
        form: to_form(changeset),
-       public_jwk: public_jwk
+       public_jwk: public_jwk,
+       is_legacy: is_legacy
      )}
   end
 
@@ -355,6 +360,7 @@ defmodule Web.Settings.DirectorySync do
                 account={@account}
                 directory={directory}
                 subject={@subject}
+                is_legacy={directory.is_legacy}
               />
             <% end %>
           </div>
@@ -527,10 +533,21 @@ defmodule Web.Settings.DirectorySync do
       :if={@live_action == :edit}
       id="edit-directory-modal"
       on_close="close_modal"
-      confirm_disabled={not @form.source.valid? or Enum.empty?(@form.source.changes)}
+      confirm_disabled={
+        not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
+      }
     >
       <:title icon={@type}>Edit {@directory_name}</:title>
       <:body>
+        <.flash :if={assigns[:is_legacy]} kind={:warning_inline}>
+          This directory uses legacy credentials and needs to be updated to use Firezone's shared service account.
+          <.website_link path="/kb/">
+            Read the docs
+          </.website_link>
+          to setup domain-wide delegation, then click <strong>Verify Now</strong>
+          and <strong>Save</strong>
+          below.
+        </.flash>
         <.directory_form
           verification_error={@verification_error}
           verifying={assigns[:verifying] || false}
@@ -554,6 +571,7 @@ defmodule Web.Settings.DirectorySync do
   attr :account, :any, required: true
   attr :directory, :any, required: true
   attr :subject, :any, required: true
+  attr :is_legacy, :boolean, default: false
 
   defp directory_card(assigns) do
     # Determine if toggle should be disabled (when directory is disabled and account lacks feature)
@@ -566,9 +584,12 @@ defmodule Web.Settings.DirectorySync do
         <div class="flex items-center flex-1 min-w-0">
           <.provider_icon type={@type} class="w-7 h-7 mr-2 flex-shrink-0" />
           <div class="flex flex-col min-w-0">
-            <span class="font-medium text-xl truncate" title={@directory.name}>
-              {@directory.name}
-            </span>
+            <div class="flex items-center gap-2">
+              <span class="font-medium text-xl truncate" title={@directory.name}>
+                {@directory.name}
+              </span>
+              <.badge :if={@is_legacy} type="warning">LEGACY</.badge>
+            </div>
             <span class="text-xs text-neutral-500 font-mono">
               ID: {@directory.id}
             </span>
@@ -1020,6 +1041,11 @@ defmodule Web.Settings.DirectorySync do
     end
   end
 
+  attr :id, :string, required: true
+  attr :form, :any, required: true
+  attr :verifying, :boolean, required: true
+  attr :type, :string, required: true
+
   defp verification_status_badge(assigns) do
     # Entra opens a new window, so show the arrow icon and use OpenURL hook
     # Google/Okta are server-side only, no icon or hook needed
@@ -1201,6 +1227,14 @@ defmodule Web.Settings.DirectorySync do
         changeset
       end
 
+    # Clear legacy_service_account_key for Google directories on save
+    changeset =
+      if changeset.data.__struct__ == Google.Directory do
+        put_change(changeset, :legacy_service_account_key, nil)
+      else
+        changeset
+      end
+
     changeset
     |> DB.update_directory(socket.assigns.subject)
     |> handle_submit(socket)
@@ -1230,9 +1264,11 @@ defmodule Web.Settings.DirectorySync do
   defp start_verification(%{assigns: %{type: "google"}} = socket) do
     changeset = socket.assigns.form.source
     impersonation_email = get_field(changeset, :impersonation_email)
+    config = Domain.Config.fetch_env!(:domain, Google.APIClient)
+    key = config[:service_account_key] |> JSON.decode!()
 
     with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
-           Google.APIClient.get_access_token(impersonation_email),
+           Google.APIClient.get_access_token(impersonation_email, key),
          {:ok, %Req.Response{status: 200, body: body}} <-
            Google.APIClient.get_customer(access_token) do
       changeset =
@@ -1739,9 +1775,11 @@ defmodule Web.Settings.DirectorySync do
         end)
         |> Map.new()
 
-      # Add has_active_job field to each directory
+      # Add has_active_job and is_legacy fields to each directory
       Enum.map(directories, fn dir ->
-        Map.put(dir, :has_active_job, Map.has_key?(active_jobs, dir.id))
+        dir
+        |> Map.put(:has_active_job, Map.has_key?(active_jobs, dir.id))
+        |> Map.put(:is_legacy, Map.get(dir, :legacy_service_account_key) != nil)
       end)
     end
   end
