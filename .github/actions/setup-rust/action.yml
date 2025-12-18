@@ -54,18 +54,11 @@ runs:
         target: ${{ inputs.targets }}
         cache: false # We explicitly configure the cache below because it doesn't forward `cache-targets`.
 
-    - name: Cache registry
-      uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+    - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
       with:
         workspaces: rust
-        cache-targets: false # Don't cache `target` directory, we use sccache for that.
-        save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
-
-    - name: Configure sccache
-      shell: bash
-      run: |
-        echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
-        echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
+        # save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
+        cache-workspace-crates: true
 
     - name: Install nightly Rust to use for certain tools (fuzzing, cargo-udeps)
       id: nightly
@@ -88,9 +81,3 @@ runs:
           rustup component add rust-src --toolchain $NIGHTLY
         fi
       shell: bash
-
-    - name: Start sccache
-      run: $SCCACHE_PATH --start-server
-      shell: bash
-      env:
-        SCCACHE_CONF: ".github/actions/setup-rust/sccache.toml"
