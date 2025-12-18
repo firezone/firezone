@@ -14,7 +14,47 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Login to GitHub Container Registry
+    - name: Login to GitHub Container Registry (attempt 1)
+      id: login1
+      continue-on-error: true
+      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: Login to GitHub Container Registry (attempt 2)
+      id: login2
+      if: steps.login1.outcome == 'failure'
+      continue-on-error: true
+      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: Login to GitHub Container Registry (attempt 3)
+      id: login3
+      if: steps.login2.outcome == 'failure'
+      continue-on-error: true
+      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: Login to GitHub Container Registry (attempt 4)
+      id: login4
+      if: steps.login3.outcome == 'failure'
+      continue-on-error: true
+      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: Login to GitHub Container Registry (attempt 5)
+      if: steps.login4.outcome == 'failure'
       uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       with:
         registry: ghcr.io
