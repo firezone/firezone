@@ -15,5 +15,6 @@ runs:
         workspaces: rust
         cache-targets: true
         cache-all-crates: true
+        cache-workspace-crates: true
         key: ${{ inputs.key }}
         # save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
