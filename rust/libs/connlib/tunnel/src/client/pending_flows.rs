@@ -26,37 +26,47 @@ impl PendingFlows {
         resources_by_id: &BTreeMap<ResourceId, Resource>,
         now: Instant,
     ) {
-        use std::collections::hash_map::Entry;
-
         let trigger = trigger.into();
         let trigger_name = trigger.name();
 
-        if !resources_by_id.contains_key(&rid) {
+        let Some(resource) = resources_by_id.get(&rid) else {
             tracing::debug!(%rid, "Resource not found, skipping connection intent");
+            return;
+        };
+
+        let Ok(site) = resource.site() else {
+            tracing::debug!(%rid, "Expected resource to only have 1 site");
+            return;
+        };
+
+        let has_pending_flows_for_site = resources_by_id
+            .values()
+            .filter_map(|r| r.sites().contains(site).then_some(r.id()))
+            .filter(|r| r != &rid)
+            .any(|r| self.inner.contains_key(&r));
+
+        let pending_flow = self
+            .inner
+            .entry(rid)
+            .or_insert_with(|| PendingFlow::new(now - Duration::from_secs(10))); // Insert with a negative time to ensure we instantly send an intent.
+
+        pending_flow.push(trigger);
+
+        if has_pending_flows_for_site {
+            tracing::debug!(%rid, site = %site.name, "Already connecting to this site, skipping connection intent");
             return;
         }
 
-        match self.inner.entry(rid) {
-            Entry::Vacant(v) => {
-                v.insert(PendingFlow::new(now, trigger));
-            }
-            Entry::Occupied(mut o) => {
-                let pending_flow = o.get_mut();
-                pending_flow.push(trigger);
+        let time_since_last_intent = now.duration_since(pending_flow.last_intent_sent_at);
 
-                let time_since_last_intent = now.duration_since(pending_flow.last_intent_sent_at);
-
-                if time_since_last_intent < Duration::from_secs(2) {
-                    tracing::trace!(?time_since_last_intent, "Skipping connection intent");
-                    return;
-                }
-
-                pending_flow.last_intent_sent_at = now;
-            }
+        if time_since_last_intent < Duration::from_secs(2) {
+            tracing::trace!(?time_since_last_intent, "Skipping connection intent");
+            return;
         }
 
         tracing::debug!(trigger = %trigger_name, "Sending connection intent");
 
+        pending_flow.last_intent_sent_at = now;
         self.connection_intents.push_back(rid);
     }
 
@@ -82,18 +92,15 @@ impl PendingFlow {
     /// Thus, we may receive a fair few packets before we can send them.
     const CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
-    fn new(now: Instant, trigger: ConnectionTrigger) -> Self {
-        let mut this = Self {
+    fn new(now: Instant) -> Self {
+        Self {
             last_intent_sent_at: now,
             resource_packets: UniquePacketBuffer::with_capacity_power_of_2(
                 Self::CAPACITY_POW_2,
                 "pending-flow-resources",
             ),
             dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
-        };
-        this.push(trigger);
-
-        this
+        }
     }
 
     fn push(&mut self, trigger: ConnectionTrigger) {
@@ -205,6 +212,8 @@ mod tests {
 
     #[test]
     fn buffers_intent_for_resources_in_same_site() {
+        let _guard = logging::test("trace");
+
         let mut pending_flows = PendingFlows::default();
         let now = Instant::now();
         let rid1 = ipv4_localhost_resource().id();
