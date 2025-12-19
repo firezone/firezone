@@ -260,6 +260,22 @@ defmodule Web.Settings.Authentication do
     {:noreply, assign(socket, default_provider_changed: true)}
   end
 
+  def handle_event("revoke_sessions", %{"id" => id}, socket) do
+    provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
+
+    case DB.revoke_sessions_for_provider(provider, socket.assigns.subject) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> init()
+         |> put_flash(:success, "All sessions for #{provider.name} have been revoked.")}
+
+      {:error, reason} ->
+        Logger.info("Failed to revoke sessions for provider", reason: inspect(reason))
+        {:noreply, put_flash(socket, :error, "Failed to revoke sessions.")}
+    end
+  end
+
   def handle_event("default_provider_save", %{"provider_id" => ""}, socket) do
     clear_default_provider(socket)
   end
@@ -346,7 +362,9 @@ defmodule Web.Settings.Authentication do
   end
 
   defp init(socket) do
-    providers = DB.list_all_providers(socket.assigns.subject)
+    providers =
+      DB.list_all_providers(socket.assigns.subject)
+      |> DB.enrich_with_session_counts(socket.assigns.subject)
 
     assign(socket,
       providers: providers,
@@ -708,6 +726,62 @@ defmodule Web.Settings.Authentication do
           <span class="font-medium">
             updated <.relative_datetime datetime={@provider.updated_at} />
           </span>
+        </div>
+
+        <div class="pt-3 mt-1 border-t border-neutral-200">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-4">
+              <div class="flex items-center gap-1">
+                <.icon name="hero-device-phone-mobile" class="w-4 h-4" title="Client Sessions" />
+                <span class="font-medium">
+                  {@provider.client_tokens_count} client {ngettext(
+                    "session",
+                    "sessions",
+                    @provider.client_tokens_count
+                  )}
+                </span>
+              </div>
+              <div class="flex items-center gap-1">
+                <.icon name="hero-window" class="w-4 h-4" title="Portal Sessions" />
+                <span class="font-medium">
+                  {@provider.portal_sessions_count} portal {ngettext(
+                    "session",
+                    "sessions",
+                    @provider.portal_sessions_count
+                  )}
+                </span>
+              </div>
+            </div>
+            <.button_with_confirmation
+              :if={@provider.client_tokens_count > 0 or @provider.portal_sessions_count > 0}
+              id={"revoke-sessions-#{@provider.id}"}
+              on_confirm="revoke_sessions"
+              on_confirm_id={@provider.id}
+              style="danger"
+              size="xs"
+            >
+              Revoke All
+              <:dialog_title>Revoke All Sessions</:dialog_title>
+              <:dialog_content>
+                <p>
+                  Are you sure you want to revoke all sessions for <strong>{@provider.name}</strong>?
+                </p>
+                <p class="mt-2">
+                  This will immediately end {@provider.client_tokens_count} client {ngettext(
+                    "session",
+                    "sessions",
+                    @provider.client_tokens_count
+                  )} and {@provider.portal_sessions_count} admin portal {ngettext(
+                    "session",
+                    "sessions",
+                    @provider.portal_sessions_count
+                  )}.
+                </p>
+              </:dialog_content>
+              <:dialog_confirm_button>Revoke All Sessions</:dialog_confirm_button>
+              <:dialog_cancel_button>Cancel</:dialog_cancel_button>
+            </.button_with_confirmation>
+          </div>
         </div>
       </div>
     </div>
@@ -1095,7 +1169,14 @@ defmodule Web.Settings.Authentication do
   end
 
   defp verified?(form) do
-    get_field(form.source, :is_verified) == true
+    schema = form.source.data.__struct__
+
+    # Email/OTP and Userpass providers don't require verification
+    if schema in [EmailOTP.AuthProvider, Userpass.AuthProvider] do
+      true
+    else
+      get_field(form.source, :is_verified) == true
+    end
   end
 
   defp handle_verification_setup_error(
@@ -1317,6 +1398,55 @@ defmodule Web.Settings.Authentication do
         else
           {:cont, :ok}
         end
+      end)
+    end
+
+    def enrich_with_session_counts(providers, subject) do
+      provider_ids = Enum.map(providers, & &1.id)
+
+      client_tokens_counts =
+        from(ct in Domain.ClientToken,
+          where: ct.auth_provider_id in ^provider_ids,
+          group_by: ct.auth_provider_id,
+          select: {ct.auth_provider_id, count(ct.id)}
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Map.new()
+
+      portal_sessions_counts =
+        from(ps in Domain.PortalSession,
+          where: ps.auth_provider_id in ^provider_ids,
+          group_by: ps.auth_provider_id,
+          select: {ps.auth_provider_id, count(ps.id)}
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Map.new()
+
+      Enum.map(providers, fn provider ->
+        provider
+        |> Map.put(:client_tokens_count, Map.get(client_tokens_counts, provider.id, 0))
+        |> Map.put(:portal_sessions_count, Map.get(portal_sessions_counts, provider.id, 0))
+      end)
+    end
+
+    # Already handled by cascade delete
+    def revoke_sessions_for_provider(nil, _subject), do: {:ok, 0}
+
+    def revoke_sessions_for_provider(provider, subject) do
+      Safe.transact(fn ->
+        {client_tokens_deleted, _} =
+          from(ct in Domain.ClientToken, where: ct.auth_provider_id == ^provider.id)
+          |> Safe.scoped(subject)
+          |> Safe.delete_all()
+
+        {portal_sessions_deleted, _} =
+          from(ps in Domain.PortalSession, where: ps.auth_provider_id == ^provider.id)
+          |> Safe.scoped(subject)
+          |> Safe.delete_all()
+
+        {:ok, client_tokens_deleted + portal_sessions_deleted}
       end)
     end
   end
