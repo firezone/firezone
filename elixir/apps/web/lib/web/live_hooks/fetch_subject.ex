@@ -2,6 +2,7 @@ defmodule Web.LiveHooks.FetchSubject do
   import Phoenix.LiveView
   alias Domain.Account
   alias Domain.Auth
+  alias Domain.Presence
 
   def on_mount(:default, _params, session, %{assigns: %{account: %Account{} = account}} = socket) do
     socket =
@@ -19,6 +20,14 @@ defmodule Web.LiveHooks.FetchSubject do
           _ -> nil
         end
       end)
+
+    # Track portal session presence when connected
+    if connected?(socket) and socket.assigns.subject do
+      Presence.PortalSessions.track(
+        socket.assigns.subject.actor.id,
+        socket.assigns.subject.credential.id
+      )
+    end
 
     {:cont, socket}
   end

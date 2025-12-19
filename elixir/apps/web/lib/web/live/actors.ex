@@ -10,6 +10,7 @@ defmodule Web.Actors do
   alias Domain.ClientToken
 
   import Ecto.Changeset
+  import Web.Clients.Components, only: [client_os_icon_name: 1]
 
   def mount(_params, _session, socket) do
     socket =
@@ -75,12 +76,14 @@ defmodule Web.Actors do
     # Load identities and tokens/sessions based on actor type
     identities = DB.get_identities_for_actor(actor.id, socket.assigns.subject)
 
-    # Service accounts use tokens, users use portal sessions
+    # Load tokens and sessions based on actor type
     {tokens, sessions} =
       if actor.type == :service_account do
         {DB.get_client_tokens_for_actor(actor.id, socket.assigns.subject), []}
       else
-        {[], DB.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)}
+        # Users have both client tokens and portal sessions
+        {DB.get_client_tokens_for_actor(actor.id, socket.assigns.subject),
+         DB.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)}
       end
 
     socket = handle_live_tables_params(socket, params, uri)
@@ -409,20 +412,23 @@ defmodule Web.Actors do
 
   def handle_event("delete_token", %{"id" => token_id}, socket) do
     token = DB.get_client_token_by_id(token_id, socket.assigns.subject)
+    entity = if socket.assigns.actor.type == :service_account, do: "token", else: "session"
 
     if token do
       case DB.delete(token, socket.assigns.subject) do
         {:ok, _} ->
-          # Reload tokens for the actor
           tokens = DB.get_client_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
-          socket = assign(socket, tokens: tokens)
-          {:noreply, put_flash(socket, :success_inline, "Token deleted successfully")}
+
+          {:noreply,
+           socket
+           |> assign(tokens: tokens)
+           |> put_flash(:success_inline, "#{String.capitalize(entity)} deleted successfully")}
 
         {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Failed to delete token")}
+          {:noreply, put_flash(socket, :error, "Failed to delete #{entity}")}
       end
     else
-      {:noreply, put_flash(socket, :error, "Token not found")}
+      {:noreply, put_flash(socket, :error, "#{String.capitalize(entity)} not found")}
     end
   end
 
@@ -934,17 +940,32 @@ defmodule Web.Actors do
                 <button
                   type="button"
                   phx-click="change_tab"
-                  phx-value-tab="sessions"
+                  phx-value-tab="client_sessions"
                   class={[
                     "py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2",
-                    if(@active_tab == "sessions",
+                    if(@active_tab == "client_sessions",
                       do: "border-accent-500 text-accent-600",
                       else:
                         "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
                     )
                   ]}
                 >
-                  <.icon name="hero-computer-desktop" class="w-5 h-5" /> Sessions
+                  <.icon name="hero-device-phone-mobile" class="w-5 h-5" /> Client Sessions
+                </button>
+                <button
+                  type="button"
+                  phx-click="change_tab"
+                  phx-value-tab="portal_sessions"
+                  class={[
+                    "py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2",
+                    if(@active_tab == "portal_sessions",
+                      do: "border-accent-500 text-accent-600",
+                      else:
+                        "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
+                    )
+                  ]}
+                >
+                  <.icon name="hero-computer-desktop" class="w-5 h-5" /> Portal Sessions
                 </button>
               </nav>
             </div>
@@ -1084,6 +1105,66 @@ defmodule Web.Actors do
               <% end %>
             </div>
           <% end %>
+          <!-- Client Sessions Tab (Users only) -->
+          <%= if @actor.type != :service_account and @active_tab == "client_sessions" do %>
+            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
+              <%= if @tokens == [] do %>
+                <div class="text-center text-neutral-500 p-8">
+                  No client sessions to display.
+                </div>
+              <% else %>
+                <div class="divide-y divide-neutral-200">
+                  <div :for={token <- @tokens} class="p-4 hover:bg-neutral-50">
+                    <div class="flex items-center gap-4">
+                      <.ping_icon
+                        color={if token.online?, do: "success", else: "danger"}
+                        title={if token.online?, do: "Online", else: "Offline"}
+                      />
+                      <.icon
+                        name={client_os_icon_name(token.last_seen_user_agent)}
+                        class="w-6 h-6 flex-shrink-0"
+                      />
+                      <div class="flex-1 grid grid-cols-3 gap-x-4 text-sm">
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Last connected</span>
+                          <div class="text-neutral-900">
+                            <.relative_datetime datetime={token.last_seen_at} />
+                          </div>
+                        </div>
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Location</span>
+                          <div class="text-neutral-900">
+                            <%= if token_location(token) do %>
+                              <span class="truncate" title={token_location(token)}>
+                                {token_location(token)}
+                              </span>
+                            <% else %>
+                              -
+                            <% end %>
+                          </div>
+                        </div>
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Expires</span>
+                          <div class="text-neutral-900">
+                            <.relative_datetime datetime={token.expires_at} />
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        phx-click="delete_token"
+                        phx-value-id={token.id}
+                        class="text-red-600 hover:text-red-800"
+                        data-confirm="Are you sure you want to delete this client session?"
+                      >
+                        <.icon name="hero-trash" class="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
           <!-- Tokens Tab (Service Accounts only) -->
           <%= if @actor.type == :service_account do %>
             <div>
@@ -1104,53 +1185,38 @@ defmodule Web.Actors do
                 <% else %>
                   <div class="divide-y divide-neutral-200">
                     <div :for={token <- @tokens} class="p-4 hover:bg-neutral-50">
-                      <div class="flex items-start justify-between gap-4">
-                        <div class="flex-1 space-y-3">
-                          <%= if token.auth_provider_name do %>
-                            <div class="flex items-center gap-2 min-w-0">
-                              <.provider_icon
-                                type={token.auth_provider_type}
-                                class="w-5 h-5 flex-shrink-0"
-                              />
-                              <div
-                                class="font-medium text-sm text-neutral-900 truncate"
-                                title={token.auth_provider_name}
-                              >
-                                {token.auth_provider_name}
-                              </div>
+                      <div class="flex items-center gap-4">
+                        <.ping_icon
+                          color={if token.online?, do: "success", else: "danger"}
+                          title={if token.online?, do: "Online", else: "Offline"}
+                        />
+                        <.icon
+                          name={client_os_icon_name(token.last_seen_user_agent)}
+                          class="w-6 h-6 flex-shrink-0"
+                        />
+                        <div class="flex-1 grid grid-cols-3 gap-x-4 text-sm">
+                          <div>
+                            <span class="text-xs uppercase text-neutral-500">Last used</span>
+                            <div class="text-neutral-900">
+                              <.relative_datetime datetime={token.last_seen_at} />
                             </div>
-                          <% end %>
-
-                          <div class="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">Last used</span>
-                              <div class="text-neutral-900">
-                                <.relative_datetime datetime={token.last_seen_at} />
-                              </div>
+                          </div>
+                          <div>
+                            <span class="text-xs uppercase text-neutral-500">Location</span>
+                            <div class="text-neutral-900">
+                              <%= if token_location(token) do %>
+                                <span class="truncate" title={token_location(token)}>
+                                  {token_location(token)}
+                                </span>
+                              <% else %>
+                                -
+                              <% end %>
                             </div>
-
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">Location</span>
-                              <div class="text-neutral-900 flex items-center gap-2 min-w-0">
-                                <%= if token_location(token) do %>
-                                  <.icon
-                                    name={token_user_agent_icon(token.last_seen_user_agent)}
-                                    class="w-4 h-4 flex-shrink-0"
-                                  />
-                                  <span class="truncate" title={token_location(token)}>
-                                    {token_location(token)}
-                                  </span>
-                                <% else %>
-                                  -
-                                <% end %>
-                              </div>
-                            </div>
-
-                            <div>
-                              <span class="text-xs uppercase text-neutral-500">Expires</span>
-                              <div class="text-neutral-900">
-                                <.relative_datetime datetime={token.expires_at} />
-                              </div>
+                          </div>
+                          <div>
+                            <span class="text-xs uppercase text-neutral-500">Expires</span>
+                            <div class="text-neutral-900">
+                              <.relative_datetime datetime={token.expires_at} />
                             </div>
                           </div>
                         </div>
@@ -1170,8 +1236,8 @@ defmodule Web.Actors do
               </div>
             </div>
           <% end %>
-          <!-- Sessions Tab (Users only) -->
-          <%= if @actor.type != :service_account and @active_tab == "sessions" do %>
+          <!-- Portal Sessions Tab (Users only) -->
+          <%= if @actor.type != :service_account and @active_tab == "portal_sessions" do %>
             <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
               <%= if @sessions == [] do %>
                 <div class="text-center text-neutral-500 p-8">
@@ -1180,53 +1246,38 @@ defmodule Web.Actors do
               <% else %>
                 <div class="divide-y divide-neutral-200">
                   <div :for={session <- @sessions} class="p-4 hover:bg-neutral-50">
-                    <div class="flex items-start justify-between gap-4">
-                      <div class="flex-1 space-y-3">
-                        <%= if session.auth_provider_name do %>
-                          <div class="flex items-center gap-2 min-w-0">
-                            <.provider_icon
-                              type={session.auth_provider_type}
-                              class="w-5 h-5 flex-shrink-0"
-                            />
-                            <div
-                              class="font-medium text-sm text-neutral-900 truncate"
-                              title={session.auth_provider_name}
-                            >
-                              {session.auth_provider_name}
-                            </div>
+                    <div class="flex items-center gap-4">
+                      <.ping_icon
+                        color={if session.online?, do: "success", else: "danger"}
+                        title={if session.online?, do: "Online", else: "Offline"}
+                      />
+                      <.icon
+                        name={session_user_agent_icon(session.user_agent)}
+                        class="w-6 h-6 flex-shrink-0"
+                      />
+                      <div class="flex-1 grid grid-cols-3 gap-x-4 text-sm">
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Signed in</span>
+                          <div class="text-neutral-900">
+                            <.relative_datetime datetime={session.inserted_at} />
                           </div>
-                        <% end %>
-
-                        <div class="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
-                          <div>
-                            <span class="text-xs uppercase text-neutral-500">Signed in</span>
-                            <div class="text-neutral-900">
-                              <.relative_datetime datetime={session.inserted_at} />
-                            </div>
+                        </div>
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Location</span>
+                          <div class="text-neutral-900">
+                            <%= if session_location(session) do %>
+                              <span class="truncate" title={session_location(session)}>
+                                {session_location(session)}
+                              </span>
+                            <% else %>
+                              -
+                            <% end %>
                           </div>
-
-                          <div>
-                            <span class="text-xs uppercase text-neutral-500">Location</span>
-                            <div class="text-neutral-900 flex items-center gap-2 min-w-0">
-                              <%= if session_location(session) do %>
-                                <.icon
-                                  name={session_user_agent_icon(session.user_agent)}
-                                  class="w-4 h-4 flex-shrink-0"
-                                />
-                                <span class="truncate" title={session_location(session)}>
-                                  {session_location(session)}
-                                </span>
-                              <% else %>
-                                -
-                              <% end %>
-                            </div>
-                          </div>
-
-                          <div>
-                            <span class="text-xs uppercase text-neutral-500">Expires</span>
-                            <div class="text-neutral-900">
-                              <.relative_datetime datetime={session.expires_at} />
-                            </div>
+                        </div>
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Expires</span>
+                          <div class="text-neutral-900">
+                            <.relative_datetime datetime={session.expires_at} />
                           </div>
                         </div>
                       </div>
@@ -1497,13 +1548,6 @@ defmodule Web.Actors do
     end
   end
 
-  # Helper functions for token/session display
-  defp token_user_agent_icon(user_agent) when is_binary(user_agent) do
-    detect_os_icon(user_agent) || "hero-computer-desktop"
-  end
-
-  defp token_user_agent_icon(_), do: "hero-computer-desktop"
-
   # Firezone client user agents (e.g., "Windows/10.0", "Mac OS/15.0")
   @firezone_client_patterns [
     {"Windows/", "os-windows"},
@@ -1606,6 +1650,7 @@ defmodule Web.Actors do
     import Ecto.Query
     alias Domain.ExternalIdentity
     alias Domain.Actor
+    alias Domain.Presence
     alias Domain.Safe
     alias Domain.Directory
     alias Domain.Repo.Filter
@@ -1811,13 +1856,13 @@ defmodule Web.Actors do
       |> Safe.exists?()
     end
 
-    # For service accounts
     def get_client_tokens_for_actor(actor_id, subject) do
       from(c in ClientToken, as: :client_tokens)
       |> where([client_tokens: c], c.actor_id == ^actor_id)
       |> order_by([client_tokens: c], desc: c.inserted_at)
       |> Safe.scoped(subject)
       |> Safe.all()
+      |> Presence.Clients.preload_client_tokens_presence()
     end
 
     def get_identity_by_id(identity_id, subject) do
@@ -1863,6 +1908,7 @@ defmodule Web.Actors do
       |> order_by([portal_sessions: ps], desc: ps.inserted_at)
       |> Safe.scoped(subject)
       |> Safe.all()
+      |> Presence.PortalSessions.preload_portal_sessions_presence()
     end
 
     def get_portal_session_by_id(session_id, subject) do

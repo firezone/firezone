@@ -111,9 +111,76 @@ defmodule Domain.Presence do
         |> PubSub.subscribe()
       end
 
+      def online_token_ids(actor_id) do
+        actor_id
+        |> list()
+        |> Enum.flat_map(fn {_client_id, %{metas: metas}} ->
+          Enum.map(metas, & &1.token_id)
+        end)
+      end
+
       defp topic(actor_id) do
         "presences:actor_clients:" <> actor_id
       end
+    end
+
+    @doc """
+    Preloads the online? virtual field for client tokens based on actor presence.
+    A token is considered online if any client is connected using that token.
+    """
+    def preload_client_tokens_presence(tokens) when is_list(tokens) do
+      # Group tokens by actor_id to batch presence lookups
+      online_token_ids =
+        tokens
+        |> Enum.map(& &1.actor_id)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+        |> Enum.flat_map(&Actor.online_token_ids/1)
+        |> MapSet.new()
+
+      Enum.map(tokens, fn token ->
+        %{token | online?: MapSet.member?(online_token_ids, token.id)}
+      end)
+    end
+  end
+
+  defmodule PortalSessions do
+    def track(actor_id, session_id) do
+      Domain.Presence.track(
+        self(),
+        topic(actor_id),
+        session_id,
+        %{}
+      )
+    end
+
+    def online_session_ids(actor_id) do
+      actor_id
+      |> topic()
+      |> Domain.Presence.list()
+      |> Map.keys()
+    end
+
+    defp topic(actor_id) do
+      "presences:portal_sessions:" <> actor_id
+    end
+
+    @doc """
+    Preloads the online? virtual field for portal sessions based on presence.
+    A session is considered online if it's currently connected to a LiveView.
+    """
+    def preload_portal_sessions_presence(sessions) when is_list(sessions) do
+      online_session_ids =
+        sessions
+        |> Enum.map(& &1.actor_id)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+        |> Enum.flat_map(&online_session_ids/1)
+        |> MapSet.new()
+
+      Enum.map(sessions, fn session ->
+        %{session | online?: MapSet.member?(online_session_ids, session.id)}
+      end)
     end
   end
 

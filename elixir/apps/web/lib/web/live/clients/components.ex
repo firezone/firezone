@@ -103,6 +103,7 @@ defmodule Web.Clients.Components do
     """
   end
 
+  def client_os_icon_name(nil), do: "hero-question-mark-circle"
   def client_os_icon_name("Windows/" <> _), do: "os-windows"
   def client_os_icon_name("Mac OS/" <> _), do: "os-macos"
   def client_os_icon_name("iOS/" <> _), do: "os-ios"

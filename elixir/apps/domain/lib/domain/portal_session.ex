@@ -25,6 +25,9 @@ defmodule Domain.PortalSession do
     field :auth_provider_name, :string, virtual: true
     field :auth_provider_type, :string, virtual: true
 
+    # Virtual field for online status (populated via Presence)
+    field :online?, :boolean, virtual: true
+
     timestamps(updated_at: false)
   end
 end
