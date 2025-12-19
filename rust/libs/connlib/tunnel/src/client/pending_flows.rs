@@ -162,7 +162,7 @@ impl From<IpPacket> for ConnectionTrigger {
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
+    use std::net::{Ipv4Addr, Ipv6Addr};
 
     use connlib_model::{Site, SiteId};
     use ip_network::IpNetwork;
@@ -175,8 +175,8 @@ mod tests {
     fn skips_connection_intent_if_sent_within_last_two_seconds() {
         let mut pending_flows = PendingFlows::default();
         let mut now = Instant::now();
-        let rid = localhost_resource().id();
-        let resources = BTreeMap::from([(rid, localhost_resource())]);
+        let rid = ipv4_localhost_resource().id();
+        let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
 
         pending_flows.on_not_connected_resource(rid, ConnectionTrigger::Test, &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
@@ -191,8 +191,8 @@ mod tests {
     fn sends_new_intent_after_two_seconds() {
         let mut pending_flows = PendingFlows::default();
         let mut now = Instant::now();
-        let rid = localhost_resource().id();
-        let resources = BTreeMap::from([(rid, localhost_resource())]);
+        let rid = ipv4_localhost_resource().id();
+        let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
 
         pending_flows.on_not_connected_resource(rid, ConnectionTrigger::Test, &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
@@ -203,20 +203,52 @@ mod tests {
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
     }
 
-    fn localhost_resource() -> Resource {
+    #[test]
+    fn buffers_intent_for_resources_in_same_site() {
+        let mut pending_flows = PendingFlows::default();
+        let now = Instant::now();
+        let rid1 = ipv4_localhost_resource().id();
+        let rid2 = ipv6_localhost_resource().id();
+        let resources = BTreeMap::from([
+            (rid1, ipv4_localhost_resource()),
+            (rid2, ipv6_localhost_resource()),
+        ]);
+
+        pending_flows.on_not_connected_resource(rid1, ConnectionTrigger::Test, &resources, now);
+        assert_eq!(pending_flows.poll_connection_intents(), Some(rid1));
+        pending_flows.on_not_connected_resource(rid2, ConnectionTrigger::Test, &resources, now);
+        assert_eq!(pending_flows.poll_connection_intents(), None);
+
+        pending_flows.remove(&rid1);
+
+        pending_flows.on_not_connected_resource(rid2, ConnectionTrigger::Test, &resources, now);
+        assert_eq!(pending_flows.poll_connection_intents(), Some(rid2));
+    }
+
+    fn ipv4_localhost_resource() -> Resource {
         Resource::Cidr(CidrResource {
             id: ResourceId::from_u128(1),
             address: IpNetwork::from(Ipv4Addr::LOCALHOST),
-            name: "localhost".to_owned(),
+            name: "localhost-ipv4".to_owned(),
             address_description: None,
-            sites: vec![site()],
+            sites: vec![site1()],
         })
     }
 
-    fn site() -> Site {
+    fn ipv6_localhost_resource() -> Resource {
+        Resource::Cidr(CidrResource {
+            id: ResourceId::from_u128(2),
+            address: IpNetwork::from(Ipv6Addr::LOCALHOST),
+            name: "localhost-ipv6".to_owned(),
+            address_description: None,
+            sites: vec![site1()],
+        })
+    }
+
+    fn site1() -> Site {
         Site {
-            id: SiteId::from_u128(2),
-            name: "example-site".to_owned(),
+            id: SiteId::from_u128(1),
+            name: "site-1".to_owned(),
         }
     }
 }
