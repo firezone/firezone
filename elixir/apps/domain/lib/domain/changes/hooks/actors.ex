@@ -24,6 +24,25 @@ defmodule Domain.Changes.Hooks.Actors do
     :ok
   end
 
+  # Delete portal_sessions when an active account_admin_user is changed to account_user
+  def on_update(
+        _lsn,
+        %{
+          "disabled_at" => nil,
+          "type" => "account_admin_user"
+        },
+        %{
+          "disabled_at" => nil,
+          "type" => "account_user",
+          "account_id" => account_id,
+          "id" => actor_id
+        }
+      ) do
+    DB.delete_portal_sessions_for_actor(account_id, actor_id)
+
+    :ok
+  end
+
   def on_update(_lsn, _old_data, _new_data), do: :ok
 
   @impl true
