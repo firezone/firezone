@@ -139,7 +139,9 @@ jobs:
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }}
           mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
       - uses: ./.github/actions/setup-azure-sign-tool
+        if: inputs.profile == 'release'
       - name: Sign the binary
+        if: inputs.profile == 'release'
         shell: bash
         env:
           AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
