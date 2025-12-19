@@ -182,40 +182,12 @@ jobs:
           - target: x86_64-unknown-linux-musl
             shortname: x86_64
             platform: linux/amd64
-            install_dependencies: |
-              sudo apt-get install musl-tools
           - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
             shortname: aarch64
             platform: linux/arm64
-            install_dependencies: |
-              # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
-              # Find some other way to keep these updated.
-              if [[ ! -x /tmp/toolchain/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc ]]; then
-                curl -fsSL https://github.com/firezone/musl-toolchains/releases/download/1/aarch64-linux-musl-cross.tgz -o /tmp/aarch64-linux-musl-cross.tgz
-                mkdir -p /tmp/toolchain
-                tar -xzf /tmp/aarch64-linux-musl-cross.tgz -C /tmp/toolchain
-              fi
-
-              CC=/tmp/toolchain/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
-
-              echo "CC_aarch64_unknown_linux_musl=$CC" >> $GITHUB_ENV
-              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=$CC" >> $GITHUB_ENV
           - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
             platform: linux/arm/v7
             shortname: armv7
-            install_dependencies: |
-              # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
-              # Find some other way to keep these updated.
-              if [[ ! -x /tmp/toolchain/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc ]]; then
-                curl -fsSL https://github.com/firezone/musl-toolchains/releases/download/1/arm-linux-musleabihf-cross.tgz -o /tmp/arm-linux-musleabihf-cross.tgz
-                mkdir -p /tmp/toolchain
-                tar -xzf /tmp/arm-linux-musleabihf-cross.tgz -C /tmp/toolchain
-              fi
-
-              CC=/tmp/toolchain/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc
-
-              echo "CC_armv7_unknown_linux_musleabihf=$CC" >> $GITHUB_ENV
-              echo "CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER=$CC" >> $GITHUB_ENV
         name:
           - package: firezone-headless-client
             artifact: firezone-client-headless-linux
@@ -257,8 +229,9 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
-      - name: Install dependencies
-        run: ${{ matrix.arch.install_dependencies }}
+      - uses: ./.github/actions/setup-musl
+        with:
+          target: ${{ matrix.arch.target }}
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         with:
           tool: bpf-linker,cargo-deb
