@@ -700,8 +700,8 @@ pub(crate) struct NotAllowedResource(IpAddr);
 pub(crate) struct FailedToDecapsulate(packet_kind::Kind);
 
 #[derive(Debug, thiserror::Error)]
-#[error("Already connected to site {site} via Gateway {gateway}")]
-pub struct AlreadyConnectedToSite {
+#[error("Already using Gateway {gateway} for site {site}")]
+pub struct PrefersDifferentGateway {
     pub(crate) site: SiteId,
     pub(crate) gateway: GatewayId,
 }

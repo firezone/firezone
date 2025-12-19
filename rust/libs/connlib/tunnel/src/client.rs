@@ -4,11 +4,13 @@ mod dns_resource_nat;
 mod gateway_on_client;
 mod pending_flows;
 mod resource;
+mod sites;
 mod tracked_state;
 
 use crate::client::dns_config::DnsConfig;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
+use crate::client::sites::Sites;
 use crate::client::tracked_state::TrackedState;
 use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
@@ -27,14 +29,14 @@ use crate::messages::Interface as InterfaceConfig;
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::{
-    AlreadyConnectedToSite, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer,
+    IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, PrefersDifferentGateway, TunConfig, dns, is_peer,
     p2p_control,
 };
 use anyhow::{Context, ErrorExt};
+use connlib_model::SiteId;
 use connlib_model::{
     GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
-use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
@@ -42,11 +44,9 @@ use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 
 use crate::ClientEvent;
-use lru::LruCache;
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
@@ -83,12 +83,6 @@ pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
     Err(_) => unreachable!(),
 };
 
-/// How many gateways we at most remember that we connected to.
-///
-/// 100 has been chosen as a pretty arbitrary value.
-/// We only store [`GatewayId`]s so the memory footprint is negligible.
-const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = NonZeroUsize::new(100).expect("100 > 0");
-
 /// How many concurrent TCP DNS clients we can server _per_ sentinel DNS server IP.
 const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
 
@@ -105,12 +99,11 @@ pub struct ClientState {
     /// Tracks the flows to resources that we are currently trying to establish.
     pending_flows: PendingFlows,
     dns_resource_nat: DnsResourceNat,
+
     /// Tracks which gateway to use for a particular Resource.
     resources_gateways: HashMap<ResourceId, GatewayId>,
-    /// The site a gateway belongs to.
-    gateways_site: HashMap<GatewayId, SiteId>,
-    /// The online/offline status of a site.
-    sites_status: HashMap<SiteId, ResourceStatus>,
+    /// Tracks all sites we know about and the Gateways in them.
+    sites: Sites,
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     active_cidr_resources: IpNetworkTable<CidrResource>,
@@ -138,11 +131,6 @@ pub struct ClientState {
     dns_streams_by_local_upstream_and_query_id:
         HashMap<(dns::Transport, SocketAddr, SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
-    /// Stores the gateways we recently connected to.
-    ///
-    /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
-    recently_connected_gateways: LruCache<GatewayId, ()>,
-
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
@@ -167,13 +155,11 @@ impl ClientState {
             tun_config: Default::default(),
             buffered_packets: Default::default(),
             node: ClientNode::new(seed, now, unix_ts),
-            sites_status: Default::default(),
-            gateways_site: Default::default(),
+            sites: Default::default(),
             stub_resolver: StubResolver::new(records),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
             is_internet_resource_active,
-            recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             buffered_dns_queries: Default::default(),
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
@@ -203,31 +189,11 @@ impl ClientState {
             .values()
             .cloned()
             .map(|r| {
-                let status = self.resource_status(&r);
+                let status = self.sites.resource_status(&r);
                 r.with_status(status)
             })
             .sorted()
             .collect_vec()
-    }
-
-    fn resource_status(&self, resource: &Resource) -> ResourceStatus {
-        if resource.sites().iter().any(|s| {
-            self.sites_status
-                .get(&s.id)
-                .is_some_and(|s| *s == ResourceStatus::Online)
-        }) {
-            return ResourceStatus::Online;
-        }
-
-        if resource.sites().iter().all(|s| {
-            self.sites_status
-                .get(&s.id)
-                .is_some_and(|s| *s == ResourceStatus::Offline)
-        }) {
-            return ResourceStatus::Offline;
-        }
-
-        ResourceStatus::Unknown
     }
 
     pub fn set_resource_offline(&mut self, id: ResourceId) {
@@ -235,10 +201,8 @@ impl ClientState {
             return;
         };
 
-        for Site { id, .. } in resource.sites() {
-            self.sites_status.insert(*id, ResourceStatus::Offline);
-        }
-
+        self.sites
+            .set_status_by_resource(&resource, ResourceStatus::Offline);
         self.on_connection_failed(id);
         self.resource_list.update(self.resources());
     }
@@ -466,7 +430,7 @@ impl ClientState {
                 resource,
                 ConnectionTrigger::IcmpDestinationUnreachableProhibited,
                 &self.resources_by_id,
-                &self.gateways_site,
+                &self.sites,
                 now,
             );
         }
@@ -554,7 +518,7 @@ impl ClientState {
                     resource,
                     packet,
                     &self.resources_by_id,
-                    &self.gateways_site,
+                    &self.sites,
                     now,
                 );
                 return None;
@@ -620,19 +584,12 @@ impl ClientState {
         gateway_ice: IceCredentials,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "The iteration order doesn't matter here."
-        )]
-        if let Some(connected_gateway) = self
-            .gateways_site
-            .iter()
-            .find_map(|(existing_gateway, sid)| (sid == &site_id).then_some(existing_gateway))
-            && connected_gateway != &gid
+        if let Some(preferred_gateway) = self.sites.preferred_gateway(site_id)
+            && preferred_gateway != gid
         {
-            anyhow::bail!(AlreadyConnectedToSite {
+            anyhow::bail!(PrefersDifferentGateway {
                 site: site_id,
-                gateway: *connected_gateway
+                gateway: preferred_gateway
             })
         }
 
@@ -664,8 +621,7 @@ impl ClientState {
             Err(e) => return Ok(Err(e)),
         };
         self.resources_gateways.insert(rid, gid);
-        self.gateways_site.insert(gid, site_id);
-        self.recently_connected_gateways.put(gid, ());
+        self.sites.set_preferred_gateway(site_id, gid);
 
         if self.peers.get(&gid).is_none() {
             self.peers
@@ -792,19 +748,6 @@ impl ClientState {
         self.cleanup_connected_gateway(&disconnected_gateway);
     }
 
-    // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
-    // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
-    fn connected_gateway_ids(&self) -> BTreeSet<GatewayId> {
-        self.recently_connected_gateways
-            .iter()
-            .map(|(g, _)| *g)
-            .collect()
-    }
-
-    pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
-        self.resources_gateways.get(resource).copied()
-    }
-
     fn initialise_tcp_dns_client(&mut self) {
         let Some(tun_config) = self.tun_config.current() else {
             return;
@@ -867,7 +810,6 @@ impl ClientState {
         self.resources_gateways
             .retain(|_, g| g != disconnected_gateway);
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
-        self.gateways_site.remove(disconnected_gateway);
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -1332,7 +1274,7 @@ impl ClientState {
                             message,
                         }),
                         &self.resources_by_id,
-                        &self.gateways_site,
+                        &self.sites,
                         now,
                     );
                     return None;
@@ -1514,14 +1456,7 @@ impl ClientState {
     }
 
     fn update_site_status_by_gateway(&mut self, gid: &GatewayId, status: ResourceStatus) {
-        // Note: we can do this because in theory we shouldn't have multiple gateways for the same site
-        // connected at the same time.
-        let Some(sid) = self.gateways_site.get(gid) else {
-            tracing::warn!(%gid, "Cannot update status of unknown site");
-            return;
-        };
-
-        self.sites_status.insert(*sid, status);
+        self.sites.set_status_by_gateway(gid, status);
         self.resource_list.update(self.resources());
     }
 
@@ -1541,7 +1476,7 @@ impl ClientState {
         if let Some(resource) = self.pending_flows.poll_connection_intents() {
             return Some(ClientEvent::ConnectionIntent {
                 resource,
-                connected_gateway_ids: self.connected_gateway_ids(),
+                connected_gateway_ids: self.sites.connected_gateway_ids(),
             });
         }
 
@@ -1562,7 +1497,7 @@ impl ClientState {
 
         self.resources_gateways.clear(); // Clear Resource <> Gateway mapping (we will re-create this as new flows are authorized).
 
-        self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
+        self.sites.clear(); // Ensure we don't have sticky gateways when we roam.
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events();
 
@@ -2151,21 +2086,21 @@ mod proptests {
             .resources_gateways
             .insert(first_resource.id(), gateway);
         client_state
-            .gateways_site
-            .insert(gateway, first_resource.sites().iter().next().unwrap().id);
+            .sites
+            .set_preferred_gateway(first_resource.sites().iter().next().unwrap().id, gateway);
 
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
 
         for resource in resources_online {
             assert_eq!(
-                client_state.resource_status(&resource),
+                client_state.sites.resource_status(&resource),
                 ResourceStatus::Online
             );
         }
 
         for resource in resources_unknown {
             assert_eq!(
-                client_state.resource_status(&resource),
+                client_state.sites.resource_status(&resource),
                 ResourceStatus::Unknown
             );
         }
@@ -2185,15 +2120,15 @@ mod proptests {
             .resources_gateways
             .insert(first_resources.id(), gateway);
         client_state
-            .gateways_site
-            .insert(gateway, first_resources.sites().iter().next().unwrap().id);
+            .sites
+            .set_preferred_gateway(first_resources.sites().iter().next().unwrap().id, gateway);
 
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Unknown);
 
         for resource in resources {
             assert_eq!(
-                client_state.resource_status(&resource),
+                client_state.sites.resource_status(&resource),
                 ResourceStatus::Unknown
             );
         }
@@ -2213,12 +2148,12 @@ mod proptests {
         client_state.set_resource_offline(single_site_resource.id());
 
         assert_eq!(
-            client_state.resource_status(&single_site_resource),
+            client_state.sites.resource_status(&single_site_resource),
             ResourceStatus::Offline
         );
         for resource in multi_site_resources {
             assert_eq!(
-                client_state.resource_status(&resource),
+                client_state.sites.resource_status(&resource),
                 ResourceStatus::Unknown
             );
         }
