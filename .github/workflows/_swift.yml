@@ -39,7 +39,7 @@ jobs:
           path: rust/target/aarch64-apple-darwin/release/libconnlib.a
           retention-days: 1
 
-  build-rust-macosx-x86:
+  build-rust-macosx-x86_64:
     name: build-rust-macosx
     runs-on: macos-15
     steps:
@@ -142,7 +142,12 @@ jobs:
 
   build-macos-appstore:
     name: build-macos-appstore
-    needs: [update-release-draft, build-rust-macosx]
+    needs:
+      [
+        update-release-draft,
+        build-rust-macosx-aarch64,
+        build-rust-macosx-x86_64,
+      ]
     runs-on: macos-15
     env:
       PLATFORM: macOS
@@ -189,7 +194,12 @@ jobs:
 
   build-macos-standalone:
     name: build-macos-standalone
-    needs: [update-release-draft, build-rust-macosx]
+    needs:
+      [
+        update-release-draft,
+        build-rust-macosx-aarch64,
+        build-rust-macosx-x86_64,
+      ]
     runs-on: macos-15
     env:
       # mark:next-apple-version
