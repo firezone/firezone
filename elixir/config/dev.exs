@@ -1,8 +1,8 @@
 import Config
 
-###############################
-##### Domain ##################
-###############################
+# Local vars
+web_port = System.get_env("PHOENIX_WEB_PORT", "13443") |> String.to_integer()
+api_port = System.get_env("PHOENIX_API_PORT", "13001") |> String.to_integer()
 
 db_opts = [
   database: System.get_env("DATABASE_NAME", "firezone_dev"),
@@ -11,6 +11,10 @@ db_opts = [
   port: String.to_integer(System.get_env("DATABASE_PORT", "5432")),
   password: System.get_env("DATABASE_PASSWORD", "postgres")
 ]
+
+###############################
+##### Domain ##################
+###############################
 
 config :domain, Domain.Repo, db_opts
 
@@ -93,7 +97,7 @@ config :domain, Oban,
   repo: Domain.Repo
 
 config :domain, Domain.Okta.AuthProvider,
-  redirect_uri: "https://localhost:13443/auth/oidc/callback"
+  redirect_uri: "https://localhost:#{web_port}/auth/oidc/callback"
 
 ###############################
 ##### Web #####################
@@ -102,9 +106,9 @@ config :domain, Domain.Okta.AuthProvider,
 config :web, dev_routes: true
 
 config :web, Web.Endpoint,
-  url: [scheme: "https", host: "localhost", port: 13443],
+  url: [scheme: "https", host: "localhost", port: web_port],
   https: [
-    port: 13_443,
+    port: web_port,
     cipher_suite: :strong,
     certfile: "priv/cert/selfsigned.pem",
     keyfile: "priv/cert/selfsigned_key.pem"
@@ -135,7 +139,7 @@ config :web, Web.Endpoint,
   server: true
 
 config :web,
-  api_external_url: "http://localhost:13001"
+  api_external_url: "http://localhost:#{api_port}"
 
 root_path =
   __ENV__.file
@@ -159,7 +163,7 @@ config :web, Web.Plugs.SecureHeaders,
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`
 # to the `docker run` command. Works on Docker v20.10 and above.
-config :web, api_url_override: "ws://host.docker.internal:13001/"
+config :web, api_url_override: "ws://host.docker.internal:#{api_port}/"
 
 ###############################
 ##### API #####################
@@ -168,7 +172,7 @@ config :web, api_url_override: "ws://host.docker.internal:13001/"
 config :api, dev_routes: true
 
 config :api, API.Endpoint,
-  http: [port: 13_001],
+  http: [port: api_port],
   debug_errors: true,
   code_reloader: true,
   check_origin: ["//10.0.2.2", "//127.0.0.1", "//localhost"],
