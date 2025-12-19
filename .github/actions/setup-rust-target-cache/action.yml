@@ -17,4 +17,5 @@ runs:
         cache-all-crates: true
         cache-workspace-crates: true
         key: ${{ inputs.key }}
+        prefix-key: v1-rust
         # save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
