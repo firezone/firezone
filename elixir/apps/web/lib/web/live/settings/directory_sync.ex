@@ -270,7 +270,7 @@ defmodule Web.Settings.DirectorySync do
 
     case Oban.insert(sync_module.new(%{"directory_id" => id})) do
       {:ok, _job} ->
-        {:noreply, put_flash(socket, :info, "Directory sync has been queued successfully.")}
+        {:noreply, put_flash(socket, :success, "Directory sync has been queued successfully.")}
 
       {:error, reason} ->
         Logger.info("Failed to enqueue #{type} sync job", id: id, reason: inspect(reason))
