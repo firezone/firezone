@@ -15,7 +15,10 @@ defmodule Domain.Workers.SyncErrorNotification do
     max_attempts: 3,
     unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
 
-  alias Domain.{Entra, Google, Mailer}
+  alias Domain.Entra
+  alias Domain.Google
+  alias Domain.Okta
+  alias Domain.Mailer
   alias __MODULE__.DB
   require Logger
 
@@ -24,13 +27,14 @@ defmodule Domain.Workers.SyncErrorNotification do
     case provider do
       "entra" -> check_entra_directories(args)
       "google" -> check_google_directories(args)
+      "okta" -> check_okta_directories(args)
       _ -> {:error, "Unknown provider: #{provider}"}
     end
   end
 
   defp check_entra_directories(%{"frequency" => frequency}) do
     Entra.Directory
-    |> DB.errored_directories(frequency)
+    |> DB.errored_disabled_directories(frequency)
     |> Enum.each(&send_notification(:entra, &1, frequency))
 
     :ok
@@ -38,8 +42,16 @@ defmodule Domain.Workers.SyncErrorNotification do
 
   defp check_google_directories(%{"frequency" => frequency}) do
     Google.Directory
-    |> DB.errored_directories(frequency)
+    |> DB.errored_disabled_directories(frequency)
     |> Enum.each(&send_notification(:google, &1, frequency))
+
+    :ok
+  end
+
+  defp check_okta_directories(%{"frequency" => frequency}) do
+    Okta.Directory
+    |> DB.errored_disabled_directories(frequency)
+    |> Enum.each(&send_notification(:okta, &1, frequency))
 
     :ok
   end
@@ -58,19 +70,18 @@ defmodule Domain.Workers.SyncErrorNotification do
 
     case admins do
       [] ->
-        Logger.warning("No admin actors found for account",
+        Logger.error("No admin actors found for account",
           account_id: directory.account_id,
           directory_id: directory.id
         )
 
       admins ->
+        increment_error_email_count(directory)
+
         Enum.each(admins, fn admin ->
           send_email_notification(admin, directory, frequency)
         end)
     end
-
-    # Increment error email count
-    increment_error_email_count(provider, directory)
   end
 
   defp send_email_notification(admin, directory, frequency) do
@@ -81,68 +92,86 @@ defmodule Domain.Workers.SyncErrorNotification do
       frequency: frequency
     )
 
-    # Send the actual email using the existing mailer module
+    # Attempt to send the email but log errors if it fails. Important not to raise here
+    # otherwise we won't increment the error email count and potentially spam admins with emails.
     Mailer.SyncEmail.sync_error_email(directory, admin.email)
     |> Mailer.deliver()
+    |> case do
+      {:ok, _result} ->
+        Logger.info("Sync error email sent successfully",
+          to: admin.email,
+          directory_id: directory.id
+        )
+
+      {:error, reason} ->
+        Logger.error("Failed to send sync error email",
+          to: admin.email,
+          reason: reason,
+          directory_id: directory.id
+        )
+    end
   end
 
-  defp increment_error_email_count(provider, directory) do
-    DB.increment_error_email_count(provider, directory)
+  defp increment_error_email_count(directory) do
+    new_count = directory.error_email_count + 1
+
+    {:ok, _directory} =
+      directory
+      |> Ecto.Changeset.cast(%{"error_email_count" => new_count}, [:error_email_count])
+      |> DB.update_directory()
   end
 
   defmodule DB do
     import Ecto.Query
     alias Domain.Safe
 
-    def errored_directories(schema, frequency) do
+    # We want to find all directories that are currently disabled due to sync errors.
+    # For 4xx errors, the directory is disabled immediately.
+    # For 5xx errors, the directory is disabled after 24 hours of continuous failures.
+    # We only want to notify admins once a directory becomes disabled.
+    def errored_disabled_directories(schema, frequency) do
       schema
-      |> errored_directories_query(frequency)
+      |> errored_disabled_directories_query(frequency)
       |> Safe.unscoped()
       |> Safe.all()
     end
 
-    defp errored_directories_query(schema, "daily") do
+    defp errored_disabled_directories_query(schema, "daily") do
       from(d in schema,
         where: not is_nil(d.errored_at),
+        where: d.is_disabled == true,
+        where: d.disabled_reason == "Sync error",
         where: d.error_email_count < 3,
         preload: [:account]
       )
     end
 
-    defp errored_directories_query(schema, "three_days") do
+    defp errored_disabled_directories_query(schema, "three_days") do
       from(d in schema,
         where: not is_nil(d.errored_at),
+        where: d.is_disabled == true,
+        where: d.disabled_reason == "Sync error",
         where: d.error_email_count >= 3,
         where: d.error_email_count <= 6,
         preload: [:account]
       )
     end
 
-    defp errored_directories_query(schema, "weekly") do
+    defp errored_disabled_directories_query(schema, "weekly") do
       from(d in schema,
         where: not is_nil(d.errored_at),
+        where: d.is_disabled == true,
+        where: d.disabled_reason == "Sync error",
         where: d.error_email_count >= 7,
         where: d.error_email_count < 10,
         preload: [:account]
       )
     end
 
-    def increment_error_email_count(:entra, directory) do
-      new_count = (directory.error_email_count || 0) + 1
-
-      changeset =
-        Ecto.Changeset.cast(directory, %{"error_email_count" => new_count}, [:error_email_count])
-
-      {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
-    end
-
-    def increment_error_email_count(:google, directory) do
-      new_count = (directory.error_email_count || 0) + 1
-
-      changeset =
-        Ecto.Changeset.cast(directory, %{"error_email_count" => new_count}, [:error_email_count])
-
-      {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
+    def update_directory(changeset) do
+      changeset
+      |> Safe.unscoped()
+      |> Safe.update()
     end
 
     def get_account_admin_actors(account_id) do

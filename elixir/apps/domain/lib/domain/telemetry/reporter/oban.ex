@@ -283,6 +283,8 @@ defmodule Domain.Telemetry.Reporter.Oban do
   end
 
   # Handle 5xx errors - disable after 24 hours
+  # This allows for transient server issues to resolve before disabling
+  # a sync and alerting the admin about it.
   defp handle_5xx_error(provider, directory_id, error_message) do
     now = DateTime.utc_now()
 

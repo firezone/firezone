@@ -7,9 +7,15 @@ defmodule Domain.Mailer.SyncEmail do
   embed_templates "sync_email/*.text", suffix: "_text"
 
   def sync_error_email(directory, email) do
+    settings_url = url("/#{directory.account.slug}/settings/directory_sync")
+
     default_email()
     |> subject("Directory Sync Error - #{directory.name}")
     |> to(email)
-    |> render_body(__MODULE__, :sync_error, account: directory.account, directory: directory)
+    |> render_body(__MODULE__, :sync_error,
+      account: directory.account,
+      directory: directory,
+      settings_url: settings_url
+    )
   end
 end
