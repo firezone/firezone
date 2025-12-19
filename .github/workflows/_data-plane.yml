@@ -227,13 +227,13 @@ jobs:
         id: login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-musl
+        with:
+          target: ${{ matrix.arch.target }}
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
           cache_strategy: "target-dir"
-      - uses: ./.github/actions/setup-musl
-        with:
-          target: ${{ matrix.arch.target }}
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         with:
           tool: bpf-linker,cargo-deb
