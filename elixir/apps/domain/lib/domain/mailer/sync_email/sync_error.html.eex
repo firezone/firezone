@@ -68,15 +68,17 @@
 											<%= @directory.name %> Sync Error!
 										</h1>
 										<p style="margin: 0; line-height: 24px">
-											<%= @directory.name %> has failed to sync <%= @directory.error_email_count + 1 %> time(s).
+											The <%= @directory.name %> directory has encountered an unrecoverable error and sync has been disabled.
+											Please visit your <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: underline;">directory sync settings</a> to re-verify the directory and enable sync.
 										</p>
 										<div role="separator" style="line-height: 16px">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">
 											Below is the last sync error message:
-											<div>
-											<pre style="margin: 0; white-space: pre; border-radius: 4px; background-color: #f3f4f6; padding: 8px 12px; line-height: 24px; color: #1f2937"><code><%= @directory.error_message %></code></pre>
-											</div>
 										</p>
+										<div role="separator" style="line-height: 8px">&zwj;</div>
+										<div>
+											<pre style="margin: 0; white-space: pre; border-radius: 4px; background-color: #f3f4f6; padding: 8px 12px; line-height: 24px; color: #1f2937"><code><%= @directory.error_message %></code></pre>
+										</div>
 										<div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">
 											<span style="font-weight: 500; text-decoration-line: underline; text-underline-offset: 2px">Directory Details</span>
@@ -106,8 +108,7 @@
 										<p></p>
 										<div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0;">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">
-											Please verify that all Directory information entered in to Firezone is correct. If the problem persists, please reach out to Firezone support
-											using Slack or email.
+											Please verify that all directory information entered into Firezone is correct. If the problem persists, please reach out to Firezone support via Slack or email.
 											<br>
 											<br>
 											Thanks, <br>The Firezone Team
