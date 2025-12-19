@@ -627,7 +627,7 @@ impl ClientState {
         if let Some(connected_gateway) = self
             .gateways_site
             .iter()
-            .find_map(|(gid, sid)| (sid == &site_id).then_some(gid))
+            .find_map(|(existing_gateway, sid)| (sid == &site_id).then_some(existing_gateway))
             && connected_gateway != &gid
         {
             anyhow::bail!(AlreadyConnectedToSite)
