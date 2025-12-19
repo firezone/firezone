@@ -8,12 +8,12 @@ import SupportOptions from "@/components/SupportOptions";
 
 </PlanBadge>
 
-Firezone supports automatic directory sync from Google Workspace, Microsoft
-Entra ID, and Okta. This feature is **automatically enabled** when you create
-one of the [Google Workspace](/kb/authenticate/google),
-[Microsoft Entra](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta)
-connectors. Once the connector is activated, users, groups, and organizational
-units will be synced from your identity provider every few minutes.
+Firezone supports directory sync from Google Workspace, Microsoft Entra ID, and
+Okta. To enable directory sync for any of those identity providers please follow
+the specific guide for [Google Workspace](/kb/directory-sync/google),
+[Microsoft Entra](/kb/directory-sync/entra), or [Okta](/kb/directory-sync/okta).
+Once the sync is activated, users, groups, and organizational units will be
+synced from your identity provider every few minutes.
 
 ## Role mapping
 
@@ -21,7 +21,7 @@ All synced users are assigned the unprivileged `User` role by default. This role
 is allowed to sign in from the Firezone Client, but has no access to the admin
 portal. If you need to grant a synced user access to the admin portal, you can
 manually assign the user the `Admin` role by going to
-`Actors -> <actor name> -> Edit User` and updating their role appropriately.
+`Actors → <actor name> → Edit User` and updating their role appropriately.
 
 Automatic role mapping is not currently supported. If this is a feature you
 would like to see, please let us know by
@@ -30,10 +30,8 @@ GitHub issue tracker.
 
 ## How Firezone treats deleted entities
 
-When you delete a user or group in your identity provider, Firezone soft-deletes
-them upon the next sync. This prevents data duplication if a user or group is
-only temporarily suspended, and helps preserve logged activity within Firezone
-for auditing purposes.
+When you delete a user or group in your identity provider, Firezone deletes them
+upon the next sync.
 
 ### Deleting or suspending a user
 

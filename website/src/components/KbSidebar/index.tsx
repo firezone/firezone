@@ -50,11 +50,14 @@ export default function KbSidebar() {
             <SidebarItem href="/kb/authenticate/oidc/fusion">
               SSO with FusionAuth
             </SidebarItem>
-            <SidebarItem href="/kb/authenticate/directory-sync">
-              Directory sync
-            </SidebarItem>
             <SidebarItem href="/kb/authenticate/service-accounts">
               Service accounts
+            </SidebarItem>
+          </SidebarCollapse>
+          <SidebarCollapse prefix="/kb/directory-sync" label="Directory Sync">
+            <SidebarItem href="/kb/directory-sync">Overview</SidebarItem>
+            <SidebarItem href="/kb/directory-sync/okta">
+              Directory sync - Okta
             </SidebarItem>
           </SidebarCollapse>
           <SidebarCollapse prefix={"/kb/automate"} label="Automate">
