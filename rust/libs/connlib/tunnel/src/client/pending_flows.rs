@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use connlib_model::ResourceId;
+use connlib_model::{GatewayId, ResourceId, SiteId};
 use ip_packet::IpPacket;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
@@ -24,6 +24,7 @@ impl PendingFlows {
         rid: ResourceId,
         trigger: impl Into<ConnectionTrigger>,
         resources_by_id: &BTreeMap<ResourceId, Resource>,
+        gateway_sites: &HashMap<GatewayId, SiteId>,
         now: Instant,
     ) {
         let trigger = trigger.into();
@@ -39,6 +40,8 @@ impl PendingFlows {
             return;
         };
 
+        #[expect(clippy::disallowed_methods, reason = "The order doesn't matter here.")]
+        let connected_to_site = gateway_sites.values().any(|s| s == &site.id);
         let has_pending_flows_for_site = resources_by_id
             .values()
             .filter_map(|r| r.sites().contains(site).then_some(r.id()))
@@ -52,7 +55,7 @@ impl PendingFlows {
 
         pending_flow.push(trigger);
 
-        if has_pending_flows_for_site {
+        if !connected_to_site && has_pending_flows_for_site {
             tracing::debug!(%rid, site = %site.name, "Already connecting to this site, skipping connection intent");
             return;
         }
@@ -178,13 +181,14 @@ mod tests {
         let mut now = Instant::now();
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
+        let gateway_sites = HashMap::default();
 
-        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, now);
+        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, &gateway_sites, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
 
         now += Duration::from_secs(1);
 
-        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, now);
+        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, &gateway_sites, now);
         assert_eq!(pending_flows.poll_connection_intents(), None);
     }
 
@@ -194,13 +198,14 @@ mod tests {
         let mut now = Instant::now();
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
+        let gateway_sites = HashMap::default();
 
-        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, now);
+        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, &gateway_sites, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
 
         now += Duration::from_secs(3);
 
-        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, now);
+        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, &gateway_sites, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
     }
 
@@ -216,21 +221,42 @@ mod tests {
             (rid1, ipv4_localhost_resource()),
             (rid2, ipv6_localhost_resource()),
         ]);
+        let gateway_sites = HashMap::default();
 
-        pending_flows.on_not_connected_resource(rid1, trigger(1), &resources, now);
+        pending_flows.on_not_connected_resource(rid1, trigger(1), &resources, &gateway_sites, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid1));
-        pending_flows.on_not_connected_resource(rid2, trigger(2), &resources, now);
+        pending_flows.on_not_connected_resource(rid2, trigger(2), &resources, &gateway_sites, now);
         assert_eq!(pending_flows.poll_connection_intents(), None);
 
         pending_flows.remove(&rid1);
 
-        pending_flows.on_not_connected_resource(rid2, trigger(3), &resources, now);
+        pending_flows.on_not_connected_resource(rid2, trigger(3), &resources, &gateway_sites, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid2));
 
         let (packets, dns_queries) = pending_flows.remove(&rid2).unwrap().into_buffered_packets();
 
         assert_eq!(packets.len(), 2, "should buffer both packets");
         assert!(dns_queries.is_empty());
+    }
+
+    #[test]
+    fn sends_intent_for_same_site_in_paralle_if_already_connected() {
+        let _guard = logging::test("trace");
+
+        let mut pending_flows = PendingFlows::default();
+        let now = Instant::now();
+        let rid1 = ipv4_localhost_resource().id();
+        let rid2 = ipv6_localhost_resource().id();
+        let resources = BTreeMap::from([
+            (rid1, ipv4_localhost_resource()),
+            (rid2, ipv6_localhost_resource()),
+        ]);
+        let gateway_sites = HashMap::from([(GatewayId::from_u128(1), SiteId::from_u128(1))]);
+
+        pending_flows.on_not_connected_resource(rid1, trigger(1), &resources, &gateway_sites, now);
+        assert_eq!(pending_flows.poll_connection_intents(), Some(rid1));
+        pending_flows.on_not_connected_resource(rid2, trigger(2), &resources, &gateway_sites, now);
+        assert_eq!(pending_flows.poll_connection_intents(), Some(rid2));
     }
 
     fn trigger(payload: u8) -> IpPacket {

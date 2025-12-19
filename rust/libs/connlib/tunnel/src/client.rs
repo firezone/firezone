@@ -463,6 +463,7 @@ impl ClientState {
                 resource,
                 ConnectionTrigger::IcmpDestinationUnreachableProhibited,
                 &self.resources_by_id,
+                &self.gateways_site,
                 now,
             );
         }
@@ -550,6 +551,7 @@ impl ClientState {
                     resource,
                     packet,
                     &self.resources_by_id,
+                    &self.gateways_site,
                     now,
                 );
                 return None;
@@ -1319,6 +1321,7 @@ impl ClientState {
                             message,
                         }),
                         &self.resources_by_id,
+                        &self.gateways_site,
                         now,
                     );
                     return None;
