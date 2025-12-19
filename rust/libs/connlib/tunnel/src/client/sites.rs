@@ -54,9 +54,9 @@ impl Sites {
         self.recently_connected_gateways.clear();
     }
 
-    pub(crate) fn set_status_by_resource(&mut self, resource: &Resource, status: ResourceStatus) {
+    pub(crate) fn on_resource_offline(&mut self, resource: &Resource) {
         for site in resource.sites() {
-            self.sites_status.insert(site.id, status);
+            self.sites_status.insert(site.id, ResourceStatus::Offline);
         }
     }
 

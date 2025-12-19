@@ -201,8 +201,7 @@ impl ClientState {
             return;
         };
 
-        self.sites
-            .set_status_by_resource(&resource, ResourceStatus::Offline);
+        self.sites.on_resource_offline(&resource);
         self.on_connection_failed(id);
         self.resource_list.update(self.resources());
     }
