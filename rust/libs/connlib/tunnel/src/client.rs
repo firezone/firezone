@@ -864,6 +864,7 @@ impl ClientState {
         self.resources_gateways
             .retain(|_, g| g != disconnected_gateway);
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
+        self.gateways_site.remove(disconnected_gateway);
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
