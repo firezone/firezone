@@ -202,8 +202,13 @@ impl ClientState {
         };
 
         self.sites.on_resource_offline(&resource);
-        self.on_connection_failed(id);
+        self.pending_flows.remove(&id);
         self.resource_list.update(self.resources());
+
+        let Some(disconnected_gateway) = self.resources_gateways.remove(&id) else {
+            return;
+        };
+        self.cleanup_connected_gateway(&disconnected_gateway);
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -737,14 +742,6 @@ impl ClientState {
         self.handle_udp_dns_query(upstream, packet, now);
 
         ControlFlow::Break(())
-    }
-
-    pub fn on_connection_failed(&mut self, resource: ResourceId) {
-        self.pending_flows.remove(&resource);
-        let Some(disconnected_gateway) = self.resources_gateways.remove(&resource) else {
-            return;
-        };
-        self.cleanup_connected_gateway(&disconnected_gateway);
     }
 
     fn initialise_tcp_dns_client(&mut self) {
