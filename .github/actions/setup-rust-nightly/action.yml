@@ -1,0 +1,32 @@
+---
+name: "Setup Rust nightly"
+description: "Sets up our Rust nightly toolchains"
+outputs:
+  nightly_version:
+    description: The nightly version of Rust
+    value: ${{ steps.nightly.outputs.nightly }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install nightly Rust to use for certain tools (fuzzing, cargo-udeps)
+      id: nightly
+      run: |
+        NIGHTLY="nightly-2025-09-30"
+        # Check if nightly toolchain is already installed
+        if ! rustup toolchain list | grep -q "$NIGHTLY"; then
+          rustup toolchain install $NIGHTLY
+          rustup component add rust-src --toolchain $NIGHTLY
+        fi
+        echo "nightly=$NIGHTLY" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Install nightly Rust for compiling eBPF code
+      run: |
+        NIGHTLY="nightly-2025-05-30"
+        # Check if nightly toolchain is already installed
+        if ! rustup toolchain list | grep -q "$NIGHTLY"; then
+          rustup toolchain install $NIGHTLY
+          rustup component add rust-src --toolchain $NIGHTLY
+        fi
+      shell: bash

@@ -8,7 +8,7 @@ runs:
       with:
         path: kotlin/android/.tool-versions
 
-    - uses: ./.github/actions/setup-rust-toolchain
+    - uses: ./.github/actions/setup-rust-stable
       with:
         targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
 

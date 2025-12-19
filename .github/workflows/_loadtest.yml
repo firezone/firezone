@@ -46,7 +46,7 @@ jobs:
         with:
           ref: ${{ inputs.sha }}
 
-      - uses: ./.github/actions/setup-rust-toolchain
+      - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.target }}
 

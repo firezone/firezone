@@ -46,25 +46,3 @@ runs:
         components: rustfmt,clippy,llvm-tools-preview
         target: ${{ inputs.targets }}
         cache: false # We explicitly configure caching somewhere else.
-
-    - name: Install nightly Rust to use for certain tools (fuzzing, cargo-udeps)
-      id: nightly
-      run: |
-        NIGHTLY="nightly-2025-09-30"
-        # Check if nightly toolchain is already installed
-        if ! rustup toolchain list | grep -q "$NIGHTLY"; then
-          rustup toolchain install $NIGHTLY
-          rustup component add rust-src --toolchain $NIGHTLY
-        fi
-        echo "nightly=$NIGHTLY" >> $GITHUB_OUTPUT
-      shell: bash
-
-    - name: Install nightly Rust for compiling eBPF code
-      run: |
-        NIGHTLY="nightly-2025-05-30"
-        # Check if nightly toolchain is already installed
-        if ! rustup toolchain list | grep -q "$NIGHTLY"; then
-          rustup toolchain install $NIGHTLY
-          rustup component add rust-src --toolchain $NIGHTLY
-        fi
-      shell: bash
