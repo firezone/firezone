@@ -67,7 +67,7 @@ runs:
       with:
         workspaces: rust
         cache-all-crates: true # Cache all workspace crates
-        save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
+        # save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
 
     - name: Configure sccache
       if: ${{ inputs.cache_strategy == 'sccache' }}
