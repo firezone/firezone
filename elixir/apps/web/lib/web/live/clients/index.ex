@@ -21,9 +21,6 @@ defmodule Web.Clients.Index do
           {:clients, :inserted_at},
           {:clients, :last_seen_user_agent}
         ],
-        hide_filters: [
-          :name
-        ],
         callback: &handle_clients_update!/2
       )
 
@@ -95,7 +92,7 @@ defmodule Web.Clients.Index do
               />
             </div>
           </:col>
-          <:col :let={client} label="user">
+          <:col :let={client} label="actor">
             <.actor_name_and_role account={@account} actor={client.actor} return_to={@current_path} />
           </:col>
           <:col :let={client} field={{:clients, :last_seen_version}} label="version">
@@ -188,9 +185,9 @@ defmodule Web.Clients.Index do
       [
         %Domain.Repo.Filter{
           name: :name,
-          title: "Name",
+          title: "Client or Actor",
           type: {:string, :websearch},
-          fun: &filter_by_name_fts/2
+          fun: &filter_by_name_or_email_fts/2
         },
         %Domain.Repo.Filter{
           name: :verification,
@@ -215,8 +212,21 @@ defmodule Web.Clients.Index do
       ]
     end
 
-    def filter_by_name_fts(queryable, name) do
-      {queryable, dynamic([clients: clients], fulltext_search(clients.name, ^name))}
+    def filter_by_name_or_email_fts(queryable, name_or_email) do
+      queryable =
+        if has_named_binding?(queryable, :actors) do
+          queryable
+        else
+          join(queryable, :inner, [clients: c], a in assoc(c, :actor), as: :actors)
+        end
+
+      {queryable,
+       dynamic(
+         [clients: clients, actors: actors],
+         fulltext_search(clients.name, ^name_or_email) or
+           fulltext_search(actors.name, ^name_or_email) or
+           fulltext_search(actors.email, ^name_or_email)
+       )}
     end
 
     def filter_by_verification(queryable, "verified") do
