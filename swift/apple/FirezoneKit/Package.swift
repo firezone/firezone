@@ -12,7 +12,7 @@ let package = Package(
     .library(name: "FirezoneKit", targets: ["FirezoneKit"])
   ],
   dependencies: [
-    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "8.56.2")
+    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "8.57.3")
   ],
   targets: [
     .target(
