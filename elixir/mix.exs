@@ -72,7 +72,7 @@ defmodule Firezone.MixProject do
       ],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      reboot: ["ecto.reset", "ecto.seed", "start"],
+      reboot: ["ecto.reset", "run apps/domain/priv/repo/seeds.exs", "start"],
       sobelow: ["cmd mix sobelow"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"],
       start: ["compile --no-validate-compile-env", "phx.server", "run --no-halt"]
