@@ -1502,15 +1502,15 @@ impl ClientState {
         }
     }
 
-    fn update_site_status_by_gateway(&mut self, gateway_id: &GatewayId, status: ResourceStatus) {
+    fn update_site_status_by_gateway(&mut self, gid: &GatewayId, status: ResourceStatus) {
         // Note: we can do this because in theory we shouldn't have multiple gateways for the same site
         // connected at the same time.
-        self.sites_status.insert(
-            *self.gateways_site.get(gateway_id).expect(
-                "if we're updating a site status there should be an associated site to a gateway",
-            ),
-            status,
-        );
+        let Some(sid) = self.gateways_site.get(gid) else {
+            tracing::warn!(%gid, "Cannot update status of unknown site");
+            return;
+        };
+
+        self.sites_status.insert(*sid, status);
         self.resource_list.update(self.resources());
     }
 
