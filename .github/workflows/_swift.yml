@@ -74,10 +74,11 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
+        id: setup-rust
         with:
-          targets: ${{ matrix.rust-targets }}
-          cache_strategy: "sccache"
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
       - run: ${{ matrix.build-script }}
         env:
           IOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}"

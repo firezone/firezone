@@ -1,14 +1,11 @@
 ---
 name: "Setup Rust"
-description: "Sets up the correct Rust version and caching"
+description: "Sets up the correct Rust version"
 inputs:
   targets:
     description: "Additional targets to install"
     required: false
     default: ""
-  cache_strategy:
-    description: "Caching strategy: 'sccache' or 'target-dir' (GitHub Actions cache for all workspace crates)"
-    required: true
 
 outputs:
   bench-packages:
@@ -36,9 +33,6 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-      if: ${{ inputs.cache_strategy == 'sccache' }}
-
     - name: Extract Rust version
       run: |
         RUST_TOOLCHAIN=$(grep 'channel' rust/rust-toolchain.toml | awk -F '"' '{print $2}')
@@ -51,22 +45,7 @@ runs:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy,llvm-tools-preview
         target: ${{ inputs.targets }}
-        cache: false # We explicitly configure the cache below because it doesn't forward `cache-targets`.
-
-    - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
-      if: ${{ inputs.cache_strategy == 'sccache' }}
-      with:
-        workspaces: rust
-        cache-targets: ${{ inputs.cache_strategy == 'target-dir' }}
-        cache-all-crates: ${{ inputs.cache_strategy == 'target-dir' }}
-        # save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
-
-    - name: Configure sccache
-      if: ${{ inputs.cache_strategy == 'sccache' }}
-      shell: bash
-      run: |
-        echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
-        echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
+        cache: false # We explicitly configure caching somewhere else.
 
     - name: Install nightly Rust to use for certain tools (fuzzing, cargo-udeps)
       id: nightly
@@ -89,10 +68,3 @@ runs:
           rustup component add rust-src --toolchain $NIGHTLY
         fi
       shell: bash
-
-    - name: Start sccache
-      if: ${{ inputs.cache_strategy == 'sccache' }}
-      run: $SCCACHE_PATH --start-server
-      shell: bash
-      env:
-        SCCACHE_CONF: ".github/actions/setup-rust/sccache.toml"

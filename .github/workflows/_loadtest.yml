@@ -46,10 +46,11 @@ jobs:
         with:
           ref: ${{ inputs.sha }}
 
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
         with:
           targets: ${{ matrix.target }}
-          cache_strategy: "target-dir"
+
+      - uses: ./.github/actions/setup-rust-target-cache
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'linux'

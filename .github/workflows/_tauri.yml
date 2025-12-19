@@ -68,9 +68,10 @@ jobs:
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
           lockfile-dir: ./rust/gui-client
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
         with:
-          cache_strategy: "sccache"
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
         with:
@@ -139,9 +140,10 @@ jobs:
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
           lockfile-dir: ./rust/gui-client
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
         with:
-          cache_strategy: "sccache"
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 15

@@ -122,10 +122,12 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: ${{ inputs.sha }}
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
         with:
           targets: ${{ matrix.target }}
-          cache_strategy: "sccache"
+      - uses: ./.github/actions/setup-rust-target-cache
+        with:
+          key: ${{ matrix.package }}
       - name: Build binaries
         shell: bash
         run: |
@@ -230,10 +232,12 @@ jobs:
       - uses: ./.github/actions/setup-musl
         with:
           target: ${{ matrix.arch.target }}
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
         with:
-          targets: ${{ matrix.arch.target }}
-          cache_strategy: "target-dir"
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-target-cache
+        with:
+          key: ${{ matrix.package }}
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         with:
           tool: bpf-linker,cargo-deb

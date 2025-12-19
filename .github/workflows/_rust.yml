@@ -25,10 +25,10 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/setup-rust
-        id: setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
         with:
-          cache_strategy: "sccache"
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
@@ -65,10 +65,11 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
         id: setup-rust
         with:
-          cache_strategy: "sccache"
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
       - uses: ./.github/actions/setup-tauri-v2
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         env:
@@ -102,10 +103,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
         id: setup-rust
         with:
-          cache_strategy: "sccache"
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -181,10 +183,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
         id: setup-rust
         with:
-          cache_strategy: "sccache"
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -209,9 +212,11 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-rust-toolchain
+        id: setup-rust
         with:
-          cache_strategy: "sccache"
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
       - run: scripts/tests/${{ matrix.test }}
