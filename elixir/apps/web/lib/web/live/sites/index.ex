@@ -36,10 +36,18 @@ defmodule Web.Sites.Index do
   end
 
   def handle_sites_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, gateways: [:online?], resources: [])
-
     with {:ok, sites, metadata} <- DB.list_sites(socket.assigns.subject, list_opts) do
-      {:ok, assign(socket, sites: sites, sites_metadata: metadata)}
+      site_ids = Enum.map(sites, & &1.id)
+      resources_counts = DB.count_resources_by_site(site_ids, socket.assigns.subject)
+      policies_counts = DB.count_policies_by_site(site_ids, socket.assigns.subject)
+
+      {:ok,
+       assign(socket,
+         sites: sites,
+         sites_metadata: metadata,
+         resources_counts: resources_counts,
+         policies_counts: policies_counts
+       )}
     end
   end
 
@@ -85,75 +93,47 @@ defmodule Web.Sites.Index do
           </:col>
 
           <:col :let={site} label="resources">
-            <% peek = %{count: length(site.resources), items: site.resources} %>
-            <.peek peek={peek}>
-              <:empty>
-                None
-              </:empty>
+            <% count = Map.get(@resources_counts, site.id, 0) %>
+            <%= if count == 0 do %>
+              None
+            <% else %>
+              <.link
+                navigate={~p"/#{@account}/resources?resources_filter[site_id]=#{site.id}"}
+                class={[link_style()]}
+              >
+                {count} {ngettext("resource", "resources", count)}
+              </.link>
+            <% end %>
+          </:col>
 
-              <:separator>
-                <span class="pr-1">,</span>
-              </:separator>
-
-              <:item :let={resource}>
-                <.link
-                  navigate={~p"/#{@account}/resources/#{resource}?site_id=#{site.id}"}
-                  class={["inline-block", link_style()]}
-                  phx-no-format
-                ><%= resource.name %></.link>
-              </:item>
-
-              <:tail :let={count}>
-                <span class="pl-1">
-                  and
-                  <.link
-                    navigate={~p"/#{@account}/sites/#{site}?#resources"}
-                    class={["font-medium", link_style()]}
-                  >
-                    {count} more.
-                  </.link>
-                </span>
-              </:tail>
-            </.peek>
+          <:col :let={site} label="policies">
+            <% count = Map.get(@policies_counts, site.id, 0) %>
+            <%= if count == 0 do %>
+              None
+            <% else %>
+              <.link
+                navigate={~p"/#{@account}/policies?policies_filter[site_id]=#{site.id}"}
+                class={[link_style()]}
+              >
+                {count} {ngettext("policy", "policies", count)}
+              </.link>
+            <% end %>
           </:col>
 
           <:col :let={site} label="online gateways" class="w-1/6">
-            <% gateways = Enum.filter(site.gateways, & &1.online?)
-            peek = %{count: length(gateways), items: Enum.take(gateways, 5)} %>
-            <.peek peek={peek}>
-              <:empty>
-                <span class="justify flex items-center">
-                  <.icon
-                    name="hero-exclamation-triangle-solid"
-                    class="inline-block w-3.5 h-3.5 mr-1 text-red-500"
-                  /> None
-                </span>
-              </:empty>
-
-              <:separator>
-                <span class="pr-1">,</span>
-              </:separator>
-
-              <:item :let={gateway}>
-                <.link
-                  navigate={~p"/#{@account}/gateways/#{gateway}"}
-                  class={["inline-block", link_style()]}
-                  phx-no-format
-                ><%= gateway.name %></.link>
-              </:item>
-
-              <:tail :let={count}>
-                <span class="pl-1">
-                  and
-                  <.link
-                    navigate={~p"/#{@account}/sites/#{site}?#gateways"}
-                    class={["font-medium", link_style()]}
-                  >
-                    {count} more.
-                  </.link>
-                </span>
-              </:tail>
-            </.peek>
+            <% count = Presence.Gateways.Site.list(site.id) |> map_size() %>
+            <%= if count == 0 do %>
+              <span class="flex items-center">
+                <.icon
+                  name="hero-exclamation-triangle-solid"
+                  class="inline-block w-3.5 h-3.5 mr-1 text-red-500"
+                /> None
+              </span>
+            <% else %>
+              <.link navigate={~p"/#{@account}/sites/#{site}"} class={[link_style()]}>
+                {count} {ngettext("gateway", "gateways", count)}
+              </.link>
+            <% end %>
           </:col>
 
           <:empty>
@@ -243,6 +223,27 @@ defmodule Web.Sites.Index do
       |> Safe.list(__MODULE__, opts)
     end
 
+    def count_resources_by_site(site_ids, subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.site_id in ^site_ids)
+      |> group_by([resources: r], r.site_id)
+      |> select([resources: r], {r.site_id, count(r.id)})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
+    def count_policies_by_site(site_ids, subject) do
+      from(p in Domain.Policy, as: :policies)
+      |> join(:inner, [policies: p], r in Resource, on: r.id == p.resource_id, as: :resources)
+      |> where([resources: r], r.site_id in ^site_ids)
+      |> group_by([resources: r], r.site_id)
+      |> select([resources: r], {r.site_id, count()})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
     def get_internet_resource(subject) do
       resource =
         from(r in Resource, as: :resources)
@@ -265,13 +266,6 @@ defmodule Web.Sites.Index do
       do: [
         {:sites, :asc, :inserted_at},
         {:sites, :asc, :id}
-      ]
-
-    def preloads,
-      do: [
-        gateways: [
-          online?: &Presence.Gateways.preload_gateways_presence/1
-        ]
       ]
 
     def filters do
