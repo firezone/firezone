@@ -2,11 +2,13 @@ mod dns_cache;
 pub(crate) mod dns_config;
 mod dns_resource_nat;
 mod gateway_on_client;
+mod pending_flows;
 mod resource;
 mod tracked_state;
 
 use crate::client::dns_config::DnsConfig;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
+use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
 use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
@@ -15,7 +17,7 @@ pub(crate) use resource::{CidrResource, InternetResource, Resource};
 
 use dns_resource_nat::DnsResourceNat;
 use dns_types::ResponseCode;
-use ringbuffer::{AllocRingBuffer, RingBuffer};
+use ringbuffer::RingBuffer;
 use secrecy::ExposeSecret as _;
 use telemetry::{analytics, feature_flags};
 
@@ -24,7 +26,6 @@ use crate::dns::{DnsResourceRecord, StubResolver};
 use crate::messages::Interface as InterfaceConfig;
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
-use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::{Context, ErrorExt};
 use connlib_model::{
@@ -99,7 +100,7 @@ pub struct ClientState {
     /// All gateways we are connected to and the associated, connection-specific state.
     peers: PeerStore<GatewayId, GatewayOnClient>,
     /// Tracks the flows to resources that we are currently trying to establish.
-    pending_flows: HashMap<ResourceId, PendingFlow>,
+    pending_flows: PendingFlows,
     dns_resource_nat: DnsResourceNat,
     /// Tracks which gateway to use for a particular Resource.
     resources_gateways: HashMap<ResourceId, GatewayId>,
@@ -143,44 +144,6 @@ pub struct ClientState {
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
-}
-
-struct PendingFlow {
-    last_intent_sent_at: Instant,
-    resource_packets: UniquePacketBuffer,
-    dns_queries: AllocRingBuffer<DnsQueryForSite>,
-}
-
-impl PendingFlow {
-    /// How many packets we will at most buffer in a [`PendingFlow`].
-    ///
-    /// `PendingFlow`s are per _resource_ (which could be Internet Resource or wildcard DNS resources).
-    /// Thus, we may receive a fair few packets before we can send them.
-    const CAPACITY_POW_2: usize = 7; // 2^7 = 128
-
-    fn new(now: Instant, trigger: ConnectionTrigger) -> Self {
-        let mut this = Self {
-            last_intent_sent_at: now,
-            resource_packets: UniquePacketBuffer::with_capacity_power_of_2(
-                Self::CAPACITY_POW_2,
-                "pending-flow-resources",
-            ),
-            dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
-        };
-        this.push(trigger);
-
-        this
-    }
-
-    fn push(&mut self, trigger: ConnectionTrigger) {
-        match trigger {
-            ConnectionTrigger::PacketForResource(packet) => self.resource_packets.push(packet),
-            ConnectionTrigger::DnsQueryForSite(query) => {
-                self.dns_queries.enqueue(query);
-            }
-            ConnectionTrigger::IcmpDestinationUnreachableProhibited => {}
-        }
-    }
 }
 
 impl ClientState {
@@ -496,9 +459,11 @@ impl ClientState {
         {
             analytics::feature_flag_called("icmp-error-unreachable-prohibited-create-new-flow");
 
-            self.on_not_connected_resource(
+            self.pending_flows.on_not_connected_resource(
                 resource,
                 ConnectionTrigger::IcmpDestinationUnreachableProhibited,
+                &self.resources_by_id,
+                &self.gateways_site,
                 now,
             );
         }
@@ -582,7 +547,13 @@ impl ClientState {
             let Some(peer) =
                 peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
             else {
-                self.on_not_connected_resource(resource, packet, now);
+                self.pending_flows.on_not_connected_resource(
+                    resource,
+                    packet,
+                    &self.resources_by_id,
+                    &self.gateways_site,
+                    now,
+                );
                 return None;
             };
 
@@ -698,9 +669,9 @@ impl ClientState {
 
         // Deal with buffered packets
 
-        // 1. Buffered packets for resources
-        let buffered_resource_packets = pending_flow.resource_packets;
+        let (buffered_resource_packets, dns_queries) = pending_flow.into_buffered_packets();
 
+        // 1. Buffered packets for resources
         match resource {
             Resource::Cidr(_) | Resource::Internet(_) => {
                 self.peers
@@ -724,7 +695,7 @@ impl ClientState {
 
         // If we are making this connection because we want to send a DNS query to the Gateway,
         // mark it as "used" through the DNS resource ID.
-        if !pending_flow.dns_queries.is_empty() {
+        if !dns_queries.is_empty() {
             self.peers.add_ips_with_resource(
                 &gid,
                 [
@@ -736,7 +707,7 @@ impl ClientState {
         }
 
         // 2. Buffered UDP DNS queries for the Gateway
-        for query in pending_flow.dns_queries {
+        for query in dns_queries {
             let gateway = self.peers.get(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
 
             let upstream = gateway.tun_dns_server_endpoint(query.local.ip());
@@ -809,51 +780,6 @@ impl ClientState {
             return;
         };
         self.cleanup_connected_gateway(&disconnected_gateway);
-    }
-
-    #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
-    fn on_not_connected_resource(
-        &mut self,
-        rid: ResourceId,
-        trigger: impl Into<ConnectionTrigger>,
-        now: Instant,
-    ) {
-        use std::collections::hash_map::Entry;
-
-        let trigger = trigger.into();
-        let trigger_name = trigger.name();
-
-        if !self.resources_by_id.contains_key(&rid) {
-            tracing::debug!(%rid, "Resource not found, skipping connection intent");
-            return;
-        }
-
-        match self.pending_flows.entry(rid) {
-            Entry::Vacant(v) => {
-                v.insert(PendingFlow::new(now, trigger));
-            }
-            Entry::Occupied(mut o) => {
-                let pending_flow = o.get_mut();
-                pending_flow.push(trigger);
-
-                let time_since_last_intent = now.duration_since(pending_flow.last_intent_sent_at);
-
-                if time_since_last_intent < Duration::from_secs(2) {
-                    tracing::trace!(?time_since_last_intent, "Skipping connection intent");
-                    return;
-                }
-
-                pending_flow.last_intent_sent_at = now;
-            }
-        }
-
-        tracing::debug!(trigger = %trigger_name, "Sending connection intent");
-
-        self.buffered_events
-            .push_back(ClientEvent::ConnectionIntent {
-                resource: rid,
-                connected_gateway_ids: self.connected_gateway_ids(),
-            })
     }
 
     // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
@@ -1386,7 +1312,7 @@ impl ClientState {
                 let Some(gateway) =
                     peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
                 else {
-                    self.on_not_connected_resource(
+                    self.pending_flows.on_not_connected_resource(
                         resource,
                         ConnectionTrigger::DnsQueryForSite(DnsQueryForSite {
                             local,
@@ -1394,6 +1320,8 @@ impl ClientState {
                             transport,
                             message,
                         }),
+                        &self.resources_by_id,
+                        &self.gateways_site,
                         now,
                     );
                     return None;
@@ -1597,6 +1525,13 @@ impl ClientState {
             tracing::debug!(count = %resources.len(), "Updating resource list");
 
             return Some(ClientEvent::ResourcesChanged { resources });
+        }
+
+        if let Some(resource) = self.pending_flows.poll_connection_intents() {
+            return Some(ClientEvent::ConnectionIntent {
+                resource,
+                connected_gateway_ids: self.connected_gateway_ids(),
+            });
         }
 
         self.buffered_events
@@ -1916,43 +1851,6 @@ fn into_udp_dns_packet(
     )
     .inspect_err(|e| tracing::warn!("Failed to create IP packet for DNS response: {e:#}"))
     .ok()
-}
-
-/// What triggered us to establish a connection to a Gateway.
-enum ConnectionTrigger {
-    /// A packet received on the TUN device with a destination IP that maps to one of our resources.
-    PacketForResource(IpPacket),
-    /// A DNS query that needs to be resolved within a particular site that we aren't connected to yet.
-    DnsQueryForSite(DnsQueryForSite),
-    /// We have received an ICMP error that is marked as "access prohibited".
-    ///
-    /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
-    IcmpDestinationUnreachableProhibited,
-}
-
-struct DnsQueryForSite {
-    local: SocketAddr,
-    remote: SocketAddr,
-    transport: dns::Transport,
-    message: dns_types::Query,
-}
-
-impl ConnectionTrigger {
-    fn name(&self) -> &'static str {
-        match self {
-            ConnectionTrigger::PacketForResource(_) => "packet-for-resource",
-            ConnectionTrigger::DnsQueryForSite(_) => "dns-query-for-site",
-            ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
-                "icmp-destination-unreachable-prohibited"
-            }
-        }
-    }
-}
-
-impl From<IpPacket> for ConnectionTrigger {
-    fn from(v: IpPacket) -> Self {
-        Self::PacketForResource(v)
-    }
 }
 
 pub struct IpProvider {
