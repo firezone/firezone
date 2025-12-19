@@ -43,6 +43,10 @@ export default function GUI({ os }: { os: OS }) {
             </code>
           </ChangeItem>
         )}
+        <ChangeItem pull="11266">
+          Prevents connecting to more than one Gateway within a Site at a time,
+          which could lead to a crash under certain rare conditions.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-10-16")}>
         <ChangeItem pull="10509">

@@ -29,6 +29,10 @@ export default function Android() {
           Fixes an issue where Firezone would not connect if an IPv6 interface
           is present but not routable.
         </ChangeItem>
+        <ChangeItem pull="11266">
+          Prevents connecting to more than one Gateway within a Site at a time,
+          which could lead to a crash under certain rare conditions.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.7" date={new Date("2025-12-05")}>
         <ChangeItem pull="10752">
