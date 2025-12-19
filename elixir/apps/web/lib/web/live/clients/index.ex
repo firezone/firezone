@@ -92,8 +92,12 @@ defmodule Web.Clients.Index do
               />
             </div>
           </:col>
-          <:col :let={client} label="actor">
-            <.actor_name_and_role account={@account} actor={client.actor} return_to={@current_path} />
+          <:col :let={client} label="user">
+            <.actor_name_and_role
+              account={@account}
+              actor={client.actor}
+              return_to={@return_to}
+            />
           </:col>
           <:col :let={client} field={{:clients, :last_seen_version}} label="version">
             <.version
