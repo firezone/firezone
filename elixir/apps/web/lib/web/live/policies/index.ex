@@ -232,10 +232,10 @@ defmodule Web.Policies.Index do
           fun: &filter_by_resource_name/2
         },
         %Domain.Repo.Filter{
-          name: :group_or_resource_name,
-          title: "Group Name or Resource Name",
+          name: :group_or_resource,
+          title: "Group or Resource",
           type: {:string, :websearch},
-          fun: &filter_by_group_or_resource_name/2
+          fun: &filter_by_group_or_resource/2
         },
         %Domain.Repo.Filter{
           name: :status,
@@ -273,13 +273,15 @@ defmodule Web.Policies.Index do
       {queryable, dynamic([resource: r], fulltext_search(r.name, ^name))}
     end
 
-    def filter_by_group_or_resource_name(queryable, name) do
+    def filter_by_group_or_resource(queryable, search_term) do
       queryable = queryable |> with_joined_group() |> with_joined_resource()
 
       {queryable,
        dynamic(
          [group: g, resource: r],
-         fulltext_search(g.name, ^name) or fulltext_search(r.name, ^name)
+         fulltext_search(g.name, ^search_term) or
+           fulltext_search(r.name, ^search_term) or
+           fulltext_search(r.address, ^search_term)
        )}
     end
 

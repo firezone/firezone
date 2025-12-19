@@ -285,6 +285,7 @@ defmodule Web.Policies.New do
 
   defmodule DB do
     import Ecto.Query
+    import Domain.Repo.Query
     alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Group}
     alias Domain.Auth
 
@@ -379,7 +380,7 @@ defmodule Web.Policies.New do
 
       query =
         if search_query_or_nil != "" and search_query_or_nil != nil do
-          from(g in query, where: ilike(g.name, ^"%#{search_query_or_nil}%"))
+          from(g in query, where: fulltext_search(g.name, ^search_query_or_nil))
         else
           query
         end

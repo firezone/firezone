@@ -93,39 +93,20 @@ defmodule Domain.Repo.Query do
   # Custom Query fragments
 
   @doc """
-  Uses a combination Postgres full-text search and ILIKE to query the given `field` with the given `search_query`.
+  Uses ILIKE with immutable_unaccent to query the given `field` with the given `search_query`,
+  supporting partial/substring matches.
 
-  ## Supported query features
+  ## How to index a column for search
 
-  Quoted word sequences are converted to phrase tests. The word “or” is understood as producing an OR operator,
-  and a dash produces a NOT operator; other punctuation is ignored.
+  To make sure that search is efficient you need to have a trigram GIN index on the column:
 
-  Examples:
-
-      `fulltext_search(:name, "hello world")` will search for the phrase "hello world"
-      `fulltext_search(:name, "hello or world")` will search for "hello" or "world"
-      `fulltext_search(:name, "hello -world")` will search for "hello" but not "world"
-
-
-  ## How to index a column for full-text search
-
-  To make sure that search is efficient you need to have a GIN index on the column you want to search.
-
-  You can create the `tsvector` using a migration like this:
-
-      CREATE INDEX my_table_column_name_fulltext_idx ON my_table USING gin(to_tsvector('english', column_name))
-
-  For `ILIKE` a separate trigram GIN index is needed:
-
-      CREATE INDEX my_table_column_name_trigram_idx ON my_table USING gin(unaccent(column_name) gin_trgm_ops)
+      CREATE INDEX my_table_column_name_trigram_idx ON my_table USING gin(immutable_unaccent(column_name) gin_trgm_ops)
 
   """
   defmacro fulltext_search(field, search_query) do
     quote do
       fragment(
-        "(to_tsvector('english', ?) @@ websearch_to_tsquery(?) OR unaccent(?) ILIKE '%' || unaccent(?) || '%')",
-        unquote(field),
-        unquote(search_query),
+        "immutable_unaccent(?) ILIKE '%' || immutable_unaccent(?) || '%'",
         unquote(field),
         unquote(search_query)
       )
