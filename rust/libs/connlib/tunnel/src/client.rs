@@ -630,7 +630,10 @@ impl ClientState {
             .find_map(|(existing_gateway, sid)| (sid == &site_id).then_some(existing_gateway))
             && connected_gateway != &gid
         {
-            anyhow::bail!(AlreadyConnectedToSite)
+            anyhow::bail!(AlreadyConnectedToSite {
+                site: site_id,
+                gateway: *connected_gateway
+            })
         }
 
         tracing::debug!(%gid, "New flow authorized for resource");

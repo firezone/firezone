@@ -9,7 +9,9 @@
 
 use anyhow::{Context as _, ErrorExt as _, Result};
 use chrono::Utc;
-use connlib_model::{ClientId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView};
+use connlib_model::{
+    ClientId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView, SiteId,
+};
 use dns_types::DomainName;
 use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
@@ -698,8 +700,11 @@ pub(crate) struct NotAllowedResource(IpAddr);
 pub(crate) struct FailedToDecapsulate(packet_kind::Kind);
 
 #[derive(Debug, thiserror::Error)]
-#[error("Already connected to site")]
-pub struct AlreadyConnectedToSite;
+#[error("Already connected to site {site} via Gateway {gateway}")]
+pub struct AlreadyConnectedToSite {
+    pub(crate) site: SiteId,
+    pub(crate) gateway: GatewayId,
+}
 
 pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
