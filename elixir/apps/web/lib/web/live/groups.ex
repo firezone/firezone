@@ -886,6 +886,7 @@ defmodule Web.Groups do
 
   defmodule DB do
     import Ecto.Query
+    import Domain.Repo.Query
     alias Domain.Safe
     alias Domain.Directory
     alias Domain.Repo.Filter
@@ -1032,9 +1033,7 @@ defmodule Web.Groups do
     end
 
     def filter_by_name(queryable, search_term) do
-      search_pattern = "%#{search_term}%"
-
-      {queryable, dynamic([groups: groups], ilike(groups.name, ^search_pattern))}
+      {queryable, dynamic([groups: groups], fulltext_search(groups.name, ^search_term))}
     end
 
     def get_group!(id, subject) do
@@ -1060,12 +1059,11 @@ defmodule Web.Groups do
 
     def search_actors(search_term, subject, exclude_actors) do
       exclude_ids = Enum.map(exclude_actors, & &1.id)
-      search_pattern = "%#{search_term}%"
 
       case from(a in Domain.Actor, as: :actors)
            |> where(
              [actors: a],
-             (ilike(a.name, ^search_pattern) or ilike(a.email, ^search_pattern)) and
+             (fulltext_search(a.name, ^search_term) or fulltext_search(a.email, ^search_term)) and
                a.id not in ^exclude_ids
            )
            |> limit(10)
