@@ -240,7 +240,7 @@ mod tests {
     }
 
     #[test]
-    fn sends_intent_for_same_site_in_paralle_if_already_connected() {
+    fn sends_intent_for_same_site_in_parallel_if_already_connected() {
         let _guard = logging::test("trace");
 
         let mut pending_flows = PendingFlows::default();
