@@ -12,12 +12,14 @@ updates:
       interval: weekly
     cooldown:
       default-days: 28
+    open-pull-requests-limit: 100
   - package-ecosystem: pip
     directory: /.github
     schedule:
       interval: weekly
     cooldown:
       default-days: 28
+    open-pull-requests-limit: 100
   - package-ecosystem: github-actions
     directories:
       - "/.github/workflows"
@@ -25,21 +27,27 @@ updates:
       - "/.github/actions/create-sentry-release"
       - "/.github/actions/ghcr-docker-login"
       - "/.github/actions/setup-android"
+      - "/.github/actions/setup-azure-cli"
+      - "/.github/actions/setup-azure-sign-tool"
+      - "/.github/actions/setup-docker"
       - "/.github/actions/setup-elixir"
+      - "/.github/actions/setup-gpg"
+      - "/.github/actions/setup-musl"
       - "/.github/actions/setup-node"
       - "/.github/actions/setup-postgres"
-      - "/.github/actions/setup-rust-stable"
       - "/.github/actions/setup-rust-nightly"
       - "/.github/actions/setup-rust-sccache"
+      - "/.github/actions/setup-rust-stable"
       - "/.github/actions/setup-rust-target-cache"
       - "/.github/actions/setup-tauri-v2"
     schedule:
       interval: weekly
     cooldown:
       default-days: 28
+    open-pull-requests-limit: 100
   - package-ecosystem: cargo
     directory: rust/
-    open-pull-requests-limit: 20
+    open-pull-requests-limit: 100
     schedule:
       interval: weekly
     cooldown:
@@ -87,6 +95,7 @@ updates:
       interval: weekly
     cooldown:
       default-days: 28
+    open-pull-requests-limit: 100
     ignore:
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
       - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
@@ -149,18 +158,21 @@ updates:
       interval: weekly
     cooldown:
       default-days: 28
+    open-pull-requests-limit: 100
   - package-ecosystem: npm
     directory: website/
     schedule:
       interval: weekly
     cooldown:
       default-days: 28
+    open-pull-requests-limit: 100
   - package-ecosystem: npm
     directory: rust/gui-client/
     schedule:
       interval: weekly
     cooldown:
       default-days: 28
+    open-pull-requests-limit: 100
     groups:
       tauri:
         patterns:
@@ -189,3 +201,4 @@ updates:
       interval: weekly
     cooldown:
       default-days: 28
+    open-pull-requests-limit: 100
