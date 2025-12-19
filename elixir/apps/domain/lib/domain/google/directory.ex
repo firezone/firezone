@@ -3,12 +3,11 @@ defmodule Domain.Google.Directory do
   import Ecto.Changeset
   import Domain.Changeset
 
-  @primary_key false
+  @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
+
   schema "google_directories" do
-    # Allows setting the id manually for easier associations
-    field :id, Ecto.UUID, primary_key: true
     belongs_to :account, Domain.Account
 
     belongs_to :directory, Domain.Directory,

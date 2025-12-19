@@ -646,16 +646,38 @@ defmodule Web.Settings.DirectorySync do
       </div>
 
       <div class="mt-auto bg-white rounded-lg p-3 space-y-3 text-sm text-neutral-600">
-        <%= if @directory.is_disabled do %>
-          <div class="flex items-center gap-2">
-            <.icon name="hero-no-symbol" class="w-5 h-5 flex-shrink-0 text-red-600" title="Disabled" />
-            <span class="font-medium text-red-600">
-              Disabled
-              <%= if @directory.disabled_reason do %>
-                - {@directory.disabled_reason}
-              <% end %>
-            </span>
-          </div>
+        <%= if @directory.is_disabled and @directory.disabled_reason == "Sync error" do %>
+          <.flash kind={:error_inline}>
+            <p class="font-semibold">Sync has been disabled due to an error</p>
+            <%= if @directory.error_message do %>
+              <p class="mt-1 text-sm">{@directory.error_message}</p>
+            <% end %>
+            <p class="mt-2 text-sm">
+              <.link
+                patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
+                class="underline font-medium"
+              >
+                Edit the directory
+              </.link>
+              and re-verify to enable syncing.
+            </p>
+          </.flash>
+        <% else %>
+          <%= if @directory.is_disabled do %>
+            <div class="flex items-center gap-2">
+              <.icon
+                name="hero-no-symbol"
+                class="w-5 h-5 flex-shrink-0 text-red-600"
+                title="Disabled"
+              />
+              <span class="font-medium text-red-600">
+                Disabled
+                <%= if @directory.disabled_reason do %>
+                  - {@directory.disabled_reason}
+                <% end %>
+              </span>
+            </div>
+          <% end %>
         <% end %>
 
         <div class="flex items-center gap-2">
@@ -737,19 +759,6 @@ defmodule Web.Settings.DirectorySync do
               </.button>
             </div>
           <% end %>
-        <% end %>
-
-        <%= if @directory.error_message do %>
-          <div class="flex items-start gap-2">
-            <.icon
-              name="hero-exclamation-triangle"
-              class="w-5 h-5 flex-shrink-0 text-orange-600"
-              title="Error"
-            />
-            <span class="font-medium text-orange-600 flex-1">
-              {@directory.error_message}
-            </span>
-          </div>
         <% end %>
 
         <div class="flex items-center gap-2">

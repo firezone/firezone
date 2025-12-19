@@ -1,9 +1,11 @@
 Directory Sync Error!
 
-Directory "<%= @directory.name %>" in your Firezone Account has encountered a sync error.
-Failed to sync <%= @directory.error_email_count + 1 %> time(s).
+The "<%= @directory.name %>" directory has encountered an unrecoverable error and sync has been disabled.
+Please visit your directory sync settings to re-verify the directory and enable sync:
+<%= @settings_url %>
 
-The following is the error message:
+Below is the last sync error message:
+
 <%= @directory.error_message || "No error message available" %>
 
 Directory details:
@@ -12,3 +14,8 @@ Directory details:
   Directory Name: <%= @directory.name %>
   Directory ID: <%= @directory.id %>
   Error Occurred At: <%= @directory.errored_at || "Unknown" %>
+
+Please verify that all directory information entered into Firezone is correct. If the problem persists, please reach out to Firezone support via Slack or email.
+
+Thanks,
+The Firezone Team
