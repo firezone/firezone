@@ -8,7 +8,7 @@ mod tracked_state;
 
 use crate::client::dns_config::DnsConfig;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-use crate::client::pending_flows::PendingFlows;
+use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
 use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
@@ -1848,43 +1848,6 @@ fn into_udp_dns_packet(
     )
     .inspect_err(|e| tracing::warn!("Failed to create IP packet for DNS response: {e:#}"))
     .ok()
-}
-
-/// What triggered us to establish a connection to a Gateway.
-enum ConnectionTrigger {
-    /// A packet received on the TUN device with a destination IP that maps to one of our resources.
-    PacketForResource(IpPacket),
-    /// A DNS query that needs to be resolved within a particular site that we aren't connected to yet.
-    DnsQueryForSite(DnsQueryForSite),
-    /// We have received an ICMP error that is marked as "access prohibited".
-    ///
-    /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
-    IcmpDestinationUnreachableProhibited,
-}
-
-struct DnsQueryForSite {
-    local: SocketAddr,
-    remote: SocketAddr,
-    transport: dns::Transport,
-    message: dns_types::Query,
-}
-
-impl ConnectionTrigger {
-    fn name(&self) -> &'static str {
-        match self {
-            ConnectionTrigger::PacketForResource(_) => "packet-for-resource",
-            ConnectionTrigger::DnsQueryForSite(_) => "dns-query-for-site",
-            ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
-                "icmp-destination-unreachable-prohibited"
-            }
-        }
-    }
-}
-
-impl From<IpPacket> for ConnectionTrigger {
-    fn from(v: IpPacket) -> Self {
-        Self::PacketForResource(v)
-    }
 }
 
 pub struct IpProvider {

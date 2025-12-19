@@ -1,15 +1,14 @@
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
 use connlib_model::ResourceId;
+use ip_packet::IpPacket;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
-use crate::{
-    client::{ConnectionTrigger, DnsQueryForSite, Resource},
-    unique_packet_buffer::UniquePacketBuffer,
-};
+use crate::{client::Resource, dns, unique_packet_buffer::UniquePacketBuffer};
 
 #[derive(Default)]
 pub struct PendingFlows {
@@ -115,5 +114,42 @@ impl PendingFlow {
         } = self;
 
         (resource_packets, dns_queries)
+    }
+}
+
+/// What triggered us to establish a connection to a Gateway.
+pub enum ConnectionTrigger {
+    /// A packet received on the TUN device with a destination IP that maps to one of our resources.
+    PacketForResource(IpPacket),
+    /// A DNS query that needs to be resolved within a particular site that we aren't connected to yet.
+    DnsQueryForSite(DnsQueryForSite),
+    /// We have received an ICMP error that is marked as "access prohibited".
+    ///
+    /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
+    IcmpDestinationUnreachableProhibited,
+}
+
+pub struct DnsQueryForSite {
+    pub local: SocketAddr,
+    pub remote: SocketAddr,
+    pub transport: dns::Transport,
+    pub message: dns_types::Query,
+}
+
+impl ConnectionTrigger {
+    fn name(&self) -> &'static str {
+        match self {
+            ConnectionTrigger::PacketForResource(_) => "packet-for-resource",
+            ConnectionTrigger::DnsQueryForSite(_) => "dns-query-for-site",
+            ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
+                "icmp-destination-unreachable-prohibited"
+            }
+        }
+    }
+}
+
+impl From<IpPacket> for ConnectionTrigger {
+    fn from(v: IpPacket) -> Self {
+        Self::PacketForResource(v)
     }
 }
