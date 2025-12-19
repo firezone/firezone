@@ -1604,6 +1604,7 @@ defmodule Web.Actors do
 
   defmodule DB do
     import Ecto.Query
+    import Domain.Repo.Query
     alias Domain.ExternalIdentity
     alias Domain.Actor
     alias Domain.Safe
@@ -1735,22 +1736,11 @@ defmodule Web.Actors do
     end
 
     def filter_by_name_or_email(queryable, search_term) do
-      search_pattern = "%#{search_term}%"
-
-      # Use a subquery to find actors by external identity email
-      identity_subquery =
-        from(i in ExternalIdentity,
-          where: ilike(i.email, ^search_pattern),
-          select: i.actor_id,
-          distinct: true
-        )
-
       {queryable,
        dynamic(
          [actors: actors],
-         ilike(actors.name, ^search_pattern) or
-           ilike(actors.email, ^search_pattern) or
-           actors.id in subquery(identity_subquery)
+         fulltext_search(actors.name, ^search_term) or
+           fulltext_search(actors.email, ^search_term)
        )}
     end
 

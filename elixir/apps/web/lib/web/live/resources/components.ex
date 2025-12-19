@@ -392,7 +392,7 @@ defmodule Web.Resources.Components do
        dynamic(
          [resources: resources],
          fulltext_search(resources.name, ^name_or_address) or
-           ilike(resources.address, ^"%#{name_or_address}%")
+           fulltext_search(resources.address, ^name_or_address)
        )}
     end
   end
