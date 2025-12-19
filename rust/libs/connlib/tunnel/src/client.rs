@@ -26,7 +26,10 @@ use crate::dns::{DnsResourceRecord, StubResolver};
 use crate::messages::Interface as InterfaceConfig;
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
-use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
+use crate::{
+    AlreadyConnectedToSite, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer,
+    p2p_control,
+};
 use anyhow::{Context, ErrorExt};
 use connlib_model::{
     GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
@@ -617,6 +620,14 @@ impl ClientState {
         gateway_ice: IceCredentials,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "The iteration order doesn't matter here."
+        )]
+        if self.gateways_site.values().any(|s| s == &site_id) {
+            anyhow::bail!(AlreadyConnectedToSite)
+        }
+
         tracing::debug!(%gid, "New flow authorized for resource");
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
@@ -626,15 +637,6 @@ impl ClientState {
 
             return Ok(Ok(()));
         };
-
-        if let Some(old_gateway_id) = self.resources_gateways.insert(rid, gid)
-            && self.peers.get(&old_gateway_id).is_some()
-        {
-            assert_eq!(
-                old_gateway_id, gid,
-                "Resources are not expected to change gateways without a previous message, resource_id = {rid}"
-            )
-        }
 
         match self.node.upsert_connection(
             gid,

@@ -23,7 +23,10 @@ use tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
-use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
+use tunnel::{
+    AlreadyConnectedToSite, ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig,
+    TunnelError,
+};
 
 /// In-memory cache for DNS resource records.
 ///
@@ -435,6 +438,9 @@ impl Eventloop {
                             )))
                             .await
                             .context("Failed to connect phoenix-channel")?;
+                    }
+                    Err(e) if e.any_is::<AlreadyConnectedToSite>() => {
+                        tracing::debug!("Failed to request new connection: {e:#}");
                     }
                     Err(e) => {
                         tracing::warn!("Failed to request new connection: {e:#}");
