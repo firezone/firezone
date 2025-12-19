@@ -101,14 +101,15 @@ defmodule Web.Sites.Show do
 
   def handle_resources_update!(socket, list_opts) do
     with {:ok, resources, metadata} <-
-           DB.list_resources(socket.assigns.subject, list_opts),
-         {:ok, resource_groups_peek} <-
-           DB.peek_resource_groups(resources, 3, socket.assigns.subject) do
+           DB.list_resources(socket.assigns.subject, list_opts) do
+      resource_ids = Enum.map(resources, & &1.id)
+      policy_counts = DB.count_policies_by_resource(resource_ids, socket.assigns.subject)
+
       {:ok,
        assign(socket,
          resources: resources,
          resources_metadata: metadata,
-         resource_groups_peek: resource_groups_peek
+         policy_counts: policy_counts
        )}
     end
   end
@@ -303,34 +304,29 @@ defmodule Web.Sites.Show do
                 {resource.address}
               </code>
             </:col>
-            <:col :let={resource} label="Authorized groups">
-              <.peek peek={Map.fetch!(@resource_groups_peek, resource.id)}>
-                <:empty>
-                  <div class="mr-1">
-                    <.icon
-                      name="hero-exclamation-triangle-solid"
-                      class="inline-block w-3.5 h-3.5 text-red-500"
-                    /> None.
-                  </div>
+            <:col :let={resource} label="Policies">
+              <% count = Map.get(@policy_counts, resource.id, 0) %>
+              <%= if count == 0 do %>
+                <div class="flex items-center">
+                  <.icon
+                    name="hero-exclamation-triangle-solid"
+                    class="inline-block w-3.5 h-3.5 mr-1 text-red-500"
+                  /> None.
                   <.link
-                    class={[link_style(), "mr-1"]}
+                    class={[link_style(), "ml-1"]}
                     navigate={~p"/#{@account}/policies/new?resource_id=#{resource}&site_id=#{@site}"}
                   >
                     Create a Policy
                   </.link>
-                  to grant access.
-                </:empty>
-
-                <:item :let={group}>
-                  <.group_badge account={@account} group={group} return_to={@current_path} />
-                </:item>
-
-                <:tail :let={count}>
-                  <span class="inline-block whitespace-nowrap">
-                    and {count} more.
-                  </span>
-                </:tail>
-              </.peek>
+                </div>
+              <% else %>
+                <.link
+                  navigate={~p"/#{@account}/policies?policies_filter[resource_id]=#{resource.id}"}
+                  class={[link_style()]}
+                >
+                  {count} {ngettext("policy", "policies", count)}
+                </.link>
+              <% end %>
             </:col>
             <:empty>
               <div class="flex flex-col items-center justify-center text-center text-neutral-500 p-4">
@@ -609,35 +605,14 @@ defmodule Web.Sites.Show do
       |> Safe.list(DB.ResourceQuery, opts)
     end
 
-    def peek_resource_groups(resources, limit, subject) do
-      resource_ids = Enum.map(resources, & &1.id)
-
-      groups_by_resource =
-        from(p in Domain.Policy, as: :policies)
-        |> join(:inner, [policies: p], g in Domain.Group,
-          on: g.id == p.group_id,
-          as: :groups
-        )
-        |> where([policies: p], p.resource_id in ^resource_ids)
-        |> where([policies: p], is_nil(p.disabled_at))
-        |> select([policies: p, groups: g], {p.resource_id, g})
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-
-      peek =
-        Enum.into(resources, %{}, fn resource ->
-          all_groups = Map.get(groups_by_resource, resource.id, [])
-          peek_groups = Enum.take(all_groups, limit)
-
-          {resource.id,
-           %{
-             items: peek_groups,
-             count: length(all_groups)
-           }}
-        end)
-
-      {:ok, peek}
+    def count_policies_by_resource(resource_ids, subject) do
+      from(p in Domain.Policy, as: :policies)
+      |> where([policies: p], p.resource_id in ^resource_ids)
+      |> group_by([policies: p], p.resource_id)
+      |> select([policies: p], {p.resource_id, count(p.id)})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
     end
 
     def list_policies(subject, opts \\ []) do

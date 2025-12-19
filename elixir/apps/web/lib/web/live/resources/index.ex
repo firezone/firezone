@@ -28,9 +28,15 @@ defmodule Web.Resources.Index do
     {:ok, socket}
   end
 
+  def handle_params(%{"resources_filter" => %{"site_id" => site_id}} = params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    filter_site = DB.get_site(site_id, socket.assigns.subject)
+    {:noreply, assign(socket, filter_site: filter_site)}
+  end
+
   def handle_params(params, uri, socket) do
     socket = handle_live_tables_params(socket, params, uri)
-    {:noreply, socket}
+    {:noreply, assign(socket, filter_site: nil)}
   end
 
   def handle_resources_update!(socket, list_opts) do
@@ -84,6 +90,12 @@ defmodule Web.Resources.Index do
           ordered_by={@order_by_table_id["resources"]}
           metadata={@resources_metadata}
         >
+          <:notice :if={@filter_site} type="info">
+            Viewing Resources for Site <strong>{@filter_site.name}</strong>.
+            <.link navigate={~p"/#{@account}/resources"} class={link_style()}>
+              View all resources
+            </.link>
+          </:notice>
           <:col :let={resource} field={{:resources, :name}} label="Name">
             <.link navigate={~p"/#{@account}/resources/#{resource.id}"} class={link_style()}>
               {resource.name}
@@ -120,7 +132,7 @@ defmodule Web.Resources.Index do
             <% else %>
               <.link
                 class={link_style()}
-                navigate={~p"/#{@account}/policies?resource_id=#{resource.id}"}
+                navigate={~p"/#{@account}/policies?policies_filter[resource_id]=#{resource.id}"}
               >
                 {count} {ngettext("policy", "policies", count)}
               </.link>
@@ -178,7 +190,14 @@ defmodule Web.Resources.Index do
   defmodule DB do
     import Ecto.Query
     import Domain.Repo.Query
-    alias Domain.{Safe, Resource, Policy}
+    alias Domain.{Safe, Resource, Policy, Site}
+
+    def get_site(id, subject) do
+      from(s in Site, as: :sites)
+      |> where([sites: s], s.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
 
     def list_resources(subject, opts \\ []) do
       all()
