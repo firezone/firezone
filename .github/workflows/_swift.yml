@@ -47,6 +47,8 @@ jobs:
           targets: aarch64-apple-ios aarch64-apple-darwin x86_64-apple-darwin
       - uses: ./.github/actions/setup-rust-sccache
 
+      - run: cargo build --release --package client-ffi --target aarch64-apple-ios --target aarch64-apple-darwin --target x86_64-apple-darwin
+
       # Build iOS
       - name: Set iOS environment variables
         run: |
