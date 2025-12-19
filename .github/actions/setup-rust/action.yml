@@ -37,6 +37,7 @@ runs:
   using: "composite"
   steps:
     - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      if: ${{ inputs.cache_strategy == 'sccache' }}
 
     - name: Extract Rust version
       run: |
