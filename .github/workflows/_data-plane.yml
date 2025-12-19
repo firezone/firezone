@@ -237,7 +237,7 @@ jobs:
           targets: ${{ matrix.arch.target }}
       - uses: ./.github/actions/setup-rust-target-cache
         with:
-          key: ${{ matrix.name.package }}
+          key: ${{ matrix.name.package }}-${{ inputs.profile }}
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         with:
           tool: bpf-linker,cargo-deb
