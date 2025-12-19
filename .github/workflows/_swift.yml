@@ -15,10 +15,64 @@ env:
   BUILD_CERT_PASS: "${{ secrets.APPLE_BUILD_CERTIFICATE_P12_PASSWORD }}"
   INSTALLER_CERT: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
   INSTALLER_CERT_PASS: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
-  TEMP_DIR: "${{ runner.temp }}"
+  STANDALONE_BUILD_CERT: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}"
+  STANDALONE_BUILD_CERT_PASS: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}"
+  STANDALONE_INSTALLER_CERT: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
+  STANDALONE_INSTALLER_CERT_PASS: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
   NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"
 
 jobs:
+  build-rust-macosx-aarch64:
+    name: build-rust-macosx
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: ./.github/actions/setup-rust-sccache
+      - run: cargo build --package client-ffi --release --target aarch64-apple-darwin
+        working-directory: rust
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: rust-libraries-macosx-aarch64
+          path: rust/target/aarch64-apple-darwin/release/libconnlib.a
+          retention-days: 1
+
+  build-rust-macosx-x86:
+    name: build-rust-macosx
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: x86_64-apple-darwin
+      - uses: ./.github/actions/setup-rust-sccache
+      - run: cargo build --package client-ffi --release --target x86_64-apple-darwin
+        working-directory: rust
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: rust-libraries-macosx-x86_64
+          path: rust/target/x86_64-apple-darwin/release/libconnlib.a
+          retention-days: 1
+
+  build-rust-ios:
+    name: build-rust-ios
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: ./.github/actions/setup-rust-sccache
+      - run: cargo build --package client-ffi --release --target aarch64-apple-ios
+        working-directory: rust
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: rust-libraries-ios
+          path: rust/target/aarch64-apple-ios/release/libconnlib.a
+          retention-days: 1
+
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
@@ -45,10 +99,9 @@ jobs:
 
   build-ios:
     name: build-ios
-    needs: update-release-draft
+    needs: [update-release-draft, build-rust-ios]
     runs-on: macos-15
     env:
-      ARTIFACT_PATH: "${{ runner.temp }}/Firezone.ipa"
       PLATFORM: iOS
     permissions:
       contents: write
@@ -57,14 +110,23 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-tags: true
-      - uses: ./.github/actions/setup-rust-stable
+      - name: Set build environment variables
+        run: |
+          {
+            echo "TEMP_DIR=${{ runner.temp }}"
+            echo "ARTIFACT_PATH=${{ runner.temp }}/Firezone.ipa"
+          } >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          targets: aarch64-apple-ios
-      - uses: ./.github/actions/setup-rust-sccache
+          name: rust-libraries-ios
+          path: rust/target
+      - run: make uniffi-bindings
+        working-directory: swift/apple
       - run: scripts/build/ios-appstore.sh
         env:
           IOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}"
           IOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_NE_PROVISIONING_PROFILE }}"
+          PREBUILT_CONNLIB_PATH: true
       - run: scripts/upload/app-store-connect.sh
         if: "${{ github.event_name == 'workflow_dispatch' }}"
       - name: Remove excluded paths before Sentry upload
@@ -77,14 +139,12 @@ jobs:
           sentry-project: apple-client
           paths: |
             ${{ runner.temp }}
-            ./rust/target
 
   build-macos-appstore:
     name: build-macos-appstore
-    needs: update-release-draft
+    needs: [update-release-draft, build-rust-macosx]
     runs-on: macos-15
     env:
-      ARTIFACT_PATH: "${{ runner.temp }}/Firezone.pkg"
       PLATFORM: macOS
     permissions:
       contents: write
@@ -93,14 +153,27 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-tags: true
-      - uses: ./.github/actions/setup-rust-stable
+      - name: Set build environment variables
+        run: |
+          {
+            echo "TEMP_DIR=${{ runner.temp }}"
+            echo "ARTIFACT_PATH=${{ runner.temp }}/Firezone.pkg"
+          } >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          targets: aarch64-apple-darwin x86_64-apple-darwin
-      - uses: ./.github/actions/setup-rust-sccache
+          name: rust-libraries-macosx-x86_64
+          path: rust/target
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: rust-libraries-macosx-aarch64
+          path: rust/target
+      - run: make uniffi-bindings
+        working-directory: swift/apple
       - run: scripts/build/macos-appstore.sh
         env:
           MACOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_MACOS_APP_PROVISIONING_PROFILE }}"
           MACOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_MACOS_NE_PROVISIONING_PROFILE }}"
+          PREBUILT_CONNLIB_PATH: true
       - run: scripts/upload/app-store-connect.sh
         if: "${{ github.event_name == 'workflow_dispatch' }}"
       - name: Remove excluded paths before Sentry upload
@@ -113,19 +186,16 @@ jobs:
           sentry-project: apple-client
           paths: |
             ${{ runner.temp }}
-            ./rust/target
 
   build-macos-standalone:
     name: build-macos-standalone
-    needs: update-release-draft
+    needs: [update-release-draft, build-rust-macosx]
     runs-on: macos-15
     env:
       # mark:next-apple-version
       ARTIFACT_FILE: firezone-macos-client-1.5.11.dmg
       # mark:next-apple-version
       PKG_ARTIFACT_FILE: firezone-macos-client-1.5.11.pkg
-      ARTIFACT_PATH: "${{ runner.temp }}/firezone-macos-client-1.5.11.dmg"
-      PKG_ARTIFACT_PATH: "${{ runner.temp }}/firezone-macos-client-1.5.11.pkg"
       PLATFORM: macOS
     permissions:
       contents: write
@@ -134,18 +204,28 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-tags: true
-      - uses: ./.github/actions/setup-rust-stable
+      - name: Set build environment variables
+        run: |
+          {
+            echo "TEMP_DIR=${{ runner.temp }}"
+            echo "ARTIFACT_PATH=${{ runner.temp }}/firezone-macos-client-1.5.11.dmg"
+            echo "PKG_ARTIFACT_PATH=${{ runner.temp }}/firezone-macos-client-1.5.11.pkg"
+          } >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          targets: aarch64-apple-darwin x86_64-apple-darwin
-      - uses: ./.github/actions/setup-rust-sccache
+          name: rust-libraries-macosx-x86_64
+          path: rust/target
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: rust-libraries-macosx-aarch64
+          path: rust/target
+      - run: make uniffi-bindings
+        working-directory: swift/apple
       - run: scripts/build/macos-standalone.sh
         env:
           STANDALONE_MACOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_STANDALONE_MACOS_APP_PROVISIONING_PROFILE }}"
           STANDALONE_MACOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_STANDALONE_MACOS_NE_PROVISIONING_PROFILE }}"
-          STANDALONE_BUILD_CERT: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}"
-          STANDALONE_BUILD_CERT_PASS: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}"
-          STANDALONE_INSTALLER_CERT: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
-          STANDALONE_INSTALLER_CERT_PASS: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
+          PREBUILT_CONNLIB_PATH: true
       - name: Upload .dmg artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         if: "${{ github.event_name == 'workflow_dispatch' }}"
@@ -179,4 +259,3 @@ jobs:
           sentry-project: apple-client
           paths: |
             ${{ runner.temp }}
-            ./rust/target
