@@ -133,7 +133,7 @@ defmodule Web.Policies.Show do
               Group
             </:label>
             <:value>
-              <.group_badge account={@account} group={@policy.group} return_to={@current_path} />
+              <.group_badge account={@account} group={@policy.group} return_to={@return_to} />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -194,7 +194,7 @@ defmodule Web.Policies.Show do
             owned by
             <.link
               navigate={
-                ~p"/#{@account}/actors/#{policy_authorization.client.actor_id}?#{[return_to: @current_path]}"
+                ~p"/#{@account}/actors/#{policy_authorization.client.actor_id}?#{[return_to: @return_to]}"
               }
               class={link_style()}
             >

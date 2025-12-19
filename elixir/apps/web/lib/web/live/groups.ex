@@ -66,7 +66,9 @@ defmodule Web.Groups do
       {:noreply,
        socket
        |> put_flash(:error, "This group cannot be edited")
-       |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{id}?#{query_params(uri)}")}
+       |> push_patch(
+         to: ~p"/#{socket.assigns.account}/groups/#{id}?#{socket.assigns.query_params}"
+       )}
     end
   end
 
@@ -199,13 +201,13 @@ defmodule Web.Groups do
 
       case DB.update(changeset, socket.assigns.subject) do
         {:ok, group} ->
-          params = query_params(socket.assigns.uri)
-
           socket =
             socket
             |> put_flash(:success_inline, "Group updated successfully")
             |> reload_live_table!("groups")
-            |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}?#{params}")
+            |> push_patch(
+              to: ~p"/#{socket.assigns.account}/groups/#{group.id}?#{socket.assigns.query_params}"
+            )
 
           {:noreply, socket}
 
@@ -246,7 +248,7 @@ defmodule Web.Groups do
       </:action>
 
       <:action>
-        <.add_button navigate={~p"/#{@account}/groups/add?#{query_params(@uri)}"}>
+        <.add_button navigate={~p"/#{@account}/groups/add?#{@query_params}"}>
           Add Group
         </.add_button>
       </:action>
@@ -260,7 +262,7 @@ defmodule Web.Groups do
           id="groups"
           rows={@groups}
           row_id={&"group-#{&1.id}"}
-          row_patch={&row_patch_path(&1, @uri)}
+          row_patch={&row_patch_path(&1, @query_params)}
           filters={@filters_by_table_id["groups"]}
           filter={@filter_form_by_table_id["groups"]}
           ordered_by={@order_by_table_id["groups"]}
@@ -397,7 +399,7 @@ defmodule Web.Groups do
                   <div class="py-1">
                     <.link
                       :if={editable_group?(@group)}
-                      navigate={~p"/#{@account}/groups/#{@group.id}/edit?#{query_params(@uri)}"}
+                      navigate={~p"/#{@account}/groups/#{@group.id}/edit?#{@query_params}"}
                       class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
                     >
                       <.icon name="hero-pencil" class="w-4 h-4" /> Edit
@@ -505,7 +507,7 @@ defmodule Web.Groups do
       :if={@live_action == :edit}
       id="edit-group-modal"
       on_close="close_modal"
-      on_back={JS.patch(~p"/#{@account}/groups/#{@group}?#{query_params(@uri)}")}
+      on_back={JS.patch(~p"/#{@account}/groups/#{@group}?#{@query_params}")}
       confirm_disabled={edit_form_unchanged?(@form, @members_to_add, @members_to_remove)}
     >
       <:title>
@@ -769,26 +771,34 @@ defmodule Web.Groups do
   end
 
   # Navigation helpers
-  defp query_params(uri) do
-    uri = URI.parse(uri)
-    if uri.query, do: URI.decode_query(uri.query), else: %{}
-  end
-
-  defp row_patch_path(group, uri) do
-    params = query_params(uri)
-    ~p"/#{group.account_id}/groups/#{group.id}?#{params}"
+  defp row_patch_path(group, query_params) do
+    ~p"/#{group.account_id}/groups/#{group.id}?#{query_params}"
   end
 
   defp close_modal(socket) do
-    # If we have a modal_return_to path from our global hook, navigate there
-    # Otherwise go to groups index
-    if return_to = Map.get(socket.assigns, :modal_return_to) do
+    if return_to = handle_return_to(socket) do
       push_navigate(socket, to: return_to)
     else
-      params = query_params(socket.assigns.uri)
-      push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")
+      push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{socket.assigns.query_params}")
     end
   end
+
+  defp handle_return_to(%{
+         assigns: %{query_params: %{"return_to" => return_to}, current_path: current_path}
+       })
+       when not is_nil(return_to) and not is_nil(current_path) do
+    validate_return_to(
+      String.split(return_to, "/", parts: 2),
+      String.split(current_path, "/", parts: 2)
+    )
+  end
+
+  defp handle_return_to(_socket), do: nil
+
+  defp validate_return_to([account | _ret_parts] = return_to, [account | _cur_parts]),
+    do: Enum.join(return_to, "/")
+
+  defp validate_return_to(_return_to, _current_path), do: nil
 
   # Member search helpers
   defp get_search_results(search_term, socket) do
