@@ -700,6 +700,27 @@ defmodule Web.Settings.DirectorySync do
           </div>
         <% end %>
 
+        <%= if @directory.synced_at do %>
+          <.link
+            navigate={~p"/#{@account}/actors?actors_filter[directory_id]=#{@directory.id}"}
+            class="flex items-center gap-2"
+          >
+            <.icon name="hero-user" class="w-5 h-5 flex-shrink-0" title="Actors" />
+            <span class={["font-medium", link_style()]}>
+              {@directory.actors_count} {ngettext("actor", "actors", @directory.actors_count)}
+            </span>
+          </.link>
+          <.link
+            navigate={~p"/#{@account}/groups?groups_filter[directory_id]=#{@directory.id}"}
+            class="flex items-center gap-2"
+          >
+            <.icon name="hero-user-group" class="w-5 h-5 flex-shrink-0" title="Groups" />
+            <span class={["font-medium", link_style()]}>
+              {@directory.groups_count} {ngettext("group", "groups", @directory.groups_count)}
+            </span>
+          </.link>
+        <% end %>
+
         <%= if @directory.has_active_job do %>
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2">
@@ -1583,6 +1604,7 @@ defmodule Web.Settings.DirectorySync do
       ]
       |> List.flatten()
       |> enrich_with_job_status()
+      |> enrich_with_sync_stats(subject)
     end
 
     def get_directory!(schema, id, subject) do
@@ -1691,6 +1713,38 @@ defmodule Web.Settings.DirectorySync do
         dir
         |> Map.put(:has_active_job, Map.has_key?(active_jobs, dir.id))
         |> Map.put(:is_legacy, Map.get(dir, :legacy_service_account_key) != nil)
+      end)
+    end
+
+    defp enrich_with_sync_stats(directories, subject) do
+      directory_ids = Enum.map(directories, & &1.id)
+
+      # Count actors per directory (actors that have identities from this directory)
+      actors_counts =
+        from(ei in Domain.ExternalIdentity,
+          where: ei.directory_id in ^directory_ids,
+          group_by: ei.directory_id,
+          select: {ei.directory_id, count(ei.actor_id, :distinct)}
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Map.new()
+
+      # Count groups per directory
+      groups_counts =
+        from(g in Domain.Group,
+          where: g.directory_id in ^directory_ids,
+          group_by: g.directory_id,
+          select: {g.directory_id, count(g.id)}
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Map.new()
+
+      Enum.map(directories, fn dir ->
+        dir
+        |> Map.put(:actors_count, Map.get(actors_counts, dir.id, 0))
+        |> Map.put(:groups_count, Map.get(groups_counts, dir.id, 0))
       end)
     end
   end
