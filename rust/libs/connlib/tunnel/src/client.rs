@@ -1707,7 +1707,6 @@ impl ClientState {
 
             self.node.close_connection(gid, p2p_control::goodbye(), now);
             self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown);
-            self.resource_list.update(self.resources());
         }
     }
 
