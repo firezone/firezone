@@ -75,9 +75,8 @@ jobs:
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-rust-toolchain
-        id: setup-rust
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.rust-targets }}
       - uses: ./.github/actions/setup-rust-sccache
       - run: ${{ matrix.build-script }}
         env:

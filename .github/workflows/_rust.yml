@@ -26,8 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: ./.github/actions/setup-rust-toolchain
-        with:
-          targets: ${{ matrix.target }}
+        id: setup-rust
       - uses: ./.github/actions/setup-rust-sccache
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
@@ -67,8 +66,6 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: ./.github/actions/setup-rust-toolchain
         id: setup-rust
-        with:
-          targets: ${{ matrix.target }}
       - uses: ./.github/actions/setup-rust-sccache
       - uses: ./.github/actions/setup-tauri-v2
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
@@ -105,8 +102,6 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: ./.github/actions/setup-rust-toolchain
         id: setup-rust
-        with:
-          targets: ${{ matrix.target }}
       - uses: ./.github/actions/setup-rust-sccache
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         env:
@@ -185,8 +180,6 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: ./.github/actions/setup-rust-toolchain
         id: setup-rust
-        with:
-          targets: ${{ matrix.target }}
       - uses: ./.github/actions/setup-rust-sccache
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         env:
@@ -213,9 +206,6 @@ jobs:
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: ./.github/actions/setup-rust-toolchain
-        id: setup-rust
-        with:
-          targets: ${{ matrix.target }}
       - uses: ./.github/actions/setup-rust-sccache
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
