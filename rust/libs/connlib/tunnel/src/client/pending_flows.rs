@@ -103,6 +103,8 @@ impl PendingFlow {
                 self.dns_queries.enqueue(query);
             }
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {}
+            #[cfg(test)]
+            ConnectionTrigger::Test => {}
         }
     }
 
@@ -127,6 +129,8 @@ pub enum ConnectionTrigger {
     ///
     /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
     IcmpDestinationUnreachableProhibited,
+    #[cfg(test)]
+    Test,
 }
 
 pub struct DnsQueryForSite {
@@ -144,6 +148,8 @@ impl ConnectionTrigger {
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
                 "icmp-destination-unreachable-prohibited"
             }
+            #[cfg(test)]
+            ConnectionTrigger::Test => "test",
         }
     }
 }
@@ -151,5 +157,66 @@ impl ConnectionTrigger {
 impl From<IpPacket> for ConnectionTrigger {
     fn from(v: IpPacket) -> Self {
         Self::PacketForResource(v)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::Ipv4Addr;
+
+    use connlib_model::{Site, SiteId};
+    use ip_network::IpNetwork;
+
+    use crate::client::CidrResource;
+
+    use super::*;
+
+    #[test]
+    fn skips_connection_intent_if_sent_within_last_two_seconds() {
+        let mut pending_flows = PendingFlows::default();
+        let mut now = Instant::now();
+        let rid = localhost_resource().id();
+        let resources = BTreeMap::from([(rid, localhost_resource())]);
+
+        pending_flows.on_not_connected_resource(rid, ConnectionTrigger::Test, &resources, now);
+        assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
+
+        now += Duration::from_secs(1);
+
+        pending_flows.on_not_connected_resource(rid, ConnectionTrigger::Test, &resources, now);
+        assert_eq!(pending_flows.poll_connection_intents(), None);
+    }
+
+    #[test]
+    fn sends_new_intent_after_two_seconds() {
+        let mut pending_flows = PendingFlows::default();
+        let mut now = Instant::now();
+        let rid = localhost_resource().id();
+        let resources = BTreeMap::from([(rid, localhost_resource())]);
+
+        pending_flows.on_not_connected_resource(rid, ConnectionTrigger::Test, &resources, now);
+        assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
+
+        now += Duration::from_secs(3);
+
+        pending_flows.on_not_connected_resource(rid, ConnectionTrigger::Test, &resources, now);
+        assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
+    }
+
+    fn localhost_resource() -> Resource {
+        Resource::Cidr(CidrResource {
+            id: ResourceId::from_u128(1),
+            address: IpNetwork::from(Ipv4Addr::LOCALHOST),
+            name: "localhost".to_owned(),
+            address_description: None,
+            sites: vec![site()],
+        })
+    }
+
+    fn site() -> Site {
+        Site {
+            id: SiteId::from_u128(2),
+            name: "example-site".to_owned(),
+        }
     }
 }
