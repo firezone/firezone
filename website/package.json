@@ -40,7 +40,7 @@
     "react-fast-marquee": "^1.6.5",
     "react-icons": "^5.5.0",
     "react-markdown": "^10.1.0",
-    "react-syntax-highlighter": "^15.6.6",
+    "react-syntax-highlighter": "^16.1.0",
     "rehype-autolink-headings": "^7.1.0",
     "rehype-highlight": "^7.0.2",
     "rehype-slug": "^6.0.0",
