@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeSet, HashMap},
-    num::NonZeroUsize,
-};
+use std::{collections::HashMap, num::NonZeroUsize};
 
 use connlib_model::{GatewayId, ResourceStatus, SiteId};
 use lru::LruCache;
@@ -102,7 +99,7 @@ impl Sites {
 
     // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
     // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
-    pub(crate) fn connected_gateway_ids(&self) -> BTreeSet<GatewayId> {
+    pub(crate) fn connected_gateway_ids(&self) -> Vec<GatewayId> {
         self.recently_connected_gateways
             .iter()
             .map(|(g, _)| *g)
