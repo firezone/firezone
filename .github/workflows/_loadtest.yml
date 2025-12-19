@@ -49,6 +49,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.target }}
+          cache_strategy: "target-dir"
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'linux'

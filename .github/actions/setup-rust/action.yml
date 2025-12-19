@@ -1,11 +1,14 @@
 ---
 name: "Setup Rust"
-description: "Sets up the correct Rust version and caching via sccache and a GCP backend"
+description: "Sets up the correct Rust version and caching"
 inputs:
   targets:
     description: "Additional targets to install"
     required: false
     default: ""
+  cache_strategy:
+    description: "Caching strategy: 'sccache' or 'target-dir' (GitHub Actions cache for all workspace crates)"
+    required: true
 
 outputs:
   bench-packages:
@@ -51,12 +54,22 @@ runs:
 
     - name: Cache registry
       uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      if: ${{ inputs.cache_strategy == 'sccache' }}
       with:
         workspaces: rust
         cache-targets: false # Don't cache `target` directory, we use sccache for that.
         save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
 
+    - name: Cache registry and targets
+      uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      if: ${{ inputs.cache_strategy == 'target-dir' }}
+      with:
+        workspaces: rust
+        cache-all-crates: true # Cache all workspace crates
+        save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
+
     - name: Configure sccache
+      if: ${{ inputs.cache_strategy == 'sccache' }}
       shell: bash
       run: |
         echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
@@ -85,6 +98,7 @@ runs:
       shell: bash
 
     - name: Start sccache
+      if: ${{ inputs.cache_strategy == 'sccache' }}
       run: $SCCACHE_PATH --start-server
       shell: bash
       env:

@@ -125,6 +125,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.target }}
+          cache_strategy: "sccache"
       - name: Build binaries
         shell: bash
         run: |
@@ -229,6 +230,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
+          cache_strategy: "target-dir"
       - uses: ./.github/actions/setup-musl
         with:
           target: ${{ matrix.arch.target }}
