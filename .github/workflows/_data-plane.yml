@@ -279,6 +279,9 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
           sha256sum ${{ matrix.name.package }} > ${{ matrix.name.package }}.sha256sum.txt
+
+          # Used for release artifact
+          cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
       # For pushing built images to Google Cloud Storage
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
@@ -326,25 +329,12 @@ jobs:
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NAME: ${{ matrix.name.release_name }}
+          ARTIFACT_PATH: ${{ env.BINARY_DEST_PATH }}
         run: |
           set -xe
 
-          # Only clobber existing release assets if the release is a draft
-          is_draft=$(gh release view ${{ matrix.name.release_name }} --json isDraft --jq '.isDraft' | tr -d '\n')
-          if [[ "$is_draft" == "true" ]]; then
-            clobber="--clobber"
-          else
-            clobber=""
-          fi
-
-          # Used for release artifact
-          cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
-          cp ${{ matrix.name.package }}.sha256sum.txt "$BINARY_DEST_PATH".sha256sum.txt
-          gh release upload ${{ matrix.name.release_name }} \
-            "$BINARY_DEST_PATH" \
-            "$BINARY_DEST_PATH".sha256sum.txt \
-            "$clobber" \
-            --repo ${{ github.repository }}
+          ../scripts/upload/github-release.sh
 
           az storage blob upload-batch \
             --destination apt \
