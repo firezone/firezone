@@ -26,9 +26,6 @@ outputs:
       (runner.os == 'Linux' && '--workspace') ||
       (runner.os == 'macOS' && '--workspace --exclude bin-shared --exclude firezone-gui-client') ||
       (runner.os == 'Windows' && '--workspace --exclude client-ffi') }}
-  nightly_version:
-    description: The nightly version of Rust
-    value: ${{ steps.nightly.outputs.nightly }}
 
 runs:
   using: "composite"
