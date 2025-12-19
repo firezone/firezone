@@ -23,7 +23,10 @@ use tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
-use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
+use tunnel::{
+    AlreadyConnectedToSite, ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig,
+    TunnelError,
+};
 
 /// In-memory cache for DNS resource records.
 ///
@@ -423,10 +426,8 @@ impl Eventloop {
                     Instant::now(),
                 ) {
                     Ok(Ok(())) => {}
-                    Ok(Err(snownet::NoTurnServers {})) => {
-                        tracing::debug!(
-                            "Failed to request new connection: No TURN servers available"
-                        );
+                    Ok(Err(e @ snownet::NoTurnServers {})) => {
+                        tracing::debug!("Failed to handle flow created: {e}");
 
                         // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
                         self.portal_cmd_tx
@@ -436,8 +437,11 @@ impl Eventloop {
                             .await
                             .context("Failed to connect phoenix-channel")?;
                     }
+                    Err(e) if e.any_is::<AlreadyConnectedToSite>() => {
+                        tracing::debug!("Failed to handle flow created: {e:#}");
+                    }
                     Err(e) => {
-                        tracing::warn!("Failed to request new connection: {e:#}");
+                        tracing::warn!("Failed to handle flow created: {e:#}");
                     }
                 };
             }
