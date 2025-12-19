@@ -35,6 +35,22 @@ jobs:
   build:
     needs: update-release-draft
     runs-on: macos-15
+    env:
+      # Common certificate variables
+      BUILD_CERT: "${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}"
+      BUILD_CERT_PASS: "${{ secrets.APPLE_BUILD_CERTIFICATE_P12_PASSWORD }}"
+      INSTALLER_CERT: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
+      INSTALLER_CERT_PASS: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
+      STANDALONE_BUILD_CERT: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}"
+      STANDALONE_BUILD_CERT_PASS: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}"
+      STANDALONE_INSTALLER_CERT: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
+      STANDALONE_INSTALLER_CERT_PASS: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
+      # App Store Connect API credentials
+      ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
+      API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
+      API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
+      # Notarization flag
+      NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"
     permissions:
       contents: write
       id-token: write
@@ -62,21 +78,9 @@ jobs:
         env:
           IOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}"
           IOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_NE_PROVISIONING_PROFILE }}"
-          BUILD_CERT: "${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}"
-          BUILD_CERT_PASS: "${{ secrets.APPLE_BUILD_CERTIFICATE_P12_PASSWORD }}"
-          INSTALLER_CERT: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
-          INSTALLER_CERT_PASS: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
-          STANDALONE_BUILD_CERT: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}"
-          STANDALONE_BUILD_CERT_PASS: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}"
-          STANDALONE_INSTALLER_CERT: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
-          STANDALONE_INSTALLER_CERT_PASS: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
       - name: Upload iOS to App Store Connect
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         run: scripts/upload/app-store-connect.sh
-        env:
-          ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
-          API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
-          API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
       - name: Upload iOS debug symbols to Sentry
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         uses: ./.github/actions/upload-sentry-debug-files
@@ -99,21 +103,9 @@ jobs:
         env:
           MACOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_MACOS_APP_PROVISIONING_PROFILE }}"
           MACOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_MACOS_NE_PROVISIONING_PROFILE }}"
-          BUILD_CERT: "${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}"
-          BUILD_CERT_PASS: "${{ secrets.APPLE_BUILD_CERTIFICATE_P12_PASSWORD }}"
-          INSTALLER_CERT: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
-          INSTALLER_CERT_PASS: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
-          STANDALONE_BUILD_CERT: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}"
-          STANDALONE_BUILD_CERT_PASS: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}"
-          STANDALONE_INSTALLER_CERT: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
-          STANDALONE_INSTALLER_CERT_PASS: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
       - name: Upload macOS App Store to App Store Connect
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         run: scripts/upload/app-store-connect.sh
-        env:
-          ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
-          API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
-          API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
       - name: Upload macOS App Store debug symbols to Sentry
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         uses: ./.github/actions/upload-sentry-debug-files
@@ -130,7 +122,6 @@ jobs:
             echo "TEMP_DIR=${{ runner.temp }}/macos-standalone"
             echo "ARTIFACT_PATH=${{ runner.temp }}/macos-standalone/firezone-macos-client-1.5.11.dmg"
             echo "PKG_ARTIFACT_PATH=${{ runner.temp }}/macos-standalone/firezone-macos-client-1.5.11.pkg"
-            echo "NOTARIZE=${{ github.event_name == 'workflow_dispatch' }}"
             echo "PLATFORM=macOS"
           } >> "$GITHUB_ENV"
       - name: Build macOS Standalone
@@ -138,17 +129,6 @@ jobs:
         env:
           STANDALONE_MACOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_STANDALONE_MACOS_APP_PROVISIONING_PROFILE }}"
           STANDALONE_MACOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_STANDALONE_MACOS_NE_PROVISIONING_PROFILE }}"
-          BUILD_CERT: "${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}"
-          BUILD_CERT_PASS: "${{ secrets.APPLE_BUILD_CERTIFICATE_P12_PASSWORD }}"
-          INSTALLER_CERT: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
-          INSTALLER_CERT_PASS: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
-          STANDALONE_BUILD_CERT: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}"
-          STANDALONE_BUILD_CERT_PASS: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}"
-          STANDALONE_INSTALLER_CERT: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
-          STANDALONE_INSTALLER_CERT_PASS: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
-          ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
-          API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
-          API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
       - name: Upload .dmg artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         if: "${{ github.event_name == 'workflow_dispatch' }}"
