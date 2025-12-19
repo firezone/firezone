@@ -60,7 +60,7 @@ defmodule Web.MixProject do
 
       # Asset pipeline deps
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.3.1", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.4.1", runtime: Mix.env() == :dev},
 
       # Observability and debugging deps
       {:telemetry_metrics, "~> 1.0"},
