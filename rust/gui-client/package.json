@@ -16,7 +16,7 @@
     "postinstall": "flowbite-react patch"
   },
   "dependencies": {
-    "@eslint/js": "^9.36.0",
+    "@eslint/js": "^9.39.1",
     "@fontsource-variable/source-sans-3": "^5.2.9",
     "@heroicons/react": "^2.2.0",
     "@sentry/core": "^10.22.0",
