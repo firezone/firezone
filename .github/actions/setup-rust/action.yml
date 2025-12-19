@@ -53,20 +53,12 @@ runs:
         target: ${{ inputs.targets }}
         cache: false # We explicitly configure the cache below because it doesn't forward `cache-targets`.
 
-    - name: Cache registry
-      uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+    - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
       if: ${{ inputs.cache_strategy == 'sccache' }}
       with:
         workspaces: rust
-        cache-targets: false # Don't cache `target` directory, we use sccache for that.
-        save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
-
-    - name: Cache registry and targets
-      uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
-      if: ${{ inputs.cache_strategy == 'target-dir' }}
-      with:
-        workspaces: rust
-        cache-all-crates: true # Cache all workspace crates
+        cache-targets: ${{ inputs.cache_strategy == 'target-dir' }}
+        cache-all-crates: ${{ inputs.cache_strategy == 'target-dir' }}
         # save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
 
     - name: Configure sccache
