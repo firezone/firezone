@@ -151,8 +151,8 @@ config :phoenix_live_reload, :dirs, [
 
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}' https://api-js.mixpanel.com",
-    "img-src 'self' data: https://www.gravatar.com https://track.hubspot.com https://www.firezone.dev",
+    "default-src 'self' 'nonce-${nonce}' https://api-js.mixpanel.com https://firezone.statuspage.io",
+    "img-src 'self' data: https://www.gravatar.com https://track.hubspot.com https://www.firezone.dev https://firezone.statuspage.io",
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline' http://cdn.mxpnl.com http://*.hs-analytics.net https://cdn.tailwindcss.com/"
   ]
