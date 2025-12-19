@@ -110,8 +110,6 @@ impl PendingFlow {
                 self.dns_queries.enqueue(query);
             }
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {}
-            #[cfg(test)]
-            ConnectionTrigger::Test => {}
         }
     }
 
@@ -136,8 +134,6 @@ pub enum ConnectionTrigger {
     ///
     /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
     IcmpDestinationUnreachableProhibited,
-    #[cfg(test)]
-    Test,
 }
 
 pub struct DnsQueryForSite {
@@ -155,8 +151,6 @@ impl ConnectionTrigger {
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
                 "icmp-destination-unreachable-prohibited"
             }
-            #[cfg(test)]
-            ConnectionTrigger::Test => "test",
         }
     }
 }
@@ -185,12 +179,12 @@ mod tests {
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
 
-        pending_flows.on_not_connected_resource(rid, ConnectionTrigger::Test, &resources, now);
+        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
 
         now += Duration::from_secs(1);
 
-        pending_flows.on_not_connected_resource(rid, ConnectionTrigger::Test, &resources, now);
+        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), None);
     }
 
@@ -201,12 +195,12 @@ mod tests {
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
 
-        pending_flows.on_not_connected_resource(rid, ConnectionTrigger::Test, &resources, now);
+        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
 
         now += Duration::from_secs(3);
 
-        pending_flows.on_not_connected_resource(rid, ConnectionTrigger::Test, &resources, now);
+        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
     }
 
@@ -223,15 +217,31 @@ mod tests {
             (rid2, ipv6_localhost_resource()),
         ]);
 
-        pending_flows.on_not_connected_resource(rid1, ConnectionTrigger::Test, &resources, now);
+        pending_flows.on_not_connected_resource(rid1, trigger(1), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid1));
-        pending_flows.on_not_connected_resource(rid2, ConnectionTrigger::Test, &resources, now);
+        pending_flows.on_not_connected_resource(rid2, trigger(2), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), None);
 
         pending_flows.remove(&rid1);
 
-        pending_flows.on_not_connected_resource(rid2, ConnectionTrigger::Test, &resources, now);
+        pending_flows.on_not_connected_resource(rid2, trigger(3), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid2));
+
+        let (packets, dns_queries) = pending_flows.remove(&rid2).unwrap().into_buffered_packets();
+
+        assert_eq!(packets.len(), 2, "should buffer both packets");
+        assert!(dns_queries.is_empty());
+    }
+
+    fn trigger(payload: u8) -> IpPacket {
+        ip_packet::make::udp_packet(
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            1,
+            1,
+            vec![payload], // We need to vary the payload because identical packets don't get buffered.
+        )
+        .unwrap()
     }
 
     fn ipv4_localhost_resource() -> Resource {
