@@ -62,6 +62,13 @@ export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOM
 PLATFORM_NAME="${PLATFORM_NAME:-macosx}"
 CONFIGURATION="${CONFIGURATION:-Debug}"
 NATIVE_ARCH="${ARCHS:-${NATIVE_ARCH:-$(uname -m)}}"
+PREBUILT_CONNLIB_PATH=${PREBUILT_CONNLIB_PATH:-false}
+
+if [ "${PREBUILT_CONNLIB_PATH}" == "true" ]; then
+    echo "connlib has been pre-built, exiting."
+
+    exit 0
+fi
 
 # Set target directory - use CONNLIB_TARGET_DIR if set, otherwise default
 export CARGO_TARGET_DIR="${CONNLIB_TARGET_DIR:-$RUST_DIR/target}"
