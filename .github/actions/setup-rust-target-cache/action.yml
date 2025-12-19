@@ -14,7 +14,6 @@ runs:
       with:
         workspaces: rust
         cache-targets: true
-        cache-all-crates: true
         cache-workspace-crates: true
         key: ${{ inputs.key }}
         prefix-key: v1-rust
