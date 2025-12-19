@@ -11,15 +11,31 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 28
+      semver-patch-days: 2
+      semver-minor-days: 7
+      semver-major-days: 14
+      default-days: 7
     open-pull-requests-limit: 100
+    groups:
+      security-all:
+        applies-to: security-updates
+        patterns:
+          - "*"
   - package-ecosystem: pip
     directory: /.github
     schedule:
       interval: weekly
     cooldown:
-      default-days: 28
+      semver-patch-days: 2
+      semver-minor-days: 7
+      semver-major-days: 14
+      default-days: 7
     open-pull-requests-limit: 100
+    groups:
+      security-all:
+        applies-to: security-updates
+        patterns:
+          - "*"
   - package-ecosystem: github-actions
     directories:
       - "/.github/workflows"
@@ -43,16 +59,31 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 28
+      semver-patch-days: 2
+      semver-minor-days: 7
+      semver-major-days: 14
+      default-days: 7
     open-pull-requests-limit: 100
+    groups:
+      security-all:
+        applies-to: security-updates
+        patterns:
+          - "*"
   - package-ecosystem: cargo
     directory: rust/
     open-pull-requests-limit: 100
     schedule:
       interval: weekly
     cooldown:
-      default-days: 28
+      semver-patch-days: 2
+      semver-minor-days: 7
+      semver-major-days: 14
+      default-days: 7
     groups:
+      security-all:
+        applies-to: security-updates
+        patterns:
+          - "*"
       tauri:
         patterns:
           - tauri
@@ -94,13 +125,20 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 28
+      semver-patch-days: 2
+      semver-minor-days: 7
+      semver-major-days: 14
+      default-days: 7
     open-pull-requests-limit: 100
     ignore:
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
       - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
       - dependency-name: org.jetbrains.kotlin.android
     groups:
+      security-all:
+        applies-to: security-updates
+        patterns:
+          - "*"
       com.android:
         patterns:
           - com.android.*
@@ -157,23 +195,46 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 28
+      semver-patch-days: 2
+      semver-minor-days: 7
+      semver-major-days: 14
+      default-days: 7
     open-pull-requests-limit: 100
+    groups:
+      security-all:
+        applies-to: security-updates
+        patterns:
+          - "*"
   - package-ecosystem: npm
     directory: website/
     schedule:
       interval: weekly
     cooldown:
-      default-days: 28
+      semver-patch-days: 2
+      semver-minor-days: 7
+      semver-major-days: 14
+      default-days: 7
     open-pull-requests-limit: 100
+    groups:
+      security-all:
+        applies-to: security-updates
+        patterns:
+          - "*"
   - package-ecosystem: npm
     directory: rust/gui-client/
     schedule:
       interval: weekly
     cooldown:
-      default-days: 28
+      semver-patch-days: 2
+      semver-minor-days: 7
+      semver-major-days: 14
+      default-days: 7
     open-pull-requests-limit: 100
     groups:
+      security-all:
+        applies-to: security-updates
+        patterns:
+          - "*"
       tauri:
         patterns:
           - "@tauri-apps/*"
@@ -200,5 +261,13 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 28
+      semver-patch-days: 2
+      semver-minor-days: 7
+      semver-major-days: 14
+      default-days: 7
     open-pull-requests-limit: 100
+    groups:
+      security-all:
+        applies-to: security-updates
+        patterns:
+          - "*"
