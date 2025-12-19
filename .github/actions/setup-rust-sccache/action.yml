@@ -13,6 +13,12 @@ runs:
         cache-targets: false
         save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
 
+    - name: Configure sccache environment
+      shell: bash
+      run: |
+        echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+        echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> "$GITHUB_ENV"
+
     - name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash
