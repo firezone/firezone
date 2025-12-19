@@ -20,7 +20,7 @@ updates:
       default-days: 28
   - package-ecosystem: github-actions
     directories:
-      - "/"
+      - "/.github/workflows"
       # Dependabot doesn't look in these by default
       - "/.github/actions/create-sentry-release"
       - "/.github/actions/ghcr-docker-login"
