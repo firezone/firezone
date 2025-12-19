@@ -624,7 +624,12 @@ impl ClientState {
             clippy::disallowed_methods,
             reason = "The iteration order doesn't matter here."
         )]
-        if self.gateways_site.values().any(|s| s == &site_id) {
+        if let Some(connected_gateway) = self
+            .gateways_site
+            .iter()
+            .find_map(|(gid, sid)| (sid == &site_id).then_some(gid))
+            && connected_gateway != &gid
+        {
             anyhow::bail!(AlreadyConnectedToSite)
         }
 
