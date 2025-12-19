@@ -28,7 +28,10 @@ updates:
       - "/.github/actions/setup-elixir"
       - "/.github/actions/setup-node"
       - "/.github/actions/setup-postgres"
-      - "/.github/actions/setup-rust"
+      - "/.github/actions/setup-rust-stable"
+      - "/.github/actions/setup-rust-nightly"
+      - "/.github/actions/setup-rust-sccache"
+      - "/.github/actions/setup-rust-target-cache"
       - "/.github/actions/setup-tauri-v2"
     schedule:
       interval: weekly

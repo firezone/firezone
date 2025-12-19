@@ -1,0 +1,26 @@
+---
+name: "Setup Rust sccache"
+description: "Sets up caching for Rust via sccache"
+runs:
+  using: "composite"
+  steps:
+    - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+
+    - name: Cache registry
+      uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      with:
+        workspaces: rust
+        cache-targets: false
+        save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
+
+    - name: Configure sccache environment
+      shell: bash
+      run: |
+        echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+        echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> "$GITHUB_ENV"
+
+    - name: Start sccache
+      run: $SCCACHE_PATH --start-server
+      shell: bash
+      env:
+        SCCACHE_CONF: ".github/actions/setup-rust-sccache/sccache.toml"

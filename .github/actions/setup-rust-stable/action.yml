@@ -1,0 +1,45 @@
+---
+name: "Setup Rust"
+description: "Sets up the correct Rust version"
+inputs:
+  targets:
+    description: "Additional targets to install"
+    required: false
+    default: ""
+
+outputs:
+  bench-packages:
+    description: Benchmarkable packages for the current OS
+    value: ${{
+      (runner.os == 'Linux' && '--help') ||
+      (runner.os == 'macOS' && '--help') ||
+      (runner.os == 'Windows' && '-p bin-shared') }}
+  compile-packages:
+    description: Compilable packages for the current OS
+    value: ${{
+      (runner.os == 'Linux' && '--workspace') ||
+      (runner.os == 'macOS' && '--workspace') ||
+      (runner.os == 'Windows' && '--workspace --exclude ebpf-turn-router --exclude client-ffi') }}
+  test-packages:
+    description: Testable packages for the current OS
+    value: ${{
+      (runner.os == 'Linux' && '--workspace') ||
+      (runner.os == 'macOS' && '--workspace --exclude bin-shared --exclude firezone-gui-client') ||
+      (runner.os == 'Windows' && '--workspace --exclude client-ffi') }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Extract Rust version
+      run: |
+        RUST_TOOLCHAIN=$(grep 'channel' rust/rust-toolchain.toml | awk -F '"' '{print $2}')
+        echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_ENV
+      shell: bash
+
+    - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
+      id: toolchain
+      with:
+        toolchain: ${{ env.RUST_TOOLCHAIN }}
+        components: rustfmt,clippy,llvm-tools-preview
+        target: ${{ inputs.targets }}
+        cache: false # We explicitly configure caching somewhere else.
