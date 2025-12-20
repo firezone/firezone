@@ -107,8 +107,8 @@ pub struct ClientState {
     dns_resource_nat: DnsResourceNat,
     /// Tracks which gateway to use for a particular Resource.
     resources_gateways: HashMap<ResourceId, GatewayId>,
-    /// The site a gateway belongs to.
-    gateways_site: HashMap<GatewayId, SiteId>,
+    /// Which Gateway we were assigned for a given site.
+    assigned_gateway_by_site: HashMap<SiteId, GatewayId>,
     /// The online/offline status of a site.
     sites_status: HashMap<SiteId, ResourceStatus>,
 
@@ -168,7 +168,7 @@ impl ClientState {
             buffered_packets: Default::default(),
             node: ClientNode::new(seed, now, unix_ts),
             sites_status: Default::default(),
-            gateways_site: Default::default(),
+            assigned_gateway_by_site: Default::default(),
             stub_resolver: StubResolver::new(records),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
@@ -466,7 +466,7 @@ impl ClientState {
                 resource,
                 ConnectionTrigger::IcmpDestinationUnreachableProhibited,
                 &self.resources_by_id,
-                &self.gateways_site,
+                &self.assigned_gateway_by_site,
                 now,
             );
         }
@@ -554,7 +554,7 @@ impl ClientState {
                     resource,
                     packet,
                     &self.resources_by_id,
-                    &self.gateways_site,
+                    &self.assigned_gateway_by_site,
                     now,
                 );
                 return None;
@@ -620,15 +620,8 @@ impl ClientState {
         gateway_ice: IceCredentials,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "The iteration order doesn't matter here."
-        )]
-        if let Some(connected_gateway) = self
-            .gateways_site
-            .iter()
-            .find_map(|(existing_gateway, sid)| (sid == &site_id).then_some(existing_gateway))
-            && connected_gateway != &gid
+        if let Some(assigned_gateway) = self.assigned_gateway_by_site.get(&site_id)
+            && assigned_gateway != &gid
         {
             anyhow::bail!(AlreadyConnectedToSite)
         }
@@ -661,7 +654,7 @@ impl ClientState {
             Err(e) => return Ok(Err(e)),
         };
         self.resources_gateways.insert(rid, gid);
-        self.gateways_site.insert(gid, site_id);
+        self.assigned_gateway_by_site.insert(site_id, gid);
         self.recently_connected_gateways.put(gid, ());
 
         if self.peers.get(&gid).is_none() {
@@ -864,7 +857,6 @@ impl ClientState {
         self.resources_gateways
             .retain(|_, g| g != disconnected_gateway);
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
-        self.gateways_site.remove(disconnected_gateway);
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -1329,7 +1321,7 @@ impl ClientState {
                             message,
                         }),
                         &self.resources_by_id,
-                        &self.gateways_site,
+                        &self.assigned_gateway_by_site,
                         now,
                     );
                     return None;
@@ -1511,9 +1503,15 @@ impl ClientState {
     }
 
     fn update_site_status_by_gateway(&mut self, gid: &GatewayId, status: ResourceStatus) {
-        // Note: we can do this because in theory we shouldn't have multiple gateways for the same site
-        // connected at the same time.
-        let Some(sid) = self.gateways_site.get(gid) else {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "The iteration order doesn't matter here."
+        )]
+        let Some(sid) = self
+            .assigned_gateway_by_site
+            .iter()
+            .find_map(|(s, g)| (g == gid).then_some(s))
+        else {
             tracing::warn!(%gid, "Cannot update status of unknown site");
             return;
         };
@@ -2148,8 +2146,8 @@ mod proptests {
             .resources_gateways
             .insert(first_resource.id(), gateway);
         client_state
-            .gateways_site
-            .insert(gateway, first_resource.sites().iter().next().unwrap().id);
+            .assigned_gateway_by_site
+            .insert(first_resource.sites().iter().next().unwrap().id, gateway);
 
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
 
@@ -2182,8 +2180,8 @@ mod proptests {
             .resources_gateways
             .insert(first_resources.id(), gateway);
         client_state
-            .gateways_site
-            .insert(gateway, first_resources.sites().iter().next().unwrap().id);
+            .assigned_gateway_by_site
+            .insert(first_resources.sites().iter().next().unwrap().id, gateway);
 
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Unknown);
