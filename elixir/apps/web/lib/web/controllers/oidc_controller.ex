@@ -120,7 +120,16 @@ defmodule Web.OIDCController do
   end
 
   defp provider_redirect(conn, account, provider, params) do
-    opts = [additional_params: %{prompt: "select_account"}]
+    opts =
+      if provider.__struct__ in [
+           Domain.Google.AuthProvider,
+           Domain.Entra.AuthProvider,
+           Domain.Okta.AuthProvider
+         ] do
+        [additional_params: %{prompt: "select_account"}]
+      else
+        []
+      end
 
     with {:ok, uri, state, verifier} <- Web.OIDC.authorization_uri(provider, opts) do
       cookie = %Web.Cookie.OIDC{
