@@ -1665,6 +1665,7 @@ defmodule Web.Actors do
 
     def all do
       from(actors in Actor, as: :actors)
+      |> where([actors: actors], actors.type != :api_client)
       |> select_merge([actors: actors], %{
         email:
           fragment(
@@ -1805,6 +1806,7 @@ defmodule Web.Actors do
     def get_actor!(id, subject) do
       from(a in Actor, as: :actors)
       |> where([actors: a], a.id == ^id)
+      |> where([actors: a], a.type != :api_client)
       |> Safe.scoped(subject)
       |> Safe.one!()
     end
