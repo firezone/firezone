@@ -236,10 +236,27 @@ defmodule Web.OIDCController do
   end
 
   defp maybe_populate_name(attrs) do
-    case attrs["name"] do
-      nil -> Map.put(attrs, "name", attrs["given_name"] <> " " <> attrs["family_name"])
-      "" -> Map.put(attrs, "name", attrs["given_name"] <> " " <> attrs["family_name"])
-      _ -> attrs
+    name =
+      with nil <- present(attrs["name"]),
+           nil <- given_family_name(attrs["given_name"], attrs["family_name"]),
+           nil <- present(attrs["preferred_username"]),
+           nil <- present(attrs["nickname"]) do
+        attrs["email"]
+      end
+
+    Map.put(attrs, "name", name)
+  end
+
+  defp present(nil), do: nil
+  defp present(s) when is_binary(s), do: if(String.trim(s) == "", do: nil, else: s)
+  defp present(_), do: nil
+
+  defp given_family_name(given, family) do
+    case {present(given), present(family)} do
+      {nil, nil} -> nil
+      {g, nil} -> g
+      {nil, f} -> f
+      {g, f} -> "#{g} #{f}"
     end
   end
 
