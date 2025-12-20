@@ -112,7 +112,7 @@ defmodule Web.UserpassController do
   # Store session cookie and redirect to portal or redirect_to parameter
   defp signed_in(conn, :portal, account, _actor, session, params) do
     conn
-    |> Web.Session.Cookie.put_account_cookie(account.id, session.id)
+    |> Web.Cookie.Session.put(account.id, %Web.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params)
   end
 

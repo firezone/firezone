@@ -84,8 +84,9 @@ defmodule Web.ConnCase do
 
     # Set the cookie. We need to set it as a response cookie first,
     # then transfer to request cookies for subsequent requests.
-    conn = Web.Session.Cookie.put_account_cookie(conn, actor.account_id, session.id)
-    cookie_name = Web.Session.Cookie.cookie_name(actor.account_id)
+    cookie = %Web.Cookie.Session{session_id: session.id}
+    conn = Web.Cookie.Session.put(conn, actor.account_id, cookie)
+    cookie_name = "sess_#{actor.account_id}"
     cookie_value = conn.resp_cookies[cookie_name].value
 
     conn
@@ -123,7 +124,7 @@ defmodule Web.ConnCase do
       get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", params)
 
     cookie_key = "fz_auth_state_#{provider.id}"
-    redirected_conn = Plug.Conn.fetch_cookies(redirected_conn, encrypted: [cookie_key])
+    redirected_conn = Plug.Conn.fetch_cookies(redirected_conn, signed: [cookie_key])
 
     {_params, state, verifier} =
       redirected_conn.cookies[cookie_key]

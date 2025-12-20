@@ -16,7 +16,8 @@ defmodule Web.Plugs.FetchSubject do
     remote_ip = conn.remote_ip
     context = Auth.Context.build(remote_ip, user_agent, conn.req_headers, :portal)
 
-    with {:ok, session_id} <- Web.Session.Cookie.fetch_account_cookie(conn, account.id),
+    with %Web.Cookie.Session{session_id: session_id} <-
+           Web.Cookie.Session.fetch(conn, account.id),
          {:ok, session} <- Auth.fetch_portal_session(account.id, session_id),
          {:ok, subject} <- Auth.build_subject(session, context) do
       conn
@@ -34,6 +35,6 @@ defmodule Web.Plugs.FetchSubject do
     conn
     |> delete_session(:live_socket_id)
     |> delete_session(:portal_session_id)
-    |> Web.Session.Cookie.delete_account_cookie(account.id)
+    |> Web.Cookie.Session.delete(account.id)
   end
 end

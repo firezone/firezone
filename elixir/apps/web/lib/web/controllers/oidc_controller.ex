@@ -12,16 +12,6 @@ defmodule Web.OIDCController do
 
   require Logger
 
-  @cookie_prefix "oidc"
-  @cookie_options [
-    encrypt: true,
-    max_age: 30 * 60,
-    # For persisting state across the IdP redirect
-    same_site: "Lax",
-    secure: true,
-    http_only: true
-  ]
-
   action_fallback Web.FallbackController
 
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
@@ -29,18 +19,18 @@ defmodule Web.OIDCController do
          provider when not is_nil(provider) <- fetch_provider(account, params) do
       provider_redirect(conn, account, provider, params)
     else
-      error -> handle_error(conn, error, params)
+      error -> handle_error(conn, error)
     end
   end
 
-  def callback(conn, %{"state" => state, "code" => code} = params) do
+  def callback(conn, %{"state" => state, "code" => code}) do
     # Check if this is a verification operation (state starts with "oidc-verification:")
     case String.split(state, ":", parts: 2) do
       ["oidc-verification", verification_token] ->
-        handle_verification_callback(conn, verification_token, code, params)
+        handle_verification_callback(conn, verification_token, code)
 
       _ ->
-        handle_authentication_callback(conn, state, code, params)
+        handle_authentication_callback(conn, state, code)
     end
   end
 
@@ -54,35 +44,32 @@ defmodule Web.OIDCController do
         handle_entra_verification_callback(conn, verification_token, params)
 
       _ ->
-        handle_error(conn, :invalid_callback_params, params)
+        handle_error(conn, :invalid_callback_params)
     end
   end
 
-  def callback(conn, params) do
+  def callback(conn) do
     conn
-    |> delete_resp_cookie(cookie_key(params["state"]))
-    |> handle_error(:invalid_callback_params, params)
+    |> Web.Cookie.OIDC.delete()
+    |> handle_error(:invalid_callback_params)
   end
 
-  defp handle_authentication_callback(conn, state, code, params) do
-    cookie_key = cookie_key(state)
-    conn = fetch_cookies(conn, encrypted: [cookie_key])
-
-    with {:ok, cookie} <- Map.fetch(conn.cookies, cookie_key),
-         conn = delete_resp_cookie(conn, cookie_key),
-         true = Plug.Crypto.secure_compare(cookie["state"], state),
-         context_type = context_type(cookie["params"]),
-         %Domain.Account{} = account <- DB.get_account_by_id_or_slug(cookie["account_id"]),
+  defp handle_authentication_callback(conn, state, code) do
+    with %Web.Cookie.OIDC{} = cookie <- Web.Cookie.OIDC.fetch(conn),
+         conn = Web.Cookie.OIDC.delete(conn),
+         true = Plug.Crypto.secure_compare(cookie.state, state),
+         context_type = context_type(cookie.params),
+         %Domain.Account{} = account <- DB.get_account_by_id_or_slug(cookie.account_id),
          provider when not is_nil(provider) <- fetch_provider(account, cookie),
          :ok <- validate_context(provider, context_type),
          {:ok, tokens} <-
-           Web.OIDC.exchange_code(provider, code, cookie["verifier"]),
+           Web.OIDC.exchange_code(provider, code, cookie.verifier),
          {:ok, claims} <- Web.OIDC.verify_token(provider, tokens["id_token"]),
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
          {:ok, identity} <- upsert_identity(account, claims, userinfo),
          :ok <- check_admin(identity, context_type),
          {:ok, session_or_token} <-
-           create_session_or_token(conn, identity, provider, cookie["params"]) do
+           create_session_or_token(conn, identity, provider, cookie.params) do
       signed_in(
         conn,
         context_type,
@@ -91,14 +78,14 @@ defmodule Web.OIDCController do
         session_or_token,
         provider,
         tokens,
-        cookie["params"]
+        cookie.params
       )
     else
-      error -> handle_error(conn, error, params)
+      error -> handle_error(conn, error)
     end
   end
 
-  defp handle_verification_callback(conn, verification_token, code, _params) do
+  defp handle_verification_callback(conn, verification_token, code) do
     # Store OIDC verification info in session for the LiveView to pick up
     conn
     |> put_session(:verification, %{
@@ -136,28 +123,28 @@ defmodule Web.OIDCController do
     opts = [additional_params: %{prompt: "select_account"}]
 
     with {:ok, uri, state, verifier} <- Web.OIDC.authorization_uri(provider, opts) do
-      cookie =
-        %{
-          "auth_provider_type" => params["auth_provider_type"],
-          "auth_provider_id" => params["auth_provider_id"],
-          "account_id" => account.id,
-          "account_slug" => account.slug,
-          "state" => state,
-          "verifier" => verifier,
-          "params" => sanitize(params)
-        }
+      cookie = %Web.Cookie.OIDC{
+        auth_provider_type: params["auth_provider_type"],
+        auth_provider_id: params["auth_provider_id"],
+        account_id: account.id,
+        account_slug: account.slug,
+        state: state,
+        verifier: verifier,
+        params: sanitize(params)
+      }
 
       conn
-      |> put_resp_cookie(cookie_key(state), cookie, @cookie_options)
+      |> Web.Cookie.OIDC.put(cookie)
       |> redirect(external: uri)
     end
   end
 
-  defp fetch_provider(
-         account,
-         %{"auth_provider_type" => type, "auth_provider_id" => id}
-       ) do
+  defp fetch_provider(account, %{"auth_provider_type" => type, "auth_provider_id" => id}) do
     DB.fetch_provider(account.id, type, id)
+  end
+
+  defp fetch_provider(account, %Web.Cookie.OIDC{} = cookie) do
+    DB.fetch_provider(account.id, cookie.auth_provider_type, cookie.auth_provider_id)
   end
 
   defp fetch_provider(_account, _params) do
@@ -320,7 +307,7 @@ defmodule Web.OIDCController do
   # Store session cookie and redirect to portal or redirect_to parameter
   defp signed_in(conn, :portal, account, _identity, session, _provider, _tokens, params) do
     conn
-    |> Web.Session.Cookie.put_account_cookie(account.id, session.id)
+    |> Web.Cookie.Session.put(account.id, %Web.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params)
   end
 
@@ -340,45 +327,44 @@ defmodule Web.OIDCController do
   defp context_type(%{"as" => "client"}), do: :client
   defp context_type(_), do: :portal
 
-  defp handle_error(conn, {:error, :not_admin}, params) do
-    cookie = conn.cookies[cookie_key(params["state"])] || %{}
-    account_slug = cookie["account_slug"] || ""
-    original_params = cookie["params"] || %{}
+  defp handle_error(conn, {:error, :not_admin}) do
+    {account_slug, original_params} = fetch_error_context(conn)
     error = "This action requires admin privileges."
     path = ~p"/#{account_slug}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)
   end
 
-  defp handle_error(conn, {:error, :actor_not_found}, params) do
-    cookie = conn.cookies[cookie_key(params["state"])] || %{}
-    account_slug = cookie["account_slug"] || ""
-    original_params = cookie["params"] || %{}
+  defp handle_error(conn, {:error, :actor_not_found}) do
+    {account_slug, original_params} = fetch_error_context(conn)
     error = "Unable to sign you in. Please contact your administrator."
     path = ~p"/#{account_slug}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)
   end
 
-  defp handle_error(conn, {:error, :email_not_verified}, params) do
-    cookie = conn.cookies[cookie_key(params["state"])] || %{}
-    account_slug = cookie["account_slug"] || ""
-    original_params = cookie["params"] || %{}
+  defp handle_error(conn, {:error, :email_not_verified}) do
+    {account_slug, original_params} = fetch_error_context(conn)
     error = "Your email address must be verified before signing in."
     path = ~p"/#{account_slug}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)
   end
 
-  defp handle_error(conn, error, params) do
+  defp handle_error(conn, error) do
     Logger.warning("OIDC sign-in error: #{inspect(error)}")
-    cookie = conn.cookies[cookie_key(params["state"])] || %{}
-    account_slug = cookie["account_slug"] || ""
-    original_params = cookie["params"] || %{}
+    {account_slug, original_params} = fetch_error_context(conn)
     error = "An unexpected error occurred while signing you in. Please try again."
     path = ~p"/#{account_slug}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)
+  end
+
+  defp fetch_error_context(conn) do
+    case Web.Cookie.OIDC.fetch(conn) do
+      %Web.Cookie.OIDC{account_slug: slug, params: params} -> {slug, params || %{}}
+      nil -> {"", %{}}
+    end
   end
 
   defp redirect_for_error(conn, error, path) do
@@ -391,8 +377,6 @@ defmodule Web.OIDCController do
   defp sanitize(params) do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
   end
-
-  defp cookie_key(state), do: @cookie_prefix <> state
 
   defmodule DB do
     import Ecto.Query

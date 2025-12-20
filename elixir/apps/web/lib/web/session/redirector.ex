@@ -46,7 +46,7 @@ defmodule Web.Session.Redirector do
     redirect_to = sanitize_redirect_to(account, params["redirect_to"])
 
     conn
-    |> Web.Auth.prepend_recent_account_id(account.id)
+    |> Web.Cookie.RecentAccounts.prepend(account.id)
     |> Phoenix.Controller.redirect(to: redirect_to)
   end
 
@@ -66,7 +66,7 @@ defmodule Web.Session.Redirector do
       ) do
     fragment = Domain.Auth.encode_fragment!(token)
 
-    client_auth_data = %{
+    client_auth_cookie = %Web.Cookie.ClientAuth{
       actor_name: actor_name,
       fragment: fragment,
       identity_provider_identifier: identifier,
@@ -76,8 +76,8 @@ defmodule Web.Session.Redirector do
     redirect_url = ~p"/#{account.slug}/sign_in/client_redirect"
 
     conn
-    |> Web.Auth.put_client_auth_data_to_cookie(client_auth_data)
-    |> Web.Auth.prepend_recent_account_id(account.id)
+    |> Web.Cookie.ClientAuth.put(client_auth_cookie)
+    |> Web.Cookie.RecentAccounts.prepend(account.id)
     |> Phoenix.Controller.put_root_layout(false)
     |> Phoenix.Controller.put_view(Web.SignInHTML)
     |> Phoenix.Controller.render("client_redirect.html",
@@ -121,7 +121,7 @@ defmodule Web.Session.Redirector do
 
   defp delete_session(conn, account_id) do
     conn
-    |> Web.Session.Cookie.delete_account_cookie(account_id)
+    |> Web.Cookie.Session.delete(account_id)
     |> Plug.Conn.configure_session(drop: true)
     |> Plug.Conn.clear_session()
   end

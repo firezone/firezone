@@ -281,7 +281,7 @@ config :web,
   api_external_url: "http://localhost:13001"
 
 config :web,
-  cookie_secure: false,
+  cookie_secure: true,
   cookie_signing_salt: "WjllcThpb2Y=",
   cookie_encryption_salt: "M0EzM0R6NEMyaw=="
 
@@ -321,7 +321,7 @@ config :api, API.Endpoint,
   pubsub_server: Domain.PubSub
 
 config :api,
-  cookie_secure: false,
+  cookie_secure: true,
   cookie_signing_salt: "WjllcThpb2Y=",
   cookie_encryption_salt: "M0EzM0R6NEMyaw=="
 

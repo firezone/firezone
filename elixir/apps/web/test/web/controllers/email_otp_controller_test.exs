@@ -5,8 +5,6 @@ defmodule Web.EmailOTPControllerTest do
   import Domain.ActorFixtures
   import Domain.AuthProviderFixtures
 
-  alias Web.EmailOTP
-
   setup do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     account = account_fixture()
@@ -15,15 +13,11 @@ defmodule Web.EmailOTPControllerTest do
     {:ok, account: account, provider: provider}
   end
 
-  defp get_cookie_state(conn, provider_id) do
-    cookie_key = "email_otp_#{provider_id}"
-
+  defp get_cookie_state(conn) do
     conn
     |> then(&Plug.Test.recycle_cookies(build_conn(), &1))
-    |> Map.put(:path_params, %{"auth_provider_id" => provider_id})
     |> Map.put(:secret_key_base, Web.Endpoint.config(:secret_key_base))
-    |> Plug.Conn.fetch_cookies(encrypted: [cookie_key])
-    |> EmailOTP.fetch_state()
+    |> Web.Cookie.EmailOTP.fetch_state()
   end
 
   describe "sign_in/2" do
@@ -85,7 +79,7 @@ defmodule Web.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Cookie should be set with email and dummy passcode_id (no oracle)
-      state = get_cookie_state(conn, provider.id)
+      state = get_cookie_state(conn)
       assert state["email"] == nonexistent_email
       assert state["one_time_passcode_id"] != nil
     end
@@ -112,7 +106,7 @@ defmodule Web.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Verify the cookie contains the email and a real passcode_id
-      state = get_cookie_state(conn, provider.id)
+      state = get_cookie_state(conn)
       assert state["email"] == actor.email
       assert state["one_time_passcode_id"] != nil
 
@@ -142,7 +136,7 @@ defmodule Web.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Cookie should be set with real passcode_id
-      state = get_cookie_state(conn, provider.id)
+      state = get_cookie_state(conn)
       assert state["email"] == actor.email
       assert state["one_time_passcode_id"] != nil
 
@@ -171,7 +165,7 @@ defmodule Web.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Cookie should still be set with dummy passcode_id (no oracle)
-      state = get_cookie_state(conn, provider.id)
+      state = get_cookie_state(conn)
       assert state["email"] == email
       assert state["one_time_passcode_id"] != nil
 
@@ -199,7 +193,7 @@ defmodule Web.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Cookie should still be set with dummy passcode_id (no oracle)
-      state = get_cookie_state(conn, provider.id)
+      state = get_cookie_state(conn)
       assert state["email"] == email
       assert state["one_time_passcode_id"] != nil
 
@@ -229,7 +223,7 @@ defmodule Web.EmailOTPControllerTest do
                ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
 
       # Cookie should still be set with dummy passcode_id (no oracle)
-      state = get_cookie_state(conn, provider.id)
+      state = get_cookie_state(conn)
       assert state["email"] == actor.email
       assert state["one_time_passcode_id"] != nil
 
@@ -274,7 +268,7 @@ defmodule Web.EmailOTPControllerTest do
       # Now try to verify with wrong code
       conn =
         conn
-        |> recycle_with_cookie(provider.id)
+        |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => "wrong1"
         })
@@ -289,15 +283,16 @@ defmodule Web.EmailOTPControllerTest do
       provider: provider
     } do
       # Set up cookie with a fake passcode_id and actor_id
+      cookie = %Web.Cookie.EmailOTP{
+        actor_id: Ecto.UUID.generate(),
+        passcode_id: Ecto.UUID.generate(),
+        email: "test@example.com"
+      }
+
       conn =
         conn
-        |> EmailOTP.put_state(
-          provider.id,
-          Ecto.UUID.generate(),
-          Ecto.UUID.generate(),
-          "test@example.com"
-        )
-        |> recycle_with_cookie(provider.id)
+        |> Web.Cookie.EmailOTP.put(cookie)
+        |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => "123456"
         })
@@ -336,7 +331,7 @@ defmodule Web.EmailOTPControllerTest do
       # Try to verify
       conn =
         conn
-        |> recycle_with_cookie(provider.id)
+        |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => code
         })
@@ -376,7 +371,7 @@ defmodule Web.EmailOTPControllerTest do
       # Try to verify
       conn =
         conn
-        |> recycle_with_cookie(provider.id)
+        |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => code
         })
@@ -416,7 +411,7 @@ defmodule Web.EmailOTPControllerTest do
       # Try to verify
       conn =
         conn
-        |> recycle_with_cookie(provider.id)
+        |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => code
         })
@@ -450,7 +445,7 @@ defmodule Web.EmailOTPControllerTest do
       # First verification should succeed
       conn =
         conn
-        |> recycle_with_cookie(provider.id)
+        |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => code
         })
@@ -459,7 +454,7 @@ defmodule Web.EmailOTPControllerTest do
       assert redirected_to(conn) =~ "/sites"
 
       # The cookie should have been deleted after successful verification
-      state = get_cookie_state(conn, provider.id)
+      state = get_cookie_state(conn)
       assert state == %{}
     end
 
@@ -488,7 +483,7 @@ defmodule Web.EmailOTPControllerTest do
       # Verify
       conn =
         conn
-        |> recycle_with_cookie(provider.id)
+        |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => code
         })
@@ -497,7 +492,7 @@ defmodule Web.EmailOTPControllerTest do
       assert redirected_to(conn) =~ "/sites"
 
       # Cookie should be cleared after successful verification
-      state = get_cookie_state(conn, provider.id)
+      state = get_cookie_state(conn)
       assert state == %{}
     end
 
@@ -529,7 +524,7 @@ defmodule Web.EmailOTPControllerTest do
       # Verify with client context
       conn =
         conn
-        |> recycle_with_cookie(provider.id)
+        |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => code,
           "as" => "client",
@@ -542,7 +537,7 @@ defmodule Web.EmailOTPControllerTest do
       assert conn.resp_body =~ "client_redirect"
 
       # Email OTP cookie should be cleared
-      state = get_cookie_state(conn, provider.id)
+      state = get_cookie_state(conn)
       assert state == %{}
     end
 
@@ -571,7 +566,7 @@ defmodule Web.EmailOTPControllerTest do
       # Verify in browser context
       conn =
         conn
-        |> recycle_with_cookie(provider.id)
+        |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => code
         })
@@ -622,7 +617,7 @@ defmodule Web.EmailOTPControllerTest do
       # Verify via GET (as if clicking link in email)
       conn =
         conn
-        |> recycle_with_cookie(provider.id)
+        |> recycle_with_cookie()
         |> get(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => code
         })
@@ -652,7 +647,7 @@ defmodule Web.EmailOTPControllerTest do
       # Verify via GET with wrong code
       conn =
         conn
-        |> recycle_with_cookie(provider.id)
+        |> recycle_with_cookie()
         |> get(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => "wrong1"
         })
@@ -662,10 +657,7 @@ defmodule Web.EmailOTPControllerTest do
     end
   end
 
-  # Helper to recycle cookies for a given provider
-  defp recycle_with_cookie(conn, provider_id) do
-    cookie_key = "email_otp_#{provider_id}"
-
+  defp recycle_with_cookie(conn) do
     # Ensure response is sent before recycling cookies
     conn =
       if conn.state == :sent do
@@ -677,7 +669,7 @@ defmodule Web.EmailOTPControllerTest do
     conn
     |> then(&Plug.Test.recycle_cookies(build_conn(), &1))
     |> Map.put(:secret_key_base, Web.Endpoint.config(:secret_key_base))
-    |> Plug.Conn.fetch_cookies(encrypted: [cookie_key])
+    |> Plug.Conn.fetch_cookies(signed: ["email_otp"])
   end
 
   # Helper to extract the OTP code from the email

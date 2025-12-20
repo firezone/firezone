@@ -85,7 +85,7 @@ defmodule Web.EmailOTPController do
 
   defp handle_verify_result(conn, {:ok, result}, params) do
     context_type = context_type(params)
-    conn = Web.EmailOTP.delete_state(conn, params["auth_provider_id"])
+    conn = Web.Cookie.EmailOTP.delete(conn)
     :ok = Domain.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, result.email})
     signed_in(conn, context_type, result.account, result.actor, result.session_or_token, params)
   end
@@ -95,11 +95,11 @@ defmodule Web.EmailOTPController do
   end
 
   defp fetch_state(conn) do
-    case Web.EmailOTP.fetch_state(conn) do
-      %{"actor_id" => actor_id, "one_time_passcode_id" => passcode_id, "email" => email} ->
+    case Web.Cookie.EmailOTP.fetch(conn) do
+      %Web.Cookie.EmailOTP{actor_id: actor_id, passcode_id: passcode_id, email: email} ->
         {:ok, actor_id, passcode_id, email}
 
-      _ ->
+      nil ->
         :error
     end
   end
@@ -124,7 +124,8 @@ defmodule Web.EmailOTPController do
         @constant_execution_time
       )
 
-    conn = Web.EmailOTP.put_state(conn, auth_provider_id, actor_id, passcode_id, email)
+    cookie = %Web.Cookie.EmailOTP{actor_id: actor_id, passcode_id: passcode_id, email: email}
+    conn = Web.Cookie.EmailOTP.put(conn, cookie)
 
     case error do
       :rate_limited ->
@@ -211,7 +212,7 @@ defmodule Web.EmailOTPController do
   # Store session cookie and redirect to portal or redirect_to parameter
   defp signed_in(conn, :portal, account, _actor, session, params) do
     conn
-    |> Web.Session.Cookie.put_account_cookie(account.id, session.id)
+    |> Web.Cookie.Session.put(account.id, %Web.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params)
   end
 

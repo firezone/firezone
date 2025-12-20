@@ -4,20 +4,26 @@ defmodule Web.SignInController do
   def client_redirect(conn, _params) do
     account = conn.assigns.account
 
-    with {:ok, client_auth_data, conn} <- Web.Auth.get_client_auth_data_from_cookie(conn) do
-      {scheme, url} =
-        Domain.Config.fetch_env!(:web, :client_handler)
-        |> format_redirect_url()
+    case Web.Cookie.ClientAuth.fetch(conn) do
+      %Web.Cookie.ClientAuth{} = cookie ->
+        {scheme, url} =
+          Domain.Config.fetch_env!(:web, :client_handler)
+          |> format_redirect_url()
 
-      query =
-        client_auth_data
-        |> Map.put_new(:account_slug, account.slug)
-        |> Map.put_new(:account_name, account.name)
-        |> URI.encode_query()
+        query =
+          %{
+            actor_name: cookie.actor_name,
+            fragment: cookie.fragment,
+            identity_provider_identifier: cookie.identity_provider_identifier,
+            state: cookie.state,
+            account_slug: account.slug,
+            account_name: account.name
+          }
+          |> URI.encode_query()
 
-      redirect(conn, external: "#{scheme}://#{url}?#{query}")
-    else
-      {:error, conn} ->
+        redirect(conn, external: "#{scheme}://#{url}?#{query}")
+
+      nil ->
         redirect(conn, to: ~p"/#{account}/sign_in/client_auth_error")
     end
   end
