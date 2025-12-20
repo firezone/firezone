@@ -73,7 +73,7 @@ client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
 crossbeam-queue = "0.3.12"
 dashmap = "6.1.0"
-derive_more = { version = "2.0.1", default-features = false }
+derive_more = { version = "2.1.0", default-features = false }
 difference = "2.0.0"
 dirs = "6.0.0"
 divan = "0.1.21"
