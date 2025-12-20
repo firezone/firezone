@@ -42,11 +42,9 @@ use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 
 use crate::ClientEvent;
-use lru::LruCache;
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
@@ -82,12 +80,6 @@ pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
     Ok(n) => n,
     Err(_) => unreachable!(),
 };
-
-/// How many gateways we at most remember that we connected to.
-///
-/// 100 has been chosen as a pretty arbitrary value.
-/// We only store [`GatewayId`]s so the memory footprint is negligible.
-const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = NonZeroUsize::new(100).expect("100 > 0");
 
 /// How many concurrent TCP DNS clients we can server _per_ sentinel DNS server IP.
 const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
@@ -138,11 +130,6 @@ pub struct ClientState {
     dns_streams_by_local_upstream_and_query_id:
         HashMap<(dns::Transport, SocketAddr, SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
-    /// Stores the gateways we recently connected to.
-    ///
-    /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
-    recently_connected_gateways: LruCache<GatewayId, ()>,
-
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
@@ -173,7 +160,6 @@ impl ClientState {
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
             is_internet_resource_active,
-            recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             buffered_dns_queries: Default::default(),
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
@@ -658,7 +644,6 @@ impl ClientState {
         };
         self.resources_gateways.insert(rid, gid);
         self.assigned_gateway_by_site.insert(site_id, gid);
-        self.recently_connected_gateways.put(gid, ());
 
         if self.peers.get(&gid).is_none() {
             self.peers
@@ -783,15 +768,6 @@ impl ClientState {
             return;
         };
         self.cleanup_connected_gateway(&disconnected_gateway);
-    }
-
-    // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
-    // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
-    fn connected_gateway_ids(&self) -> BTreeSet<GatewayId> {
-        self.recently_connected_gateways
-            .iter()
-            .map(|(g, _)| *g)
-            .collect()
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
@@ -1537,9 +1513,12 @@ impl ClientState {
         }
 
         if let Some(resource) = self.pending_flows.poll_connection_intents() {
+            #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
+            let assigned_gateways = self.assigned_gateway_by_site.values().copied().collect();
+
             return Some(ClientEvent::ConnectionIntent {
                 resource,
-                connected_gateway_ids: self.connected_gateway_ids(),
+                connected_gateway_ids: assigned_gateways,
             });
         }
 
@@ -1560,7 +1539,7 @@ impl ClientState {
 
         self.resources_gateways.clear(); // Clear Resource <> Gateway mapping (we will re-create this as new flows are authorized).
 
-        self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
+        self.assigned_gateway_by_site.clear(); // Ensure we don't have sticky gateways when we roam.
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events();
 
