@@ -583,7 +583,7 @@ pub enum ClientEvent {
     },
     ConnectionIntent {
         resource: ResourceId,
-        connected_gateway_ids: Vec<GatewayId>,
+        preferred_gateways: Vec<GatewayId>,
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {

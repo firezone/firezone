@@ -778,7 +778,7 @@ impl ClientState {
 
     // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
     // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
-    fn connected_gateway_ids(&self) -> Vec<GatewayId> {
+    fn preferred_gateways(&self) -> Vec<GatewayId> {
         self.recently_connected_gateways
             .iter()
             .map(|(g, _)| *g)
@@ -1527,7 +1527,7 @@ impl ClientState {
         if let Some(resource) = self.pending_flows.poll_connection_intents() {
             return Some(ClientEvent::ConnectionIntent {
                 resource,
-                connected_gateway_ids: self.connected_gateway_ids(),
+                preferred_gateways: self.preferred_gateways(),
             });
         }
 
