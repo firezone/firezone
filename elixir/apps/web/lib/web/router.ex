@@ -7,6 +7,7 @@ defmodule Web.Router do
     plug :protect_from_forgery
     plug :fetch_live_flash
     plug :put_root_layout, html: {Web.Layouts, :root}
+    plug :delete_legacy_cookies
   end
 
   pipeline :dev_tools do
@@ -16,6 +17,20 @@ defmodule Web.Router do
 
   defp disable_csp(conn, _opts) do
     Plug.Conn.delete_resp_header(conn, "content-security-policy")
+  end
+
+  # TODO: Remove after Feb 1, 2027 as these will have expired
+  defp delete_legacy_cookies(conn, _opts) do
+    # These were the legacy cookie options
+    cookie_opts = [
+      sign: true,
+      max_age: 365 * 24 * 60 * 60,
+      same_site: "Lax",
+      secure: true,
+      http_only: true
+    ]
+
+    Plug.Conn.delete_resp_cookie(conn, "fz_recent_account_ids", cookie_opts)
   end
 
   scope "/browser", Web do
@@ -114,7 +129,7 @@ defmodule Web.Router do
     end
 
     live_session :email_otp_verify,
-      session: {Web.EmailOTP, :fetch_state, []},
+      session: {Web.Cookie.EmailOTP, :fetch_state, []},
       on_mount: [
         Web.LiveHooks.AllowEctoSandbox,
         Web.LiveHooks.FetchAccount,

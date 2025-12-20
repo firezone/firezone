@@ -3,16 +3,15 @@ defmodule Web.Endpoint do
   use Phoenix.Endpoint, otp_app: :web
 
   # NOTE: This is only used for the LiveView session. We store per-account cookies to allow
-  # multiple accounts to be logged in simultaneously. See Web.Session.Cookie.
+  # multiple accounts to be logged in simultaneously. See Web.Cookie.Session.
   @session_cookie [
     store: :cookie,
     key: "_firezone_key",
     same_site: "Lax",
     max_age: 8 * 60 * 60,
-    encrypt: true,
+    sign: true,
     secure: {__MODULE__, :cookie_secure, []},
-    signing_salt: {__MODULE__, :cookie_signing_salt, []},
-    encryption_salt: {__MODULE__, :cookie_encryption_salt, []}
+    signing_salt: {__MODULE__, :cookie_signing_salt, []}
   ]
 
   if Application.compile_env(:domain, :sql_sandbox) do
