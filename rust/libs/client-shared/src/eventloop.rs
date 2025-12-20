@@ -24,8 +24,8 @@ use tunnel::messages::client::{
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
 use tunnel::{
-    AlreadyConnectedToSite, ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig,
-    TunnelError,
+    AlreadyAssignedGatewayToSite, ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig,
+    TunConfig, TunnelError,
 };
 
 /// In-memory cache for DNS resource records.
@@ -437,7 +437,7 @@ impl Eventloop {
                             .await
                             .context("Failed to connect phoenix-channel")?;
                     }
-                    Err(e) if e.any_is::<AlreadyConnectedToSite>() => {
+                    Err(e) if e.any_is::<AlreadyAssignedGatewayToSite>() => {
                         tracing::debug!("Failed to handle flow created: {e:#}");
                     }
                     Err(e) => {

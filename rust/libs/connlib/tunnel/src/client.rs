@@ -27,7 +27,7 @@ use crate::messages::Interface as InterfaceConfig;
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::{
-    AlreadyConnectedToSite, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer,
+    AlreadyAssignedGatewayToSite, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer,
     p2p_control,
 };
 use anyhow::{Context, ErrorExt};
@@ -623,7 +623,10 @@ impl ClientState {
         if let Some(assigned_gateway) = self.assigned_gateway_by_site.get(&site_id)
             && assigned_gateway != &gid
         {
-            anyhow::bail!(AlreadyConnectedToSite)
+            anyhow::bail!(AlreadyAssignedGatewayToSite {
+                gateway: *assigned_gateway,
+                site: site_id
+            })
         }
 
         tracing::debug!(%gid, "New flow authorized for resource");
