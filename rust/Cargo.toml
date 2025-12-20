@@ -206,7 +206,7 @@ tokio-util = "0.7.17"
 toml = "0.9"
 tracing = { version = "0.1.40" }
 tracing-appender = "0.2.3"
-tracing-core = "0.1.34"
+tracing-core = "0.1.35"
 tracing-journald = "0.3.1"
 tracing-log = "0.2.0"
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "v0.1.x" } # Contains `dbg!` but for `tracing`.
