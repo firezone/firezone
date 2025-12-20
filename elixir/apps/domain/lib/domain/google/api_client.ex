@@ -200,6 +200,9 @@ defmodule Domain.Google.APIClient do
     end
   end
 
+  # Google's API omits these keys entirely when the collection is empty
+  @optional_result_keys ~w[members organizationUnits]
+
   defp parse_page_response(body, current_path, current_query, result_key) do
     case Map.fetch(body, result_key) do
       {:ok, list} when is_list(list) ->
@@ -221,6 +224,10 @@ defmodule Domain.Google.APIClient do
         # Key exists but value is not a list - malformed response
         error = {:error, {:invalid_response, "#{result_key} is not a list", body}}
         {[error], nil}
+
+      :error when result_key in @optional_result_keys ->
+        # Empty collection - Google omits the key entirely
+        {[[]], nil}
 
       :error ->
         # Key is missing - this is an error! Google API sometimes returns 200 with missing data
