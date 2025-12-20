@@ -39,11 +39,10 @@ use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 
 use crate::ClientEvent;
-use lru::LruCache;
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
@@ -80,12 +79,6 @@ pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
     Err(_) => unreachable!(),
 };
 
-/// How many gateways we at most remember that we connected to.
-///
-/// 100 has been chosen as a pretty arbitrary value.
-/// We only store [`GatewayId`]s so the memory footprint is negligible.
-const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = NonZeroUsize::new(100).expect("100 > 0");
-
 /// How many concurrent TCP DNS clients we can server _per_ sentinel DNS server IP.
 const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
 
@@ -103,6 +96,8 @@ pub struct ClientState {
     pending_flows: PendingFlows,
     dns_resource_nat: DnsResourceNat,
     /// Tracks the resources we have been authorized for and which Gateway to use to access them.
+    ///
+    /// This state persists across `reset`s so we can re-connect to the same Gateway.
     authorized_resources: HashMap<ResourceId, GatewayId>,
     /// Tracks which gateways are in a site.
     gateways_by_site: HashMap<SiteId, HashSet<GatewayId>>,
@@ -135,11 +130,6 @@ pub struct ClientState {
     dns_streams_by_local_upstream_and_query_id:
         HashMap<(dns::Transport, SocketAddr, SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
-    /// Stores the gateways we recently connected to.
-    ///
-    /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
-    recently_connected_gateways: LruCache<GatewayId, ()>,
-
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
@@ -170,7 +160,6 @@ impl ClientState {
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
             is_internet_resource_active,
-            recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             buffered_dns_queries: Default::default(),
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
@@ -649,7 +638,6 @@ impl ClientState {
             .entry(site_id)
             .or_default()
             .insert(gid);
-        self.recently_connected_gateways.put(gid, ());
 
         if self.peers.get(&gid).is_none() {
             self.peers
@@ -776,12 +764,36 @@ impl ClientState {
         self.cleanup_connected_gateway(&disconnected_gateway);
     }
 
-    // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
-    // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
-    fn preferred_gateways(&self) -> Vec<GatewayId> {
-        self.recently_connected_gateways
-            .iter()
-            .map(|(g, _)| *g)
+    fn preferred_gateways(&self, resource: ResourceId) -> Vec<GatewayId> {
+        #[expect(clippy::disallowed_methods, reason = "We are sorting anyway")]
+        self.gateways_by_site
+            .values()
+            .flatten()
+            .copied()
+            .unique()
+            .sorted_by(|left, right| {
+                let prefer_authorized = self
+                    .authorized_resources
+                    .get(&resource)
+                    .map(|g| match g {
+                        g if g == left => Ordering::Less,
+                        g if g == right => Ordering::Greater,
+                        _ => Ordering::Equal,
+                    })
+                    .unwrap_or(Ordering::Equal);
+                let prefer_connected = match (self.peers.get(left), self.peers.get(right)) {
+                    (None, None) => Ordering::Equal,
+                    (Some(_), Some(_)) => Ordering::Equal,
+                    (None, Some(_)) => Ordering::Greater,
+                    (Some(_), None) => Ordering::Less,
+                };
+
+                let default_ordering = left.cmp(right);
+
+                prefer_authorized
+                    .then(prefer_connected)
+                    .then(default_ordering) // This makes it determinstic, even though we are using `HashSets
+            })
             .collect()
     }
 
@@ -1527,7 +1539,7 @@ impl ClientState {
         if let Some(resource) = self.pending_flows.poll_connection_intents() {
             return Some(ClientEvent::ConnectionIntent {
                 resource,
-                preferred_gateways: self.preferred_gateways(),
+                preferred_gateways: self.preferred_gateways(resource),
             });
         }
 
@@ -1545,8 +1557,6 @@ impl ClientState {
 
         self.node.reset(now); // Clear all network connections.
         self.peers.clear(); // Clear all state associated with Gateways.
-
-        self.authorized_resources.clear(); // Clear Resource <> Gateway mapping (we will re-create this as new flows are authorized).
 
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events();
@@ -1928,6 +1938,62 @@ mod tests {
         assert!(is_definitely_not_a_resource(ip("ff02::2")))
     }
 
+    #[test]
+    fn prefers_already_connected_gateways() {
+        let mut state = ClientState::for_test();
+        state.gateways_by_site.insert(
+            SiteId::from_u128(1),
+            HashSet::from([GatewayId::from_u128(10), GatewayId::from_u128(20)]),
+        );
+        state.gateways_by_site.insert(
+            SiteId::from_u128(2),
+            HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
+        );
+        state.peers.insert(peer(GatewayId::from_u128(30)), &[]);
+
+        let preferred_gateways = state.preferred_gateways(ResourceId::from_u128(100));
+
+        assert_eq!(
+            preferred_gateways,
+            vec![
+                GatewayId::from_u128(30),
+                GatewayId::from_u128(10),
+                GatewayId::from_u128(20),
+                GatewayId::from_u128(40)
+            ]
+        );
+    }
+
+    #[test]
+    fn remembers_preference_for_authorized_resource_after_reset() {
+        let mut state = ClientState::for_test();
+        state.gateways_by_site.insert(
+            SiteId::from_u128(1),
+            HashSet::from([GatewayId::from_u128(10), GatewayId::from_u128(20)]),
+        );
+        state.gateways_by_site.insert(
+            SiteId::from_u128(2),
+            HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
+        );
+        state.peers.insert(peer(GatewayId::from_u128(30)), &[]);
+        state
+            .authorized_resources
+            .insert(ResourceId::from_u128(100), GatewayId::from_u128(30));
+
+        state.reset(Instant::now(), "test");
+        let preferred_gateways = state.preferred_gateways(ResourceId::from_u128(100));
+
+        assert_eq!(
+            preferred_gateways,
+            vec![
+                GatewayId::from_u128(30),
+                GatewayId::from_u128(10),
+                GatewayId::from_u128(20),
+                GatewayId::from_u128(40)
+            ]
+        );
+    }
+
     impl ClientState {
         pub fn for_test() -> ClientState {
             ClientState::new(
@@ -1942,6 +2008,16 @@ mod tests {
 
     fn ip(addr: &str) -> IpAddr {
         addr.parse().unwrap()
+    }
+
+    fn peer(id: GatewayId) -> GatewayOnClient {
+        GatewayOnClient::new(
+            id,
+            IpConfig {
+                v4: Ipv4Addr::LOCALHOST,
+                v6: Ipv6Addr::LOCALHOST,
+            },
+        )
     }
 }
 
