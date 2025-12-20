@@ -8,35 +8,60 @@ import PlanBadge from "@/components/PlanBadge";
 
 </PlanBadge>
 
-Service accounts are actors that can be used with Firezone Clients that support
-headless mode operation. They are commonly used for situations where you want to
-manage access from a server, machine, IoT device, or other non-user machine to
-your Resources.
+Service accounts are non-user actors used with
+[headless clients](/kb/deploy/clients#headless-mode-operation) where no user is
+physically present to perform a standard identity provider authentication flow.
+They are commonly used for managing access from servers, machines, IoT devices,
+or other non-user machines to your Resources.
 
-Service accounts behave like any other actor in Firezone. They can be added to
-Groups and Policies to gain access to Resources.
+Service accounts behave like any other actor in Firezone -- they can be added to
+Groups and Policies to gain access to Resources. Unlike users, however, service
+accounts must be managed manually and are never synced from your identity
+provider.
 
-Unlike users, however, service accounts must be managed manually and are never
-synced from your identity provider.
+## Creating a service account
 
-<Alert color="warning">
-  Because service accounts authenticate to your Firezone account without user
-  interaction, their tokens have a **1-year** expiration by default. This can be
-  changed when creating the service account.
-</Alert>
+To create a service account:
 
-## Create a service account
+1. Navigate to `Actors -> Add Actor` in your Firezone admin portal
+1. Select `Service Account` as the type
+1. Set an appropriate expiration for the initial token
+1. Copy and store the token somewhere safe -- it will only be shown once
 
-To create a service account, head to `Actors -> Add Actor` and select
-`Service Account` as the type.
-
-On the next screen, set an appropriate expiration date for the token.
-
-You will then be shown a token you'll need to store somewhere safe. This token
-can then be used with Firezone Clients that support
+The token can then be used with any Firezone Client that supports
 [headless mode operation](/kb/deploy/clients#headless-mode-operation).
 
-You can add as many tokens as you like to a service account, and you can revoke
-them at any time.
+## Managing tokens
+
+Service account tokens authenticate directly to the Firezone API using
+long-lived, multi-owner tokens. A single token can be used by multiple headless
+clients simultaneously, making them ideal for fleets of machines that need the
+same access.
+
+Service account tokens are managed entirely in the Firezone admin portal and are
+**not affected** by identity provider configuration or session lifetime
+settings.
+
+<Alert color="warning">
+  Service account tokens have a default lifetime of **365 days**. Choose an
+  appropriate expiration based on your security requirements.
+</Alert>
+
+### Adding tokens
+
+You can add multiple tokens to a service account. This is useful for rotating
+tokens or providing separate tokens to different systems.
+
+To add a token:
+
+1. Navigate to `Actors` in the left sidebar of your Firezone admin portal
+1. Click the service account you wish to add a token for
+1. Click the hamburger menu (three vertical dots) in the top right corner
+1. Select `Add Token` from the dropdown menu
+
+### Revoking tokens
+
+Tokens can be revoked at any time from the service account's detail page. Click
+the trash icon next to the token you wish to revoke.
 
 <SupportOptions />

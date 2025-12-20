@@ -18,10 +18,9 @@ below for more in-depth guides for each supported provider:
 1. [OpenID Connect (OIDC)](/kb/authenticate/oidc): Authenticate to any OpenID
    Connect provider using a universal OIDC connector.
 
-It's possible to create multiple providers for the Google Workspace, Microsoft
-Entra ID, Okta, and OIDC connectors. This allows you to authenticate users
-against multiple providers at the same time, each with different Groups and
-Policies applied to them.
+It's possible to create multiple providers for the Google, Entra, Okta, and OIDC
+connectors. This allows you to authenticate users against multiple providers at
+the same time, each with different Groups and Policies applied to them.
 
 <Alert color="warning">
   Disabling the email provider can lock you out of your account in the event
@@ -44,22 +43,45 @@ Here are links to MFA setup guides for some popular identity providers:
 - [Microsoft Entra ID](https://docs.microsoft.com/en-us/azure/active-directory/authentication/howto-mfa-userstates)
 - [Okta](https://help.okta.com/en-us/content/topics/security/mfa/mfa-home.htm)
 
-## Session lifetime
+## Configuring authenticationAuthentication context
 
-Firezone uses a separate authentication session token for each component that
-authenticates to either the Admin portal and the API. See the table below for
-the session lifetimes of these tokens:
+Each authentication provider in Firezone can be configured to allow
+authenticating to the **admin portal only**, **client apps only**, or **both**.
+This can be used to enforce different authentication methods for admin versus
+client access, allowing you to use a more secure provider for admin portal
+access while using a more convenient provider for signing in from a client app
+if desired.
 
-| Component           | Auth Provider                     | Lifetime                                                                    |
-| ------------------- | --------------------------------- | --------------------------------------------------------------------------- |
-| Admin portal web UI | Email authentication              | **10 hours**                                                                |
-| Admin portal web UI | OIDC and other identity providers | Copied from the OIDC access token lifetime, up to a maximum of **10 hours** |
-| Client applications | All identity providers            | **2 weeks**                                                                 |
-| Service accounts    | N/A                               | **365 days** by default, configurable per token                             |
-| Gateways            | N/A                               | **Indefinitely**. Tokens must be explicitly revoked in the portal UI.       |
+To configure the authentication context for an authentication provider:
 
-When a session token expires or is revoked, the affected component is
-disconnected immediately and must reauthenticate to regain access to Resources.
-This includes web UI sessions for admins.
+- Navigate to `Settings -> Authentication` in your Firezone admin portal
+- Edit the provider you wish to configure
+- Set the desired authentication context
+- Save your changes
+
+<Alert color="warning">
+  Changing this setting will invalidate all existing sessions created by this
+  authentication provider. All users will be required to reauthenticate.
+</Alert>
+
+### Session lifetimes
+
+Firezone allows configuring the session lifetime for both **admin portal** and
+**client app** sessions. These are configured on a per-authentication-provider
+basis and override any session lifetime settings configured in your identity
+provider.
+
+To configure the session lifetime for an authentication provider:
+
+- Navigate to `Settings -> Authentication` in your Firezone admin portal
+- Edit the provider you wish to configure
+- Set the desired session lifetime in seconds for both the portal and client
+  sessions
+- Save your changes
+
+<Alert color="warning">
+  Changing this setting will invalidate all existing sessions created by this
+  authentication provider. All users will be required to reauthenticate.
+</Alert>
 
 <SupportOptions />
