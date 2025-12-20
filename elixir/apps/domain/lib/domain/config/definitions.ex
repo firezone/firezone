@@ -116,11 +116,6 @@ defmodule Domain.Config.Definitions do
          :instrumentation_client_logs_bucket,
          :telemetry_metrics_reporter,
          :telemetry_metrics_reporter_opts
-       ]},
-      {"Analytics",
-       [
-         :mixpanel_token,
-         :hubspot_workspace_id
        ]}
     ]
   end
@@ -732,18 +727,4 @@ defmodule Domain.Config.Definitions do
   Boolean flag to turn Internet Resources functionality on/off for all accounts.
   """
   defconfig(:feature_internet_resource_enabled, :boolean, default: false)
-
-  ##############################################
-  ## Analytics
-  ##############################################
-
-  @doc """
-  Mixpanel token to use for tracking analytics.
-  """
-  defconfig(:mixpanel_token, :string, default: nil)
-
-  @doc """
-  HubSpot account ID to use for user tracking.
-  """
-  defconfig(:hubspot_workspace_id, :string, default: nil)
 end
