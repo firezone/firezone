@@ -448,11 +448,9 @@ impl ClientState {
         {
             analytics::feature_flag_called("icmp-error-unreachable-prohibited-create-new-flow");
 
-            self.pending_flows.on_not_connected_resource(
+            self.on_not_connected_resource(
                 resource,
                 ConnectionTrigger::IcmpDestinationUnreachableProhibited,
-                &self.resources_by_id,
-                &self.gateways_by_site,
                 now,
             );
         }
@@ -536,13 +534,7 @@ impl ClientState {
             let Some(peer) =
                 peer_by_resource_mut(&self.authorized_resources, &mut self.peers, resource)
             else {
-                self.pending_flows.on_not_connected_resource(
-                    resource,
-                    packet,
-                    &self.resources_by_id,
-                    &self.gateways_by_site,
-                    now,
-                );
+                self.on_not_connected_resource(resource, packet, now);
                 return None;
             };
 
@@ -1318,16 +1310,14 @@ impl ClientState {
                 let Some(gateway) =
                     peer_by_resource_mut(&self.authorized_resources, &mut self.peers, resource)
                 else {
-                    self.pending_flows.on_not_connected_resource(
+                    self.on_not_connected_resource(
                         resource,
-                        ConnectionTrigger::DnsQueryForSite(DnsQueryForSite {
+                        DnsQueryForSite {
                             local,
                             remote,
                             transport,
                             message,
-                        }),
-                        &self.resources_by_id,
-                        &self.gateways_by_site,
+                        },
                         now,
                     );
                     return None;
@@ -1780,6 +1770,27 @@ impl ClientState {
     ) {
         self.node.update_relays(to_remove, &to_add, now);
         self.drain_node_events(); // Ensure all state changes are fully-propagated.
+    }
+
+    fn on_not_connected_resource(
+        &mut self,
+        resource: ResourceId,
+        trigger: impl Into<ConnectionTrigger>,
+        now: Instant,
+    ) {
+        self.pending_flows.on_not_connected_resource(
+            resource,
+            trigger,
+            &self.resources_by_id,
+            |s| {
+                self.gateways_by_site
+                    .get(&s)
+                    .into_iter()
+                    .flatten()
+                    .any(|g| self.peers.get(g).is_some())
+            },
+            now,
+        );
     }
 }
 
