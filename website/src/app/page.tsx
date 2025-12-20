@@ -120,7 +120,7 @@ export default function Page() {
             color="neutral-900"
             transitionColor="primary-450"
             size="lg"
-            href="/kb/authenticate/directory-sync"
+            href="/kb/directory-sync"
           >
             Set up directory sync
           </ActionLink>
