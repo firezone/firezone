@@ -1548,7 +1548,6 @@ impl ClientState {
 
         self.resources_gateways.clear(); // Clear Resource <> Gateway mapping (we will re-create this as new flows are authorized).
 
-        self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events();
 
