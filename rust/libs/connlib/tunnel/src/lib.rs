@@ -697,10 +697,6 @@ pub(crate) struct NotAllowedResource(IpAddr);
 #[error("Failed to decapsulate '{0}' packet")]
 pub(crate) struct FailedToDecapsulate(packet_kind::Kind);
 
-#[derive(Debug, thiserror::Error)]
-#[error("Already connected to site")]
-pub struct AlreadyConnectedToSite;
-
 pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
         IpAddr::V4(v4) => IPV4_TUNNEL.contains(v4),

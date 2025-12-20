@@ -26,10 +26,7 @@ use crate::dns::{DnsResourceRecord, StubResolver};
 use crate::messages::Interface as InterfaceConfig;
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
-use crate::{
-    AlreadyConnectedToSite, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer,
-    p2p_control,
-};
+use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::{Context, ErrorExt};
 use connlib_model::{
     GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
@@ -44,7 +41,7 @@ use logging::{unwrap_or_debug, unwrap_or_warn};
 use crate::ClientEvent;
 use lru::LruCache;
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
@@ -107,8 +104,8 @@ pub struct ClientState {
     dns_resource_nat: DnsResourceNat,
     /// Tracks which gateway to use for a particular Resource.
     resources_gateways: HashMap<ResourceId, GatewayId>,
-    /// The site a gateway belongs to.
-    gateways_site: HashMap<GatewayId, SiteId>,
+    /// Tracks which gateways are in a site.
+    gateways_by_site: HashMap<SiteId, HashSet<GatewayId>>,
     /// The online/offline status of a site.
     sites_status: HashMap<SiteId, ResourceStatus>,
 
@@ -168,7 +165,7 @@ impl ClientState {
             buffered_packets: Default::default(),
             node: ClientNode::new(seed, now, unix_ts),
             sites_status: Default::default(),
-            gateways_site: Default::default(),
+            gateways_by_site: Default::default(),
             stub_resolver: StubResolver::new(records),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
@@ -466,7 +463,7 @@ impl ClientState {
                 resource,
                 ConnectionTrigger::IcmpDestinationUnreachableProhibited,
                 &self.resources_by_id,
-                &self.gateways_site,
+                &self.gateways_by_site,
                 now,
             );
         }
@@ -554,7 +551,7 @@ impl ClientState {
                     resource,
                     packet,
                     &self.resources_by_id,
-                    &self.gateways_site,
+                    &self.gateways_by_site,
                     now,
                 );
                 return None;
@@ -620,19 +617,6 @@ impl ClientState {
         gateway_ice: IceCredentials,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "The iteration order doesn't matter here."
-        )]
-        if let Some(connected_gateway) = self
-            .gateways_site
-            .iter()
-            .find_map(|(existing_gateway, sid)| (sid == &site_id).then_some(existing_gateway))
-            && connected_gateway != &gid
-        {
-            anyhow::bail!(AlreadyConnectedToSite)
-        }
-
         tracing::debug!(%gid, "New flow authorized for resource");
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
@@ -661,7 +645,10 @@ impl ClientState {
             Err(e) => return Ok(Err(e)),
         };
         self.resources_gateways.insert(rid, gid);
-        self.gateways_site.insert(gid, site_id);
+        self.gateways_by_site
+            .entry(site_id)
+            .or_default()
+            .insert(gid);
         self.recently_connected_gateways.put(gid, ());
 
         if self.peers.get(&gid).is_none() {
@@ -864,7 +851,6 @@ impl ClientState {
         self.resources_gateways
             .retain(|_, g| g != disconnected_gateway);
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
-        self.gateways_site.remove(disconnected_gateway);
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -1329,7 +1315,7 @@ impl ClientState {
                             message,
                         }),
                         &self.resources_by_id,
-                        &self.gateways_site,
+                        &self.gateways_by_site,
                         now,
                     );
                     return None;
@@ -1511,9 +1497,12 @@ impl ClientState {
     }
 
     fn update_site_status_by_gateway(&mut self, gid: &GatewayId, status: ResourceStatus) {
-        // Note: we can do this because in theory we shouldn't have multiple gateways for the same site
-        // connected at the same time.
-        let Some(sid) = self.gateways_site.get(gid) else {
+        #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
+        let Some((sid, _)) = self
+            .gateways_by_site
+            .iter()
+            .find(|(_, gateways)| gateways.contains(gid))
+        else {
             tracing::warn!(%gid, "Cannot update status of unknown site");
             return;
         };
@@ -2147,9 +2136,10 @@ mod proptests {
         client_state
             .resources_gateways
             .insert(first_resource.id(), gateway);
-        client_state
-            .gateways_site
-            .insert(gateway, first_resource.sites().iter().next().unwrap().id);
+        client_state.gateways_by_site.insert(
+            first_resource.sites().iter().next().unwrap().id,
+            HashSet::from([gateway]),
+        );
 
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
 
@@ -2181,9 +2171,10 @@ mod proptests {
         client_state
             .resources_gateways
             .insert(first_resources.id(), gateway);
-        client_state
-            .gateways_site
-            .insert(gateway, first_resources.sites().iter().next().unwrap().id);
+        client_state.gateways_by_site.insert(
+            first_resources.sites().iter().next().unwrap().id,
+            HashSet::from([gateway]),
+        );
 
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
         client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Unknown);

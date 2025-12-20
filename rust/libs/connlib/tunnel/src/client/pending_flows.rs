@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     net::SocketAddr,
     time::{Duration, Instant},
 };
@@ -24,7 +24,7 @@ impl PendingFlows {
         rid: ResourceId,
         trigger: impl Into<ConnectionTrigger>,
         resources_by_id: &BTreeMap<ResourceId, Resource>,
-        gateway_sites: &HashMap<GatewayId, SiteId>,
+        gateways_by_site: &HashMap<SiteId, HashSet<GatewayId>>,
         now: Instant,
     ) {
         let trigger = trigger.into();
@@ -40,8 +40,9 @@ impl PendingFlows {
             return;
         };
 
-        #[expect(clippy::disallowed_methods, reason = "The order doesn't matter here.")]
-        let connected_to_site = gateway_sites.values().any(|s| s == &site.id);
+        let connected_to_site = gateways_by_site
+            .get(&site.id)
+            .is_some_and(|g| !g.is_empty());
         let has_pending_flows_for_site = resources_by_id
             .values()
             .filter_map(|r| r.sites().contains(site).then_some(r.id()))
@@ -251,7 +252,10 @@ mod tests {
             (rid1, ipv4_localhost_resource()),
             (rid2, ipv6_localhost_resource()),
         ]);
-        let gateway_sites = HashMap::from([(GatewayId::from_u128(1), SiteId::from_u128(1))]);
+        let gateway_sites = HashMap::from([(
+            SiteId::from_u128(1),
+            HashSet::from([GatewayId::from_u128(1)]),
+        )]);
 
         pending_flows.on_not_connected_resource(rid1, trigger(1), &resources, &gateway_sites, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid1));
