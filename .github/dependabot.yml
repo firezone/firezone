@@ -58,11 +58,10 @@ updates:
       - "/.github/actions/setup-tauri-v2"
     schedule:
       interval: weekly
-    cooldown:
-      semver-patch-days: 2
-      semver-minor-days: 7
-      semver-major-days: 14
-      default-days: 7
+    # Unfortunately the github-actions ecosystem doesn't support semver cooldowns, and because they update very frequently
+    # we need to disable cooldowns here. Otherwise some packages will just never get updated.
+    # cooldown:
+    #   default-days: 7
     open-pull-requests-limit: 100
     groups:
       security-all:
