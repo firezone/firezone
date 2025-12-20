@@ -152,10 +152,6 @@ config :domain, Domain.Telemetry,
   enabled: true,
   healthz_port: 4000
 
-config :domain, Domain.Analytics,
-  mixpanel_token: nil,
-  hubspot_workspace_id: nil
-
 config :domain, Domain.Entra.APIClient,
   client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
   client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET"),

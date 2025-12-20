@@ -12,46 +12,6 @@ Hooks.Tabs = {
   },
 };
 
-Hooks.Analytics = {
-  mounted() {
-    this.handleEvent("identify", ({ id, account_id, name, email }) => {
-      var mixpanel = window.mixpanel || null;
-      if (mixpanel) {
-        mixpanel.identify(id);
-        mixpanel.people.set({
-          $name: name,
-          $email: email,
-          account_id: account_id,
-        });
-        mixpanel.set_group("account", account_id);
-      }
-
-      var _hsq = window._hsq || null;
-      if (_hsq) {
-        _hsq.push(["identify", { id: id, email: email }]);
-      }
-    });
-
-    this.handleEvent("track_event", ({ name, properties }) => {
-      var mixpanel = window.mixpanel || null;
-      if (mixpanel) {
-        mixpanel.track(name, properties);
-      }
-
-      var _hsq = window._hsq || null;
-      if (_hsq) {
-        _hsq.push([
-          "trackCustomBehavioralEvent",
-          {
-            name: name,
-            properties: properties,
-          },
-        ]);
-      }
-    });
-  },
-};
-
 /* The phx-disable-with attribute on submit buttons only applies to liveview forms.
  * However, we need to disable the submit button for regular forms as well to prevent
  * double submissions and cases where the submit handler is slow (e.g. constant-time auth).
