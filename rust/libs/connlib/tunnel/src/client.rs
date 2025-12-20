@@ -10,6 +10,7 @@ use crate::client::dns_config::DnsConfig;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
+use bimap::BiHashMap;
 use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::DnsResource;
@@ -100,7 +101,9 @@ pub struct ClientState {
     /// Tracks which gateway to use for a particular Resource.
     resources_gateways: HashMap<ResourceId, GatewayId>,
     /// Which Gateway we were assigned for a given site.
-    assigned_gateway_by_site: HashMap<SiteId, GatewayId>,
+    ///
+    /// We only allow a single Gateway per site, hence why this is a bi-directional map.
+    assigned_gateway_by_site: BiHashMap<SiteId, GatewayId>,
     /// The online/offline status of a site.
     sites_status: HashMap<SiteId, ResourceStatus>,
 
@@ -606,7 +609,7 @@ impl ClientState {
         gateway_ice: IceCredentials,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
-        if let Some(assigned_gateway) = self.assigned_gateway_by_site.get(&site_id)
+        if let Some(assigned_gateway) = self.assigned_gateway_by_site.get_by_left(&site_id)
             && assigned_gateway != &gid
         {
             anyhow::bail!(AlreadyAssignedGatewayToSite {
@@ -1482,15 +1485,7 @@ impl ClientState {
     }
 
     fn update_site_status_by_gateway(&mut self, gid: &GatewayId, status: ResourceStatus) {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "The iteration order doesn't matter here."
-        )]
-        let Some(sid) = self
-            .assigned_gateway_by_site
-            .iter()
-            .find_map(|(s, g)| (g == gid).then_some(s))
-        else {
+        let Some(sid) = self.assigned_gateway_by_site.get_by_right(gid) else {
             tracing::warn!(%gid, "Cannot update status of unknown site");
             return;
         };
@@ -1513,8 +1508,11 @@ impl ClientState {
         }
 
         if let Some(resource) = self.pending_flows.poll_connection_intents() {
-            #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
-            let assigned_gateways = self.assigned_gateway_by_site.values().copied().collect();
+            let assigned_gateways = self
+                .assigned_gateway_by_site
+                .right_values()
+                .copied()
+                .collect();
 
             return Some(ClientEvent::ConnectionIntent {
                 resource,

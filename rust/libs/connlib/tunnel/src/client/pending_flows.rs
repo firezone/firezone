@@ -4,6 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bimap::BiHashMap;
 use connlib_model::{GatewayId, ResourceId, SiteId};
 use ip_packet::IpPacket;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
@@ -24,7 +25,7 @@ impl PendingFlows {
         rid: ResourceId,
         trigger: impl Into<ConnectionTrigger>,
         resources_by_id: &BTreeMap<ResourceId, Resource>,
-        assigned_gateway_by_site: &HashMap<SiteId, GatewayId>,
+        assigned_gateway_by_site: &BiHashMap<SiteId, GatewayId>,
         now: Instant,
     ) {
         let trigger = trigger.into();
@@ -40,7 +41,7 @@ impl PendingFlows {
             return;
         };
 
-        let has_gateway_for_site = assigned_gateway_by_site.get(&site.id).is_some();
+        let has_gateway_for_site = assigned_gateway_by_site.get_by_left(&site.id).is_some();
         let has_pending_flows_for_site = resources_by_id
             .values()
             .filter_map(|r| r.sites().contains(site).then_some(r.id()))
@@ -180,7 +181,7 @@ mod tests {
         let mut now = Instant::now();
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
-        let assigned_gateway_by_site = HashMap::default();
+        let assigned_gateway_by_site = BiHashMap::default();
 
         pending_flows.on_not_connected_resource(
             rid,
@@ -209,7 +210,7 @@ mod tests {
         let mut now = Instant::now();
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
-        let assigned_gateway_by_site = HashMap::default();
+        let assigned_gateway_by_site = BiHashMap::default();
 
         pending_flows.on_not_connected_resource(
             rid,
@@ -244,7 +245,7 @@ mod tests {
             (rid1, ipv4_localhost_resource()),
             (rid2, ipv6_localhost_resource()),
         ]);
-        let assigned_gateway_by_site = HashMap::default();
+        let assigned_gateway_by_site = BiHashMap::default();
 
         pending_flows.on_not_connected_resource(
             rid1,
@@ -293,7 +294,7 @@ mod tests {
             (rid2, ipv6_localhost_resource()),
         ]);
         let assigned_gateway_by_site =
-            HashMap::from([(SiteId::from_u128(1), GatewayId::from_u128(1))]);
+            BiHashMap::from_iter([(SiteId::from_u128(1), GatewayId::from_u128(1))]);
 
         pending_flows.on_not_connected_resource(
             rid1,
