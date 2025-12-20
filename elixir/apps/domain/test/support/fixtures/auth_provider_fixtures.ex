@@ -192,7 +192,8 @@ defmodule Domain.AuthProviderFixtures do
         :client_secret,
         :discovery_document_uri,
         :issuer,
-        :is_verified
+        :is_verified,
+        :is_default
       ])
       |> Ecto.Changeset.put_change(:id, auth_provider.id)
       |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)

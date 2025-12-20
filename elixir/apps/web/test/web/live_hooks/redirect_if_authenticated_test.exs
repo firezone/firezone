@@ -61,5 +61,39 @@ defmodule Web.LiveHooks.RedirectIfAuthenticatedTest do
 
       assert is_nil(returned_socket.redirected)
     end
+
+    test "integration: LiveView with as=client does not redirect authenticated user", %{
+      conn: conn,
+      account: account
+    } do
+      # Create an authenticated admin actor
+      actor = Domain.ActorFixtures.admin_actor_fixture(account: account)
+
+      # Authenticate and mount LiveView with as=client
+      {:ok, _view, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account.slug}?as=client&nonce=test-nonce&state=test-state")
+
+      # Should render the sign-in page, not redirect to /sites
+      assert html =~ "Sign In"
+    end
+
+    test "integration: LiveView without as=client redirects authenticated user to portal", %{
+      conn: conn,
+      account: account
+    } do
+      # Create an authenticated admin actor
+      actor = Domain.ActorFixtures.admin_actor_fixture(account: account)
+
+      # Authenticate and try to mount LiveView without as=client
+      {:error, {:redirect, %{to: redirect_path}}} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account.slug}")
+
+      # Should redirect to /sites (portal)
+      assert redirect_path == ~p"/#{account.slug}/sites"
+    end
   end
 end
