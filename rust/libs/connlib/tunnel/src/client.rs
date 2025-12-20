@@ -784,7 +784,7 @@ impl ClientState {
 
                 prefer_authorized
                     .then(prefer_connected)
-                    .then(default_ordering) // This makes it determinstic, even though we are using `HashSets
+                    .then(default_ordering) // This makes it deterministic, even though we are using `HashSets
             })
             .collect()
     }
