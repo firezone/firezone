@@ -116,10 +116,6 @@ if config_env() == :prod do
     adapter: env_var_to_config!(:erlang_cluster_adapter),
     adapter_config: env_var_to_config!(:erlang_cluster_adapter_config)
 
-  config :domain, Domain.Analytics,
-    mixpanel_token: env_var_to_config!(:mixpanel_token),
-    hubspot_workspace_id: env_var_to_config!(:hubspot_workspace_id)
-
   config :domain, :enabled_features,
     idp_sync: env_var_to_config!(:feature_idp_sync_enabled),
     sign_up: env_var_to_config!(:feature_sign_up_enabled),
