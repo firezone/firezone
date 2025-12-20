@@ -100,6 +100,10 @@ pub struct ClientState {
     /// This state persists across `reset`s so we can re-connect to the same Gateway.
     authorized_resources: HashMap<ResourceId, GatewayId>,
     /// Tracks which gateways are in a site.
+    ///
+    /// This state gets populated as we connect to various Gateways.
+    /// Gateways are bound to a single site, hence this state is never cleaned up.
+    /// An entry in this data structure does _not_ mean that we are connected to the Gateway / site.
     gateways_by_site: HashMap<SiteId, HashSet<GatewayId>>,
     /// The online/offline status of a site.
     sites_status: HashMap<SiteId, ResourceStatus>,
