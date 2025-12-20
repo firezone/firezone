@@ -778,7 +778,7 @@ impl ClientState {
 
     // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
     // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
-    fn connected_gateway_ids(&self) -> BTreeSet<GatewayId> {
+    fn connected_gateway_ids(&self) -> Vec<GatewayId> {
         self.recently_connected_gateways
             .iter()
             .map(|(g, _)| *g)
