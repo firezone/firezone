@@ -102,8 +102,8 @@ pub struct ClientState {
     /// Tracks the flows to resources that we are currently trying to establish.
     pending_flows: PendingFlows,
     dns_resource_nat: DnsResourceNat,
-    /// Tracks which gateway to use for a particular Resource.
-    resources_gateways: HashMap<ResourceId, GatewayId>,
+    /// Tracks the resources we have been authorized for and which Gateway to use to access them.
+    authorized_resources: HashMap<ResourceId, GatewayId>,
     /// Tracks which gateways are in a site.
     gateways_by_site: HashMap<SiteId, HashSet<GatewayId>>,
     /// The online/offline status of a site.
@@ -155,7 +155,7 @@ impl ClientState {
         unix_ts: Duration,
     ) -> Self {
         Self {
-            resources_gateways: Default::default(),
+            authorized_resources: Default::default(),
             active_cidr_resources: IpNetworkTable::new(),
             resources_by_id: Default::default(),
             peers: Default::default(),
@@ -277,7 +277,7 @@ impl ClientState {
                     .resolve_resource_by_ip(&packet.destination())
                     .context("IP is not associated with a DNS resource domain")?;
                 let gateway_id = self
-                    .resources_gateways
+                    .authorized_resources
                     .get(resource)
                     .context("No gateway for resource")?;
 
@@ -300,7 +300,7 @@ impl ClientState {
             self.stub_resolver
                 .resolved_resources()
                 .map(|(domain, resource, proxy_ips)| {
-                    let gateway = self.resources_gateways.get(resource);
+                    let gateway = self.authorized_resources.get(resource);
 
                     (domain, resource, proxy_ips, gateway)
                 })
@@ -338,7 +338,7 @@ impl ClientState {
     }
 
     fn is_cidr_resource_connected(&self, resource: &ResourceId) -> bool {
-        let Some(gateway_id) = self.resources_gateways.get(resource) else {
+        let Some(gateway_id) = self.authorized_resources.get(resource) else {
             return false;
         };
 
@@ -545,7 +545,7 @@ impl ClientState {
             };
 
             let Some(peer) =
-                peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+                peer_by_resource_mut(&self.authorized_resources, &mut self.peers, resource)
             else {
                 self.pending_flows.on_not_connected_resource(
                     resource,
@@ -644,7 +644,7 @@ impl ClientState {
             Ok(()) => {}
             Err(e) => return Ok(Err(e)),
         };
-        self.resources_gateways.insert(rid, gid);
+        self.authorized_resources.insert(rid, gid);
         self.gateways_by_site
             .entry(site_id)
             .or_default()
@@ -770,7 +770,7 @@ impl ClientState {
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
         self.pending_flows.remove(&resource);
-        let Some(disconnected_gateway) = self.resources_gateways.remove(&resource) else {
+        let Some(disconnected_gateway) = self.authorized_resources.remove(&resource) else {
             return;
         };
         self.cleanup_connected_gateway(&disconnected_gateway);
@@ -786,7 +786,7 @@ impl ClientState {
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
-        self.resources_gateways.get(resource).copied()
+        self.authorized_resources.get(resource).copied()
     }
 
     fn initialise_tcp_dns_client(&mut self) {
@@ -848,7 +848,7 @@ impl ClientState {
     fn cleanup_connected_gateway(&mut self, disconnected_gateway: &GatewayId) {
         self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown);
         self.peers.remove(disconnected_gateway);
-        self.resources_gateways
+        self.authorized_resources
             .retain(|_, g| g != disconnected_gateway);
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
     }
@@ -1304,7 +1304,7 @@ impl ClientState {
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
                 let Some(gateway) =
-                    peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+                    peer_by_resource_mut(&self.authorized_resources, &mut self.peers, resource)
                 else {
                     self.pending_flows.on_not_connected_resource(
                         resource,
@@ -1546,7 +1546,7 @@ impl ClientState {
         self.node.reset(now); // Clear all network connections.
         self.peers.clear(); // Clear all state associated with Gateways.
 
-        self.resources_gateways.clear(); // Clear Resource <> Gateway mapping (we will re-create this as new flows are authorized).
+        self.authorized_resources.clear(); // Clear Resource <> Gateway mapping (we will re-create this as new flows are authorized).
 
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events();
@@ -1719,7 +1719,8 @@ impl ClientState {
 
         self.pending_flows.remove(&id);
 
-        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, id) else {
+        let Some(peer) = peer_by_resource_mut(&self.authorized_resources, &mut self.peers, id)
+        else {
             return;
         };
 
@@ -1739,7 +1740,7 @@ impl ClientState {
         // We remove all empty allowed ips entry since there's no resource that corresponds to it
         peer.allowed_ips.retain(|_, r| !r.is_empty());
 
-        self.resources_gateways.remove(&id);
+        self.authorized_resources.remove(&id);
 
         // Clear DNS resource NAT state for all domains resolved for this DNS resource.
         for domain in self
@@ -2133,7 +2134,7 @@ mod proptests {
 
         let first_resource = resources_online.first().unwrap();
         client_state
-            .resources_gateways
+            .authorized_resources
             .insert(first_resource.id(), gateway);
         client_state.gateways_by_site.insert(
             first_resource.sites().iter().next().unwrap().id,
@@ -2168,7 +2169,7 @@ mod proptests {
         }
         let first_resources = resources.first().unwrap();
         client_state
-            .resources_gateways
+            .authorized_resources
             .insert(first_resources.id(), gateway);
         client_state.gateways_by_site.insert(
             first_resources.sites().iter().next().unwrap().id,
