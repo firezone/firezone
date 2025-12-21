@@ -1,0 +1,132 @@
+import Alert from "@/components/DocsAlert";
+import PlanBadge from "@/components/PlanBadge";
+import SupportOptions from "@/components/SupportOptions";
+
+<PlanBadge plans={["enterprise"]}>
+
+# Sync with Google Workspace
+
+</PlanBadge>
+
+On Enterprise plans, Firezone can automatically synchronize users, groups, and
+organizational units from your Google Workspace directory. This eliminates the
+need to manually create and manage users in Firezone. You can add multiple
+Google directories to sync from different Workspace domains.
+
+## Overview
+
+Firezone uses Google's Admin SDK to read users, groups, and organizational units
+from your Google Workspace directory. To enable this, you'll need to authorize
+Firezone's service account to access your directory using
+[domain-wide delegation](https://developers.google.com/identity/protocols/oauth2/service-account#delegatingauthority).
+
+Domain-wide delegation allows a service account to impersonate users in your
+domain and access data on their behalf. Firezone uses this to impersonate a
+Google Workspace admin and read directory information.
+
+## Setup
+
+### Step 1: Configure domain-wide delegation in Google
+
+A **Super Admin** must complete this step. After domain-wide delegation is
+configured, any Firezone admin in your account can complete the remaining steps
+below.
+
+1. Navigate to
+   [Manage Domain Wide Delegation](https://admin.google.com/ac/owl/domainwidedelegation)
+   as a Super Admin. If that link doesn't work:
+   - Sign in to the [Google Admin console](https://admin.google.com).
+   - Go to **Security → Access and data control → API controls**.
+   - Click **Manage Domain Wide Delegation**.
+1. Click **Add new**.
+1. Enter the following values:
+   - **Client ID**: `116063234931746680875`
+   - **OAuth scopes**: Paste the following scopes (comma-separated):
+
+```text
+https://www.googleapis.com/auth/admin.directory.orgunit.readonly,
+https://www.googleapis.com/auth/admin.directory.group.readonly,
+https://www.googleapis.com/auth/admin.directory.user.readonly,
+https://www.googleapis.com/auth/admin.directory.customer.readonly
+```
+
+6. Click **Authorize**.
+
+### Step 2: Start the Directory Sync setup in Firezone
+
+1. In your Firezone admin portal, go to `Settings -> Directory Sync`.
+1. Click **Add Directory** and select **Google**.
+1. Enter a name for this directory to easily identify it in the Firezone portal
+   (e.g. "Google Workspace").
+
+### Step 3: Configure the impersonation email
+
+Enter the **Impersonation Email** in the Firezone setup form. This is the email
+address of a Google Workspace admin that Firezone will impersonate when
+accessing the Admin SDK.
+
+<Alert color="info">
+  <div>
+    <p>**Why is an impersonation email required?**</p>
+    <p>
+      Google's Admin SDK API can only be accessed by users, not service accounts
+      directly. Domain-wide delegation allows Firezone's service account to
+      impersonate a user (the impersonation email) when making API calls. The
+      impersonated user must have admin privileges to read directory data.
+    </p>
+    <p>
+      See [Google's documentation on domain-wide
+      delegation](https://developers.google.com/identity/protocols/oauth2/service-account#delegatingauthority)
+      for more details.
+    </p>
+  </div>
+</Alert>
+
+The impersonation email should be:
+
+- A Google Workspace admin account (Super Admin or an admin with permissions to
+  read users, groups, and organizational units).
+- An active account that will not be deleted or suspended.
+
+### Step 4: Verify and save
+
+Click **Verify Now** to test the connection. Firezone will attempt to
+impersonate the specified admin and read your directory.
+
+If successful, you'll see a confirmation message. Click **Save** to complete the
+setup.
+
+<Alert color="success">
+  **Directory Sync is now active!**
+
+Users, groups, and organizational units from your Google Workspace will
+automatically sync to Firezone. You no longer need to manually create users in
+the Firezone portal.
+
+</Alert>
+
+## Sync timing
+
+Directory sync runs automatically every 2 hours. To trigger a sync immediately,
+click the **Sync Now** button on the directory card in `Settings -> Directory Sync`.
+
+## Troubleshooting
+
+### "Not Authorized" or "Access Denied" error
+
+This typically means domain-wide delegation is not configured correctly. Verify:
+
+1. The Client ID (`116063234931746680875`) is entered exactly as shown.
+1. All four OAuth scopes are authorized.
+1. The impersonation email has admin privileges in Google Workspace.
+1. Domain-wide delegation was configured before clicking **Verify Now**.
+
+### Impersonation email not working
+
+The impersonation email must be a Google Workspace admin account. It cannot be:
+
+- A personal Gmail account.
+- A suspended or deleted account.
+- An account without admin privileges.
+
+<SupportOptions />

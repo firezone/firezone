@@ -1,8 +1,6 @@
 import Alert from "@/components/DocsAlert";
 import PlanBadge from "@/components/PlanBadge";
 import SupportOptions from "@/components/SupportOptions";
-import Image from "next/image";
-import Link from "next/link";
 
 <PlanBadge plans={["starter", "team", "enterprise"]}>
 
@@ -10,439 +8,150 @@ import Link from "next/link";
 
 </PlanBadge>
 
-Firezone integrates with
-[Microsoft Entra ID](https://www.microsoft.com/en-us/security/business/identity-access/microsoft-entra-id)
-using a custom connector that supports both authentication and directory sync.
-Use this guide if you're looking to setup SSO with Microsoft Entra ID for your
-Firezone account and optionally sync users and groups from Microsoft Entra ID to
-Firezone.
+Firezone supports authenticating users with Microsoft Entra ID using Firezone's
+public OAuth client. You can configure multiple Entra providers — one per tenant
+— to authenticate users from different organizations.
 
 <Alert color="info">
-  Directory sync is supported for the **Enterprise** plan only.
+  Looking for directory sync? See the [Entra directory sync
+  guide](/kb/directory-sync/entra) to automatically provision users and groups
+  from Microsoft Entra ID.
 </Alert>
 
-## Overview
-
-The Firezone Microsoft Entra ID connector integrates with Microsoft's identity
-APIs to support user authentication and directory sync.
-
-On Enterprise plans, users and groups are synced every few minutes to ensure
-that your Firezone account remains up-to-date with the latest identity data from
-Entra ID. [Read more](/kb/authenticate/directory-sync) about how sync works.
-
-## Setup
-
-Setting up the Entra ID connector is similar to the process of setting up a
-universal OIDC connector. The main difference is the addition of a few extra
-read-only scopes needed to enable sync.
-
-Follow the steps below to setup the Entra ID connector.
-
-### Step 1: Start the Entra ID provider setup in Firezone
-
-In your admin portal, go to `Settings -> Identity Providers` and click
-`Add Identity Provider`. Then, select `Microsoft Entra ID` from the list of
-identity providers.
-
-You'll be shown a summary of the steps you need to complete to setup the Entra
-ID provider. Keep this page open as you'll need to refer to it in the following
-steps.
-
-### Step 2: Create a new app registration in Entra ID
-
-[Login to your Azure portal](https://portal.azure.com/), then click **App
-registrations**.
-
-<Link href="/images/kb/authenticate/entra/1-home.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/entra/1-home.png"
-    alt="App registrations"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Next, click **New registration**.
-
-<Link href="/images/kb/authenticate/entra/2-new-app.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/entra/2-new-app.png"
-    alt="New registration"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Enter **Firezone Connector** for the application name.
-
-Select **Single tenant** for the supported account types.
-
-Copy the first Redirect URI shown in the setup page from the Firezone admin
-portal and paste it into the **Redirect URI** field, ensuring **Web** is
-selected.
-
-Then, click **Register**.
-
-<Link
-  href="/images/kb/authenticate/entra/3-app-registration-information.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/3-app-registration-information.png"
-    alt="App registration info"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-On the next page, click **Authentication** in the left sidebar.
-
-<Link href="/images/kb/authenticate/entra/4-app-info.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/entra/4-app-info.png"
-    alt="App info"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-In the **Web** section, click **Add URI**.
-
-<Link
-  href="/images/kb/authenticate/entra/5-authentication-add-uri.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/5-authentication-add-uri.png"
-    alt="Auth add URI"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Enter the second Redirect URI shown in the setup page from the Firezone admin
-portal and click **Save**.
-
-**Important**: Ensure both Redirect URI fields are populated correctly.
-
-<Link
-  href="/images/kb/authenticate/entra/6-redirect-uri-and-save.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/6-redirect-uri-and-save.png"
-    alt="redirect URI and save"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-### Step 3: Create client credentials
-
-Now you'll need to add OAuth credentials to allow Firezone to connect to your
-Entra ID account.
-
-Back on the **Firezone Connector** app registration page, click **Certificates &
-secrets** in the left sidebar.
-
-<Link
-  href="/images/kb/authenticate/entra/7-certificates-and-secrets.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/7-certificates-and-secrets.png"
-    alt="certs and secrets"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Click **New client secret**.
-
-<Link
-  href="/images/kb/authenticate/entra/8-new-client-secret-button.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/8-new-client-secret-button.png"
-    alt="new client secret button"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Enter **Firezone Connector** for the description, then select an appropriate
-lifetime for the secret and click **Add**.
-
-<Link
-  href="/images/kb/authenticate/entra/9-name-and-duration-of-client-secret.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/9-name-and-duration-of-client-secret.png"
-    alt="name and duration of client secret"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-On the next screen, copy the value of the client secret and save it in a safe
-place.
-
-Enter this value into the `Client secret` field in the setup page in the
-Firezone admin portal.
-
-<Link
-  href="/images/kb/authenticate/entra/10-copy-client-secret.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/10-copy-client-secret.png"
-    alt="copy client secret"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-### Step 4: Add permissions
-
-Next, you'll need to add permissions to the app registration to allow Firezone
-to read user and group data from your Entra ID account.
-
-Go to **API permissions** in the left sidebar, then click **Add a permission**.
-
-<Link
-  href="/images/kb/authenticate/entra/11-add-permission-button.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/11-add-permission-button.png"
-    alt="add permission button"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Select **Microsoft Graph**.
-
-<Link href="/images/kb/authenticate/entra/12-select-api.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/entra/12-select-api.png"
-    alt="select API"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Select **Delegated permissions**.
-
-<Link
-  href="/images/kb/authenticate/entra/13-permission-type.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/13-permission-type.png"
-    alt="permission type"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-In the next screen, ensure the following OpenId permissions are selected:
-
-- `email`
-- `offline_access`
-- `openid`
-- `profile`
-
-<Link
-  href="/images/kb/authenticate/entra/14-openid-permissions.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/14-openid-permissions.png"
-    alt="openid permissions"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-<PlanBadge plans={["enterprise"]}>
-
-#### Directory sync permissions
-
-</PlanBadge>
-
-For Enterprise plans, make sure the following additional Group and User
-permissions are selected:
-
-- `Group.Read.All`
-- `GroupMember.Read.All`
-- `User.Read`
-- `User.Read.All`
-
-<Link
-  href="/images/kb/authenticate/entra/15-group-permissions.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/15-group-permissions.png"
-    alt="group permissions"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-<Link
-  href="/images/kb/authenticate/entra/16-user-permissions.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/16-user-permissions.png"
-    alt="user permissions"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Click **Add permissions** to save your changes.
-
-On the following screen, click **Grant admin consent for
-`[your organization name]`**.
-
-<Link
-  href="/images/kb/authenticate/entra/17-grant-admin-consent.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/17-grant-admin-consent.png"
-    alt="grant admin consent"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Click **Yes** to confirm.
-
-<Link
-  href="/images/kb/authenticate/entra/18-confirm-admin-consent.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/18-confirm-admin-consent.png"
-    alt="confirm admin consent"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Verify that all of the scopes have the status **Granted for
-`[your organization name]`**.
-
-<Link
-  href="/images/kb/authenticate/entra/19-verify-admin-consent.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/19-verify-admin-consent.png"
-    alt="verify admin consent"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-### Step 5 (optional): Configure branding and info
-
-You can optionally configure branding and info for the Entra ID connector in the
-**Branding & properties** section of the app registration.
-
-Use this link to download an appropriate logo to use for the app registration:
-
-[Download the Firezone logo](/images/kb/authenticate/entra/firezone-logo.png)
-
-<Link
-  href="/images/kb/authenticate/entra/20-optional-branding-and-info.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/20-optional-branding-and-info.png"
-    alt="optional branding and info"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-### Step 6: Get the remaining Entra ID provider details
-
-Finally, you'll need to get the `Discovery Document URI` and `Client ID` from
-the app registration to enter into the Firezone admin portal.
-
-In the **Firezone Connector** app registration, click the **Endpoints** tab.
-
-<Link href="/images/kb/authenticate/entra/21-endpoints.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/entra/21-endpoints.png"
-    alt="endpoints"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Copy the `OpenID Connect metadata document` URL and enter this into the
-`Discovery Document URI` field in the setup page in the Firezone admin portal.
-
-<Link
-  href="/images/kb/authenticate/entra/22-endpoint-details-oidc-config.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/entra/22-endpoint-details-oidc-config.png"
-    alt="endpoint details OIDC config"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Finally, back on the app registration page, copy the `Application (client) ID`
-value and enter this into the `Client ID` field in the setup page in the
-Firezone admin portal.
-
-<Link href="/images/kb/authenticate/entra/23-client-id.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/entra/23-client-id.png"
-    alt="client id"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-**Important**: Make sure to save the `Client ID` and `Client secret` fields in a
-safe place as they won't be shown again.
-
-### Step 7: Complete the Entra ID provider setup in Firezone
-
-Go back to the setup page in the Firezone admin portal, ensure all fields are
-filled out, and click **Connect Identity Provider**.
+## Enable Entra authentication
+
+To enable Entra authentication:
+
+1. Go to `Settings -> Authentication` in your admin portal.
+1. Click **Add Provider** and select **Entra**.
+1. Name the provider — this is shown to users on the sign-in page.
+1. Select the authentication context:
+   - **Client Applications and Admin Portal**: Users can sign in to both the
+     Firezone client applications and admin portal using Entra SSO.
+   - **Client Applications Only**: Users can sign in to the Firezone client
+     applications using Entra SSO but **not** the admin portal.
+   - **Admin Portal Only**: Users can sign in to the admin portal using Entra
+     SSO but **not** the Firezone client applications.
+1. **Portal session lifetime**: (optional) Set a custom session lifetime for
+   users signing in to the admin portal with Entra SSO. Leave blank to use the
+   default session lifetime.
+1. **Client session lifetime**: (optional) Set a custom session lifetime for
+   users signing in to the Firezone client applications with Entra SSO. Leave
+   blank to use the default session lifetime.
+1. Click **Verify Now** to complete an authentication flow. This captures your
+   Entra tenant ID — verify this is the **correct tenant** before proceeding.
+1. Click **Save**.
+
+Users will now see this provider as an option on the Firezone sign-in page.
+
+## How it works
+
+Firezone uses a public OAuth client to authenticate users with Microsoft Entra
+ID. When a user signs in:
+
+1. They're redirected to Microsoft's sign-in page.
+1. After authenticating with Microsoft, they're redirected back to Firezone.
+1. Firezone matches the user using the `iss` and `sub` claims from Entra. For
+   users provisioned via [directory sync](/kb/directory-sync/entra), this
+   identity already exists. For manually created users, Firezone matches by
+   email on first sign-in and saves the Entra identity for subsequent sign-ins.
+
+No app registration or client secret setup is required on your end.
+
+### Data accessed
+
+Firezone requests the following scopes from Microsoft:
+
+- `openid` — Required for authentication
+- `email` — Used to match users on first sign-in
+- `profile` — Used for the user's display name
+- `offline_access` — Used to maintain the session
+
+Firezone does not access your email, calendar, files, or any other Microsoft 365
+data.
+
+## Multiple tenants
+
+You can configure multiple Entra providers to authenticate users from different
+Microsoft tenants. Each provider is tied to a single tenant ID.
+
+To add another tenant:
+
+1. Go to `Settings -> Authentication` in your admin portal.
+1. Click **Add Provider** and select **Microsoft Entra**.
+1. Enter the new tenant's **Entra Tenant ID**.
+1. Complete the setup as described above.
+
+Users from each tenant will see a separate sign-in option on the Firezone
+sign-in page.
+
+## Restricting access to specific users or groups
+
+Entra admins can control which users and groups are allowed to sign into
+Firezone by configuring user assignment on the Firezone Enterprise Application
+in your tenant.
+
+To restrict access:
+
+1. Sign in to the [Azure portal](https://portal.azure.com).
+1. Go to **Microsoft Entra ID → Enterprise applications**.
+1. Search for and select the **Firezone** application.
+1. Go to **Users and groups**.
+1. Click **Add user/group** to assign specific users or groups.
+1. Go to **Properties** and set **Assignment required?** to **Yes**.
+
+With assignment required enabled, only users and groups explicitly assigned to
+the Firezone application will be able to sign in.
+
+<Alert color="info">
+  On Enterprise plans, these assignments also apply to [directory
+  sync](/kb/directory-sync/entra) when the **Assigned groups only** option is
+  selected for the Entra directory. Only users and groups assigned to the
+  Firezone application will be synced.
+</Alert>
 
 <Alert color="warning">
-
-A Firezone Enterprise account using the Entra provider will enable directory
-sync. All users and groups will be synced by default.
-
+  If you enable **Assignment required** without assigning any users or groups,
+  all users in that tenant will be blocked from signing into Firezone.
 </Alert>
 
-If you get successfully redirected back to your Firezone admin portal, you're
-done! Your Entra ID provider is now successfully configured. If directory sync
-is enabled, the first sync will occur within about 10 minutes. After that, users
-will be able to authenticate to Firezone using their Entra ID accounts.
+## Provisioning users
 
-<Alert color="info">
+Users **must** exist in Firezone before they can sign in with Entra. You can:
 
-Synced users will be assigned the `User` role by default, allowing them access
-to sign in from the Firezone Client only. If you need to grant access to the
-admin portal, you need to manually promote the user to the `Admin` role by
-visiting `Actors -> <actor name> -> Edit User` and updating their role.
+- [Create users manually](/kb/deploy/users) in the admin portal or via the REST
+  API
+- Enable [Entra directory sync](/kb/directory-sync/entra) (Enterprise plans) to
+  automatically provision users and groups from Microsoft Entra ID
 
-</Alert>
+## Troubleshooting
+
+### User not found
+
+If a user sees a "user not found" or similar error when signing in, it means no
+matching user exists in Firezone. The user must be
+[created manually](/kb/deploy/users) or provisioned via
+[directory sync](/kb/directory-sync/entra) before they can sign in.
+
+### Access denied by Entra admin
+
+If a user sees "AADSTS50105" or "You cannot access this application", it means
+the Entra admin has enabled user assignment and the user is not assigned to the
+Firezone application. See
+[Restricting access](#restricting-access-to-specific-users-or-groups) above.
+
+### Wrong tenant
+
+If a user authenticates with a Microsoft account from a different tenant than
+the one configured, they'll see an error. Ensure the user is signing in with an
+account from the correct tenant, or add an additional Entra provider for their
+tenant.
+
+### Revoking access
+
+Users can revoke Firezone's access to their Microsoft account from their
+[Microsoft account security settings](https://account.microsoft.com/privacy/app-access).
+Revoking access does not delete the user from Firezone or end their active
+sessions, but they will need to re-authorize on their next sign-in.
 
 <SupportOptions />
