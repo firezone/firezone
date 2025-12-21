@@ -1,0 +1,142 @@
+import Alert from "@/components/DocsAlert";
+import PlanBadge from "@/components/PlanBadge";
+import SupportOptions from "@/components/SupportOptions";
+
+<PlanBadge plans={["enterprise"]}>
+
+# Sync with Microsoft Entra ID
+
+</PlanBadge>
+
+On Enterprise plans, Firezone can automatically synchronize users and groups
+from your Microsoft Entra ID directory. This eliminates the need to manually
+create and manage users in Firezone. You can add multiple Entra directories to
+sync from different tenants.
+
+## Overview
+
+Firezone uses Microsoft Graph API to read users and groups from your Entra
+directory. When you complete the setup flow, you'll authorize Firezone to access
+your directory with read-only permissions.
+
+<Alert color="info">
+  **Prerequisite:** If you plan to use the **Assigned groups only** sync mode,
+  you must first complete [Entra authentication setup](/kb/authenticate/entra).
+  This creates the Firezone Enterprise Application in your tenant that you'll
+  assign groups to.
+</Alert>
+
+## Setup
+
+### Step 1: Start the Directory Sync setup in Firezone
+
+1. In your Firezone admin portal, go to `Settings -> Directory Sync`.
+1. Click **Add Directory** and select **Microsoft Entra ID**.
+1. Enter a name for this directory to easily identify it in the Firezone portal
+   (e.g. "Entra ID").
+
+### Step 2: Choose a sync mode
+
+Select how you want Firezone to sync groups from your directory:
+
+#### Assigned groups only (recommended)
+
+Only groups assigned to the **Firezone Authentication** Enterprise Application
+in your Entra tenant will be synced. This gives you fine-grained control over
+which groups appear in Firezone.
+
+<Alert color="warning">
+  This option requires **Entra ID P1/P2** or higher. It will not work with Entra
+  ID Free.
+</Alert>
+
+To assign groups to the Firezone application:
+
+1. Sign in to the [Azure portal](https://portal.azure.com).
+1. Go to **Microsoft Entra ID → Enterprise applications**.
+1. Search for **Firezone Authentication** and select it.
+1. Go to **Users and groups**.
+1. Click **Add user/group** to assign specific groups.
+
+<Alert color="warning">
+  Make sure you select the **Firezone Authentication** application and _not_ the
+  **Firezone Directory Sync** application. Groups must be assigned to the
+  Authentication application for this sync mode to work.
+</Alert>
+
+Only users who are members of the assigned groups will be synced to Firezone.
+
+#### All groups
+
+All groups from your Entra directory will be synced to Firezone. Use this option
+if:
+
+- You're using **Entra ID Free** (which doesn't support app assignments for
+  groups).
+- You want to sync all groups without managing assignments.
+
+<Alert color="info">
+  With **All groups**, every group in your directory will appear in Firezone.
+  For large directories, consider using **Assigned groups only** to limit which
+  groups are synced.
+</Alert>
+
+### Step 3: Verify and save
+
+Click **Verify Now** to authorize Firezone to access your Entra directory.
+You'll be redirected to Microsoft to sign in and grant permissions.
+
+<Alert color="warning">
+  Verify you're signing into the **correct tenant** before granting permissions.
+  The tenant ID will be captured during this step.
+</Alert>
+
+If successful, you'll see a confirmation message. Click **Save** to complete the
+setup.
+
+<Alert color="success">
+  **Directory Sync is now active!**
+
+Users and groups from your Microsoft Entra ID directory will automatically sync
+to Firezone. You no longer need to manually create users in the Firezone portal.
+
+</Alert>
+
+## Sync timing
+
+Directory sync runs automatically every 2 hours. To trigger a sync immediately,
+click the **Sync Now** button on the directory card in
+`Settings -> Directory Sync`.
+
+## Troubleshooting
+
+### "Unauthorized" or "Access Denied" error
+
+This typically means the permissions were not granted correctly during setup.
+Try removing the directory and adding it again, ensuring you grant all requested
+permissions during the authorization flow.
+
+### Groups not syncing (Assigned groups only)
+
+If you're using **Assigned groups only** and groups aren't appearing:
+
+1. Verify you have **Entra ID P1/P2** or higher.
+1. Check that the groups are assigned to the **Firezone Authentication**
+   Enterprise Application in the Azure portal.
+
+### Users not syncing
+
+Users are synced based on their group membership. If a user isn't syncing:
+
+1. Verify the user is a member of a group that's being synced.
+1. For **Assigned groups only**, ensure the user's group is assigned to the
+   Firezone application.
+1. Wait for the next sync cycle or click **Sync Now**.
+
+### Wrong tenant
+
+If users or groups from the wrong tenant are syncing, remove the directory and
+add it again. During the **Verify Now** step, ensure you're signing into the
+correct Microsoft account and tenant.
+
+<SupportOptions />

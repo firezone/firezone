@@ -8,12 +8,17 @@ import SupportOptions from "@/components/SupportOptions";
 
 </PlanBadge>
 
-Firezone supports directory sync from Google Workspace, Microsoft Entra ID, and
-Okta. To enable directory sync for any of those identity providers please follow
-the specific guide for [Google Workspace](/kb/directory-sync/google),
-[Microsoft Entra](/kb/directory-sync/entra), or [Okta](/kb/directory-sync/okta).
-Once the sync is activated, users, groups, and organizational units will be
-synced from your identity provider every few minutes.
+On Enterprise plans, Firezone supports directory sync from Google Workspace,
+Microsoft Entra ID, and Okta. To enable directory sync, follow the guide for
+your identity provider:
+
+- [Sync with Google Workspace](/kb/directory-sync/google)
+- [Sync with Microsoft Entra ID](/kb/directory-sync/entra)
+- [Sync with Okta](/kb/directory-sync/okta)
+
+Once activated, users, groups, and organizational units will sync automatically
+every 2 hours. You can trigger a manual sync at any time by clicking **Sync
+Now** on the directory card in `Settings -> Directory Sync`.
 
 ## Role mapping
 
@@ -40,8 +45,8 @@ delete the associated identity the user signs in with, clearing all active
 Client and admin portal web sessions for that identity. The user will be
 immediately **signed out of all Client and admin portal sessions**.
 
-This ensures terminated employees will have all Firezone access revoked within a
-few minutes of deleting or suspending them in your identity provider.
+This ensures terminated employees will have all Firezone access revoked upon the
+next sync after deleting or suspending them in your identity provider.
 
 ### Deleting a group or organizational unit
 

@@ -53,8 +53,14 @@ export default function KbSidebar() {
           </SidebarCollapse>
           <SidebarCollapse prefix="/kb/directory-sync" label="Directory Sync">
             <SidebarItem href="/kb/directory-sync">Overview</SidebarItem>
+            <SidebarItem href="/kb/directory-sync/google">
+              Sync with Google
+            </SidebarItem>
+            <SidebarItem href="/kb/directory-sync/entra">
+              Sync with Entra ID
+            </SidebarItem>
             <SidebarItem href="/kb/directory-sync/okta">
-              Directory sync - Okta
+              Sync with Okta
             </SidebarItem>
           </SidebarCollapse>
           <SidebarCollapse prefix={"/kb/automate"} label="Automate">

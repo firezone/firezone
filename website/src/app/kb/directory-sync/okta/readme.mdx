@@ -6,35 +6,28 @@ import Link from "next/link";
 
 <PlanBadge plans={["enterprise"]}>
 
-# Directory Sync - Okta
+# Sync with Okta
 
 </PlanBadge>
 
-This guide will walk you through setting up Firezone Directory Sync for Okta to
-automatically synchronize users and groups from your Okta tenant.
+On Enterprise plans, Firezone can automatically synchronize users and groups
+from your Okta tenant. This eliminates the need to manually create and manage
+users in Firezone. You can add multiple Okta directories to sync from different
+Okta organizations.
 
 ## Overview
 
-Firezone Directory Sync for Okta allows you to automatically synchronize users
-and groups from your Okta tenant into Firezone. This eliminates the need to
-manually create and manage users in Firezone. Users and groups assigned to your
-Okta authentication app will be automatically synced.
+Users and groups assigned to your Okta authentication app will be automatically
+synced to Firezone.
 
 To enable directory sync, you'll create an API service app in Okta that allows
 Firezone to connect to the Okta APIs with read-only access to users, groups, and
 applications.
 
 <Alert color="info">
-
-**Prerequisite:**
-
-<span class="ml-4">
-  Before proceeding with this guide, you must have completed [Okta
-  authentication setup](/kb/authenticate/okta) in Firezone.
-  <br />
-  Directory Sync requires an existing Okta authentication provider to function.
-</span>
-
+  **Prerequisite:** Before proceeding, you must have completed [Okta
+  authentication setup](/kb/authenticate/okta). Directory sync requires an
+  existing Okta authentication provider to function.
 </Alert>
 
 ## Setup
@@ -324,5 +317,33 @@ sync to Firezone. You no longer need to manually create users in the Firezone
 portal.
 
 </Alert>
+
+## Sync timing
+
+Directory sync runs automatically every 2 hours. To trigger a sync immediately,
+click the **Sync Now** button on the directory card in `Settings -> Directory Sync`.
+
+## Troubleshooting
+
+### "Unauthorized" or "Forbidden" error
+
+This typically means the API service app is not configured correctly. Verify:
+
+1. The custom role has all three required permissions (view users, groups, and applications).
+1. The resource set includes the Firezone OIDC app, All Users, and All Groups.
+1. The API service app has the custom role assigned with the correct resource set.
+1. All three API scopes are granted (`okta.apps.read`, `okta.groups.read`, `okta.users.read`).
+
+### Public key not working
+
+Ensure the public key from Firezone was pasted correctly into the Okta API service app. The key must be added before clicking **Verify Now** in Firezone.
+
+### Users or groups not syncing
+
+Only users and groups assigned to your Okta authentication app will sync. To add more users or groups:
+
+1. In Okta, go to **Applications → Applications**.
+1. Select your **Firezone** OIDC app.
+1. Go to the **Assignments** tab and add the users or groups you want to sync.
 
 <SupportOptions />
