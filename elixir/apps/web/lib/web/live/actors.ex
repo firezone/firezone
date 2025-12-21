@@ -75,6 +75,7 @@ defmodule Web.Actors do
 
     # Load identities and tokens/sessions based on actor type
     identities = DB.get_identities_for_actor(actor.id, socket.assigns.subject)
+    groups = DB.get_groups_for_actor(actor.id, socket.assigns.subject)
 
     # Load tokens and sessions based on actor type
     {tokens, sessions} =
@@ -88,12 +89,15 @@ defmodule Web.Actors do
 
     socket = handle_live_tables_params(socket, params, uri)
 
+    default_tab = if actor.type == :service_account, do: "tokens", else: "identities"
+
     socket =
       socket
       |> assign(
         actor: actor,
-        active_tab: "identities",
+        active_tab: default_tab,
         identities: identities,
+        groups: groups,
         tokens: tokens,
         sessions: sessions
       )
@@ -877,6 +881,13 @@ defmodule Web.Actors do
                     >
                       <.icon name="hero-pencil" class="w-4 h-4" /> Edit
                     </.link>
+                    <.link
+                      :if={@actor.type == :service_account}
+                      navigate={~p"/#{@account}/actors/#{@actor.id}/add_token?#{@query_params}"}
+                      class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
+                    >
+                      <.icon name="hero-key" class="w-4 h-4" /> Add Token
+                    </.link>
                     <button
                       :if={@actor.type in [:account_user, :account_admin_user] and @actor.email}
                       type="button"
@@ -920,9 +931,9 @@ defmodule Web.Actors do
             </div>
           </div>
           <!-- Tabs -->
-          <%= if @actor.type != :service_account do %>
-            <div class="border-b border-neutral-200">
-              <nav class="-mb-px flex space-x-8">
+          <div class="border-b border-neutral-200">
+            <nav class="-mb-px flex space-x-8">
+              <%= if @actor.type != :service_account do %>
                 <button
                   type="button"
                   phx-click="change_tab"
@@ -968,9 +979,40 @@ defmodule Web.Actors do
                 >
                   <.icon name="hero-computer-desktop" class="w-5 h-5" /> Portal Sessions
                 </button>
-              </nav>
-            </div>
-          <% end %>
+              <% else %>
+                <button
+                  type="button"
+                  phx-click="change_tab"
+                  phx-value-tab="tokens"
+                  class={[
+                    "py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2",
+                    if(@active_tab == "tokens",
+                      do: "border-accent-500 text-accent-600",
+                      else:
+                        "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
+                    )
+                  ]}
+                >
+                  <.icon name="hero-key" class="w-5 h-5" /> Tokens
+                </button>
+              <% end %>
+              <button
+                type="button"
+                phx-click="change_tab"
+                phx-value-tab="groups"
+                class={[
+                  "py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2",
+                  if(@active_tab == "groups",
+                    do: "border-accent-500 text-accent-600",
+                    else:
+                      "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
+                  )
+                ]}
+              >
+                <.icon name="hero-user-group" class="w-5 h-5" /> Groups
+              </button>
+            </nav>
+          </div>
           <!-- Identities Tab -->
           <%= if @actor.type != :service_account and @active_tab == "identities" do %>
             <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
@@ -1167,72 +1209,63 @@ defmodule Web.Actors do
             </div>
           <% end %>
           <!-- Tokens Tab (Service Accounts only) -->
-          <%= if @actor.type == :service_account do %>
-            <div>
-              <div class="flex justify-between items-center mb-4">
-                <h3 class="text-sm font-semibold text-neutral-900">Tokens</h3>
-                <.add_button patch={~p"/#{@account}/actors/#{@actor.id}/add_token?#{@query_params}"}>
-                  Add Token
-                </.add_button>
-              </div>
-
-              <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
-                <%= if @tokens == [] do %>
-                  <div class="text-center text-neutral-500 p-8">
-                    No tokens to display.
-                  </div>
-                <% else %>
-                  <div class="divide-y divide-neutral-200">
-                    <div :for={token <- @tokens} class="p-4 hover:bg-neutral-50">
-                      <div class="flex items-center gap-4">
-                        <.ping_icon
-                          color={if token.online?, do: "success", else: "danger"}
-                          title={if token.online?, do: "Online", else: "Offline"}
-                        />
-                        <.icon
-                          name={client_os_icon_name(token.last_seen_user_agent)}
-                          class="w-6 h-6 flex-shrink-0"
-                        />
-                        <div class="flex-1 grid grid-cols-3 gap-x-4 text-sm">
-                          <div>
-                            <span class="text-xs uppercase text-neutral-500">Last used</span>
-                            <div class="text-neutral-900">
-                              <.relative_datetime datetime={token.last_seen_at} />
-                            </div>
-                          </div>
-                          <div>
-                            <span class="text-xs uppercase text-neutral-500">Location</span>
-                            <div class="text-neutral-900">
-                              <%= if token_location(token) do %>
-                                <span class="truncate" title={token_location(token)}>
-                                  {token_location(token)}
-                                </span>
-                              <% else %>
-                                -
-                              <% end %>
-                            </div>
-                          </div>
-                          <div>
-                            <span class="text-xs uppercase text-neutral-500">Expires</span>
-                            <div class="text-neutral-900">
-                              <.relative_datetime datetime={token.expires_at} />
-                            </div>
+          <%= if @actor.type == :service_account and @active_tab == "tokens" do %>
+            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
+              <%= if @tokens == [] do %>
+                <div class="text-center text-neutral-500 p-8">
+                  No tokens to display.
+                </div>
+              <% else %>
+                <div class="divide-y divide-neutral-200">
+                  <div :for={token <- @tokens} class="p-4 hover:bg-neutral-50">
+                    <div class="flex items-center gap-4">
+                      <.ping_icon
+                        color={if token.online?, do: "success", else: "danger"}
+                        title={if token.online?, do: "Online", else: "Offline"}
+                      />
+                      <.icon
+                        name={client_os_icon_name(token.last_seen_user_agent)}
+                        class="w-6 h-6 flex-shrink-0"
+                      />
+                      <div class="flex-1 grid grid-cols-3 gap-x-4 text-sm">
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Last used</span>
+                          <div class="text-neutral-900">
+                            <.relative_datetime datetime={token.last_seen_at} />
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          phx-click="delete_token"
-                          phx-value-id={token.id}
-                          class="text-red-600 hover:text-red-800"
-                          data-confirm="Are you sure you want to delete this token?"
-                        >
-                          <.icon name="hero-trash" class="w-5 h-5" />
-                        </button>
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Location</span>
+                          <div class="text-neutral-900">
+                            <%= if token_location(token) do %>
+                              <span class="truncate" title={token_location(token)}>
+                                {token_location(token)}
+                              </span>
+                            <% else %>
+                              -
+                            <% end %>
+                          </div>
+                        </div>
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Expires</span>
+                          <div class="text-neutral-900">
+                            <.relative_datetime datetime={token.expires_at} />
+                          </div>
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        phx-click="delete_token"
+                        phx-value-id={token.id}
+                        class="text-red-600 hover:text-red-800"
+                        data-confirm="Are you sure you want to delete this token?"
+                      >
+                        <.icon name="hero-trash" class="w-5 h-5" />
+                      </button>
                     </div>
                   </div>
-                <% end %>
-              </div>
+                </div>
+              <% end %>
             </div>
           <% end %>
           <!-- Portal Sessions Tab (Users only) -->
@@ -1291,6 +1324,53 @@ defmodule Web.Actors do
                       </button>
                     </div>
                   </div>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+          <!-- Groups Tab -->
+          <%= if @active_tab == "groups" do %>
+            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
+              <%= if @groups == [] do %>
+                <div class="text-center text-neutral-500 p-8">No groups to display.</div>
+              <% else %>
+                <div class="divide-y divide-neutral-200">
+                  <%= for {section, section_groups} <- groups_by_section(@groups) do %>
+                    <div class="bg-neutral-50 px-4 py-2 border-b border-neutral-200">
+                      <span class="text-xs font-semibold text-neutral-600 uppercase">
+                        {section}
+                      </span>
+                    </div>
+                    <.link
+                      :for={group <- section_groups}
+                      navigate={
+                        ~p"/#{@account}/groups/#{group.id}?return_to=#{~p"/#{@account}/actors/#{@actor.id}"}"
+                      }
+                      class="block p-4 hover:bg-neutral-50"
+                    >
+                      <div class="flex items-center gap-3">
+                        <.provider_icon
+                          type={provider_type_from_group(group)}
+                          class="w-5 h-5 flex-shrink-0"
+                        />
+                        <div class="flex-1 min-w-0">
+                          <span class="flex items-center gap-2">
+                            <span class="font-medium text-sm text-neutral-900 truncate">
+                              {group.name}
+                            </span>
+                            <span
+                              :if={group.entity_type == :org_unit}
+                              class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-600"
+                              title="Organizational Unit"
+                            >
+                              OU
+                            </span>
+                          </span>
+                        </div>
+                        <.icon name="hero-chevron-right" class="w-5 h-5 text-neutral-400" />
+                      </div>
+                    </.link>
+                  <% end %>
                 </div>
               <% end %>
             </div>
@@ -1474,6 +1554,26 @@ defmodule Web.Actors do
 
   defp extract_idp_id(idp_id) do
     String.split(idp_id, ":", parts: 2) |> List.last()
+  end
+
+  defp group_section_name(%{directory_name: name}) when not is_nil(name),
+    do: "Synced from #{name}"
+
+  defp group_section_name(%{idp_id: idp_id}) when not is_nil(idp_id),
+    do: "Synced from Unknown"
+
+  defp group_section_name(_), do: "Firezone"
+
+  defp groups_by_section(groups) do
+    groups
+    |> Enum.group_by(&group_section_name/1)
+    |> Enum.sort_by(fn {section, _} ->
+      case section do
+        "Firezone" -> 0
+        "Synced from Unknown" -> 2
+        _ -> 1
+      end
+    end)
   end
 
   # Utility helpers
@@ -1915,6 +2015,38 @@ defmodule Web.Actors do
       |> where([portal_sessions: ps], ps.id == ^session_id)
       |> Safe.scoped(subject)
       |> Safe.one()
+    end
+
+    def get_groups_for_actor(actor_id, subject) do
+      from(g in Domain.Group, as: :groups)
+      |> join(:inner, [groups: g], m in Domain.Membership,
+        on: m.group_id == g.id and m.account_id == g.account_id,
+        as: :membership
+      )
+      |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+      |> join(:left, [directory: d], gd in Domain.Google.Directory,
+        on: gd.id == d.id and d.type == :google,
+        as: :google_directory
+      )
+      |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+        on: ed.id == d.id and d.type == :entra,
+        as: :entra_directory
+      )
+      |> join(:left, [directory: d], od in Domain.Okta.Directory,
+        on: od.id == d.id and d.type == :okta,
+        as: :okta_directory
+      )
+      |> where([membership: m], m.actor_id == ^actor_id)
+      |> select_merge(
+        [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+        %{
+          directory_type: d.type,
+          directory_name: fragment("COALESCE(?, ?, ?)", gd.name, ed.name, od.name)
+        }
+      )
+      |> order_by([groups: g], asc: g.name)
+      |> Safe.scoped(subject)
+      |> Safe.all()
     end
 
     def create(changeset, subject) do
