@@ -239,8 +239,8 @@ defmodule Domain.Repo.Seeds do
         }
       })
       |> put_change(:limits, %{
-        users_count: 15,
-        monthly_active_users_count: 10,
+        users_count: 100,
+        monthly_active_users_count: 100,
         service_accounts_count: 10,
         sites_count: 3,
         account_admin_users_count: 5
