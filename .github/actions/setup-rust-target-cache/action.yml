@@ -10,6 +10,10 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Restore mtime for all files to avoid re-builds if they haven't changed.
+    # This requires `fetch-depth: 0` on the checkout action!
+    - uses: chetan/git-restore-mtime-action@bca85c11349c76b2dbac06d07edf6c2407dbab1e # v2.2
+
     - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
       with:
         workspaces: rust

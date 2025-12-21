@@ -122,6 +122,7 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: ${{ inputs.sha }}
+          fetch-depth: 0 # To required to make `setup-rust-target-cache` effective.
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.target }}
@@ -227,6 +228,7 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: ${{ inputs.sha }}
+          fetch-depth: 0 # To required to make `setup-rust-target-cache` effective.
       - uses: ./.github/actions/ghcr-docker-login
         id: login
         with:
