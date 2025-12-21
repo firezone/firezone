@@ -47,9 +47,6 @@ export default function KbSidebar() {
             <SidebarItem href="/kb/authenticate/oidc">
               SSO with Universal OIDC
             </SidebarItem>
-            <SidebarItem href="/kb/authenticate/oidc/fusion">
-              SSO with FusionAuth
-            </SidebarItem>
             <SidebarItem href="/kb/authenticate/service-accounts">
               Service accounts
             </SidebarItem>

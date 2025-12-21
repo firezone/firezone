@@ -1,525 +1,114 @@
 import Alert from "@/components/DocsAlert";
 import PlanBadge from "@/components/PlanBadge";
 import SupportOptions from "@/components/SupportOptions";
-import Image from "next/image";
-import Link from "next/link";
 
 <PlanBadge plans={["starter", "team", "enterprise"]}>
 
-# SSO with Google Workspace
+# SSO with Google
 
 </PlanBadge>
 
-Firezone integrates with [Google Workspace](https://workspace.google.com) using
-a custom connector that supports both authentication and directory sync. Use
-this guide if you're looking to setup SSO with Google Workspace for your
-Firezone account and optionally sync users, groups, and organizational units
-from Google Workspace to Firezone.
+Firezone supports authenticating users with Google using Firezone's public OAuth
+client. This works with both personal Google accounts (Gmail) and Google
+Workspace accounts. Only one Google provider can be configured per Firezone
+account.
 
 <Alert color="info">
-  Directory sync is supported for the **Enterprise** plan only.
+  Looking for directory sync? See the [Google directory sync
+  guide](/kb/directory-sync/google) to automatically provision users and groups
+  from Google Workspace.
 </Alert>
 
-## Overview
-
-The Firezone Google Workspace connector integrates with Google's OAuth and
-identity APIs to support user authentication and directory sync.
-
-On Enteprise plans, users, groups, and organizational units are synced every few
-minutes to ensure that your Firezone account remains up-to-date with the latest
-identity data from Google Workspace. [Read more](/kb/directory-sync) about how
-sync works.
-
-<Alert color="warning">
-  If using directory sync with this provider, please note the setup will require
-  a Google Workspace Super Admin due to the need to manage domain wide
-  delegation. The need for domain wide delegation is due to the use of a service
-  account rather than a user account for accessing the Google Admin SDK API.
-  [Read
-  more](https://developers.google.com/cloud-search/docs/guides/delegation#delegate_domain-wide_authority_to_your_service_account)
-  on domain wide delegation and service accounts.
-</Alert>
-## Setup
-
-Setting up the Google Workspace connector is similar to the process of setting
-up a universal OIDC connector for any other provider. The main difference is the
-addition of a few extra read-only scopes needed to enable sync.
-
-Follow the steps below to setup the Google Workspace connector.
-
-### Step 1: Create a new project in Google Cloud
-
-<Alert color="info">
-  You may skip this step and proceed directly to [Step
-  2](#step-2-enable-the-admin-sdk-api) if you already have a GCP project you'd
-  like to use with Firezone.
-</Alert>
-
-[Go here to create a new project](https://console.cloud.google.com/projectcreate)
-in your Google Cloud account and fill in the following fields:
-
-- **Project name**: `Firezone Connector`
-- **Organization**: Select the appropriate organization that contains the users
-  and groups you wish to integrate with Firezone.
-- **Location**: Select the appropriate organization to place this project under.
-
-Click **CREATE** after you've filled in the fields above.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-create-project.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-create-project.png"
-    alt="Create project in GCP"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-<PlanBadge plans={["enterprise"]}>
-
-### Step 2 (optional): Enable the Admin SDK API
-
-</PlanBadge>
-
-If you're on the Enterprise plan,
-[visit this link](https://console.cloud.google.com/apis/library/admin.googleapis.com)
-to enable the Admin SDK API for the project you just created in Step 1.
-
-If not, skip ahead to [Step 3](#step-3-configure-the-oauth-consent-screen).
-
-This is used to allow Firezone to read users, groups and organizational units
-from your Google Workspace account.
-
-**Important**: Ensure the **Firezone Connector** project you created in Step 1
-is selected before clicking the "ENABLE" button.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-enable-admin-api.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-enable-admin-api.png"
-    alt="Enable Admin SDK API"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-### Step 3: Configure the OAuth consent screen
-
-[Click here](https://console.cloud.google.com/apis/credentials/consent) to
-configure the OAuth consent screen for the project you created in Step 1.
-
-**Important**: Select "Internal" for User type. Select "External" may allow
-external users to login to your Firezone account.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-oauth-consent-screen.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-oauth-consent-screen.png"
-    alt="Enable Admin SDK API"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Click **CREATE**.
-
-On the next page, enter the following information:
-
-- **App name**: `Firezone`
-- **User support email**: Your or your company's IT support email address.
-- **App logo** (optional):
-  [Download the Firezone logo here](/images/kb/authenticate/google/gcp-oauth-screen-logo.png)
-  to use for this consent screen.
-- **Application home page**: `https://www.firezone.dev`
-- **Application privacy policy link**: `https://www.firezone.dev/privacy-policy`
-- **Application terms of service link**: `https://www.firezone.dev/terms`
-- **Authorized domains**: Click "ADD DOMAIN" and enter `firezone.dev`
-- **Developer contact information**: Enter the same email you used above, e.g.
-  `it-support@company.com`
-
-<Link
-  href="/images/kb/authenticate/google/gcp-oauth-screen-2.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-oauth-screen-2.png"
-    alt="Add app info"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Click **SAVE AND CONTINUE**.
-
-### Step 4: Configure scopes
-
-OAuth scopes determine what information the Firezone connector is allowed to
-receive when a user authenticates.
-
-Firezone requires the following scopes to authenticate users on **all** plan
-levels:
-
-- `openid`: Reserved scope required by all OpenID Connect integrations.
-- `profile`: Provides information such as the user's username, given name,
-  surname, etc.
-- `email`: The user's email address.
-
-If you're on the Enterprise plan, you'll need to add the following additional
-scopes to sync users, groups, and organizational units:
-
-- `https://www.googleapis.com/auth/admin.directory.orgunit.readonly`: Required
-  to sync organizational units.
-- `https://www.googleapis.com/auth/admin.directory.group.readonly`: Required to
-  sync groups.
-- `https://www.googleapis.com/auth/admin.directory.user.readonly`: Required to
-  sync users.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-update-scopes.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-update-scopes.png"
-    alt="Update scopes"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Click **ADD OR REMOVE SCOPES** and copy-paste the scopes below depending on your
-plan level into the **Manually add scopes** field.
-
-<PlanBadge plans={["starter", "team"]}>
-
-##### Starter and Team plans
-
-</PlanBadge>
-
-```text
-openid
-profile
-email
-```
-
-<PlanBadge plans={["enterprise"]}>
-
-##### Enterprise plan scopes
-
-</PlanBadge>
-
-```text
-openid
-profile
-email
-https://www.googleapis.com/auth/admin.directory.orgunit.readonly
-https://www.googleapis.com/auth/admin.directory.group.readonly
-https://www.googleapis.com/auth/admin.directory.user.readonly
-```
-
-Then click **UPDATE** to make sure they're applied.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-update-scopes-2.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-update-scopes-2.png"
-    alt="Update scopes"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-<Link
-  href="/images/kb/authenticate/google/gcp-scopes-continue.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-scopes-continue.png"
-    alt="Scopes continue"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Ensure your Scopes configuration looks like the screenshot above, then click
-**SAVE AND CONTINUE**.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-oauth-summary.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-oauth-summary.png"
-    alt="Scopes continue"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Your OAuth app summary should look similar to the screenshot above.
-
-### Step 5: Create client credentials
-
-Next, you'll need to add OAuth credentials to allow Firezone to connect to your
-Google Workspace account.
-
-Head to
-[the Credentials section](https://console.cloud.google.com/apis/credentials) and
-click **CREATE CREDENTIALS** to create new OAuth credentials. Be sure to select
-"OAuth client ID" in the dropdown menu.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-create-credentials.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-create-credentials.png"
-    alt="Create OAuth credentials"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-On the next screen, select **Web application**, then use the following
-information for the remain fields:
-
-- **Name**: `Firezone OAuth Client`
-- **Authorized redirect URIs**: Click **ADD URI**, and enter the two redirect
-  URIs shown on the Google Workspace identity provider setup screen in your
-  Firezone admin portal
-  (`Settings -> Identity Providers -> Add Identity Provider -> Google Workspace -> Configure`).
-
-<Link href="/images/kb/authenticate/google/gcp-creds-web.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/google/gcp-creds-web.png"
-    alt="Web application credentials"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Click **CREATE**.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-oauth-credentials.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-oauth-credentials.png"
-    alt="Web application credentials"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-**Important**: Make sure to save the `Client ID` and `Client secret` fields in a
-safe place as they won't be shown again.
-
-### Step 6: Create service account
-
-Next, you'll create a service account to use for the directory sync.
-
-Navigate to the
-[Service Accounts section](https://console.cloud.google.com/iam-admin/serviceaccounts)
-of the Google Cloud Console and click **CREATE SERVICE ACCOUNT**.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-create-service-account.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-create-service-account.png"
-    alt="Create service account"
-    width={1200}
-    height={1200}
-    className="mx-auto"
-  />
-</Link>
-
-Enter the following information:
-
-- **Service account name**: `Firezone directory sync`
-- **Service account ID**: `firezone-directory-sync`
-
-Leave the `Grant this service account access to project` field and
-`Grant users access to this service account` fields as they are, then click
-**DONE**.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-service-account-details.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-service-account-details.png"
-    alt="Service account details"
-    width={1200}
-    height={1200}
-    className="mx-auto"
-  />
-</Link>
-
-Next, navigate to the newly-created service account, then click the **KEYS**
-tab. Click **ADD KEY**, **Create new key**, and select **JSON** as the key type.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-service-account-create-key.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-service-account-create-key.png"
-    alt="Create service account key"
-    width={1200}
-    height={1200}
-    className="mx-auto"
-  />
-</Link>
-
-<Link
-  href="/images/kb/authenticate/google/gcp-service-account-json-key.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-service-account-json-key.png"
-    alt="Create service account key"
-    width={1200}
-    height={1200}
-    className="mx-auto"
-  />
-</Link>
-
-Save the JSON key file to a secure location. You'll need to copy the contents of
-this file into the Firezone admin portal in the final step.
-
-Next, you'll need the key's unique ID to grant it access to the Admin SDK API
-for directory sync. Go back to the **DETAILS** tab of the service account and
-copy the **Unique ID**.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-service-account-unique-id.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-service-account-unique-id.png"
-    alt="Service account unique ID"
-    width={1200}
-    height={1200}
-    className="mx-auto"
-  />
-</Link>
-
-Now, you'll configure the Admin SDK API to allow the service account to read
-users, groups, and organizational units from your Google Workspace account.
-
-Navigate to the [API controls](https://admin.google.com/ac/owl) section of the
-Google Workspace admin console and click **MANAGE DOMAIN WIDE DELEGATION**.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-domain-wide-delegation.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-domain-wide-delegation.png"
-    alt="Domain-wide delegation"
-    width={1200}
-    height={1200}
-    className="mx-auto"
-  />
-</Link>
-
-Click **Add new**.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-api-clients-add-new.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-api-clients-add-new.png"
-    alt="Add new API client"
-    width={1200}
-    height={1200}
-    className="mx-auto"
-  />
-</Link>
-
-Enter the Unique ID you copied from the service account key into the **Client
-ID** field, and then enter the following scopes into the **OAuth scopes** field:
-
-```text
-openid,
-email,
-profile,
-https://www.googleapis.com/auth/admin.directory.customer.readonly,
-https://www.googleapis.com/auth/admin.directory.orgunit.readonly,
-https://www.googleapis.com/auth/admin.directory.group.readonly,
-https://www.googleapis.com/auth/admin.directory.user.readonly
-```
-
-Finally, click **AUTHORIZE**.
-
-<Link
-  href="/images/kb/authenticate/google/gcp-service-account-scopes.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/google/gcp-service-account-scopes.png"
-    alt="Service account scopes"
-    width={1200}
-    height={1200}
-    className="mx-auto"
-  />
-</Link>
-
-### Step 7: Configure Firezone
-
-Go back to the Firezone admin portal, and enter the `Client ID` and
-`Client secret` from the **OAuth client** you created in **Step 5** into the
-appropriate fields in "Create Identity Provider" form.
-
-Copy the contents of the JSON key file you downloaded for the service account in
-**Step 6** into the "Service Account Key" field.
-
-Finally, click **Connect Identity Provider** and click **Allow** when Google
-prompts you.
-
-<Link href="/images/kb/authenticate/google/gcp-allow.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/google/gcp-allow.png"
-    alt="Allow admin access"
-    width={400}
-    height={400}
-    className="mx-auto"
-  />
-</Link>
-
-If you get successfully redirected back to your Firezone admin portal, you're
-done! Your Google Workspace connector is now successfully configured. If
-directory sync is enabled, the first sync will occur within about 10 minutes.
-After that, users will be able to authenticate to Firezone using their Google
-Workspace accounts.
-
-<Alert color="warning">
-
-If the admin who connected the Google Workspace connector is removed or
-suspended from the Google Workspace account, the connector will be disabled and
-need to be reconnected by a different, active admin. Unfortunately this is a
-limitation of Google's APIs for the time being.
-
-</Alert>
-
-<Alert color="info">
-
-Synced users will be assigned the `User` role by default, allowing them access
-to sign in from the Firezone Client only. If you need to grant access to the
-admin portal, you need to manually promote the user to the `Admin` role by
-visiting `Actors -> <actor name> -> Edit User` and updating their role.
-
-</Alert>
+## Enable Google authentication
+
+To enable Google authentication:
+
+1. Go to `Settings -> Authentication` in your admin portal.
+1. Click **Add Provider** and select **Google**.
+1. Name the provider — this is shown to users on the sign-in page.
+1. Select the authentication context:
+   - **Client Applications and Admin Portal**: Users can sign in to both the
+     Firezone client applications and admin portal using Google SSO.
+   - **Client Applications Only**: Users can sign in to the Firezone client
+     applications using Google SSO but **not** the admin portal.
+   - **Admin Portal Only**: Users can sign in to the admin portal using Google
+     SSO but **not** the Firezone client applications.
+1. **Portal session lifetime**: (optional) Set a custom session lifetime for
+   users signing in to the admin portal with Google SSO. Leave blank to use the
+   default session lifetime.
+1. **Client session lifetime**: (optional) Set a custom session lifetime for
+   users signing in to the Firezone client applications with Google SSO. Leave
+   blank to use the default session lifetime.
+1. Click **Verify Now** to complete an authentication flow and confirm the
+   provider is working.
+1. Click **Save**.
+
+Users will now see this provider as an option on the Firezone sign-in page.
+
+## How it works
+
+Firezone uses a public OAuth client to authenticate users with Google. When a
+user signs in:
+
+1. They're redirected to Google's sign-in page.
+1. After authenticating with Google, they're redirected back to Firezone.
+1. Firezone matches the user using the `iss` and `sub` claims from Google. For
+   users provisioned via [directory sync](/kb/directory-sync/google), this
+   identity already exists. For manually created users, Firezone matches by
+   email on first sign-in and saves the Google identity for subsequent sign-ins.
+
+No Google Cloud project or OAuth client setup is required on your end.
+
+### Data accessed
+
+Firezone requests the following scopes from Google:
+
+- `openid` — Required for authentication
+- `email` — Used to match users on first sign-in
+- `profile` — Used for the user's display name
+
+Firezone does not access your contacts, calendar, or any other Google data.
+
+## Supported account types
+
+The Google provider supports:
+
+- **Personal Google accounts** (Gmail) — Any user with a `@gmail.com` or custom
+  domain linked to a personal Google account
+- **Google Workspace accounts** — Users managed by your organization's Google
+  Workspace
+
+## Provisioning users
+
+Users **must** exist in Firezone before they can sign in with Google. You can:
+
+- [Create users manually](/kb/deploy/users) in the admin portal or via the REST
+  API
+- Enable [Google directory sync](/kb/directory-sync/google) (Enterprise plans)
+  to automatically provision users and groups from Google Workspace
+
+## Troubleshooting
+
+### User not found
+
+If a user sees a "user not found" or similar error when signing in, it means no
+matching user exists in Firezone. The user must be
+[created manually](/kb/deploy/users) or provisioned via
+[directory sync](/kb/directory-sync/google) before they can sign in.
+
+### Access blocked by Workspace admin
+
+Google Workspace admins can restrict which third-party apps users are allowed to
+sign into. If a user sees "Access blocked" or "This app is blocked", the
+Workspace admin will need to allow Firezone in the
+[Google Admin console](https://admin.google.com) under **Security → API controls
+→ App access control**.
+
+### Revoking access
+
+Users can revoke Firezone's access to their Google account from their
+[Google Account security settings](https://myaccount.google.com/permissions).
+Revoking access does not delete the user from Firezone or end their active
+sessions, but they will need to re-authorize on their next sign-in.
 
 <SupportOptions />
