@@ -434,8 +434,7 @@ defmodule Web.Sites.NewToken do
 
     def create_token(site, subject) do
       with {:ok, token} <- Domain.Auth.create_gateway_token(site, subject) do
-        {:ok, %{token | secret_nonce: nil, secret_fragment: nil},
-         Domain.Auth.encode_fragment!(token)}
+        {:ok, %{token | secret_fragment: nil}, Domain.Auth.encode_fragment!(token)}
       end
     end
   end
