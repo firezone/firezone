@@ -9,27 +9,20 @@ import SupportOptions from "@/components/SupportOptions";
 </PlanBadge>
 
 Firezone supports authenticating users with a universal OIDC connector that
-works with any authentication service offering a standard
-[OIDC](https://en.wikipedia.org/wiki/OpenID) authentication mechanism. Use this
-connector to enable authenticating users and admins to Firezone for any
-OIDC-capable identity provider that supports the `authorization_code` grant.
+works with any authentication service supporting the
+[OIDC](https://en.wikipedia.org/wiki/OpenID) standard and `authorization_code`
+grant type.
 
 <Alert color="warning">
-  Directory sync is **not supported** with the universal OIDC connector. See the
-  [Google Workspace](/kb/authenticate/google), [Microsoft Entra
-  ID](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta) connectors for
-  automatic directory sync. You'll need to manually create and manage users and
-  groups for use with the universal OIDC connector.
+  Directory sync is **not supported** with the OIDC provider. See the
+  [Google](/kb/directory-sync/google), [Entra](/kb/directory-sync/entra), or
+  [Okta](/kb/directory-sync/okta) guides for setting up directory sync with
+  those providers. You'll need to manually create and manage users and groups
+  for use with the OIDC provider.
 </Alert>
 
-For Firezone-specific instructions for a given provider, select your provider in
-the list below:
-
-- [Fusion Auth](/kb/authenticate/oidc/fusion)
-
-Fo others, consult your provider's documentation for setting up an OpenID
-Connect client. Here's a list of popular providers with links to their OIDC
-documentation for convenience:
+You'll need to create an OAuth application with your identity provider. OIDC
+documentation for popular providers:
 
 - [Auth0](https://auth0.com/docs/get-started/applications/application-settings)
 - [Onelogin](https://onelogin.service-now.com/support?id=kb_article&sys_id=2fd988e697b72150c90c3b0e6253af7f&kb_category=de885d2187372d10695f0f66cebb351f)
@@ -38,55 +31,61 @@ documentation for convenience:
 - [Authentik](https://docs.goauthentik.io/docs/add-secure-apps/providers/oauth2/)
 - [Zitadel](https://zitadel.com/docs/guides/integrate/login/oidc)
 
-For more detailed guides specific to each provider, see the
-[Firezone legacy documentation](/docs/authenticate/oidc). Firezone 1.0 uses the
-same OIDC connector under the hood as our legacy version, so the steps should
-similar.
+## Setting up the OIDC provider
 
-## Setting up the universal OIDC connector
+To set up the OIDC provider, go to `Settings -> Authentication -> Add Provider`
+and select `OIDC`.
 
-To set up the universal OIDC connector, go to
-`Settings -> Identity Providers -> Add Identity Provider` and select
-`OpenID Connect` as the identity provider.
-
-In general, you'll need three pieces of information to set up the connector:
+In general, you'll need four pieces of information to set up the provider:
 
 - [Scopes](#scopes): These control what information Firezone can access from
   your identity provider. At a minimum, you'll need to provide the `openid`,
   `profile`, and `email` scopes. These are configured in your identity
   provider's OAuth app settings.
-- [Redirect URIs](#redirect-uris): These are unique to each provider in your
-  Firezone account and are used to complete the authentication process. These
-  are configured in your identity provider's OAuth app settings.
+- [Redirect URI](#redirect-uris): Firezone uses a single callback URL for all
+  OIDC authentication:
+
+```text
+https://app.firezone.dev/auth/oidc/callback
+```
+
 - [Client ID and secret](#client-id-and-secret): These are used to authenticate
-  Firezone with your identity provider. These are configured in Firezone.
+  Firezone with your identity provider. You'll get these values when you create
+  the OAuth app in your identity provider.
 - [Discovery document URI](#discovery-document-uri): This is the URL to your
   identity provider's OIDC discovery document. This is used to automatically
-  configure the connector with your identity provider's settings and is
-  configured in Firezone.
+  configure the connector with your identity provider's cryptographic and
+  endpoint settings.
 
 ### Scopes
 
-Firezone requires the following scopes to be added on the connector at a
-minimum:
+Firezone requires the following OAuth scopes in order to authenticate users via
+the OIDC provider:
 
-- `openid`: Required by all OpenID Connect integrations and used to identity
-  this user in Firezone
-- `profile`: Required for providing the user's name
-- `email`: Required for authentication
+- `email`: Provides the `email` claim used for identifying users by email on the
+  first sign-in
+- `openid`: Provides the `iss` and `sub` claims used for identifying users on
+  subsequent sign-ins
+- `profile`: Provides the `name` and other profile claims used for displaying
+  user information in the admin portal
+
+Additional scopes are allowed but unused by Firezone.
 
 ### Redirect URIs
 
-When setting up the connector, you'll need to provide two redirect URIs in the
-connector's allowlist. These are shown in the setup form and are unique to each
-provider in your Firezone account. They allow Firezone to receive authentication
-tokens from your identity provider to complete the authentication process.
+Firezone uses a common redirect URI for all OIDC authentication:
+
+```text
+https://app.firezone.dev/auth/oidc/callback
+```
+
+Make sure to add this URI to the list of allowed redirect URIs in your identity
+provider's OAuth app settings.
 
 ### Client ID and secret
 
-You'll also need to provide the client ID and secret from your identity provider
-when setting up the connector. These are used to authenticate Firezone with your
-identity provider.
+Provide the client ID and secret from the OAuth app you created in your identity
+provider.
 
 ### Discovery document URI
 
@@ -103,9 +102,10 @@ https://your-tenant.okta.com/.well-known/openid-configuration
 
 ### PKCE
 
-The universal OIDC connector **requires** the provider to support PKCE (Proof
-Key for Code Exchange). PKCE is a security feature that helps prevent certain
-types of attacks and is supported by nearly every OIDC provider today.
+Firezone's OIDC authentication provider **requires** your identity provider to
+support PKCE (Proof Key for Code Exchange). PKCE is a security feature that
+helps prevent certain types of attacks and is supported by nearly every OIDC
+identity provider today.
 
 If your provider does not support PKCE, authentication will fail with an error
 message similar to this:
@@ -114,23 +114,25 @@ message similar to this:
 You may not authenticate to this account.
 ```
 
+If you believe this to be in error, please [contact support](/support) for
+assistance.
+
 ### Provisioning users and groups
 
-Users must be created in Firezone before they can sign in with the universal
-OIDC connector. You can [create users](/kb/deploy/users) in the admin portal or
+Users must be created in Firezone **before** they can sign in with the OIDC
+provider. You can [create users](/kb/deploy/users) in the admin portal or
 programmatically via the [REST API](/kb/reference/rest-api).
 
 Similarly, groups used for access control must also be created in Firezone
-before they can be used with users associated with the universal OIDC connector.
-You can [create groups](/kb/deploy/groups) manually in the admin portal or use
-the [REST API](/kb/reference/rest-api) to create groups programmatically.
+before they can be used with users associated with the OIDC provider. You can
+[create groups](/kb/deploy/groups) manually in the admin portal or use the
+[REST API](/kb/reference/rest-api) to create groups programmatically.
 
 <Alert color="info">
-  If you're using the [Google Workspace](/kb/authenticate/google), [Microsoft
-  Entra](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta) connectors,
-  users and groups are automatically synced from your identity provider and do
-  not need to be created manually.
+  Firezone accounts with the [Google](/kb/directory-sync/google),
+  [Entra](/kb/directory-sync/entra), or [Okta](/kb/directory-sync/okta)
+  directories enabled will have their users and groups automatically
+  provisioned.
 </Alert>
 
 <SupportOptions />
-```

@@ -155,4 +155,9 @@ module.exports = [
     destination: "/kb",
     permanent: true,
   },
+  {
+    source: "/kb/authenticate/directory-sync",
+    destination: "/kb/directory-sync",
+    permanent: true,
+  },
 ];

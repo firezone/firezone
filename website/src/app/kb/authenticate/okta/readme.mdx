@@ -10,277 +10,244 @@ import Link from "next/link";
 
 </PlanBadge>
 
-Firezone integrates with Okta using a custom connector that supports both
-authentication and directory sync. Use this guide if you're looking to setup SSO
-with Okta for your Firezone account and optionally sync users and groups from
-Okta to Firezone.
+Firezone supports authenticating users with Okta using OpenID Connect (OIDC).
+You can configure multiple Okta providers within a single Firezone account, each
+with a different client ID.
 
 <Alert color="info">
-  Directory sync is supported for the **Enterprise** plan only.
+  Looking for directory sync? See the [Okta directory sync
+  guide](/kb/directory-sync/okta) to automatically provision users and groups
+  from Okta.
 </Alert>
-## Overview
 
-The Firezone Okta connector integrates with Okta's APIs to support user
-authentication and directory sync.
+## Create an OIDC application in Okta
 
-On Enterprise plans, users and groups are synced every few minutes to ensure
-that your Firezone account remains up-to-date with the latest identity data from
-Okta. [Read more](/kb/authenticate/directory-sync) about how sync works.
-
-## Setup
-
-Setting up the Okta connector is similar to the process of setting up a
-universal OIDC connector. The main difference is the addition of a few extra
-read-only scopes needed to enable directory sync.
-
-Follow the steps below to setup the Okta connector.
+Before enabling Okta authentication in Firezone, you'll need to create an OIDC
+application in your Okta admin portal.
 
 ### Step 1: Start the Okta provider setup in Firezone
 
-In your admin portal, go to `Settings -> Identity Providers` and click
-`Add Identity Provider`. Then, select `Okta` from the list of identity
-providers.
-
-You'll be shown a summary of the steps you need to complete to setup the Okta
-provider. Keep this page open as you'll need to refer to it in the following
-steps.
+1. In your Firezone admin portal, go to `Settings -> Authentication`.
+1. Click **Add Provider** and select **Okta**.
+1. Keep this page open — you'll enter information from here into your Okta app
+   configuration and vice versa.
 
 ### Step 2: Create a new OIDC app in Okta
 
-In your Okta admin portal, go to **Applications** -> **Applications** in the
-left sidebar.
-
-<Link href="/images/kb/authenticate/okta/1-dashboard.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/okta/1-dashboard.png"
-    alt="Dashboard"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Click **Create App Integration**.
-
-<Link href="/images/kb/authenticate/okta/2-applications.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/okta/2-applications.png"
-    alt="Applications"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Select **OIDC - OpenID Connect** as the application type.
-
-<Link href="/images/kb/authenticate/okta/3-OIDC-app.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/okta/3-OIDC-app.png"
-    alt="OIDC app"
-    width={1200}
-    height={1200}
-  />
-</Link>
-
-Select **Web Application** as the application type and click **Next**.
+1. In a separate browser tab, open your Okta admin portal.
+1. Go to **Applications → Applications** and click **Create App Integration**.
 
 <Link
-  href="/images/kb/authenticate/okta/4-application-type.png"
+  href="/images/kb/authenticate/okta/okta-auth-applications.png"
   target="_blank"
 >
   <Image
-    src="/images/kb/authenticate/okta/4-application-type.png"
-    alt="Application type"
+    src="/images/kb/authenticate/okta/okta-auth-applications.png"
+    alt="Create Okta app integration"
     width={1200}
     height={1200}
   />
 </Link>
 
-Fill in the **App integration name** field with `Firezone Connector`.
-
-[Download the Firezone logo](/images/kb/authenticate/okta/firezone-logo.png) to
-use for the app integration and upload it to Okta (optional).
-
-Ensure both the **Authorization Code** and **Refresh Token** grant types are
-selected.
+3. Select **OIDC – OpenID Connect**, then choose **Web Application** and click
+   **Next**.
 
 <Link
-  href="/images/kb/authenticate/okta/5-app-name-grant-type.png"
+  href="/images/kb/authenticate/okta/okta-auth-new-app-integration-start.png"
   target="_blank"
 >
   <Image
-    src="/images/kb/authenticate/okta/5-app-name-grant-type.png"
-    alt="App name and grant type"
+    src="/images/kb/authenticate/okta/okta-auth-new-app-integration-start.png"
+    alt="New Okta app integration start"
     width={1200}
     height={1200}
   />
 </Link>
 
-In the **Sign-in redirect URIs** field, enter the redirect URIs shown in the
-setup form in your Firezone admin portal.
+4. Configure the application as follows:
+   - **App integration name**: `Firezone`
+   - **Grant types**: Authorization Code
+   - **Sign-in redirect URIs**: The redirect URI shown in the Firezone setup
+     form.
+   - **Sign-out redirect URIs**: `https://app.firezone.dev`
 
-In the **Sign-out redirect URIs** field, enter `https://app.firezone.dev`.
-
-<Link href="/images/kb/authenticate/okta/6-redirect-uris.png" target="_blank">
+<Link
+  href="/images/kb/authenticate/okta/okta-auth-new-app-integration-form.png"
+  target="_blank"
+>
   <Image
-    src="/images/kb/authenticate/okta/6-redirect-uris.png"
-    alt="Redirect URIs"
+    src="/images/kb/authenticate/okta/okta-auth-new-app-integration-form.png"
+    alt="New Okta app integration form"
     width={1200}
     height={1200}
   />
 </Link>
 
-In the **Assignments** tab, assign the app to the groups you want to have access
-to Firezone.
+5. In the **Assignments** section, assign the application to the users or groups
+   who should be able to sign in to Firezone.
 
 <Alert color="warning">
-  The user setting up this connector must have access to the Okta application
-  being created. If you choose to "skip group assignment for now", please make
-  sure your user is assigned to this Okta app before finishing the setup in
-  Firezone.
+  At a minimum, the user completing this setup must be assigned to the Okta
+  application. Ensure this assignment is done before proceeding.
 </Alert>
 
-Then click **Save**.
+<Alert color="info">
+  On Enterprise plans, these assignments also apply to [directory
+  sync](/kb/directory-sync/okta). Only users and groups assigned to the Firezone
+  application will be synced.
+</Alert>
 
 <Link
-  href="/images/kb/authenticate/okta/7-group-assignment.png"
+  href="/images/kb/authenticate/okta/okta-auth-new-app-integration-assignments.png"
   target="_blank"
 >
   <Image
-    src="/images/kb/authenticate/okta/7-group-assignment.png"
-    alt="Group assignment"
+    src="/images/kb/authenticate/okta/okta-auth-new-app-integration-assignments.png"
+    alt="New Okta app assignments"
     width={1200}
     height={1200}
   />
 </Link>
+
+6. Click **Save** to create the application.
 
 ### Step 3: Configure the Okta provider in Firezone
 
-In the app integration settings in Okta, you'll find the **Client ID** and
-**Client secret**. Copy these values and paste them into the setup form in your
-Firezone admin portal.
+In the Firezone setup form:
 
-Optionally, enable the **Require PKCE as additional verification** setting for
-added security.
+1. Name the provider — this is shown to users on the sign-in page.
+1. Select the authentication context:
+   - **Client Applications and Admin Portal**: Users can sign in to both the
+     Firezone client applications and admin portal using Okta SSO.
+   - **Client Applications Only**: Users can sign in to the Firezone client
+     applications using Okta SSO but **not** the admin portal.
+   - **Admin Portal Only**: Users can sign in to the admin portal using Okta SSO
+     but **not** the Firezone client applications.
+1. **Portal session lifetime**: (optional) Set a custom session lifetime for
+   users signing in to the admin portal with Okta SSO. Leave blank to use the
+   default session lifetime.
+1. **Client session lifetime**: (optional) Set a custom session lifetime for
+   users signing in to the Firezone client applications with Okta SSO. Leave
+   blank to use the default session lifetime.
+
+Next, copy your **Okta domain** from the upper right corner of your Okta
+dashboard (click on your username to see it) and paste it into the **Okta
+Domain** field in the Firezone setup form.
 
 <Link
-  href="/images/kb/authenticate/okta/8-client-credentials.png"
+  href="/images/kb/authenticate/okta/okta-auth-okta-domain.png"
   target="_blank"
 >
   <Image
-    src="/images/kb/authenticate/okta/8-client-credentials.png"
-    alt="Client credentials"
+    src="/images/kb/authenticate/okta/okta-auth-okta-domain.png"
+    alt="Okta domain"
     width={1200}
     height={1200}
   />
 </Link>
 
-Scroll down to **Refresh Token** and ensure **Use persistent token** is
-selected.
+In the Okta application settings, copy the **Client ID** and **Client Secret**
+and paste them into the corresponding fields in the Firezone setup form.
 
 <Link
-  href="/images/kb/authenticate/okta/9-verify-refresh-token-behavior.png"
+  href="/images/kb/authenticate/okta/okta-auth-new-app-integration-client-creds.png"
   target="_blank"
 >
   <Image
-    src="/images/kb/authenticate/okta/9-verify-refresh-token-behavior.png"
-    alt="Verify refresh token behavior"
+    src="/images/kb/authenticate/okta/okta-auth-new-app-integration-client-creds.png"
+    alt="Okta app client credentials"
     width={1200}
     height={1200}
   />
 </Link>
 
-### Step 4: Assign scopes and groups
+### Step 4: Verify and save
 
-In the app integration settings in Okta, click **Assignments** and then the
-**Assign** button.
+Click **Verify Now** to complete an authentication flow and confirm the provider
+is working. If successful, you'll see a confirmation page. Close that tab and
+click **Save** in the Firezone setup form.
 
-<Link
-  href="/images/kb/authenticate/okta/10-assign-groups-people.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/okta/10-assign-groups-people.png"
-    alt="Assign groups to people"
-    width={1200}
-    height={1200}
-  />
-</Link>
+Users will now see this provider as an option on the Firezone sign-in page.
 
-<PlanBadge plans={["enterprise"]}>
+## How it works
 
-#### Add directory sync scopes
+Firezone connects to Okta using standard OIDC. When a user signs in:
 
-</PlanBadge>
+1. They're redirected to Okta's sign-in page.
+1. After authenticating with Okta, they're redirected back to Firezone.
+1. Firezone matches the user using the `iss` and `sub` claims from Okta. For
+   users provisioned via [directory sync](/kb/directory-sync/okta), this
+   identity already exists. For manually created users, Firezone matches by
+   email on first sign-in and saves the Okta identity for subsequent sign-ins.
 
-For Enterprise plans, ensure the `okta.groups.read` and `okta.users.read` scopes
-are granted.
+### Data accessed
 
-<Link
-  href="/images/kb/authenticate/okta/11-grant-groups-read-scope.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/okta/11-grant-groups-read-scope.png"
-    alt="Grant groups read scope"
-    width={1200}
-    height={1200}
-  />
-</Link>
+Firezone requests the following scopes from Okta:
 
-<Link
-  href="/images/kb/authenticate/okta/12-grant-users-read-scope.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/okta/12-grant-users-read-scope.png"
-    alt="Grant users read scope"
-    width={1200}
-    height={1200}
-  />
-</Link>
+- `openid` — Required for authentication.
+- `email` — Used to match users on first sign-in.
+- `profile` — Used for the user's display name.
 
-<Link href="/images/kb/authenticate/okta/13-verify-scopes.png" target="_blank">
-  <Image
-    src="/images/kb/authenticate/okta/13-verify-scopes.png"
-    alt="Verify scopes"
-    width={1200}
-    height={1200}
-  />
-</Link>
+Firezone does not access any other Okta data.
 
-### Step 5: Complete the Okta provider setup in Firezone
+## Multiple providers
 
-Go back to the **General** tab in the app integration settings in Okta and copy
-your **Okta account domain** shown in the top-right corner.
+You can configure multiple Okta providers within a single Firezone account, each
+with a different client ID. This is useful if you need to authenticate users
+from different Okta organizations or with different app configurations.
 
-Enter this value into the setup form in your Firezone admin portal.
+To add another provider:
 
-<Link
-  href="/images/kb/authenticate/okta/14-find-okta-account-domain.png"
-  target="_blank"
->
-  <Image
-    src="/images/kb/authenticate/okta/14-find-okta-account-domain.png"
-    alt="Find Okta account domain"
-    width={1200}
-    height={1200}
-  />
-</Link>
+1. Go to `Settings -> Authentication` in your admin portal.
+1. Click **Add Provider** and select **Okta**.
+1. Create a new OIDC application in Okta as described above.
+1. Complete the setup with the new client credentials.
 
-Ensure all fields are filled out, and click **Connect Identity Provider**.
+## Restricting access
 
-If you get successfully redirected back to your Firezone admin portal, you're
-done! Your Okta provider is now successfully configured. If directory sync is
-enabled, the first sync will occur within about 10 minutes. After that, users
-will be able to authenticate to Firezone using their Okta accounts.
+Only users and groups assigned to the Firezone application in Okta can sign in.
+To manage access:
 
-<Alert color="info">
+1. In your Okta admin portal, go to **Applications → Applications**.
+1. Select the **Firezone** application.
+1. Go to the **Assignments** tab.
+1. Add or remove users and groups as needed.
 
-Synced users will be assigned the `User` role by default, allowing them access
-to sign in from the Firezone Client only. If you need to grant access to the
-admin portal, you need to manually promote the user to the `Admin` role by
-visiting `Actors -> <actor name> -> Edit User` and updating their role.
+## Provisioning users
 
-</Alert>
+Users **must** exist in Firezone before they can sign in with Okta. You can:
+
+- [Create users manually](/kb/deploy/users) in the admin portal or via the REST
+  API.
+- Enable [Okta directory sync](/kb/directory-sync/okta) (Enterprise plans) to
+  automatically provision users and groups from Okta.
+
+## Troubleshooting
+
+### User not found
+
+If a user sees a "user not found" or similar error when signing in, it means no
+matching user exists in Firezone. The user must be
+[created manually](/kb/deploy/users) or provisioned via
+[directory sync](/kb/directory-sync/okta) before they can sign in.
+
+### User not assigned to application
+
+If a user sees an error indicating they're not assigned to the application, the
+Okta admin needs to assign the user (or a group containing the user) to the
+Firezone application in Okta.
+
+### Invalid client credentials
+
+If verification fails with a client credentials error, double-check that the
+**Okta Domain**, **Client ID**, and **Client Secret** are entered correctly in
+Firezone.
+
+### Revoking access
+
+To revoke a user's access, remove their assignment from the Firezone application
+in Okta. This prevents future sign-ins but does not end active Firezone
+sessions. To immediately revoke access, also delete or disable the user in
+Firezone.
 
 <SupportOptions />
