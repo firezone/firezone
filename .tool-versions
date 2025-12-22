@@ -10,3 +10,6 @@ prettier 3.6.2
 
 # Bash unit testing
 bats 1.13.0
+
+# GitHub Actions linting
+actionlint 1.7.9
