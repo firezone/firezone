@@ -1,0 +1,87 @@
+November brought DNS over HTTPS support, a major Swift upgrade for Apple platforms, significant Linux client improvements, and enhanced Gateway connection reliability.
+
+## DNS over HTTPS Support
+
+Clients now support DNS over HTTPS (DoH) for encrypted DNS resolution.[^1]
+This feature enables administrators to configure secure DNS providers directly from the portal, with options for system resolvers, secure DNS providers, or custom DNS servers.[^2]
+The implementation includes a dedicated HTTP/2 client with pluggable sockets[^3] and handles the complexities of DoH server bootstrapping, where the DoH server's domain must first be resolved using system DNS resolvers before encrypted queries can begin.
+
+## Swift 6.2 Upgrade
+
+The Apple clients underwent a substantial upgrade from Swift 5 to Swift 6.2 with full strict concurrency checking enabled.[^4]
+This migration eliminates entire classes of data race bugs that were previously only caught through testing or production crashes.
+Swift 6.2's "Approachable Concurrency" features were enabled to further improve code safety,[^5] and the IPC client was converted from an actor to a stateless enum for better performance.[^6]
+Unsafe code instances were systematically removed from the codebase.[^7][^8]
+
+## Linux Client Improvements
+
+The GUI client now uses the Wayland rendering backend on Linux, enabling compatibility with newer distributions like Fedora 43 where Wayland is the only available compositor.[^9]
+This required implementing custom client-side decorations including a minimalistic title bar.
+
+Device identification now derives from `/etc/machine-id` on systems with systemd, eliminating startup failures when the user hasn't yet joined the `firezone-client` group.[^10]
+The installer also automatically adds users to this group during installation.[^11]
+
+## Debian/Ubuntu Deployment
+
+A new Debian/Ubuntu tab in the portal provides streamlined Gateway deployment instructions for APT-based systems.[^12]
+Preview packages are automatically promoted to stable on release.[^13]
+This complements the native Debian packaging introduced in October.
+
+## Gateway Connection Reliability
+
+ICE timeout values were extended to reduce false-positive disconnects where a Gateway incorrectly believes a Client has departed.[^14]
+The DNS resource NAT table now tracks last inbound/outbound packet times along with FIN and RST flags, enabling proper observation of TCP shutdowns and faster cleanup of unconfirmed entries.[^15]
+A fix prevents outbound ICMP errors from being incorrectly routed through the tunnel.[^16]
+
+## DNS Resolution Improvements
+
+Several fixes improve DNS reliability.
+The portal hostname is now re-resolved on WebSocket connection failures, handling cases where the local IP stack or DNS records change during operation.[^17]
+Tunnelled DNS queries are now indexed by source socket in addition to server address and query ID, fixing issues where macOS sends queries with identical IDs from different sockets.[^18]
+DNS server ordering from the system configuration is now preserved.[^19]
+
+## Apple MDM Enhancements
+
+A new `hideResourceList` configuration option, accessible via MDM provisioning profiles, allows administrators to hide the resource list from end users who don't need visibility into available resources.[^20]
+
+---
+
+[^1]: [feat(connlib): support DoH](https://github.com/firezone/firezone/pull/10876)
+
+[^2]: [feat(portal): extend DNS settings to allow for DoH providers](https://github.com/firezone/firezone/pull/10882)
+
+[^3]: [feat(connlib): add HTTP2 client with pluggable sockets](https://github.com/firezone/firezone/pull/10788)
+
+[^4]: [refactor(apple): Upgrade to Swift 6.2 with concurrency checks](https://github.com/firezone/firezone/pull/10682)
+
+[^5]: [chore(apple): Enable Swift 6.2 Approachable Concurrency features](https://github.com/firezone/firezone/pull/10799)
+
+[^6]: [refactor(apple): Convert IPCClient from actor to stateless enum](https://github.com/firezone/firezone/pull/10797)
+
+[^7]: [refactor(apple): remove unsafe code instance](https://github.com/firezone/firezone/pull/10967)
+
+[^8]: [refactor(apple): remove unsafe from Token](https://github.com/firezone/firezone/pull/10968)
+
+[^9]: [fix(gui-client): use Wayland rendering backend on Linux](https://github.com/firezone/firezone/pull/10849)
+
+[^10]: [feat(linux): compute device ID from `/etc/machine-id`](https://github.com/firezone/firezone/pull/10805)
+
+[^11]: [feat(linux): automatically add user to `firezone-client` group](https://github.com/firezone/firezone/pull/10787)
+
+[^12]: [feat(portal): add Debian/Ubuntu deployment tab](https://github.com/firezone/firezone/pull/10741)
+
+[^13]: [ci: promote preview `.deb` to stable on release](https://github.com/firezone/firezone/pull/10846)
+
+[^14]: [feat(gateway): extend ICE timeout](https://github.com/firezone/firezone/pull/10887)
+
+[^15]: [feat(gateway): improve state tracking of DNS resource NAT](https://github.com/firezone/firezone/pull/10868)
+
+[^16]: [fix(gateway): don't route outbound ICMP errors](https://github.com/firezone/firezone/pull/10989)
+
+[^17]: [fix(connlib): re-resolve portal host on WS hiccup](https://github.com/firezone/firezone/pull/10817)
+
+[^18]: [fix(connlib): index tunnelled DNS queries by source socket](https://github.com/firezone/firezone/pull/10914)
+
+[^19]: [fix(connlib): retain order of system/upstream DNS servers](https://github.com/firezone/firezone/pull/10773)
+
+[^20]: [feat(apple): config to hide resource list](https://github.com/firezone/firezone/pull/10824)
