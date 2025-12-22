@@ -583,7 +583,7 @@ pub enum ClientEvent {
     },
     ConnectionIntent {
         resource: ResourceId,
-        connected_gateway_ids: BTreeSet<GatewayId>,
+        preferred_gateways: Vec<GatewayId>,
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
@@ -696,10 +696,6 @@ pub(crate) struct NotAllowedResource(IpAddr);
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to decapsulate '{0}' packet")]
 pub(crate) struct FailedToDecapsulate(packet_kind::Kind);
-
-#[derive(Debug, thiserror::Error)]
-#[error("Already connected to site")]
-pub struct AlreadyConnectedToSite;
 
 pub fn is_peer(dst: IpAddr) -> bool {
     match dst {

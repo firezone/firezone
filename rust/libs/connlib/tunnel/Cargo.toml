@@ -37,7 +37,6 @@ l4-tcp-dns-server = { workspace = true }
 l4-udp-dns-client = { workspace = true }
 l4-udp-dns-server = { workspace = true }
 logging = { workspace = true }
-lru = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 proptest = { workspace = true, optional = true }
 rand = { workspace = true }
