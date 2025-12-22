@@ -32,6 +32,15 @@ applications.
 
 ## Setup
 
+<Alert color="info">
+  **Note on API rate limits:** Firezone intelligently throttles API requests to
+  stay within the rate limit you configure for your service app. In the
+  **Application Rate Limits** tab of your Okta service app, you can set a
+  percentage of your org's total rate limit capacity. We recommend starting with
+  5-10% and increasing this for very large directories or if syncs are taking
+  too long to complete.
+</Alert>
+
 ### Step 1: Create a custom role in Okta
 
 To ensure Firezone has only the minimum required permissions, you'll create a
@@ -321,7 +330,8 @@ portal.
 ## Sync timing
 
 Directory sync runs automatically every 2 hours. To trigger a sync immediately,
-click the **Sync Now** button on the directory card in `Settings -> Directory Sync`.
+click the **Sync Now** button on the directory card in
+`Settings -> Directory Sync`.
 
 ## Troubleshooting
 
@@ -329,18 +339,23 @@ click the **Sync Now** button on the directory card in `Settings -> Directory Sy
 
 This typically means the API service app is not configured correctly. Verify:
 
-1. The custom role has all three required permissions (view users, groups, and applications).
+1. The custom role has all three required permissions (view users, groups, and
+   applications).
 1. The resource set includes the Firezone OIDC app, All Users, and All Groups.
-1. The API service app has the custom role assigned with the correct resource set.
-1. All three API scopes are granted (`okta.apps.read`, `okta.groups.read`, `okta.users.read`).
+1. The API service app has the custom role assigned with the correct resource
+   set.
+1. All three API scopes are granted (`okta.apps.read`, `okta.groups.read`,
+   `okta.users.read`).
 
 ### Public key not working
 
-Ensure the public key from Firezone was pasted correctly into the Okta API service app. The key must be added before clicking **Verify Now** in Firezone.
+Ensure the public key from Firezone was pasted correctly into the Okta API
+service app. The key must be added before clicking **Verify Now** in Firezone.
 
 ### Users or groups not syncing
 
-Only users and groups assigned to your Okta authentication app will sync. To add more users or groups:
+Only users and groups assigned to your Okta authentication app will sync. To add
+more users or groups:
 
 1. In Okta, go to **Applications → Applications**.
 1. Select your **Firezone** OIDC app.
