@@ -153,33 +153,33 @@ forth.
 
 ### Phase 1: Candidate gathering
 
-Candidates are socket addresses on which a peer can receive data. The most
-obvious kind of candidate is a host-candidate which directly corresponds to the
-IP and port of the local network interface. Next in line are "server-reflexive
-candidates". Those correspond to the IP and port that a remote observes as the
-source address and port for packets sent from a peer. In other words, the public
-IP of e.g. your home router or in the case of a Gateway deployed to a VPC, the
-public IP assigned to it. Finally, we also have relay candidates. Relay
-candidates are sockets allocated on a TURN server. Traffic received on such a
-socket is forwarded to the owner of that socket. In Firezone, both Clients and
-Gateways immediately allocate such a socket with the two geo-graphically closest
-TURN servers once you sign in, i.e. even before you establish a connection. This
-ensures we have our entire set of candidates ready by the time we want to create
-a connection. As part of creating the socket on the TURN server, we also learn
-the "server-reflexive candidate".
+Candidates are socket addresses a peer can send data from and receive data on.
+
+- **host-candidates**: The most obvious kind of candidate. Directly corresponds
+  to the IP and port of the local network interface of a listening socket.
+- **server-reflexive candidates**: These correspond to the IP and port that a
+  remote (usually a STUN or TURN server) observes as the source address and port
+  for packets sent from a peer. In other words, the public IP of e.g. your home
+  router.
+- **relay candidates**: Relay candidates are sockets allocated on a TURN server.
+  Traffic received on such a socket is forwarded to the owner of that socket. In
+  Firezone, both Clients and Gateways immediately allocate such a socket with
+  the two geographically closest TURN servers once you sign in, even before you
+  establish any connections. This ensures we have our entire set of candidates
+  ready by the time we want to create a connection.
 
 ### Phase 2: Testing candidates
 
 Once we have gathered all relevant candidates, connecting to another peer is as
-simple as exchanging them. As we don't have a direct connection yet, this step
-is done via the Firezone control plane API. ICE then forms an NxM matrix of all
-candidates and starts "testing" them for connectivity. Testing a so-called
-candidate pair boils down to sending a UDP packet to the remote. If we receive
-an answer back, the test is successful. If we don't receive anything after 12
-attempts, we consider the candidate pair failed. All successful candidate pairs
-are then ranked by priority such that direct connections are considered better
-than those involving a TURN server. The best candidate pair is then "nominated"
-and declared as the result of the ICE algorithm.
+simple as exchanging and testing them. As we don't have a direct connection yet,
+this step is done via the Firezone control plane API. ICE then forms an NxM
+matrix of all candidates and starts testing them for connectivity. Testing a
+so-called candidate pair boils down to sending a UDP packet to the remote. If we
+receive an answer back, the test is successful. If we don't receive anything
+after 12 attempts, we consider the candidate pair failed. All successful
+candidate pairs are then ranked by priority such that direct connections are
+considered better than those involving a TURN server. The best candidate pair is
+then "nominated" and declared as the result of the ICE algorithm.
 
 ### A note on hole-punching
 
