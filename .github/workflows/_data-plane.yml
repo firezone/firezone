@@ -140,7 +140,7 @@ jobs:
             PROFILE=""
           fi
 
-          cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }}
+          cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
           mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
       - uses: ./.github/actions/setup-azure-sign-tool
         if: inputs.profile == 'release'
@@ -259,7 +259,7 @@ jobs:
             PROFILE=""
           fi
 
-          cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }} --verbose
 
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
