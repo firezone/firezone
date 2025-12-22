@@ -72,8 +72,8 @@ importers:
         specifier: ^15.5.9
         version: 15.5.9(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       next-hubspot:
-        specifier: ^2.0.0
-        version: 2.0.0(next@15.5.9(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(react@19.2.1)
+        specifier: ^2.0.1
+        version: 2.0.1(next@15.5.9(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(react@19.2.1)
       next-sitemap:
         specifier: ^4.2.3
         version: 4.2.3(next@15.5.9(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))
@@ -2466,11 +2466,11 @@ packages:
   neo-async@2.6.2:
     resolution: {integrity: sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==}
 
-  next-hubspot@2.0.0:
-    resolution: {integrity: sha512-ZfvU4JIVtTDYUSuvJeSK+ea/6GBkKIRl/qfUIhkbukrO/bammQPrOy5AH7ZxoCio66JHDEKjI73bO+yo7IMarQ==}
+  next-hubspot@2.0.1:
+    resolution: {integrity: sha512-F8RSmDJVDb6Vs7zdUUvfPNNBjCkkGgttWJazcF0SGM2xeU4uHecHBpE7jVDGqaDsHll7hwRvG0ugDa8cjiXwQg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      next: ^13 || ^14 || ^15
+      next: ^13 || ^14 || ^15 || ^16
       react: ^18 || ^19
 
   next-sitemap@4.2.3:
@@ -6280,7 +6280,7 @@ snapshots:
   neo-async@2.6.2:
     optional: true
 
-  next-hubspot@2.0.0(next@15.5.9(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(react@19.2.1):
+  next-hubspot@2.0.1(next@15.5.9(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(react@19.2.1):
     dependencies:
       next: 15.5.9(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       react: 19.2.1
