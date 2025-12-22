@@ -139,7 +139,7 @@ defmodule API.SiteControllerTest do
       assert resp ==
                %{
                  "error" => %{
-                   "reason" => "Unprocessable Entity",
+                   "reason" => "Unprocessable Content",
                    "validation_errors" => %{"name" => ["should be at most 64 character(s)"]}
                  }
                }

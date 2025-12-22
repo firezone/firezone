@@ -147,7 +147,7 @@ defmodule API.ResourceControllerTest do
       assert resp ==
                %{
                  "error" => %{
-                   "reason" => "Unprocessable Entity",
+                   "reason" => "Unprocessable Content",
                    "validation_errors" => %{
                      "site_id" => ["can't be blank"],
                      "name" => ["can't be blank"],
