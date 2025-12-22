@@ -150,7 +150,7 @@ defmodule API.MembershipControllerTest do
         |> patch("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert resp = json_response(conn, 422)
-      assert %{"error" => %{"reason" => "Unprocessable Entity"}} = resp
+      assert %{"error" => %{"reason" => "Unprocessable Content"}} = resp
       assert %{"error" => %{"validation_errors" => %{"memberships" => memberships}}} = resp
       assert [%{"actor" => ["does not exist"]}] = memberships
     end

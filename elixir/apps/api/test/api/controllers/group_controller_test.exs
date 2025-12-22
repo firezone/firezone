@@ -172,7 +172,7 @@ defmodule API.GroupControllerTest do
       assert resp ==
                %{
                  "error" => %{
-                   "reason" => "Unprocessable Entity",
+                   "reason" => "Unprocessable Content",
                    "validation_errors" => %{"name" => ["can't be blank"]}
                  }
                }
