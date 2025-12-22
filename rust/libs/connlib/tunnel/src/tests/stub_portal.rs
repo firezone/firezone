@@ -153,7 +153,7 @@ impl StubPortal {
     pub(crate) fn handle_connection_intent(
         &self,
         resource: ResourceId,
-        _connected_gateway_ids: BTreeSet<GatewayId>,
+        _connected_gateway_ids: Vec<GatewayId>,
     ) -> (GatewayId, SiteId) {
         let site_id = self
             .sites_by_resource

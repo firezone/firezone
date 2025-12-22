@@ -181,7 +181,8 @@ pub struct GatewayIceCandidates {
 pub enum EgressMessages {
     CreateFlow {
         resource_id: ResourceId,
-        connected_gateway_ids: BTreeSet<GatewayId>,
+        #[serde(rename = "connected_gateway_ids")]
+        preferred_gateways: Vec<GatewayId>,
     },
     /// Candidates that can be used by the addressed gateways.
     BroadcastIceCandidates(GatewaysIceCandidates),
@@ -483,7 +484,7 @@ mod tests {
     fn serialize_create_flow_message() {
         let message = EgressMessages::CreateFlow {
             resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
-            connected_gateway_ids: BTreeSet::new(),
+            preferred_gateways: Vec::new(),
         };
         let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
