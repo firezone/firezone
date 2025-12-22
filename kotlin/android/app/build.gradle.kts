@@ -200,8 +200,8 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-moshi:3.0.0")
 
     // OkHttp
-    implementation("com.squareup.okhttp3:okhttp:5.3.1")
-    implementation("com.squareup.okhttp3:logging-interceptor:5.3.1")
+    implementation("com.squareup.okhttp3:okhttp:5.3.2")
+    implementation("com.squareup.okhttp3:logging-interceptor:5.3.2")
 
     // Moshi
     implementation("com.squareup.moshi:moshi-kotlin:1.15.2")
