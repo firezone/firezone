@@ -181,7 +181,21 @@ candidate pairs are then ranked by priority such that direct connections are
 considered better than those involving a TURN server. The best candidate pair is
 then "nominated" and declared as the result of the ICE algorithm.
 
-### A note on hole-punching
+### Phase 3: WireGuard handshake
+
+WireGuard itself does not establish any connections and instead just represents
+a state machine that manages key rotation and encryption and decryption of
+packets.
+
+With the "nominated" candidate pair as the output of the ICE algorithm, we now
+have a pair of socket addresses for exchanging UDP packets between Client and
+Gateway. WireGuard's handshake requires prior knowledge of the remote's public
+key. Similar to the candidates, these keys have also been exchanged between
+Client and Gateway via the Firezone control protocol API. Using these public
+keys, Client and Gateway exchange secret session keys via Diffie-Hellman. These
+session keys are then used to encrypt packets and are rotated every 2 minutes.
+
+### Hole-punching
 
 The somewhat magical aspect of hole-punching actually happens entirely implicit
 as part of this process. Most NAT devices are inherently stateful in that they
@@ -211,21 +225,7 @@ Due to differing latencies, the timing of these steps can vary in practise. That
 isn't an issue though as UDP is by design stateless and the next packet will
 simply be allowed through.
 
-### Phase 3: WireGuard handshake
-
-WireGuard itself does not establish any connections and instead just represents
-a state machine that manages key rotation and encryption and decryption of
-packets.
-
-With the "nominated" candidate pair as the output of the ICE algorithm, we now
-have a pair of socket addresses for exchanging UDP packets between Client and
-Gateway. WireGuard's handshake requires prior knowledge of the remote's public
-key. Similar to the candidates, these keys have also been exchanged between
-Client and Gateway via the Firezone control protocol API. Using these public
-keys, Client and Gateway exchange secret session keys via Diffie-Hellman. These
-session keys are then used to encrypt packets and are rotated every 2 minutes.
-
-### A note on relayed connections
+### Relayed connections
 
 Relayed connections, i.e. those involving a TURN server work in a very similar
 way and are in fact transparent to the WireGuard handshake and the encrypted
