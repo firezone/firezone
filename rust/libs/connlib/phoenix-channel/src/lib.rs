@@ -37,11 +37,12 @@ pub use tokio_tungstenite::tungstenite::http::StatusCode;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
-pub struct PhoenixChannel<TInitReq, TInboundMsg, TFinish> {
+pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     state: State,
     waker: Option<Waker>,
     pending_joins: VecDeque<String>,
-    pending_messages: VecDeque<String>,
+    pending_messages: VecDeque<PhoenixMessage<TOutboundMsg>>,
+    pending_heartbeat: Option<String>,
     next_request_id: u64,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 
@@ -255,9 +256,11 @@ impl fmt::Display for OutboundRequestId {
 #[error("Cannot close websocket while we are connecting")]
 pub struct Connecting;
 
-impl<TInitReq, TInboundMsg, TFinish> PhoenixChannel<TInitReq, TInboundMsg, TFinish>
+impl<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
+    PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
 where
     TInitReq: Serialize + Clone,
+    TOutboundMsg: Serialize,
     TInboundMsg: DeserializeOwned,
     TFinish: IntoIterator<Item = (&'static str, String)>,
 {
@@ -295,6 +298,7 @@ where
             waker: None,
             pending_joins: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
             pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
+            pending_heartbeat: None,
             _phantom: PhantomData,
             heartbeat: tokio::time::interval(Duration::from_secs(30)),
             next_request_id: 0,
@@ -309,8 +313,9 @@ where
     /// Join the provided room.
     ///
     /// If successful, a [`Event::JoinedRoom`] event will be emitted.
-    pub fn join(&mut self, topic: impl Into<String>, payload: impl Serialize) {
-        let (request_id, msg) = self.make_message(topic, EgressControlMessage::PhxJoin(payload));
+    pub fn join(&mut self, topic: impl Into<String>, payload: TInitReq) {
+        let (request_id, msg) =
+            self.make_control_message(topic, EgressControlMessage::PhxJoin(payload));
 
         self.pending_joins.push_back(msg);
         self.pending_join_requests
@@ -318,7 +323,7 @@ where
     }
 
     /// Send a message to a topic.
-    pub fn send(&mut self, topic: impl Into<String>, message: impl Serialize) {
+    pub fn send(&mut self, topic: impl Into<String>, message: TOutboundMsg) {
         if self.pending_messages.len() > MAX_BUFFERED_MESSAGES {
             self.pending_messages.clear();
 
@@ -327,8 +332,13 @@ where
             );
         }
 
-        let (_, msg) = self.make_message(topic, message);
-        self.pending_messages.push_back(msg);
+        let request_id = self.fetch_add_request_id();
+
+        self.pending_messages.push_back(PhoenixMessage::new_message(
+            topic,
+            message,
+            Some(request_id),
+        ));
     }
 
     /// Establishes a new connection, dropping the current one if any exists.
@@ -513,6 +523,19 @@ where
             // Priority 2: Keep local buffers small and send pending messages.
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
+                    if let Some(heartbeat) = self.pending_heartbeat.take() {
+                        match stream.start_send_unpin(Message::Text(heartbeat.clone().into())) {
+                            Ok(()) => {
+                                tracing::trace!(target: "wire::api::send", %heartbeat);
+                            }
+                            Err(e) => {
+                                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                            }
+                        }
+
+                        continue;
+                    }
+
                     if let Some(join) = self.pending_joins.pop_front() {
                         match stream.start_send_unpin(Message::Text(join.clone().into())) {
                             Ok(()) => {
@@ -531,9 +554,15 @@ where
 
                     if self.pending_join_requests.is_empty() {
                         if let Some(msg) = self.pending_messages.pop_front() {
-                            match stream.start_send_unpin(Message::Text(msg.clone().into())) {
+                            let serialized_msg = serde_json::to_string(&msg)
+                                .map_err(io::Error::other)
+                                .map_err(Error::FatalIo)?;
+
+                            match stream
+                                .start_send_unpin(Message::Text(serialized_msg.clone().into()))
+                            {
                                 Ok(()) => {
-                                    tracing::trace!(target: "wire::api::send", %msg);
+                                    tracing::trace!(target: "wire::api::send", msg = %serialized_msg);
 
                                     self.heartbeat.reset()
                                 }
@@ -674,7 +703,10 @@ where
             // Priority 4: Handle heartbeats.
             match self.heartbeat.poll_tick(cx) {
                 Poll::Ready(_) => {
-                    self.send("phoenix", EgressControlMessage::<()>::Heartbeat(Empty {}));
+                    let (_, heartbeat) = self
+                        .make_control_message("phoenix", EgressControlMessage::Heartbeat(Empty {}));
+
+                    self.pending_heartbeat = Some(heartbeat);
 
                     return Poll::Ready(Ok(Event::HeartbeatSent));
                 }
@@ -692,10 +724,10 @@ where
         self.state = State::Connecting(future::ready(Err(e)).boxed())
     }
 
-    fn make_message(
+    fn make_control_message(
         &mut self,
         topic: impl Into<String>,
-        payload: impl Serialize,
+        payload: EgressControlMessage<TInitReq>,
     ) -> (OutboundRequestId, String) {
         let request_id = self.fetch_add_request_id();
 
