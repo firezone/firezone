@@ -8,6 +8,7 @@ defmodule Firezone.MixProject do
       version: version(),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
+      listeners: listeners(),
       preferred_cli_env: [
         coveralls: :test,
         "coveralls.detail": :test,
@@ -26,6 +27,14 @@ defmodule Firezone.MixProject do
       aliases: aliases(),
       releases: releases()
     ]
+  end
+
+  defp listeners do
+    if Mix.env() == :dev do
+      [Phoenix.CodeReloader]
+    else
+      []
+    end
   end
 
   # Dependencies listed here are available only for this
