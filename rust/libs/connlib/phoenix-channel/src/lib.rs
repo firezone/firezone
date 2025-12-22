@@ -318,7 +318,7 @@ where
     }
 
     /// Send a message to a topic.
-    pub fn send(&mut self, topic: impl Into<String>, message: impl Serialize) -> OutboundRequestId {
+    pub fn send(&mut self, topic: impl Into<String>, message: impl Serialize) {
         if self.pending_messages.len() > MAX_BUFFERED_MESSAGES {
             self.pending_messages.clear();
 
@@ -327,10 +327,8 @@ where
             );
         }
 
-        let (id, msg) = self.make_message(topic, message);
+        let (_, msg) = self.make_message(topic, message);
         self.pending_messages.push_back(msg);
-
-        id
     }
 
     /// Establishes a new connection, dropping the current one if any exists.
