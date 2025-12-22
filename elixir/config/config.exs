@@ -398,11 +398,6 @@ config :tailwind,
     cd: Path.expand("../apps/web/assets", __DIR__)
   ]
 
-config :workos, WorkOS.Client,
-  api_key: "sk_example_123456789",
-  client_id: "client_123456789",
-  baseurl: "https://api.workos.com"
-
 # Base Sentry config
 config :sentry,
   before_send: {Domain.Telemetry.Sentry, :before_send},

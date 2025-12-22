@@ -361,10 +361,6 @@ if config_env() == :prod do
            from_email: env_var_to_config!(:outbound_email_from)
          ] ++ env_var_to_config!(:outbound_email_adapter_opts)
 
-  config :workos, WorkOS.Client,
-    api_key: env_var_to_config!(:workos_api_key),
-    client_id: env_var_to_config!(:workos_client_id)
-
   # Sentry
 
   with api_external_url when not is_nil(api_external_url) <-

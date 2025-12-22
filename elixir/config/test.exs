@@ -161,9 +161,5 @@ config :ex_unit, ex_unit_config
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 
-config :workos, WorkOS.Client,
-  api_key: "sk_example_123456789",
-  client_id: "client_123456789"
-
 config :sentry,
   environment_name: :test
