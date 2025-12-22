@@ -239,7 +239,6 @@ deny = [
 skip = [
     "base64",
     "bitflags",
-    "dispatch2",          # rfd (tauri) uses 0.2.0, other deps use 0.3.0
     "cargo-platform",
     "cargo_metadata",
     "core-foundation",
@@ -274,11 +273,9 @@ skip = [
     "syn",
     "thiserror",
     "thiserror-impl",
-    "tokio-tungstenite",  # goose uses 0.27.0, phoenix-channel uses 0.28.0
     "toml",
     "toml_datetime",
     "toml_edit",
-    "tungstenite",        # goose uses 0.27.0, phoenix-channel uses 0.28.0
     "wasi",
     "webpki-roots",
     "windows-link",
