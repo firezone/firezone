@@ -4,6 +4,7 @@
 pub use connlib_model::StaticSecret;
 pub use eventloop::DisconnectError;
 pub use tunnel::TunConfig;
+use tunnel::messages::client::EgressMessages;
 pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
 
 use anyhow::Result;
@@ -54,7 +55,7 @@ impl Session {
     pub fn connect(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
+        portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         is_internet_resource_active: bool,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
