@@ -665,13 +665,6 @@ defmodule Domain.Config.Definitions do
   defconfig(:stripe_default_price_id, :string, default: nil)
 
   ##############################################
-  ## WorkOS flags
-  ##############################################
-
-  defconfig(:workos_api_key, :string, sensitive: true, default: "")
-  defconfig(:workos_client_id, :string, default: "")
-
-  ##############################################
   ## Local development and Staging Helpers
   ##############################################
 

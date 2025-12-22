@@ -57,7 +57,6 @@ defmodule Domain.MixProject do
       {:openid_connect,
        github: "firezone/openid_connect", ref: "78d8650bc75a462a2ff193dd1bffb70e1cafe839"},
       {:argon2_elixir, "~> 4.0"},
-      {:workos, "~> 1.1"},
 
       # Job system
       {:oban, "~> 2.19"},
