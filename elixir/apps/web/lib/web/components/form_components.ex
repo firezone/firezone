@@ -153,8 +153,6 @@ defmodule Web.FormComponents do
         Phoenix.HTML.Form.normalize_value("checkbox", assigns[:value])
       end)
 
-    dbg(assigns[:value])
-
     ~H"""
     <div>
       <input :if={@unchecked_value} type="hidden" name={@name} value={@unchecked_value} />
