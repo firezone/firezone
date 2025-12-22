@@ -15,6 +15,7 @@ website/timestamps.json
 **/*.wxs
 **/pnpm-lock.yaml
 swift/apple/**/Contents.json
+swift/apple/FirezoneKit/.build
 rust/gui-client/src-frontend/generated
 rust/gui-client/dist
 rust/gui-client/node_modules
