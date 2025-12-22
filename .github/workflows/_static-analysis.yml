@@ -57,12 +57,6 @@ jobs:
           fail: true
           args: --offline --verbose --no-progress **/*.md
 
-  actionlint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-      - uses: raven-actions/actionlint@963d4779ef039e217e5d0e6fd73ce9ab7764e493 # v2.1.0
-
   global-linter:
     runs-on: ubuntu-24.04
     steps:

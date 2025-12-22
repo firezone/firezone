@@ -55,3 +55,11 @@ repos:
     hooks:
       - id: cargo-sort
         args: ["--check", "--workspace", "rust/"]
+  - repo: local
+    hooks:
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: system
+        types: [yaml]
+        files: ^\.github/workflows/
