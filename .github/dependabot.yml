@@ -219,6 +219,12 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
   - package-ecosystem: npm
     directory: rust/gui-client/
     schedule:
