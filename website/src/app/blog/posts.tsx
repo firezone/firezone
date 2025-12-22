@@ -12,6 +12,21 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
+      title: "November 2025 Devlog",
+      date: "November 30, 2025",
+      href: "/blog/devlog/2025-11",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Engineering",
+      description: (
+        <p className="mb-2">
+          DNS over HTTPS support, Swift 6.2 upgrade for Apple clients, Wayland
+          support for the Linux GUI client, and various Gateway reliability
+          improvements.
+        </p>
+      ),
+    },
+    {
       title: "Nov 28 2025 Incident Post-Mortem",
       date: "November 28, 2025",
       href: "/blog/2025-11-28-incident-post-mortem",
