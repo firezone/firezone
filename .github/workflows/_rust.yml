@@ -58,7 +58,7 @@ jobs:
 
   monitor-static-analysis:
     needs: [static-analysis]
-    if: needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'
+    if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
       - run: gh run cancel ${{ github.run_id }}
