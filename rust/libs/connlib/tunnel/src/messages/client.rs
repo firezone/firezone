@@ -156,7 +156,7 @@ pub enum IngressMessages {
     FlowCreationFailed(FlowCreationFailed),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
 pub struct GatewaysIceCandidates {
     /// The list of gateway IDs these candidates will be broadcast to.
     pub gateway_ids: Vec<GatewayId>,
@@ -175,7 +175,7 @@ pub struct GatewayIceCandidates {
 }
 
 // These messages can be sent from a client to a control pane
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 // enum_variant_names: These are the names in the portal!
 pub enum EgressMessages {

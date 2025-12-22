@@ -99,7 +99,7 @@ impl Eventloop {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         is_internet_resource_active: bool,
-        mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
+        mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -486,7 +486,7 @@ impl Eventloop {
 }
 
 async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
+    mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
