@@ -382,7 +382,7 @@ defmodule Web.Settings.Authentication do
     </.breadcrumbs>
     <.section>
       <:title>Authentication Providers</:title>
-      <:action><.docs_action path="/authentication" /></:action>
+      <:action><.docs_action path="/authenticate" /></:action>
       <:action>
         <.add_button patch={~p"/#{@account}/settings/authentication/select_type"}>
           Add Provider
