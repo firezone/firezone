@@ -336,17 +336,32 @@ defmodule Web.Settings.DirectorySync do
           Directories sync users and groups from an external source.
         </:help>
         <:content>
-          <div class="flex flex-wrap gap-4">
-            <%= for directory <- @directories do %>
-              <.directory_card
-                type={directory_type(directory)}
-                account={@account}
-                directory={directory}
-                subject={@subject}
-                is_legacy={directory.is_legacy}
-              />
-            <% end %>
-          </div>
+          <%= if Enum.empty?(@directories) do %>
+            <div class="flex justify-center text-center text-neutral-500 p-4">
+              <div class="w-auto pb-4">
+                No directories configured.
+                <.link
+                  class={[link_style()]}
+                  patch={~p"/#{@account}/settings/directory_sync/select_type"}
+                >
+                  Add a directory
+                </.link>
+                to sync users and groups from your identity provider.
+              </div>
+            </div>
+          <% else %>
+            <div class="flex flex-wrap gap-4">
+              <%= for directory <- @directories do %>
+                <.directory_card
+                  type={directory_type(directory)}
+                  account={@account}
+                  directory={directory}
+                  subject={@subject}
+                  is_legacy={directory.is_legacy}
+                />
+              <% end %>
+            </div>
+          <% end %>
         </:content>
       </.section>
     <% else %>
