@@ -1374,7 +1374,7 @@ dependencies = [
  "client-shared",
  "connlib-model",
  "dns-types",
- "flume",
+ "flume 0.12.0",
  "futures",
  "ip-packet",
  "ip_network",
@@ -2049,7 +2049,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.0",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2444,6 +2444,9 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+dependencies = [
+ "getrandom 0.2.16",
+]
 
 [[package]]
 name = "fdeflate"
@@ -2751,6 +2754,18 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "nanorand",
+ "spin",
+]
+
+[[package]]
+name = "flume"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e139bc46ca777eb5efaf62df0ab8cc5fd400866427e56c68b22e414e53bd3be"
+dependencies = [
+ "fastrand",
+ "futures-core",
+ "futures-sink",
  "spin",
 ]
 
@@ -3252,7 +3267,7 @@ dependencies = [
  "chrono",
  "ctrlc",
  "downcast-rs",
- "flume",
+ "flume 0.11.1",
  "futures",
  "gumdrop",
  "http 1.4.0",
@@ -4200,7 +4215,7 @@ version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d463f34ca3c400fde3a054da0e0b8c6ffa21e4590922f3e18281bb5eeef4cbdc"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4830,7 +4845,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8103,7 +8118,7 @@ name = "telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "flume",
+ "flume 0.12.0",
  "futures",
  "hex",
  "ip-packet",
@@ -8133,7 +8148,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix 1.0.7",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8844,7 +8859,7 @@ dependencies = [
  "dns-over-tcp",
  "dns-types",
  "firezone-relay",
- "flume",
+ "flume 0.12.0",
  "futures",
  "futures-bounded",
  "gat-lending-iterator",
