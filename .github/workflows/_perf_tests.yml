@@ -60,12 +60,13 @@ jobs:
           docker compose build client-router gateway-router relay-1-router relay-2-router api-router
 
           # Start services in the same order each time for the tests
-          docker compose up -d iperf3
-          docker compose up -d api web domain --no-build
-          docker compose up -d relay-1 relay-2 --no-build
-          docker compose up -d gateway --no-build
-          docker compose up -d client --no-build
-          docker compose up -d network-config
+          # Retries are used because network I/O is flaky in GitHub Actions runners
+          retry docker compose up -d iperf3
+          retry docker compose up -d api web domain --no-build
+          retry docker compose up -d relay-1 relay-2 --no-build
+          retry docker compose up -d gateway --no-build
+          retry docker compose up -d client --no-build
+          retry docker compose up -d network-config
       - name: "Performance test: ${{ matrix.flavour }}-${{ matrix.test }}"
         timeout-minutes: 5
         env:

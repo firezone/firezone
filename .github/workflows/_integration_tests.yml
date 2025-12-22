@@ -190,16 +190,17 @@ jobs:
           docker compose build client-router gateway-router relay-1-router relay-2-router api-router
 
           # Start one-by-one to avoid variability in service startup order
-          docker compose up -d dns.httpbin.search.test --no-build
-          docker compose up -d httpbin --no-build
-          docker compose up -d download.httpbin --no-build
-          docker compose up -d api web domain --no-build
-          docker compose up -d otel --no-build
-          docker compose up -d relay-1 --no-build
-          docker compose up -d relay-2 --no-build
-          docker compose up -d gateway --no-build
-          docker compose up -d client --no-build
-          docker compose up -d network-config
+          # Retries are used because network I/O is flaky in GitHub Actions runners
+          retry docker compose up -d dns.httpbin.search.test --no-build
+          retry docker compose up -d httpbin --no-build
+          retry docker compose up -d download.httpbin --no-build
+          retry docker compose up -d api web domain --no-build
+          retry docker compose up -d otel --no-build
+          retry docker compose up -d relay-1 --no-build
+          retry docker compose up -d relay-2 --no-build
+          retry docker compose up -d gateway --no-build
+          retry docker compose up -d client --no-build
+          retry docker compose up -d network-config
 
           docker compose exec -d relay-1 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
           docker compose exec -d relay-2 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
