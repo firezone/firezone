@@ -1782,19 +1782,8 @@ impl ClientState {
         trigger: impl Into<ConnectionTrigger>,
         now: Instant,
     ) {
-        self.pending_flows.on_not_connected_resource(
-            resource,
-            trigger,
-            &self.resources_by_id,
-            |s| {
-                self.gateways_by_site
-                    .get(&s)
-                    .into_iter()
-                    .flatten()
-                    .any(|g| self.peers.get(g).is_some())
-            },
-            now,
-        );
+        self.pending_flows
+            .on_not_connected_resource(resource, trigger, &self.resources_by_id, now);
     }
 }
 
