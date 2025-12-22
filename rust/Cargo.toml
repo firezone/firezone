@@ -147,7 +147,7 @@ rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.7.1"
 reqwest = { version = "0.12.26", default-features = false }
-resolv-conf = "0.7.5"
+resolv-conf = "0.7.6"
 ringbuffer = "0.16.0"
 roxmltree = "0.21"
 rpassword = "7.4.0"
