@@ -19,10 +19,9 @@ defmodule Domain.Changes.Hooks.Accounts do
         %{"disabled_at" => disabled_at}
       )
       when not is_nil(disabled_at) do
-    # TODO: Potentially revisit whether this should be handled here
-    #       or handled closer to where the PubSub message is received.
     account = struct_from_params(Domain.Account, old_data)
     DB.delete_policy_authorizations_for_account(account)
+    DB.delete_client_tokens_for_account(account)
 
     on_delete(lsn, old_data)
   end
@@ -53,11 +52,20 @@ defmodule Domain.Changes.Hooks.Accounts do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, PolicyAuthorization}
+    alias Domain.ClientToken
+    alias Domain.PolicyAuthorization
+    alias Domain.Safe
 
     def delete_policy_authorizations_for_account(%Domain.Account{} = account) do
-      from(f in PolicyAuthorization, as: :policy_authorizations)
-      |> where([policy_authorizations: f], f.account_id == ^account.id)
+      from(pa in PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: pa], pa.account_id == ^account.id)
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    def delete_client_tokens_for_account(%Domain.Account{} = account) do
+      from(ct in ClientToken, as: :client_tokens)
+      |> where([client_tokens: ct], ct.account_id == ^account.id)
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

@@ -157,8 +157,7 @@ defmodule Domain.Auth do
   # Portal Sessions
 
   def create_portal_session(
-        account_id,
-        actor_id,
+        %Domain.Actor{type: :account_admin_user, account_id: account_id, id: actor_id},
         auth_provider_id,
         %Context{} = context,
         expires_at

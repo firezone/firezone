@@ -6,6 +6,7 @@ defmodule Domain.AuthTest do
   import Domain.AccountFixtures
   import Domain.ActorFixtures
   import Domain.AuthProviderFixtures
+  import Domain.SiteFixtures
   alias Domain.ClientToken
 
   describe "create_headless_client_token/3" do
@@ -377,6 +378,19 @@ defmodule Domain.AuthTest do
       assert authenticate(encoded, context) == {:error, :invalid_token}
     end
 
+    test "returns error for client token when account is disabled" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      encoded = encode_token(client_token_fixture(account: account, actor: actor))
+
+      account
+      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Domain.Repo.update!()
+
+      context = build_context(type: :client)
+      assert authenticate(encoded, context) == {:error, :invalid_token}
+    end
+
     test "returns error when token is expired" do
       token =
         client_token_fixture(expires_at: DateTime.add(DateTime.utc_now(), -3600, :second))
@@ -601,7 +615,7 @@ defmodule Domain.AuthTest do
 
     test "creates a gateway token" do
       account = account_fixture()
-      site = Domain.SiteFixtures.site_fixture(account: account)
+      site = site_fixture(account: account)
       subject = admin_subject_fixture(account: account)
 
       assert {:ok, token} = create_gateway_token(site, subject)
@@ -615,7 +629,7 @@ defmodule Domain.AuthTest do
 
     test "non-admin user cannot create gateway token" do
       account = account_fixture()
-      site = Domain.SiteFixtures.site_fixture(account: account)
+      site = site_fixture(account: account)
       subject = subject_fixture(account: account, actor: %{type: :account_user})
 
       assert {:error, :unauthorized} = create_gateway_token(site, subject)
@@ -633,6 +647,19 @@ defmodule Domain.AuthTest do
       assert String.length(passcode.code) == 5
       assert passcode.code_hash != nil
       assert passcode.expires_at != nil
+    end
+
+    test "creates a one-time passcode for disabled account" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+
+      account
+      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Domain.Repo.update!()
+
+      assert {:ok, passcode} = create_one_time_passcode(account, actor)
+      assert passcode.id != nil
+      assert passcode.account_id == account.id
     end
 
     test "verifies a valid one-time passcode" do
@@ -766,6 +793,52 @@ defmodule Domain.AuthTest do
 
       # Same nonce but different salts/fragments should produce different hashes
       assert token1.secret_hash != token2.secret_hash
+    end
+
+    test "creates a portal session" do
+      account = account_fixture()
+      actor = admin_actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
+      context = build_context(type: :browser)
+      expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
+
+      assert {:ok, session} =
+               create_portal_session(actor, auth_provider.id, context, expires_at)
+
+      assert session.id != nil
+      assert session.account_id == account.id
+      assert session.actor_id == actor.id
+      assert session.auth_provider_id == auth_provider.id
+    end
+
+    test "creates a portal session for disabled account" do
+      account = account_fixture()
+      actor = admin_actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
+      context = build_context(type: :browser)
+      expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
+
+      account
+      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Domain.Repo.update!()
+
+      assert {:ok, session} =
+               create_portal_session(actor, auth_provider.id, context, expires_at)
+
+      assert session.id != nil
+      assert session.account_id == account.id
+    end
+
+    test "raises for account_user actor type when creating portal session" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
+      context = build_context(type: :browser)
+      expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
+
+      assert_raise FunctionClauseError, fn ->
+        create_portal_session(actor, auth_provider.id, context, expires_at)
+      end
     end
   end
 
@@ -906,9 +979,23 @@ defmodule Domain.AuthTest do
 
     test "works with gateway token type" do
       account = account_fixture()
-      site = Domain.SiteFixtures.site_fixture(account: account)
+      site = site_fixture(account: account)
       token = gateway_token_fixture(account: account, site: site)
       encoded = encode_gateway_token(token)
+
+      assert {:ok, verified_token} = verify_gateway_token(encoded)
+      assert verified_token.id == token.id
+    end
+
+    test "gateway token verification succeeds for disabled account" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      token = gateway_token_fixture(account: account, site: site)
+      encoded = encode_gateway_token(token)
+
+      account
+      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Domain.Repo.update!()
 
       assert {:ok, verified_token} = verify_gateway_token(encoded)
       assert verified_token.id == token.id
@@ -985,7 +1072,7 @@ defmodule Domain.AuthTest do
 
     test "encodes gateway token" do
       account = account_fixture()
-      site = Domain.SiteFixtures.site_fixture(account: account)
+      site = site_fixture(account: account)
       subject = admin_subject_fixture(account: account)
 
       {:ok, token} = create_gateway_token(site, subject)
@@ -1134,7 +1221,7 @@ defmodule Domain.AuthTest do
       # This tests backward compatibility for tokens created before
       # the rename from gateway_group to gateway
       account = account_fixture()
-      site = Domain.SiteFixtures.site_fixture(account: account)
+      site = site_fixture(account: account)
 
       token = gateway_token_fixture(account: account, site: site)
 
@@ -1167,7 +1254,7 @@ defmodule Domain.AuthTest do
 
     test "new gateway tokens still work with current salt" do
       account = account_fixture()
-      site = Domain.SiteFixtures.site_fixture(account: account)
+      site = site_fixture(account: account)
       token = gateway_token_fixture(account: account, site: site)
       encoded = encode_gateway_token(token)
 
