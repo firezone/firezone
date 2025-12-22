@@ -1,0 +1,132 @@
+name: Build Apple Client
+on:
+  workflow_call:
+    inputs:
+      rust-targets:
+        description: "Rust targets to compile for"
+        type: string
+        required: true
+      build-script:
+        description: "Path to build script"
+        type: string
+        required: true
+      upload-script:
+        description: "Path to upload script"
+        type: string
+        required: true
+      artifact-file:
+        description: "Primary artifact filename"
+        type: string
+        required: true
+      platform:
+        description: "Platform name (iOS or macOS)"
+        type: string
+        required: true
+      pkg-artifact-file:
+        description: "Secondary pkg artifact filename (standalone only)"
+        type: string
+        required: false
+        default: ""
+      release-name:
+        description: "GitHub release name (standalone only)"
+        type: string
+        required: false
+        default: ""
+      is-dispatch:
+        description: "Whether this is a workflow_dispatch event"
+        type: boolean
+        required: true
+      is-main-branch:
+        description: "Whether this is the main branch"
+        type: boolean
+        required: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      XCODE_VERSION: "26.0"
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-tags: true
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: ${{ inputs.rust-targets }}
+      - uses: ./.github/actions/setup-rust-sccache
+      - run: ${{ inputs.build-script }}
+        env:
+          IOS_APP_PROVISIONING_PROFILE: ${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}
+          IOS_NE_PROVISIONING_PROFILE: ${{ secrets.APPLE_IOS_NE_PROVISIONING_PROFILE }}
+          MACOS_APP_PROVISIONING_PROFILE: ${{ secrets.APPLE_MACOS_APP_PROVISIONING_PROFILE }}
+          MACOS_NE_PROVISIONING_PROFILE: ${{ secrets.APPLE_MACOS_NE_PROVISIONING_PROFILE }}
+          STANDALONE_MACOS_APP_PROVISIONING_PROFILE: ${{ secrets.APPLE_STANDALONE_MACOS_APP_PROVISIONING_PROFILE }}
+          STANDALONE_MACOS_NE_PROVISIONING_PROFILE: ${{ secrets.APPLE_STANDALONE_MACOS_NE_PROVISIONING_PROFILE }}
+          BUILD_CERT: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}
+          BUILD_CERT_PASS: ${{ secrets.APPLE_BUILD_CERTIFICATE_P12_PASSWORD }}
+          INSTALLER_CERT: ${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_BASE64 }}
+          INSTALLER_CERT_PASS: ${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}
+          STANDALONE_BUILD_CERT: ${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}
+          STANDALONE_BUILD_CERT_PASS: ${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}
+          STANDALONE_INSTALLER_CERT: ${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64 }}
+          STANDALONE_INSTALLER_CERT_PASS: ${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}
+          ARTIFACT_PATH: ${{ runner.temp }}/${{ inputs.artifact-file }}
+          PKG_ARTIFACT_PATH: ${{ runner.temp }}/${{ inputs.pkg-artifact-file }}
+          NOTARIZE: ${{ inputs.is-dispatch }}
+          ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}
+          API_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}
+          TEMP_DIR: ${{ runner.temp }}
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: ${{ inputs.is-dispatch && inputs.pkg-artifact-file != '' }}
+        with:
+          name: macos-client-standalone-dmg
+          path: ${{ runner.temp }}/${{ inputs.artifact-file }}
+      - name: Upload .pkg artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: ${{ inputs.is-dispatch && inputs.pkg-artifact-file != '' }}
+        with:
+          name: macos-client-standalone-pkg
+          path: ${{ runner.temp }}/${{ inputs.pkg-artifact-file }}
+      - name: Upload to release
+        run: ${{ inputs.upload-script }}
+        if: ${{ inputs.is-dispatch && (inputs.is-main-branch || inputs.pkg-artifact-file == '') }}
+        env:
+          ARTIFACT_PATH: ${{ runner.temp }}/${{ inputs.artifact-file }}
+          ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}
+          API_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NAME: ${{ inputs.release-name }}
+          PLATFORM: ${{ inputs.platform }}
+      # We also publish a pkg file for MDMs that don't like our DMG (Intune error 0x87D30139)
+      - name: Upload pkg to release
+        run: ${{ inputs.upload-script }}
+        if: ${{ inputs.is-dispatch && inputs.is-main-branch && inputs.pkg-artifact-file != '' }}
+        env:
+          ARTIFACT_PATH: ${{ runner.temp }}/${{ inputs.pkg-artifact-file }}
+          ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}
+          API_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NAME: ${{ inputs.release-name }}
+          PLATFORM: ${{ inputs.platform }}
+      - name: Setup sentry CLI
+        if: ${{ inputs.is-dispatch }}
+        uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+        with:
+          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          organization: firezone-inc
+      - name: Upload debug symbols to Sentry
+        if: ${{ inputs.is-dispatch }}
+        run: |
+          # Remove the /Applications symlink in the DMG staging directory so Sentry doesn't
+          # attempt to walk it.
+          rm -f "${{ runner.temp }}/dmg/Applications"
+
+          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
+          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ./rust/target

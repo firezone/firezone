@@ -33,119 +33,47 @@ jobs:
       - run: swift test
         working-directory: swift/apple/FirezoneKit
 
-  build:
-    name: ${{ matrix.job_name }}
+  build-ios:
     needs: update-release-draft
-    runs-on: macos-15
-    env:
-      XCODE_VERSION: "26.0"
-    permissions:
-      contents: write # for attaching the build artifacts to the release
-      id-token: write
-    strategy:
-      fail-fast: ${{ github.event_name == 'merge_group' }}
-      matrix:
-        include:
-          - job_name: build-ios
-            rust-targets: aarch64-apple-ios
-            build-script: scripts/build/ios-appstore.sh
-            upload-script: scripts/upload/app-store-connect.sh
-            artifact-file: "Firezone.ipa"
-            platform: iOS
+    uses: ./.github/workflows/_swift-build.yml
+    with:
+      rust-targets: aarch64-apple-ios
+      build-script: scripts/build/ios-appstore.sh
+      upload-script: scripts/upload/app-store-connect.sh
+      artifact-file: Firezone.ipa
+      platform: iOS
+      is-dispatch: ${{ github.event_name == 'workflow_dispatch' }}
+      is-main-branch: ${{ github.ref_name == 'main' }}
+    secrets: inherit
 
-          - job_name: build-macos-appstore
-            rust-targets: aarch64-apple-darwin x86_64-apple-darwin
-            build-script: scripts/build/macos-appstore.sh
-            upload-script: scripts/upload/app-store-connect.sh
-            artifact-file: "Firezone.pkg"
-            platform: macOS
+  build-macos-appstore:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: update-release-draft
+    uses: ./.github/workflows/_swift-build.yml
+    with:
+      rust-targets: aarch64-apple-darwin x86_64-apple-darwin
+      build-script: scripts/build/macos-appstore.sh
+      upload-script: scripts/upload/app-store-connect.sh
+      artifact-file: Firezone.pkg
+      platform: macOS
+      is-dispatch: ${{ github.event_name == 'workflow_dispatch' }}
+      is-main-branch: ${{ github.ref_name == 'main' }}
+    secrets: inherit
 
-          - job_name: build-macos-standalone
-            rust-targets: aarch64-apple-darwin x86_64-apple-darwin
-            build-script: scripts/build/macos-standalone.sh
-            upload-script: scripts/upload/github-release.sh
-            # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.11.dmg"
-            # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.11.pkg"
-            # mark:next-apple-version
-            release-name: macos-client-1.5.11
-    steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-        with:
-          fetch-tags: true # Otherwise we cannot embed the correct version into the build.
-      - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.rust-targets }}
-      - uses: ./.github/actions/setup-rust-sccache
-      - run: ${{ matrix.build-script }}
-        env:
-          IOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}"
-          IOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_NE_PROVISIONING_PROFILE }}"
-          MACOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_MACOS_APP_PROVISIONING_PROFILE }}"
-          MACOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_MACOS_NE_PROVISIONING_PROFILE }}"
-          STANDALONE_MACOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_STANDALONE_MACOS_APP_PROVISIONING_PROFILE }}"
-          STANDALONE_MACOS_NE_PROVISIONING_PROFILE: "${{ secrets.APPLE_STANDALONE_MACOS_NE_PROVISIONING_PROFILE }}"
-          BUILD_CERT: "${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}"
-          BUILD_CERT_PASS: "${{ secrets.APPLE_BUILD_CERTIFICATE_P12_PASSWORD }}"
-          INSTALLER_CERT: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
-          INSTALLER_CERT_PASS: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
-          STANDALONE_BUILD_CERT: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}"
-          STANDALONE_BUILD_CERT_PASS: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}"
-          STANDALONE_INSTALLER_CERT: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
-          STANDALONE_INSTALLER_CERT_PASS: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
-          ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
-          PKG_ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
-          NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"
-          ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
-          API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
-          API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
-          TEMP_DIR: "${{ runner.temp }}"
-      - name: Upload .dmg artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
-        with:
-          name: macos-client-standalone-dmg
-          path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
-      - name: Upload .pkg artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
-        with:
-          name: macos-client-standalone-pkg
-          path: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
-      - run: ${{ matrix.upload-script }}
-        if: "${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || matrix.job_name != 'build-macos-standalone') }}"
-        env:
-          ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
-          ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
-          API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
-          API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          RELEASE_NAME: "${{ matrix.release-name }}"
-          PLATFORM: "${{ matrix.platform }}"
-      # We also publish a pkg file for MDMs that don't like our DMG (Intune error 0x87D30139)
-      - run: ${{ matrix.upload-script }}
-        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && matrix.job_name == 'build-macos-standalone' }}"
-        env:
-          ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
-          ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
-          API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
-          API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          RELEASE_NAME: "${{ matrix.release-name }}"
-          PLATFORM: "${{ matrix.platform }}"
-      - name: Setup sentry CLI
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
-        uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
-        with:
-          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          organization: firezone-inc
-      - name: Upload debug symbols to Sentry
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
-        run: |
-          # Remove the /Applications symlink in the DMG staging directory so Sentry doesn't
-          # attempt to walk it.
-          rm -f "${{ runner.temp }}/dmg/Applications"
-
-          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
-          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ./rust/target
+  build-macos-standalone:
+    needs: update-release-draft
+    uses: ./.github/workflows/_swift-build.yml
+    with:
+      rust-targets: aarch64-apple-darwin x86_64-apple-darwin
+      build-script: scripts/build/macos-standalone.sh
+      upload-script: scripts/upload/github-release.sh
+      # mark:next-apple-version
+      artifact-file: firezone-macos-client-1.5.11.dmg
+      # mark:next-apple-version
+      pkg-artifact-file: firezone-macos-client-1.5.11.pkg
+      # mark:next-apple-version
+      release-name: macos-client-1.5.11
+      platform: macOS
+      is-dispatch: ${{ github.event_name == 'workflow_dispatch' }}
+      is-main-branch: ${{ github.ref_name == 'main' }}
+    secrets: inherit
