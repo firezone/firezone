@@ -73,8 +73,7 @@ defmodule Web.ConnCase do
 
     {:ok, session} =
       Domain.Auth.create_portal_session(
-        actor.account_id,
-        actor.id,
+        actor,
         auth_provider.id,
         context,
         expires_at

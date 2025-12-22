@@ -308,8 +308,7 @@ defmodule Web.OIDCController do
     case type do
       :portal ->
         Domain.Auth.create_portal_session(
-          identity.account_id,
-          identity.actor_id,
+          identity.actor,
           provider.id,
           context,
           expires_at

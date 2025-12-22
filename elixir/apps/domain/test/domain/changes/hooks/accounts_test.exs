@@ -1,6 +1,10 @@
 defmodule Domain.Changes.Hooks.AccountsTest do
   use Domain.DataCase, async: true
-  alias Domain.{Accounts, Changes.Change, PubSub}
+  import Domain.AccountFixtures
+  import Domain.PolicyAuthorizationFixtures
+  import Domain.TokenFixtures
+  alias Domain.Changes.Change
+  alias Domain.PubSub
   import Domain.Changes.Hooks.Accounts
 
   describe "insert/1" do
@@ -32,10 +36,8 @@ defmodule Domain.Changes.Hooks.AccountsTest do
     end
 
     test "deletes associated policy authorizations when account is disabled" do
-      account = Fixtures.Accounts.create_account()
-
-      policy_authorization =
-        Fixtures.PolicyAuthorizations.create_policy_authorization(account: account)
+      account = account_fixture()
+      policy_authorization = policy_authorization_fixture(account: account)
 
       old_data = %{
         "id" => account.id,
@@ -49,6 +51,24 @@ defmodule Domain.Changes.Hooks.AccountsTest do
 
       assert :ok == on_update(0, old_data, data)
       assert Repo.get_by(Domain.PolicyAuthorization, id: policy_authorization.id) == nil
+    end
+
+    test "deletes associated client tokens when account is disabled" do
+      account = account_fixture()
+      client_token = client_token_fixture(account: account)
+
+      old_data = %{
+        "id" => account.id,
+        "disabled_at" => nil
+      }
+
+      data = %{
+        "id" => account.id,
+        "disabled_at" => "2023-10-01T00:00:00Z"
+      }
+
+      assert :ok == on_update(0, old_data, data)
+      assert Repo.get_by(Domain.ClientToken, id: client_token.id) == nil
     end
   end
 
