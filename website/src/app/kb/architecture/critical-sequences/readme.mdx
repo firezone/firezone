@@ -187,14 +187,29 @@ The somewhat magical aspect of hole-punching actually happens entirely implicit
 as part of this process. Most NAT devices are inherently stateful in that they
 remember the source port of an outgoing packet and allow packets arriving at the
 same port back-in. Both peers in the above algorithm are forming the same NxM
-matrix of candidates, and hence are sending packets to and from the same socket
-address. For example, assume a Client's public IP is `35.10.10.10` and the
-Gateway's public IP is `40.10.10.10`. Both Firezone Clients and Firezone
-Gateways are listening on port 52625 by default. The NxM matrix will therefore
-include a pair of `35.10.0.10:52625 <> 40.10.10.10:52625` on both sides.
-Consequently, the packet sent from the Gateway towards `35.10.10.10:52625` looks
-like the "response" to the packet sent by the Client towards `40.10.10.10:52625`
-and they are therefore forwarded through the NATs on either end.
+matrix of candidates, and hence are sending packets **to** the same socket
+address the other one is sending **from**.
+
+For example, assume a Client's public IP is `35.10.10.10` and the Gateway's
+public IP is `40.10.10.10`. Both Firezone Clients and Firezone Gateways are
+listening on port 52625 by default. The NxM matrix will therefore include a pair
+of `35.10.0.10:52625 <> 40.10.10.10:52625` on both sides.
+
+1. Client sends a UDP packet from its local socket towards `40.10.10.10:52625`
+1. Gateway sends a UDP packet from its local socket towards `35.10.10.10.52625`
+1. NAT device on the Client's network rewrites the source of the outgoing packet
+   to `35.10.10.10:52625`. It also registers a new "connection" on this port.
+1. NAT device on the Gateways's network rewrites the source of the outgoing
+   packet to `40.10.10.10:52625`. It also registers a new "connection" on this
+   port.
+1. Packet from the Client arrives at the Gateway's NAT device. The lookup by
+   source address (`35.10.10.10:52625`) yields the connection created in step 3.
+1. Packet from the Gateway arrives at the Client's NAT device. The lookup by
+   source address (`40.10.10.10:52625`) yields the connection created in step 4.
+
+Due to differing latencies, the timing of these steps can vary in practise. That
+isn't an issue though as UDP is by design stateless and the next packet will
+simply be allowed through.
 
 ### Phase 3: WireGuard handshake
 
