@@ -1344,7 +1344,7 @@ defmodule Web.Actors do
                     <.link
                       :for={group <- section_groups}
                       navigate={
-                        ~p"/#{@account}/groups/#{group.id}?return_to=#{~p"/#{@account}/actors/#{@actor.id}"}"
+                        ~p"/#{@account}/groups/#{group.id}?#{[return_to: ~p"/#{@account}/actors/#{@actor.id}"]}"
                       }
                       class="block p-4 hover:bg-neutral-50"
                     >
