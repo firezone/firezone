@@ -166,7 +166,7 @@ defmodule API.Gateway.Channel do
       if current_relay_count < 2 or disconnected_ids != [] do
         {:ok, relays} = select_relays(socket)
 
-        if length(relays) > 0 do
+        if relays != [] do
           # Cache new stamp secrets
           socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
 

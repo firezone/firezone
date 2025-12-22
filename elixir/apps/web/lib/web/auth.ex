@@ -10,7 +10,7 @@ defmodule Web.Auth do
     x_headers = Phoenix.LiveView.get_connect_info(socket, :x_headers)
 
     real_ip =
-      if is_list(x_headers) and length(x_headers) > 0 do
+      if is_list(x_headers) and x_headers != [] do
         RemoteIp.from(x_headers, Web.Endpoint.real_ip_opts())
       end
 
