@@ -102,13 +102,13 @@ jobs:
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           TEMP_DIR: "${{ runner.temp }}"
       - name: Upload .dmg artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
         with:
           name: macos-client-standalone-dmg
           path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
       - name: Upload .pkg artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
         with:
           name: macos-client-standalone-pkg
