@@ -110,6 +110,9 @@ config :web, Web.Endpoint,
   https: [
     port: web_port,
     cipher_suite: :strong,
+    # TLS 1.2 is needed alongside 1.3 because :strong sets next_protocols_advertised
+    # for HTTP/2 ALPN, which is incompatible with TLS 1.3-only mode
+    versions: [:"tlsv1.2", :"tlsv1.3"],
     certfile: "priv/cert/selfsigned.pem",
     keyfile: "priv/cert/selfsigned_key.pem"
   ],

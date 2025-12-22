@@ -143,7 +143,7 @@ defmodule API.PolicyControllerTest do
       assert resp ==
                %{
                  "error" => %{
-                   "reason" => "Unprocessable Entity",
+                   "reason" => "Unprocessable Content",
                    "validation_errors" => %{
                      "group_id" => ["can't be blank"],
                      "resource_id" => ["can't be blank"]
