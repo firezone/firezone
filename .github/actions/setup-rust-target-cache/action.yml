@@ -19,6 +19,6 @@ runs:
         workspaces: rust
         cache-targets: true
         cache-workspace-crates: true
-        key: ${{ inputs.key }}
+        key: ${{ inputs.key }}-${{ hashFiles('rust/**/*.rs') }}
         prefix-key: v2-rust
         save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
