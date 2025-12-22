@@ -144,7 +144,6 @@ defmodule Web.Resources.Components do
               type="checkbox"
               name={"#{@form.name}[tcp][enabled]"}
               checked={Map.has_key?(@forms_by_protocol, :tcp)}
-              value="true"
               disabled={!@traffic_filters_enabled?}
               label="TCP"
             />
@@ -175,7 +174,6 @@ defmodule Web.Resources.Components do
               type="checkbox"
               name={"#{@form.name}[udp][enabled]"}
               checked={Map.has_key?(@forms_by_protocol, :udp)}
-              value="true"
               disabled={!@traffic_filters_enabled?}
               label="UDP"
             />
@@ -208,7 +206,6 @@ defmodule Web.Resources.Components do
               type="checkbox"
               name={"#{@form.name}[icmp][enabled]"}
               checked={Map.has_key?(@forms_by_protocol, :icmp)}
-              value="true"
               disabled={!@traffic_filters_enabled?}
               label="ICMP echo"
             />
