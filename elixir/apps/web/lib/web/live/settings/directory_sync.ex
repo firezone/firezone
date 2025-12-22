@@ -326,7 +326,7 @@ defmodule Web.Settings.DirectorySync do
     <%= if Domain.Account.idp_sync_enabled?(@account) do %>
       <.section>
         <:title>Directories</:title>
-        <:action><.docs_action path="/guides/settings/directory-sync" /></:action>
+        <:action><.docs_action path="/directory-sync" /></:action>
         <:action>
           <.add_button patch={~p"/#{@account}/settings/directory_sync/select_type"}>
             Add Directory
@@ -352,7 +352,7 @@ defmodule Web.Settings.DirectorySync do
     <% else %>
       <.section>
         <:title>Directories</:title>
-        <:action><.docs_action path="/guides/settings/directory-sync" /></:action>
+        <:action><.docs_action path="/directory-sync" /></:action>
         <:content>
           <div class="relative">
             <!-- Blurred preview content -->
@@ -497,7 +497,9 @@ defmodule Web.Settings.DirectorySync do
       on_close="close_modal"
       confirm_disabled={not @form.source.valid?}
     >
-      <:title icon={@type}>Add {titleize(@type)} Directory</:title>
+      <:title icon={@type}>
+        Add {titleize(@type)} Directory <.docs_action path={"/directory-sync/#{@type}"} />
+      </:title>
       <:body>
         <.directory_form
           verification_error={@verification_error}
@@ -520,7 +522,9 @@ defmodule Web.Settings.DirectorySync do
         not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
       }
     >
-      <:title icon={@type}>Edit {@directory_name}</:title>
+      <:title icon={@type}>
+        Edit {@directory_name} <.docs_action path={"/directory-sync/#{@type}"} />
+      </:title>
       <:body>
         <.flash :if={assigns[:is_legacy]} kind={:warning_inline}>
           This directory uses legacy credentials and needs to be updated to use Firezone's shared service account.
