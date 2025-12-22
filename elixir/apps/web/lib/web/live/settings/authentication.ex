@@ -382,7 +382,7 @@ defmodule Web.Settings.Authentication do
     </.breadcrumbs>
     <.section>
       <:title>Authentication Providers</:title>
-      <:action><.docs_action path="/guides/settings/authentication" /></:action>
+      <:action><.docs_action path="/authentication" /></:action>
       <:action>
         <.add_button patch={~p"/#{@account}/settings/authentication/select_type"}>
           Add Provider
@@ -484,7 +484,9 @@ defmodule Web.Settings.Authentication do
       on_close="close_modal"
       confirm_disabled={not @form.source.valid?}
     >
-      <:title icon={@type}>Add {titleize(@type)} Provider</:title>
+      <:title icon={@type}>
+        Add {titleize(@type)} Provider <.docs_action path={"/authenticate/#{@type}"} />
+      </:title>
       <:body>
         <.provider_form
           account_id={@account.id}
@@ -506,7 +508,9 @@ defmodule Web.Settings.Authentication do
         not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
       }
     >
-      <:title icon={@type}>Edit {@provider_name}</:title>
+      <:title icon={@type}>
+        Edit {@provider_name} <.docs_action path={"/authenticate/#{@type}"} />
+      </:title>
       <:body>
         <.flash :if={assigns[:is_legacy]} kind={:warning_inline}>
           This provider uses legacy configuration. We recommend setting up a new authentication provider
