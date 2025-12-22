@@ -32,6 +32,15 @@ applications.
 
 ## Setup
 
+<Alert color="info">
+  **Note on API rate limits:** Firezone intelligently throttles API requests to
+  stay within the rate limit you configure for your service app. In the
+  **Application Rate Limits** tab of your Okta service app, you can set a
+  percentage of your org's total rate limit capacity. To complete syncs faster,
+  we recommend setting this to the highest value that still allows your other
+  Okta integrations to function properly.
+</Alert>
+
 ### Step 1: Create a custom role in Okta
 
 To ensure Firezone has only the minimum required permissions, you'll create a
