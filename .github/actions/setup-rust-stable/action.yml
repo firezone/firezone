@@ -37,7 +37,26 @@ runs:
       shell: bash
 
     - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
-      id: toolchain
+      id: toolchain-1
+      continue-on-error: true
+      with:
+        toolchain: ${{ env.RUST_TOOLCHAIN }}
+        components: rustfmt,clippy,llvm-tools-preview
+        target: ${{ inputs.targets }}
+        cache: false # We explicitly configure caching somewhere else.
+
+    - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
+      if: ${{ steps.toolchain-1.outcome == 'failure' }}
+      continue-on-error: true
+      id: toolchain-2
+      with:
+        toolchain: ${{ env.RUST_TOOLCHAIN }}
+        components: rustfmt,clippy,llvm-tools-preview
+        target: ${{ inputs.targets }}
+        cache: false # We explicitly configure caching somewhere else.
+
+    - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
+      if: ${{ steps.toolchain-2.outcome == 'failure' }}
       with:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy,llvm-tools-preview
