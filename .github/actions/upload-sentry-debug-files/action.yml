@@ -1,0 +1,30 @@
+name: Upload Sentry Debug Files
+description: Setup Sentry CLI and upload debug files for a project
+inputs:
+  sentry-auth-token:
+    description: Sentry authentication token
+    required: true
+  sentry-project:
+    description: Sentry project name
+    required: true
+  paths:
+    description: Newline-separated list of paths to upload debug files from
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup sentry CLI
+      uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+      with:
+        token: ${{ inputs.sentry-auth-token }}
+        organization: firezone-inc
+
+    - name: Upload debug symbols to Sentry
+      shell: bash
+      run: |
+        while IFS= read -r path; do
+          [ -z "$path" ] && continue
+          [ ! -d "$path" ] && [ ! -f "$path" ] && continue
+          sentry-cli debug-files upload --log-level info --project ${{ inputs.sentry-project }} --include-sources "$path"
+        done <<< "${{ inputs.paths }}"
