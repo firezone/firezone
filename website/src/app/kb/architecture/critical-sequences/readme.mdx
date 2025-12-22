@@ -193,7 +193,7 @@ address the other one is sending **from**.
 For example, assume a Client's public IP is `35.10.10.10` and the Gateway's
 public IP is `40.10.10.10`. Both Firezone Clients and Firezone Gateways are
 listening on port 52625 by default. The NxM matrix will therefore include a pair
-of `35.10.0.10:52625 <> 40.10.10.10:52625` on both sides.
+of `35.10.10.10:52625 <> 40.10.10.10:52625` on both sides.
 
 1. Client sends a UDP packet from its local socket towards `40.10.10.10:52625`
 1. Gateway sends a UDP packet from its local socket towards `35.10.10.10.52625`
