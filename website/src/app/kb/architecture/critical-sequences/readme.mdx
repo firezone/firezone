@@ -131,7 +131,7 @@ susceptible to, such as DDoS attacks.
 
 ## Detailed Connection Setup
 
-The above "Policy evalation" section touches on this topic briefly in step 6.
+The above "Policy evaluation" section touches on this topic briefly in step 6.
 This section here describes in more detail, how this connection is established.
 
 Firezone supports NAT traversal which means that neither the Client nor the
@@ -247,7 +247,7 @@ servers make use of eBPF eXpress data path (XDP) and implement this routing of
 channel-data packets directly in the kernel. Specifically, in the network card
 driver even before the packet gets parsed.
 
-To the receiver of the packet, this process is transparent. They simple send and
+To the receiver of the packet, this process is transparent. They simply send and
 receive UDP traffic from an IP and port and outside of applying heuristics based
 on e.g. IP location, cannot differentiate between this socket being a relay or
 the remote peer directly.
