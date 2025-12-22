@@ -61,6 +61,7 @@ pub struct Eventloop {
 /// Commands that can be sent to the [`Eventloop`].
 pub enum Command {
     Reset(String),
+    Suspend,
     Stop,
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
@@ -69,6 +70,7 @@ pub enum Command {
 
 enum PortalCommand {
     Connect(PublicKeyParam),
+    Suspend(PublicKeyParam),
     Send(EgressMessages),
     UpdateDnsServers(Vec<IpAddr>),
 }
@@ -229,6 +231,19 @@ impl Eventloop {
                 tunnel.reset(&reason);
                 self.portal_cmd_tx
                     .send(PortalCommand::Connect(PublicKeyParam(
+                        tunnel.public_key().to_bytes(),
+                    )))
+                    .await
+                    .context("Failed to connect phoenix-channel")?;
+            }
+            Command::Suspend => {
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tunnel.suspend();
+                self.portal_cmd_tx
+                    .send(PortalCommand::Suspend(PublicKeyParam(
                         tunnel.public_key().to_bytes(),
                     )))
                     .await
@@ -563,6 +578,9 @@ async fn phoenix_channel_event_loop(
             }
             Either::Right((Some(PortalCommand::Connect(param)), _)) => {
                 portal.connect(param);
+            }
+            Either::Right((Some(PortalCommand::Suspend(param)), _)) => {
+                portal.suspend(param);
             }
             Either::Right((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
                 udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);

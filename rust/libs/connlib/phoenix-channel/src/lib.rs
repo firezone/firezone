@@ -73,6 +73,7 @@ enum State {
         BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError>>,
     ),
     Closing(WebSocketStream<MaybeTlsStream<TcpStream>>),
+    Suspended(Url),
     Closed,
 }
 
@@ -330,6 +331,20 @@ where
         let (id, msg) = self.make_message(topic, message);
         self.pending_messages.push_back(msg);
 
+        if let State::Suspended(url) = &self.state {
+            self.state = State::connect(
+                url.clone(),
+                self.socket_addresses(),
+                self.host(),
+                self.user_agent.clone(),
+                self.socket_factory.clone(),
+            );
+
+            if let Some(waker) = self.waker.take() {
+                waker.wake();
+            }
+        }
+
         id
     }
 
@@ -346,12 +361,11 @@ where
         self.reconnect_backoff = None;
 
         // 2. Set state to `Connecting` without a timer.
-        let user_agent = self.user_agent.clone();
         self.state = State::connect(
             url.clone(),
             self.socket_addresses(),
             self.host(),
-            user_agent,
+            self.user_agent.clone(),
             self.socket_factory.clone(),
         );
         self.last_url = Some(url);
@@ -360,6 +374,17 @@ where
         if let Some(waker) = self.waker.take() {
             waker.wake();
         }
+    }
+
+    /// Closes the current connection and moves into the "Suspended" state.
+    ///
+    /// The connection will be re-established on the first message that is queued for sending.
+    pub fn suspend(&mut self, params: TFinish) {
+        let url = self.url_prototype.expose_secret().to_url(params);
+
+        self.reconnect_backoff = None;
+        self.state = State::Suspended(url.clone());
+        self.last_url = Some(url);
     }
 
     pub fn url(&self) -> String {
@@ -389,7 +414,7 @@ where
             State::Closing(stream) | State::Connected(stream) => {
                 self.state = State::Closing(stream);
             }
-            State::Closed | State::Reconnect { .. } => {}
+            State::Closed | State::Suspended(_) | State::Reconnect { .. } => {}
         }
 
         Ok(())
@@ -400,6 +425,10 @@ where
             // First, check if we are connected.
             let stream = match &mut self.state {
                 State::Closed => return Poll::Ready(Ok(Event::Closed)),
+                State::Suspended(_) => {
+                    self.waker = Some(cx.waker().clone());
+                    return Poll::Pending;
+                }
                 State::Closing(stream) => match stream.poll_close_unpin(cx) {
                     Poll::Ready(Ok(())) => {
                         tracing::info!("Closed websocket connection to portal");

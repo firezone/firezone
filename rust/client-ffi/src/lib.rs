@@ -348,6 +348,10 @@ impl Session {
         self.inner.reset(reason)
     }
 
+    pub fn suspend(&self) {
+        self.inner.suspend();
+    }
+
     pub fn set_log_directives(&self, directives: String) -> Result<(), ConnlibError> {
         let (_, reload_handle) = LOGGER_STATE.get().context("Logger not yet initialised")?;
 

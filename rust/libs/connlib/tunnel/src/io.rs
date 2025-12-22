@@ -65,6 +65,7 @@ pub struct Io {
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
+    suspended: Option<Pin<Box<tokio::time::Sleep>>>,
 
     tun: Device,
     outbound_packet_buffer: VecDeque<IpPacket>,
@@ -165,6 +166,7 @@ impl Io {
         Self {
             outbound_packet_buffer: VecDeque::default(),
             timeout: None,
+            suspended: None,
             sockets,
             nameservers: NameserverSet::new(
                 nameservers,
@@ -266,6 +268,12 @@ impl Io {
     > {
         if let Err(e) = ready!(self.flush(cx)) {
             return Poll::Ready(Input::error(e));
+        }
+
+        if let Some(suspend) = self.suspended.as_mut() {
+            ready!(suspend.poll_unpin(cx));
+            self.suspended = None;
+            self.reset();
         }
 
         let mut error = TunnelError::default();
@@ -481,6 +489,8 @@ impl Io {
     }
 
     pub fn reset(&mut self) {
+        tracing::debug!("Resetting IO components");
+
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
@@ -492,6 +502,12 @@ impl Io {
         for (server, _) in std::mem::take(&mut self.doh_clients) {
             self.bootstrap_doh_client(server);
         }
+    }
+
+    pub fn suspend(&mut self) {
+        self.suspended = Some(Box::pin(tokio::time::sleep(Duration::from_secs(5))));
+
+        tracing::debug!("Suspending IO for 5 seconds");
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant, reason: &'static str) {
