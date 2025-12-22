@@ -416,7 +416,7 @@ struct Eventloop<R> {
     sockets: Sockets,
 
     server: Server<R>,
-    channel: Option<PhoenixChannel<JoinMessage, IngressMessage, NoParams>>,
+    channel: Option<PhoenixChannel<JoinMessage, (), IngressMessage, NoParams>>,
     sleep: Sleep,
 
     ebpf: Option<ebpf::Program>,
@@ -438,7 +438,7 @@ where
     fn new(
         server: Server<R>,
         ebpf: Option<ebpf::Program>,
-        channel: PhoenixChannel<JoinMessage, IngressMessage, NoParams>,
+        channel: PhoenixChannel<JoinMessage, (), IngressMessage, NoParams>,
         public_address: IpStack,
         last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
     ) -> Result<Self> {
