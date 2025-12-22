@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use connlib_model::{ResourceId, SiteId};
+use connlib_model::ResourceId;
 use ip_packet::IpPacket;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
@@ -24,27 +24,15 @@ impl PendingFlows {
         rid: ResourceId,
         trigger: impl Into<ConnectionTrigger>,
         resources_by_id: &BTreeMap<ResourceId, Resource>,
-        connected_to_site: impl Fn(SiteId) -> bool,
         now: Instant,
     ) {
         let trigger = trigger.into();
         let trigger_name = trigger.name();
 
-        let Some(resource) = resources_by_id.get(&rid) else {
+        if !resources_by_id.contains_key(&rid) {
             tracing::debug!(%rid, "Resource not found, skipping connection intent");
             return;
         };
-
-        let Ok(site) = resource.site() else {
-            tracing::debug!(%rid, "Expected resource to only have 1 site");
-            return;
-        };
-
-        let has_pending_flows_for_site = resources_by_id
-            .values()
-            .filter_map(|r| r.sites().contains(site).then_some(r.id()))
-            .filter(|r| r != &rid)
-            .any(|r| self.inner.contains_key(&r));
 
         let pending_flow = self
             .inner
@@ -52,12 +40,6 @@ impl PendingFlows {
             .or_insert_with(|| PendingFlow::new(now - Duration::from_secs(10))); // Insert with a negative time to ensure we instantly send an intent.
 
         pending_flow.push(trigger);
-
-        // If we are not connected to the site yet, hold off on sending more connection intents.
-        if has_pending_flows_for_site && !connected_to_site(site.id) {
-            tracing::debug!(%rid, site = %site.name, "Already connecting to this site, skipping connection intent");
-            return;
-        }
 
         let time_since_last_intent = now.duration_since(pending_flow.last_intent_sent_at);
 
@@ -187,12 +169,12 @@ mod tests {
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
 
-        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, |_| false, now);
+        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
 
         now += Duration::from_secs(1);
 
-        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, |_| false, now);
+        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), None);
     }
 
@@ -203,17 +185,17 @@ mod tests {
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
 
-        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, |_| false, now);
+        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
 
         now += Duration::from_secs(3);
 
-        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, |_| false, now);
+        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
     }
 
     #[test]
-    fn buffers_intent_for_resources_in_same_site() {
+    fn sends_intent_for_same_site_in_parallel() {
         let _guard = logging::test("trace");
 
         let mut pending_flows = PendingFlows::default();
@@ -225,38 +207,9 @@ mod tests {
             (rid2, ipv6_localhost_resource()),
         ]);
 
-        pending_flows.on_not_connected_resource(rid1, trigger(1), &resources, |_| false, now);
+        pending_flows.on_not_connected_resource(rid1, trigger(1), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid1));
-        pending_flows.on_not_connected_resource(rid2, trigger(2), &resources, |_| false, now);
-        assert_eq!(pending_flows.poll_connection_intents(), None);
-
-        pending_flows.remove(&rid1);
-
-        pending_flows.on_not_connected_resource(rid2, trigger(3), &resources, |_| false, now);
-        assert_eq!(pending_flows.poll_connection_intents(), Some(rid2));
-
-        let (packets, dns_queries) = pending_flows.remove(&rid2).unwrap().into_buffered_packets();
-
-        assert_eq!(packets.len(), 2, "should buffer both packets");
-        assert!(dns_queries.is_empty());
-    }
-
-    #[test]
-    fn sends_intent_for_same_site_in_parallel_if_already_connected() {
-        let _guard = logging::test("trace");
-
-        let mut pending_flows = PendingFlows::default();
-        let now = Instant::now();
-        let rid1 = ipv4_localhost_resource().id();
-        let rid2 = ipv6_localhost_resource().id();
-        let resources = BTreeMap::from([
-            (rid1, ipv4_localhost_resource()),
-            (rid2, ipv6_localhost_resource()),
-        ]);
-
-        pending_flows.on_not_connected_resource(rid1, trigger(1), &resources, |_| true, now);
-        assert_eq!(pending_flows.poll_connection_intents(), Some(rid1));
-        pending_flows.on_not_connected_resource(rid2, trigger(2), &resources, |_| true, now);
+        pending_flows.on_not_connected_resource(rid2, trigger(2), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid2));
     }
 
