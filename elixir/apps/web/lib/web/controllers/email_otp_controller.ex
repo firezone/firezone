@@ -186,8 +186,7 @@ defmodule Web.EmailOTPController do
     case type do
       :portal ->
         Auth.create_portal_session(
-          actor.account_id,
-          actor.id,
+          actor,
           provider.id,
           context,
           expires_at
