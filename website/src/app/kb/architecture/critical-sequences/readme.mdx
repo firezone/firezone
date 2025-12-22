@@ -145,8 +145,11 @@ To establish connections, Firezone implements the
 [Interactive Connectivity Establishment (ICE) RFC](https://datatracker.ietf.org/doc/html/rfc8445).
 ICE is essentially an algorithm where two peers that would like to connect to
 each other first perform what is called "candidate gathering", they then test
-these candidates and nominate the best one. Finally, the nominated candidate
-pair is used to handshake a WireGuard session.
+these candidates and nominate the best one.
+
+Once ICE is finshed, the nominated candidate pair is used to handshake a
+WireGuard session, which then allows encrypted packets to be sent back and
+forth.
 
 ### Phase 1: Candidate gathering
 
