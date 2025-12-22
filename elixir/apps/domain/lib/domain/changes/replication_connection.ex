@@ -28,7 +28,9 @@ defmodule Domain.Changes.ReplicationConnection do
   }
 
   def on_write(state, lsn, op, table, old_data, data) do
-    if hook = Map.get(@tables_to_hooks, table) do
+    hook = Map.get(@tables_to_hooks, table)
+
+    if hook do
       case op do
         :insert -> :ok = hook.on_insert(lsn, data)
         :update -> :ok = hook.on_update(lsn, old_data, data)

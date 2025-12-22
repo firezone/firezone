@@ -51,7 +51,7 @@ defmodule API.Gateway.Views.Resource do
     }
   end
 
-  defp render_filter(%{ports: ports} = filter) when length(ports) > 0 do
+  defp render_filter(%{ports: ports} = filter) when ports != [] do
     Enum.map(filter.ports, fn port ->
       case String.split(port, "-") do
         [port_start, port_end] ->

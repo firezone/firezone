@@ -49,7 +49,7 @@ defmodule API.Sockets do
 
   defp real_ip(x_headers, peer_data) do
     real_ip =
-      if is_list(x_headers) and length(x_headers) > 0 do
+      if is_list(x_headers) and x_headers != [] do
         RemoteIp.from(x_headers, API.Endpoint.real_ip_opts())
       end
 

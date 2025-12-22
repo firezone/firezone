@@ -324,7 +324,7 @@ defmodule Web.LiveTable do
   end
 
   defp filter(%{filter: %{type: :string, values: values}} = assigns)
-       when 0 < length(values) and length(values) < 5 do
+       when values != [] and length(values) < 5 do
     ~H"""
     <div class="flex items-center order-first">
       <div class="flex rounded" role="group">
@@ -383,7 +383,7 @@ defmodule Web.LiveTable do
   end
 
   defp filter(%{filter: %{type: {:list, :string}, values: values}} = assigns)
-       when 0 < length(values) and length(values) < 5 do
+       when values != [] and length(values) < 5 do
     ~H"""
     <div class="flex items-center order-first">
       <div class="flex rounded w-full" role="group">
@@ -442,7 +442,7 @@ defmodule Web.LiveTable do
     """
   end
 
-  defp filter(%{filter: %{type: :string, values: values}} = assigns) when length(values) > 0 do
+  defp filter(%{filter: %{type: :string, values: values}} = assigns) when values != [] do
     ~H"""
     <div class="flex items-center order-4">
       <div class="w-full">
