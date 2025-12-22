@@ -223,7 +223,7 @@ defmodule Domain.Telemetry do
     max_run_queue = Enum.max(run_queue_lengths, fn -> 0 end)
 
     avg_run_queue =
-      if length(run_queue_lengths) > 0 do
+      if run_queue_lengths != [] do
         Enum.sum(run_queue_lengths) / length(run_queue_lengths)
       else
         0

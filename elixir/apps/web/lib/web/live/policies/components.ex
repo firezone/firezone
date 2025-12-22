@@ -96,7 +96,7 @@ defmodule Web.Policies.Components do
     condition_attrs
   end
 
-  defp condition_values_empty?(%{data: %{values: values}}) when length(values) > 0 do
+  defp condition_values_empty?(%{data: %{values: values}}) when values != [] do
     false
   end
 
