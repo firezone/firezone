@@ -30,7 +30,8 @@ defmodule Firezone.MixProject do
   end
 
   defp listeners do
-    if Mix.env() == :dev do
+    # Dependabot complains about this dependency missing during its check - so only load it conditionally
+    if Code.ensure_loaded?(Phoenix.CodeReloader) do
       [Phoenix.CodeReloader]
     else
       []
