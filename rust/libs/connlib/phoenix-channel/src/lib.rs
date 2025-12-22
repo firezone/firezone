@@ -260,7 +260,7 @@ impl<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
     PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
 where
     TInitReq: Serialize + Clone,
-    TOutboundMsg: Serialize,
+    TOutboundMsg: Serialize + PartialEq + fmt::Debug,
     TInboundMsg: DeserializeOwned,
     TFinish: IntoIterator<Item = (&'static str, String)>,
 {
@@ -330,6 +330,17 @@ where
             tracing::debug!(
                 "Dropping pending messages to portal because we exceeded the maximum of {MAX_BUFFERED_MESSAGES}"
             );
+        }
+
+        if self.pending_messages.iter().any(|m| match &m.payload {
+            Payload::Message(m) => m == &message,
+            Payload::Reply(_) => false,
+            Payload::Error(_) => false,
+            Payload::Close(_) => false,
+            Payload::Disconnect { .. } => false,
+        }) {
+            tracing::debug!(?message, "Refusing to queue exact duplicate");
+            return;
         }
 
         let request_id = self.fetch_add_request_id();

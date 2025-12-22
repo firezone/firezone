@@ -263,7 +263,7 @@ pub struct AccessAuthorizationExpiryUpdated {
 }
 
 /// A client's ice candidate message.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, PartialEq)]
 pub struct ClientsIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
@@ -284,7 +284,7 @@ pub struct ClientIceCandidates {
 
 // These messages can be sent from a gateway
 // to a control pane.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum EgressMessages {
     ConnectionReady(ConnectionReady), // Deprecated.
@@ -296,7 +296,7 @@ pub enum EgressMessages {
     },
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, PartialEq)]
 pub struct ConnectionReady {
     #[serde(rename = "ref")]
     pub reference: String,
