@@ -25,7 +25,7 @@
     "@vercel/edge-config": "^1.4.3",
     "asciinema-player": "^3.12.1",
     "autoprefixer": "10.4.22",
-    "fast-xml-parser": "^5.3.0",
+    "fast-xml-parser": "^5.3.3",
     "flowbite-react": "^0.12.9",
     "framer-motion": "^12.23.24",
     "highlight.js": "^11.11.1",
