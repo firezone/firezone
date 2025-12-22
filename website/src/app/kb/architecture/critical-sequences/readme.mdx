@@ -137,14 +137,14 @@ This section here describes in more detail, how this connection is established.
 Firezone supports NAT traversal which means that neither the Client nor the
 Gateway need to be exposed to the public Internet. Instead of having to open and
 forward a port on the NAT device, direct connections are established via a
-technique called "hole-punching". In case that fails, the connection falls-back
+technique called "hole-punching". In case that fails, the connection falls back
 to using a TURN server. We operate TURN servers in every region offered by Azure
 to minimize the overhead, regardless of where you are in the world.
 
 To establish connections, Firezone implements the
 [Interactive Connectivity Establishment (ICE) RFC](https://datatracker.ietf.org/doc/html/rfc8445).
 ICE is essentially an algorithm where two peers that would like to connect to
-each other first perform what is called "candidate gathering", they then test
+each other first perform what is called "candidate gathering". They then test
 these candidates and nominate the best one.
 
 Once ICE is finshed, the nominated candidate pair is used to handshake a
@@ -184,7 +184,7 @@ then "nominated" and declared as the result of the ICE algorithm.
 ### Phase 3: WireGuard handshake
 
 WireGuard itself does not establish any connections and instead just represents
-a state machine that manages key rotation and encryption and decryption of
+a state machine that manages key rotation, encryption, and decryption of
 packets.
 
 With the "nominated" candidate pair as the output of the ICE algorithm, we now
@@ -197,7 +197,7 @@ session keys are then used to encrypt packets and are rotated every 2 minutes.
 
 ### Hole-punching
 
-The somewhat magical aspect of hole-punching actually happens entirely implicit
+The somewhat magical aspect of hole-punching actually happens entirely implicitly
 as part of this process. Most NAT devices are inherently stateful in that they
 remember the source port of an outgoing packet and allow packets arriving at the
 same port back-in. Both peers in the above algorithm are forming the same NxM
@@ -209,8 +209,8 @@ public IP is `40.10.10.10`. Both Firezone Clients and Firezone Gateways are
 listening on port 52625 by default. The NxM matrix will therefore include a pair
 of `35.10.10.10:52625 <> 40.10.10.10:52625` on both sides.
 
-1. Client sends a UDP packet from its local socket towards `40.10.10.10:52625`
-1. Gateway sends a UDP packet from its local socket towards `35.10.10.10.52625`
+1. Client sends a UDP packet from its local socket using source port `52625` towards `40.10.10.10:52625`
+1. Gateway sends a UDP packet from its local socket using source port `52625` towards `35.10.10.10.52625`
 1. NAT device on the Client's network rewrites the source of the outgoing packet
    to `35.10.10.10:52625`. It also registers a new "connection" on this port.
 1. NAT device on the Gateways's network rewrites the source of the outgoing
@@ -221,7 +221,7 @@ of `35.10.10.10:52625 <> 40.10.10.10:52625` on both sides.
 1. Packet from the Gateway arrives at the Client's NAT device. The lookup by
    source address (`40.10.10.10:52625`) yields the connection created in step 4.
 
-Due to differing latencies, the timing of these steps can vary in practise. That
+Due to differing latencies, the timing of these steps can vary in practice. That
 isn't an issue though as UDP is by design stateless and the next packet will
 simply be allowed through.
 
@@ -237,7 +237,7 @@ successful and thus a relay candidate turned out to be the one with the highest
 priority.
 
 In order to send from a socket on a TURN server, the sender forms a so-called
-"data channel" packet which is a light-weight wrapper with a 4-byte header that
+"data channel" packet which is a lightweight wrapper with a 4-byte header that
 refers to a previously allocated channel. Allocating such a channel is part of
 protocol between a TURN client and server. All packets in such a channel are
 forwarded to the same remote. Upon receiving such a channel-data packet, the
