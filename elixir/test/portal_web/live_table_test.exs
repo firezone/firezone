@@ -1,6 +1,13 @@
+<<<<<<<< HEAD:elixir/test/portal_web/live_table_test.old
 defmodule PortalWeb.LiveTableTest do
   use PortalWeb.ConnCase, async: true
   import PortalWeb.LiveTable
+========
+defmodule Web.LiveTableTest do
+  use Web.ConnCase, async: true
+  import Web.LiveTable
+  import Domain.SubjectFixtures
+>>>>>>>> 7c4afa0ce (test(portal): fix & enable live_table tests):elixir/test/portal_web/live_table_test.exs
 
   describe "<.live_table /> component" do
     setup do
@@ -255,15 +262,12 @@ defmodule PortalWeb.LiveTableTest do
 
       assert select |> List.first() |> elem(2) == [
                {"option", [{"value", ""}], ["For any Select"]},
-               {"optgroup", [{"label", "Select"}],
-                [
-                  {"option", [{"value", "1"}], ["One"]},
-                  {"option", [{"value", "2"}], ["Two"]},
-                  {"option", [{"value", "3"}], ["Three"]},
-                  {"option", [{"value", "4"}], ["Four"]},
-                  {"option", [{"value", "5"}], ["Five"]},
-                  {"option", [{"value", "6"}], ["Six"]}
-                ]}
+               {"option", [{"value", "1"}], ["One"]},
+               {"option", [{"value", "2"}], ["Two"]},
+               {"option", [{"value", "3"}], ["Three"]},
+               {"option", [{"value", "4"}], ["Four"]},
+               {"option", [{"value", "5"}], ["Five"]},
+               {"option", [{"value", "6"}], ["Six"]}
              ]
     end
 
@@ -346,7 +350,7 @@ defmodule PortalWeb.LiveTableTest do
 
   describe "assign_live_table/3" do
     setup do
-      subject = Fixtures.Auth.create_subject()
+      subject = subject_fixture()
       socket = %Phoenix.LiveView.Socket{assigns: %{subject: subject, __changed__: %{}}}
       %{socket: socket}
     end
@@ -417,7 +421,7 @@ defmodule PortalWeb.LiveTableTest do
 
   describe "reload_live_table!/2" do
     test "reloads the live table" do
-      subject = Fixtures.Auth.create_subject()
+      subject = subject_fixture()
 
       socket =
         %Phoenix.LiveView.Socket{
@@ -439,12 +443,13 @@ defmodule PortalWeb.LiveTableTest do
     end
 
     test "reloads whole page on errors" do
-      subject = Fixtures.Auth.create_subject()
+      subject = subject_fixture()
 
       socket =
         %Phoenix.LiveView.Socket{
-          assigns: %{subject: subject, uri: "http://foo.bar/current_uri", __changed__: %{}}
+          assigns: %{subject: subject, __changed__: %{}}
         }
+        |> put_uri_assigns("/current_uri")
         |> assign_live_table("table-id",
           query_module: Actor.Query,
           sortable_fields: [
@@ -461,7 +466,7 @@ defmodule PortalWeb.LiveTableTest do
 
   describe "handle_live_tables_params/3" do
     setup do
-      subject = Fixtures.Auth.create_subject()
+      subject = subject_fixture()
 
       test_pid = self()
 
@@ -469,6 +474,7 @@ defmodule PortalWeb.LiveTableTest do
         %Phoenix.LiveView.Socket{
           assigns: %{subject: subject, __changed__: %{}}
         }
+        |> put_uri_assigns("/actors")
         |> assign_live_table("table-id",
           query_module: Actor.Query,
           sortable_fields: [
@@ -486,7 +492,7 @@ defmodule PortalWeb.LiveTableTest do
     test "assigns the live table data from callbacks", %{socket: socket} do
       assert %{
                assigns: %{
-                 uri: "/actors"
+                 current_path: "/actors"
                },
                private: %{
                  list_opts: [
@@ -499,7 +505,7 @@ defmodule PortalWeb.LiveTableTest do
 
       assert %{
                assigns: %{
-                 uri: "/actors"
+                 current_path: "/actors"
                },
                private: %{
                  list_opts: [
@@ -529,12 +535,13 @@ defmodule PortalWeb.LiveTableTest do
     end
 
     test "raises if the table params are invalid" do
-      subject = Fixtures.Auth.create_subject()
+      subject = subject_fixture()
 
       socket =
         %Phoenix.LiveView.Socket{
-          assigns: %{subject: subject, uri: "/current_uri", __changed__: %{}, flash: %{}}
+          assigns: %{subject: subject, __changed__: %{}, flash: %{}}
         }
+        |> put_uri_assigns("/current_uri")
 
       for {reason, message} <- [
             {:invalid_cursor, "The page was reset due to invalid pagination cursor."},
@@ -560,12 +567,13 @@ defmodule PortalWeb.LiveTableTest do
     end
 
     test "raises if the callback returns a generic error" do
-      subject = Fixtures.Auth.create_subject()
+      subject = subject_fixture()
 
       socket =
         %Phoenix.LiveView.Socket{
-          assigns: %{subject: subject, uri: "/current_uri", __changed__: %{}}
+          assigns: %{subject: subject, __changed__: %{}}
         }
+        |> put_uri_assigns("/current_uri")
 
       for {reason, exception} <- [
             {:not_found, PortalWeb.LiveErrors.NotFoundError},
@@ -589,19 +597,17 @@ defmodule PortalWeb.LiveTableTest do
 
   describe "handle_live_table_event/3 for pagination" do
     setup do
-      subject = Fixtures.Auth.create_subject()
+      subject = subject_fixture()
 
       socket =
         %Phoenix.LiveView.Socket{
-          assigns: %{
-            subject: subject,
-            uri:
-              "/actors?table-id_cursor=prev_page" <>
-                "&table-id_filter%5Bname%5D=buz" <>
-                "&table-id_order_by=actors%3Aasc%3Aname",
-            __changed__: %{}
-          }
+          assigns: %{subject: subject, __changed__: %{}}
         }
+        |> put_uri_assigns(
+          "/actors?table-id_cursor=prev_page" <>
+            "&table-id_filter%5Bname%5D=buz" <>
+            "&table-id_order_by=actors%3Aasc%3Aname"
+        )
         |> assign_live_table("table-id",
           query_module: Actor.Query,
           sortable_fields: [
@@ -631,20 +637,18 @@ defmodule PortalWeb.LiveTableTest do
 
   describe "handle_live_table_event/3 for filtering" do
     setup do
-      subject = Fixtures.Auth.create_subject()
+      subject = subject_fixture()
 
       socket =
         %Phoenix.LiveView.Socket{
-          assigns: %{
-            subject: subject,
-            uri:
-              "/actors?table-id_cursor=next_page" <>
-                "&table-id_filter%5Bemail%5D=bar" <>
-                "&table-id_filter%5Bname%5D=buz" <>
-                "&table-id_order_by=actors%3Aasc%3Aname",
-            __changed__: %{}
-          }
+          assigns: %{subject: subject, __changed__: %{}}
         }
+        |> put_uri_assigns(
+          "/actors?table-id_cursor=next_page" <>
+            "&table-id_filter%5Bemail%5D=bar" <>
+            "&table-id_filter%5Bname%5D=buz" <>
+            "&table-id_order_by=actors%3Aasc%3Aname"
+        )
         |> assign_live_table("table-id",
           query_module: Actor.Query,
           sortable_fields: [
@@ -677,6 +681,7 @@ defmodule PortalWeb.LiveTableTest do
                socket
              )
              |> fetch_patched_query_params!() == %{
+               "table-id_filter[email]" => "bar",
                "table-id_filter[name]" => "foo",
                "table-id_order_by" => "actors:asc:name"
              }
@@ -685,17 +690,15 @@ defmodule PortalWeb.LiveTableTest do
 
   describe "handle_live_table_event/3 for ordering" do
     setup do
-      subject = Fixtures.Auth.create_subject()
+      subject = subject_fixture()
 
       socket =
         %Phoenix.LiveView.Socket{
-          assigns: %{
-            subject: subject,
-            uri:
-              "/actors?table-id_cursor=next_page&table-id_filter%5Bname%5D=bar&table-id_order_by=actors%3Aasc%3Aname",
-            __changed__: %{}
-          }
+          assigns: %{subject: subject, __changed__: %{}}
         }
+        |> put_uri_assigns(
+          "/actors?table-id_cursor=next_page&table-id_filter%5Bname%5D=bar&table-id_order_by=actors%3Aasc%3Aname"
+        )
         |> assign_live_table("table-id",
           query_module: Actor.Query,
           sortable_fields: [
