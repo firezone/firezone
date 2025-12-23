@@ -76,7 +76,7 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.4.19
+          - release_name: gateway-1.4.20
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
           - release_name: headless-client-1.5.5
@@ -209,9 +209,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.4.19
+            release_name: gateway-1.4.20
             # mark:next-gateway-version
-            version: 1.4.19
+            version: 1.4.20
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -419,7 +419,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.4.19
+            version: 1.4.20
           - name: client
             # mark:next-client-version
             version: 1.0.6
