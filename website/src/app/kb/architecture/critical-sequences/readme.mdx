@@ -240,16 +240,16 @@ the candidate pairs involving host and server-reflexive candidates have been
 successful and thus a relay candidate turned out to be the one with the highest
 priority.
 
-In order to send from a socket on a TURN server, the sender forms a so-called
-"data channel" packet which is a lightweight wrapper with a 4-byte header that
-refers to a previously allocated channel. Allocating such a channel is part of
-protocol between a TURN client and server. All packets in such a channel are
-forwarded to the same remote. Upon receiving such a channel-data packet, the
-TURN server strips off the header and sends the remaining payload to the
-designated peer. To improve their efficiency and throughput, Firezone's TURN
-servers make use of eBPF eXpress data path (XDP) and implement this routing of
-channel-data packets directly in the kernel. Specifically, in the network card
-driver even before the packet gets parsed.
+To send data through a TURN server, the sender constructs a channel-data packet.
+This packet is a lightweight wrapper consisting of a 4-byte header that
+identifies a previously allocated channel. Channel allocation is handled as part
+of the TURN client–server protocol. Each channel is bound to a single remote
+peer, and all packets sent on that channel are forwarded to that peer. When the
+TURN server receives a channel-data packet, it removes the header and forwards
+the remaining payload to the designated peer. To improve their efficiency and
+throughput, Firezone's TURN servers make use of eBPF eXpress data path (XDP) and
+implement this routing of channel-data packets directly in the kernel.
+Specifically, in the network card driver even before the packet gets parsed.
 
 To the receiver of the packet, this process is transparent. They simply send and
 receive UDP traffic from an IP and port and outside of applying heuristics based
