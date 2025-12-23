@@ -564,17 +564,24 @@ defmodule Domain.Cache.Client do
 
       from(p in Domain.Policy, as: :policies)
       |> where([policies: p], is_nil(p.disabled_at))
-      |> join(:inner, [policies: p], ag in assoc(p, :group), as: :group)
-      |> join(:inner, [], actor in Domain.Actor, on: actor.id == ^actor_id, as: :actor)
-      |> join(:left, [group: ag], m in assoc(ag, :memberships), as: :memberships)
+      |> join(:inner, [policies: p], ag in Domain.Group,
+        on: ag.id == p.group_id and ag.account_id == p.account_id,
+        as: :group
+      )
+      |> join(:inner, [policies: p], actor in Domain.Actor,
+        on: actor.id == ^actor_id and actor.account_id == p.account_id,
+        as: :actor
+      )
+      |> join(:left, [group: ag], m in Domain.Membership,
+        on: m.group_id == ag.id and m.account_id == ag.account_id,
+        as: :memberships
+      )
       |> where(
         [memberships: m, group: ag, actor: a],
         m.actor_id == ^actor_id or
           (^include_everyone_group and
              ag.type == :managed and
-             is_nil(ag.idp_id) and
-             ag.name == "Everyone" and
-             ag.account_id == a.account_id)
+             ag.name == "Everyone")
       )
       |> preload(resource: :site)
       |> Safe.scoped(subject)
@@ -599,7 +606,6 @@ defmodule Domain.Cache.Client do
           from(g in Domain.Group,
             where:
               g.type == :managed and
-                is_nil(g.idp_id) and
                 g.name == "Everyone" and
                 g.account_id == ^subject.account.id
           )
