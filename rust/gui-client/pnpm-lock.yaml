@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@eslint/js':
-        specifier: ^9.36.0
-        version: 9.36.0
+        specifier: ^9.39.2
+        version: 9.39.2
       '@fontsource-variable/source-sans-3':
         specifier: ^5.2.9
         version: 5.2.9
