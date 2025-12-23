@@ -19,10 +19,8 @@ runs:
         echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
         echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> "$GITHUB_ENV"
 
-    - uses: /.github/actions/setup-scripts
-
     - name: Start sccache
-      run: retry $SCCACHE_PATH --start-server
+      run: ./scripts/retry.sh $SCCACHE_PATH --start-server
       continue-on-error: true
       shell: bash
       env:
