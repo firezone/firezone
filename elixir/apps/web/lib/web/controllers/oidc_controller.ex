@@ -15,12 +15,9 @@ defmodule Web.OIDCController do
   action_fallback Web.FallbackController
 
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
-    with %Domain.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
-         provider when not is_nil(provider) <- fetch_provider(account, params) do
-      provider_redirect(conn, account, provider, params)
-    else
-      error -> handle_error(conn, error)
-    end
+    account = DB.get_account_by_id_or_slug!(account_id_or_slug)
+    provider = get_provider!(account, params)
+    provider_redirect(conn, account, provider, params)
   end
 
   def callback(conn, %{"state" => state, "code" => code}) do
@@ -44,7 +41,7 @@ defmodule Web.OIDCController do
         handle_entra_verification_callback(conn, verification_token, params)
 
       _ ->
-        handle_error(conn, :invalid_callback_params)
+        handle_error(conn, {:error, :invalid_callback_params})
     end
   end
 
@@ -53,16 +50,16 @@ defmodule Web.OIDCController do
 
     conn
     |> Web.Cookie.OIDC.delete()
-    |> handle_error(:invalid_callback_params)
+    |> handle_error({:error, :invalid_callback_params})
   end
 
   defp handle_authentication_callback(conn, state, code) do
-    with %Web.Cookie.OIDC{} = cookie <- Web.Cookie.OIDC.fetch(conn),
+    with {:ok, cookie} <- fetch_oidc_cookie(conn),
          conn = Web.Cookie.OIDC.delete(conn),
-         true = Plug.Crypto.secure_compare(cookie.state, state),
+         :ok <- verify_state(cookie.state, state),
          context_type = context_type(cookie.params),
-         %Domain.Account{} = account <- DB.get_account_by_id_or_slug(cookie.account_id),
-         provider when not is_nil(provider) <- fetch_provider(account, cookie),
+         account = DB.get_account_by_id_or_slug!(cookie.account_id),
+         provider = get_provider!(account, cookie),
          :ok <- validate_context(provider, context_type),
          {:ok, tokens} <-
            Web.OIDC.exchange_code(provider, code, cookie.verifier),
@@ -84,6 +81,21 @@ defmodule Web.OIDCController do
       )
     else
       error -> handle_error(conn, error)
+    end
+  end
+
+  defp fetch_oidc_cookie(conn) do
+    case Web.Cookie.OIDC.fetch(conn) do
+      %Web.Cookie.OIDC{} = cookie -> {:ok, cookie}
+      nil -> {:error, :oidc_cookie_not_found}
+    end
+  end
+
+  defp verify_state(cookie_state, callback_state) do
+    if Plug.Crypto.secure_compare(cookie_state, callback_state) do
+      :ok
+    else
+      {:error, :state_mismatch}
     end
   end
 
@@ -150,16 +162,12 @@ defmodule Web.OIDCController do
     end
   end
 
-  defp fetch_provider(account, %{"auth_provider_type" => type, "auth_provider_id" => id}) do
-    DB.fetch_provider(account.id, type, id)
+  defp get_provider!(account, %{"auth_provider_type" => type, "auth_provider_id" => id}) do
+    DB.get_provider!(account.id, type, id)
   end
 
-  defp fetch_provider(account, %Web.Cookie.OIDC{} = cookie) do
-    DB.fetch_provider(account.id, cookie.auth_provider_type, cookie.auth_provider_id)
-  end
-
-  defp fetch_provider(_account, _params) do
-    {:error, :invalid_provider}
+  defp get_provider!(account, %Web.Cookie.OIDC{} = cookie) do
+    DB.get_provider!(account.id, cookie.auth_provider_type, cookie.auth_provider_id)
   end
 
   defp fetch_userinfo(provider, access_token) do
@@ -219,6 +227,16 @@ defmodule Web.OIDCController do
     %Domain.ExternalIdentity{}
     |> cast(attrs, idp_fields ++ ~w[account_id actor_id]a)
     |> validate_required(~w[issuer idp_id name account_id]a)
+    |> validate_length(:issuer, max: 2048)
+    |> validate_length(:idp_id, max: 255)
+    |> validate_length(:name, max: 255)
+    |> validate_length(:given_name, max: 255)
+    |> validate_length(:family_name, max: 255)
+    |> validate_length(:middle_name, max: 255)
+    |> validate_length(:nickname, max: 255)
+    |> validate_length(:preferred_username, max: 255)
+    |> validate_length(:profile, max: 2048)
+    |> validate_length(:picture, max: 2048)
   end
 
   defp extract_profile_attrs(claims, userinfo) do
@@ -354,6 +372,22 @@ defmodule Web.OIDCController do
   defp context_type(%{"as" => "client"}), do: :client
   defp context_type(_), do: :portal
 
+  defp handle_error(conn, {:error, :oidc_cookie_not_found}) do
+    {account_slug, original_params} = fetch_error_context(conn)
+    error = "Your sign-in session has timed out. Please try again."
+    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
+
+    redirect_for_error(conn, error, path)
+  end
+
+  defp handle_error(conn, {:error, :state_mismatch}) do
+    {account_slug, original_params} = fetch_error_context(conn)
+    error = "Your sign-in session is invalid. Please try again."
+    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
+
+    redirect_for_error(conn, error, path)
+  end
+
   defp handle_error(conn, {:error, :not_admin}) do
     {account_slug, original_params} = fetch_error_context(conn)
     error = "This action requires admin privileges."
@@ -370,16 +404,54 @@ defmodule Web.OIDCController do
     redirect_for_error(conn, error, path)
   end
 
-  defp handle_error(conn, {:error, :email_not_verified}) do
+  defp handle_error(conn, {:error, :invalid_context}) do
     {account_slug, original_params} = fetch_error_context(conn)
-    error = "Your email address must be verified before signing in."
+    error = "This authentication method is not available for your sign-in context."
     path = ~p"/#{account_slug}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)
   end
 
-  defp handle_error(conn, error) do
-    Logger.warning("OIDC sign-in error: #{inspect(error)}")
+  defp handle_error(conn, {:error, :invalid_callback_params}) do
+    {account_slug, original_params} = fetch_error_context(conn)
+    error = "Invalid sign-in request. Please try again."
+    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
+
+    redirect_for_error(conn, error, path)
+  end
+
+  defp handle_error(conn, {:error, %Ecto.Changeset{} = changeset}) do
+    {account_slug, original_params} = fetch_error_context(conn)
+
+    account_id = Ecto.Changeset.get_field(changeset, :account_id)
+    idp_id = Ecto.Changeset.get_field(changeset, :idp_id)
+
+    cookie = Web.Cookie.OIDC.fetch(conn)
+    provider_id = if cookie, do: cookie.auth_provider_id
+
+    for {field, _errors} <- changeset.errors do
+      value = Ecto.Changeset.get_field(changeset, field)
+      length = if is_binary(value), do: String.length(value), else: nil
+
+      Logger.warning("OIDC profile validation failed",
+        account_id: account_id,
+        provider_id: provider_id,
+        idp_id: idp_id,
+        field: field,
+        length: length
+      )
+    end
+
+    error =
+      "Your identity provider returned invalid profile data. Please contact your administrator."
+
+    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
+
+    redirect_for_error(conn, error, path)
+  end
+
+  defp handle_error(conn, {:error, reason}) do
+    Logger.warning("OIDC sign-in error", reason: reason)
     {account_slug, original_params} = fetch_error_context(conn)
     error = "An unexpected error occurred while signing you in. Please try again."
     path = ~p"/#{account_slug}?#{sanitize(original_params)}"
@@ -410,29 +482,30 @@ defmodule Web.OIDCController do
     alias Domain.{Safe, AuthProvider, ExternalIdentity}
     alias Domain.Account
 
-    def get_account_by_id_or_slug(id_or_slug) do
+    def get_account_by_id_or_slug!(id_or_slug) do
       query =
         if Domain.Repo.valid_uuid?(id_or_slug),
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query |> Safe.unscoped() |> Safe.one()
+      query |> Safe.unscoped() |> Safe.one!()
     end
 
-    def fetch_provider(account_id, type, id) do
+    def get_provider!(account_id, type, id) do
       schema = AuthProvider.module!(type)
 
       from(p in schema,
         where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
       )
       |> Safe.unscoped()
-      |> Safe.one()
+      |> Safe.one!()
     end
 
-    def upsert_identity(account_id, email, issuer, idp_id, %{} = profile_attrs) do
+    def upsert_identity(account_id, email, issuer, idp_id, profile_attrs) do
       now = DateTime.utc_now()
+      account_id_bytes = Ecto.UUID.dump!(account_id)
 
-      profile_fields = [
+      replace_fields = [
         :email,
         :name,
         :given_name,
@@ -445,32 +518,10 @@ defmodule Web.OIDCController do
         :updated_at
       ]
 
-      # Convert account_id to the DB (binary) format expected by uuid/binary_id columns
-      account_id_db =
-        case account_id do
-          # already a 16-byte binary
-          <<_::128>> -> account_id
-          # string UUID -> dump to binary
-          _ -> Ecto.UUID.dump!(account_id)
-        end
-
-      # Precompute profile values outside the query
-      profile_values = %{
-        email: Map.get(profile_attrs, "email"),
-        name: Map.get(profile_attrs, "name"),
-        given_name: Map.get(profile_attrs, "given_name"),
-        family_name: Map.get(profile_attrs, "family_name"),
-        middle_name: Map.get(profile_attrs, "middle_name"),
-        nickname: Map.get(profile_attrs, "nickname"),
-        preferred_username: Map.get(profile_attrs, "preferred_username"),
-        profile: Map.get(profile_attrs, "profile"),
-        picture: Map.get(profile_attrs, "picture")
-      }
-
       actor_lookup_cte =
         from(a in "actors",
           where:
-            a.account_id == ^account_id_db and
+            a.account_id == ^account_id_bytes and
               a.email == ^email and
               is_nil(a.disabled_at),
           select: %{id: a.id},
@@ -482,7 +533,7 @@ defmodule Web.OIDCController do
           join: a in "actors",
           on: a.id == ei.actor_id,
           where:
-            ei.account_id == ^account_id_db and
+            ei.account_id == ^account_id_bytes and
               ei.issuer == ^issuer and
               ei.idp_id == ^idp_id and
               is_nil(a.disabled_at),
@@ -499,19 +550,19 @@ defmodule Web.OIDCController do
           where: not is_nil(al.id) or not is_nil(ei.actor_id),
           select: %{
             id: fragment("uuid_generate_v4()"),
-            account_id: ^account_id_db,
+            account_id: ^account_id_bytes,
             issuer: ^issuer,
             idp_id: ^idp_id,
             actor_id: fragment("COALESCE(?.id, ?.actor_id)", al, ei),
-            email: ^profile_values.email,
-            name: ^profile_values.name,
-            given_name: ^profile_values.given_name,
-            family_name: ^profile_values.family_name,
-            middle_name: ^profile_values.middle_name,
-            nickname: ^profile_values.nickname,
-            preferred_username: ^profile_values.preferred_username,
-            profile: ^profile_values.profile,
-            picture: ^profile_values.picture,
+            email: ^profile_attrs["email"],
+            name: ^profile_attrs["name"],
+            given_name: ^profile_attrs["given_name"],
+            family_name: ^profile_attrs["family_name"],
+            middle_name: ^profile_attrs["middle_name"],
+            nickname: ^profile_attrs["nickname"],
+            preferred_username: ^profile_attrs["preferred_username"],
+            profile: ^profile_attrs["profile"],
+            picture: ^profile_attrs["picture"],
             inserted_at: ^now,
             updated_at: ^now
           }
@@ -527,7 +578,7 @@ defmodule Web.OIDCController do
           Safe.unscoped(),
           ExternalIdentity,
           query_with_ctes,
-          on_conflict: {:replace, profile_fields},
+          on_conflict: {:replace, replace_fields},
           conflict_target: [:account_id, :idp_id, :issuer],
           returning: true
         )

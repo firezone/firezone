@@ -13,56 +13,58 @@ defmodule Web.OIDC do
   Supports Google, Okta, Entra, and generic OIDC providers.
   """
   def config_for_provider(%Google.AuthProvider{}) do
-    with {:ok, config} <- Application.fetch_env(:domain, Domain.Google.AuthProvider) do
-      config = Enum.into(config, %{redirect_uri: callback_url()})
-      {:ok, config}
-    end
+    config = Domain.Config.fetch_env!(:domain, Domain.Google.AuthProvider)
+    config = Enum.into(config, %{redirect_uri: callback_url()})
+    {:ok, config}
   end
 
   def config_for_provider(%Okta.AuthProvider{} = provider) do
-    with {:ok, config} <- Application.fetch_env(:domain, Domain.Okta.AuthProvider) do
-      discovery_document_uri = "https://#{provider.okta_domain}/.well-known/openid-configuration"
+    config = Domain.Config.fetch_env!(:domain, Domain.Okta.AuthProvider)
 
-      config =
-        Enum.into(config, %{
-          redirect_uri: callback_url(),
-          client_id: provider.client_id,
-          client_secret: provider.client_secret,
-          discovery_document_uri: discovery_document_uri
-        })
+    discovery_document_uri =
+      config[:discovery_document_uri] ||
+        "https://#{provider.okta_domain}/.well-known/openid-configuration"
 
-      {:ok, config}
-    end
+    config =
+      Enum.into(config, %{
+        redirect_uri: callback_url(),
+        client_id: provider.client_id,
+        client_secret: provider.client_secret,
+        discovery_document_uri: discovery_document_uri
+      })
+
+    {:ok, config}
   end
 
   def config_for_provider(%Entra.AuthProvider{} = provider) do
-    with {:ok, config} <- Application.fetch_env(:domain, Domain.Entra.AuthProvider) do
-      discovery_document_uri = "#{provider.issuer}/.well-known/openid-configuration"
+    config = Domain.Config.fetch_env!(:domain, Domain.Entra.AuthProvider)
 
-      config =
-        Enum.into(config, %{
-          redirect_uri: callback_url(),
-          discovery_document_uri: discovery_document_uri
-        })
+    discovery_document_uri =
+      config[:discovery_document_uri] || "#{provider.issuer}/.well-known/openid-configuration"
 
-      {:ok, config}
-    end
+    config =
+      Enum.into(config, %{
+        redirect_uri: callback_url(),
+        discovery_document_uri: discovery_document_uri
+      })
+
+    {:ok, config}
   end
 
   def config_for_provider(%OIDC.AuthProvider{} = provider) do
-    with {:ok, config} <- Application.fetch_env(:domain, Domain.OIDC.AuthProvider) do
-      config =
-        Enum.into(config, %{
-          redirect_uri: callback_url(provider),
-          client_id: provider.client_id,
-          client_secret: provider.client_secret,
-          discovery_document_uri: provider.discovery_document_uri,
-          response_type: "code",
-          scope: "openid email profile"
-        })
+    config = Domain.Config.fetch_env!(:domain, Domain.OIDC.AuthProvider)
 
-      {:ok, config}
-    end
+    config =
+      Enum.into(config, %{
+        redirect_uri: callback_url(provider),
+        client_id: provider.client_id,
+        client_secret: provider.client_secret,
+        discovery_document_uri: provider.discovery_document_uri,
+        response_type: "code",
+        scope: "openid email profile"
+      })
+
+    {:ok, config}
   end
 
   def config_for_provider(_provider) do
