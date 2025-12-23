@@ -206,9 +206,10 @@ the same NxM matrix of candidates, and hence are sending packets **to** the same
 socket address the other one is sending **from**.
 
 For example, assume a Client's public IP is `35.10.10.10` and the Gateway's
-public IP is `40.10.10.10`. Both Firezone Clients and Firezone Gateways are
-listening on port 52625 by default. The NxM matrix will therefore include a pair
-of `35.10.10.10:52625 <> 40.10.10.10:52625` on both sides.
+public IP is `40.10.10.10`. Locally, both Firezone Clients and Firezone Gateways
+are listening on port 52625 by default. As part of the candidate gathering, they
+will resolve their respective public IP. The NxM matrix will therefore include a
+pair of `35.10.10.10:52625 <> 40.10.10.10:52625` on both sides.
 
 1. Client sends a UDP packet from its local socket using source port `52625`
    towards `40.10.10.10:52625`
