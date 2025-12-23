@@ -21,6 +21,13 @@ defmodule API.ChannelCase do
   end
 
   setup tags do
+    # Isolate relay presence per test to prevent interference between async tests
+    Domain.Config.put_env_override(
+      :domain,
+      :relay_presence_topic,
+      "presences:global_relays:#{inspect(make_ref())}"
+    )
+
     for presence <- @presences, pid <- presence.fetchers_pids() do
       # TODO: If we start using Presence.fetch/2 callback we might want to
       # contribute to Phoenix.Presence a way to propagate sandbox access from

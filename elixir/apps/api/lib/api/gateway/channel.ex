@@ -112,7 +112,7 @@ defmodule API.Gateway.Channel do
   def handle_info(
         %Phoenix.Socket.Broadcast{
           event: "presence_diff",
-          topic: "presences:global_relays",
+          topic: "presences:global_relays" <> _,
           payload: %{joins: joins, leaves: leaves}
         },
         socket

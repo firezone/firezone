@@ -246,6 +246,8 @@ config :domain, docker_registry: "ghcr.io/firezone"
 
 config :domain, outbound_email_adapter_configured?: false
 
+config :domain, relay_presence_topic: "presences:global_relays"
+
 config :domain, web_external_url: "https://localhost:13443"
 
 ###############################
