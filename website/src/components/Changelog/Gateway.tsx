@@ -22,7 +22,8 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.19" date={new Date("2025-12-23")}>
         <ChangeItem pull="10972">
           Fixes an issue where IPv6-only DNS resources could not be reached.
         </ChangeItem>
@@ -34,7 +35,7 @@ export default function Gateway() {
           Fixes an issue where the Gateway would not boot up if IPv6 was
           disabled on the system.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.18" date={new Date("2025-11-10")}>
         <ChangeItem pull="10620">
           Adds a `--log-format` CLI option to output logs as JSON.
