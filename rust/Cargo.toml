@@ -189,7 +189,7 @@ tauri-plugin-dialog = "2.4.2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-opener = "2.5.2"
 tauri-plugin-shell = "2.3.3"
-tauri-runtime = "2.7.1"
+tauri-runtime = "2.9.2"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 tauri-utils = "2.8.0"
 telemetry = { path = "libs/telemetry" }
