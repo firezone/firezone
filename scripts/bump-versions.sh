@@ -134,8 +134,8 @@ function apple() {
 # 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function android() {
-    current_android_client_version="1.5.7"
-    next_android_client_version="1.5.8"
+    current_android_client_version="1.5.8"
+    next_android_client_version="1.5.9"
 
     update_changelog "website/src/components/Changelog/Android.tsx" "$current_android_client_version"
     update_version_marker "mark:current-android-version" "$current_android_client_version"
