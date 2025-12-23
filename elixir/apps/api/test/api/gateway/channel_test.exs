@@ -1298,7 +1298,7 @@ defmodule API.Gateway.ChannelTest do
              } = relay_view
 
       # Untrack from global topic to trigger presence change notification
-      Domain.Presence.Relays.untrack(self(), "presences:global_relays", relay1.id)
+      Domain.Presence.Relays.untrack(self(), Domain.Presence.Relays.Global.topic(), relay1.id)
 
       assert_push "relays_presence",
                   %{

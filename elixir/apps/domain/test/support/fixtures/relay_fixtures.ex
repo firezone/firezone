@@ -120,7 +120,7 @@ defmodule Domain.RelayFixtures do
   Used to test relay presence debouncing in client/gateway channels.
   """
   def disconnect_relay(relay) do
-    :ok = Domain.Presence.untrack(self(), "presences:global_relays", relay.id)
+    :ok = Domain.Presence.untrack(self(), Domain.Presence.Relays.Global.topic(), relay.id)
     :ok = Domain.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
     :ok = Domain.PubSub.unsubscribe("relays:#{relay.id}")
     :ok
