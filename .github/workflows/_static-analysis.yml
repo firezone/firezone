@@ -72,6 +72,8 @@ jobs:
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
           lockfile-dir: ./.github
+      - name: Install lint tools
+        run: mise run lint-setup
       - name: Run linters
         run: mise run lint
       - uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
