@@ -357,7 +357,7 @@ component.
         </InstallExecuteSequence>
 
         <InstallExecuteSequence>
-          <Custom Action="LaunchApplication" After="InstallFinalize">AUTOLAUNCHAPP</Custom>
+          <Custom Action="LaunchApplication" After="InstallFinalize">AUTOLAUNCHAPP AND NOT REMOVE</Custom>
         </InstallExecuteSequence>
 
         <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLDIR]" After="CostFinalize"/>
