@@ -51,7 +51,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - uses: ./.github/actions/setup-rust-target-cache
+      - uses: ./.github/actions/setup-rust-target-workspace-cache
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'linux'

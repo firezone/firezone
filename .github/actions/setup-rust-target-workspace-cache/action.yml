@@ -1,6 +1,6 @@
 ---
 name: "Setup Rust `target` dir caching"
-description: "Sets up caching for the Rust `target` directory"
+description: "Sets up caching for the Rust `target` directory, including the workspace crates"
 inputs:
   key:
     description: "Additional cache key"
