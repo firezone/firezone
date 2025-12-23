@@ -396,31 +396,103 @@ defmodule Web.OIDCControllerTest do
 
     test "successful sign-in derives name from preferred_username", ctx do
       actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
-      setup_successful_auth(ctx, actor, name: nil, preferred_username: "johndoe")
+
+      # Explicitly pass nil for name, given_name, family_name to ensure we hit preferred_username
+      setup_successful_auth(ctx, actor,
+        name: nil,
+        given_name: nil,
+        family_name: nil,
+        preferred_username: "johndoe"
+      )
+
       assert_portal_sign_in_success(ctx)
     end
 
     test "successful sign-in derives name from nickname", ctx do
       actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
-      setup_successful_auth(ctx, actor, name: nil, nickname: "johnny")
+
+      # Explicitly pass nil for name, given_name, family_name, preferred_username to ensure we hit nickname
+      setup_successful_auth(ctx, actor,
+        name: nil,
+        given_name: nil,
+        family_name: nil,
+        preferred_username: nil,
+        nickname: "johnny"
+      )
+
       assert_portal_sign_in_success(ctx)
     end
 
     test "successful sign-in uses email as name when all name fields missing", ctx do
       actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
-      setup_successful_auth(ctx, actor, name: nil)
+
+      # Explicitly pass nil for ALL name-related fields to ensure we hit the email fallback
+      setup_successful_auth(ctx, actor,
+        name: nil,
+        given_name: nil,
+        family_name: nil,
+        preferred_username: nil,
+        nickname: nil
+      )
+
+      assert_portal_sign_in_success(ctx)
+    end
+
+    test "successful sign-in treats non-string name values as missing", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+
+      # Some IdPs might return unexpected types (integers, booleans, etc.)
+      setup_successful_auth(ctx, actor,
+        name: 12345,
+        given_name: true,
+        family_name: false,
+        preferred_username: "validname"
+      )
+
+      assert_portal_sign_in_success(ctx)
+    end
+
+    test "successful sign-in treats empty string name as missing", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      setup_successful_auth(ctx, actor, name: "", preferred_username: "johndoe")
+      assert_portal_sign_in_success(ctx)
+    end
+
+    test "successful sign-in treats whitespace-only name as missing", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      setup_successful_auth(ctx, actor, name: "   ", nickname: "johnny")
+      assert_portal_sign_in_success(ctx)
+    end
+
+    test "successful sign-in treats empty given_name and family_name as missing", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      setup_successful_auth(ctx, actor, name: nil, given_name: "", family_name: "")
+      assert_portal_sign_in_success(ctx)
+    end
+
+    test "successful sign-in with whitespace-only given_name uses family_name", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      setup_successful_auth(ctx, actor, name: nil, given_name: "   ", family_name: "Doe")
+      assert_portal_sign_in_success(ctx)
+    end
+
+    test "successful sign-in with whitespace-only family_name uses given_name", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      setup_successful_auth(ctx, actor, name: nil, given_name: "John", family_name: "   ")
       assert_portal_sign_in_success(ctx)
     end
 
     test "successful sign-in with only given_name", ctx do
       actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
-      setup_successful_auth(ctx, actor, name: nil, given_name: "John")
+      # Explicitly pass family_name: nil to ensure {g, nil} branch is hit
+      setup_successful_auth(ctx, actor, name: nil, given_name: "John", family_name: nil)
       assert_portal_sign_in_success(ctx)
     end
 
     test "successful sign-in with only family_name", ctx do
       actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
-      setup_successful_auth(ctx, actor, name: nil, family_name: "Doe")
+      # Explicitly pass given_name: nil to ensure {nil, f} branch is hit
+      setup_successful_auth(ctx, actor, name: nil, given_name: nil, family_name: "Doe")
       assert_portal_sign_in_success(ctx)
     end
 
@@ -495,24 +567,63 @@ defmodule Web.OIDCControllerTest do
       assert flash(conn, :error) == "Unable to sign you in. Please contact your administrator."
     end
 
-    for {field, limit} <- [
-          {"name", 255},
-          {"given_name", 255},
-          {"family_name", 255},
-          {"middle_name", 255},
-          {"nickname", 255},
-          {"preferred_username", 255},
-          {"profile", 2048},
-          {"picture", 2048}
+    test "redirects with error when email claim is missing", ctx do
+      # Some IdPs may not return an email claim
+      id_token =
+        Mocks.OIDC.sign_openid_connect_token(%{
+          "iss" => ctx.provider.issuer,
+          "sub" => "user-without-email-123",
+          "name" => "User Without Email",
+          "aud" => ctx.provider.client_id,
+          "exp" => token_exp()
+        })
+
+      expect_token_exchange(ctx.bypass, id_token)
+
+      Mocks.OIDC.expect_userinfo(ctx.bypass, %{
+        "sub" => "user-without-email-123",
+        "name" => "User Without Email"
+      })
+
+      cookie = build_oidc_cookie(ctx.account, ctx.provider)
+
+      log =
+        capture_log(fn ->
+          conn = perform_callback(ctx.conn, cookie)
+
+          assert redirected_to(conn) == "/#{ctx.account.slug}"
+
+          assert flash(conn, :error) ==
+                   "Your identity provider returned invalid profile data. Please contact your administrator."
+        end)
+
+      assert log =~ "OIDC profile validation failed"
+      assert log =~ "field=email"
+    end
+
+    # Test length validation for profile fields
+    # Format: {field_name, claim_name, limit}
+    for {field, claim, limit} <- [
+          {"email", "email", 255},
+          {"issuer", "iss", 2048},
+          {"idp_id", "sub", 255},
+          {"name", "name", 255},
+          {"given_name", "given_name", 255},
+          {"family_name", "family_name", 255},
+          {"middle_name", "middle_name", 255},
+          {"nickname", "nickname", 255},
+          {"preferred_username", "preferred_username", 255},
+          {"profile", "profile", 2048},
+          {"picture", "picture", 2048}
         ] do
-      @tag field: field, limit: limit
+      @tag field: field, claim: claim, limit: limit
       test "redirects with error when #{field} exceeds #{limit} char limit", ctx do
-        %{field: field, limit: limit} = ctx
+        %{field: field, claim: claim, limit: limit} = ctx
 
         actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
         long_value = String.duplicate("a", limit + 1)
 
-        overrides = %{field => long_value}
+        overrides = %{claim => long_value}
 
         id_token =
           Mocks.OIDC.sign_openid_connect_token(
@@ -756,7 +867,8 @@ defmodule Web.OIDCControllerTest do
 
   defp maybe_add_claim(claims, key, opts, default \\ nil) do
     case Keyword.fetch(opts, String.to_atom(key)) do
-      {:ok, nil} -> claims
+      # When explicitly passing nil, add the key with nil value so present(nil) is called
+      {:ok, nil} -> Map.put(claims, key, nil)
       {:ok, value} -> Map.put(claims, key, value)
       :error when not is_nil(default) -> Map.put(claims, key, default)
       :error -> claims

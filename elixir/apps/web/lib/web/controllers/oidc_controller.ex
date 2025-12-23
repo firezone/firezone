@@ -45,8 +45,8 @@ defmodule Web.OIDCController do
     end
   end
 
-  def callback(conn, _params) do
-    Logger.debug("OIDC callback called with invalid params")
+  def callback(conn, params) do
+    Logger.info("OIDC callback called with invalid params", params: Map.keys(params))
 
     conn
     |> Web.Cookie.OIDC.delete()
@@ -112,11 +112,13 @@ defmodule Web.OIDCController do
 
   defp handle_entra_verification_callback(conn, verification_token, params) do
     # Determine Entra verification subtype from state prefix
+    # NOTE: The callback routing (lines 35-46) only routes to this function
+    # when state starts with "entra-verification:" or "entra-admin-consent:",
+    # so these are the only two cases we need to handle here.
     entra_type =
       case String.split(params["state"], ":", parts: 2) do
         ["entra-admin-consent", _] -> "directory_sync"
         ["entra-verification", _] -> "auth_provider"
-        _ -> nil
       end
 
     # Store Entra admin consent info in session for the LiveView to pick up
@@ -198,6 +200,7 @@ defmodule Web.OIDCController do
     attrs =
       profile_attrs
       |> Map.put("account_id", account.id)
+      |> Map.put("email", email)
       |> Map.put("issuer", issuer)
       |> Map.put("idp_id", idp_id)
 
@@ -212,6 +215,7 @@ defmodule Web.OIDCController do
     import Ecto.Changeset
 
     idp_fields = ~w[
+      email
       issuer
       idp_id
       name
@@ -226,7 +230,8 @@ defmodule Web.OIDCController do
 
     %Domain.ExternalIdentity{}
     |> cast(attrs, idp_fields ++ ~w[account_id actor_id]a)
-    |> validate_required(~w[issuer idp_id name account_id]a)
+    |> validate_required(~w[email issuer idp_id name account_id]a)
+    |> validate_length(:email, max: 255)
     |> validate_length(:issuer, max: 2048)
     |> validate_length(:idp_id, max: 255)
     |> validate_length(:name, max: 255)
@@ -252,7 +257,13 @@ defmodule Web.OIDCController do
       "profile",
       "picture"
     ])
+    |> sanitize_string_fields()
     |> maybe_populate_name()
+  end
+
+  # Ensure all profile fields are strings or nil - some IdPs may return unexpected types
+  defp sanitize_string_fields(attrs) do
+    Map.new(attrs, fn {k, v} -> {k, if(is_binary(v), do: v, else: nil)} end)
   end
 
   defp maybe_populate_name(attrs) do
@@ -268,8 +279,7 @@ defmodule Web.OIDCController do
   end
 
   defp present(nil), do: nil
-  defp present(s) when is_binary(s), do: if(String.trim(s) == "", do: nil, else: s)
-  defp present(_), do: nil
+  defp present(s), do: if(String.trim(s) == "", do: nil, else: s)
 
   defp given_family_name(given, family) do
     case {present(given), present(family)} do
