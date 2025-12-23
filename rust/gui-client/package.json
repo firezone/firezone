@@ -29,7 +29,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.2",
-    "eslint": "^9.36.0",
+    "eslint": "^9.39.2",
     "eslint-plugin-react": "^7.37.5",
     "flowbite": "^3.1.2",
     "flowbite-react": "^0.11.9",
