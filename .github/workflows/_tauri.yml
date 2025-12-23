@@ -140,8 +140,6 @@ jobs:
           lockfile-dir: ./rust/gui-client
       - uses: ./.github/actions/setup-rust-stable
       - uses: ./.github/actions/setup-rust-target-dependency-cache
-        with:
-          key: ${{ matrix.arch }}
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 15
