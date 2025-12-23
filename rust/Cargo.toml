@@ -119,7 +119,7 @@ libfuzzer-sys = "0.4"
 log = "0.4"
 logging = { path = "libs/logging" }
 lru = "0.16.1"
-mio = "1.1.0"
+mio = "1.1.1"
 moka = "0.12.11"
 native-dialog = "0.7.0"
 netlink-packet-core = "0.8.1"
