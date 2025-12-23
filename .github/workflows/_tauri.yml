@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       # mark:next-gui-version
-      RELEASE_NAME: gui-client-1.5.9
+      RELEASE_NAME: gui-client-1.5.10
     steps:
       - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
@@ -113,19 +113,19 @@ jobs:
             pkg-extension: msi
     env:
       # mark:next-gui-version
-      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.9_${{ matrix.arch }}
+      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.10_${{ matrix.arch }}
       # mark:next-gui-version
-      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.9_${{ matrix.arch }}
+      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.10_${{ matrix.arch }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
       # mark:next-gui-version
-      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.9_${{ matrix.arch }}
+      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.10_${{ matrix.arch }}
       # Seems like there's no way to de-dupe env vars that depend on each other
       # mark:next-gui-version
-      FIREZONE_GUI_VERSION: 1.5.9
+      FIREZONE_GUI_VERSION: 1.5.10
       RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
       TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}.sh
       TARGET_DIR: ../target
