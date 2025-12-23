@@ -126,9 +126,10 @@ jobs:
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.target }}
-      - uses: ./.github/actions/setup-rust-target-cache
+      - uses: ./.github/actions/setup-rust-target-workspace-cache
         with:
           key: ${{ matrix.package }}-${{ inputs.stage }}-${{ inputs.profile }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build binaries
         shell: bash
         run: |
@@ -241,9 +242,10 @@ jobs:
           targets: ${{ matrix.arch.target }}
       - uses: ./.github/actions/setup-rust-nightly
         if: matrix.name.package == 'firezone-relay'
-      - uses: ./.github/actions/setup-rust-target-cache
+      - uses: ./.github/actions/setup-rust-target-workspace-cache
         with:
           key: ${{ matrix.name.package }}-${{ inputs.stage }}-${{ inputs.profile }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@bfc291e1e39400b67eda124e4a7b4380e93b3390 # v2.65.0
         with:
           tool: bpf-linker,cargo-deb
