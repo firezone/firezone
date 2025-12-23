@@ -9,25 +9,18 @@ defmodule Domain.ComponentVersions do
 
   @impl true
   def init(_opts) do
-    pool_opts = Domain.Config.fetch_env!(:domain, :http_client_ssl_opts)
-
     fetch_from_url? =
       Domain.Config.fetch_env!(:domain, ComponentVersions)
       |> Keyword.get(:fetch_from_url)
 
     children =
-      [
-        {Finch, name: __MODULE__.Finch, pools: %{default: pool_opts}}
-      ]
-
-    children =
       if fetch_from_url? do
-        children ++ [ComponentVersions.Refresher]
+        [ComponentVersions.Refresher]
       else
-        children
+        []
       end
 
-    Supervisor.init(children, strategy: :rest_for_one)
+    Supervisor.init(children, strategy: :one_for_one)
   end
 
   def gateway_version do
@@ -73,12 +66,9 @@ defmodule Domain.ComponentVersions do
   end
 
   defp fetch_versions_from_url(releases_url) do
-    request =
-      Finch.build(:get, releases_url, [])
-
-    case Finch.request(request, __MODULE__.Finch) do
-      {:ok, %Finch.Response{status: 200, body: response}} ->
-        versions = decode_versions_response(response)
+    case Req.get(releases_url) do
+      {:ok, %Req.Response{status: 200, body: body}} ->
+        versions = decode_versions_response(body)
         {:ok, Enum.into(versions, [])}
 
       {:ok, response} ->
@@ -91,21 +81,18 @@ defmodule Domain.ComponentVersions do
     end
   end
 
-  defp decode_versions_response(response) do
-    case JSON.decode(response) do
-      {:ok,
-       %{
+  defp decode_versions_response(%{
          "apple" => apple,
          "android" => android,
          "gateway" => gateway,
          "gui" => gui,
          "headless" => headless
-       }} ->
-        %{apple: apple, android: android, gateway: gateway, gui: gui, headless: headless}
+       }) do
+    %{apple: apple, android: android, gateway: gateway, gui: gui, headless: headless}
+  end
 
-      _ ->
-        fetch_config!()
-        |> Keyword.fetch!(:versions)
-    end
+  defp decode_versions_response(_response) do
+    fetch_config!()
+    |> Keyword.fetch!(:versions)
   end
 end
