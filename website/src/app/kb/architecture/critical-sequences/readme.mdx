@@ -221,9 +221,9 @@ pair of `35.10.10.10:52625 <> 40.10.10.10:52625` on both sides.
    packet to `40.10.10.10:52625`. It also registers a new "connection" on this
    port.
 1. Packet from the Client arrives at the Gateway's NAT device. The lookup by
-   source address (`35.10.10.10:52625`) yields the connection created in step 3.
+   source address (`35.10.10.10:52625`) yields the connection created in step 4.
 1. Packet from the Gateway arrives at the Client's NAT device. The lookup by
-   source address (`40.10.10.10:52625`) yields the connection created in step 4.
+   source address (`40.10.10.10:52625`) yields the connection created in step 3.
 
 Due to differing latencies, the timing of these steps can vary in practice. That
 isn't an issue though as UDP is by design stateless and the next packet will
