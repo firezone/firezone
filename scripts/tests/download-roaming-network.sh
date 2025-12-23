@@ -15,7 +15,7 @@ client sh -c \
 
 DOWNLOAD_PID=$!
 
-sleep 3 # Download a bit
+sleep 5 # Download a bit
 
 docker network disconnect firezone_client-internal firezone-client-1 # Disconnect the client
 sleep 3
