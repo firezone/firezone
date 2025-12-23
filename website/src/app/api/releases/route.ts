@@ -5,7 +5,7 @@ export async function GET() {
   const versions = {
     portal: await get("deployed_sha"),
     // mark:current-apple-version
-    apple: "1.5.10",
+    apple: "1.5.11",
     // mark:current-android-version
     android: "1.5.7",
     // mark:current-gui-version

@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       # mark:next-apple-version
-      RELEASE_NAME: macos-client-1.5.11
+      RELEASE_NAME: macos-client-1.5.12
     steps:
       - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
@@ -65,11 +65,11 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.11.dmg"
+            artifact-file: "firezone-macos-client-1.5.12.dmg"
             # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.11.pkg"
+            pkg-artifact-file: "firezone-macos-client-1.5.12.pkg"
             # mark:next-apple-version
-            release-name: macos-client-1.5.11
+            release-name: macos-client-1.5.12
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
