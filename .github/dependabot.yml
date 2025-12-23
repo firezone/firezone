@@ -56,6 +56,7 @@ updates:
       - "/.github/actions/setup-rust-stable"
       - "/.github/actions/setup-rust-target-cache"
       - "/.github/actions/setup-tauri-v2"
+      - "/.github/actions/setup-scripts"
     schedule:
       interval: weekly
     # Unfortunately the github-actions ecosystem doesn't support semver cooldowns, and because they update very frequently

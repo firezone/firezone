@@ -20,25 +20,8 @@ runs:
         echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> "$GITHUB_ENV"
 
     - name: Start sccache
-      run: $SCCACHE_PATH --start-server
+      run: ./scripts/retry.sh $SCCACHE_PATH --start-server
       continue-on-error: true
-      id: sccache-1
-      shell: bash
-      env:
-        SCCACHE_CONF: ".github/actions/setup-rust-sccache/sccache.toml"
-
-    - name: Start sccache
-      continue-on-error: true
-      run: $SCCACHE_PATH --start-server
-      if: ${{ steps.sccache-1.outcome == 'failure' }}
-      id: sccache-2
-      shell: bash
-      env:
-        SCCACHE_CONF: ".github/actions/setup-rust-sccache/sccache.toml"
-
-    - name: Start sccache
-      run: $SCCACHE_PATH --start-server
-      if: ${{ steps.sccache-2.outcome == 'failure' }}
       shell: bash
       env:
         SCCACHE_CONF: ".github/actions/setup-rust-sccache/sccache.toml"
