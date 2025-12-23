@@ -11,4 +11,4 @@ CODE_SIGN_STYLE = Automatic
 #include? "dynamic_build_number.xcconfig"
 
 // mark:next-apple-version
-MARKETING_VERSION=1.5.11
+MARKETING_VERSION=1.5.12
