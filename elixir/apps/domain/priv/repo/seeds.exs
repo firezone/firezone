@@ -46,7 +46,6 @@ defmodule Domain.Repo.Seeds do
   # Helper function to create auth providers with the new structure
   defp create_auth_provider(provider_module, attrs, subject) do
     provider_id = Ecto.UUID.generate()
-    IO.inspect(provider_module, label: "Provider module being passed")
     type = AuthProvider.type!(provider_module)
     # Convert type to atom if it's a string
     type = if is_binary(type), do: String.to_existing_atom(type), else: type
