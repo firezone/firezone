@@ -5,6 +5,26 @@ defmodule Web.OIDCControllerTest do
   import Domain.ActorFixtures
   import Domain.AuthProviderFixtures
 
+  describe "callback/2 with missing params" do
+    test "returns error when called with no params", %{conn: conn} do
+      conn = get(conn, ~p"/auth/oidc/callback")
+
+      assert redirected_to(conn) == "/"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
+               "An unexpected error occurred while signing you in. Please try again."
+    end
+
+    test "returns error when called with empty params", %{conn: conn} do
+      conn = get(conn, ~p"/auth/oidc/callback", %{})
+
+      assert redirected_to(conn) == "/"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
+               "An unexpected error occurred while signing you in. Please try again."
+    end
+  end
+
   describe "callback routes do not redirect authenticated users" do
     setup do
       account = account_fixture()

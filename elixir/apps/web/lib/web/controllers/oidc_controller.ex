@@ -48,7 +48,9 @@ defmodule Web.OIDCController do
     end
   end
 
-  def callback(conn) do
+  def callback(conn, _params) do
+    Logger.debug("OIDC callback called with invalid params")
+
     conn
     |> Web.Cookie.OIDC.delete()
     |> handle_error(:invalid_callback_params)
