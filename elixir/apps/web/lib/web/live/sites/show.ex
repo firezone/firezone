@@ -393,7 +393,7 @@ defmodule Web.Sites.Show do
                 >
                   Add a policy
                 </.link>
-                to configure access to the internet.
+                to configure secure access to the internet.
               </div>
             </div>
           </:empty>
@@ -647,11 +647,6 @@ defmodule Web.Sites.Show do
           type: {:string, :uuid},
           values: [],
           fun: &filter_by_site_id/2
-        },
-        %Domain.Repo.Filter{
-          name: :type,
-          type: {:list, :string},
-          fun: &filter_by_type/2
         }
       ]
     end
@@ -667,14 +662,6 @@ defmodule Web.Sites.Show do
 
     def filter_by_site_id(queryable, site_id) do
       {queryable, dynamic([resources: resources], resources.site_id == ^site_id)}
-    end
-
-    def filter_by_type(queryable, {:not_in, types}) do
-      {queryable, dynamic([resources: resources], resources.type not in ^types)}
-    end
-
-    def filter_by_type(queryable, types) do
-      {queryable, dynamic([resources: resources], resources.type in ^types)}
     end
   end
 

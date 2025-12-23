@@ -661,7 +661,6 @@ defmodule Web.Policies.Components do
             id="policy_conditions_client_verified_value"
             disabled={@disabled}
             checked={List.first(List.wrap(condition_form[:values].value)) == "true"}
-            value="true"
             unchecked_value={nil}
           />
         </div>

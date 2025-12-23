@@ -382,66 +382,6 @@ defmodule Web.LiveTable do
     """
   end
 
-  defp filter(%{filter: %{type: {:list, :string}, values: values}} = assigns)
-       when values != [] and length(values) < 5 do
-    ~H"""
-    <div class="flex items-center order-first">
-      <div class="flex rounded w-full" role="group">
-        <.intersperse_blocks>
-          <:item>
-            <label
-              for={"#{@live_table_id}-#{@filter.name}-__all__"}
-              class={[
-                "px-4 py-2 text-sm border-neutral-300 text-neutral-900",
-                "hover:bg-neutral-200 hover:text-neutral-700",
-                "cursor-pointer",
-                "border-y border-l rounded-l",
-                is_nil(@form[@filter.name].value) && "bg-neutral-100"
-              ]}
-            >
-              <.input
-                id={"#{@live_table_id}-#{@filter.name}-__all__"}
-                type="checkbox"
-                field={@form[@filter.name]}
-                name={"_reset:" <> @form[@filter.name].name}
-                value={true}
-                checked={is_nil(@form[@filter.name].value)}
-                class="hidden"
-              /> All
-            </label>
-          </:item>
-
-          <:item :let={position} :for={{label, value} <- @filter.values}>
-            <label
-              for={"#{@live_table_id}-#{@filter.name}-#{value}"}
-              class={[
-                "px-4 py-2 text-sm border-neutral-300 text-neutral-900",
-                "hover:bg-neutral-200 hover:text-neutral-700",
-                "cursor-pointer",
-                @form[@filter.name].value && value in @form[@filter.name].value && "bg-neutral-100",
-                position == :first && "border-y border-l rounded-l",
-                position == :last && "border-y border-r rounded-r",
-                position != :first && position != :last && "border"
-              ]}
-            >
-              <.input
-                id={"#{@live_table_id}-#{@filter.name}-#{value}"}
-                type="checkbox"
-                field={@form[@filter.name]}
-                name={@form[@filter.name].name <> "[]"}
-                value={value}
-                checked={@form[@filter.name].value && value in @form[@filter.name].value}
-                class="hidden"
-              />
-              {label}
-            </label>
-          </:item>
-        </.intersperse_blocks>
-      </div>
-    </div>
-    """
-  end
-
   defp filter(%{filter: %{type: :string, values: values}} = assigns) when values != [] do
     ~H"""
     <div class="flex items-center order-4">

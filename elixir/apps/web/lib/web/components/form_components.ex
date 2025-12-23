@@ -161,7 +161,7 @@ defmodule Web.FormComponents do
           type="checkbox"
           id={@id}
           name={@name}
-          value={@value || "true"}
+          value="true"
           checked={@checked}
           class={[
             "bg-neutral-50",

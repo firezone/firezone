@@ -18,10 +18,6 @@ defmodule Web.Resources.Index do
           {:resources, :name},
           {:resources, :address}
         ],
-        enforce_filters: [
-          # The Internet Resource is shown in another section
-          {:type, {:not_in, ["internet"]}}
-        ],
         callback: &handle_resources_update!/2
       )
 
@@ -200,22 +196,10 @@ defmodule Web.Resources.Index do
     end
 
     def list_resources(subject, opts \\ []) do
-      all()
-      |> filter_features(subject.account)
+      from(resources in Resource, as: :resources)
+      |> where([resources: r], r.type != :internet)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
-    end
-
-    def all do
-      from(resources in Resource, as: :resources)
-    end
-
-    def filter_features(queryable, %Domain.Account{} = account) do
-      if Domain.Account.internet_resource_enabled?(account) do
-        queryable
-      else
-        where(queryable, [resources: resources], resources.type != ^:internet)
-      end
     end
 
     def count_policies_for_resources(resources, subject) do
@@ -255,11 +239,6 @@ defmodule Web.Resources.Index do
           type: {:string, :uuid},
           values: [],
           fun: &filter_by_site_id/2
-        },
-        %Domain.Repo.Filter{
-          name: :type,
-          type: {:list, :string},
-          fun: &filter_by_type/2
         }
       ]
     end
@@ -275,14 +254,6 @@ defmodule Web.Resources.Index do
 
     def filter_by_site_id(queryable, site_id) do
       {queryable, dynamic([resources: r], r.site_id == ^site_id)}
-    end
-
-    def filter_by_type(queryable, {:not_in, types}) do
-      {queryable, dynamic([resources: resources], resources.type not in ^types)}
-    end
-
-    def filter_by_type(queryable, types) do
-      {queryable, dynamic([resources: resources], resources.type in ^types)}
     end
   end
 end
