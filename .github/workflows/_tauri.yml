@@ -140,6 +140,8 @@ jobs:
           lockfile-dir: ./rust/gui-client
       - uses: ./.github/actions/setup-rust-stable
       - uses: ./.github/actions/setup-rust-target-dependency-cache
+        with:
+          save-if: ${{ github.event_name == 'merge_group' || github.ref == 'refs/heads/main' }}
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 15

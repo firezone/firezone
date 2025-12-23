@@ -6,6 +6,9 @@ inputs:
     description: "Additional cache key"
     required: false
     default: ""
+  save-if:
+    description: "When to save the cache"
+    required: true
 
 runs:
   using: "composite"
@@ -17,4 +20,4 @@ runs:
         cache-workspace-crates: false
         key: ${{ inputs.key }}
         prefix-key: v2-rust-deps
-        # save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
+        save-if: ${{ inputs.save-if }}
