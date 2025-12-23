@@ -20,7 +20,8 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.8" date={new Date("2025-12-23")}>
         <ChangeItem pull="11077">
           Fixes an issue where the authentication link would not open in the
           correct app.
@@ -29,7 +30,7 @@ export default function Android() {
           Fixes an issue where Firezone would not connect if an IPv6 interface
           is present but not routable.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.7" date={new Date("2025-12-05")}>
         <ChangeItem pull="10752">
           Fixes an issue where the reported client version was out of date.
