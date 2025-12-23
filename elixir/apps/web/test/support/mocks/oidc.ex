@@ -1,4 +1,9 @@
-defmodule Domain.Mocks.OpenIDConnect do
+defmodule Web.Mocks.OIDC do
+  @moduledoc """
+  Mock server for OpenID Connect discovery and token endpoints.
+  Uses Bypass to simulate an OIDC provider for testing.
+  """
+
   def discovery_document_server do
     bypass = Bypass.open()
     endpoint = "http://localhost:#{bypass.port}"
@@ -149,27 +154,9 @@ defmodule Domain.Mocks.OpenIDConnect do
     bypass
   end
 
-  def generate_openid_connect_token(provider, identity, claims \\ %{}) do
-    claims =
-      Map.merge(
-        %{
-          "email" => identity.provider_identifier <> "@example.com",
-          "sub" => identity.provider_identifier,
-          "aud" => provider.adapter_config["client_id"],
-          "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
-        },
-        claims
-      )
-      |> Map.filter(fn {_, v} -> not is_nil(v) end)
-
-    {sign_openid_connect_token(claims), claims}
-  end
-
   def sign_openid_connect_token(claims) do
-    jwk = Domain.Mocks.OpenIDConnect.jwks()
-
     {_alg, token} =
-      jwk
+      jwks()
       |> JOSE.JWK.from()
       |> JOSE.JWS.sign(JSON.encode!(claims), %{"alg" => "RS256"})
       |> JOSE.JWS.compact()
