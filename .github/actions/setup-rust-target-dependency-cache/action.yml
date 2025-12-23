@@ -1,0 +1,20 @@
+---
+name: "Setup Rust `target` dir caching"
+description: "Sets up caching for the Rust `target` directory, for dependencies only"
+inputs:
+  key:
+    description: "Additional cache key"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      with:
+        workspaces: rust
+        cache-targets: true
+        cache-workspace-crates: false
+        key: ${{ inputs.key }}
+        prefix-key: v2-rust-deps
+        # save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
