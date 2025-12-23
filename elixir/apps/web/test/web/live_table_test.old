@@ -216,56 +216,6 @@ defmodule Web.LiveTableTest do
              ]
     end
 
-    test "renders checkbox-like buttons for multi-select from up to 5 values", %{assigns: assigns} do
-      assigns = %{
-        assigns
-        | filters: [
-            %Domain.Repo.Filter{
-              name: :btn,
-              title: "Button",
-              type: {:list, :string},
-              values: [
-                {"One", "1"},
-                {"Two", "2"}
-              ]
-            }
-          ],
-          filter: filter_to_form(%{id: "1"}, "table-id")
-      }
-
-      form =
-        render_component(&live_table/1, assigns)
-        |> Floki.parse_fragment!()
-        |> Floki.find("form")
-
-      assert Floki.attribute(form, "id") == ["table-id-filters"]
-      assert Floki.attribute(form, "phx-change") == ["filter"]
-
-      input = form |> Floki.find("input[type=hidden]")
-      assert Floki.attribute(input, "name") == ["table_id"]
-      assert Floki.attribute(input, "value") == ["table-id"]
-
-      radio = form |> Floki.find("input[type=checkbox]")
-
-      assert Floki.attribute(radio, "id") == [
-               "table-id-btn-__all__",
-               "table-id-btn-1",
-               "table-id-btn-2"
-             ]
-
-      assert Floki.attribute(radio, "name") == [
-               "_reset:table-id[btn]",
-               "table-id[btn][]",
-               "table-id[btn][]"
-             ]
-
-      assert Floki.attribute(radio, "value") == [
-               "value",
-               "1",
-               "2"
-             ]
-    end
-
     test "renders value dropdown when there are more than 5 values", %{assigns: assigns} do
       assigns = %{
         assigns
