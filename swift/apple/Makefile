@@ -97,6 +97,26 @@ install:
 	@echo "Launching Firezone..."
 	@open /Applications/Firezone.app
 
+.PHONY: gui-install
+gui-install:
+	@echo "Stopping any running Firezone instances..."
+	@-osascript -e 'tell application "Firezone" to quit' 2>/dev/null || true
+	@-pkill -x Firezone 2>/dev/null || true
+	@sleep 1
+	@echo "Finding built app..."
+	@APP_PATH=$$(find ~/Library/Developer/Xcode/DerivedData -name "Firezone.app" -path "*/Build/Products/$(CONFIGURATION)/*" -print -quit 2>/dev/null); \
+	if [ -z "$$APP_PATH" ]; then \
+		echo "❌ Error: Could not find Firezone.app in DerivedData. Did you run 'make build' first?"; \
+		exit 1; \
+	fi; \
+	echo "Found app at: $$APP_PATH"; \
+	echo "Stopping network extension and copying app (will prompt for password)..."; \
+	osascript -e "do shell script \"pkill -f 'Firezone.NetworkExtension' 2>/dev/null || true; systemextensionsctl uninstall 47R2M6779T dev.firezone.firezone.network-extension 2>/dev/null || true; systemextensionsctl uninstall 47R2M6779T dev.firezone.firezone.network-extension-systemextension 2>/dev/null || true; sleep 1; cp -R '$$APP_PATH' /Applications/\" with administrator privileges"; \
+	echo "✅ Installed to /Applications/Firezone.app"
+	@echo "Launching Firezone..."
+	@open /Applications/Firezone.app
+	@echo "✅ Firezone launched"
+
 .PHONY: clean
 clean:
 	@echo "Cleaning Xcode build"

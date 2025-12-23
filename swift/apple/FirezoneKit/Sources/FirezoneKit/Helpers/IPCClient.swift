@@ -186,13 +186,13 @@ enum IPCClient {
   /// On macOS, the tunnel needs to be in a connected, connecting, or reasserting state for the utun to be removed
   /// upon stopTunnel. We do this by ensuring the tunnel is "started" prior to any IPC call. If so, we return true
   /// so that the caller may stop the tunnel afterwards.
+  ///
+  /// After system extension replacement, the session status may be .invalid. In this case, we attempt to wake
+  /// the extension by calling startTunnel with cycleStart option, which will transition it to a usable state.
   private static func maybeCycleStart(_ session: NETunnelProviderSession) async throws -> Bool {
-    if session.status == .invalid {
-      throw Error.invalidStatus(session.status)
-    }
-
     #if os(macOS)
-      if [.disconnected, .disconnecting].contains(session.status) {
+      // Try to wake extension if disconnected, disconnecting, or invalid (e.g., after system extension replacement)
+      if [.disconnected, .disconnecting, .invalid].contains(session.status) {
         let options: [String: NSObject] = [
           "cycleStart": true as NSObject
         ]
