@@ -6,7 +6,6 @@ defmodule Domain.Presence do
   alias Domain.PubSub
   alias Domain.Client
   alias Domain.Gateway
-  alias Domain.Relay
 
   defmodule Clients do
     def connect(%Client{} = client, token_id) do
@@ -330,7 +329,10 @@ defmodule Domain.Presence do
              Domain.Presence.track(self(), __MODULE__.Global.topic(), relay.id, %{
                online_at: System.system_time(:second),
                secret: secret,
-               token_id: token_id
+               token_id: token_id,
+               ipv4: relay.ipv4,
+               ipv6: relay.ipv6,
+               port: relay.port
              }),
            {:ok, _} <-
              Domain.Presence.track(self(), "presences:relays:#{relay.id}", relay.id, %{}) do
@@ -341,40 +343,26 @@ defmodule Domain.Presence do
 
     def all_connected_relays(except_ids \\ []) do
       connected_relays = __MODULE__.Global.list()
-      connected_relay_ids = Map.keys(connected_relays) -- except_ids
 
-      relays = __MODULE__.DB.fetch_relays_by_ids(connected_relay_ids)
-
-      enriched_relays =
-        Enum.map(relays, fn relay ->
-          %{metas: metas} = Map.get(connected_relays, relay.id)
-
-          %{secret: stamp_secret} =
+      relays =
+        connected_relays
+        |> Enum.reject(fn {id, _} -> id in except_ids end)
+        |> Enum.map(fn {id, %{metas: metas}} ->
+          %{secret: stamp_secret, ipv4: ipv4, ipv6: ipv6, port: port} =
             metas
             |> Enum.sort_by(& &1.online_at, :desc)
             |> List.first()
 
-          %{relay | stamp_secret: stamp_secret}
+          %Domain.Relay{id: id, ipv4: ipv4, ipv6: ipv6, port: port, stamp_secret: stamp_secret}
         end)
 
-      {:ok, enriched_relays}
-    end
-
-    defmodule DB do
-      import Ecto.Query
-      alias Domain.Relay
-      alias Domain.Safe
-
-      def fetch_relays_by_ids(relay_ids) do
-        from(relays in Relay, as: :relays)
-        |> where([relays: relays], relays.id in ^relay_ids)
-        |> Safe.unscoped()
-        |> Safe.all()
-      end
+      {:ok, relays}
     end
 
     defmodule Global do
-      def topic, do: "presences:global_relays"
+      def topic do
+        Domain.Config.get_env(:domain, :relay_presence_topic, "presences:global_relays")
+      end
 
       def list do
         Domain.Presence.list(topic())
