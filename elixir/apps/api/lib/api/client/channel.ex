@@ -787,7 +787,14 @@ defmodule API.Client.Channel do
        )
        when id == client_id do
     # Update socket with the new client state, preserving loaded associations
-    updated_client = %{client | account: current_client.account, actor: current_client.actor}
+    updated_client = %{
+      client
+      | account: current_client.account,
+        actor: current_client.actor,
+        ipv4_address: current_client.ipv4_address,
+        ipv6_address: current_client.ipv6_address
+    }
+
     socket = assign(socket, :client, updated_client)
 
     # Changes in client verification can affect the list of allowed resources
