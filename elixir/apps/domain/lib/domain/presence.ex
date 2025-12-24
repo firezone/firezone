@@ -361,8 +361,8 @@ defmodule Domain.Presence do
             ipv6: meta.ipv6,
             port: meta.port,
             stamp_secret: meta.secret,
-            last_seen_remote_ip_location_lat: meta.last_seen_remote_ip_location_lat,
-            last_seen_remote_ip_location_lon: meta.last_seen_remote_ip_location_lon
+            last_seen_remote_ip_location_lat: Map.get(meta, :last_seen_remote_ip_location_lat),
+            last_seen_remote_ip_location_lon: Map.get(meta, :last_seen_remote_ip_location_lon)
           }
         end)
 
