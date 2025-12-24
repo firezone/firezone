@@ -1,5 +1,5 @@
 defmodule PortalAPI.GatewayTokenController do
-  use API, :controller
+  use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias Portal.{Auth, Safe}
   alias __MODULE__.DB

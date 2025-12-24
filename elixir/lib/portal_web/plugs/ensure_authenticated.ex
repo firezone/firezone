@@ -1,7 +1,7 @@
 defmodule PortalWeb.Plugs.EnsureAuthenticated do
   @behaviour Plug
 
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
 
   import Plug.Conn
   import Phoenix.Controller

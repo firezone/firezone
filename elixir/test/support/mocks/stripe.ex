@@ -4,9 +4,9 @@ defmodule Portal.Mocks.Stripe do
   @charset Enum.to_list(?A..?Z) ++ Enum.to_list(?a..?z) ++ Enum.to_list(?0..?9)
 
   def override_endpoint_url(url) do
-    config = Portal.Config.fetch_env!(:domain, APIClient)
+    config = Portal.Config.fetch_env!(:portal, APIClient)
     config = Keyword.put(config, :endpoint, url)
-    Portal.Config.put_env_override(:domain, APIClient, config)
+    Portal.Config.put_env_override(:portal, APIClient, config)
   end
 
   def mock_create_customer_endpoint(bypass, account, resp \\ %{}) do

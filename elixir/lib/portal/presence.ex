@@ -1,6 +1,6 @@
 defmodule Portal.Presence do
   use Phoenix.Presence,
-    otp_app: :domain,
+    otp_app: :portal,
     pubsub_server: Portal.PubSub
 
   alias Portal.PubSub
@@ -319,7 +319,7 @@ defmodule Portal.Presence do
     def send_metrics do
       count = __MODULE__.Global.list() |> Enum.count()
 
-      :telemetry.execute([:domain, :relays], %{
+      :telemetry.execute([:portal, :relays], %{
         online_relays_count: count
       })
     end
@@ -371,7 +371,7 @@ defmodule Portal.Presence do
 
     defmodule Global do
       def topic do
-        Portal.Config.get_env(:domain, :relay_presence_topic, "presences:global_relays")
+        Portal.Config.get_env(:portal, :relay_presence_topic, "presences:global_relays")
       end
 
       def list do
@@ -490,7 +490,7 @@ defmodule Portal.Presence do
       end
 
       def timeout do
-        Application.fetch_env!(:api, :relays_presence_debounce_timeout_ms)
+        Application.fetch_env!(:portal, :relays_presence_debounce_timeout_ms)
       end
     end
   end

@@ -25,7 +25,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetrics do
 
   def start_link(opts) do
     project_id =
-      Application.fetch_env!(:domain, __MODULE__)
+      Application.fetch_env!(:portal, __MODULE__)
       |> Keyword.fetch!(:project_id)
 
     metrics = Keyword.fetch!(opts, :metrics)
@@ -43,7 +43,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetrics do
 
     application_version =
       System.get_env("RELEASE_VERSION") ||
-        to_string(Application.spec(:domain, :vsn))
+        to_string(Application.spec(:portal, :vsn))
 
     labels = %{node_name: node_name, application_version: application_version}
 

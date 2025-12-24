@@ -1,5 +1,5 @@
 defmodule PortalAPI.UserpassAuthProviderController do
-  use API, :controller
+  use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias Portal.{Userpass, Safe}
   alias __MODULE__.DB

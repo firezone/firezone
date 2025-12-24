@@ -1,5 +1,5 @@
 defmodule PortalAPI.Gateway.Channel do
-  use API, :channel
+  use PortalAPI, :channel
   alias PortalAPI.Gateway.Views
   alias __MODULE__.DB
 

@@ -1,5 +1,5 @@
 defmodule PortalWeb.ErrorXML do
-  use Web, :xml
+  use PortalWeb, :xml
 
   # If you want to customize your error pages,
   # uncomment the embed_templates/1 call below

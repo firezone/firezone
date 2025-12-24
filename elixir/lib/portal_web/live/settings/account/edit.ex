@@ -1,5 +1,5 @@
 defmodule PortalWeb.Settings.Account.Edit do
-  use Web, :live_view
+  use PortalWeb, :live_view
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do

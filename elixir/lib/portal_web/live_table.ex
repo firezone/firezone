@@ -543,7 +543,7 @@ defmodule PortalWeb.LiveTable do
 
   if Mix.env() == :test do
     defp maybe_notify_test_pid(id) do
-      if test_pid = Portal.Config.get_env(:domain, :test_pid) do
+      if test_pid = Portal.Config.get_env(:portal, :test_pid) do
         send(test_pid, {:live_table_reloaded, id})
       end
 

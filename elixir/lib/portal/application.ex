@@ -1,14 +1,18 @@
 defmodule Portal.Application do
   use Application
 
+  @impl true
   def start(_type, _args) do
     configure_logger()
 
     # Attach Oban Sentry reporter
     Portal.Telemetry.Reporter.Oban.attach()
 
+    # OpenTelemetry setup
     _ = OpentelemetryLoggerMetadata.setup()
-    _ = OpentelemetryEcto.setup([:domain, :repo])
+    _ = OpentelemetryEcto.setup([:portal, :repo])
+    _ = :opentelemetry_cowboy.setup()
+    _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
     # Can be uncommented when this bug is fixed: https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/327
     # _ = OpentelemetryFinch.setup()
@@ -16,7 +20,14 @@ defmodule Portal.Application do
     Supervisor.start_link(children(), strategy: :one_for_one, name: __MODULE__.Supervisor)
   end
 
-  def children do
+  @impl true
+  def config_change(changed, _new, removed) do
+    PortalWeb.Endpoint.config_change(changed, removed)
+    PortalAPI.Endpoint.config_change(changed, removed)
+    :ok
+  end
+
+  defp children do
     [
       # Core services
       Portal.Repo,
@@ -27,12 +38,19 @@ defmodule Portal.Application do
       Portal.GoogleCloudPlatform,
       Portal.Cluster,
 
-      # Application
+      # Application services
       Portal.Presence,
       Portal.Billing,
       Portal.Mailer,
       Portal.Mailer.RateLimiter,
-      Portal.ComponentVersions
+      Portal.ComponentVersions,
+
+      # Web endpoint
+      PortalWeb.Endpoint,
+
+      # API endpoint and rate limiter
+      PortalAPI.Endpoint,
+      PortalAPI.RateLimit
     ] ++ telemetry() ++ oban() ++ replication()
   end
 
@@ -68,7 +86,7 @@ defmodule Portal.Application do
   end
 
   defp telemetry do
-    config = Application.fetch_env!(:domain, Portal.Telemetry)
+    config = Application.fetch_env!(:portal, Portal.Telemetry)
 
     if config[:enabled] do
       [Portal.Telemetry]
@@ -78,7 +96,7 @@ defmodule Portal.Application do
   end
 
   defp oban do
-    [{Oban, Application.fetch_env!(:domain, Oban)}]
+    [{Oban, Application.fetch_env!(:portal, Oban)}]
   end
 
   defp replication do
@@ -89,7 +107,7 @@ defmodule Portal.Application do
 
     # Filter out disabled replication connections
     Enum.reduce(connection_modules, [], fn module, enabled ->
-      config = Application.fetch_env!(:domain, module)
+      config = Application.fetch_env!(:portal, module)
 
       if config[:enabled] do
         spec = %{

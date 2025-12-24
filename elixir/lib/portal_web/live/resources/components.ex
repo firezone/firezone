@@ -1,5 +1,5 @@
 defmodule PortalWeb.Resources.Components do
-  use Web, :component_library
+  use PortalWeb, :component_library
   alias __MODULE__.DB
 
   @resource_types %{

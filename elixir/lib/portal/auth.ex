@@ -363,7 +363,7 @@ defmodule Portal.Auth do
   end
 
   defp fetch_config! do
-    Portal.Config.fetch_env!(:domain, Portal.Tokens)
+    Portal.Config.fetch_env!(:portal, Portal.Tokens)
   end
 
   defmodule DB do

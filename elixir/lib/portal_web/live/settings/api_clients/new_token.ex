@@ -1,5 +1,5 @@
 defmodule PortalWeb.Settings.ApiClients.NewToken do
-  use Web, :live_view
+  use PortalWeb, :live_view
   import PortalWeb.Settings.ApiClients.Components
   alias Portal.{Auth, APIToken}
   alias __MODULE__.DB

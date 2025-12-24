@@ -1,5 +1,5 @@
 defmodule PortalWeb.Settings.ApiClients.Edit do
-  use Web, :live_view
+  use PortalWeb, :live_view
   import PortalWeb.Settings.ApiClients.Components
   import Ecto.Changeset
 

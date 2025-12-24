@@ -3,7 +3,7 @@ defmodule PortalWeb.FormComponents do
   Provides Form UI components.
   """
   use Phoenix.Component
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
 
   import PortalWeb.CoreComponents,
     only: [icon: 1, error: 1, label: 1, translate_error: 1, provider_icon: 1]

@@ -13,29 +13,29 @@ db_opts = [
 ]
 
 ###############################
-##### Domain ##################
+##### Portal ##################
 ###############################
 
-config :domain, Portal.Repo, db_opts
+config :portal, Portal.Repo, db_opts
 
-config :domain, Portal.ChangeLogs.ReplicationConnection,
+config :portal, Portal.ChangeLogs.ReplicationConnection,
   replication_slot_name: db_opts[:database] <> "_clog_slot",
   publication_name: db_opts[:database] <> "_clog_pub",
   connection_opts: db_opts
 
-config :domain, Portal.Changes.ReplicationConnection,
+config :portal, Portal.Changes.ReplicationConnection,
   replication_slot_name: db_opts[:database] <> "_changes_slot",
   publication_name: db_opts[:database] <> "_changes_pub",
   connection_opts: db_opts
 
-config :domain, outbound_email_adapter_configured?: true
+config :portal, outbound_email_adapter_configured?: true
 
-config :domain, run_manual_migrations: true
+config :portal, run_manual_migrations: true
 
-config :domain, Portal.ComponentVersions,
+config :portal, Portal.ComponentVersions,
   firezone_releases_url: "http://localhost:3000/api/releases"
 
-config :domain, Portal.Billing,
+config :portal, Portal.Billing,
   enabled: System.get_env("BILLING_ENABLED", "false") == "true",
   secret_key: System.get_env("STRIPE_SECRET_KEY", "sk_dev_1111"),
   webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111"),
@@ -46,7 +46,7 @@ worker_dev_schedule = System.get_env("WORKER_DEV_SCHEDULE", "* * * * *")
 
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
-config :domain, Oban,
+config :portal, Oban,
   plugins: [
     # Keep the last 7 days of completed, cancelled, and discarded jobs
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
@@ -96,16 +96,16 @@ config :domain, Oban,
   engine: Oban.Engines.Basic,
   repo: Portal.Repo
 
-config :domain, Portal.Okta.AuthProvider,
+config :portal, Portal.Okta.AuthProvider,
   redirect_uri: "https://localhost:#{web_port}/auth/oidc/callback"
 
 ###############################
-##### Web #####################
+##### PortalWeb Endpoint ######
 ###############################
 
-config :web, dev_routes: true
+config :portal, dev_routes: true
 
-config :web, PortalWeb.Endpoint,
+config :portal, PortalWeb.Endpoint,
   url: [scheme: "https", host: "localhost", port: web_port],
   https: [
     port: web_port,
@@ -125,38 +125,28 @@ config :web, PortalWeb.Endpoint,
     "//localhost"
   ],
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:web, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:web, ~w(--watch)]}
+    esbuild: {Esbuild, :install_and_run, [:portal, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:portal, ~w(--watch)]}
   ],
   live_reload: [
     web_console_logger: true,
     patterns: [
-      ~r"apps/config/.*(exs)$",
-      ~r"apps/domain/lib/domain/.*(ex|eex|heex)$",
-      ~r"apps/web/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
-      ~r"apps/web/priv/gettext/.*(po)$",
-      ~r"apps/web/lib/web/.*(ex|eex|heex)$"
+      ~r"config/.*(exs)$",
+      ~r"lib/portal/.*(ex|eex|heex)$",
+      ~r"lib/portal_web/.*(ex|eex|heex)$",
+      ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
+      ~r"priv/gettext/.*(po)$"
     ]
   ],
-  reloadable_apps: [:domain, :web],
+  reloadable_apps: [:portal],
   server: true
 
-config :web,
+config :portal,
   api_external_url: "http://localhost:#{api_port}"
 
-root_path =
-  __ENV__.file
-  |> Path.dirname()
-  |> Path.join("..")
-  |> Path.expand()
+config :phoenix_live_reload, :dirs, [File.cwd!()]
 
-config :phoenix_live_reload, :dirs, [
-  Path.join([root_path, "apps", "domain"]),
-  Path.join([root_path, "apps", "web"]),
-  Path.join([root_path, "apps", "api"])
-]
-
-config :web, PortalWeb.Plugs.SecureHeaders,
+config :portal, PortalWeb.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
@@ -166,15 +156,13 @@ config :web, PortalWeb.Plugs.SecureHeaders,
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`
 # to the `docker run` command. Works on Docker v20.10 and above.
-config :web, api_url_override: "ws://host.docker.internal:#{api_port}/"
+config :portal, api_url_override: "ws://host.docker.internal:#{api_port}/"
 
 ###############################
-##### API #####################
+##### PortalAPI Endpoint ######
 ###############################
 
-config :api, dev_routes: true
-
-config :api, PortalAPI.Endpoint,
+config :portal, PortalAPI.Endpoint,
   http: [port: api_port],
   debug_errors: true,
   code_reloader: true,
@@ -202,7 +190,7 @@ config :phoenix, :stacktrace_depth, 20
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 
-config :domain, Portal.Mailer, adapter: Swoosh.Adapters.Local
+config :portal, Portal.Mailer, adapter: Swoosh.Adapters.Local
 
 config :sentry,
   environment_name: :dev

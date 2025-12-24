@@ -2,15 +2,15 @@ defmodule Portal.Mocks.GoogleWorkspaceDirectory do
   alias Portal.Auth.Adapters.GoogleWorkspace
 
   def override_endpoint_url(url) do
-    config = Portal.Config.fetch_env!(:domain, GoogleWorkspace.APIClient)
+    config = Portal.Config.fetch_env!(:portal, GoogleWorkspace.APIClient)
     config = Keyword.put(config, :endpoint, url)
-    Portal.Config.put_env_override(:domain, GoogleWorkspace.APIClient, config)
+    Portal.Config.put_env_override(:portal, GoogleWorkspace.APIClient, config)
   end
 
   def override_token_endpoint(url) do
-    config = Portal.Config.fetch_env!(:domain, GoogleWorkspace.APIClient)
+    config = Portal.Config.fetch_env!(:portal, GoogleWorkspace.APIClient)
     config = Keyword.put(config, :token_endpoint, url)
-    Portal.Config.put_env_override(:domain, GoogleWorkspace.APIClient, config)
+    Portal.Config.put_env_override(:portal, GoogleWorkspace.APIClient, config)
   end
 
   def mock_token_endpoint(bypass) do

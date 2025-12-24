@@ -1,6 +1,6 @@
 defmodule Portal.Google.APIClient do
   def get_access_token(impersonation_email, key) do
-    config = Portal.Config.fetch_env!(:domain, __MODULE__)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
     token_endpoint = config[:token_endpoint]
     iss = key["client_email"]
     private_key = key["private_key"]
@@ -89,7 +89,7 @@ defmodule Portal.Google.APIClient do
   end
 
   defp test_endpoint(path, access_token, params) do
-    config = Portal.Config.fetch_env!(:domain, __MODULE__)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
     query = URI.encode_query(params)
     url = "#{config[:endpoint]}#{path}?#{query}"
 
@@ -161,7 +161,7 @@ defmodule Portal.Google.APIClient do
   end
 
   defp get(path, access_token) do
-    config = Portal.Config.fetch_env!(:domain, __MODULE__)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
     (config[:endpoint] <> path)
     |> Req.get(headers: [Authorization: "Bearer #{access_token}"])
@@ -185,7 +185,7 @@ defmodule Portal.Google.APIClient do
   end
 
   defp fetch_page(current_path, current_query, access_token, result_key) do
-    config = Portal.Config.fetch_env!(:domain, __MODULE__)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
     url = "#{config[:endpoint]}#{current_path}?#{current_query}"
 
     case Req.get(url, headers: [Authorization: "Bearer #{access_token}"]) do

@@ -1,5 +1,5 @@
 defmodule PortalWeb.Clients.Index do
-  use Web, :live_view
+  use PortalWeb, :live_view
   import PortalWeb.Clients.Components
   alias Portal.{Presence.Clients, ComponentVersions}
   alias __MODULE__.DB

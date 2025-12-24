@@ -177,7 +177,7 @@ defmodule Portal.Cluster.GoogleComputeLabelsStrategy do
 
       count = length(nodes)
 
-      :telemetry.execute([:domain, :cluster], %{
+      :telemetry.execute([:portal, :cluster], %{
         discovered_nodes_count: count
       })
 

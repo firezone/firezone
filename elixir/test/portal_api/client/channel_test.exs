@@ -3550,6 +3550,6 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   defp relays_presence_timeout do
-    Application.fetch_env!(:api, :relays_presence_debounce_timeout_ms) + 10
+    Application.fetch_env!(:portal, :relays_presence_debounce_timeout_ms) + 10
   end
 end

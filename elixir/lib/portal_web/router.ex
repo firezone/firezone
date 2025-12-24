@@ -1,5 +1,5 @@
 defmodule PortalWeb.Router do
-  use Web, :router
+  use PortalWeb, :router
 
   pipeline :public do
     plug :accepts, ["html", "xml"]
@@ -33,20 +33,20 @@ defmodule PortalWeb.Router do
     Plug.Conn.delete_resp_cookie(conn, "fz_recent_account_ids", cookie_opts)
   end
 
-  scope "/browser", Web do
+  scope "/browser", PortalWeb do
     pipe_through :public
 
     get "/config.xml", BrowserController, :config
   end
 
-  scope "/", Web do
+  scope "/", PortalWeb do
     pipe_through :public
 
     get "/", HomeController, :home
     post "/", HomeController, :redirect_to_sign_in
   end
 
-  scope "/", Web do
+  scope "/", PortalWeb do
     pipe_through :public
 
     get "/healthz", HealthController, :healthz
@@ -58,27 +58,27 @@ defmodule PortalWeb.Router do
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
 
-    scope "/error", Web do
+    scope "/error", PortalWeb do
       pipe_through [:public]
 
       get "/:code", ErrorController, :show
     end
   end
 
-  scope "/sign_up", Web do
+  scope "/sign_up", PortalWeb do
     pipe_through :public
 
     live "/", SignUp
   end
 
   # Maintained from the LaunchHN - show SignUp form
-  scope "/try", Web do
+  scope "/try", PortalWeb do
     pipe_through :public
 
     live "/", SignUp
   end
 
-  scope "/auth", Web do
+  scope "/auth", PortalWeb do
     pipe_through :public
 
     get "/oidc/callback", OIDCController, :callback
@@ -86,13 +86,13 @@ defmodule PortalWeb.Router do
 
   # Legacy OIDC callback - must be outside RedirectIfAuthenticated scope
   # because IdP redirects don't include as=client param
-  scope "/:account_id_or_slug", Web do
+  scope "/:account_id_or_slug", PortalWeb do
     pipe_through :public
 
     get "/sign_in/providers/:auth_provider_id/handle_callback", OIDCController, :callback
   end
 
-  scope "/", Web do
+  scope "/", PortalWeb do
     pipe_through :public
 
     live_session :verification,
@@ -101,7 +101,7 @@ defmodule PortalWeb.Router do
     end
   end
 
-  scope "/:account_id_or_slug", Web do
+  scope "/:account_id_or_slug", PortalWeb do
     pipe_through [
       :public,
       PortalWeb.Plugs.FetchAccount,
@@ -144,7 +144,7 @@ defmodule PortalWeb.Router do
   end
 
   # Client auth redirect routes (don't need portal session)
-  scope "/:account_id_or_slug", Web do
+  scope "/:account_id_or_slug", PortalWeb do
     pipe_through [
       :public,
       PortalWeb.Plugs.FetchAccount
@@ -155,7 +155,7 @@ defmodule PortalWeb.Router do
   end
 
   # Sign out route (needs portal session)
-  scope "/:account_id_or_slug", Web do
+  scope "/:account_id_or_slug", PortalWeb do
     pipe_through [
       :public,
       PortalWeb.Plugs.FetchAccount,
@@ -166,7 +166,7 @@ defmodule PortalWeb.Router do
   end
 
   # Authenticated admin routes
-  scope "/:account_id_or_slug", Web do
+  scope "/:account_id_or_slug", PortalWeb do
     pipe_through [
       :public,
       PortalWeb.Plugs.FetchAccount,

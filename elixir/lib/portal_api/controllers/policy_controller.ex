@@ -1,5 +1,5 @@
 defmodule PortalAPI.PolicyController do
-  use API, :controller
+  use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias __MODULE__.DB

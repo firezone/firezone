@@ -1,5 +1,5 @@
 defmodule PortalWeb.Verification do
-  use Web, {:live_view, layout: {PortalWeb.Layouts, :verification}}
+  use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :verification}}
 
   alias Portal.Entra
 
@@ -105,7 +105,7 @@ defmodule PortalWeb.Verification do
     # Only do verification on WebSocket connection, not initial HTTP request
     if connected?(socket) do
       # Verify directory access with client credentials
-      config = Portal.Config.fetch_env!(:domain, Entra.APIClient)
+      config = Portal.Config.fetch_env!(:portal, Entra.APIClient)
       client_id = config[:client_id]
 
       case verify_directory_access(tenant_id, client_id) do

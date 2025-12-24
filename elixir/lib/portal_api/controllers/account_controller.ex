@@ -1,5 +1,5 @@
 defmodule PortalAPI.AccountController do
-  use API, :controller
+  use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias __MODULE__.DB
 

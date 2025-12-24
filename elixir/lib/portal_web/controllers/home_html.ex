@@ -1,5 +1,5 @@
 defmodule PortalWeb.HomeHTML do
-  use Web, :html
+  use PortalWeb, :html
 
   def home(assigns) do
     ~H"""

@@ -1,5 +1,5 @@
 defmodule PortalWeb.Resources.Show do
-  use Web, :live_view
+  use PortalWeb, :live_view
   import PortalWeb.Policies.Components
   import PortalWeb.Resources.Components
   alias Portal.PubSub

@@ -1,6 +1,6 @@
 defmodule PortalWeb.NavigationComponents do
   use Phoenix.Component
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
   import PortalWeb.CoreComponents
 
   attr :subject, :any, required: true

@@ -1226,7 +1226,7 @@ defmodule Portal.AuthTest do
       token = gateway_token_fixture(account: account, site: site)
 
       # Manually create an encoded token using the legacy salt
-      config = Application.fetch_env!(:domain, Portal.Tokens)
+      config = Application.fetch_env!(:portal, Portal.Tokens)
       key_base = Keyword.fetch!(config, :key_base)
       legacy_salt = Keyword.fetch!(config, :salt) <> "gateway_group"
       body = {token.account_id, token.id, token.secret_fragment}
@@ -1242,7 +1242,7 @@ defmodule Portal.AuthTest do
       token = relay_token_fixture()
 
       # Manually create an encoded token using the legacy salt
-      config = Application.fetch_env!(:domain, Portal.Tokens)
+      config = Application.fetch_env!(:portal, Portal.Tokens)
       key_base = Keyword.fetch!(config, :key_base)
       legacy_salt = Keyword.fetch!(config, :salt) <> "relay_group"
       body = {nil, token.id, token.secret_fragment}

@@ -681,7 +681,7 @@ defmodule PortalWeb.OIDCControllerTest do
       bypass = Mocks.OIDC.discovery_document_server()
 
       # Override Google config to use bypass
-      Portal.Config.put_env_override(:domain, Portal.Google.AuthProvider,
+      Portal.Config.put_env_override(:portal, Portal.Google.AuthProvider,
         client_id: "test-google-client-id",
         client_secret: "test-google-client-secret",
         response_type: "code",
@@ -705,7 +705,7 @@ defmodule PortalWeb.OIDCControllerTest do
       bypass = Mocks.OIDC.discovery_document_server()
 
       # Override Entra config to use bypass
-      Portal.Config.put_env_override(:domain, Portal.Entra.AuthProvider,
+      Portal.Config.put_env_override(:portal, Portal.Entra.AuthProvider,
         client_id: "test-entra-client-id",
         client_secret: "test-entra-client-secret",
         response_type: "code",
@@ -729,7 +729,7 @@ defmodule PortalWeb.OIDCControllerTest do
       bypass = Mocks.OIDC.discovery_document_server()
 
       # Override Okta config to use bypass (HTTP instead of HTTPS)
-      Portal.Config.put_env_override(:domain, Portal.Okta.AuthProvider,
+      Portal.Config.put_env_override(:portal, Portal.Okta.AuthProvider,
         response_type: "code",
         scope: "openid email profile",
         discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"

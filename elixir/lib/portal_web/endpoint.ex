@@ -1,6 +1,6 @@
 defmodule PortalWeb.Endpoint do
   use Sentry.PlugCapture
-  use Phoenix.Endpoint, otp_app: :web
+  use Phoenix.Endpoint, otp_app: :portal
 
   # NOTE: This is only used for the LiveView session. We store per-account cookies to allow
   # multiple accounts to be logged in simultaneously. See PortalWeb.Cookie.Session.
@@ -14,7 +14,7 @@ defmodule PortalWeb.Endpoint do
     signing_salt: {__MODULE__, :cookie_signing_salt, []}
   ]
 
-  if Application.compile_env(:domain, :sql_sandbox) do
+  if Application.compile_env(:portal, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
     plug PortalWeb.Plugs.AllowEctoSandbox
   end
@@ -37,7 +37,7 @@ defmodule PortalWeb.Endpoint do
   # Serve at "/" the static files from "priv/static" directory.
   plug Plug.Static,
     at: "/",
-    from: :web,
+    from: :portal,
     gzip: true,
     only: PortalWeb.static_paths(),
     # allows serving digested files at the root
@@ -50,7 +50,7 @@ defmodule PortalWeb.Endpoint do
 
     plug Phoenix.LiveReloader
     plug Phoenix.CodeReloader
-    plug Phoenix.Ecto.CheckRepoStatus, otp_app: :domain
+    plug Phoenix.Ecto.CheckRepoStatus, otp_app: :portal
   end
 
   plug Plug.Parsers,
@@ -86,25 +86,25 @@ defmodule PortalWeb.Endpoint do
   end
 
   def external_trusted_proxies do
-    Portal.Config.fetch_env!(:web, :external_trusted_proxies)
+    Portal.Config.fetch_env!(:portal, :external_trusted_proxies)
     |> Enum.map(&to_string/1)
   end
 
   def clients do
-    Portal.Config.fetch_env!(:web, :private_clients)
+    Portal.Config.fetch_env!(:portal, :private_clients)
     |> Enum.map(&to_string/1)
   end
 
   def cookie_secure do
-    Portal.Config.fetch_env!(:web, :cookie_secure)
+    Portal.Config.fetch_env!(:portal, :cookie_secure)
   end
 
   def cookie_signing_salt do
-    Portal.Config.fetch_env!(:web, :cookie_signing_salt)
+    Portal.Config.fetch_env!(:portal, :cookie_signing_salt)
   end
 
   def cookie_encryption_salt do
-    Portal.Config.fetch_env!(:web, :cookie_encryption_salt)
+    Portal.Config.fetch_env!(:portal, :cookie_encryption_salt)
   end
 
   # Configures the LiveView session cookie options.

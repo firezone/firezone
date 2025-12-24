@@ -1,7 +1,7 @@
 defmodule Portal.Release do
   require Logger
 
-  @otp_app :domain
+  @otp_app :portal
   @repos Application.compile_env!(@otp_app, :ecto_repos)
 
   def migrate(opts \\ []) do
@@ -13,7 +13,7 @@ defmodule Portal.Release do
         opts,
         :manual,
         Application.get_env(
-          :domain,
+          :portal,
           :run_manual_migrations,
           System.get_env("RUN_MANUAL_MIGRATIONS") == "true"
         )

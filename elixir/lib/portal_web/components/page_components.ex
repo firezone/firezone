@@ -1,6 +1,6 @@
 defmodule PortalWeb.PageComponents do
   use Phoenix.Component
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
   import PortalWeb.CoreComponents
 
   attr :id, :string, default: nil, doc: "The id of the section"

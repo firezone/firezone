@@ -1,5 +1,5 @@
 defmodule PortalAPI.EmailOTPAuthProviderController do
-  use API, :controller
+  use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias Portal.{EmailOTP, Safe}
   alias __MODULE__.DB

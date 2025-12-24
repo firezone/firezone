@@ -1,5 +1,5 @@
 defmodule PortalWeb.FallbackController do
-  use Web, :controller
+  use PortalWeb, :controller
 
   def call(conn, {:error, :not_found}) do
     conn

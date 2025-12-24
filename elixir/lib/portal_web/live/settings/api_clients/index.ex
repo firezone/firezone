@@ -1,5 +1,5 @@
 defmodule PortalWeb.Settings.ApiClients.Index do
-  use Web, :live_view
+  use PortalWeb, :live_view
 
   defmodule DB do
     import Ecto.Query
@@ -25,7 +25,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       socket =
         socket
         |> assign(page_title: "API Clients")
-        |> assign(api_url: Portal.Config.get_env(:web, :api_external_url))
+        |> assign(api_url: Portal.Config.get_env(:portal, :api_external_url))
         |> assign_live_table("actors",
           query_module: DB,
           sortable_fields: [

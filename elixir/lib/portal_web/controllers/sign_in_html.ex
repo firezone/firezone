@@ -1,5 +1,5 @@
 defmodule PortalWeb.SignInHTML do
-  use Web, :html
+  use PortalWeb, :html
 
   def client_redirect(assigns) do
     ~H"""

@@ -1,5 +1,5 @@
 defmodule PortalWeb.OIDC do
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
 
   @moduledoc """
   Helper functions for OIDC operations shared between controllers and LiveViews.
@@ -13,13 +13,13 @@ defmodule PortalWeb.OIDC do
   Supports Google, Okta, Entra, and generic OIDC providers.
   """
   def config_for_provider(%Google.AuthProvider{}) do
-    config = Portal.Config.fetch_env!(:domain, Portal.Google.AuthProvider)
+    config = Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
     config = Enum.into(config, %{redirect_uri: callback_url()})
     {:ok, config}
   end
 
   def config_for_provider(%Okta.AuthProvider{} = provider) do
-    config = Portal.Config.fetch_env!(:domain, Portal.Okta.AuthProvider)
+    config = Portal.Config.fetch_env!(:portal, Portal.Okta.AuthProvider)
 
     discovery_document_uri =
       config[:discovery_document_uri] ||
@@ -37,7 +37,7 @@ defmodule PortalWeb.OIDC do
   end
 
   def config_for_provider(%Entra.AuthProvider{} = provider) do
-    config = Portal.Config.fetch_env!(:domain, Portal.Entra.AuthProvider)
+    config = Portal.Config.fetch_env!(:portal, Portal.Entra.AuthProvider)
 
     discovery_document_uri =
       config[:discovery_document_uri] || "#{provider.issuer}/.well-known/openid-configuration"
@@ -52,7 +52,7 @@ defmodule PortalWeb.OIDC do
   end
 
   def config_for_provider(%OIDC.AuthProvider{} = provider) do
-    config = Portal.Config.fetch_env!(:domain, Portal.OIDC.AuthProvider)
+    config = Portal.Config.fetch_env!(:portal, Portal.OIDC.AuthProvider)
 
     config =
       Enum.into(config, %{
@@ -265,22 +265,22 @@ defmodule PortalWeb.OIDC do
   # TODO: This can be refactored to reduce duplication with config_for_provider/1
 
   defp verification_config_for_type("google", opts) do
-    Application.fetch_env!(:domain, Portal.Google.AuthProvider)
+    Application.fetch_env!(:portal, Portal.Google.AuthProvider)
     |> verification_config(opts)
   end
 
   defp verification_config_for_type("entra", opts) do
-    Application.fetch_env!(:domain, Portal.Entra.AuthProvider)
+    Application.fetch_env!(:portal, Portal.Entra.AuthProvider)
     |> verification_config(opts)
   end
 
   defp verification_config_for_type("okta", opts) do
-    Application.fetch_env!(:domain, Portal.Okta.AuthProvider)
+    Application.fetch_env!(:portal, Portal.Okta.AuthProvider)
     |> verification_config(opts)
   end
 
   defp verification_config_for_type("oidc", opts) do
-    Application.fetch_env!(:domain, Portal.OIDC.AuthProvider)
+    Application.fetch_env!(:portal, Portal.OIDC.AuthProvider)
     |> verification_config(opts)
   end
 

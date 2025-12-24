@@ -1,5 +1,5 @@
 defmodule PortalWeb.Auth do
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
   require Logger
 
   @doc """

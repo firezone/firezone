@@ -1,8 +1,8 @@
 defmodule Portal.Mocks.GoogleCloudPlatform do
   def override_endpoint_url(endpoint, url) do
-    config = Portal.Config.fetch_env!(:domain, Portal.GoogleCloudPlatform)
+    config = Portal.Config.fetch_env!(:portal, Portal.GoogleCloudPlatform)
     config = Keyword.put(config, endpoint, url)
-    Portal.Config.put_env_override(:domain, Portal.GoogleCloudPlatform, config)
+    Portal.Config.put_env_override(:portal, Portal.GoogleCloudPlatform, config)
   end
 
   def mock_instance_metadata_id_endpoint(bypass, id \\ Ecto.UUID.generate()) do

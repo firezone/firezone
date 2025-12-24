@@ -1,5 +1,5 @@
 defmodule PortalWeb.ErrorController do
-  use Web, :controller
+  use PortalWeb, :controller
 
   def show(_conn, params) do
     case params["code"] do

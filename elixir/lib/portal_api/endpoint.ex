@@ -1,8 +1,8 @@
 defmodule PortalAPI.Endpoint do
   use Sentry.PlugCapture
-  use Phoenix.Endpoint, otp_app: :api
+  use Phoenix.Endpoint, otp_app: :portal
 
-  if Application.compile_env(:domain, :sql_sandbox) do
+  if Application.compile_env(:portal, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
   end
 
@@ -66,12 +66,12 @@ defmodule PortalAPI.Endpoint do
   end
 
   def external_trusted_proxies do
-    Portal.Config.fetch_env!(:api, :external_trusted_proxies)
+    Portal.Config.fetch_env!(:portal, :external_trusted_proxies)
     |> Enum.map(&to_string/1)
   end
 
   def clients do
-    Portal.Config.fetch_env!(:api, :private_clients)
+    Portal.Config.fetch_env!(:portal, :private_clients)
     |> Enum.map(&to_string/1)
   end
 end

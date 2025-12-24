@@ -1,5 +1,5 @@
 defmodule PortalAPI.Client.Channel do
-  use API, :channel
+  use PortalAPI, :channel
   alias PortalAPI.Client.Views
 
   alias Portal.{

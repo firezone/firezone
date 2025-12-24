@@ -1,5 +1,5 @@
 defmodule PortalWeb.Sites.New do
-  use Web, :live_view
+  use PortalWeb, :live_view
   alias Portal.Billing
   alias __MODULE__.DB
   import Ecto.Changeset

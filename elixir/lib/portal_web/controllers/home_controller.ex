@@ -1,5 +1,5 @@
 defmodule PortalWeb.HomeController do
-  use Web, :controller
+  use PortalWeb, :controller
   alias __MODULE__.DB
 
   def home(conn, params) do

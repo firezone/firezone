@@ -117,7 +117,7 @@ defmodule Portal.Google.Sync do
         key
 
       _ ->
-        config = Portal.Config.fetch_env!(:domain, Google.APIClient)
+        config = Portal.Config.fetch_env!(:portal, Google.APIClient)
         config[:service_account_key] |> JSON.decode!()
     end
   end

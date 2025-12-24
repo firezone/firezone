@@ -1,5 +1,5 @@
 defmodule PortalWeb.Actors do
-  use Web, :live_view
+  use PortalWeb, :live_view
 
   alias __MODULE__.DB
 

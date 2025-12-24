@@ -1,5 +1,5 @@
 defmodule PortalWeb.Settings.Account do
-  use Web, :live_view
+  use PortalWeb, :live_view
 
   def mount(_params, _session, socket) do
     socket =

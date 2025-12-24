@@ -9,7 +9,7 @@ defmodule PortalWeb.Plugs.PutCSPHeader do
     csp_nonce = Portal.Crypto.random_token(8)
 
     policy =
-      Application.fetch_env!(:web, __MODULE__)
+      Application.fetch_env!(:portal, __MODULE__)
       |> Keyword.fetch!(:csp_policy)
       |> Enum.map(fn line ->
         String.replace(line, "${nonce}", csp_nonce)

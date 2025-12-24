@@ -200,12 +200,12 @@ defmodule Portal.Billing.Stripe.APIClient do
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
 
   defp fetch_config!(key) do
-    Portal.Config.fetch_env!(:domain, __MODULE__)
+    Portal.Config.fetch_env!(:portal, __MODULE__)
     |> Keyword.fetch!(key)
   end
 
   defp fetch_retry_config(key, default) do
-    config = Portal.Config.fetch_env!(:domain, __MODULE__)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
     case Keyword.get(config, :retry_config) do
       nil -> default

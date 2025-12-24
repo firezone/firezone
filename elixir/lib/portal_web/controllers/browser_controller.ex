@@ -1,5 +1,5 @@
 defmodule PortalWeb.BrowserController do
-  use Web, :controller
+  use PortalWeb, :controller
 
   def config(conn, _params) do
     render(conn, "config.xml", layout: false)

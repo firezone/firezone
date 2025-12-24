@@ -1,5 +1,5 @@
 defmodule PortalWeb.Settings.DirectorySync do
-  use Web, :live_view
+  use PortalWeb, :live_view
 
   alias Portal.{
     Crypto.JWK,
@@ -165,7 +165,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     changeset =
       socket.assigns.form.source
       |> delete_change(:is_verified)
-      |> delete_change(:domain)
+      |> delete_change(:portal)
       |> delete_change(:tenant_id)
       |> delete_change(:okta_domain)
       |> apply_changes()
@@ -1130,7 +1130,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp verification_fields_status(assigns) do
     field =
       case assigns.type do
-        "google" -> :domain
+        "google" -> :portal
         "entra" -> :tenant_id
         "okta" -> :okta_domain
       end
@@ -1179,7 +1179,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp ready_to_verify?(form) do
     Enum.all?(form.source.errors, fn
       {excluded, _errors}
-      when excluded in [:is_verified, :domain, :tenant_id, :okta_domain] ->
+      when excluded in [:is_verified, :portal, :tenant_id, :okta_domain] ->
         true
 
       {_field, _errors} ->
@@ -1288,7 +1288,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp verification_errors(changeset) do
     changeset.errors
     |> Enum.filter(fn {field, _error} ->
-      field in [:domain, :tenant_id, :okta_domain]
+      field in [:portal, :tenant_id, :okta_domain]
     end)
     |> Enum.map_join(" ", fn {_field, {message, _opts}} -> message end)
   end
@@ -1296,7 +1296,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp start_verification(%{assigns: %{type: "google"}} = socket) do
     changeset = socket.assigns.form.source
     impersonation_email = get_field(changeset, :impersonation_email)
-    config = Portal.Config.fetch_env!(:domain, Google.APIClient)
+    config = Portal.Config.fetch_env!(:portal, Google.APIClient)
     key = config[:service_account_key] |> JSON.decode!()
 
     with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
@@ -1334,7 +1334,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     token = Portal.Crypto.random_token(32)
     state = "entra-admin-consent:#{token}"
 
-    config = Portal.Config.fetch_env!(:domain, Entra.APIClient)
+    config = Portal.Config.fetch_env!(:portal, Entra.APIClient)
     client_id = config[:client_id]
 
     # Build admin consent URL - route through /auth/oidc/callback so admins only need one redirect URI

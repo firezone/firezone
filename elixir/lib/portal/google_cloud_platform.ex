@@ -10,7 +10,7 @@ defmodule Portal.GoogleCloudPlatform do
   @impl true
   def init(_opts) do
     if enabled?() do
-      pool_opts = Portal.Config.fetch_env!(:domain, :http_client_ssl_opts)
+      pool_opts = Portal.Config.fetch_env!(:portal, :http_client_ssl_opts)
 
       children = [
         {Finch, name: __MODULE__.Finch, pools: %{default: pool_opts}},
@@ -24,7 +24,7 @@ defmodule Portal.GoogleCloudPlatform do
   end
 
   def enabled? do
-    Application.fetch_env!(:domain, :platform_adapter) == __MODULE__
+    Application.fetch_env!(:portal, :platform_adapter) == __MODULE__
   end
 
   def fetch_and_cache_access_token do
@@ -180,6 +180,6 @@ defmodule Portal.GoogleCloudPlatform do
   end
 
   defp fetch_config! do
-    Portal.Config.fetch_env!(:domain, __MODULE__)
+    Portal.Config.fetch_env!(:portal, __MODULE__)
   end
 end

@@ -1,5 +1,5 @@
 defmodule PortalWeb.LiveHooks.EnsureAuthenticated do
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
 
   import Phoenix.LiveView
 

@@ -1,5 +1,5 @@
 defmodule PortalWeb.Sites.NewToken do
-  use Web, :live_view
+  use PortalWeb, :live_view
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -289,7 +289,7 @@ defmodule PortalWeb.Sites.NewToken do
 
   defp env(encoded_token) do
     api_url_override =
-      if api_url = Portal.Config.get_env(:web, :api_url_override) do
+      if api_url = Portal.Config.get_env(:portal, :api_url_override) do
         {"FIREZONE_API_URL", api_url}
       end
 
@@ -347,7 +347,7 @@ defmodule PortalWeb.Sites.NewToken do
       end),
       "--env FIREZONE_NAME=$(hostname)",
       "--env RUST_LOG=info",
-      "#{Portal.Config.fetch_env!(:domain, :docker_registry)}/gateway:1"
+      "#{Portal.Config.fetch_env!(:portal, :docker_registry)}/gateway:1"
     ]
     |> List.flatten()
     |> Enum.join(" \\\n  ")

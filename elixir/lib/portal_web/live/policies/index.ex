@@ -1,5 +1,5 @@
 defmodule PortalWeb.Policies.Index do
-  use Web, :live_view
+  use PortalWeb, :live_view
   alias Portal.{Changes.Change, PubSub}
   alias __MODULE__.DB
 

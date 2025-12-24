@@ -10,7 +10,7 @@ defmodule PortalWeb.CoreComponents do
   [heroicons_elixir](https://github.com/mveytsman/heroicons_elixir) project.
   """
   use Phoenix.Component
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
   alias Phoenix.LiveView.JS
 
   attr :text, :string, default: "Welcome to Firezone."

@@ -4,10 +4,10 @@ if config_env() == :prod do
   import Portal.Config, only: [env_var_to_config!: 1, env_var_to_config: 1]
 
   ###############################
-  ##### Domain ##################
+  ##### Portal ##################
   ###############################
 
-  config :domain,
+  config :portal,
          Portal.Repo,
          [
            {:database, env_var_to_config!(:database_name)},
@@ -29,7 +29,7 @@ if config_env() == :prod do
              else: [{:hostname, env_var_to_config!(:database_host)}]
            )
 
-  config :domain, Portal.ChangeLogs.ReplicationConnection,
+  config :portal, Portal.ChangeLogs.ReplicationConnection,
     enabled: env_var_to_config!(:background_jobs_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
     publication_name: env_var_to_config!(:database_change_logs_publication_name),
@@ -51,7 +51,7 @@ if config_env() == :prod do
           else: [{:hostname, env_var_to_config!(:database_host)}]
         )
 
-  config :domain, Portal.Changes.ReplicationConnection,
+  config :portal, Portal.Changes.ReplicationConnection,
     enabled: env_var_to_config!(:background_jobs_enabled),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
     publication_name: env_var_to_config!(:database_changes_publication_name),
@@ -73,50 +73,50 @@ if config_env() == :prod do
           else: [{:hostname, env_var_to_config!(:database_host)}]
         )
 
-  config :domain, Portal.Tokens,
+  config :portal, Portal.Tokens,
     key_base: env_var_to_config!(:tokens_key_base),
     salt: env_var_to_config!(:tokens_salt)
 
-  config :domain, Portal.Google.APIClient,
+  config :portal, Portal.Google.APIClient,
     service_account_key: env_var_to_config!(:google_service_account_key),
     token_endpoint: "https://oauth2.googleapis.com/token",
     endpoint: "https://www.googleapis.com"
 
-  config :domain, Portal.Google.AuthProvider,
+  config :portal, Portal.Google.AuthProvider,
     client_id: env_var_to_config!(:google_oidc_client_id),
     client_secret: env_var_to_config!(:google_oidc_client_secret)
 
-  config :domain, Portal.Entra.AuthProvider,
+  config :portal, Portal.Entra.AuthProvider,
     client_id: env_var_to_config!(:entra_oidc_client_id),
     client_secret: env_var_to_config!(:entra_oidc_client_secret)
 
-  config :domain, Portal.Entra.APIClient,
+  config :portal, Portal.Entra.APIClient,
     client_id: env_var_to_config!(:entra_sync_client_id),
     client_secret: env_var_to_config!(:entra_sync_client_secret),
     token_base_url: "https://login.microsoftonline.com",
     endpoint: "https://graph.microsoft.com"
 
-  config :domain, Portal.Billing.Stripe.APIClient,
+  config :portal, Portal.Billing.Stripe.APIClient,
     endpoint: "https://api.stripe.com",
     finch_transport_opts: []
 
-  config :domain, Portal.Billing,
+  config :portal, Portal.Billing,
     enabled: env_var_to_config!(:billing_enabled),
     secret_key: env_var_to_config!(:stripe_secret_key),
     webhook_signing_secret: env_var_to_config!(:stripe_webhook_signing_secret),
     default_price_id: env_var_to_config!(:stripe_default_price_id)
 
-  config :domain, platform_adapter: env_var_to_config!(:platform_adapter)
+  config :portal, platform_adapter: env_var_to_config!(:platform_adapter)
 
   if platform_adapter = env_var_to_config!(:platform_adapter) do
-    config :domain, platform_adapter, env_var_to_config!(:platform_adapter_config)
+    config :portal, platform_adapter, env_var_to_config!(:platform_adapter_config)
   end
 
-  config :domain, Portal.Cluster,
+  config :portal, Portal.Cluster,
     adapter: env_var_to_config!(:erlang_cluster_adapter),
     adapter_config: env_var_to_config!(:erlang_cluster_adapter_config)
 
-  config :domain, :enabled_features,
+  config :portal, :enabled_features,
     idp_sync: env_var_to_config!(:feature_idp_sync_enabled),
     sign_up: env_var_to_config!(:feature_sign_up_enabled),
     policy_conditions: env_var_to_config!(:feature_policy_conditions_enabled),
@@ -124,18 +124,28 @@ if config_env() == :prod do
     rest_api: env_var_to_config!(:feature_rest_api_enabled),
     internet_resource: env_var_to_config!(:feature_internet_resource_enabled)
 
-  config :domain, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
+  config :portal, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
 
-  config :domain, docker_registry: env_var_to_config!(:docker_registry)
+  config :portal, docker_registry: env_var_to_config!(:docker_registry)
 
-  config :domain,
+  config :portal,
     outbound_email_adapter_configured?: !!env_var_to_config!(:outbound_email_adapter)
 
-  config :domain, web_external_url: env_var_to_config!(:web_external_url)
+  config :portal, web_external_url: env_var_to_config!(:web_external_url)
+
+  # Shared cookie and proxy config (used by both Web and API endpoints)
+  config :portal,
+    cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
+    cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
+    cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt)
+
+  config :portal,
+    external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
+    private_clients: env_var_to_config!(:phoenix_private_clients)
 
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
-  config :domain, Oban,
+  config :portal, Oban,
     # Periodic jobs don't make sense in tests
     plugins: [
       # Keep the last 7 days of completed, cancelled, and discarded jobs
@@ -221,6 +231,10 @@ if config_env() == :prod do
     engine: Oban.Engines.Basic,
     repo: Portal.Repo
 
+  ###############################
+  ##### PortalWeb Endpoint ######
+  ###############################
+
   if web_external_url = env_var_to_config!(:web_external_url) do
     %{
       scheme: web_external_url_scheme,
@@ -229,11 +243,7 @@ if config_env() == :prod do
       path: web_external_url_path
     } = URI.parse(web_external_url)
 
-    ###############################
-    ##### Web #####################
-    ###############################
-
-    config :web, PortalWeb.Endpoint,
+    config :portal, PortalWeb.Endpoint,
       http: [
         ip: env_var_to_config!(:phoenix_listen_address).address,
         port: env_var_to_config!(:phoenix_http_web_port),
@@ -256,17 +266,12 @@ if config_env() == :prod do
         signing_salt: env_var_to_config!(:live_view_signing_salt)
       ]
 
-    config :web,
-      external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
-      private_clients: env_var_to_config!(:phoenix_private_clients)
-
-    config :web,
-      cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
-      cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
-      cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt)
-
-    config :web, api_url_override: env_var_to_config!(:api_url_override)
+    config :portal, api_url_override: env_var_to_config!(:api_url_override)
   end
+
+  ###############################
+  ##### PortalAPI Endpoint ######
+  ###############################
 
   if api_external_url = env_var_to_config!(:api_external_url) do
     %{
@@ -276,11 +281,7 @@ if config_env() == :prod do
       path: api_external_url_path
     } = URI.parse(api_external_url)
 
-    ###############################
-    ##### API #####################
-    ###############################
-
-    config :api, PortalAPI.Endpoint,
+    config :portal, PortalAPI.Endpoint,
       http: [
         ip: env_var_to_config!(:phoenix_listen_address).address,
         port: env_var_to_config!(:phoenix_http_api_port),
@@ -294,20 +295,11 @@ if config_env() == :prod do
       ],
       secret_key_base: env_var_to_config!(:secret_key_base)
 
-    config :api,
-      cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
-      cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
-      cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt)
-
-    config :api,
-      external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
-      private_clients: env_var_to_config!(:phoenix_private_clients)
-
-    config :api, PortalAPI.RateLimit,
+    config :portal, PortalAPI.RateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
       capacity: env_var_to_config!(:api_capacity)
 
-    config :web,
+    config :portal,
       api_external_url: api_external_url
   end
 
@@ -338,23 +330,23 @@ if config_env() == :prod do
       otlp_endpoint: System.get_env("OTLP_ENDPOINT")
   end
 
-  config :domain, Portal.Telemetry,
+  config :portal, Portal.Telemetry,
     healthz_port: env_var_to_config!(:healthz_port),
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
 
   if telemetry_metrics_reporter = env_var_to_config!(:telemetry_metrics_reporter) do
-    config :domain,
+    config :portal,
            telemetry_metrics_reporter,
            env_var_to_config!(:telemetry_metrics_reporter_opts)
   end
 
-  config :domain,
+  config :portal,
     http_client_ssl_opts: env_var_to_config!(:http_client_ssl_opts)
 
   config :openid_connect,
     finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
 
-  config :domain,
+  config :portal,
          Portal.Mailer,
          [
            adapter: env_var_to_config!(:outbound_email_adapter),

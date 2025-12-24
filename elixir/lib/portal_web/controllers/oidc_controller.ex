@@ -1,5 +1,5 @@
 defmodule PortalWeb.OIDCController do
-  use Web, :controller
+  use PortalWeb, :controller
 
   alias Portal.{
     AuthProvider,

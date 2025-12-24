@@ -10,7 +10,7 @@ defmodule Portal.ComponentVersions do
   @impl true
   def init(_opts) do
     fetch_from_url? =
-      Portal.Config.fetch_env!(:domain, ComponentVersions)
+      Portal.Config.fetch_env!(:portal, ComponentVersions)
       |> Keyword.get(:fetch_from_url)
 
     children =
@@ -34,7 +34,7 @@ defmodule Portal.ComponentVersions do
   end
 
   def component_version(component) do
-    Portal.Config.get_env(:domain, ComponentVersions, [])
+    Portal.Config.get_env(:portal, ComponentVersions, [])
     |> Keyword.get(:versions, [])
     |> Keyword.get(component, "0.0.0")
   end
@@ -62,7 +62,7 @@ defmodule Portal.ComponentVersions do
   def get_component_type(_), do: :gui
 
   defp fetch_config! do
-    Portal.Config.fetch_env!(:domain, __MODULE__)
+    Portal.Config.fetch_env!(:portal, __MODULE__)
   end
 
   defp fetch_versions_from_url(releases_url) do

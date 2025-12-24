@@ -8,7 +8,7 @@ defmodule PortalWeb.AcceptanceCase do
     quote do
       # Import conveniences for testing with browser
       use Wallaby.DSL
-      use Web, :verified_routes
+      use PortalWeb, :verified_routes
       import PortalWeb.AcceptanceCase
 
       alias Portal.Repo

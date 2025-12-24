@@ -1,5 +1,5 @@
 defmodule PortalWeb.Policies.Show do
-  use Web, :live_view
+  use PortalWeb, :live_view
   import PortalWeb.Policies.Components
   alias Portal.{Policy, Auth}
   alias __MODULE__.DB

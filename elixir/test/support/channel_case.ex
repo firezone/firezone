@@ -23,7 +23,7 @@ defmodule PortalAPI.ChannelCase do
   setup tags do
     # Isolate relay presence per test to prevent interference between async tests
     Portal.Config.put_env_override(
-      :domain,
+      :portal,
       :relay_presence_topic,
       "presences:global_relays:#{inspect(make_ref())}"
     )

@@ -366,7 +366,7 @@ defmodule Portal.Billing do
   end
 
   defp fetch_config!(key) do
-    Portal.Config.fetch_env!(:domain, __MODULE__)
+    Portal.Config.fetch_env!(:portal, __MODULE__)
     |> Keyword.fetch!(key)
   end
 

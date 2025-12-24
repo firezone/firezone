@@ -40,10 +40,10 @@ defmodule Portal.ComponentVersions.Refresher do
     case ComponentVersions.fetch_versions() do
       {:ok, versions} ->
         new_config =
-          Portal.Config.get_env(:domain, ComponentVersions)
+          Portal.Config.get_env(:portal, ComponentVersions)
           |> Keyword.merge(versions: versions)
 
-        Application.put_env(:domain, ComponentVersions, new_config)
+        Application.put_env(:portal, ComponentVersions, new_config)
 
       {:error, reason} ->
         Logger.debug("Error fetching component versions: #{inspect(reason)}")

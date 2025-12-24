@@ -140,7 +140,7 @@ defmodule Portal.TokenFixtures do
   Encode an API token for use in authentication.
   """
   def encode_api_token(token) do
-    config = Portal.Config.fetch_env!(:domain, Portal.Tokens)
+    config = Portal.Config.fetch_env!(:portal, Portal.Tokens)
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt) <> "api_client"
     body = {token.account_id, token.id, token.secret_fragment}
@@ -165,7 +165,7 @@ defmodule Portal.TokenFixtures do
   Reads the `secret_fragment` and `secret_nonce` from the token's virtual fields.
   """
   def encode_token(token) do
-    config = Portal.Config.fetch_env!(:domain, Portal.Tokens)
+    config = Portal.Config.fetch_env!(:portal, Portal.Tokens)
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt) <> "client"
     body = {token.account_id, token.id, token.secret_fragment}
@@ -189,7 +189,7 @@ defmodule Portal.TokenFixtures do
   end
 
   defp encode_infrastructure_token(token, type, account_id) do
-    config = Portal.Config.fetch_env!(:domain, Portal.Tokens)
+    config = Portal.Config.fetch_env!(:portal, Portal.Tokens)
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt) <> type
     body = {account_id, token.id, token.secret_fragment}

@@ -1,5 +1,5 @@
 defmodule PortalAPI.FallbackController do
-  use API, :controller
+  use PortalAPI, :controller
 
   def call(conn, {:error, :not_found}) do
     conn

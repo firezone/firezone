@@ -164,7 +164,7 @@
           {Credo.Check.Warning.UnsafeExec, []}
         ],
         disabled: [
-          # Custom Checks for Domain conventions
+          # Custom Checks for Portal conventions
           {Credo.Check.Warning.UnsafeRepoUsage, []},
           {Credo.Check.Warning.SafeCallsOutsideDBModule, []},
           {Credo.Check.Warning.MissingDBAlias, []},

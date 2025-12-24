@@ -1,6 +1,6 @@
 defmodule Portal.Repo do
   use Ecto.Repo,
-    otp_app: :domain,
+    otp_app: :portal,
     adapter: Ecto.Adapters.Postgres
 
   alias Portal.Repo.{Paginator, Preloader, Filter}

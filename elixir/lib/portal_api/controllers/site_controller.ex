@@ -1,5 +1,5 @@
 defmodule PortalAPI.SiteController do
-  use API, :controller
+  use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias Portal.Safe

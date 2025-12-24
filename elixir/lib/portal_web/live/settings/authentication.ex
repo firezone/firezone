@@ -1,5 +1,5 @@
 defmodule PortalWeb.Settings.Authentication do
-  use Web, :live_view
+  use PortalWeb, :live_view
 
   alias Portal.{
     AuthProvider,

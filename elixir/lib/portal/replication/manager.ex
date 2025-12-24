@@ -112,7 +112,7 @@ defmodule Portal.Replication.Manager do
 
   def replication_child_spec(connection_module) do
     {connection_opts, config} =
-      Application.fetch_env!(:domain, connection_module)
+      Application.fetch_env!(:portal, connection_module)
       |> Keyword.pop(:connection_opts)
 
     %{

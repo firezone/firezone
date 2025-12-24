@@ -1,5 +1,5 @@
 defmodule PortalWeb.SignIn.Email do
-  use Web, {:live_view, layout: {PortalWeb.Layouts, :public}}
+  use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :public}}
   alias __MODULE__.DB
 
   def mount(

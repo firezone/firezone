@@ -83,7 +83,7 @@ defmodule Portal.Config do
   ## Feature flag helpers
 
   def global_feature_enabled?(feature) do
-    fetch_env!(:domain, :enabled_features)
+    fetch_env!(:portal, :enabled_features)
     |> Keyword.fetch!(feature)
   end
 
@@ -97,7 +97,7 @@ defmodule Portal.Config do
     defdelegate fetch_env!(app, key), to: Application
     defdelegate get_env(app, key, default \\ nil), to: Application
   else
-    def put_env_override(app \\ :domain, key, value) do
+    def put_env_override(app \\ :portal, key, value) do
       Process.put(pdict_key_function(app, key), value)
       :ok
     end
@@ -146,7 +146,7 @@ defmodule Portal.Config do
 
     def feature_flag_override(feature, value) do
       enabled_features =
-        fetch_env!(:domain, :enabled_features)
+        fetch_env!(:portal, :enabled_features)
         |> Keyword.put(feature, value)
 
       put_env_override(:enabled_features, enabled_features)

@@ -1,5 +1,5 @@
 defmodule PortalWeb.Sites.Edit do
-  use Web, :live_view
+  use PortalWeb, :live_view
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do

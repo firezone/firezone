@@ -1,5 +1,5 @@
 defmodule PortalWeb.Clients.Show do
-  use Web, :live_view
+  use PortalWeb, :live_view
   import PortalWeb.Policies.Components
   import PortalWeb.Clients.Components
   alias Portal.{Presence.Clients, ComponentVersions}

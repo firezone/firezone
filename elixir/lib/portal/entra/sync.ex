@@ -152,7 +152,7 @@ defmodule Portal.Entra.Sync do
   defp fetch_service_principal_id!(directory, access_token) do
     # Get the service principal ID for the Entra Auth Provider app (not the Directory Sync app)
     # We use app role assignments from the auth app to determine group memberships
-    config = Portal.Config.fetch_env!(:domain, Portal.Entra.AuthProvider)
+    config = Portal.Config.fetch_env!(:portal, Portal.Entra.AuthProvider)
     client_id = config[:client_id]
 
     Logger.debug("Getting service principal for Entra Auth Provider",

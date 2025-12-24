@@ -7,7 +7,7 @@ defmodule PortalWeb.Session.Redirector do
   - Client redirects (setting cookie and redirecting to client_redirect.html)
   - Redirect path sanitization and validation
   """
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
 
   alias Portal.Auth
   alias Portal.ClientToken

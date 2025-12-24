@@ -7,7 +7,7 @@ defmodule Portal.Cluster do
 
   @impl true
   def init(_opts) do
-    config = Portal.Config.fetch_env!(:domain, __MODULE__)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
     adapter = Keyword.fetch!(config, :adapter)
     adapter_config = Keyword.fetch!(config, :adapter_config)
 

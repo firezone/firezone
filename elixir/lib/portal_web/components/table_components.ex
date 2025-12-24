@@ -3,7 +3,7 @@ defmodule PortalWeb.TableComponents do
   Provides Table UI components.
   """
   use Phoenix.Component
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
   use Gettext, backend: PortalWeb.Gettext
   import PortalWeb.CoreComponents
 

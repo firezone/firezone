@@ -10,7 +10,7 @@ defmodule Portal.Telemetry do
 
   @impl true
   def init(_arg) do
-    config = Portal.Config.fetch_env!(:domain, __MODULE__)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
     children = [
       # We start a /healthz endpoint that is used for liveness probes

@@ -1,5 +1,5 @@
 defmodule PortalWeb.Clients.Edit do
-  use Web, :live_view
+  use PortalWeb, :live_view
   alias Portal.Presence.Clients
   alias __MODULE__.DB
 

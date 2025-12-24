@@ -1,7 +1,7 @@
 defmodule PortalWeb.ConnCase do
   use ExUnit.CaseTemplate
   use Portal.CaseTemplate
-  use Web, :verified_routes
+  use PortalWeb, :verified_routes
   import Phoenix.LiveViewTest
   import Phoenix.ConnTest
   import Portal.TokenFixtures
@@ -11,7 +11,7 @@ defmodule PortalWeb.ConnCase do
       # The default endpoint for testing
       @endpoint PortalWeb.Endpoint
 
-      use Web, :verified_routes
+      use PortalWeb, :verified_routes
 
       # Import conveniences for testing with connections
       import Plug.Conn

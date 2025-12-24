@@ -56,7 +56,7 @@ defmodule Portal.Mailer.NotificationsTest do
   end
 
   defp set_current_version(version) do
-    config = Portal.Config.get_env(:domain, ComponentVersions)
+    config = Portal.Config.get_env(:portal, ComponentVersions)
 
     new_versions =
       config
@@ -64,6 +64,6 @@ defmodule Portal.Mailer.NotificationsTest do
       |> Keyword.merge(gateway: version)
 
     new_config = Keyword.merge(config, versions: new_versions)
-    Portal.Config.put_env_override(:domain, ComponentVersions, new_config)
+    Portal.Config.put_env_override(:portal, ComponentVersions, new_config)
   end
 end

@@ -1,5 +1,5 @@
 defmodule PortalWeb.Resources.Edit do
-  use Web, :live_view
+  use PortalWeb, :live_view
   import PortalWeb.Resources.Components
   alias __MODULE__.DB
 

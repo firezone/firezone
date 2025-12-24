@@ -7,7 +7,7 @@ defmodule Portal.Entra.APIClient do
   Gets an access token using the OAuth2 client credentials flow.
   """
   def get_access_token(tenant_id) do
-    config = Portal.Config.fetch_env!(:domain, __MODULE__)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
     client_id = config[:client_id]
     client_secret = config[:client_secret]
     token_base_url = config[:token_base_url]
@@ -122,7 +122,7 @@ defmodule Portal.Entra.APIClient do
 
     batch_body = %{requests: requests}
 
-    config = Portal.Config.fetch_env!(:domain, __MODULE__)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
     endpoint = config[:endpoint] || "https://graph.microsoft.com"
     url = "#{endpoint}/v1.0/$batch"
 
@@ -242,7 +242,7 @@ defmodule Portal.Entra.APIClient do
   end
 
   defp get(path, query, access_token) do
-    config = Portal.Config.fetch_env!(:domain, __MODULE__)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
     endpoint = config[:endpoint] || "https://graph.microsoft.com"
 
     url = "#{endpoint}#{path}?#{query}"

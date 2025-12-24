@@ -42,7 +42,7 @@ defmodule Portal.Mailer do
   custom adapter implementation that does nothing.
   """
   def deliver(email, config \\ []) do
-    opts = Mailer.parse_config(:domain, __MODULE__, [], config)
+    opts = Mailer.parse_config(:portal, __MODULE__, [], config)
     metadata = %{email: email, config: config, mailer: __MODULE__}
 
     if opts[:adapter] do
@@ -80,14 +80,14 @@ defmodule Portal.Mailer do
   end
 
   def active? do
-    mailer_config = Portal.Config.fetch_env!(:domain, Portal.Mailer)
+    mailer_config = Portal.Config.fetch_env!(:portal, Portal.Mailer)
     mailer_config[:from_email] && mailer_config[:adapter]
   end
 
   def default_email do
     # Fail hard if email not configured
     from_email =
-      Portal.Config.fetch_env!(:domain, Portal.Mailer)
+      Portal.Config.fetch_env!(:portal, Portal.Mailer)
       |> Keyword.fetch!(:from_email)
 
     Email.new()
@@ -95,7 +95,7 @@ defmodule Portal.Mailer do
   end
 
   def url(path, params \\ %{}) do
-    Portal.Config.fetch_env!(:domain, :web_external_url)
+    Portal.Config.fetch_env!(:portal, :web_external_url)
     |> URI.parse()
     |> URI.append_path(path)
     |> maybe_append_query(params)

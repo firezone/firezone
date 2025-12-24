@@ -1,5 +1,5 @@
 defmodule PortalWeb.Settings.ApiClients.Beta do
-  use Web, :live_view
+  use PortalWeb, :live_view
 
   def mount(_params, _session, socket) do
     if Portal.Account.rest_api_enabled?(socket.assigns.account) do
@@ -10,7 +10,7 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
           socket,
           page_title: "API Clients",
           requested: false,
-          api_url: Portal.Config.get_env(:web, :api_external_url)
+          api_url: Portal.Config.get_env(:portal, :api_external_url)
         )
 
       {:ok, socket}

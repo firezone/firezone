@@ -2,7 +2,7 @@ defmodule PortalWeb.UserpassController do
   @moduledoc """
   Controller for handling user/password authentication.
   """
-  use Web, :controller
+  use PortalWeb, :controller
 
   alias Portal.Userpass
 

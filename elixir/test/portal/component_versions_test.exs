@@ -22,7 +22,7 @@ defmodule Portal.ComponentVersionsTest do
       FirezoneWebsite.mock_versions_endpoint(bypass, versions)
 
       new_config =
-        Portal.Config.get_env(:domain, ComponentVersions)
+        Portal.Config.get_env(:portal, ComponentVersions)
         |> Keyword.merge(
           fetch_from_url: true,
           firezone_releases_url: "http://localhost:#{bypass.port}/api/releases"
@@ -43,7 +43,7 @@ defmodule Portal.ComponentVersionsTest do
       }
 
       new_config =
-        Portal.Config.get_env(:domain, ComponentVersions)
+        Portal.Config.get_env(:portal, ComponentVersions)
         |> Keyword.merge(versions: Enum.into(versions, []))
 
       Portal.Config.put_env_override(ComponentVersions, new_config)

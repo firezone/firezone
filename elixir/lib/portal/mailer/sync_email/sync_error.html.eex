@@ -44,7 +44,7 @@
 					line-height: 32px !important
 				}
 			}
-			<%= File.read!(Application.app_dir(:domain, "priv/static/emails/dark_mode.css")) %>
+			<%= File.read!(Application.app_dir(:portal, "priv/static/emails/dark_mode.css")) %>
 		</style>
 	</head>
 	<body style="margin: 0; width: 100%; background-color: #f6f6f6; padding: 0; -webkit-font-smoothing: antialiased; word-break: break-word">

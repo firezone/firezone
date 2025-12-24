@@ -143,7 +143,7 @@ defmodule Credo.Check.Warning.CrossModuleDBCall do
   end
 
   # Allow certain system modules
-  defp allowed_module?("Domain"), do: true
+  defp allowed_module?("Portal"), do: true
   defp allowed_module?("Portal.Safe"), do: true
   defp allowed_module?(_), do: false
 

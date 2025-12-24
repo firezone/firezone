@@ -1,5 +1,5 @@
 defmodule PortalWeb.Policies.Components do
-  use Web, :component_library
+  use PortalWeb, :component_library
   alias Portal.Policies.Condition
 
   @days_of_week [

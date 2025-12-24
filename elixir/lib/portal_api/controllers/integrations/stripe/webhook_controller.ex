@@ -1,5 +1,5 @@
 defmodule PortalAPI.Integrations.Stripe.WebhookController do
-  use API, :controller
+  use PortalAPI, :controller
   alias Portal.Billing
   require Logger
 

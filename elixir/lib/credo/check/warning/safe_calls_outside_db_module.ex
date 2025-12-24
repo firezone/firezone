@@ -34,17 +34,17 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
   end
 
   # Skip alias statements - we only care about actual function calls
-  defp traverse({:alias, _, [{:__aliases__, _, [:Domain, :Safe]}]} = ast, acc, _issue_meta, _parent) do
+  defp traverse({:alias, _, [{:__aliases__, _, [:Portal, :Safe]}]} = ast, acc, _issue_meta, _parent) do
     {ast, acc}
   end
 
   # Skip alias statements with as: - we only care about actual function calls
-  defp traverse({:alias, _, [{:__aliases__, _, [:Domain, :Safe]}, _]} = ast, acc, _issue_meta, _parent) do
+  defp traverse({:alias, _, [{:__aliases__, _, [:Portal, :Safe]}, _]} = ast, acc, _issue_meta, _parent) do
     {ast, acc}
   end
 
   # Check for direct Portal.Safe calls
-  defp traverse({{:., meta, [{:__aliases__, _, [:Domain, :Safe]}, _]}, _, _} = ast, {issues, module_stack}, issue_meta, _parent) do
+  defp traverse({{:., meta, [{:__aliases__, _, [:Portal, :Safe]}, _]}, _, _} = ast, {issues, module_stack}, issue_meta, _parent) do
     if should_report?(module_stack) do
       issue = issue_for(meta[:line], issue_meta, module_stack)
       {ast, {[issue | issues], module_stack}}

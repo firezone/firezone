@@ -1,5 +1,5 @@
 defmodule PortalWeb.SignIn do
-  use Web, {:live_view, layout: {PortalWeb.Layouts, :public}}
+  use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :public}}
 
   alias Portal.{
     Safe,

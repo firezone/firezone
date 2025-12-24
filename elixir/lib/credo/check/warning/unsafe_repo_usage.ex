@@ -55,7 +55,7 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
 
   # Check for alias Portal.Repo
   defp traverse(
-         {:alias, meta, [{:__aliases__, _, [:Domain, :Repo]}]} = ast,
+         {:alias, meta, [{:__aliases__, _, [:Portal, :Repo]}]} = ast,
          issues,
          issue_meta
        ) do
@@ -64,7 +64,7 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
 
   # Check for alias Portal.Repo, as: Something
   defp traverse(
-         {:alias, meta, [{:__aliases__, _, [:Domain, :Repo]}, _]} = ast,
+         {:alias, meta, [{:__aliases__, _, [:Portal, :Repo]}, _]} = ast,
          issues,
          issue_meta
        ) do
@@ -73,7 +73,7 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
 
   # Check for direct Portal.Repo calls
   defp traverse(
-         {{:., meta, [{:__aliases__, _, [:Domain, :Repo]}, _]}, _, _} = ast,
+         {{:., meta, [{:__aliases__, _, [:Portal, :Repo]}, _]}, _, _} = ast,
          issues,
          issue_meta
        ) do

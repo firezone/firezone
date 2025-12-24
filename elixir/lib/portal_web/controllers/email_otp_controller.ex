@@ -2,7 +2,7 @@ defmodule PortalWeb.EmailOTPController do
   @moduledoc """
   Controller for handling email OTP authentication.
   """
-  use Web, :controller
+  use PortalWeb, :controller
 
   alias Portal.Auth
   alias Portal.EmailOTP
@@ -11,7 +11,7 @@ defmodule PortalWeb.EmailOTPController do
 
   require Logger
 
-  @constant_execution_time Application.compile_env(:web, :constant_execution_time, 2000)
+  @constant_execution_time Application.compile_env(:portal, :constant_execution_time, 2000)
 
   action_fallback PortalWeb.FallbackController
 

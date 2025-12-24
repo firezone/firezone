@@ -6,7 +6,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
 
   setup do
     tables =
-      Application.fetch_env!(:domain, Portal.Changes.ReplicationConnection)
+      Application.fetch_env!(:portal, Portal.Changes.ReplicationConnection)
       |> Keyword.fetch!(:table_subscriptions)
 
     %{tables: tables}

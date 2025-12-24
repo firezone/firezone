@@ -1,5 +1,5 @@
 defmodule PortalWeb.Clients.Components do
-  use Web, :component_library
+  use PortalWeb, :component_library
   import PortalWeb.CoreComponents
 
   def actor_show_url(account, actor, return_to \\ nil)

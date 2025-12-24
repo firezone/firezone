@@ -1,5 +1,5 @@
 defmodule PortalAPI.Router do
-  use API, :router
+  use PortalAPI, :router
 
   pipeline :api do
     plug Plug.Parsers,
@@ -32,13 +32,13 @@ defmodule PortalAPI.Router do
     get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi"
   end
 
-  scope "/", API do
+  scope "/", PortalAPI do
     pipe_through :public
 
     get "/healthz", HealthController, :healthz
   end
 
-  scope "/", API do
+  scope "/", PortalAPI do
     pipe_through :api
 
     resources "/account", AccountController, only: [:show], singleton: true

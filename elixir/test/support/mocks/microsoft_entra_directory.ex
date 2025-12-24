@@ -2,9 +2,9 @@ defmodule Portal.Mocks.MicrosoftEntraDirectory do
   alias Portal.Auth.Adapters.MicrosoftEntra
 
   def override_endpoint_url(url) do
-    config = Portal.Config.fetch_env!(:domain, MicrosoftEntra.APIClient)
+    config = Portal.Config.fetch_env!(:portal, MicrosoftEntra.APIClient)
     config = Keyword.put(config, :endpoint, url)
-    Portal.Config.put_env_override(:domain, MicrosoftEntra.APIClient, config)
+    Portal.Config.put_env_override(:portal, MicrosoftEntra.APIClient, config)
   end
 
   def mock_users_list_endpoint(bypass, status, resp \\ nil) do

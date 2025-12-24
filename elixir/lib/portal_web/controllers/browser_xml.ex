@@ -1,5 +1,5 @@
 defmodule PortalWeb.BrowserXML do
-  use Web, :xml
+  use PortalWeb, :xml
 
   embed_templates "browser_xml/*"
 end

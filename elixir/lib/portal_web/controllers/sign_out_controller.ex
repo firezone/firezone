@@ -1,5 +1,5 @@
 defmodule PortalWeb.SignOutController do
-  use Web, :controller
+  use PortalWeb, :controller
   alias PortalWeb.Session.Redirector
 
   def sign_out(conn, params) do

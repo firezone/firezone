@@ -1,5 +1,5 @@
 defmodule PortalWeb.Settings.ApiClients.Components do
-  use Web, :component_library
+  use PortalWeb, :component_library
 
   attr :type, :atom, required: true
   attr :form, :any, required: true

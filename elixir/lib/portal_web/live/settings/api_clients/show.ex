@@ -1,5 +1,5 @@
 defmodule PortalWeb.Settings.ApiClients.Show do
-  use Web, :live_view
+  use PortalWeb, :live_view
   alias __MODULE__.DB
   import Ecto.Changeset
 

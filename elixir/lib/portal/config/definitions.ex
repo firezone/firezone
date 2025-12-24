@@ -345,7 +345,7 @@ defmodule Portal.Config.Definitions do
   )
 
   defconfig(:database_parameters, :map,
-    default: %{application_name: "firezone-#{Application.spec(:domain, :vsn)}"},
+    default: %{application_name: "firezone-#{Application.spec(:portal, :vsn)}"},
     dump: &Dumper.keyword/1
   )
 

@@ -1,5 +1,5 @@
 defmodule PortalWeb.SignUp do
-  use Web, {:live_view, layout: {PortalWeb.Layouts, :public}}
+  use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :public}}
   alias Portal.{Accounts, Actor, Config}
   alias PortalWeb.Registration
   alias __MODULE__.DB
@@ -22,7 +22,7 @@ defmodule PortalWeb.SignUp do
     end
 
     def changeset(attrs) do
-      whitelisted_domains = Portal.Config.get_env(:domain, :sign_up_whitelisted_domains)
+      whitelisted_domains = Portal.Config.get_env(:portal, :sign_up_whitelisted_domains)
 
       %Registration{}
       |> cast(attrs, [:email])
