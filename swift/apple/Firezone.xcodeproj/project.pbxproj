@@ -473,7 +473,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "export PLATFORM_NAME=\"${PLATFORM_NAME}\"\nexport CONFIGURATION=\"${CONFIGURATION}\"\nexport NATIVE_ARCH=\"${ARCHS}\"\nexport CONNLIB_TARGET_DIR=\"${CONNLIB_TARGET_DIR}\"\n./build-rust.sh\n";
+			shellScript = "export PLATFORM_NAME=\"${PLATFORM_NAME}\"\nexport CONFIGURATION=\"${CONFIGURATION}\"\nexport NATIVE_ARCH=\"${ARCHS}\"\nexport CONNLIB_TARGET_DIR=\"${CONNLIB_TARGET_DIR}\"\n./mise-tasks/build-rust.sh\n";
 		};
 		8D8555832D0A7CBB00A1EA09 /* Build Connlib */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -493,7 +493,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "export PLATFORM_NAME=\"${PLATFORM_NAME}\"\nexport CONFIGURATION=\"${CONFIGURATION}\"\nexport NATIVE_ARCH=\"${ARCHS}\"\nexport CONNLIB_TARGET_DIR=\"${CONNLIB_TARGET_DIR}\"\n./build-rust.sh\n";
+			shellScript = "export PLATFORM_NAME=\"${PLATFORM_NAME}\"\nexport CONFIGURATION=\"${CONFIGURATION}\"\nexport NATIVE_ARCH=\"${ARCHS}\"\nexport CONNLIB_TARGET_DIR=\"${CONNLIB_TARGET_DIR}\"\n./mise-tasks/build-rust.sh\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
