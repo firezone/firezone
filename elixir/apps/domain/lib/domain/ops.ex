@@ -2,6 +2,31 @@ defmodule Domain.Ops do
   alias __MODULE__.DB
   alias Domain.Banner
 
+  @doc """
+  Counts presences grouped by topic prefix.
+
+  ## Examples
+
+      iex> count_presences()
+      [
+        {"presences:account_clients", 430},
+        {"presences:account_gateways", 421},
+        {"presences:actor_clients", 430},
+        {"presences:global_relays", 34},
+        {"presences:portal_sessions", 8},
+        {"presences:relays", 34},
+        {"presences:sites", 421}
+      ]
+
+  """
+  def count_presences(shard \\ Domain.Presence_shard0) do
+    :ets.tab2list(shard)
+    |> Enum.group_by(fn {{topic, _pid, _id}, _meta, _clock} ->
+      topic |> String.split(":") |> Enum.take(2) |> Enum.join(":")
+    end)
+    |> Enum.map(fn {topic_prefix, entries} -> {topic_prefix, length(entries)} end)
+  end
+
   def sync_pricing_plans do
     {:ok, subscriptions} = Domain.Billing.list_all_subscriptions()
 
