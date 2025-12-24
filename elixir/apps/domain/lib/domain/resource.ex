@@ -99,16 +99,21 @@ defmodule Domain.Resource do
         {_data_or_changes, :dns} ->
           changeset
           |> validate_required(:address)
+          |> validate_address_has_no_port()
           |> validate_dns_address()
 
         {_data_or_changes, :cidr} ->
           changeset
           |> validate_required(:address)
+          |> validate_address_has_no_port()
+          |> validate_no_malformed_brackets()
           |> validate_cidr_address(account)
 
         {_data_or_changes, :ip} ->
           changeset
           |> validate_required(:address)
+          |> validate_address_has_no_port()
+          |> validate_no_malformed_brackets()
           |> validate_ip_address()
 
         {_data_or_changes, :internet} ->
@@ -282,6 +287,37 @@ defmodule Domain.Resource do
         |> validate_not_in_cidr(:address, Domain.IPv4Address.reserved_cidr())
         |> validate_not_in_cidr(:address, Domain.IPv6Address.reserved_cidr())
     end
+  end
+
+  defp validate_address_has_no_port(changeset) do
+    validate_change(changeset, :address, fn :address, address ->
+      cond do
+        # Bracketed IPv6 with port: [2001:db8::1]:8080
+        String.match?(address, ~r/\]:\d+$/) ->
+          [{:address, "cannot contain a port number"}]
+
+        # Single colon indicates a port (e.g., example.com:8080, 192.168.1.1:8080)
+        # IPv6 addresses have multiple colons so they're allowed
+        String.contains?(address, ":") and not String.match?(address, ~r/:.*:/) ->
+          [{:address, "cannot contain a port number"}]
+
+        true ->
+          []
+      end
+    end)
+  end
+
+  defp validate_no_malformed_brackets(changeset) do
+    validate_change(changeset, :address, fn :address, address ->
+      has_open = String.contains?(address, "[")
+      has_close = String.contains?(address, "]")
+
+      if has_open != has_close do
+        [{:address, "has mismatched brackets"}]
+      else
+        []
+      end
+    end)
   end
 
   defp maybe_put_default_ip_stack(changeset) do
