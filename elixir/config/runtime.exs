@@ -156,10 +156,10 @@ if config_env() == :prod do
          {"0 */2 * * *", Domain.Entra.Scheduler},
 
          # Schedule Google directory sync every 2 hours
-         {"0 */2 * * *", Domain.Google.Scheduler},
+         {"20 */2 * * *", Domain.Google.Scheduler},
 
          # Schedule Okta directory sync every 2 hours
-         {"0 */2 * * *", Domain.Okta.Scheduler},
+         {"40 */2 * * *", Domain.Okta.Scheduler},
 
          # Directory sync error notifications - daily check for low error count
          {"0 9 * * *", Domain.Workers.SyncErrorNotification,
