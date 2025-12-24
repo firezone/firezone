@@ -31,6 +31,19 @@ defmodule API.Relay.ChannelTest do
       assert is_number(online_at)
     end
 
+    test "channel crash takes down the transport", %{socket: socket} do
+      Process.flag(:trap_exit, true)
+
+      # In tests, we (the test process) are the transport_pid
+      assert socket.transport_pid == self()
+
+      # Kill the channel - we receive EXIT because we're linked
+      Process.exit(socket.channel_pid, :kill)
+
+      assert_receive {:EXIT, pid, :killed}
+      assert pid == socket.channel_pid
+    end
+
     test "sends init message after join" do
       assert_push "init", %{}
     end

@@ -219,6 +219,21 @@ defmodule API.Client.ChannelTest do
       assert is_number(online_at)
     end
 
+    test "channel crash takes down the transport", %{client: client, subject: subject} do
+      Process.flag(:trap_exit, true)
+
+      socket = join_channel(client, subject)
+
+      # In tests, we (the test process) are the transport_pid
+      assert socket.transport_pid == self()
+
+      # Kill the channel - we receive EXIT because we're linked
+      Process.exit(socket.channel_pid, :kill)
+
+      assert_receive {:EXIT, pid, :killed}
+      assert pid == socket.channel_pid
+    end
+
     test "does not crash when subject expiration is too large", %{
       client: client,
       subject: subject
