@@ -48,8 +48,8 @@ worker_dev_schedule = System.get_env("WORKER_DEV_SCHEDULE", "* * * * *")
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :domain, Oban,
   plugins: [
-    # Keep the last 90 days of completed, cancelled, and discarded jobs
-    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90},
+    # Keep the last 7 days of completed, cancelled, and discarded jobs
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
 
     # Rescue jobs that have been stuck in executing state due to node crashes,
     # deploys, or other issues. Jobs will be moved back to available state

@@ -138,8 +138,8 @@ if config_env() == :prod do
   config :domain, Oban,
     # Periodic jobs don't make sense in tests
     plugins: [
-      # Keep the last 90 days of completed, cancelled, and discarded jobs
-      {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90},
+      # Keep the last 7 days of completed, cancelled, and discarded jobs
+      {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
 
       # Rescue jobs that have been stuck in executing state due to node crashes,
       # deploys, or other issues. Jobs will be moved back to available state
