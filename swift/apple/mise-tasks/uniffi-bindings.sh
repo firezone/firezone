@@ -2,9 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-RUST_DIR="$(cd "${SCRIPT_DIR}/../../rust" && pwd)"
+RUST_DIR="$(cd "${SCRIPT_DIR}/../../../rust" && pwd)"
 RUST_TARGET_DIR="${RUST_DIR}/target"
-GENERATED_DIR="${SCRIPT_DIR}/FirezoneNetworkExtension/Connlib/Generated"
+GENERATED_DIR="${SCRIPT_DIR}/../FirezoneNetworkExtension/Connlib/Generated"
 
 echo "Generating UniFFI bindings..."
 mkdir -p "${GENERATED_DIR}"
