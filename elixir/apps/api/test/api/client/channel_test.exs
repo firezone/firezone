@@ -1267,6 +1267,41 @@ defmodule API.Client.ChannelTest do
       assert payload == resource.id
     end
 
+    test "for client updates preserves ipv4_address and ipv6_address in socket assigns", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      # Verify the client starts with addresses loaded
+      state = :sys.get_state(socket.channel_pid)
+      assert state.assigns.client.ipv4_address != nil
+      assert state.assigns.client.ipv6_address != nil
+      original_ipv4 = state.assigns.client.ipv4_address
+      original_ipv6 = state.assigns.client.ipv6_address
+
+      # Simulate a client update event (e.g. name change) - the struct from
+      # the CDC event won't have associations preloaded
+      updated_client = %{client | name: "Updated Name", ipv4_address: nil, ipv6_address: nil}
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :update,
+        old_struct: client,
+        struct: updated_client
+      })
+
+      # Give time for the message to be processed
+      Process.sleep(10)
+
+      # Verify the socket still has the original addresses preserved
+      state = :sys.get_state(socket.channel_pid)
+      assert state.assigns.client.name == "Updated Name"
+      assert state.assigns.client.ipv4_address == original_ipv4
+      assert state.assigns.client.ipv6_address == original_ipv6
+    end
+
     test "for client deletions disconnects socket", %{
       client: client,
       subject: subject
