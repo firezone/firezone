@@ -1,5 +1,5 @@
-defmodule Web.Live.Groups.NewTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Groups.NewTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -126,7 +126,7 @@ defmodule Web.Live.Groups.NewTest do
     |> form("form", group: attrs)
     |> render_submit()
 
-    assert group = Repo.get_by(Domain.Group, name: attrs.name)
+    assert group = Repo.get_by(Portal.Group, name: attrs.name)
 
     assert_redirected(lv, ~p"/#{account}/groups/#{group}/edit_actors")
 

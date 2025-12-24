@@ -1,4 +1,4 @@
-defmodule API.Schemas.GatewayToken do
+defmodule PortalAPI.Schemas.GatewayToken do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -23,7 +23,7 @@ defmodule API.Schemas.GatewayToken do
 
   defmodule Response do
     require OpenApiSpex
-    alias API.Schemas.GatewayToken
+    alias PortalAPI.Schemas.GatewayToken
 
     OpenApiSpex.schema(%{
       title: "GatewayTokenResponse",

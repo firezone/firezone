@@ -1,6 +1,6 @@
-defmodule Web.Resources.Edit do
+defmodule PortalWeb.Resources.Edit do
   use Web, :live_view
-  import Web.Resources.Components
+  import PortalWeb.Resources.Components
   alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
@@ -275,8 +275,8 @@ defmodule Web.Resources.Edit do
     resource
     |> Ecto.Changeset.cast(attrs, update_fields)
     |> Ecto.Changeset.validate_required(required_fields)
-    |> Domain.Resource.validate_address(subject.account)
-    |> Domain.Resource.changeset()
+    |> Portal.Resource.validate_address(subject.account)
+    |> Portal.Resource.changeset()
   end
 
   defp update_changeset(resource, attrs, subject) do
@@ -286,16 +286,16 @@ defmodule Web.Resources.Edit do
     resource
     |> Ecto.Changeset.cast(attrs, update_fields)
     |> Ecto.Changeset.validate_required(required_fields)
-    |> Domain.Resource.validate_address(subject.account)
-    |> Domain.Resource.changeset()
+    |> Portal.Resource.validate_address(subject.account)
+    |> Portal.Resource.changeset()
   end
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Resource}
+    alias Portal.{Safe, Resource}
 
     def all_sites(subject) do
-      from(s in Domain.Site, as: :sites)
+      from(s in Portal.Site, as: :sites)
       |> where([sites: s], s.managed_by != :system)
       |> Safe.scoped(subject)
       |> Safe.all()

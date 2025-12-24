@@ -1,12 +1,12 @@
-defmodule API.ResourceControllerTest do
-  use API.ConnCase, async: true
-  alias Domain.Resource
+defmodule PortalAPI.ResourceControllerTest do
+  use PortalAPI.ConnCase, async: true
+  alias Portal.Resource
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.ResourceFixtures
-  import Domain.SiteFixtures
-  import Domain.SubjectFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.ResourceFixtures
+  import Portal.SiteFixtures
+  import Portal.SubjectFixtures
 
   setup do
     account = account_fixture()

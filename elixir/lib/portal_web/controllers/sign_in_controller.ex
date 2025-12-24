@@ -1,13 +1,13 @@
-defmodule Web.SignInController do
+defmodule PortalWeb.SignInController do
   use Web, :controller
 
   def client_redirect(conn, _params) do
     account = conn.assigns.account
 
-    case Web.Cookie.ClientAuth.fetch(conn) do
-      %Web.Cookie.ClientAuth{} = cookie ->
+    case PortalWeb.Cookie.ClientAuth.fetch(conn) do
+      %PortalWeb.Cookie.ClientAuth{} = cookie ->
         {scheme, url} =
-          Domain.Config.fetch_env!(:web, :client_handler)
+          Portal.Config.fetch_env!(:web, :client_handler)
           |> format_redirect_url()
 
         query =

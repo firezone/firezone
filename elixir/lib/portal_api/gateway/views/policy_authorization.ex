@@ -1,4 +1,4 @@
-defmodule API.Gateway.Views.PolicyAuthorization do
+defmodule PortalAPI.Gateway.Views.PolicyAuthorization do
   def render(policy_authorization, expires_at_unix) do
     %{
       client_id: policy_authorization.client_id,

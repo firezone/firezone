@@ -1,5 +1,5 @@
-defmodule Web.Live.Sites.EditTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Sites.EditTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -40,7 +40,7 @@ defmodule Web.Live.Sites.EditTest do
   } do
     {:ok, site} = Fixtures.Sites.delete_site(site)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{site}/edit")
@@ -151,7 +151,7 @@ defmodule Web.Live.Sites.EditTest do
 
     assert_redirected(lv, ~p"/#{account}/sites/#{site}")
 
-    assert site = Repo.get(Domain.Site, site.id)
+    assert site = Repo.get(Portal.Site, site.id)
     assert site.name == attrs.name
   end
 end

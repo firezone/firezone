@@ -1,5 +1,5 @@
-defmodule Web.Live.Sites.NewTokenTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Sites.NewTokenTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -36,11 +36,11 @@ defmodule Web.Live.Sites.NewTokenTest do
       |> List.last()
       |> String.trim("&quot;")
 
-    :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
+    :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
     context = Fixtures.Auth.build_context(type: :site)
-    assert {:ok, site, token} = Domain.Gateways.authenticate(token, context)
+    assert {:ok, site, token} = Portal.Gateways.authenticate(token, context)
     gateway = Fixtures.Gateways.create_gateway(account: account, site: site, token: token)
-    :ok = Domain.Presence.Gateways.connect(gateway, token.id)
+    :ok = Portal.Presence.Gateways.connect(gateway, token.id)
 
     expected_topic = "presences:sites:#{site.id}"
     assert_receive %Phoenix.Socket.Broadcast{topic: ^expected_topic}

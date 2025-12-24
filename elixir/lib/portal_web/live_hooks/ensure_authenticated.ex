@@ -1,9 +1,9 @@
-defmodule Web.LiveHooks.EnsureAuthenticated do
+defmodule PortalWeb.LiveHooks.EnsureAuthenticated do
   use Web, :verified_routes
 
   import Phoenix.LiveView
 
-  alias Domain.Auth.Subject
+  alias Portal.Auth.Subject
 
   def on_mount(:default, _params, _session, %{assigns: %{subject: %Subject{}}} = socket) do
     {:cont, socket}

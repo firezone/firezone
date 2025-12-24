@@ -1,4 +1,4 @@
-defmodule API.Schemas.GoogleDirectory do
+defmodule PortalAPI.Schemas.GoogleDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -40,7 +40,7 @@ defmodule API.Schemas.GoogleDirectory do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.GoogleDirectory
+    alias PortalAPI.Schemas.GoogleDirectory
 
     OpenApiSpex.schema(%{
       title: "GoogleDirectoryResponse",
@@ -61,7 +61,7 @@ defmodule API.Schemas.GoogleDirectory do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.GoogleDirectory
+    alias PortalAPI.Schemas.GoogleDirectory
 
     OpenApiSpex.schema(%{
       title: "GoogleDirectoryListResponse",

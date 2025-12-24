@@ -165,7 +165,7 @@ defmodule Portal.Okta.APIClient do
   end
 
   @doc """
-  Streams groups from the Okta API.
+  Streams groups from the Okta PortalAPI.
 
   Returns a Stream that emits `{:ok, group}` or `{:error, reason}` tuples.
   Lazily fetches pages as needed, keeping only one page in memory at a time.
@@ -187,7 +187,7 @@ defmodule Portal.Okta.APIClient do
   end
 
   @doc """
-  Streams users from the Okta API.
+  Streams users from the Okta PortalAPI.
 
   Returns a Stream that emits `{:ok, user}` or `{:error, reason}` tuples.
   Lazily fetches pages as needed, keeping only one page in memory at a time.
@@ -215,7 +215,7 @@ defmodule Portal.Okta.APIClient do
   end
 
   @doc """
-  Streams members of a specific group from the Okta API.
+  Streams members of a specific group from the Okta PortalAPI.
 
   Returns a Stream that emits `{:ok, member}` or `{:error, reason}` tuples.
   Lazily fetches pages as needed, keeping only one page in memory at a time.
@@ -228,7 +228,7 @@ defmodule Portal.Okta.APIClient do
   end
 
   @doc """
-  Streams apps from the Okta API.
+  Streams apps from the Okta PortalAPI.
 
   Returns a Stream that emits `{:ok, app}` or `{:error, reason}` tuples.
   Lazily fetches pages as needed, keeping only one page in memory at a time.
@@ -241,7 +241,7 @@ defmodule Portal.Okta.APIClient do
   end
 
   @doc """
-  Streams groups assigned to a specific app from the Okta API.
+  Streams groups assigned to a specific app from the Okta PortalAPI.
 
   Returns a Stream that emits `{:ok, app_group}` or `{:error, reason}` tuples.
   Lazily fetches pages as needed, keeping only one page in memory at a time.
@@ -254,7 +254,7 @@ defmodule Portal.Okta.APIClient do
   end
 
   @doc """
-  Streams users assigned to a specific app from the Okta API.
+  Streams users assigned to a specific app from the Okta PortalAPI.
 
   Returns a Stream that emits `{:ok, app_user}` or `{:error, reason}` tuples.
   Lazily fetches pages as needed, keeping only one page in memory at a time.
@@ -293,7 +293,7 @@ defmodule Portal.Okta.APIClient do
     end
   end
 
-  # Creates a stream that lazily fetches paginated results from Okta API.
+  # Creates a stream that lazily fetches paginated results from Okta PortalAPI.
   #
   # Returns a Stream that emits {:ok, item} or {:error, reason} tuples.
   # Keeps only one page in memory at a time.

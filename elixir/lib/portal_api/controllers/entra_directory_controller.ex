@@ -1,11 +1,11 @@
-defmodule API.EntraDirectoryController do
+defmodule PortalAPI.EntraDirectoryController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Domain.{Entra, Safe}
+  alias Portal.{Entra, Safe}
   alias __MODULE__.DB
   import Ecto.Query
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Entra Directories"]
 
@@ -13,7 +13,7 @@ defmodule API.EntraDirectoryController do
     summary: "List Entra Directories",
     responses: [
       ok:
-        {"Entra Directory Response", "application/json", API.Schemas.EntraDirectory.ListResponse}
+        {"Entra Directory Response", "application/json", PortalAPI.Schemas.EntraDirectory.ListResponse}
     ]
 
   def index(conn, _params) do
@@ -32,7 +32,7 @@ defmodule API.EntraDirectoryController do
       ]
     ],
     responses: [
-      ok: {"Entra Directory Response", "application/json", API.Schemas.EntraDirectory.Response}
+      ok: {"Entra Directory Response", "application/json", PortalAPI.Schemas.EntraDirectory.Response}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -43,7 +43,7 @@ defmodule API.EntraDirectoryController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Entra, Safe}
+    alias Portal.{Entra, Safe}
 
     def list_directories(subject) do
       from(d in Entra.Directory, as: :directories, order_by: [desc: d.inserted_at])

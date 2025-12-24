@@ -1,11 +1,11 @@
-defmodule Web.FormComponents do
+defmodule PortalWeb.FormComponents do
   @moduledoc """
   Provides Form UI components.
   """
   use Phoenix.Component
   use Web, :verified_routes
 
-  import Web.CoreComponents,
+  import PortalWeb.CoreComponents,
     only: [icon: 1, error: 1, label: 1, translate_error: 1, provider_icon: 1]
 
   ### Inputs ###

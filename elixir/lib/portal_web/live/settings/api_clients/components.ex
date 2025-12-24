@@ -1,4 +1,4 @@
-defmodule Web.Settings.ApiClients.Components do
+defmodule PortalWeb.Settings.ApiClients.Components do
   use Web, :component_library
 
   attr :type, :atom, required: true

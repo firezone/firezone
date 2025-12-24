@@ -1,8 +1,8 @@
-defmodule Web.SignInTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.SignInTest do
+  use PortalWeb.ConnCase, async: true
 
   test "renders active providers on the page", %{conn: conn} do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
 
@@ -35,11 +35,11 @@ defmodule Web.SignInTest do
 
     subject = Fixtures.Auth.create_subject(identity: identity)
 
-    {:ok, _provider} = Domain.Auth.disable_provider(userpass_provider, subject)
+    {:ok, _provider} = Portal.Auth.disable_provider(userpass_provider, subject)
     {:ok, _lv, html} = live(conn, ~p"/#{account}")
     refute html =~ "Sign in with username and password"
 
-    {:ok, _provider} = Domain.Auth.delete_provider(email_provider, subject)
+    {:ok, _provider} = Portal.Auth.delete_provider(email_provider, subject)
     {:ok, _lv, html} = live(conn, ~p"/#{account}")
     refute html =~ "Sign in with email"
 
@@ -48,7 +48,7 @@ defmodule Web.SignInTest do
   end
 
   test "keeps client auth params", %{conn: conn} do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
     account = Fixtures.Accounts.create_account()
     Fixtures.Auth.create_email_provider(account: account)
 
@@ -60,7 +60,7 @@ defmodule Web.SignInTest do
   end
 
   test "hides client sign in suggestion when client is used", %{conn: conn} do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
     account = Fixtures.Accounts.create_account()
     Fixtures.Auth.create_email_provider(account: account)
 
@@ -70,7 +70,7 @@ defmodule Web.SignInTest do
   end
 
   test "renders error when account is disabled", %{conn: conn} do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
     account = Fixtures.Accounts.create_account()
 
     {:ok, _account} =

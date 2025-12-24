@@ -1,18 +1,18 @@
-defmodule Web.OIDCController do
+defmodule PortalWeb.OIDCController do
   use Web, :controller
 
-  alias Domain.{
+  alias Portal.{
     AuthProvider,
     Safe
   }
 
   alias __MODULE__.DB
 
-  alias Web.Session.Redirector
+  alias PortalWeb.Session.Redirector
 
   require Logger
 
-  action_fallback Web.FallbackController
+  action_fallback PortalWeb.FallbackController
 
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     account = DB.get_account_by_id_or_slug!(account_id_or_slug)
@@ -49,21 +49,21 @@ defmodule Web.OIDCController do
     Logger.info("OIDC callback called with invalid params", params: Map.keys(params))
 
     conn
-    |> Web.Cookie.OIDC.delete()
+    |> PortalWeb.Cookie.OIDC.delete()
     |> handle_error({:error, :invalid_callback_params})
   end
 
   defp handle_authentication_callback(conn, state, code) do
     with {:ok, cookie} <- fetch_oidc_cookie(conn),
-         conn = Web.Cookie.OIDC.delete(conn),
+         conn = PortalWeb.Cookie.OIDC.delete(conn),
          :ok <- verify_state(cookie.state, state),
          context_type = context_type(cookie.params),
          account = DB.get_account_by_id_or_slug!(cookie.account_id),
          provider = get_provider!(account, cookie),
          :ok <- validate_context(provider, context_type),
          {:ok, tokens} <-
-           Web.OIDC.exchange_code(provider, code, cookie.verifier),
-         {:ok, claims} <- Web.OIDC.verify_token(provider, tokens["id_token"]),
+           PortalWeb.OIDC.exchange_code(provider, code, cookie.verifier),
+         {:ok, claims} <- PortalWeb.OIDC.verify_token(provider, tokens["id_token"]),
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
          {:ok, identity} <- upsert_identity(account, claims, userinfo),
          :ok <- check_admin(identity, context_type),
@@ -85,8 +85,8 @@ defmodule Web.OIDCController do
   end
 
   defp fetch_oidc_cookie(conn) do
-    case Web.Cookie.OIDC.fetch(conn) do
-      %Web.Cookie.OIDC{} = cookie -> {:ok, cookie}
+    case PortalWeb.Cookie.OIDC.fetch(conn) do
+      %PortalWeb.Cookie.OIDC{} = cookie -> {:ok, cookie}
       nil -> {:error, :oidc_cookie_not_found}
     end
   end
@@ -138,17 +138,17 @@ defmodule Web.OIDCController do
   defp provider_redirect(conn, account, provider, params) do
     opts =
       if provider.__struct__ in [
-           Domain.Google.AuthProvider,
-           Domain.Entra.AuthProvider,
-           Domain.Okta.AuthProvider
+           Portal.Google.AuthProvider,
+           Portal.Entra.AuthProvider,
+           Portal.Okta.AuthProvider
          ] do
         [additional_params: %{prompt: "select_account"}]
       else
         []
       end
 
-    with {:ok, uri, state, verifier} <- Web.OIDC.authorization_uri(provider, opts) do
-      cookie = %Web.Cookie.OIDC{
+    with {:ok, uri, state, verifier} <- PortalWeb.OIDC.authorization_uri(provider, opts) do
+      cookie = %PortalWeb.Cookie.OIDC{
         auth_provider_type: params["auth_provider_type"],
         auth_provider_id: params["auth_provider_id"],
         account_id: account.id,
@@ -159,7 +159,7 @@ defmodule Web.OIDCController do
       }
 
       conn
-      |> Web.Cookie.OIDC.put(cookie)
+      |> PortalWeb.Cookie.OIDC.put(cookie)
       |> redirect(external: uri)
     end
   end
@@ -168,12 +168,12 @@ defmodule Web.OIDCController do
     DB.get_provider!(account.id, type, id)
   end
 
-  defp get_provider!(account, %Web.Cookie.OIDC{} = cookie) do
+  defp get_provider!(account, %PortalWeb.Cookie.OIDC{} = cookie) do
     DB.get_provider!(account.id, cookie.auth_provider_type, cookie.auth_provider_id)
   end
 
   defp fetch_userinfo(provider, access_token) do
-    case Web.OIDC.fetch_userinfo(provider, access_token) do
+    case PortalWeb.OIDC.fetch_userinfo(provider, access_token) do
       {:ok, userinfo} -> userinfo
       _ -> %{}
     end
@@ -228,7 +228,7 @@ defmodule Web.OIDCController do
       picture
     ]a
 
-    %Domain.ExternalIdentity{}
+    %Portal.ExternalIdentity{}
     |> cast(attrs, idp_fields ++ ~w[account_id actor_id]a)
     |> validate_required(~w[email issuer idp_id name account_id]a)
     |> validate_length(:email, max: 255)
@@ -291,12 +291,12 @@ defmodule Web.OIDCController do
   end
 
   defp check_admin(
-         %Domain.ExternalIdentity{actor: %Domain.Actor{type: :account_admin_user}},
+         %Portal.ExternalIdentity{actor: %Portal.Actor{type: :account_admin_user}},
          _context_type
        ),
        do: :ok
 
-  defp check_admin(%Domain.ExternalIdentity{actor: %Domain.Actor{type: :account_user}}, :client),
+  defp check_admin(%Portal.ExternalIdentity{actor: %Portal.Actor{type: :account_user}}, :client),
     do: :ok
 
   defp check_admin(_identity, _context_type), do: {:error, :not_admin}
@@ -318,7 +318,7 @@ defmodule Web.OIDCController do
     remote_ip = conn.remote_ip
     type = context_type(params)
     headers = conn.req_headers
-    context = Domain.Auth.Context.build(remote_ip, user_agent, headers, type)
+    context = Portal.Auth.Context.build(remote_ip, user_agent, headers, type)
 
     # Get the provider schema module to access default values
     schema = provider.__struct__
@@ -337,7 +337,7 @@ defmodule Web.OIDCController do
 
     case type do
       :portal ->
-        Domain.Auth.create_portal_session(
+        Portal.Auth.create_portal_session(
           identity.actor,
           provider.id,
           context,
@@ -354,7 +354,7 @@ defmodule Web.OIDCController do
           expires_at: expires_at
         }
 
-        Domain.Auth.create_gui_client_token(attrs)
+        Portal.Auth.create_gui_client_token(attrs)
     end
   end
 
@@ -362,7 +362,7 @@ defmodule Web.OIDCController do
   # Store session cookie and redirect to portal or redirect_to parameter
   defp signed_in(conn, :portal, account, _identity, session, _provider, _tokens, params) do
     conn
-    |> Web.Cookie.Session.put(account.id, %Web.Cookie.Session{session_id: session.id})
+    |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params)
   end
 
@@ -436,7 +436,7 @@ defmodule Web.OIDCController do
     account_id = Ecto.Changeset.get_field(changeset, :account_id)
     idp_id = Ecto.Changeset.get_field(changeset, :idp_id)
 
-    cookie = Web.Cookie.OIDC.fetch(conn)
+    cookie = PortalWeb.Cookie.OIDC.fetch(conn)
     provider_id = if cookie, do: cookie.auth_provider_id
 
     for {field, _errors} <- changeset.errors do
@@ -470,8 +470,8 @@ defmodule Web.OIDCController do
   end
 
   defp fetch_error_context(conn) do
-    case Web.Cookie.OIDC.fetch(conn) do
-      %Web.Cookie.OIDC{account_slug: slug, params: params} -> {slug, params || %{}}
+    case PortalWeb.Cookie.OIDC.fetch(conn) do
+      %PortalWeb.Cookie.OIDC{account_slug: slug, params: params} -> {slug, params || %{}}
       nil -> {"", %{}}
     end
   end
@@ -489,12 +489,12 @@ defmodule Web.OIDCController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, AuthProvider, ExternalIdentity}
-    alias Domain.Account
+    alias Portal.{Safe, AuthProvider, ExternalIdentity}
+    alias Portal.Account
 
     def get_account_by_id_or_slug!(id_or_slug) do
       query =
-        if Domain.Repo.valid_uuid?(id_or_slug),
+        if Portal.Repo.valid_uuid?(id_or_slug),
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 

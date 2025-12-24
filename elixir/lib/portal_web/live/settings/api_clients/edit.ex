@@ -1,12 +1,12 @@
-defmodule Web.Settings.ApiClients.Edit do
+defmodule PortalWeb.Settings.ApiClients.Edit do
   use Web, :live_view
-  import Web.Settings.ApiClients.Components
+  import PortalWeb.Settings.ApiClients.Components
   import Ecto.Changeset
 
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
-    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
+    if Portal.Account.rest_api_enabled?(socket.assigns.account) do
       actor = DB.get_api_client!(id, socket.assigns.subject)
       changeset = changeset(actor, %{})
 
@@ -86,10 +86,10 @@ defmodule Web.Settings.ApiClients.Edit do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
+    alias Portal.Safe
 
     def get_api_client!(id, subject) do
-      from(a in Domain.Actor,
+      from(a in Portal.Actor,
         where: a.id == ^id,
         where: a.type == :api_client
       )

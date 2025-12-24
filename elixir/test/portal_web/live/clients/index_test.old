@@ -1,5 +1,5 @@
-defmodule Web.Live.Clients.IndexTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Clients.IndexTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -81,7 +81,7 @@ defmodule Web.Live.Clients.IndexTest do
         identity: online_client_identity
       )
 
-    :ok = Domain.Presence.Clients.connect(online_client, client_token.id)
+    :ok = Portal.Presence.Clients.connect(online_client, client_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -128,8 +128,8 @@ defmodule Web.Live.Clients.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients")
 
-    Domain.Config.put_env_override(:test_pid, self())
-    :ok = Domain.Presence.Clients.Actor.subscribe(client.actor_id)
+    Portal.Config.put_env_override(:test_pid, self())
+    :ok = Portal.Presence.Clients.Actor.subscribe(client.actor_id)
 
     client_token =
       Fixtures.Tokens.create_client_token(
@@ -138,7 +138,7 @@ defmodule Web.Live.Clients.IndexTest do
         identity: client_identity
       )
 
-    assert Domain.Presence.Clients.connect(client, client_token.id) == :ok
+    assert Portal.Presence.Clients.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
     assert_receive {:live_table_reloaded, "clients"}, 250
 

@@ -1,5 +1,5 @@
-defmodule Web.Live.Actors.ShowTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Actors.ShowTest do
+  use PortalWeb.ConnCase, async: true
 
   test "redirects to sign in page for unauthorized user", %{conn: conn} do
     account = Fixtures.Accounts.create_account()
@@ -26,7 +26,7 @@ defmodule Web.Live.Actors.ShowTest do
     auth_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     auth_identity = Fixtures.Auth.create_identity(account: account, actor: auth_actor)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(auth_identity)
       |> live(~p"/#{account}/actors/#{deleted_actor}")
@@ -88,10 +88,10 @@ defmodule Web.Live.Actors.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/#{actor}")
 
-    Domain.Config.put_env_override(:test_pid, self())
-    :ok = Domain.Presence.Clients.Actor.subscribe(actor.id)
+    Portal.Config.put_env_override(:test_pid, self())
+    :ok = Portal.Presence.Clients.Actor.subscribe(actor.id)
     client_token = Fixtures.Tokens.create_client_token(account: account, actor: actor)
-    assert Domain.Presence.Clients.connect(client, client_token.id) == :ok
+    assert Portal.Presence.Clients.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
     assert_receive {:live_table_reloaded, "clients"}, 500
 
@@ -234,7 +234,7 @@ defmodule Web.Live.Actors.ShowTest do
   describe "users" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
@@ -679,7 +679,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.ClientToken, id: token.id)
+      refute Repo.get_by(Portal.ClientToken, id: token.id)
     end
 
     test "allows revoking all tokens", %{
@@ -712,7 +712,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.ClientToken, id: token.id)
+      refute Repo.get_by(Portal.ClientToken, id: token.id)
     end
 
     test "allows editing actors", %{
@@ -751,7 +751,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      refute Repo.get(Domain.Actor, actor.id)
+      refute Repo.get(Portal.Actor, actor.id)
     end
 
     test "allows deleting synced actors that don't have any identities left", %{
@@ -774,7 +774,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      refute Repo.get(Domain.Actor, actor.id)
+      refute Repo.get(Portal.Actor, actor.id)
     end
 
     test "renders error when trying to delete last admin", %{
@@ -795,7 +795,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't delete the last admin of an account."
 
-      assert Repo.get(Domain.Actor, actor.id)
+      assert Repo.get(Portal.Actor, actor.id)
     end
 
     test "allows disabling actors", %{
@@ -819,7 +819,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was disabled."
 
-      assert Repo.get(Domain.Actor, actor.id).disabled_at
+      assert Repo.get(Portal.Actor, actor.id).disabled_at
     end
 
     test "renders error when trying to disable last admin", %{
@@ -840,7 +840,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't disable the last admin of an account."
 
-      refute Repo.get(Domain.Actor, actor.id).disabled_at
+      refute Repo.get(Portal.Actor, actor.id).disabled_at
     end
 
     test "allows enabling actors", %{
@@ -865,7 +865,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was enabled."
 
-      refute Repo.get(Domain.Actor, actor.id).disabled_at
+      refute Repo.get(Portal.Actor, actor.id).disabled_at
     end
   end
 
@@ -874,7 +874,7 @@ defmodule Web.Live.Actors.ShowTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
-      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
       provider = Fixtures.Auth.create_email_provider(account: account)
 
       identity =
@@ -981,7 +981,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      refute Repo.get(Domain.Actor, actor.id)
+      refute Repo.get(Portal.Actor, actor.id)
     end
 
     test "allows disabling actors", %{
@@ -1004,7 +1004,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was disabled."
 
-      assert Repo.get(Domain.Actor, actor.id).disabled_at
+      assert Repo.get(Portal.Actor, actor.id).disabled_at
     end
 
     test "allows enabling actors", %{
@@ -1029,7 +1029,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was enabled."
 
-      refute Repo.get(Domain.Actor, actor.id).disabled_at
+      refute Repo.get(Portal.Actor, actor.id).disabled_at
     end
 
     test "renders actor tokens", %{
@@ -1114,7 +1114,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.ClientToken, id: token.id)
+      refute Repo.get_by(Portal.ClientToken, id: token.id)
     end
 
     test "allows revoking all tokens", %{
@@ -1147,7 +1147,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      refute Repo.get_by(Domain.ClientToken, id: token.id)
+      refute Repo.get_by(Portal.ClientToken, id: token.id)
     end
   end
 end

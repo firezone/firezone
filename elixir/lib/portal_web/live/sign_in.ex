@@ -1,7 +1,7 @@
-defmodule Web.SignIn do
-  use Web, {:live_view, layout: {Web.Layouts, :public}}
+defmodule PortalWeb.SignIn do
+  use Web, {:live_view, layout: {PortalWeb.Layouts, :public}}
 
-  alias Domain.{
+  alias Portal.{
     Safe,
     Google,
     EmailOTP,
@@ -23,7 +23,7 @@ defmodule Web.SignIn do
       assign(socket,
         page_title: "Sign In",
         account: account,
-        params: Web.Auth.take_sign_in_params(params),
+        params: PortalWeb.Auth.take_sign_in_params(params),
         google_auth_providers: auth_providers(account, Google.AuthProvider),
         okta_auth_providers: auth_providers(account, Okta.AuthProvider),
         entra_auth_providers: auth_providers(account, Entra.AuthProvider),
@@ -46,7 +46,7 @@ defmodule Web.SignIn do
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
 
-            <.flash :if={not Domain.Account.active?(@account)} kind={:error} style="wide">
+            <.flash :if={not Portal.Account.active?(@account)} kind={:error} style="wide">
               This account has been disabled. Please contact your administrator to re-enable it.
             </.flash>
 
@@ -182,7 +182,7 @@ defmodule Web.SignIn do
   end
 
   # We allow signing in to Web UI even for disabled accounts
-  def disabled?(account, %{"as" => "client"}), do: not Domain.Account.active?(account)
+  def disabled?(account, %{"as" => "client"}), do: not Portal.Account.active?(account)
   def disabled?(_account, _params), do: false
 
   def separator(assigns) do
@@ -299,12 +299,12 @@ defmodule Web.SignIn do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Account
+    alias Portal.Safe
+    alias Portal.Account
 
     def get_account_by_id_or_slug!(id_or_slug) do
       query =
-        if Domain.Repo.valid_uuid?(id_or_slug),
+        if Portal.Repo.valid_uuid?(id_or_slug),
           do: from(a in Account, where: a.id == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 

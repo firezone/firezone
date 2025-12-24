@@ -1,8 +1,8 @@
-defmodule Web.SignIn.EmailTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.SignIn.EmailTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
     provider = Fixtures.Auth.create_email_provider(account: account)
@@ -11,7 +11,7 @@ defmodule Web.SignIn.EmailTest do
 
     {:ok, identity} =
       Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
-      |> Domain.Auth.Adapters.Email.request_sign_in_token(context)
+      |> Portal.Auth.Adapters.Email.request_sign_in_token(context)
 
     %{
       account: account,

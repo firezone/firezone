@@ -1,7 +1,7 @@
-defmodule Web.Cookie.ClientAuthTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Cookie.ClientAuthTest do
+  use PortalWeb.ConnCase, async: true
 
-  alias Web.Cookie.ClientAuth
+  alias PortalWeb.Cookie.ClientAuth
 
   @cookie_key "client_auth"
 
@@ -9,7 +9,7 @@ defmodule Web.Cookie.ClientAuthTest do
     cookie_value = conn.resp_cookies[@cookie_key].value
 
     build_conn()
-    |> Map.put(:secret_key_base, Web.Endpoint.config(:secret_key_base))
+    |> Map.put(:secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
     |> Plug.Test.put_req_cookie(@cookie_key, cookie_value)
   end
 

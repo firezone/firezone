@@ -1,5 +1,5 @@
-defmodule Web.Live.Settings.ApiClients.IndexTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Settings.ApiClients.IndexTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()

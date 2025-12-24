@@ -1,6 +1,6 @@
-defmodule API.Integrations.Stripe.WebhookController do
+defmodule PortalAPI.Integrations.Stripe.WebhookController do
   use API, :controller
-  alias Domain.Billing
+  alias Portal.Billing
   require Logger
 
   @tolerance 300

@@ -1,12 +1,12 @@
-defmodule API.ExternalIdentityController do
+defmodule PortalAPI.ExternalIdentityController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias API.Pagination
-  alias Domain.{ExternalIdentity, Safe}
+  alias PortalAPI.Pagination
+  alias Portal.{ExternalIdentity, Safe}
   alias __MODULE__.DB
   import Ecto.Query
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["ExternalIdentities"]
 
@@ -20,7 +20,7 @@ defmodule API.ExternalIdentityController do
     responses: [
       ok:
         {"ExternalIdentity List Response", "application/json",
-         API.Schemas.ExternalIdentity.ListResponse}
+         PortalAPI.Schemas.ExternalIdentity.ListResponse}
     ]
 
   # List External Identities
@@ -50,7 +50,7 @@ defmodule API.ExternalIdentityController do
       ]
     ],
     responses: [
-      ok: {"ExternalIdentity Response", "application/json", API.Schemas.ExternalIdentity.Response}
+      ok: {"ExternalIdentity Response", "application/json", PortalAPI.Schemas.ExternalIdentity.Response}
     ]
 
   # Show a specific External Identity
@@ -77,7 +77,7 @@ defmodule API.ExternalIdentityController do
       ]
     ],
     responses: [
-      ok: {"ExternalIdentity Response", "application/json", API.Schemas.ExternalIdentity.Response}
+      ok: {"ExternalIdentity Response", "application/json", PortalAPI.Schemas.ExternalIdentity.Response}
     ]
 
   # Delete an External Identity
@@ -91,7 +91,7 @@ defmodule API.ExternalIdentityController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{ExternalIdentity, Safe}
+    alias Portal.{ExternalIdentity, Safe}
 
     def list_external_identities(actor_id, subject, opts \\ []) do
       from(ei in ExternalIdentity,

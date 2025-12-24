@@ -4,10 +4,10 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
     category: :warning,
     explanations: [
       check: """
-      Domain.Safe should only be called from within a DB module.
+      Portal.Safe should only be called from within a DB module.
 
-      All modules that need to access Domain.Safe should define an inline DB module
-      and make all Domain.Safe calls from within that module.
+      All modules that need to access Portal.Safe should define an inline DB module
+      and make all Portal.Safe calls from within that module.
       """,
       params: []
     ]
@@ -16,7 +16,7 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
   def run(source_file, params \\ []) do
     issue_meta = IssueMeta.for(source_file, params)
 
-    # Skip checking the Domain.Safe module itself
+    # Skip checking the Portal.Safe module itself
     if String.ends_with?(source_file.filename, "domain/lib/domain/safe.ex") do
       []
     else
@@ -43,7 +43,7 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
     {ast, acc}
   end
 
-  # Check for direct Domain.Safe calls
+  # Check for direct Portal.Safe calls
   defp traverse({{:., meta, [{:__aliases__, _, [:Domain, :Safe]}, _]}, _, _} = ast, {issues, module_stack}, issue_meta, _parent) do
     if should_report?(module_stack) do
       issue = issue_for(meta[:line], issue_meta, module_stack)
@@ -81,8 +81,8 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
     format_issue(
       issue_meta,
       message:
-        "Domain.Safe should only be called from within a DB module#{location}. Create an inline DB module and move this call there.",
-      trigger: "Domain.Safe",
+        "Portal.Safe should only be called from within a DB module#{location}. Create an inline DB module and move this call there.",
+      trigger: "Portal.Safe",
       line_no: line_no
     )
   end

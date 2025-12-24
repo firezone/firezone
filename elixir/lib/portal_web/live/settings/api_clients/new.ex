@@ -1,12 +1,12 @@
-defmodule Web.Settings.ApiClients.New do
+defmodule PortalWeb.Settings.ApiClients.New do
   use Web, :live_view
-  import Web.Settings.ApiClients.Components
+  import PortalWeb.Settings.ApiClients.Components
   import Ecto.Changeset
-  alias Domain.Actor
+  alias Portal.Actor
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
-    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
+    if Portal.Account.rest_api_enabled?(socket.assigns.account) do
       changeset = changeset(%{})
 
       socket =
@@ -85,7 +85,7 @@ defmodule Web.Settings.ApiClients.New do
   end
 
   defmodule DB do
-    alias Domain.Safe
+    alias Portal.Safe
 
     def create_api_client(changeset, subject) do
       Safe.scoped(changeset, subject) |> Safe.insert()

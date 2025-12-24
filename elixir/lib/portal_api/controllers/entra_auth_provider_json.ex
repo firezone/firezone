@@ -1,5 +1,5 @@
-defmodule API.EntraAuthProviderJSON do
-  alias Domain.Entra
+defmodule PortalAPI.EntraAuthProviderJSON do
+  alias Portal.Entra
 
   def index(%{providers: providers}) do
     %{data: Enum.map(providers, &data/1)}

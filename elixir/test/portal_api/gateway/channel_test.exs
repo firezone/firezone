@@ -1,23 +1,23 @@
-defmodule API.Gateway.ChannelTest do
-  use API.ChannelCase, async: true
-  alias Domain.Changes
-  alias Domain.PubSub
-  import Domain.Cache.Cacheable, only: [to_cache: 1]
+defmodule PortalAPI.Gateway.ChannelTest do
+  use PortalAPI.ChannelCase, async: true
+  alias Portal.Changes
+  alias Portal.PubSub
+  import Portal.Cache.Cacheable, only: [to_cache: 1]
   import ExUnit.CaptureLog
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.ClientFixtures
-  import Domain.GatewayFixtures
-  import Domain.GroupFixtures
-  import Domain.MembershipFixtures
-  import Domain.PolicyAuthorizationFixtures
-  import Domain.PolicyFixtures
-  import Domain.RelayFixtures
-  import Domain.ResourceFixtures
-  import Domain.SiteFixtures
-  import Domain.SubjectFixtures
-  import Domain.TokenFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.ClientFixtures
+  import Portal.GatewayFixtures
+  import Portal.GroupFixtures
+  import Portal.MembershipFixtures
+  import Portal.PolicyAuthorizationFixtures
+  import Portal.PolicyFixtures
+  import Portal.RelayFixtures
+  import Portal.ResourceFixtures
+  import Portal.SiteFixtures
+  import Portal.SubjectFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -42,7 +42,7 @@ defmodule API.Gateway.ChannelTest do
     token = gateway_token_fixture(site: site, account: account)
 
     {:ok, _, socket} =
-      API.Gateway.Socket
+      PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
@@ -50,7 +50,7 @@ defmodule API.Gateway.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(API.Gateway.Channel, "gateway")
+      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
     relay = relay_fixture()
     global_relay = relay_fixture()
@@ -79,7 +79,7 @@ defmodule API.Gateway.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join", %{account: account, gateway: gateway} do
-      presence = Domain.Presence.Gateways.Account.list(account.id)
+      presence = Portal.Presence.Gateways.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
       assert is_number(online_at)
@@ -333,8 +333,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert_receive %Changes.Change{
         lsn: 100,
-        old_struct: %Domain.Account{},
-        struct: %Domain.Account{slug: "new-slug"}
+        old_struct: %Portal.Account{},
+        struct: %Portal.Account{slug: "new-slug"}
       }
 
       # Consume first init from join
@@ -352,8 +352,8 @@ defmodule API.Gateway.ChannelTest do
       # Consume the init message from join
       assert_push "init", _init_payload
 
-      # Subscribe to the token's socket topic (Domain.Sockets.socket_id returns "tokens:#{id}")
-      socket_topic = Domain.Sockets.socket_id(token.id)
+      # Subscribe to the token's socket topic (Portal.Sockets.socket_id returns "tokens:#{id}")
+      socket_topic = Portal.Sockets.socket_id(token.id)
       :ok = PubSub.subscribe(socket_topic)
 
       data = %{
@@ -389,7 +389,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_receive %Changes.Change{
         lsn: 100,
-        old_struct: %Domain.Gateway{}
+        old_struct: %Portal.Gateway{}
       }
 
       assert_receive {:EXIT, _pid, _reason}
@@ -421,7 +421,7 @@ defmodule API.Gateway.ChannelTest do
 
       stamp_secret = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
         socket.channel_pid,
@@ -488,7 +488,7 @@ defmodule API.Gateway.ChannelTest do
 
       stamp_secret = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       # Consume the relays_presence message from relay connection
       assert_push "relays_presence", _relays_presence
@@ -609,7 +609,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_receive %Changes.Change{
         lsn: 100,
-        old_struct: %Domain.PolicyAuthorization{id: ^policy_authorization_id}
+        old_struct: %Portal.PolicyAuthorization{id: ^policy_authorization_id}
       }
 
       refute_push "allow_access", _payload
@@ -642,7 +642,7 @@ defmodule API.Gateway.ChannelTest do
 
       stamp_secret = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       policy_authorization =
         policy_authorization_fixture(
@@ -711,7 +711,7 @@ defmodule API.Gateway.ChannelTest do
 
       stamp_secret = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       policy_authorization =
         policy_authorization_fixture(
@@ -886,7 +886,7 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
       stamp_secret = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
         socket.channel_pid,
@@ -992,8 +992,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert_receive %Changes.Change{
         lsn: 100,
-        old_struct: %Domain.Resource{id: ^resource_id},
-        struct: %Domain.Resource{id: ^resource_id, address: "new-address"}
+        old_struct: %Portal.Resource{id: ^resource_id},
+        struct: %Portal.Resource{id: ^resource_id, address: "new-address"}
       }
 
       assert_push "reject_access", payload
@@ -1126,7 +1126,7 @@ defmodule API.Gateway.ChannelTest do
     } do
       # Create a new socket with the gateway set to an old version (< 1.2.0)
       {:ok, _, _socket} =
-        API.Gateway.Socket
+        PortalAPI.Gateway.Socket
         |> socket("gateway:#{gateway.id}", %{
           token_id: token.id,
           gateway: Map.put(gateway, :last_seen_version, "1.1.0"),
@@ -1134,7 +1134,7 @@ defmodule API.Gateway.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
         })
-        |> subscribe_and_join(API.Gateway.Channel, "gateway")
+        |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
       old_data = %{
         "id" => resource.id,
@@ -1269,7 +1269,7 @@ defmodule API.Gateway.ChannelTest do
 
       relay1 = relay_fixture()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret, relay_token.id)
 
       update_relay(relay1,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
@@ -1278,7 +1278,7 @@ defmodule API.Gateway.ChannelTest do
       )
 
       relay2 = relay_fixture()
-      :ok = Domain.Presence.Relays.connect(relay2, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay2, stamp_secret, relay_token.id)
 
       update_relay(relay2,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-100, :second),
@@ -1286,7 +1286,7 @@ defmodule API.Gateway.ChannelTest do
         last_seen_remote_ip_location_lon: -121.0
       )
 
-      API.Gateway.Socket
+      PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
@@ -1294,7 +1294,7 @@ defmodule API.Gateway.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(API.Gateway.Channel, "gateway")
+      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", %{relays: [relay_view | _] = relays}
       relay_view_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
@@ -1311,7 +1311,7 @@ defmodule API.Gateway.ChannelTest do
              } = relay_view
 
       # Untrack from global topic to trigger presence change notification
-      Domain.Presence.Relays.untrack(self(), Domain.Presence.Relays.Global.topic(), relay1.id)
+      Portal.Presence.Relays.untrack(self(), Portal.Presence.Relays.Global.topic(), relay1.id)
 
       assert_push "relays_presence",
                   %{
@@ -1343,7 +1343,7 @@ defmodule API.Gateway.ChannelTest do
         last_seen_remote_ip_location_lon: -120.0
       )
 
-      API.Gateway.Socket
+      PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
@@ -1351,12 +1351,12 @@ defmodule API.Gateway.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(API.Gateway.Channel, "gateway")
+      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
       assert_push "init", %{relays: []}
 
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       assert_push "relays_presence",
                   %{
@@ -1383,7 +1383,7 @@ defmodule API.Gateway.ChannelTest do
         last_seen_remote_ip_location_lon: -120.0
       )
 
-      :ok = Domain.Presence.Relays.connect(other_relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(other_relay, stamp_secret, relay_token.id)
 
       # Should receive update for second relay since we only had 1 relay cached
       assert_push "relays_presence",
@@ -1402,7 +1402,7 @@ defmodule API.Gateway.ChannelTest do
         last_seen_remote_ip_location_lon: -120.0
       )
 
-      :ok = Domain.Presence.Relays.connect(third_relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(third_relay, stamp_secret, relay_token.id)
       third_relay_id = third_relay.id
 
       refute_push "relays_presence",
@@ -1480,7 +1480,7 @@ defmodule API.Gateway.ChannelTest do
 
       stamp_secret = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
         socket.channel_pid,
@@ -1543,7 +1543,7 @@ defmodule API.Gateway.ChannelTest do
 
       stamp_secret = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1714,12 +1714,12 @@ defmodule API.Gateway.ChannelTest do
         client
         | ipv4_address: %Ecto.Association.NotLoaded{
             __field__: :ipv4_address,
-            __owner__: Domain.Client,
+            __owner__: Portal.Client,
             __cardinality__: :one
           },
           ipv6_address: %Ecto.Association.NotLoaded{
             __field__: :ipv6_address,
-            __owner__: Domain.Client,
+            __owner__: Portal.Client,
             __cardinality__: :one
           }
       }
@@ -1930,7 +1930,7 @@ defmodule API.Gateway.ChannelTest do
 
       stamp_secret = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       send(
         socket.channel_pid,
@@ -2027,8 +2027,8 @@ defmodule API.Gateway.ChannelTest do
           actor: client_actor
         )
 
-      :ok = Domain.Presence.Clients.connect(client, client_token.id)
-      PubSub.subscribe(Domain.Sockets.socket_id(subject.credential.id))
+      :ok = Portal.Presence.Clients.connect(client, client_token.id)
+      PubSub.subscribe(Portal.Sockets.socket_id(subject.credential.id))
       :ok = PubSub.Account.subscribe(gateway.account_id)
 
       push(socket, "broadcast_ice_candidates", attrs)
@@ -2080,8 +2080,8 @@ defmodule API.Gateway.ChannelTest do
           actor: client_actor
         )
 
-      :ok = Domain.Presence.Clients.connect(client, client_token.id)
-      PubSub.subscribe(Domain.Sockets.socket_id(subject.credential.id))
+      :ok = Portal.Presence.Clients.connect(client, client_token.id)
+      PubSub.subscribe(Portal.Sockets.socket_id(subject.credential.id))
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
@@ -2102,7 +2102,7 @@ defmodule API.Gateway.ChannelTest do
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
                   %{
@@ -2120,7 +2120,7 @@ defmodule API.Gateway.ChannelTest do
       Process.sleep(1)
 
       # Reconnect with the same stamp secret
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       # Should not receive any disconnect
       relay_id = relay1.id
@@ -2140,7 +2140,7 @@ defmodule API.Gateway.ChannelTest do
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
                   %{
@@ -2159,7 +2159,7 @@ defmodule API.Gateway.ChannelTest do
 
       # Reconnect with a different stamp secret
       stamp_secret2 = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret2, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret2, relay_token.id)
 
       # Should receive disconnect "immediately"
       assert_push "relays_presence",
@@ -2181,7 +2181,7 @@ defmodule API.Gateway.ChannelTest do
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
                   %{

@@ -1,4 +1,4 @@
-defmodule Web.Plugs.AutoRedirectDefaultProvider do
+defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
   @behaviour Plug
 
   use Web, :verified_routes
@@ -6,7 +6,7 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
   import Plug.Conn
   import Phoenix.Controller, only: [redirect: 2]
 
-  alias Domain.{
+  alias Portal.{
     Account,
     OIDC,
     Google,
@@ -72,7 +72,7 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
   defmodule DB do
     import Ecto.Query
 
-    alias Domain.{
+    alias Portal.{
       Account,
       OIDC,
       Okta,
@@ -81,7 +81,7 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
     }
 
     def get_account_by_id_or_slug(id_or_slug) do
-      if Domain.Repo.valid_uuid?(id_or_slug) do
+      if Portal.Repo.valid_uuid?(id_or_slug) do
         where(Account, [a], a.id == ^id_or_slug)
       else
         where(Account, [a], a.slug == ^id_or_slug)

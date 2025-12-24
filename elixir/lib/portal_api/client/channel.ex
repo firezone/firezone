@@ -1,8 +1,8 @@
-defmodule API.Client.Channel do
+defmodule PortalAPI.Client.Channel do
   use API, :channel
-  alias API.Client.Views
+  alias PortalAPI.Client.Views
 
-  alias Domain.{
+  alias Portal.{
     Cache,
     Changes.Change,
     PubSub,
@@ -666,7 +666,7 @@ defmodule API.Client.Channel do
   end
 
   defp generate_preshared_key(client, gateway) do
-    Domain.Crypto.psk(client, gateway)
+    Portal.Crypto.psk(client, gateway)
   end
 
   # Ice credentials must stay the same for all connections between client and gateway as long as they
@@ -719,8 +719,8 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Domain.Account{} = old_account,
-           struct: %Domain.Account{} = account
+           old_struct: %Portal.Account{} = old_account,
+           struct: %Portal.Account{} = account
          },
          socket
        ) do
@@ -740,7 +740,7 @@ defmodule API.Client.Channel do
   # MEMBERSHIPS
 
   defp handle_change(
-         %Change{op: :insert, struct: %Domain.Membership{actor_id: actor_id}},
+         %Change{op: :insert, struct: %Portal.Membership{actor_id: actor_id}},
          %{assigns: %{client: %{actor_id: id}}} = socket
        )
        when id == actor_id do
@@ -755,7 +755,7 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :delete,
-           old_struct: %Domain.Membership{actor_id: actor_id} = membership
+           old_struct: %Portal.Membership{actor_id: actor_id} = membership
          },
          %{assigns: %{client: %{actor_id: id}}} = socket
        )
@@ -774,8 +774,8 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Domain.Client{} = old_client,
-           struct: %Domain.Client{id: client_id} = client
+           old_struct: %Portal.Client{} = old_client,
+           struct: %Portal.Client{id: client_id} = client
          },
          %{assigns: %{client: %{id: id} = current_client}} = socket
        )
@@ -805,7 +805,7 @@ defmodule API.Client.Channel do
   end
 
   defp handle_change(
-         %Change{op: :delete, old_struct: %Domain.Client{id: id}},
+         %Change{op: :delete, old_struct: %Portal.Client{id: id}},
          %{assigns: %{client: %{id: client_id}}} = socket
        )
        when id == client_id do
@@ -819,8 +819,8 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Domain.Site{name: old_name},
-           struct: %Domain.Site{name: name} = site
+           old_struct: %Portal.Site{name: old_name},
+           struct: %Portal.Site{name: name} = site
          },
          socket
        )
@@ -837,7 +837,7 @@ defmodule API.Client.Channel do
   # POLICIES
 
   defp handle_change(
-         %Change{op: :insert, struct: %Domain.Policy{} = policy},
+         %Change{op: :insert, struct: %Portal.Policy{} = policy},
          socket
        ) do
     Cache.Client.add_policy(
@@ -852,12 +852,12 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Domain.Policy{
+           old_struct: %Portal.Policy{
              resource_id: old_resource_id,
              group_id: old_group_id,
              conditions: old_conditions
            },
-           struct: %Domain.Policy{
+           struct: %Portal.Policy{
              resource_id: resource_id,
              group_id: group_id,
              conditions: conditions,
@@ -887,8 +887,8 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Domain.Policy{},
-           struct: %Domain.Policy{} = policy
+           old_struct: %Portal.Policy{},
+           struct: %Portal.Policy{} = policy
          },
          socket
        ) do
@@ -897,7 +897,7 @@ defmodule API.Client.Channel do
   end
 
   defp handle_change(
-         %Change{op: :delete, old_struct: %Domain.Policy{} = policy},
+         %Change{op: :delete, old_struct: %Portal.Policy{} = policy},
          socket
        ) do
     Cache.Client.delete_policy(
@@ -914,8 +914,8 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Domain.Resource{},
-           struct: %Domain.Resource{} = resource
+           old_struct: %Portal.Resource{},
+           struct: %Portal.Resource{} = resource
          },
          socket
        ) do
@@ -948,7 +948,7 @@ defmodule API.Client.Channel do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Gateway}
+    alias Portal.{Safe, Gateway}
 
     def fetch_gateway_by_id(id, subject) do
       result =
@@ -965,7 +965,7 @@ defmodule API.Client.Channel do
     end
 
     def all_compatible_gateways_for_client_and_resource(
-          %Domain.Client{} = client,
+          %Portal.Client{} = client,
           resource,
           subject
         ) do
@@ -999,7 +999,7 @@ defmodule API.Client.Channel do
                 Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
                   Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
                   not is_nil(
-                    Domain.Resource.adapt_resource_for_version(
+                    Portal.Resource.adapt_resource_for_version(
                       resource,
                       gateway.last_seen_version
                     )
@@ -1015,9 +1015,9 @@ defmodule API.Client.Channel do
       end
     end
 
-    defp site_id_from_resource(%Domain.Cache.Cacheable.Resource{site: nil}), do: nil
+    defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: nil}), do: nil
 
-    defp site_id_from_resource(%Domain.Cache.Cacheable.Resource{site: site}) do
+    defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: site}) do
       Ecto.UUID.load!(site.id)
     end
   end
@@ -1040,7 +1040,7 @@ defmodule API.Client.Channel do
         {nil, relay}
 
       {{relay_lat, relay_lon}, relay} ->
-        distance = Domain.Geo.distance({lat, lon}, {relay_lat, relay_lon})
+        distance = Portal.Geo.distance({lat, lon}, {relay_lat, relay_lon})
         {distance, relay}
     end)
     |> Enum.sort_by(&elem(&1, 0))
@@ -1048,15 +1048,15 @@ defmodule API.Client.Channel do
     |> Enum.map(&Enum.random(elem(&1, 1)))
   end
 
-  # Inline functions from Domain.PolicyAuthorizations
+  # Inline functions from Portal.PolicyAuthorizations
 
   defp create_policy_authorization(
-         %Domain.Client{
+         %Portal.Client{
            id: client_id,
            account_id: account_id,
            actor_id: actor_id
          },
-         %Domain.Gateway{
+         %Portal.Gateway{
            id: gateway_id,
            last_seen_remote_ip: gateway_remote_ip,
            account_id: account_id
@@ -1090,8 +1090,8 @@ defmodule API.Client.Channel do
         expires_at: expires_at
       })
 
-    Domain.Safe.scoped(changeset, subject)
-    |> Domain.Safe.insert()
+    Portal.Safe.scoped(changeset, subject)
+    |> Portal.Safe.insert()
   end
 
   defp create_policy_authorization_changeset(attrs) do
@@ -1103,9 +1103,9 @@ defmodule API.Client.Channel do
                 client_remote_ip client_user_agent
                 gateway_remote_ip]a
 
-    %Domain.PolicyAuthorization{}
+    %Portal.PolicyAuthorization{}
     |> cast(attrs, fields)
     |> validate_required(fields -- [:membership_id])
-    |> Domain.PolicyAuthorization.changeset()
+    |> Portal.PolicyAuthorization.changeset()
   end
 end

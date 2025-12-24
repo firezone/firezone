@@ -1,5 +1,5 @@
-defmodule API.OktaDirectoryJSON do
-  alias Domain.Okta
+defmodule PortalAPI.OktaDirectoryJSON do
+  alias Portal.Okta
 
   def index(%{directories: directories}) do
     %{data: Enum.map(directories, &data/1)}

@@ -1,10 +1,10 @@
-defmodule API.PolicyController do
+defmodule PortalAPI.PolicyController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias API.Pagination
+  alias PortalAPI.Pagination
   alias __MODULE__.DB
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Policies"]
 
@@ -15,7 +15,7 @@ defmodule API.PolicyController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Policy Response", "application/json", API.Schemas.Policy.ListResponse}
+      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.ListResponse}
     ]
 
   # List Policies
@@ -38,7 +38,7 @@ defmodule API.PolicyController do
       ]
     ],
     responses: [
-      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response}
+      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
 
   # Show a specific Policy
@@ -52,9 +52,9 @@ defmodule API.PolicyController do
     summary: "Create Policy",
     parameters: [],
     request_body:
-      {"Policy Attributes", "application/json", API.Schemas.Policy.Request, required: true},
+      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.Request, required: true},
     responses: [
-      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response}
+      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
 
   # Create a new Policy
@@ -86,9 +86,9 @@ defmodule API.PolicyController do
       ]
     ],
     request_body:
-      {"Policy Attributes", "application/json", API.Schemas.Policy.Request, required: true},
+      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.Request, required: true},
     responses: [
-      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response}
+      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
 
   # Update a Policy
@@ -117,7 +117,7 @@ defmodule API.PolicyController do
       ]
     ],
     responses: [
-      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response}
+      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
 
   # Delete a Policy
@@ -133,7 +133,7 @@ defmodule API.PolicyController do
   defmodule DB do
     import Ecto.Query
     import Ecto.Changeset
-    alias Domain.{Policy, Safe, Auth}
+    alias Portal.{Policy, Safe, Auth}
 
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)
@@ -167,7 +167,7 @@ defmodule API.PolicyController do
       if resource_id do
         # Fetch the resource to check its type
         resource =
-          from(r in Domain.Resource, where: r.id == ^resource_id)
+          from(r in Portal.Resource, where: r.id == ^resource_id)
           |> Safe.scoped(subject)
           |> Safe.one()
 
@@ -177,7 +177,7 @@ defmodule API.PolicyController do
 
           %{type: :internet} ->
             # Check if internet resource is enabled for the account
-            if Domain.Account.internet_resource_enabled?(subject.account) do
+            if Portal.Account.internet_resource_enabled?(subject.account) do
               :ok
             else
               {:error, {:forbidden, "Internet resource is not enabled for this account"}}
@@ -208,7 +208,7 @@ defmodule API.PolicyController do
       %Policy{}
       |> cast(attrs, ~w[description group_id resource_id]a)
       |> validate_required(~w[group_id resource_id]a)
-      |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
+      |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
       |> Policy.changeset()
       |> put_change(:account_id, subject.account.id)
     end
@@ -217,7 +217,7 @@ defmodule API.PolicyController do
       policy
       |> cast(attrs, ~w[description group_id resource_id]a)
       |> validate_required(~w[group_id resource_id]a)
-      |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
+      |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
       |> Policy.changeset()
     end
 

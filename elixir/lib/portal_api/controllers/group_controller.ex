@@ -1,12 +1,12 @@
-defmodule API.GroupController do
+defmodule PortalAPI.GroupController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias API.Pagination
-  alias Domain.Group
+  alias PortalAPI.Pagination
+  alias Portal.Group
   alias __MODULE__.DB
   import Ecto.Changeset
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Groups"]
 
@@ -17,7 +17,7 @@ defmodule API.GroupController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Group Response", "application/json", API.Schemas.Group.ListResponse}
+      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.ListResponse}
     ]
 
   # List Groups
@@ -40,7 +40,7 @@ defmodule API.GroupController do
       ]
     ],
     responses: [
-      ok: {"Group Response", "application/json", API.Schemas.Group.Response}
+      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
     ]
 
   # Show a specific Group
@@ -54,9 +54,9 @@ defmodule API.GroupController do
     summary: "Create Group",
     parameters: [],
     request_body:
-      {"Group Attributes", "application/json", API.Schemas.Group.Request, required: true},
+      {"Group Attributes", "application/json", PortalAPI.Schemas.Group.Request, required: true},
     responses: [
-      ok: {"Group Response", "application/json", API.Schemas.Group.Response}
+      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
     ]
 
   # Create a new Group
@@ -91,9 +91,9 @@ defmodule API.GroupController do
       ]
     ],
     request_body:
-      {"Group Attributes", "application/json", API.Schemas.Group.Request, required: true},
+      {"Group Attributes", "application/json", PortalAPI.Schemas.Group.Request, required: true},
     responses: [
-      ok: {"Group Response", "application/json", API.Schemas.Group.Response}
+      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
     ]
 
   # Update an Group
@@ -148,7 +148,7 @@ defmodule API.GroupController do
       ]
     ],
     responses: [
-      ok: {"Group Response", "application/json", API.Schemas.Group.Response}
+      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
     ]
 
   # Delete an Group
@@ -163,7 +163,7 @@ defmodule API.GroupController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Group, Safe}
+    alias Portal.{Group, Safe}
 
     def list_groups(subject, opts \\ []) do
       from(g in Group, as: :groups)

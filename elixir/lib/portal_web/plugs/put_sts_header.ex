@@ -1,4 +1,4 @@
-defmodule Web.Plugs.PutSTSHeader do
+defmodule PortalWeb.Plugs.PutSTSHeader do
   @behaviour Plug
 
   @impl true

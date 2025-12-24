@@ -1,5 +1,5 @@
-defmodule API.OIDCAuthProviderJSON do
-  alias Domain.OIDC
+defmodule PortalAPI.OIDCAuthProviderJSON do
+  alias Portal.OIDC
 
   def index(%{providers: providers}) do
     %{data: Enum.map(providers, &data/1)}

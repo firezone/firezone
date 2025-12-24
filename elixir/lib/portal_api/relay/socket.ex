@@ -1,15 +1,15 @@
-defmodule API.Relay.Socket do
+defmodule PortalAPI.Relay.Socket do
   use Phoenix.Socket
   import Ecto.Changeset
-  import Domain.Changeset
-  alias Domain.{Auth, Version, Relay}
+  import Portal.Changeset
+  alias Portal.{Auth, Version, Relay}
   alias __MODULE__.DB
   require Logger
   require OpenTelemetry.Tracer
 
   ## Channels
 
-  channel "relay", API.Relay.Channel
+  channel "relay", PortalAPI.Relay.Channel
 
   ## Authentication
 
@@ -18,7 +18,7 @@ defmodule API.Relay.Socket do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "relay.connect" do
-      context = API.Sockets.auth_context(connect_info, :relay)
+      context = PortalAPI.Sockets.auth_context(connect_info, :relay)
       attrs = Map.take(attrs, ~w[ipv4 ipv6 name port])
 
       with {:ok, relay_token} <- Auth.verify_relay_token(encoded_token),
@@ -52,7 +52,7 @@ defmodule API.Relay.Socket do
   end
 
   @impl true
-  def id(socket), do: Domain.Sockets.socket_id(socket.assigns.token_id)
+  def id(socket), do: Portal.Sockets.socket_id(socket.assigns.token_id)
 
   defp upsert_relay(attrs, %Auth.Context{} = context) do
     changeset = upsert_changeset(attrs, context)
@@ -101,7 +101,7 @@ defmodule API.Relay.Socket do
   end
 
   defmodule DB do
-    alias Domain.Safe
+    alias Portal.Safe
 
     def upsert_relay(changeset) do
       conflict_target = {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6), port)/}

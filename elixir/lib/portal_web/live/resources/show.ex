@@ -1,8 +1,8 @@
-defmodule Web.Resources.Show do
+defmodule PortalWeb.Resources.Show do
   use Web, :live_view
-  import Web.Policies.Components
-  import Web.Resources.Components
-  alias Domain.PubSub
+  import PortalWeb.Policies.Components
+  import PortalWeb.Resources.Components
+  alias Portal.PubSub
   alias __MODULE__.DB
 
   def mount(%{"id" => id} = params, _session, socket) do
@@ -362,7 +362,7 @@ defmodule Web.Resources.Show do
 
   # TODO: Do we really want to update the view in place?
   def handle_info(
-        {_action, _old_resource, %Domain.Resource{id: resource_id}},
+        {_action, _old_resource, %Portal.Resource{id: resource_id}},
         %{assigns: %{resource: %{id: id}}} = socket
       )
       when resource_id == id do
@@ -417,8 +417,8 @@ defmodule Web.Resources.Show do
 
   defmodule DB do
     import Ecto.Query
-    import Domain.Repo.Query
-    alias Domain.{Safe, Resource, Policy}
+    import Portal.Repo.Query
+    alias Portal.{Safe, Resource, Policy}
 
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
@@ -456,37 +456,37 @@ defmodule Web.Resources.Show do
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :resource_id,
           title: "Resource",
           type: {:string, :uuid},
           fun: &filter_by_resource_id/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :group_id,
           title: "Group",
           type: {:string, :uuid},
           fun: &filter_by_group_id/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :group_name,
           title: "Group Name",
           type: {:string, :websearch},
           fun: &filter_by_group_name/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :resource_name,
           title: "Resource Name",
           type: {:string, :websearch},
           fun: &filter_by_resource_name/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :group_or_resource_name,
           title: "Group Name or Resource Name",
           type: {:string, :websearch},
           fun: &filter_by_group_or_resource_name/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :status,
           title: "Status",
           type: :string,
@@ -553,12 +553,12 @@ defmodule Web.Resources.Show do
 
     def preloads, do: []
 
-    # Inline functions from Domain.PolicyAuthorizations
+    # Inline functions from Portal.PolicyAuthorizations
     def list_policy_authorizations_for(assoc, subject, opts \\ [])
 
     def list_policy_authorizations_for(
-          %Domain.Policy{} = policy,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Policy{} = policy,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -567,8 +567,8 @@ defmodule Web.Resources.Show do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Resource{} = resource,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Resource{} = resource,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -577,8 +577,8 @@ defmodule Web.Resources.Show do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Client{} = client,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Client{} = client,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -587,8 +587,8 @@ defmodule Web.Resources.Show do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Actor{} = actor,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Actor{} = actor,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -597,8 +597,8 @@ defmodule Web.Resources.Show do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Gateway{} = gateway,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Gateway{} = gateway,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -608,8 +608,8 @@ defmodule Web.Resources.Show do
 
     defp list_policy_authorizations(queryable, subject, opts) do
       queryable
-      |> Domain.Safe.scoped(subject)
-      |> Domain.Safe.list(DB.PolicyAuthorizationQuery, opts)
+      |> Portal.Safe.scoped(subject)
+      |> Portal.Safe.list(DB.PolicyAuthorizationQuery, opts)
     end
   end
 
@@ -617,7 +617,7 @@ defmodule Web.Resources.Show do
     import Ecto.Query
 
     def all do
-      from(policy_authorizations in Domain.PolicyAuthorization, as: :policy_authorizations)
+      from(policy_authorizations in Portal.PolicyAuthorization, as: :policy_authorizations)
     end
 
     def expired(queryable) do

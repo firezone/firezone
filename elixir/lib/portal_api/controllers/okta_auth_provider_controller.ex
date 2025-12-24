@@ -1,11 +1,11 @@
-defmodule API.OktaAuthProviderController do
+defmodule PortalAPI.OktaAuthProviderController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Domain.{Okta, Safe}
+  alias Portal.{Okta, Safe}
   alias __MODULE__.DB
   import Ecto.Query
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Okta Auth Providers"]
 
@@ -14,7 +14,7 @@ defmodule API.OktaAuthProviderController do
     responses: [
       ok:
         {"Okta Auth Provider Response", "application/json",
-         API.Schemas.OktaAuthProvider.ListResponse}
+         PortalAPI.Schemas.OktaAuthProvider.ListResponse}
     ]
 
   def index(conn, _params) do
@@ -34,7 +34,7 @@ defmodule API.OktaAuthProviderController do
     ],
     responses: [
       ok:
-        {"Okta Auth Provider Response", "application/json", API.Schemas.OktaAuthProvider.Response}
+        {"Okta Auth Provider Response", "application/json", PortalAPI.Schemas.OktaAuthProvider.Response}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -45,7 +45,7 @@ defmodule API.OktaAuthProviderController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Okta, Safe}
+    alias Portal.{Okta, Safe}
 
     def list_providers(subject) do
       from(p in Okta.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])

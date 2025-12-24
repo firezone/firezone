@@ -1,6 +1,6 @@
-defmodule API.ExternalIdentityJSON do
-  alias API.Pagination
-  alias Domain.ExternalIdentity
+defmodule PortalAPI.ExternalIdentityJSON do
+  alias PortalAPI.Pagination
+  alias Portal.ExternalIdentity
 
   @doc """
   Renders a list of External Identities.

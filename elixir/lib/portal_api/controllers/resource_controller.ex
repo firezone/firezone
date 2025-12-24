@@ -1,10 +1,10 @@
-defmodule API.ResourceController do
+defmodule PortalAPI.ResourceController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias API.Pagination
+  alias PortalAPI.Pagination
   alias __MODULE__.DB
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Resources"]
 
@@ -15,7 +15,7 @@ defmodule API.ResourceController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Resource Response", "application/json", API.Schemas.Resource.ListResponse}
+      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.ListResponse}
     ]
 
   def index(conn, params) do
@@ -38,7 +38,7 @@ defmodule API.ResourceController do
       ]
     ],
     responses: [
-      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response}
+      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -51,9 +51,9 @@ defmodule API.ResourceController do
     summary: "Create Resource",
     parameters: [],
     request_body:
-      {"Resource Attributes", "application/json", API.Schemas.Resource.Request, required: true},
+      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.Request, required: true},
     responses: [
-      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response}
+      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
     ]
 
   def create(conn, %{"resource" => params}) do
@@ -83,9 +83,9 @@ defmodule API.ResourceController do
       ]
     ],
     request_body:
-      {"Resource Attributes", "application/json", API.Schemas.Resource.Request, required: true},
+      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.Request, required: true},
     responses: [
-      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response}
+      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
     ]
 
   def update(conn, %{"id" => id, "resource" => params}) do
@@ -119,7 +119,7 @@ defmodule API.ResourceController do
       ]
     ],
     responses: [
-      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response}
+      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
     ]
 
   def delete(conn, %{"id" => id}) do
@@ -144,27 +144,27 @@ defmodule API.ResourceController do
   defp create_changeset(attrs, subject) do
     account = subject.account
 
-    %Domain.Resource{}
+    %Portal.Resource{}
     |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack site_id]a)
-    |> Domain.Resource.changeset()
+    |> Portal.Resource.changeset()
     |> Ecto.Changeset.validate_required(~w[name type site_id]a)
     |> Ecto.Changeset.put_change(:account_id, account.id)
-    |> Domain.Resource.validate_address(account)
+    |> Portal.Resource.validate_address(account)
   end
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
+    alias Portal.Safe
 
     def list_resources(subject, opts \\ []) do
-      from(r in Domain.Resource, as: :resources)
+      from(r in Portal.Resource, as: :resources)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_resource(id, subject) do
       result =
-        from(r in Domain.Resource, where: r.id == ^id)
+        from(r in Portal.Resource, where: r.id == ^id)
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -200,8 +200,8 @@ defmodule API.ResourceController do
       resource
       |> Ecto.Changeset.cast(attrs, update_fields)
       |> Ecto.Changeset.validate_required(required_fields)
-      |> Domain.Resource.validate_address(subject.account)
-      |> Domain.Resource.changeset()
+      |> Portal.Resource.validate_address(subject.account)
+      |> Portal.Resource.changeset()
     end
 
     def cursor_fields do

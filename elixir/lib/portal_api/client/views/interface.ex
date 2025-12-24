@@ -1,5 +1,5 @@
-defmodule API.Client.Views.Interface do
-  alias Domain.Client
+defmodule PortalAPI.Client.Views.Interface do
+  alias Portal.Client
 
   @doh_providers %{
     google: [%{url: "https://dns.google/dns-query"}],

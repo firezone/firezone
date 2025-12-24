@@ -1,10 +1,10 @@
-defmodule API.GatewayTokenController do
+defmodule PortalAPI.GatewayTokenController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Domain.{Auth, Safe}
+  alias Portal.{Auth, Safe}
   alias __MODULE__.DB
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Gateway Tokens"]
 
@@ -19,7 +19,7 @@ defmodule API.GatewayTokenController do
       ]
     ],
     responses: [
-      ok: {"New Token Response", "application/json", API.Schemas.GatewayToken.Response}
+      ok: {"New Token Response", "application/json", PortalAPI.Schemas.GatewayToken.Response}
     ]
 
   def create(conn, %{"site_id" => site_id}) do
@@ -50,7 +50,7 @@ defmodule API.GatewayTokenController do
       ]
     ],
     responses: [
-      ok: {"Deleted Token Response", "application/json", API.Schemas.GatewayToken.DeletedResponse}
+      ok: {"Deleted Token Response", "application/json", PortalAPI.Schemas.GatewayToken.DeletedResponse}
     ]
 
   def delete(conn, %{"site_id" => _site_id, "id" => token_id}) do
@@ -75,7 +75,7 @@ defmodule API.GatewayTokenController do
     responses: [
       ok:
         {"Deleted Tokens Response", "application/json",
-         API.Schemas.GatewayToken.DeletedAllResponse}
+         PortalAPI.Schemas.GatewayToken.DeletedAllResponse}
     ]
 
   def delete_all(conn, %{"site_id" => site_id}) do
@@ -89,8 +89,8 @@ defmodule API.GatewayTokenController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.{Site, GatewayToken}
+    alias Portal.Safe
+    alias Portal.{Site, GatewayToken}
 
     def fetch_site(id, subject) do
       result =

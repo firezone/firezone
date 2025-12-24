@@ -1,6 +1,6 @@
-defmodule Web.Resources.New do
+defmodule PortalWeb.Resources.New do
   use Web, :live_view
-  import Web.Resources.Components
+  import PortalWeb.Resources.Components
   alias __MODULE__.DB
 
   def mount(params, _session, socket) do
@@ -292,10 +292,10 @@ defmodule Web.Resources.New do
   defmodule DB do
     import Ecto.Query
     import Ecto.Changeset
-    alias Domain.{Safe, Resource}
+    alias Portal.{Safe, Resource}
 
     def all_sites(subject) do
-      from(g in Domain.Site, as: :sites)
+      from(g in Portal.Site, as: :sites)
       |> where([sites: s], s.managed_by != :system)
       |> Safe.scoped(subject)
       |> Safe.all()

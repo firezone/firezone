@@ -1,4 +1,4 @@
-defmodule Web.OIDC do
+defmodule PortalWeb.OIDC do
   use Web, :verified_routes
 
   @moduledoc """
@@ -6,20 +6,20 @@ defmodule Web.OIDC do
   Consolidates configuration building, authorization, token exchange, and logout logic.
   """
 
-  alias Domain.{Google, Okta, Entra, OIDC}
+  alias Portal.{Google, Okta, Entra, OIDC}
 
   @doc """
   Builds OpenIDConnect configuration for a provider.
   Supports Google, Okta, Entra, and generic OIDC providers.
   """
   def config_for_provider(%Google.AuthProvider{}) do
-    config = Domain.Config.fetch_env!(:domain, Domain.Google.AuthProvider)
+    config = Portal.Config.fetch_env!(:domain, Portal.Google.AuthProvider)
     config = Enum.into(config, %{redirect_uri: callback_url()})
     {:ok, config}
   end
 
   def config_for_provider(%Okta.AuthProvider{} = provider) do
-    config = Domain.Config.fetch_env!(:domain, Domain.Okta.AuthProvider)
+    config = Portal.Config.fetch_env!(:domain, Portal.Okta.AuthProvider)
 
     discovery_document_uri =
       config[:discovery_document_uri] ||
@@ -37,7 +37,7 @@ defmodule Web.OIDC do
   end
 
   def config_for_provider(%Entra.AuthProvider{} = provider) do
-    config = Domain.Config.fetch_env!(:domain, Domain.Entra.AuthProvider)
+    config = Portal.Config.fetch_env!(:domain, Portal.Entra.AuthProvider)
 
     discovery_document_uri =
       config[:discovery_document_uri] || "#{provider.issuer}/.well-known/openid-configuration"
@@ -52,7 +52,7 @@ defmodule Web.OIDC do
   end
 
   def config_for_provider(%OIDC.AuthProvider{} = provider) do
-    config = Domain.Config.fetch_env!(:domain, Domain.OIDC.AuthProvider)
+    config = Portal.Config.fetch_env!(:domain, Portal.OIDC.AuthProvider)
 
     config =
       Enum.into(config, %{
@@ -81,7 +81,7 @@ defmodule Web.OIDC do
   """
   def authorization_uri(provider, opts \\ []) do
     with {:ok, config} <- config_for_provider(provider) do
-      state = Keyword.get(opts, :state, Domain.Crypto.random_token(32))
+      state = Keyword.get(opts, :state, Portal.Crypto.random_token(32))
       verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
       challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
 
@@ -174,7 +174,7 @@ defmodule Web.OIDC do
   def setup_verification("entra", opts) do
     # For Entra, use admin consent endpoint to pre-check organization-wide consent
     # We route through /auth/oidc/callback so admins only need to configure one redirect URI
-    token = Domain.Crypto.random_token(32)
+    token = Portal.Crypto.random_token(32)
     state = "entra-verification:#{token}"
 
     config = verification_config_for_type("entra", opts)
@@ -210,7 +210,7 @@ defmodule Web.OIDC do
 
   def setup_verification(provider_type, opts) do
     # Generate verification token for OIDC callback
-    token = Domain.Crypto.random_token(32)
+    token = Portal.Crypto.random_token(32)
 
     # Generate PKCE verifier and challenge
     verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
@@ -265,22 +265,22 @@ defmodule Web.OIDC do
   # TODO: This can be refactored to reduce duplication with config_for_provider/1
 
   defp verification_config_for_type("google", opts) do
-    Application.fetch_env!(:domain, Domain.Google.AuthProvider)
+    Application.fetch_env!(:domain, Portal.Google.AuthProvider)
     |> verification_config(opts)
   end
 
   defp verification_config_for_type("entra", opts) do
-    Application.fetch_env!(:domain, Domain.Entra.AuthProvider)
+    Application.fetch_env!(:domain, Portal.Entra.AuthProvider)
     |> verification_config(opts)
   end
 
   defp verification_config_for_type("okta", opts) do
-    Application.fetch_env!(:domain, Domain.Okta.AuthProvider)
+    Application.fetch_env!(:domain, Portal.Okta.AuthProvider)
     |> verification_config(opts)
   end
 
   defp verification_config_for_type("oidc", opts) do
-    Application.fetch_env!(:domain, Domain.OIDC.AuthProvider)
+    Application.fetch_env!(:domain, Portal.OIDC.AuthProvider)
     |> verification_config(opts)
   end
 

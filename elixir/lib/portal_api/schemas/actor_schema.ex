@@ -1,4 +1,4 @@
-defmodule API.Schemas.Actor do
+defmodule PortalAPI.Schemas.Actor do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -70,7 +70,7 @@ defmodule API.Schemas.Actor do
   defmodule Request do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Actor
+    alias PortalAPI.Schemas.Actor
 
     OpenApiSpex.schema(%{
       title: "ActorRequest",
@@ -94,7 +94,7 @@ defmodule API.Schemas.Actor do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Actor
+    alias PortalAPI.Schemas.Actor
 
     OpenApiSpex.schema(%{
       title: "ActorResponse",
@@ -123,7 +123,7 @@ defmodule API.Schemas.Actor do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Actor
+    alias PortalAPI.Schemas.Actor
 
     OpenApiSpex.schema(%{
       title: "ActorsResponse",

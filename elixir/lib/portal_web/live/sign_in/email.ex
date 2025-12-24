@@ -1,5 +1,5 @@
-defmodule Web.SignIn.Email do
-  use Web, {:live_view, layout: {Web.Layouts, :public}}
+defmodule PortalWeb.SignIn.Email do
+  use Web, {:live_view, layout: {PortalWeb.Layouts, :public}}
   alias __MODULE__.DB
 
   def mount(
@@ -10,11 +10,11 @@ defmodule Web.SignIn.Email do
         session,
         socket
       ) do
-    redirect_params = Web.Auth.take_sign_in_params(params)
+    redirect_params = PortalWeb.Auth.take_sign_in_params(params)
 
     account = DB.get_account_by_id_or_slug(account_id_or_slug)
 
-    with %Domain.Account{} = account <- account,
+    with %Portal.Account{} = account <- account,
          {:ok, email} <- Map.fetch(session, "email") do
       form = to_form(%{"secret" => nil})
 
@@ -56,7 +56,7 @@ defmodule Web.SignIn.Email do
   end
 
   def mount(_params, _session, _socket) do
-    raise Web.LiveErrors.NotFoundError
+    raise PortalWeb.LiveErrors.NotFoundError
   end
 
   def render(assigns) do
@@ -196,12 +196,12 @@ defmodule Web.SignIn.Email do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Account
+    alias Portal.Safe
+    alias Portal.Account
 
     def get_account_by_id_or_slug(id_or_slug) do
       query =
-        if Domain.Repo.valid_uuid?(id_or_slug),
+        if Portal.Repo.valid_uuid?(id_or_slug),
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 

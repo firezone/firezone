@@ -1,4 +1,4 @@
-defmodule Web.Plugs.EnsureAuthenticated do
+defmodule PortalWeb.Plugs.EnsureAuthenticated do
   @behaviour Plug
 
   use Web, :verified_routes
@@ -6,7 +6,7 @@ defmodule Web.Plugs.EnsureAuthenticated do
   import Plug.Conn
   import Phoenix.Controller
 
-  alias Domain.Auth.Subject
+  alias Portal.Auth.Subject
 
   @impl true
   def init(opts), do: opts

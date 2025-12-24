@@ -1,5 +1,5 @@
-defmodule Web.BannerTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.BannerTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()

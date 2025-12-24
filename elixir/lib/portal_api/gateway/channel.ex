@@ -1,9 +1,9 @@
-defmodule API.Gateway.Channel do
+defmodule PortalAPI.Gateway.Channel do
   use API, :channel
-  alias API.Gateway.Views
+  alias PortalAPI.Gateway.Views
   alias __MODULE__.DB
 
-  alias Domain.{
+  alias Portal.{
     Cache,
     Changes.Change,
     Auth,
@@ -559,8 +559,8 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Domain.Account{slug: old_slug},
-           struct: %Domain.Account{slug: slug} = account
+           old_struct: %Portal.Account{slug: old_slug},
+           struct: %Portal.Account{slug: slug} = account
          },
          socket
        )
@@ -577,7 +577,7 @@ defmodule API.Gateway.Channel do
          %Change{
            op: :delete,
            old_struct:
-             %Domain.PolicyAuthorization{
+             %Portal.PolicyAuthorization{
                gateway_id: gateway_id,
                client_id: client_id,
                resource_id: resource_id
@@ -643,7 +643,7 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :delete,
-           old_struct: %Domain.Gateway{id: gateway_id}
+           old_struct: %Portal.Gateway{id: gateway_id}
          },
          %{
            assigns: %{gateway: %{id: gateway_id}}
@@ -660,12 +660,12 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Domain.Resource{
+           old_struct: %Portal.Resource{
              address: old_address,
              ip_stack: old_ip_stack,
              type: old_type
            },
-           struct: %Domain.Resource{address: address, ip_stack: ip_stack, type: type, id: id}
+           struct: %Portal.Resource{address: address, ip_stack: ip_stack, type: type, id: id}
          },
          socket
        )
@@ -684,8 +684,8 @@ defmodule API.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Domain.Resource{filters: old_filters},
-           struct: %Domain.Resource{filters: filters} = resource
+           old_struct: %Portal.Resource{filters: old_filters},
+           struct: %Portal.Resource{filters: filters} = resource
          },
          socket
        )
@@ -724,7 +724,7 @@ defmodule API.Gateway.Channel do
         {nil, relay}
 
       {{relay_lat, relay_lon}, relay} ->
-        distance = Domain.Geo.distance({lat, lon}, {relay_lat, relay_lon})
+        distance = Portal.Geo.distance({lat, lon}, {relay_lat, relay_lon})
         {distance, relay}
     end)
     |> Enum.sort_by(&elem(&1, 0))
@@ -734,9 +734,9 @@ defmodule API.Gateway.Channel do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Account
-    alias Domain.Client
+    alias Portal.Safe
+    alias Portal.Account
+    alias Portal.Client
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)

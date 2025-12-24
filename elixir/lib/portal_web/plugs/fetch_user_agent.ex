@@ -1,4 +1,4 @@
-defmodule Web.Plugs.FetchUserAgent do
+defmodule PortalWeb.Plugs.FetchUserAgent do
   @behaviour Plug
   import Plug.Conn
 

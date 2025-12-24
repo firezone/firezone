@@ -1,5 +1,5 @@
-defmodule API.Client.Views.Relay do
-  alias Domain.Relay
+defmodule PortalAPI.Client.Views.Relay do
+  alias Portal.Relay
 
   def render_many(relays, salt, expires_at) do
     relays

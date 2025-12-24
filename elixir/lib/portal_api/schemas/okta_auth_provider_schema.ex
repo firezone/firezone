@@ -1,4 +1,4 @@
-defmodule API.Schemas.OktaAuthProvider do
+defmodule PortalAPI.Schemas.OktaAuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -46,7 +46,7 @@ defmodule API.Schemas.OktaAuthProvider do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.OktaAuthProvider
+    alias PortalAPI.Schemas.OktaAuthProvider
 
     OpenApiSpex.schema(%{
       title: "OktaAuthProviderResponse",
@@ -67,7 +67,7 @@ defmodule API.Schemas.OktaAuthProvider do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.OktaAuthProvider
+    alias PortalAPI.Schemas.OktaAuthProvider
 
     OpenApiSpex.schema(%{
       title: "OktaAuthProviderListResponse",

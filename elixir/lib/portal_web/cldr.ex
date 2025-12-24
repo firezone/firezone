@@ -1,4 +1,4 @@
-defmodule Web.CLDR do
+defmodule PortalWeb.CLDR do
   use Cldr,
     locales: ["en"],
     providers: [Cldr.Number, Cldr.Calendar, Cldr.DateTime]

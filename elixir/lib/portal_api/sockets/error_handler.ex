@@ -1,4 +1,4 @@
-defmodule API.Sockets.ErrorHandler do
+defmodule PortalAPI.Sockets.ErrorHandler do
   def handle_error(conn, :unauthenticated),
     do: Plug.Conn.send_resp(conn, 403, "Forbidden")
 

@@ -1,5 +1,5 @@
-defmodule Web.SidebarTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.SidebarTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()

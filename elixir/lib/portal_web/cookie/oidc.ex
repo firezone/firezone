@@ -1,4 +1,4 @@
-defmodule Web.Cookie.OIDC do
+defmodule PortalWeb.Cookie.OIDC do
   @moduledoc """
   Cookie for OIDC authentication state.
   """
@@ -36,9 +36,9 @@ defmodule Web.Cookie.OIDC do
     sign: true,
     max_age: 5 * 60,
     same_site: "Lax",
-    secure: Domain.Config.fetch_env!(:web, :cookie_secure),
+    secure: Portal.Config.fetch_env!(:web, :cookie_secure),
     http_only: true,
-    signing_salt: Domain.Config.fetch_env!(:web, :cookie_signing_salt)
+    signing_salt: Portal.Config.fetch_env!(:web, :cookie_signing_salt)
   ]
 
   def put(conn, %__MODULE__{} = cookie) do

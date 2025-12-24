@@ -1,5 +1,5 @@
-defmodule API.Gateway.Views.Interface do
-  alias Domain.Gateway
+defmodule PortalAPI.Gateway.Views.Interface do
+  alias Portal.Gateway
 
   def render(%Gateway{} = gateway) do
     %{

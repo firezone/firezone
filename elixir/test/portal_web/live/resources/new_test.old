@@ -1,5 +1,5 @@
-defmodule Web.Live.Resources.NewTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Resources.NewTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -352,7 +352,7 @@ defmodule Web.Live.Resources.NewTest do
     |> form("form", resource: attrs)
     |> render_submit()
 
-    resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
+    resource = Repo.get_by(Portal.Resources.Resource, %{name: attrs.name, address: attrs.address})
 
     flash = assert_redirect(lv, ~p"/#{account}/policies/new?resource_id=#{resource}")
     assert flash["info"] == "Resource #{resource.name} created successfully."
@@ -394,7 +394,7 @@ defmodule Web.Live.Resources.NewTest do
     |> form("form", resource: attrs)
     |> render_submit()
 
-    resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
+    resource = Repo.get_by(Portal.Resources.Resource, %{name: attrs.name, address: attrs.address})
 
     flash =
       assert_redirect(lv, ~p"/#{account}/policies/new?resource_id=#{resource}&site_id=#{site}")
@@ -408,7 +408,7 @@ defmodule Web.Live.Resources.NewTest do
     identity: identity,
     conn: conn
   } do
-    Domain.Config.feature_flag_override(:traffic_filters, false)
+    Portal.Config.feature_flag_override(:traffic_filters, false)
 
     {:ok, lv, html} =
       conn
@@ -460,7 +460,7 @@ defmodule Web.Live.Resources.NewTest do
     |> form("form", resource: attrs)
     |> render_submit()
 
-    resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
+    resource = Repo.get_by(Portal.Resources.Resource, %{name: attrs.name, address: attrs.address})
     assert resource.ip_stack == :ipv4_only
   end
 
@@ -516,7 +516,7 @@ defmodule Web.Live.Resources.NewTest do
     |> form("form", resource: attrs)
     |> render_submit()
 
-    resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
+    resource = Repo.get_by(Portal.Resources.Resource, %{name: attrs.name, address: attrs.address})
     assert resource.site_id == site.id
 
     assert assert_redirect(
@@ -531,7 +531,7 @@ defmodule Web.Live.Resources.NewTest do
     identity: identity,
     conn: conn
   } do
-    Domain.Config.feature_flag_override(:traffic_filters, false)
+    Portal.Config.feature_flag_override(:traffic_filters, false)
 
     attrs = %{
       name: "foobar.com",
@@ -554,6 +554,6 @@ defmodule Web.Live.Resources.NewTest do
       |> render_submit()
     end
 
-    assert Repo.all(Domain.Resources.Resource) == []
+    assert Repo.all(Portal.Resources.Resource) == []
   end
 end

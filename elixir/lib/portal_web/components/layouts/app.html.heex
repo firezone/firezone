@@ -54,7 +54,7 @@
 
     <:item navigate={~p"/#{@account}/settings/account"}>Account</:item>
     <:item
-      :if={Domain.Billing.account_provisioned?(@account)}
+      :if={Portal.Billing.account_provisioned?(@account)}
       navigate={~p"/#{@account}/settings/billing"}
     >
       Billing
@@ -109,7 +109,7 @@
     Attempting to reconnect <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
   </.flash>
 
-  <% banner = Domain.Repo.one(Domain.Banner) %>
+  <% banner = Portal.Repo.one(Portal.Banner) %>
   <div
     :if={banner}
     id="banner"
@@ -119,7 +119,7 @@
   </div>
   <.flash :if={@account.warning} kind={:warning} class="m-1">
     {@account.warning}.
-    <span :if={Domain.Billing.account_provisioned?(@account)}>
+    <span :if={Portal.Billing.account_provisioned?(@account)}>
       Please
       <.link navigate={~p"/#{@account}/settings/billing"} class={link_style()}>
         check your billing information
@@ -128,7 +128,7 @@
     </span>
   </.flash>
 
-  <.flash :if={not Domain.Account.active?(@account)} kind={:error} class="m-1">
+  <.flash :if={not Portal.Account.active?(@account)} kind={:error} class="m-1">
     This account has been disabled and clients will not be able to connect.
     <span>
       Please

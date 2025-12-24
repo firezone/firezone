@@ -1,7 +1,7 @@
-defmodule Web.Policies.New do
+defmodule PortalWeb.Policies.New do
   use Web, :live_view
-  import Web.Policies.Components
-  alias Domain.{Policy, Auth}
+  import PortalWeb.Policies.Components
+  alias Portal.{Policy, Auth}
   alias __MODULE__.DB
 
   def mount(params, _session, socket) do
@@ -48,7 +48,7 @@ defmodule Web.Policies.New do
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <fieldset class="flex flex-col gap-2">
                 <.live_component
-                  module={Web.Components.FormComponents.SelectWithGroups}
+                  module={PortalWeb.Components.FormComponents.SelectWithGroups}
                   id="policy_group_id"
                   label="Group"
                   placeholder="Select Group"
@@ -93,16 +93,16 @@ defmodule Web.Policies.New do
                 </.live_component>
 
                 <.live_component
-                  module={Web.Components.FormComponents.SelectWithGroups}
+                  module={PortalWeb.Components.FormComponents.SelectWithGroups}
                   id="policy_resource_id"
                   label="Resource"
                   placeholder="Select Resource"
                   field={@form[:resource_id]}
                   fetch_option_callback={
-                    &Web.Resources.Components.fetch_resource_option(&1, @subject)
+                    &PortalWeb.Resources.Components.fetch_resource_option(&1, @subject)
                   }
                   list_options_callback={
-                    &Web.Resources.Components.list_resource_options(&1, @subject)
+                    &PortalWeb.Resources.Components.list_resource_options(&1, @subject)
                   }
                   on_change={&on_resource_change/1}
                   value={@enforced_resource_id || @form[:resource_id].value}
@@ -116,7 +116,7 @@ defmodule Web.Policies.New do
                   <:option :let={resource}>
                     <%= if resource.type == :internet do %>
                       Internet
-                      <span :if={not Domain.Account.internet_resource_enabled?(@account)}>
+                      <span :if={not Portal.Account.internet_resource_enabled?(@account)}>
                         - <span class="text-red-800">upgrade to unlock</span>
                       </span>
                     <% else %>
@@ -265,7 +265,7 @@ defmodule Web.Policies.New do
     end
   end
 
-  # Inline functions from Domain.Policies
+  # Inline functions from Portal.Policies
 
   defp new_policy(attrs, %Auth.Subject{} = subject) do
     import Ecto.Changeset
@@ -273,7 +273,7 @@ defmodule Web.Policies.New do
     %Policy{}
     |> cast(attrs, ~w[description group_id resource_id]a)
     |> validate_required(~w[group_id resource_id]a)
-    |> cast_embed(:conditions, with: &Domain.Policies.Condition.changeset/3)
+    |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
     |> put_change(:account_id, subject.account.id)
   end
@@ -285,9 +285,9 @@ defmodule Web.Policies.New do
 
   defmodule DB do
     import Ecto.Query
-    import Domain.Repo.Query
-    alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Group}
-    alias Domain.Auth
+    import Portal.Repo.Query
+    alias Portal.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Group}
+    alias Portal.Auth
 
     def insert_policy(changeset, %Auth.Subject{} = subject) do
       Safe.scoped(changeset, subject)
@@ -315,15 +315,15 @@ defmodule Web.Policies.New do
         from(g in Group, as: :groups)
         |> where([groups: g], g.id == ^id)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
-        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+        |> join(:left, [directory: d], gd in Portal.Google.Directory,
           on: gd.id == d.id and d.type == :google,
           as: :google_directory
         )
-        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
           on: ed.id == d.id and d.type == :entra,
           as: :entra_directory
         )
-        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+        |> join(:left, [directory: d], od in Portal.Okta.Directory,
           on: od.id == d.id and d.type == :okta,
           as: :okta_directory
         )
@@ -350,15 +350,15 @@ defmodule Web.Policies.New do
       query =
         from(g in Group, as: :groups)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
-        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+        |> join(:left, [directory: d], gd in Portal.Google.Directory,
           on: gd.id == d.id and d.type == :google,
           as: :google_directory
         )
-        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
           on: ed.id == d.id and d.type == :entra,
           as: :entra_directory
         )
-        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+        |> join(:left, [directory: d], od in Portal.Okta.Directory,
           on: od.id == d.id and d.type == :okta,
           as: :okta_directory
         )

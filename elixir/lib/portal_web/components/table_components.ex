@@ -1,11 +1,11 @@
-defmodule Web.TableComponents do
+defmodule PortalWeb.TableComponents do
   @moduledoc """
   Provides Table UI components.
   """
   use Phoenix.Component
   use Web, :verified_routes
-  use Gettext, backend: Web.Gettext
-  import Web.CoreComponents
+  use Gettext, backend: PortalWeb.Gettext
+  import PortalWeb.CoreComponents
 
   attr :table_id, :string, required: true, doc: "id of the parent table"
   attr :columns, :any, required: true, doc: "col slot taken from parent component"

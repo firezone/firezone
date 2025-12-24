@@ -1,5 +1,5 @@
-defmodule Web.Live.Resources.ShowTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Resources.ShowTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -75,7 +75,7 @@ defmodule Web.Live.Resources.ShowTest do
   } do
     resource = Fixtures.Resources.delete_resource(resource)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}")
@@ -191,7 +191,7 @@ defmodule Web.Live.Resources.ShowTest do
     identity: identity,
     conn: conn
   } do
-    Domain.Config.feature_flag_override(:traffic_filters, false)
+    Portal.Config.feature_flag_override(:traffic_filters, false)
 
     resource = Fixtures.Resources.create_resource(account: account, filters: [])
 
@@ -348,7 +348,7 @@ defmodule Web.Live.Resources.ShowTest do
 
     assert redirect_path == ~p"/#{account}/resources"
 
-    refute Repo.get(Domain.Resources.Resource, resource.id)
+    refute Repo.get(Portal.Resources.Resource, resource.id)
   end
 
   test "renders updated_by info when created by Identity", %{

@@ -1,12 +1,12 @@
-defmodule Web.ErrorJSONTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.ErrorJSONTest do
+  use PortalWeb.ConnCase, async: true
 
   test "renders 404" do
-    assert Web.ErrorJSON.render("404.json", %{}) == %{errors: %{detail: "Not Found"}}
+    assert PortalWeb.ErrorJSON.render("404.json", %{}) == %{errors: %{detail: "Not Found"}}
   end
 
   test "renders 500" do
-    assert Web.ErrorJSON.render("500.json", %{}) ==
+    assert PortalWeb.ErrorJSON.render("500.json", %{}) ==
              %{errors: %{detail: "internal_error"}}
   end
 end

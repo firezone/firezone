@@ -1,10 +1,10 @@
-defmodule API.IdentityControllerTest do
-  use API.ConnCase, async: true
+defmodule PortalAPI.IdentityControllerTest do
+  use PortalAPI.ConnCase, async: true
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.IdentityFixtures
-  import Domain.DirectoryFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.IdentityFixtures
+  import Portal.DirectoryFixtures
 
   setup do
     account = account_fixture()
@@ -171,7 +171,7 @@ defmodule API.IdentityControllerTest do
       assert data["idp_id"] == identity.idp_id
       assert data["email"] == identity.email
 
-      refute Repo.get_by(Domain.ExternalIdentity, id: identity.id)
+      refute Repo.get_by(Portal.ExternalIdentity, id: identity.id)
     end
   end
 end

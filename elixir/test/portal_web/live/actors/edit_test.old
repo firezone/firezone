@@ -1,5 +1,5 @@
-defmodule Web.Live.Actors.EditTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Actors.EditTest do
+  use PortalWeb.ConnCase, async: true
 
   describe "user" do
     setup do
@@ -38,7 +38,7 @@ defmodule Web.Live.Actors.EditTest do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
       actor = Fixtures.Actors.delete(actor)
 
-      assert_raise Web.LiveErrors.NotFoundError, fn ->
+      assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
         conn
         |> authorize_conn(identity)
         |> live(~p"/#{account}/actors/#{actor}/edit")
@@ -185,7 +185,7 @@ defmodule Web.Live.Actors.EditTest do
 
       assert_redirected(lv, ~p"/#{account}/actors/#{actor}")
 
-      assert updated_actor = Repo.get_by(Domain.Actor, id: actor.id)
+      assert updated_actor = Repo.get_by(Portal.Actor, id: actor.id)
       assert updated_actor.name == attrs.name
       assert updated_actor.name != actor.name
     end
@@ -233,7 +233,7 @@ defmodule Web.Live.Actors.EditTest do
     } do
       actor = Fixtures.Actors.delete(actor)
 
-      assert_raise Web.LiveErrors.NotFoundError, fn ->
+      assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
         conn
         |> authorize_conn(identity)
         |> live(~p"/#{account}/actors/#{actor}/edit")
@@ -346,7 +346,7 @@ defmodule Web.Live.Actors.EditTest do
       assert_redirected(lv, ~p"/#{account}/actors/#{actor}")
 
       assert updated_actor =
-               Repo.get_by(Domain.Actor, id: actor.id) |> Repo.preload(:memberships)
+               Repo.get_by(Portal.Actor, id: actor.id) |> Repo.preload(:memberships)
 
       assert updated_actor.name == attrs.name
       assert updated_actor.name != actor.name

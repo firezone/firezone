@@ -1,15 +1,15 @@
-defmodule Web.LiveTable do
+defmodule PortalWeb.LiveTable do
   @moduledoc """
   This module implements a live table component and it's helper function that are built
-  on top of `Domain.Repo.list/3` and allows to render a table with sorting, filtering and pagination.
+  on top of `Portal.Repo.list/3` and allows to render a table with sorting, filtering and pagination.
   """
   use Phoenix.LiveView
-  import Web.TableComponents
-  import Web.CoreComponents
-  import Web.FormComponents
+  import PortalWeb.TableComponents
+  import PortalWeb.CoreComponents
+  import PortalWeb.FormComponents
 
   @doc """
-  A drop-in replacement of `Web.TableComponents.table/1` component that adds sorting, filtering and pagination.
+  A drop-in replacement of `PortalWeb.TableComponents.table/1` component that adds sorting, filtering and pagination.
   """
   attr :id, :string, required: true, doc: "the id of the table"
   attr :ordered_by, :any, required: true, doc: "the current order for the table"
@@ -509,7 +509,7 @@ defmodule Web.LiveTable do
 
   defp preload_filters(query_module, hidden_filters, subject) do
     query_module
-    |> Domain.Repo.Query.get_filters()
+    |> Portal.Repo.Query.get_filters()
     |> Enum.reject(fn filter -> is_nil(filter.title) or filter.name in hidden_filters end)
     |> Enum.map(&preload_values(&1, query_module, subject))
   end
@@ -543,7 +543,7 @@ defmodule Web.LiveTable do
 
   if Mix.env() == :test do
     defp maybe_notify_test_pid(id) do
-      if test_pid = Domain.Config.get_env(:domain, :test_pid) do
+      if test_pid = Portal.Config.get_env(:domain, :test_pid) do
         send(test_pid, {:live_table_reloaded, id})
       end
 
@@ -624,7 +624,7 @@ defmodule Web.LiveTable do
           reset_live_table_params(socket, id, message)
 
         {:error, _reason} ->
-          raise Web.LiveErrors.NotFoundError
+          raise PortalWeb.LiveErrors.NotFoundError
       end
     else
       {:error, :invalid_filter} ->
@@ -704,7 +704,7 @@ defmodule Web.LiveTable do
   defp cast_filter(%{"from" => from, "to" => to}) do
     with {:ok, from, 0} <- DateTime.from_iso8601(from),
          {:ok, to, 0} <- DateTime.from_iso8601(to) do
-      {:ok, %Domain.Repo.Filter.Range{from: from, to: to}}
+      {:ok, %Portal.Repo.Filter.Range{from: from, to: to}}
     else
       _other -> {:error, :invalid_filter}
     end
@@ -712,7 +712,7 @@ defmodule Web.LiveTable do
 
   defp cast_filter(%{"to" => to}) do
     with {:ok, to, 0} <- DateTime.from_iso8601(to) do
-      {:ok, %Domain.Repo.Filter.Range{to: to}}
+      {:ok, %Portal.Repo.Filter.Range{to: to}}
     else
       _other -> {:error, :invalid_filter}
     end
@@ -720,7 +720,7 @@ defmodule Web.LiveTable do
 
   defp cast_filter(%{"from" => from}) do
     with {:ok, from, 0} <- DateTime.from_iso8601(from) do
-      {:ok, %Domain.Repo.Filter.Range{from: from}}
+      {:ok, %Portal.Repo.Filter.Range{from: from}}
     else
       _other -> {:error, :invalid_filter}
     end

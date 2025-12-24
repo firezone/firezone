@@ -1,28 +1,28 @@
-defmodule API.ChannelCase do
+defmodule PortalAPI.ChannelCase do
   use ExUnit.CaseTemplate
-  use Domain.CaseTemplate
+  use Portal.CaseTemplate
 
   @presences [
-    Domain.Presence
+    Portal.Presence
   ]
 
   using do
     quote do
       # Import conveniences for testing with channels
       import Phoenix.ChannelTest
-      import API.ChannelCase
-      alias Domain.Repo
-      alias Domain.Fixtures
+      import PortalAPI.ChannelCase
+      alias Portal.Repo
+      alias Portal.Fixtures
       require OpenTelemetry.Tracer
 
       # The default endpoint for testing
-      @endpoint API.Endpoint
+      @endpoint PortalAPI.Endpoint
     end
   end
 
   setup tags do
     # Isolate relay presence per test to prevent interference between async tests
-    Domain.Config.put_env_override(
+    Portal.Config.put_env_override(
       :domain,
       :relay_presence_topic,
       "presences:global_relays:#{inspect(make_ref())}"
@@ -33,7 +33,7 @@ defmodule API.ChannelCase do
       # contribute to Phoenix.Presence a way to propagate sandbox access from
       # the parent to the task supervisor it spawns in start_link/1 every time
       # it's used. Because this would not work as is:
-      # Ecto.Adapters.SQL.Sandbox.allow(Domain.Repo, self(), pid)
+      # Ecto.Adapters.SQL.Sandbox.allow(Portal.Repo, self(), pid)
 
       on_exit(fn ->
         ref = Process.monitor(pid)

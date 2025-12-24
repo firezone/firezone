@@ -1,4 +1,4 @@
-defmodule API.Schemas.Client do
+defmodule PortalAPI.Schemas.Client do
   alias OpenApiSpex.Schema
 
   defmodule GetSchema do
@@ -154,7 +154,7 @@ defmodule API.Schemas.Client do
   defmodule Request do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Client
+    alias PortalAPI.Schemas.Client
 
     OpenApiSpex.schema(%{
       title: "ClientPutRequest",
@@ -175,7 +175,7 @@ defmodule API.Schemas.Client do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Client
+    alias PortalAPI.Schemas.Client
 
     OpenApiSpex.schema(%{
       title: "ClientResponse",
@@ -216,7 +216,7 @@ defmodule API.Schemas.Client do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Client
+    alias PortalAPI.Schemas.Client
 
     OpenApiSpex.schema(%{
       title: "ClientsResponse",

@@ -1,8 +1,8 @@
-defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Actors.ServiceAccounts.NewIdentityTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
@@ -143,7 +143,7 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
       |> form("form", token: attrs)
       |> render_submit()
 
-    context = %Domain.Auth.Context{
+    context = %Portal.Auth.Context{
       type: :client,
       remote_ip: Fixtures.Auth.remote_ip(),
       user_agent: Fixtures.Auth.user_agent(),
@@ -158,7 +158,7 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
              |> Floki.parse_fragment!()
              |> Floki.find("code")
              |> element_to_text()
-             |> Domain.Auth.authenticate(context)
+             |> Portal.Auth.authenticate(context)
 
     assert subject.actor.id == actor.id
     assert DateTime.to_date(subject.expires_at) == expires_at

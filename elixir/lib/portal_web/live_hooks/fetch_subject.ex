@@ -1,14 +1,14 @@
-defmodule Web.LiveHooks.FetchSubject do
+defmodule PortalWeb.LiveHooks.FetchSubject do
   import Phoenix.LiveView
-  alias Domain.Account
-  alias Domain.Auth
-  alias Domain.Presence
+  alias Portal.Account
+  alias Portal.Auth
+  alias Portal.Presence
 
   def on_mount(:default, _params, session, %{assigns: %{account: %Account{} = account}} = socket) do
     socket =
       Phoenix.Component.assign_new(socket, :subject, fn ->
         user_agent = get_connect_info(socket, :user_agent)
-        real_ip = Web.Auth.real_ip(socket)
+        real_ip = PortalWeb.Auth.real_ip(socket)
         x_headers = get_connect_info(socket, :x_headers)
         context = Auth.Context.build(real_ip, user_agent, x_headers, :portal)
 

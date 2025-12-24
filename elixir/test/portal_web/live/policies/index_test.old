@@ -1,6 +1,6 @@
-defmodule Web.Live.Policies.IndexTest do
-  use Web.ConnCase, async: true
-  alias Domain.Changes
+defmodule PortalWeb.Live.Policies.IndexTest do
+  use PortalWeb.ConnCase, async: true
+  alias Portal.Changes
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -64,8 +64,8 @@ defmodule Web.Live.Policies.IndexTest do
   } do
     policy =
       Fixtures.Policies.create_policy(account: account, description: "foo bar")
-      |> Domain.Repo.preload(:group)
-      |> Domain.Repo.preload(:resource)
+      |> Portal.Repo.preload(:group)
+      |> Portal.Repo.preload(:resource)
 
     {:ok, lv, _html} =
       conn
@@ -130,7 +130,7 @@ defmodule Web.Live.Policies.IndexTest do
       refute html =~ "The table data has changed."
       refute html =~ "reload-btn"
 
-      Domain.Policies.delete_policy(policy, subject)
+      Portal.Policies.delete_policy(policy, subject)
 
       Changes.Hooks.Policies.on_delete(0, %{
         "id" => policy.id,

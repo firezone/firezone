@@ -1,6 +1,6 @@
-defmodule API.GroupJSON do
-  alias API.Pagination
-  alias Domain.Group
+defmodule PortalAPI.GroupJSON do
+  alias PortalAPI.Pagination
+  alias Portal.Group
 
   @doc """
   Renders a list of Groups.

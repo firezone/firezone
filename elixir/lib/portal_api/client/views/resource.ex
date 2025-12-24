@@ -1,6 +1,6 @@
-defmodule API.Client.Views.Resource do
-  alias API.Client.Views
-  alias Domain.Cache.Cacheable
+defmodule PortalAPI.Client.Views.Resource do
+  alias PortalAPI.Client.Views
+  alias Portal.Cache.Cacheable
 
   def render_many(resources) do
     Enum.map(resources, &render/1)
@@ -29,8 +29,8 @@ defmodule API.Client.Views.Resource do
   end
 
   defp render_resource(%{type: :ip} = resource) do
-    {:ok, inet} = Domain.Types.IP.cast(resource.address)
-    netmask = Domain.Types.CIDR.max_netmask(inet)
+    {:ok, inet} = Portal.Types.IP.cast(resource.address)
+    netmask = Portal.Types.CIDR.max_netmask(inet)
     address = to_string(%{inet | netmask: netmask})
 
     %{

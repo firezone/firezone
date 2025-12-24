@@ -1,5 +1,5 @@
-defmodule Web.Live.Policies.EditTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Policies.EditTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -50,7 +50,7 @@ defmodule Web.Live.Policies.EditTest do
   } do
     Fixtures.Policies.delete_policy(policy)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/policies/#{policy}/edit")
@@ -184,7 +184,7 @@ defmodule Web.Live.Policies.EditTest do
 
     assert_redirected(lv, ~p"/#{account}/policies/#{policy}")
 
-    assert policy = Repo.get_by(Domain.Policy, id: policy.id)
+    assert policy = Repo.get_by(Portal.Policy, id: policy.id)
     assert policy.description == attrs.description
   end
 
@@ -206,7 +206,7 @@ defmodule Web.Live.Policies.EditTest do
     |> form("form", policy: attrs)
     |> render_submit()
 
-    assert updated_policy = Repo.get_by(Domain.Policy, id: policy.id)
+    assert updated_policy = Repo.get_by(Portal.Policy, id: policy.id)
 
     assert_redirected(lv, ~p"/#{account}/policies/#{updated_policy.id}")
   end

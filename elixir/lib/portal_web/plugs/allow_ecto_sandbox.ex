@@ -1,4 +1,4 @@
-defmodule Web.Plugs.AllowEctoSandbox do
+defmodule PortalWeb.Plugs.AllowEctoSandbox do
   @behaviour Plug
 
   import Plug.Conn

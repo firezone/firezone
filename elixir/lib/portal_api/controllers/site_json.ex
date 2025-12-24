@@ -1,5 +1,5 @@
-defmodule API.SiteJSON do
-  alias API.Pagination
+defmodule PortalAPI.SiteJSON do
+  alias PortalAPI.Pagination
 
   @doc """
   Renders a list of Sites.
@@ -18,7 +18,7 @@ defmodule API.SiteJSON do
     %{data: data(site)}
   end
 
-  defp data(%Domain.Site{} = site) do
+  defp data(%Portal.Site{} = site) do
     %{
       id: site.id,
       name: site.name

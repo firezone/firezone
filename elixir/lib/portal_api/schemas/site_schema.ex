@@ -1,4 +1,4 @@
-defmodule API.Schemas.Site do
+defmodule PortalAPI.Schemas.Site do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -24,7 +24,7 @@ defmodule API.Schemas.Site do
   defmodule Request do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Site
+    alias PortalAPI.Schemas.Site
 
     OpenApiSpex.schema(%{
       title: "SiteRequest",
@@ -45,7 +45,7 @@ defmodule API.Schemas.Site do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Site
+    alias PortalAPI.Schemas.Site
 
     OpenApiSpex.schema(%{
       title: "SiteResponse",
@@ -66,7 +66,7 @@ defmodule API.Schemas.Site do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Site
+    alias PortalAPI.Schemas.Site
 
     OpenApiSpex.schema(%{
       title: "SiteListResponse",

@@ -1,10 +1,10 @@
-defmodule Web.Policies.Show do
+defmodule PortalWeb.Policies.Show do
   use Web, :live_view
-  import Web.Policies.Components
-  alias Domain.{Policy, Auth}
+  import PortalWeb.Policies.Components
+  alias Portal.{Policy, Auth}
   alias __MODULE__.DB
   import Ecto.Changeset
-  import Domain.Changeset
+  import Portal.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
     policy = get_policy!(id, socket.assigns.subject)
@@ -291,7 +291,7 @@ defmodule Web.Policies.Show do
      |> push_navigate(to: ~p"/#{socket.assigns.account}/policies")}
   end
 
-  # Inline functions from Domain.Policies
+  # Inline functions from Portal.Policies
 
   defp get_policy!(id, %Auth.Subject{} = subject) do
     DB.get_policy!(id, subject)
@@ -321,8 +321,8 @@ defmodule Web.Policies.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
-    alias Domain.Auth
+    alias Portal.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
+    alias Portal.Auth
 
     def get_policy!(id, %Auth.Subject{} = subject) do
       from(p in Policy, as: :policies)
@@ -359,8 +359,8 @@ defmodule Web.Policies.Show do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Policy{} = policy,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Policy{} = policy,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -374,7 +374,7 @@ defmodule Web.Policies.Show do
     import Ecto.Query
 
     def all do
-      from(policy_authorizations in Domain.PolicyAuthorization, as: :policy_authorizations)
+      from(policy_authorizations in Portal.PolicyAuthorization, as: :policy_authorizations)
     end
 
     def by_policy_id(queryable, policy_id) do

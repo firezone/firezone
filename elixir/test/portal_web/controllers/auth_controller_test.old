@@ -1,8 +1,8 @@
-defmodule Web.AuthControllerTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.AuthControllerTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
     %{}
   end
 
@@ -221,7 +221,7 @@ defmodule Web.AuthControllerTest do
                ]
              } = conn.private.plug_session
 
-      context = %Domain.Auth.Context{
+      context = %Portal.Auth.Context{
         type: :browser,
         remote_ip: conn.remote_ip,
         user_agent: "testing",
@@ -231,7 +231,7 @@ defmodule Web.AuthControllerTest do
         remote_ip_location_lon: -120.4194
       }
 
-      assert {:ok, subject} = Domain.Auth.authenticate(session_token, context)
+      assert {:ok, subject} = Portal.Auth.authenticate(session_token, context)
       assert subject.identity.id == identity.id
       assert subject.identity.last_seen_user_agent == "testing"
       assert subject.identity.last_seen_remote_ip.address == {127, 0, 0, 1}
@@ -773,13 +773,13 @@ defmodule Web.AuthControllerTest do
 
       assert account_id == account.id
 
-      context = %Domain.Auth.Context{
+      context = %Portal.Auth.Context{
         type: context_type,
         remote_ip: conn.remote_ip,
         user_agent: conn.assigns.user_agent
       }
 
-      assert {:ok, subject} = Domain.Auth.authenticate(session_token, context)
+      assert {:ok, subject} = Portal.Auth.authenticate(session_token, context)
       assert subject.identity.id == identity.id
       assert subject.identity.last_seen_user_agent == "testing"
       assert subject.identity.last_seen_remote_ip.address == {127, 0, 0, 1}
@@ -815,7 +815,7 @@ defmodule Web.AuthControllerTest do
       email_secret: email_secret
     } do
       key = {:sign_in_link, identity.id}
-      Domain.Mailer.RateLimiter.rate_limit(key, 3, 60_000, fn -> :ok end)
+      Portal.Mailer.RateLimiter.rate_limit(key, 3, 60_000, fn -> :ok end)
 
       conn =
         conn
@@ -827,7 +827,7 @@ defmodule Web.AuthControllerTest do
       assert conn.assigns.flash == %{}
       assert redirected_to(conn) == ~p"/#{account}/sites"
 
-      refute :ets.tab2list(Domain.Mailer.RateLimiter.ETS)
+      refute :ets.tab2list(Portal.Mailer.RateLimiter.ETS)
              |> Enum.any?(fn {ets_key, _, _} -> ets_key == key end)
     end
   end
@@ -863,7 +863,7 @@ defmodule Web.AuthControllerTest do
 
       assert params == %{}
 
-      code_challenge = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier)
+      code_challenge = Portal.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier)
 
       assert URI.decode_query(uri.query) == %{
                "access_type" => "offline",
@@ -907,7 +907,7 @@ defmodule Web.AuthControllerTest do
 
       assert params == redirect_params
 
-      code_challenge = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier)
+      code_challenge = Portal.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier)
 
       assert URI.decode_query(uri.query) == %{
                "access_type" => "offline",
@@ -1178,13 +1178,13 @@ defmodule Web.AuthControllerTest do
                "sessions" => [{context_type, _account_id, encoded_token}]
              } = conn.private.plug_session
 
-      context = %Domain.Auth.Context{
+      context = %Portal.Auth.Context{
         type: context_type,
         remote_ip: conn.remote_ip,
         user_agent: conn.assigns.user_agent
       }
 
-      assert {:ok, subject} = Domain.Auth.authenticate(encoded_token, context)
+      assert {:ok, subject} = Portal.Auth.authenticate(encoded_token, context)
       assert subject.identity.id == identity.id
       assert subject.identity.last_seen_user_agent == context.user_agent
       assert subject.identity.last_seen_remote_ip.address == context.remote_ip
@@ -1224,7 +1224,7 @@ defmodule Web.AuthControllerTest do
 
   describe "sign_out/2" do
     test "redirects to the sign in page and renews the session", %{conn: conn} do
-      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
@@ -1263,7 +1263,7 @@ defmodule Web.AuthControllerTest do
     end
 
     test "deletes the token", %{conn: conn} do
-      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
@@ -1271,7 +1271,7 @@ defmodule Web.AuthControllerTest do
       conn = authorize_conn(conn, identity)
 
       live_socket_id = "sessions:#{conn.assigns.subject.token_id}"
-      Web.Endpoint.subscribe(live_socket_id)
+      PortalWeb.Endpoint.subscribe(live_socket_id)
 
       conn =
         conn
@@ -1279,7 +1279,7 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to(conn) =~ ~p"/#{account}"
 
-      refute Repo.get(Domain.ClientToken, conn.assigns.subject.token_id)
+      refute Repo.get(Portal.ClientToken, conn.assigns.subject.token_id)
     end
 
     test "works even if user is already logged out", %{conn: conn} do
@@ -1304,7 +1304,7 @@ defmodule Web.AuthControllerTest do
   end
 
   test "keeps up to 5 recent accounts the used signed in to", %{conn: conn} do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     {conn, account_ids} =
       Enum.reduce(1..6, {conn, []}, fn _i, {conn, account_ids} ->
@@ -1334,7 +1334,7 @@ defmodule Web.AuthControllerTest do
         {conn, [account.id] ++ account_ids}
       end)
 
-    conn = %{conn | secret_key_base: Web.Endpoint.config(:secret_key_base)}
+    conn = %{conn | secret_key_base: PortalWeb.Endpoint.config(:secret_key_base)}
     conn = fetch_cookies(conn, encrypted: ["recent_account_ids"])
     assert %{"recent_account_ids" => recent_account_ids} = conn.cookies
     recent_account_ids = :erlang.binary_to_term(recent_account_ids)

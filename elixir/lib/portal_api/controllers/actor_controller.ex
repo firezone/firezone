@@ -1,12 +1,12 @@
-defmodule API.ActorController do
+defmodule PortalAPI.ActorController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias API.Pagination
-  alias Domain.Safe
+  alias PortalAPI.Pagination
+  alias Portal.Safe
   alias __MODULE__.DB
   import Ecto.Changeset
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Actors"]
 
@@ -17,7 +17,7 @@ defmodule API.ActorController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"ActorsResponse", "application/json", API.Schemas.Actor.ListResponse}
+      ok: {"ActorsResponse", "application/json", PortalAPI.Schemas.Actor.ListResponse}
     ]
 
   # List Actors
@@ -40,7 +40,7 @@ defmodule API.ActorController do
       ]
     ],
     responses: [
-      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
 
   # Show a specific Actor
@@ -53,9 +53,9 @@ defmodule API.ActorController do
   operation :create,
     summary: "Create an Actor",
     request_body:
-      {"Actor attributes", "application/json", API.Schemas.Actor.Request, required: true},
+      {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.Request, required: true},
     responses: [
-      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
 
   # Create a new Actor
@@ -85,7 +85,7 @@ defmodule API.ActorController do
   defp normalize_actor_type(_), do: nil
 
   defp check_billing_limits(account, :service_account) do
-    if Domain.Billing.can_create_service_accounts?(account) do
+    if Portal.Billing.can_create_service_accounts?(account) do
       :ok
     else
       {:error, :service_accounts_limit_reached}
@@ -94,10 +94,10 @@ defmodule API.ActorController do
 
   defp check_billing_limits(account, :account_admin_user) do
     cond do
-      not Domain.Billing.can_create_users?(account) ->
+      not Portal.Billing.can_create_users?(account) ->
         {:error, :users_limit_reached}
 
-      not Domain.Billing.can_create_admin_users?(account) ->
+      not Portal.Billing.can_create_admin_users?(account) ->
         {:error, :admins_limit_reached}
 
       true ->
@@ -106,7 +106,7 @@ defmodule API.ActorController do
   end
 
   defp check_billing_limits(account, :account_user) do
-    if Domain.Billing.can_create_users?(account) do
+    if Portal.Billing.can_create_users?(account) do
       :ok
     else
       {:error, :users_limit_reached}
@@ -126,9 +126,9 @@ defmodule API.ActorController do
       ]
     ],
     request_body:
-      {"Actor attributes", "application/json", API.Schemas.Actor.Request, required: true},
+      {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.Request, required: true},
     responses: [
-      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
 
   # Update an Actor
@@ -157,7 +157,7 @@ defmodule API.ActorController do
       ]
     ],
     responses: [
-      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
 
   # Delete an Actor
@@ -171,7 +171,7 @@ defmodule API.ActorController do
   end
 
   defp create_actor_changeset(account, attrs) do
-    %Domain.Actor{account_id: account.id}
+    %Portal.Actor{account_id: account.id}
     |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in])
     |> validate_required([:name, :type])
   end
@@ -184,10 +184,10 @@ defmodule API.ActorController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
+    alias Portal.Safe
 
     def list_actors(subject, opts \\ []) do
-      from(a in Domain.Actor, as: :actors)
+      from(a in Portal.Actor, as: :actors)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -200,7 +200,7 @@ defmodule API.ActorController do
     end
 
     def fetch_actor(id, subject) do
-      from(a in Domain.Actor, where: a.id == ^id)
+      from(a in Portal.Actor, where: a.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do

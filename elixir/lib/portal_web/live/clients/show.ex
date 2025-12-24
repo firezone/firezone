@@ -1,11 +1,11 @@
-defmodule Web.Clients.Show do
+defmodule PortalWeb.Clients.Show do
   use Web, :live_view
-  import Web.Policies.Components
-  import Web.Clients.Components
-  alias Domain.{Presence.Clients, ComponentVersions}
+  import PortalWeb.Policies.Components
+  import PortalWeb.Clients.Components
+  alias Portal.{Presence.Clients, ComponentVersions}
   alias __MODULE__.DB
   import Ecto.Changeset
-  import Domain.Changeset
+  import Portal.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
     client = DB.get_client!(id, socket.assigns.subject)
@@ -87,7 +87,7 @@ defmodule Web.Clients.Show do
                   ID <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
                 </:target>
                 <:content>
-                  Database ID assigned to this Client that can be used to manage this Client via the REST API.
+                  Database ID assigned to this Client that can be used to manage this Client via the REST PortalAPI.
                 </:content>
               </.popover>
             </:label>
@@ -471,8 +471,8 @@ defmodule Web.Clients.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Presence.Clients, Safe}
-    alias Domain.Client
+    alias Portal.{Presence.Clients, Safe}
+    alias Portal.Client
 
     def get_client!(id, subject) do
       from(c in Client, as: :clients)
@@ -522,12 +522,12 @@ defmodule Web.Clients.Show do
       end
     end
 
-    # Inline functions from Domain.PolicyAuthorizations
+    # Inline functions from Portal.PolicyAuthorizations
     def list_policy_authorizations_for(assoc, subject, opts \\ [])
 
     def list_policy_authorizations_for(
-          %Domain.Policy{} = policy,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Policy{} = policy,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -536,8 +536,8 @@ defmodule Web.Clients.Show do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Resource{} = resource,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Resource{} = resource,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -546,8 +546,8 @@ defmodule Web.Clients.Show do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Client{} = client,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Client{} = client,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -556,8 +556,8 @@ defmodule Web.Clients.Show do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Actor{} = actor,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Actor{} = actor,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -566,8 +566,8 @@ defmodule Web.Clients.Show do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Gateway{} = gateway,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Gateway{} = gateway,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -577,8 +577,8 @@ defmodule Web.Clients.Show do
 
     defp list_policy_authorizations(queryable, subject, opts) do
       queryable
-      |> Domain.Safe.scoped(subject)
-      |> Domain.Safe.list(DB.PolicyAuthorizationQuery, opts)
+      |> Portal.Safe.scoped(subject)
+      |> Portal.Safe.list(DB.PolicyAuthorizationQuery, opts)
     end
   end
 
@@ -586,7 +586,7 @@ defmodule Web.Clients.Show do
     import Ecto.Query
 
     def all do
-      from(policy_authorizations in Domain.PolicyAuthorization, as: :policy_authorizations)
+      from(policy_authorizations in Portal.PolicyAuthorization, as: :policy_authorizations)
     end
 
     def expired(queryable) do

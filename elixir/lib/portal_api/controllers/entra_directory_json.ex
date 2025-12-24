@@ -1,5 +1,5 @@
-defmodule API.EntraDirectoryJSON do
-  alias Domain.Entra
+defmodule PortalAPI.EntraDirectoryJSON do
+  alias Portal.Entra
 
   def index(%{directories: directories}) do
     %{data: Enum.map(directories, &data/1)}

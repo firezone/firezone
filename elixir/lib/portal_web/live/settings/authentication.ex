@@ -1,7 +1,7 @@
-defmodule Web.Settings.Authentication do
+defmodule PortalWeb.Settings.Authentication do
   use Web, :live_view
 
-  alias Domain.{
+  alias Portal.{
     AuthProvider,
     EmailOTP,
     Userpass,
@@ -132,7 +132,7 @@ defmodule Web.Settings.Authentication do
         []
       end
 
-    with {:ok, verification} <- Web.OIDC.setup_verification(type, opts) do
+    with {:ok, verification} <- PortalWeb.OIDC.setup_verification(type, opts) do
       # Subscribe to verification PubSub topic if connected
       # For Entra, use "entra-verification:" topic; for others use "oidc-verification:"
       topic =
@@ -142,7 +142,7 @@ defmodule Web.Settings.Authentication do
           "oidc-verification:#{verification.token}"
         end
 
-      :ok = Domain.PubSub.subscribe(topic)
+      :ok = Portal.PubSub.subscribe(topic)
 
       socket = assign(socket, verification: verification)
 
@@ -286,7 +286,7 @@ defmodule Web.Settings.Authentication do
 
   # Sent by the Entra admin consent verification process from another browser tab
   def handle_info({:entra_admin_consent, pid, issuer, _tenant_id, state_token}, socket) do
-    :ok = Domain.PubSub.unsubscribe("entra-verification:#{state_token}")
+    :ok = Portal.PubSub.unsubscribe("entra-verification:#{state_token}")
 
     stored_token = socket.assigns.verification.token
 
@@ -313,7 +313,7 @@ defmodule Web.Settings.Authentication do
 
   # Sent by the OIDC verification process from another browser tab
   def handle_info({:oidc_verify, pid, code, state_token}, socket) do
-    :ok = Domain.PubSub.unsubscribe("oidc-verification:#{state_token}")
+    :ok = Portal.PubSub.unsubscribe("oidc-verification:#{state_token}")
 
     stored_token = socket.assigns.verification.token
 
@@ -322,7 +322,7 @@ defmodule Web.Settings.Authentication do
       code_verifier = socket.assigns.verification.verifier
       config = socket.assigns.verification.config
 
-      case Web.OIDC.verify_callback(config, code, code_verifier) do
+      case PortalWeb.OIDC.verify_callback(config, code, code_verifier) do
         {:ok, claims} ->
           send(pid, :success)
 
@@ -806,9 +806,9 @@ defmodule Web.Settings.Authentication do
         account_id = assigns.account_id
         provider_id = Ecto.Changeset.get_field(assigns.form.source, :id)
 
-        Web.Endpoint.url() <> "/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"
+        PortalWeb.Endpoint.url() <> "/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"
       else
-        Web.Endpoint.url() <> "/auth/oidc/callback"
+        PortalWeb.Endpoint.url() <> "/auth/oidc/callback"
       end
 
     assigns = assign(assigns, :redirect_uri, redirect_uri)
@@ -1304,7 +1304,7 @@ defmodule Web.Settings.Authentication do
   end
 
   defmodule DB do
-    alias Domain.{AuthProvider, EmailOTP, Userpass, OIDC, Entra, Google, Okta, Safe}
+    alias Portal.{AuthProvider, EmailOTP, Userpass, OIDC, Entra, Google, Okta, Safe}
     import Ecto.Query
     import Ecto.Changeset
 
@@ -1409,7 +1409,7 @@ defmodule Web.Settings.Authentication do
       provider_ids = Enum.map(providers, & &1.id)
 
       client_tokens_counts =
-        from(ct in Domain.ClientToken,
+        from(ct in Portal.ClientToken,
           where: ct.auth_provider_id in ^provider_ids,
           group_by: ct.auth_provider_id,
           select: {ct.auth_provider_id, count(ct.id)}
@@ -1419,7 +1419,7 @@ defmodule Web.Settings.Authentication do
         |> Map.new()
 
       portal_sessions_counts =
-        from(ps in Domain.PortalSession,
+        from(ps in Portal.PortalSession,
           where: ps.auth_provider_id in ^provider_ids,
           group_by: ps.auth_provider_id,
           select: {ps.auth_provider_id, count(ps.id)}
@@ -1441,12 +1441,12 @@ defmodule Web.Settings.Authentication do
     def revoke_sessions_for_provider(provider, subject) do
       Safe.transact(fn ->
         {client_tokens_deleted, _} =
-          from(ct in Domain.ClientToken, where: ct.auth_provider_id == ^provider.id)
+          from(ct in Portal.ClientToken, where: ct.auth_provider_id == ^provider.id)
           |> Safe.scoped(subject)
           |> Safe.delete_all()
 
         {portal_sessions_deleted, _} =
-          from(ps in Domain.PortalSession, where: ps.auth_provider_id == ^provider.id)
+          from(ps in Portal.PortalSession, where: ps.auth_provider_id == ^provider.id)
           |> Safe.scoped(subject)
           |> Safe.delete_all()
 

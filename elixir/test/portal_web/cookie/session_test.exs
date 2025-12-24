@@ -1,14 +1,14 @@
-defmodule Web.Cookie.SessionTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Cookie.SessionTest do
+  use PortalWeb.ConnCase, async: true
 
-  alias Web.Cookie.Session
+  alias PortalWeb.Cookie.Session
 
   defp recycle_conn(conn, account_id) do
     cookie_key = "sess_#{account_id}"
     cookie_value = conn.resp_cookies[cookie_key].value
 
     build_conn()
-    |> Map.put(:secret_key_base, Web.Endpoint.config(:secret_key_base))
+    |> Map.put(:secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
     |> Plug.Test.put_req_cookie(cookie_key, cookie_value)
   end
 
@@ -19,7 +19,7 @@ defmodule Web.Cookie.SessionTest do
     cookie_value_2 = conn.resp_cookies[cookie_key_2].value
 
     build_conn()
-    |> Map.put(:secret_key_base, Web.Endpoint.config(:secret_key_base))
+    |> Map.put(:secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
     |> Plug.Test.put_req_cookie(cookie_key_1, cookie_value_1)
     |> Plug.Test.put_req_cookie(cookie_key_2, cookie_value_2)
   end

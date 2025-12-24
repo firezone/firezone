@@ -1,5 +1,5 @@
-defmodule API.Gateway.Views.Resource do
-  alias Domain.Cache.Cacheable
+defmodule PortalAPI.Gateway.Views.Resource do
+  alias Portal.Cache.Cacheable
 
   def render(%Cacheable.Resource{} = resource) do
     resource =
@@ -38,8 +38,8 @@ defmodule API.Gateway.Views.Resource do
   end
 
   defp render_resource(%{type: :ip} = resource) do
-    {:ok, inet} = Domain.Types.IP.cast(resource.address)
-    netmask = Domain.Types.CIDR.max_netmask(inet)
+    {:ok, inet} = Portal.Types.IP.cast(resource.address)
+    netmask = Portal.Types.CIDR.max_netmask(inet)
     address = to_string(%{inet | netmask: netmask})
 
     %{

@@ -1,6 +1,6 @@
-defmodule API.ResourceJSON do
-  alias API.Pagination
-  alias Domain.Resource
+defmodule PortalAPI.ResourceJSON do
+  alias PortalAPI.Pagination
+  alias Portal.Resource
 
   @doc """
   Renders a list of resources.

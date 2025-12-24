@@ -1,6 +1,6 @@
-defmodule Web.Policies.Index do
+defmodule PortalWeb.Policies.Index do
   use Web, :live_view
-  alias Domain.{Changes.Change, PubSub}
+  alias Portal.{Changes.Change, PubSub}
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
@@ -155,11 +155,11 @@ defmodule Web.Policies.Index do
       when event in ["paginate", "order_by", "filter", "reload"],
       do: handle_live_table_event(event, params, socket)
 
-  def handle_info(%Change{old_struct: %Domain.Policy{}}, socket) do
+  def handle_info(%Change{old_struct: %Portal.Policy{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
-  def handle_info(%Change{struct: %Domain.Policy{}}, socket) do
+  def handle_info(%Change{struct: %Portal.Policy{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
@@ -169,8 +169,8 @@ defmodule Web.Policies.Index do
 
   defmodule DB do
     import Ecto.Query
-    import Domain.Repo.Query
-    alias Domain.{Safe, Policy, Site, Resource}
+    import Portal.Repo.Query
+    alias Portal.{Safe, Policy, Site, Resource}
 
     def get_site(id, subject) do
       from(s in Site, as: :sites)
@@ -201,43 +201,43 @@ defmodule Web.Policies.Index do
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :resource_id,
           title: "Resource",
           type: {:string, :uuid},
           fun: &filter_by_resource_id/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :site_id,
           title: "Site",
           type: {:string, :uuid},
           fun: &filter_by_site_id/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :group_id,
           title: "Group",
           type: {:string, :uuid},
           fun: &filter_by_group_id/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :group_name,
           title: "Group Name",
           type: {:string, :websearch},
           fun: &filter_by_group_name/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :resource_name,
           title: "Resource Name",
           type: {:string, :websearch},
           fun: &filter_by_resource_name/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :group_or_resource,
           title: "Group or Resource",
           type: {:string, :websearch},
           fun: &filter_by_group_or_resource/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :status,
           title: "Status",
           type: :string,

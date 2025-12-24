@@ -147,7 +147,7 @@ defmodule Portal.GoogleCloudPlatform do
   end
 
   @doc """
-  Sends metrics to Google Cloud Monitoring API.
+  Sends metrics to Google Cloud Monitoring PortalAPI.
   """
   def send_metrics(project_id, time_series) do
     cloud_metrics_endpoint_url =

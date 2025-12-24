@@ -1,7 +1,7 @@
-defmodule Web.SignUp do
-  use Web, {:live_view, layout: {Web.Layouts, :public}}
-  alias Domain.{Accounts, Actor, Config}
-  alias Web.Registration
+defmodule PortalWeb.SignUp do
+  use Web, {:live_view, layout: {PortalWeb.Layouts, :public}}
+  alias Portal.{Accounts, Actor, Config}
+  alias PortalWeb.Registration
   alias __MODULE__.DB
 
   defmodule Registration do
@@ -10,19 +10,19 @@ defmodule Web.SignUp do
     @foreign_key_type :binary_id
     @timestamps_opts [type: :utc_datetime_usec]
 
-    alias Domain.Accounts
+    alias Portal.Accounts
 
     import Ecto.Changeset
-    import Domain.Changeset
+    import Portal.Changeset
 
     embedded_schema do
       field(:email, :string)
-      embeds_one(:account, Domain.Account)
+      embeds_one(:account, Portal.Account)
       embeds_one(:actor, Actor)
     end
 
     def changeset(attrs) do
-      whitelisted_domains = Domain.Config.get_env(:domain, :sign_up_whitelisted_domains)
+      whitelisted_domains = Portal.Config.get_env(:domain, :sign_up_whitelisted_domains)
 
       %Registration{}
       |> cast(attrs, [:email])
@@ -43,14 +43,14 @@ defmodule Web.SignUp do
     end
 
     defp create_account_changeset(attrs) do
-      %Domain.Account{}
+      %Portal.Account{}
       |> cast(attrs, [:name, :legal_name, :slug])
-      |> Domain.Account.changeset()
+      |> Portal.Account.changeset()
       |> put_default_value(:config, %Accounts.Config{})
     end
 
     defp create_actor_changeset(attrs) do
-      %Domain.Actor{}
+      %Portal.Actor{}
       |> cast(attrs, [:name])
       |> validate_required([:name])
       |> validate_length(:name, min: 1, max: 255)
@@ -79,7 +79,7 @@ defmodule Web.SignUp do
 
   def mount(_params, _session, socket) do
     user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
-    real_ip = Web.Auth.real_ip(socket)
+    real_ip = PortalWeb.Auth.real_ip(socket)
     sign_up_enabled? = Config.sign_up_enabled?()
 
     changeset =
@@ -325,7 +325,7 @@ defmodule Web.SignUp do
 
       case register_account(socket, registration) do
         {:ok, %{account: account, provider: provider, actor: actor}} ->
-          {:ok, account} = Domain.Billing.provision_account(account)
+          {:ok, account} = Portal.Billing.provision_account(account)
 
           socket =
             assign(socket,
@@ -386,21 +386,21 @@ defmodule Web.SignUp do
   defp create_account_changeset(attrs) do
     import Ecto.Changeset
 
-    %Domain.Account{}
+    %Portal.Account{}
     |> cast(attrs, [:name, :legal_name, :slug])
     |> maybe_default_legal_name()
     |> maybe_generate_slug()
     |> put_default_config()
     |> cast_embed(:metadata)
     |> validate_required([:name, :legal_name, :slug])
-    |> Domain.Account.changeset()
+    |> Portal.Account.changeset()
   end
 
   defp put_default_config(changeset) do
     import Ecto.Changeset
 
     # Initialize with default config
-    default_config = Domain.Accounts.Config.default_config()
+    default_config = Portal.Accounts.Config.default_config()
     put_change(changeset, :config, default_config)
   end
 
@@ -424,7 +424,7 @@ defmodule Web.SignUp do
   end
 
   defp generate_unique_slug do
-    slug_candidate = Domain.NameGenerator.generate_slug()
+    slug_candidate = Portal.NameGenerator.generate_slug()
 
     if DB.slug_exists?(slug_candidate) do
       generate_unique_slug()
@@ -450,7 +450,7 @@ defmodule Web.SignUp do
   defp create_everyone_group_changeset(account) do
     import Ecto.Changeset
 
-    %Domain.Group{}
+    %Portal.Group{}
     |> cast(%{name: "Everyone"}, [:name])
     |> put_change(:account_id, account.id)
     |> put_change(:type, :managed)
@@ -473,27 +473,27 @@ defmodule Web.SignUp do
   defp create_site_changeset(account, attrs) do
     import Ecto.Changeset
 
-    %Domain.Site{
+    %Portal.Site{
       account_id: account.id,
       managed_by: :account,
       gateway_tokens: []
     }
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> Domain.Site.changeset()
+    |> Portal.Site.changeset()
   end
 
   defp create_internet_site_changeset(account) do
     import Ecto.Changeset
 
-    %Domain.Site{
+    %Portal.Site{
       account_id: account.id,
       managed_by: :system,
       gateway_tokens: []
     }
     |> cast(%{name: "Internet", managed_by: :system}, [:name, :managed_by])
     |> validate_required([:name, :managed_by])
-    |> Domain.Site.changeset()
+    |> Portal.Site.changeset()
   end
 
   defp create_internet_resource_changeset(account, site) do
@@ -504,7 +504,7 @@ defmodule Web.SignUp do
       name: "Internet"
     }
 
-    %Domain.Resource{account_id: account.id, site_id: site.id}
+    %Portal.Resource{account_id: account.id, site_id: site.id}
     |> cast(attrs, [:type, :name])
     |> validate_required([:name, :type])
   end
@@ -512,7 +512,7 @@ defmodule Web.SignUp do
   defmodule DB do
     import Ecto.Changeset
 
-    alias Domain.{
+    alias Portal.{
       Actor,
       AuthProvider,
       EmailOTP,
@@ -562,8 +562,8 @@ defmodule Web.SignUp do
         |> insert()
       end)
       |> Ecto.Multi.run(:send_email, fn _repo, %{account: account, actor: actor} ->
-        Domain.Mailer.AuthEmail.sign_up_link_email(account, actor, user_agent, real_ip)
-        |> Domain.Mailer.deliver_with_rate_limit(
+        Portal.Mailer.AuthEmail.sign_up_link_email(account, actor, user_agent, real_ip)
+        |> Portal.Mailer.deliver_with_rate_limit(
           rate_limit_key: {:sign_up_link, String.downcase(actor.email)},
           rate_limit: 3,
           rate_limit_interval: :timer.minutes(30)
@@ -609,8 +609,8 @@ defmodule Web.SignUp do
         allow_email_otp_sign_in: true
       }
 
-      cast(%Domain.Actor{}, attrs, ~w[account_id email name type allow_email_otp_sign_in]a)
-      |> Domain.Actor.changeset()
+      cast(%Portal.Actor{}, attrs, ~w[account_id email name type allow_email_otp_sign_in]a)
+      |> Portal.Actor.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
     end
@@ -623,7 +623,7 @@ defmodule Web.SignUp do
     def slug_exists?(slug) do
       import Ecto.Query
 
-      query = from(a in Domain.Account, where: a.slug == ^slug, select: count(a.id))
+      query = from(a in Portal.Account, where: a.slug == ^slug, select: count(a.id))
       Safe.unscoped(query) |> Safe.exists?()
     end
   end

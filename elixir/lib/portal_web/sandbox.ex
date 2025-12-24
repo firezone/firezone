@@ -1,8 +1,8 @@
-defmodule Web.Sandbox do
+defmodule PortalWeb.Sandbox do
   @moduledoc """
   A set of helpers that allow Phoenix components (Channels and LiveView) to access SQL sandbox in test environment.
   """
-  alias Domain.Sandbox
+  alias Portal.Sandbox
 
   def allow_channel_sql_sandbox(socket) do
     if Map.has_key?(socket.assigns, :user_agent) do

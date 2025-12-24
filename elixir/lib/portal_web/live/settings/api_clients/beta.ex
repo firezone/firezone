@@ -1,8 +1,8 @@
-defmodule Web.Settings.ApiClients.Beta do
+defmodule PortalWeb.Settings.ApiClients.Beta do
   use Web, :live_view
 
   def mount(_params, _session, socket) do
-    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
+    if Portal.Account.rest_api_enabled?(socket.assigns.account) do
       {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients")}
     else
       socket =
@@ -10,7 +10,7 @@ defmodule Web.Settings.ApiClients.Beta do
           socket,
           page_title: "API Clients",
           requested: false,
-          api_url: Domain.Config.get_env(:web, :api_external_url)
+          api_url: Portal.Config.get_env(:web, :api_external_url)
         )
 
       {:ok, socket}
@@ -27,7 +27,7 @@ defmodule Web.Settings.ApiClients.Beta do
     <.section>
       <:title>{@page_title}</:title>
       <:help>
-        API Clients are used to manage Firezone configuration through a REST API. See our
+        API Clients are used to manage Firezone configuration through a REST PortalAPI. See our
         <.link navigate={"#{@api_url}/swaggerui"} class={link_style()} target="_blank">
           OpenAPI-powered docs
         </.link>
@@ -62,11 +62,11 @@ defmodule Web.Settings.ApiClients.Beta do
   end
 
   def handle_event("request_access", _params, socket) do
-    Domain.Mailer.BetaEmail.rest_api_beta_email(
+    Portal.Mailer.BetaEmail.rest_api_beta_email(
       socket.assigns.account,
       socket.assigns.subject
     )
-    |> Domain.Mailer.deliver()
+    |> Portal.Mailer.deliver()
 
     socket =
       socket

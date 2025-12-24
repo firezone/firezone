@@ -1,12 +1,12 @@
-defmodule Web.EmailOTPControllerTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.EmailOTPControllerTest do
+  use PortalWeb.ConnCase, async: true
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.AuthProviderFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.AuthProviderFixtures
 
   setup do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
     account = account_fixture()
     provider = email_otp_provider_fixture(account: account)
 
@@ -16,8 +16,8 @@ defmodule Web.EmailOTPControllerTest do
   defp get_cookie_state(conn) do
     conn
     |> then(&Plug.Test.recycle_cookies(build_conn(), &1))
-    |> Map.put(:secret_key_base, Web.Endpoint.config(:secret_key_base))
-    |> Web.Cookie.EmailOTP.fetch_state()
+    |> Map.put(:secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
+    |> PortalWeb.Cookie.EmailOTP.fetch_state()
   end
 
   describe "sign_in/2" do
@@ -51,7 +51,7 @@ defmodule Web.EmailOTPControllerTest do
     } do
       provider
       |> Ecto.Changeset.change(is_disabled: true)
-      |> Domain.Repo.update!()
+      |> Portal.Repo.update!()
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
@@ -283,7 +283,7 @@ defmodule Web.EmailOTPControllerTest do
       provider: provider
     } do
       # Set up cookie with a fake passcode_id and actor_id
-      cookie = %Web.Cookie.EmailOTP{
+      cookie = %PortalWeb.Cookie.EmailOTP{
         actor_id: Ecto.UUID.generate(),
         passcode_id: Ecto.UUID.generate(),
         email: "test@example.com"
@@ -291,7 +291,7 @@ defmodule Web.EmailOTPControllerTest do
 
       conn =
         conn
-        |> Web.Cookie.EmailOTP.put(cookie)
+        |> PortalWeb.Cookie.EmailOTP.put(cookie)
         |> recycle_with_cookie()
         |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
           "secret" => "123456"
@@ -326,7 +326,7 @@ defmodule Web.EmailOTPControllerTest do
       # Disable the actor
       actor
       |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
-      |> Domain.Repo.update!()
+      |> Portal.Repo.update!()
 
       # Try to verify
       conn =
@@ -366,7 +366,7 @@ defmodule Web.EmailOTPControllerTest do
       # Remove allow_email_otp_sign_in
       actor
       |> Ecto.Changeset.change(allow_email_otp_sign_in: false)
-      |> Domain.Repo.update!()
+      |> Portal.Repo.update!()
 
       # Try to verify
       conn =
@@ -406,7 +406,7 @@ defmodule Web.EmailOTPControllerTest do
       # Disable the provider
       provider
       |> Ecto.Changeset.change(is_disabled: true)
-      |> Domain.Repo.update!()
+      |> Portal.Repo.update!()
 
       # Try to verify
       conn =
@@ -668,7 +668,7 @@ defmodule Web.EmailOTPControllerTest do
 
     conn
     |> then(&Plug.Test.recycle_cookies(build_conn(), &1))
-    |> Map.put(:secret_key_base, Web.Endpoint.config(:secret_key_base))
+    |> Map.put(:secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
     |> Plug.Conn.fetch_cookies(signed: ["email_otp"])
   end
 

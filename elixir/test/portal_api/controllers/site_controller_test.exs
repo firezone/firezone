@@ -1,10 +1,10 @@
-defmodule API.SiteControllerTest do
-  use API.ConnCase, async: true
-  alias Domain.Site
+defmodule PortalAPI.SiteControllerTest do
+  use PortalAPI.ConnCase, async: true
+  alias Portal.Site
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.SiteFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.SiteFixtures
 
   setup do
     account = account_fixture()

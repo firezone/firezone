@@ -1,12 +1,12 @@
-defmodule API.PolicyControllerTest do
-  use API.ConnCase, async: true
-  alias Domain.Policy
+defmodule PortalAPI.PolicyControllerTest do
+  use PortalAPI.ConnCase, async: true
+  alias Portal.Policy
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.PolicyFixtures
-  import Domain.ResourceFixtures
-  import Domain.GroupFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.PolicyFixtures
+  import Portal.ResourceFixtures
+  import Portal.GroupFixtures
 
   setup do
     account = account_fixture()

@@ -1,5 +1,5 @@
-defmodule API.OktaAuthProviderJSON do
-  alias Domain.Okta
+defmodule PortalAPI.OktaAuthProviderJSON do
+  alias Portal.Okta
 
   def index(%{providers: providers}) do
     %{data: Enum.map(providers, &data/1)}

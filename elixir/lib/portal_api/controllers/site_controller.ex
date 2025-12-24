@@ -1,11 +1,11 @@
-defmodule API.SiteController do
+defmodule PortalAPI.SiteController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias API.Pagination
-  alias Domain.Safe
+  alias PortalAPI.Pagination
+  alias Portal.Safe
   alias __MODULE__.DB
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Sites"]
 
@@ -21,7 +21,7 @@ defmodule API.SiteController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Site Response", "application/json", API.Schemas.Site.ListResponse}
+      ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.ListResponse}
     ]
 
   # List Sites
@@ -44,7 +44,7 @@ defmodule API.SiteController do
       ]
     ],
     responses: [
-      ok: {"Site Response", "application/json", API.Schemas.Site.Response}
+      ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
     ]
 
   # Show a specific Site
@@ -58,9 +58,9 @@ defmodule API.SiteController do
     summary: "Create Site",
     parameters: [],
     request_body:
-      {"Site Attributes", "application/json", API.Schemas.Site.Request, required: true},
+      {"Site Attributes", "application/json", PortalAPI.Schemas.Site.Request, required: true},
     responses: [
-      ok: {"Site Response", "application/json", API.Schemas.Site.Response}
+      ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
     ]
 
   # Create a new Site
@@ -82,7 +82,7 @@ defmodule API.SiteController do
   defp create_changeset(account, attrs) do
     import Ecto.Changeset
 
-    %Domain.Site{}
+    %Portal.Site{}
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> put_change(:account_id, account.id)
@@ -100,9 +100,9 @@ defmodule API.SiteController do
       ]
     ],
     request_body:
-      {"Site Attributes", "application/json", API.Schemas.Site.Request, required: true},
+      {"Site Attributes", "application/json", PortalAPI.Schemas.Site.Request, required: true},
     responses: [
-      ok: {"Site Response", "application/json", API.Schemas.Site.Response}
+      ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
     ]
 
   # Update a Site
@@ -130,7 +130,7 @@ defmodule API.SiteController do
       ]
     ],
     responses: [
-      ok: {"Site Response", "application/json", API.Schemas.Site.Response}
+      ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
     ]
 
   # Delete a Site
@@ -145,8 +145,8 @@ defmodule API.SiteController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Billing}
-    alias Domain.Site
+    alias Portal.{Safe, Billing}
+    alias Portal.Site
 
     def list_sites(subject, opts \\ []) do
       from(g in Site, as: :sites)

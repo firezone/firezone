@@ -1,9 +1,9 @@
-defmodule API.ActorControllerTest do
-  use API.ConnCase, async: true
-  alias Domain.Actor
+defmodule PortalAPI.ActorControllerTest do
+  use PortalAPI.ConnCase, async: true
+  alias Portal.Actor
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
 
   setup do
     account = account_fixture()
@@ -160,7 +160,7 @@ defmodule API.ActorControllerTest do
       account: account,
       actor: api_actor
     } do
-      Ecto.Changeset.change(account, limits: %Domain.Accounts.Limits{users_count: 1})
+      Ecto.Changeset.change(account, limits: %Portal.Accounts.Limits{users_count: 1})
       |> Repo.update!()
 
       actor_with_email_fixture(type: :account_user, account: account)
@@ -186,7 +186,7 @@ defmodule API.ActorControllerTest do
       account: account,
       actor: api_actor
     } do
-      Ecto.Changeset.change(account, limits: %Domain.Accounts.Limits{service_accounts_count: 1})
+      Ecto.Changeset.change(account, limits: %Portal.Accounts.Limits{service_accounts_count: 1})
       |> Repo.update!()
 
       service_account_fixture(type: :service_account, account: account)

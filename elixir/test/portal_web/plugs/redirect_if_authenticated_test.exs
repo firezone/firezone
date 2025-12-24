@@ -1,10 +1,10 @@
-defmodule Web.Plugs.RedirectIfAuthenticatedTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
+  use PortalWeb.ConnCase, async: true
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
 
-  alias Web.Plugs.RedirectIfAuthenticated
+  alias PortalWeb.Plugs.RedirectIfAuthenticated
 
   setup do
     account = account_fixture()
@@ -105,7 +105,7 @@ defmodule Web.Plugs.RedirectIfAuthenticatedTest do
          } do
       # Create an OIDC provider marked as default for this account
       provider =
-        Domain.AuthProviderFixtures.oidc_provider_fixture(account: account, is_default: true)
+        Portal.AuthProviderFixtures.oidc_provider_fixture(account: account, is_default: true)
 
       # Access the base sign-in page with as=client
       # AutoRedirectDefaultProvider should redirect to the provider URL

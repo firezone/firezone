@@ -1,5 +1,5 @@
-defmodule Web.Acceptance.Auth.UserPassTest do
-  use Web.AcceptanceCase, async: true
+defmodule PortalWeb.Acceptance.Auth.UserPassTest do
+  use PortalWeb.AcceptanceCase, async: true
 
   feature "renders error on invalid login or password", %{session: session} do
     account = Fixtures.Accounts.create_account()
@@ -191,9 +191,9 @@ defmodule Web.Acceptance.Auth.UserPassTest do
 
     context = Fixtures.Auth.build_context(type: :client)
     token = redirect_params["nonce"] <> fragment
-    assert Domain.Auth.authenticate(fragment, context) == {:error, :unauthorized}
-    assert Domain.Auth.authenticate(redirect_params["nonce"], context) == {:error, :unauthorized}
-    assert {:ok, _subject} = Domain.Auth.authenticate(token, context)
+    assert Portal.Auth.authenticate(fragment, context) == {:error, :unauthorized}
+    assert Portal.Auth.authenticate(redirect_params["nonce"], context) == {:error, :unauthorized}
+    assert {:ok, _subject} = Portal.Auth.authenticate(token, context)
   end
 
   feature "allows to sign in using email link to the client even with active browser session", %{

@@ -1,5 +1,5 @@
-defmodule Web.HealthControllerTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.HealthControllerTest do
+  use PortalWeb.ConnCase, async: true
 
   describe "healthz/2" do
     test "returns valid JSON health status", %{conn: conn} do

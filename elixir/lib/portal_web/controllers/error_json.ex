@@ -1,4 +1,4 @@
-defmodule Web.ErrorJSON do
+defmodule PortalWeb.ErrorJSON do
   def render("500.json", _assigns) do
     %{errors: %{detail: "internal_error"}}
   end

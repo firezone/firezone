@@ -1,4 +1,4 @@
-defmodule API.Schemas.EntraDirectory do
+defmodule PortalAPI.Schemas.EntraDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -40,7 +40,7 @@ defmodule API.Schemas.EntraDirectory do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.EntraDirectory
+    alias PortalAPI.Schemas.EntraDirectory
 
     OpenApiSpex.schema(%{
       title: "EntraDirectoryResponse",
@@ -61,7 +61,7 @@ defmodule API.Schemas.EntraDirectory do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.EntraDirectory
+    alias PortalAPI.Schemas.EntraDirectory
 
     OpenApiSpex.schema(%{
       title: "EntraDirectoryListResponse",

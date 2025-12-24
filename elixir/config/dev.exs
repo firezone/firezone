@@ -16,14 +16,14 @@ db_opts = [
 ##### Domain ##################
 ###############################
 
-config :domain, Domain.Repo, db_opts
+config :domain, Portal.Repo, db_opts
 
-config :domain, Domain.ChangeLogs.ReplicationConnection,
+config :domain, Portal.ChangeLogs.ReplicationConnection,
   replication_slot_name: db_opts[:database] <> "_clog_slot",
   publication_name: db_opts[:database] <> "_clog_pub",
   connection_opts: db_opts
 
-config :domain, Domain.Changes.ReplicationConnection,
+config :domain, Portal.Changes.ReplicationConnection,
   replication_slot_name: db_opts[:database] <> "_changes_slot",
   publication_name: db_opts[:database] <> "_changes_pub",
   connection_opts: db_opts
@@ -32,10 +32,10 @@ config :domain, outbound_email_adapter_configured?: true
 
 config :domain, run_manual_migrations: true
 
-config :domain, Domain.ComponentVersions,
+config :domain, Portal.ComponentVersions,
   firezone_releases_url: "http://localhost:3000/api/releases"
 
-config :domain, Domain.Billing,
+config :domain, Portal.Billing,
   enabled: System.get_env("BILLING_ENABLED", "false") == "true",
   secret_key: System.get_env("STRIPE_SECRET_KEY", "sk_dev_1111"),
   webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111"),
@@ -59,28 +59,28 @@ config :domain, Oban,
     # Periodic jobs
     {Oban.Plugins.Cron,
      crontab: [
-       {worker_dev_schedule, Domain.Entra.Scheduler},
-       {worker_dev_schedule, Domain.Google.Scheduler},
-       {worker_dev_schedule, Domain.Okta.Scheduler},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Entra.Scheduler},
+       {worker_dev_schedule, Portal.Google.Scheduler},
+       {worker_dev_schedule, Portal.Okta.Scheduler},
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "daily"}},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "google", frequency: "daily"}},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "three_days"}},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "google", frequency: "three_days"}},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "weekly"}},
-       {worker_dev_schedule, Domain.Workers.SyncErrorNotification,
+       {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "google", frequency: "weekly"}},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredPolicyAuthorizations},
-       {worker_dev_schedule, Domain.Workers.CheckAccountLimits},
-       {worker_dev_schedule, Domain.Workers.OutdatedGateways},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredClientTokens},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredAPITokens},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredOneTimePasscodes},
-       {worker_dev_schedule, Domain.Workers.DeleteExpiredPortalSessions}
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredPolicyAuthorizations},
+       {worker_dev_schedule, Portal.Workers.CheckAccountLimits},
+       {worker_dev_schedule, Portal.Workers.OutdatedGateways},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredClientTokens},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredAPITokens},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions}
      ]}
   ],
   queues: [
@@ -94,9 +94,9 @@ config :domain, Oban,
     sync_error_notifications: 1
   ],
   engine: Oban.Engines.Basic,
-  repo: Domain.Repo
+  repo: Portal.Repo
 
-config :domain, Domain.Okta.AuthProvider,
+config :domain, Portal.Okta.AuthProvider,
   redirect_uri: "https://localhost:#{web_port}/auth/oidc/callback"
 
 ###############################
@@ -105,7 +105,7 @@ config :domain, Domain.Okta.AuthProvider,
 
 config :web, dev_routes: true
 
-config :web, Web.Endpoint,
+config :web, PortalWeb.Endpoint,
   url: [scheme: "https", host: "localhost", port: web_port],
   https: [
     port: web_port,
@@ -156,7 +156,7 @@ config :phoenix_live_reload, :dirs, [
   Path.join([root_path, "apps", "api"])
 ]
 
-config :web, Web.Plugs.SecureHeaders,
+config :web, PortalWeb.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
@@ -174,7 +174,7 @@ config :web, api_url_override: "ws://host.docker.internal:#{api_port}/"
 
 config :api, dev_routes: true
 
-config :api, API.Endpoint,
+config :api, PortalAPI.Endpoint,
   http: [port: api_port],
   debug_errors: true,
   code_reloader: true,
@@ -189,7 +189,7 @@ config :api, API.Endpoint,
 # Include only message and custom metadata in development logs
 # This filters out Phoenix's automatic metadata like pid, request_id, etc.
 config :logger, :default_formatter,
-  format: {Web.LogFormatter, :format},
+  format: {PortalWeb.LogFormatter, :format},
   metadata: :all
 
 # Disable caching for OpenAPI spec to ensure it is refreshed
@@ -202,7 +202,7 @@ config :phoenix, :stacktrace_depth, 20
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 
-config :domain, Domain.Mailer, adapter: Swoosh.Adapters.Local
+config :domain, Portal.Mailer, adapter: Swoosh.Adapters.Local
 
 config :sentry,
   environment_name: :dev

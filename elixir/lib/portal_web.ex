@@ -41,9 +41,9 @@ defmodule Web do
     quote do
       use Phoenix.Controller,
         formats: [:html, :json, :xml],
-        layouts: [html: Web.Layouts]
+        layouts: [html: PortalWeb.Layouts]
 
-      use Gettext, backend: Web.Gettext
+      use Gettext, backend: PortalWeb.Gettext
 
       import Plug.Conn
 
@@ -54,9 +54,9 @@ defmodule Web do
   def live_view(opts \\ []) do
     quote do
       use Phoenix.LiveView,
-        layout: Keyword.get(unquote(opts), :layout, {Web.Layouts, :app})
+        layout: Keyword.get(unquote(opts), :layout, {PortalWeb.Layouts, :app})
 
-      import Web.LiveTable
+      import PortalWeb.LiveTable
 
       unquote(html_helpers())
 
@@ -137,20 +137,20 @@ defmodule Web do
   def verified_routes do
     quote do
       use Phoenix.VerifiedRoutes,
-        endpoint: Web.Endpoint,
-        router: Web.Router,
-        statics: Web.static_paths()
+        endpoint: PortalWeb.Endpoint,
+        router: PortalWeb.Router,
+        statics: PortalWeb.static_paths()
     end
   end
 
   def components do
     quote do
-      use Gettext, backend: Web.Gettext
-      import Web.CoreComponents
-      import Web.NavigationComponents
-      import Web.FormComponents
-      import Web.TableComponents
-      import Web.PageComponents
+      use Gettext, backend: PortalWeb.Gettext
+      import PortalWeb.CoreComponents
+      import PortalWeb.NavigationComponents
+      import PortalWeb.FormComponents
+      import PortalWeb.TableComponents
+      import PortalWeb.PageComponents
     end
   end
 

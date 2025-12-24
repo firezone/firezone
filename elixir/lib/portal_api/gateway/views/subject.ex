@@ -1,5 +1,5 @@
-defmodule API.Gateway.Views.Subject do
-  alias Domain.Auth
+defmodule PortalAPI.Gateway.Views.Subject do
+  alias Portal.Auth
 
   def render(%Auth.Subject{} = subject) do
     %{

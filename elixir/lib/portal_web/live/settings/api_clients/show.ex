@@ -1,10 +1,10 @@
-defmodule Web.Settings.ApiClients.Show do
+defmodule PortalWeb.Settings.ApiClients.Show do
   use Web, :live_view
   alias __MODULE__.DB
   import Ecto.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
-    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
+    if Portal.Account.rest_api_enabled?(socket.assigns.account) do
       actor = DB.get_api_client!(id, socket.assigns.subject)
 
       socket =
@@ -113,7 +113,7 @@ defmodule Web.Settings.ApiClients.Show do
           <.vertical_table_row>
             <:label>Created</:label>
             <:value>
-              {Cldr.DateTime.Formatter.date(@actor.inserted_at, 1, "en", Web.CLDR, [])}
+              {Cldr.DateTime.Formatter.date(@actor.inserted_at, 1, "en", PortalWeb.CLDR, [])}
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -164,7 +164,7 @@ defmodule Web.Settings.ApiClients.Show do
             {token.name}
           </:col>
           <:col :let={token} label="expires at">
-            {Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Web.CLDR, [])}
+            {Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", PortalWeb.CLDR, [])}
           </:col>
           <:col :let={token} label="last used">
             <.relative_datetime datetime={token.last_seen_at} />
@@ -300,10 +300,10 @@ defmodule Web.Settings.ApiClients.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
+    alias Portal.Safe
 
     def get_api_client!(id, subject) do
-      from(a in Domain.Actor,
+      from(a in Portal.Actor,
         where: a.id == ^id,
         where: a.type == :api_client
       )
@@ -318,7 +318,7 @@ defmodule Web.Settings.ApiClients.Show do
     end
 
     def list_tokens_for(actor, subject, opts \\ []) do
-      from(t in Domain.APIToken,
+      from(t in Portal.APIToken,
         as: :tokens,
         where: t.actor_id == ^actor.id,
         order_by: [desc: t.inserted_at, desc: t.id]
@@ -328,14 +328,14 @@ defmodule Web.Settings.ApiClients.Show do
     end
 
     def delete_all_tokens_for_actor(actor, subject) do
-      query = from(t in Domain.APIToken, where: t.actor_id == ^actor.id)
+      query = from(t in Portal.APIToken, where: t.actor_id == ^actor.id)
       {count, _} = query |> Safe.scoped(subject) |> Safe.delete_all()
       {:ok, count}
     end
 
     def delete_token(token_id, subject) do
       result =
-        from(t in Domain.APIToken,
+        from(t in Portal.APIToken,
           where: t.id == ^token_id,
           where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
         )

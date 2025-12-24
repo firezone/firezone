@@ -1,19 +1,19 @@
-defmodule Web.EmailOTPController do
+defmodule PortalWeb.EmailOTPController do
   @moduledoc """
   Controller for handling email OTP authentication.
   """
   use Web, :controller
 
-  alias Domain.Auth
-  alias Domain.EmailOTP
+  alias Portal.Auth
+  alias Portal.EmailOTP
   alias __MODULE__.DB
-  alias Web.Session.Redirector
+  alias PortalWeb.Session.Redirector
 
   require Logger
 
   @constant_execution_time Application.compile_env(:web, :constant_execution_time, 2000)
 
-  action_fallback Web.FallbackController
+  action_fallback PortalWeb.FallbackController
 
   def sign_in(
         conn,
@@ -85,8 +85,8 @@ defmodule Web.EmailOTPController do
 
   defp handle_verify_result(conn, {:ok, result}, params) do
     context_type = context_type(params)
-    conn = Web.Cookie.EmailOTP.delete(conn)
-    :ok = Domain.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, result.email})
+    conn = PortalWeb.Cookie.EmailOTP.delete(conn)
+    :ok = Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, result.email})
     signed_in(conn, context_type, result.account, result.actor, result.session_or_token, params)
   end
 
@@ -95,8 +95,8 @@ defmodule Web.EmailOTPController do
   end
 
   defp fetch_state(conn) do
-    case Web.Cookie.EmailOTP.fetch(conn) do
-      %Web.Cookie.EmailOTP{actor_id: actor_id, passcode_id: passcode_id, email: email} ->
+    case PortalWeb.Cookie.EmailOTP.fetch(conn) do
+      %PortalWeb.Cookie.EmailOTP{actor_id: actor_id, passcode_id: passcode_id, email: email} ->
         {:ok, actor_id, passcode_id, email}
 
       nil ->
@@ -124,8 +124,8 @@ defmodule Web.EmailOTPController do
         @constant_execution_time
       )
 
-    cookie = %Web.Cookie.EmailOTP{actor_id: actor_id, passcode_id: passcode_id, email: email}
-    conn = Web.Cookie.EmailOTP.put(conn, cookie)
+    cookie = %PortalWeb.Cookie.EmailOTP{actor_id: actor_id, passcode_id: passcode_id, email: email}
+    conn = PortalWeb.Cookie.EmailOTP.put(conn, cookie)
 
     case error do
       :rate_limited ->
@@ -141,7 +141,7 @@ defmodule Web.EmailOTPController do
   end
 
   defp send_email_otp(conn, actor, code, auth_provider_id, params) do
-    Domain.Mailer.AuthEmail.sign_in_link_email(
+    Portal.Mailer.AuthEmail.sign_in_link_email(
       actor,
       DateTime.utc_now(),
       auth_provider_id,
@@ -150,15 +150,15 @@ defmodule Web.EmailOTPController do
       conn.remote_ip,
       sanitize(params)
     )
-    |> Domain.Mailer.deliver_with_rate_limit(
+    |> Portal.Mailer.deliver_with_rate_limit(
       rate_limit_key: {:sign_in_link, actor.email},
       rate_limit: 3,
       rate_limit_interval: :timer.minutes(5)
     )
   end
 
-  defp check_admin(%Domain.Actor{type: :account_admin_user}, _context_type), do: :ok
-  defp check_admin(%Domain.Actor{type: :account_user}, :client), do: :ok
+  defp check_admin(%Portal.Actor{type: :account_admin_user}, _context_type), do: :ok
+  defp check_admin(%Portal.Actor{type: :account_user}, :client), do: :ok
   defp check_admin(_actor, _context_type), do: {:error, :not_admin}
 
   defp create_session_or_token(conn, actor, provider, params) do
@@ -166,7 +166,7 @@ defmodule Web.EmailOTPController do
     remote_ip = conn.remote_ip
     type = context_type(params)
     headers = conn.req_headers
-    context = Domain.Auth.Context.build(remote_ip, user_agent, headers, type)
+    context = Portal.Auth.Context.build(remote_ip, user_agent, headers, type)
 
     # Get the provider schema module to access default values
     schema = provider.__struct__
@@ -196,7 +196,7 @@ defmodule Web.EmailOTPController do
         attrs = %{
           type: :client,
           secret_nonce: params["nonce"],
-          secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
+          secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
           account_id: actor.account_id,
           actor_id: actor.id,
           auth_provider_id: provider.id,
@@ -211,7 +211,7 @@ defmodule Web.EmailOTPController do
   # Store session cookie and redirect to portal or redirect_to parameter
   defp signed_in(conn, :portal, account, _actor, session, params) do
     conn
-    |> Web.Cookie.Session.put(account.id, %Web.Cookie.Session{session_id: session.id})
+    |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params)
   end
 
@@ -322,12 +322,12 @@ defmodule Web.EmailOTPController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.{Account, Actor, EmailOTP}
+    alias Portal.Safe
+    alias Portal.{Account, Actor, EmailOTP}
 
     def fetch_account_by_id_or_slug(id_or_slug) do
       query =
-        if Domain.Repo.valid_uuid?(id_or_slug),
+        if Portal.Repo.valid_uuid?(id_or_slug),
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 

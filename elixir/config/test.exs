@@ -15,7 +15,7 @@ config :domain, sql_sandbox: true
 
 config :domain, run_manual_migrations: true
 
-config :domain, Domain.Repo,
+config :domain, Portal.Repo,
   database: "firezone_test#{partition_suffix}",
   pool: Ecto.Adapters.SQL.Sandbox,
   queue_target: 1000
@@ -38,14 +38,14 @@ config :domain, Oban,
     # {Oban.Plugins.Cron,
     #  crontab: [
     #    # Delete expired policy_authorizations every minute
-    #    {"* * * * *", Domain.Workers.DeleteExpiredPolicyAuthorizations}
+    #    {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations}
     #  ]}
   ],
   queues: [default: 10],
   engine: Oban.Engines.Basic,
-  repo: Domain.Repo
+  repo: Portal.Repo
 
-config :domain, Domain.ChangeLogs.ReplicationConnection,
+config :domain, Portal.ChangeLogs.ReplicationConnection,
   replication_slot_name: "test_change_logs_slot",
   publication_name: "test_change_logs_publication",
   enabled: false,
@@ -53,7 +53,7 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
-config :domain, Domain.Changes.ReplicationConnection,
+config :domain, Portal.Changes.ReplicationConnection,
   replication_slot_name: "test_changes_slot",
   publication_name: "test_changes_publication",
   enabled: false,
@@ -61,7 +61,7 @@ config :domain, Domain.Changes.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
-config :domain, Domain.Billing.Stripe.APIClient,
+config :domain, Portal.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
   finch_transport_opts: [],
   retry_config: [
@@ -70,15 +70,15 @@ config :domain, Domain.Billing.Stripe.APIClient,
     max_delay_ms: 1000
   ]
 
-config :domain, Domain.Telemetry, enabled: false
+config :domain, Portal.Telemetry, enabled: false
 
-config :domain, Domain.ConnectivityChecks, enabled: false
+config :domain, Portal.ConnectivityChecks, enabled: false
 
-config :domain, platform_adapter: Domain.GoogleCloudPlatform
+config :domain, platform_adapter: Portal.GoogleCloudPlatform
 
-config :domain, Domain.GoogleCloudPlatform, service_account_email: "foo@iam.example.com"
+config :domain, Portal.GoogleCloudPlatform, service_account_email: "foo@iam.example.com"
 
-config :domain, Domain.ComponentVersions,
+config :domain, Portal.ComponentVersions,
   fetch_from_url: false,
   versions: [
     apple: "1.0.0",
@@ -88,7 +88,7 @@ config :domain, Domain.ComponentVersions,
     headless: "1.0.0"
   ]
 
-config :domain, Domain.Telemetry.Reporter.GoogleCloudMetrics, project_id: "fz-test"
+config :domain, Portal.Telemetry.Reporter.GoogleCloudMetrics, project_id: "fz-test"
 
 config :domain, web_external_url: "http://localhost:13100"
 
@@ -99,12 +99,12 @@ config :domain, Oban, testing: :manual
 ##### Web #####################
 ###############################
 
-config :web, Web.Endpoint,
+config :web, PortalWeb.Endpoint,
   http: [port: 13_100],
   url: [port: 13_100],
   server: true
 
-config :web, Web.Plugs.SecureHeaders,
+config :web, PortalWeb.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
@@ -118,7 +118,7 @@ config :web, :constant_execution_time, 1
 ##### API #####################
 ###############################
 
-config :api, API.Endpoint,
+config :api, PortalAPI.Endpoint,
   http: [port: 13_101],
   url: [port: 13_101],
   server: true
@@ -130,7 +130,7 @@ config :api,
 ###############################
 ##### Third-party configs #####
 ###############################
-config :domain, Domain.Mailer, adapter: Domain.Mailer.TestAdapter
+config :domain, Portal.Mailer, adapter: Portal.Mailer.TestAdapter
 
 # Allow asserting on info logs and higher
 config :logger, level: :info

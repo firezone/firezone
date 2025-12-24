@@ -1,4 +1,4 @@
-defmodule Web.Mocks.OIDC do
+defmodule PortalWeb.Mocks.OIDC do
   @moduledoc """
   Mock server for OpenID Connect discovery and token endpoints.
   Uses Bypass to simulate an OIDC provider for testing.

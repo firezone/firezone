@@ -1,10 +1,10 @@
-defmodule API.MembershipControllerTest do
-  use API.ConnCase, async: true
+defmodule PortalAPI.MembershipControllerTest do
+  use PortalAPI.ConnCase, async: true
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.GroupFixtures
-  import Domain.MembershipFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.GroupFixtures
+  import Portal.MembershipFixtures
 
   setup do
     account = account_fixture()

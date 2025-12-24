@@ -1,10 +1,10 @@
-defmodule Web.Clients.Components do
+defmodule PortalWeb.Clients.Components do
   use Web, :component_library
-  import Web.CoreComponents
+  import PortalWeb.CoreComponents
 
   def actor_show_url(account, actor, return_to \\ nil)
 
-  def actor_show_url(account, %Domain.Actor{type: :api_client} = actor, return_to) do
+  def actor_show_url(account, %Portal.Actor{type: :api_client} = actor, return_to) do
     if return_to do
       ~p"/#{account}/settings/api_clients/#{actor}?#{[return_to: return_to]}"
     else

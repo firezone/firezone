@@ -1,17 +1,17 @@
 defimpl Phoenix.HTML.Safe, for: Postgrex.INET do
-  def to_iodata(%Postgrex.INET{} = inet), do: Domain.Types.INET.to_string(inet)
+  def to_iodata(%Postgrex.INET{} = inet), do: Portal.Types.INET.to_string(inet)
 end
 
-defimpl Phoenix.HTML.Safe, for: Domain.Types.IPPort do
-  def to_iodata(%Domain.Types.IPPort{} = ip_port), do: Domain.Types.IPPort.to_string(ip_port)
+defimpl Phoenix.HTML.Safe, for: Portal.Types.IPPort do
+  def to_iodata(%Portal.Types.IPPort{} = ip_port), do: Portal.Types.IPPort.to_string(ip_port)
 end
 
-defimpl Phoenix.HTML.Safe, for: Domain.Types.ProtocolIPPort do
-  def to_iodata(%Domain.Types.ProtocolIPPort{} = struct),
-    do: Domain.Types.ProtocolIPPort.to_string(struct)
+defimpl Phoenix.HTML.Safe, for: Portal.Types.ProtocolIPPort do
+  def to_iodata(%Portal.Types.ProtocolIPPort{} = struct),
+    do: Portal.Types.ProtocolIPPort.to_string(struct)
 end
 
-defimpl Phoenix.Param, for: Domain.Account do
-  def to_param(%Domain.Account{slug: slug}) when not is_nil(slug), do: slug
-  def to_param(%Domain.Account{id: id}), do: id
+defimpl Phoenix.Param, for: Portal.Account do
+  def to_param(%Portal.Account{slug: slug}) when not is_nil(slug), do: slug
+  def to_param(%Portal.Account{id: id}), do: id
 end

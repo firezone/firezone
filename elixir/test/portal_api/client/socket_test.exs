@@ -1,12 +1,12 @@
-defmodule API.Client.SocketTest do
-  use API.ChannelCase, async: true
-  import API.Client.Socket, only: [id: 1]
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.TokenFixtures
-  import Domain.ClientFixtures
-  import Domain.SubjectFixtures
-  alias API.Client.Socket
+defmodule PortalAPI.Client.SocketTest do
+  use PortalAPI.ChannelCase, async: true
+  import PortalAPI.Client.Socket, only: [id: 1]
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.TokenFixtures
+  import Portal.ClientFixtures
+  import Portal.SubjectFixtures
+  alias PortalAPI.Client.Socket
 
   @geo_headers [
     {"x-geo-location-region", "Ukraine"},
@@ -47,7 +47,7 @@ defmodule API.Client.SocketTest do
 
       assert {:error, changeset} = connect(Socket, attrs, connect_info: @connect_info)
 
-      errors = Domain.Changeset.errors_to_string(changeset)
+      errors = Portal.Changeset.errors_to_string(changeset)
       assert errors =~ "public_key: can't be blank"
       assert errors =~ "external_id: can't be blank"
     end
@@ -90,13 +90,13 @@ defmodule API.Client.SocketTest do
       in_one_minute = DateTime.utc_now() |> DateTime.add(60, :second)
 
       {:ok, token} =
-        Domain.Auth.create_headless_client_token(
+        Portal.Auth.create_headless_client_token(
           actor,
           %{expires_at: in_one_minute},
           admin_subject
         )
 
-      encoded_token = Domain.Auth.encode_fragment!(token)
+      encoded_token = Portal.Auth.encode_fragment!(token)
 
       attrs = connect_attrs(token: encoded_token)
 
@@ -147,7 +147,7 @@ defmodule API.Client.SocketTest do
       attrs = connect_attrs(token: encoded_token, external_id: existing_client.external_id)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
-      assert client = Repo.one(Domain.Client)
+      assert client = Repo.one(Portal.Client)
       assert client.id == socket.assigns.client.id
       assert client.last_seen_remote_ip_location_region == "Ukraine"
       assert client.last_seen_remote_ip_location_city == "Kyiv"
@@ -195,7 +195,7 @@ defmodule API.Client.SocketTest do
       connect_info = %{@connect_info | x_headers: [{"x-geo-location-region", "UA"}]}
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
-      assert client = Repo.one(Domain.Client)
+      assert client = Repo.one(Portal.Client)
       assert client.id == socket.assigns.client.id
       assert client.last_seen_remote_ip_location_region == "UA"
       assert client.last_seen_remote_ip_location_city == nil
@@ -207,7 +207,7 @@ defmodule API.Client.SocketTest do
   describe "id/1" do
     test "creates a channel for a client" do
       subject = subject_fixture(type: :client)
-      socket = socket(API.Client.Socket, "", %{subject: subject})
+      socket = socket(PortalAPI.Client.Socket, "", %{subject: subject})
 
       assert id(socket) == "socket:#{subject.credential.id}"
     end

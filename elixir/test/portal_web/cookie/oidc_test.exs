@@ -1,13 +1,13 @@
-defmodule Web.Cookie.OIDCTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Cookie.OIDCTest do
+  use PortalWeb.ConnCase, async: true
 
-  alias Web.Cookie.OIDC
+  alias PortalWeb.Cookie.OIDC
 
   defp recycle_conn(conn, cookie_key \\ "oidc") do
     cookie_value = conn.resp_cookies[cookie_key].value
 
     build_conn()
-    |> Map.put(:secret_key_base, Web.Endpoint.config(:secret_key_base))
+    |> Map.put(:secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
     |> Plug.Test.put_req_cookie(cookie_key, cookie_value)
   end
 

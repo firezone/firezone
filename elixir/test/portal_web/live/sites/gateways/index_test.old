@@ -1,12 +1,12 @@
-defmodule Web.Live.Sites.Gateways.IndexTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Sites.Gateways.IndexTest do
+  use PortalWeb.ConnCase, async: true
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.GatewayFixtures
-  import Domain.IdentityFixtures
-  import Domain.SiteFixtures
-  import Domain.TokenFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.GatewayFixtures
+  import Portal.IdentityFixtures
+  import Portal.SiteFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -105,8 +105,8 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{site}/gateways")
 
-    :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
-    :ok = Domain.Presence.Gateways.connect(gateway, token.id)
+    :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
+    :ok = Portal.Presence.Gateways.connect(gateway, token.id)
     expected_topic = "presences:sites:#{site.id}"
     assert_receive %Phoenix.Socket.Broadcast{topic: ^expected_topic}
 

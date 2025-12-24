@@ -1,16 +1,16 @@
-defmodule API.Gateway.Socket do
+defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
-  alias Domain.Auth
-  alias Domain.{Gateway, Version}
+  alias Portal.Auth
+  alias Portal.{Gateway, Version}
   alias __MODULE__.DB
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.Changeset
-  import Domain.Changeset
+  import Portal.Changeset
 
   ## Channels
 
-  channel "gateway", API.Gateway.Channel
+  channel "gateway", PortalAPI.Gateway.Channel
 
   ## Authentication
 
@@ -19,7 +19,7 @@ defmodule API.Gateway.Socket do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "gateway.connect" do
-      context = API.Sockets.auth_context(connect_info, :gateway)
+      context = PortalAPI.Sockets.auth_context(connect_info, :gateway)
       attrs = Map.take(attrs, ~w[external_id name public_key])
 
       with {:ok, gateway_token} <- Auth.verify_gateway_token(encoded_token),
@@ -57,7 +57,7 @@ defmodule API.Gateway.Socket do
   end
 
   @impl true
-  def id(socket), do: Domain.Sockets.socket_id(socket.assigns.token_id)
+  def id(socket), do: Portal.Sockets.socket_id(socket.assigns.token_id)
 
   defp upsert_changeset(site, attrs, context) do
     upsert_fields = ~w[external_id name public_key
@@ -72,9 +72,9 @@ defmodule API.Gateway.Socket do
     %Gateway{}
     |> cast(attrs, upsert_fields)
     |> put_default_value(:name, fn ->
-      Domain.Crypto.random_token(5, encoder: :user_friendly)
+      Portal.Crypto.random_token(5, encoder: :user_friendly)
     end)
-    |> Domain.Gateway.changeset()
+    |> Portal.Gateway.changeset()
     |> validate_required(required_fields)
     |> validate_base64(:public_key)
     |> validate_length(:public_key, is: 44)
@@ -105,11 +105,11 @@ defmodule API.Gateway.Socket do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Gateway
-    alias Domain.IPv4Address
-    alias Domain.IPv6Address
-    alias Domain.Safe
-    alias Domain.Site
+    alias Portal.Gateway
+    alias Portal.IPv4Address
+    alias Portal.IPv6Address
+    alias Portal.Safe
+    alias Portal.Site
 
     def fetch_site(id) do
       result =

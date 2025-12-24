@@ -1,16 +1,16 @@
-defmodule API.AccountController do
+defmodule PortalAPI.AccountController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias __MODULE__.DB
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Account"]
 
   operation :show,
     summary: "Show Account",
     responses: [
-      ok: {"AccountResponse", "application/json", API.Schemas.Account.Response}
+      ok: {"AccountResponse", "application/json", PortalAPI.Schemas.Account.Response}
     ]
 
   # Show the current Account
@@ -24,8 +24,8 @@ defmodule API.AccountController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Account
+    alias Portal.Safe
+    alias Portal.Account
 
     def fetch_account(id, subject) do
       result =

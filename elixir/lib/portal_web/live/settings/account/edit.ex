@@ -1,4 +1,4 @@
-defmodule Web.Settings.Account.Edit do
+defmodule PortalWeb.Settings.Account.Edit do
   use Web, :live_view
   alias __MODULE__.DB
 
@@ -90,7 +90,7 @@ defmodule Web.Settings.Account.Edit do
   end
 
   defmodule DB do
-    alias Domain.Safe
+    alias Portal.Safe
 
     def update(changeset, subject) do
       changeset

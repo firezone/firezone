@@ -1,6 +1,6 @@
-defmodule Web.Live.Actors.IndexTest do
-  use Web.ConnCase, async: true
-  alias Domain.Clients
+defmodule PortalWeb.Live.Actors.IndexTest do
+  use PortalWeb.ConnCase, async: true
+  alias Portal.Clients
 
   setup do
     account = Fixtures.Accounts.create_account()

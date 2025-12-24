@@ -1,4 +1,4 @@
-defmodule Web.Session.Redirector do
+defmodule PortalWeb.Session.Redirector do
   @moduledoc """
   Centralized module for handling all session-related redirects.
 
@@ -9,8 +9,8 @@ defmodule Web.Session.Redirector do
   """
   use Web, :verified_routes
 
-  alias Domain.Auth
-  alias Domain.ClientToken
+  alias Portal.Auth
+  alias Portal.ClientToken
 
   @doc """
   Sanitizes and validates a redirect_to parameter.
@@ -18,7 +18,7 @@ defmodule Web.Session.Redirector do
   Returns the redirect_to if it's valid (starts with account ID or slug),
   otherwise returns the default portal path.
   """
-  def sanitize_redirect_to(%Domain.Account{} = account, redirect_to)
+  def sanitize_redirect_to(%Portal.Account{} = account, redirect_to)
       when is_binary(redirect_to) do
     if String.starts_with?(redirect_to, "/#{account.id}") or
          String.starts_with?(redirect_to, "/#{account.slug}") do
@@ -28,7 +28,7 @@ defmodule Web.Session.Redirector do
     end
   end
 
-  def sanitize_redirect_to(%Domain.Account{} = account, _redirect_to) do
+  def sanitize_redirect_to(%Portal.Account{} = account, _redirect_to) do
     default_portal_path(account)
   end
 
@@ -37,16 +37,16 @@ defmodule Web.Session.Redirector do
 
   Works with both LiveView sockets and Plug connections.
   """
-  def portal_signed_in(%Phoenix.LiveView.Socket{} = socket, %Domain.Account{} = account, params) do
+  def portal_signed_in(%Phoenix.LiveView.Socket{} = socket, %Portal.Account{} = account, params) do
     redirect_to = sanitize_redirect_to(account, params["redirect_to"])
     Phoenix.LiveView.redirect(socket, to: redirect_to)
   end
 
-  def portal_signed_in(%Plug.Conn{} = conn, %Domain.Account{} = account, params) do
+  def portal_signed_in(%Plug.Conn{} = conn, %Portal.Account{} = account, params) do
     redirect_to = sanitize_redirect_to(account, params["redirect_to"])
 
     conn
-    |> Web.Cookie.RecentAccounts.prepend(account.id)
+    |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
     |> Phoenix.Controller.redirect(to: redirect_to)
   end
 
@@ -64,9 +64,9 @@ defmodule Web.Session.Redirector do
         %ClientToken{} = token,
         state
       ) do
-    fragment = Domain.Auth.encode_fragment!(token)
+    fragment = Portal.Auth.encode_fragment!(token)
 
-    client_auth_cookie = %Web.Cookie.ClientAuth{
+    client_auth_cookie = %PortalWeb.Cookie.ClientAuth{
       actor_name: actor_name,
       fragment: fragment,
       identity_provider_identifier: identifier,
@@ -76,10 +76,10 @@ defmodule Web.Session.Redirector do
     redirect_url = ~p"/#{account.slug}/sign_in/client_redirect"
 
     conn
-    |> Web.Cookie.ClientAuth.put(client_auth_cookie)
-    |> Web.Cookie.RecentAccounts.prepend(account.id)
+    |> PortalWeb.Cookie.ClientAuth.put(client_auth_cookie)
+    |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
     |> Phoenix.Controller.put_root_layout(false)
-    |> Phoenix.Controller.put_view(Web.SignInHTML)
+    |> Phoenix.Controller.put_view(PortalWeb.SignInHTML)
     |> Phoenix.Controller.render("client_redirect.html",
       redirect_url: redirect_url,
       account: account,
@@ -104,7 +104,7 @@ defmodule Web.Session.Redirector do
     %{type: :portal_session, id: portal_session_id} = subject.credential
 
     :ok =
-      Auth.delete_portal_session(%Domain.PortalSession{
+      Auth.delete_portal_session(%Portal.PortalSession{
         account_id: account.id,
         id: portal_session_id
       })
@@ -121,12 +121,12 @@ defmodule Web.Session.Redirector do
 
   defp delete_session(conn, account_id) do
     conn
-    |> Web.Cookie.Session.delete(account_id)
+    |> PortalWeb.Cookie.Session.delete(account_id)
     |> Plug.Conn.configure_session(drop: true)
     |> Plug.Conn.clear_session()
   end
 
-  defp default_portal_path(%Domain.Account{} = account) do
+  defp default_portal_path(%Portal.Account{} = account) do
     ~p"/#{account}/sites"
   end
 end

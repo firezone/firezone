@@ -1,16 +1,16 @@
-defmodule Web.Actors do
+defmodule PortalWeb.Actors do
   use Web, :live_view
 
   alias __MODULE__.DB
 
-  alias Domain.Actor
-  alias Domain.Auth
-  alias Domain.ExternalIdentity
-  alias Domain.PortalSession
-  alias Domain.ClientToken
+  alias Portal.Actor
+  alias Portal.Auth
+  alias Portal.ExternalIdentity
+  alias Portal.PortalSession
+  alias Portal.ClientToken
 
   import Ecto.Changeset
-  import Web.Clients.Components, only: [client_os_icon_name: 1]
+  import PortalWeb.Clients.Components, only: [client_os_icon_name: 1]
 
   def mount(_params, _session, socket) do
     socket =
@@ -197,10 +197,10 @@ defmodule Web.Actors do
 
     # Check billing limits
     cond do
-      not Domain.Billing.can_create_users?(account) ->
+      not Portal.Billing.can_create_users?(account) ->
         {:noreply, put_flash(socket, :error_inline, "User limit reached for your account")}
 
-      actor_type == :account_admin_user and not Domain.Billing.can_create_admin_users?(account) ->
+      actor_type == :account_admin_user and not Portal.Billing.can_create_admin_users?(account) ->
         {:noreply, put_flash(socket, :error_inline, "Admin user limit reached for your account")}
 
       true ->
@@ -227,7 +227,7 @@ defmodule Web.Actors do
     account = socket.assigns.account
 
     # Check billing limits
-    if Domain.Billing.can_create_service_accounts?(account) do
+    if Portal.Billing.can_create_service_accounts?(account) do
       attrs = Map.put(attrs, "type", "service_account")
       changeset = changeset(%Actor{type: :service_account}, attrs)
       token_expiration = Map.get(params, "token_expiration")
@@ -481,12 +481,12 @@ defmodule Web.Actors do
     actor = socket.assigns.actor
 
     if actor.id == actor_id and actor.email do
-      Domain.Mailer.AuthEmail.new_user_email(
+      Portal.Mailer.AuthEmail.new_user_email(
         socket.assigns.account,
         actor,
         socket.assigns.subject
       )
-      |> Domain.Mailer.deliver_with_rate_limit(
+      |> Portal.Mailer.deliver_with_rate_limit(
         rate_limit: 3,
         rate_limit_key: {:welcome_email, actor.id},
         rate_limit_interval: :timer.minutes(3)
@@ -1755,13 +1755,13 @@ defmodule Web.Actors do
 
   defmodule DB do
     import Ecto.Query
-    import Domain.Repo.Query
-    alias Domain.ExternalIdentity
-    alias Domain.Actor
-    alias Domain.Presence
-    alias Domain.Safe
-    alias Domain.Directory
-    alias Domain.Repo.Filter
+    import Portal.Repo.Query
+    alias Portal.ExternalIdentity
+    alias Portal.Actor
+    alias Portal.Presence
+    alias Portal.Safe
+    alias Portal.Directory
+    alias Portal.Repo.Filter
 
     def all do
       from(actors in Actor, as: :actors)
@@ -1825,11 +1825,11 @@ defmodule Web.Actors do
       directories =
         from(d in Directory,
           where: d.account_id == ^subject.account.id,
-          left_join: google in Domain.Google.Directory,
+          left_join: google in Portal.Google.Directory,
           on: google.id == d.id and d.type == :google,
-          left_join: entra in Domain.Entra.Directory,
+          left_join: entra in Portal.Entra.Directory,
           on: entra.id == d.id and d.type == :entra,
-          left_join: okta in Domain.Okta.Directory,
+          left_join: okta in Portal.Okta.Directory,
           on: okta.id == d.id and d.type == :okta,
           select: %{
             id: d.id,
@@ -1915,15 +1915,15 @@ defmodule Web.Actors do
       from(i in ExternalIdentity, as: :identities)
       |> where([identities: i], i.actor_id == ^actor_id)
       |> join(:left, [identities: i], d in assoc(i, :directory), as: :directory)
-      |> join(:left, [directory: d], gd in Domain.Google.Directory,
+      |> join(:left, [directory: d], gd in Portal.Google.Directory,
         on: gd.id == d.id and d.type == :google,
         as: :google_directory
       )
-      |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+      |> join(:left, [directory: d], ed in Portal.Entra.Directory,
         on: ed.id == d.id and d.type == :entra,
         as: :entra_directory
       )
-      |> join(:left, [directory: d], od in Domain.Okta.Directory,
+      |> join(:left, [directory: d], od in Portal.Okta.Directory,
         on: od.id == d.id and d.type == :okta,
         as: :okta_directory
       )
@@ -2018,21 +2018,21 @@ defmodule Web.Actors do
     end
 
     def get_groups_for_actor(actor_id, subject) do
-      from(g in Domain.Group, as: :groups)
-      |> join(:inner, [groups: g], m in Domain.Membership,
+      from(g in Portal.Group, as: :groups)
+      |> join(:inner, [groups: g], m in Portal.Membership,
         on: m.group_id == g.id and m.account_id == g.account_id,
         as: :membership
       )
       |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
-      |> join(:left, [directory: d], gd in Domain.Google.Directory,
+      |> join(:left, [directory: d], gd in Portal.Google.Directory,
         on: gd.id == d.id and d.type == :google,
         as: :google_directory
       )
-      |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+      |> join(:left, [directory: d], ed in Portal.Entra.Directory,
         on: ed.id == d.id and d.type == :entra,
         as: :entra_directory
       )
-      |> join(:left, [directory: d], od in Domain.Okta.Directory,
+      |> join(:left, [directory: d], od in Portal.Okta.Directory,
         on: od.id == d.id and d.type == :okta,
         as: :okta_directory
       )

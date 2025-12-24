@@ -1,15 +1,15 @@
-defmodule Web.Live.Sites.ShowTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Sites.ShowTest do
+  use PortalWeb.ConnCase, async: true
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.GatewayFixtures
-  import Domain.IdentityFixtures
-  import Domain.PolicyFixtures
-  import Domain.ResourceFixtures
-  import Domain.SiteFixtures
-  import Domain.SubjectFixtures
-  import Domain.TokenFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.GatewayFixtures
+  import Portal.IdentityFixtures
+  import Portal.PolicyFixtures
+  import Portal.ResourceFixtures
+  import Portal.SiteFixtures
+  import Portal.SubjectFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -53,9 +53,9 @@ defmodule Web.Live.Sites.ShowTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, deleted_site} = Domain.Repo.delete(site)
+    {:ok, deleted_site} = Portal.Repo.delete(site)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{deleted_site}")
@@ -150,7 +150,7 @@ defmodule Web.Live.Sites.ShowTest do
       conn: conn
     } do
       gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = Portal.Presence.Gateways.connect(gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway(account: account, site: site)
 
       {:ok, lv, _html} =
@@ -187,9 +187,9 @@ defmodule Web.Live.Sites.ShowTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/sites/#{site}")
 
-      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
+      :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
       site_token = site_token_fixture(site: gateway.site, account: account)
-      :ok = Domain.Presence.Gateways.connect(gateway, site_token.id)
+      :ok = Portal.Presence.Gateways.connect(gateway, site_token.id)
       expected_topic = "presences:sites:#{gateway.site.id}"
       assert_receive %Phoenix.Socket.Broadcast{topic: ^expected_topic}
 
@@ -219,7 +219,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      refute Repo.get_by(Domain.ClientToken, site_id: site.id)
+      refute Repo.get_by(Portal.ClientToken, site_id: site.id)
     end
 
     test "renders resources table", %{
@@ -336,7 +336,7 @@ defmodule Web.Live.Sites.ShowTest do
 
       assert_redirected(lv, ~p"/#{account}/sites")
 
-      refute Repo.get(Domain.Site, site.id)
+      refute Repo.get(Portal.Site, site.id)
     end
   end
 
@@ -388,7 +388,7 @@ defmodule Web.Live.Sites.ShowTest do
       conn: conn
     } do
       gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = Portal.Presence.Gateways.connect(gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway(account: account, site: site)
 
       {:ok, lv, _html} =
@@ -424,9 +424,9 @@ defmodule Web.Live.Sites.ShowTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/sites/#{site}")
 
-      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
+      :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
       gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = Portal.Presence.Gateways.connect(gateway, gateway_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{gateway.site.id}"}
 
       wait_for(fn ->
@@ -455,7 +455,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      refute Repo.get_by(Domain.ClientToken, site_id: site.id)
+      refute Repo.get_by(Portal.ClientToken, site_id: site.id)
     end
 
     test "renders resources table", %{
@@ -572,7 +572,7 @@ defmodule Web.Live.Sites.ShowTest do
 
       assert_redirected(lv, ~p"/#{account}/sites")
 
-      refute Repo.get(Domain.Site, site.id)
+      refute Repo.get(Portal.Site, site.id)
     end
   end
 
@@ -613,7 +613,7 @@ defmodule Web.Live.Sites.ShowTest do
       conn: conn
     } do
       gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = Portal.Presence.Gateways.connect(gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway(account: account, site: site)
 
       {:ok, lv, _html} =
@@ -649,9 +649,9 @@ defmodule Web.Live.Sites.ShowTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/sites/#{site}")
 
-      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
+      :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
       gateway_token = Fixtures.Sites.create_token(site: gateway.site, account: account)
-      :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = Portal.Presence.Gateways.connect(gateway, gateway_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:#{gateway.site.id}"}
 
       wait_for(fn ->
@@ -680,7 +680,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      refute Repo.get_by(Domain.ClientToken, site_id: site.id)
+      refute Repo.get_by(Portal.ClientToken, site_id: site.id)
     end
 
     test "does not render resources table", %{

@@ -1,6 +1,6 @@
-defmodule Web.LiveHooks.EnsureAdmin do
-  alias Domain.Auth.Subject
-  alias Domain.Actor
+defmodule PortalWeb.LiveHooks.EnsureAdmin do
+  alias Portal.Auth.Subject
+  alias Portal.Actor
 
   def on_mount(
         :default,
@@ -12,6 +12,6 @@ defmodule Web.LiveHooks.EnsureAdmin do
   end
 
   def on_mount(:default, _params, _session, _socket) do
-    raise Web.LiveErrors.NotFoundError
+    raise PortalWeb.LiveErrors.NotFoundError
   end
 end

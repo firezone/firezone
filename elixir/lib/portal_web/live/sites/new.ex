@@ -1,6 +1,6 @@
-defmodule Web.Sites.New do
+defmodule PortalWeb.Sites.New do
   use Web, :live_view
-  alias Domain.Billing
+  alias Portal.Billing
   alias __MODULE__.DB
   import Ecto.Changeset
 
@@ -85,7 +85,7 @@ defmodule Web.Sites.New do
   end
 
   defp new_site(attrs \\ %{}) do
-    change_site(%Domain.Site{}, attrs)
+    change_site(%Portal.Site{}, attrs)
   end
 
   defp change_site(site, attrs) do
@@ -94,12 +94,12 @@ defmodule Web.Sites.New do
   end
 
   defp create_changeset(account, attrs) do
-    %Domain.Site{account_id: account.id}
+    %Portal.Site{account_id: account.id}
     |> cast(attrs, [:name])
   end
 
   defmodule DB do
-    alias Domain.Safe
+    alias Portal.Safe
 
     def create_site(changeset, subject) do
       Safe.scoped(changeset, subject)

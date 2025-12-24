@@ -1,4 +1,4 @@
-defmodule Web.Cookie.EmailOTP do
+defmodule PortalWeb.Cookie.EmailOTP do
   @moduledoc """
   Cookie for email OTP authentication state.
   """
@@ -17,9 +17,9 @@ defmodule Web.Cookie.EmailOTP do
     sign: true,
     max_age: 15 * 60,
     same_site: "Strict",
-    secure: Domain.Config.fetch_env!(:web, :cookie_secure),
+    secure: Portal.Config.fetch_env!(:web, :cookie_secure),
     http_only: true,
-    signing_salt: Domain.Config.fetch_env!(:web, :cookie_signing_salt)
+    signing_salt: Portal.Config.fetch_env!(:web, :cookie_signing_salt)
   ]
 
   def put(conn, %__MODULE__{} = cookie) do

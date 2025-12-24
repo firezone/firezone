@@ -1,18 +1,18 @@
-defmodule API.OktaDirectoryController do
+defmodule PortalAPI.OktaDirectoryController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Domain.{Okta, Safe}
+  alias Portal.{Okta, Safe}
   alias __MODULE__.DB
   import Ecto.Query
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Okta Directories"]
 
   operation :index,
     summary: "List Okta Directories",
     responses: [
-      ok: {"Okta Directory Response", "application/json", API.Schemas.OktaDirectory.ListResponse}
+      ok: {"Okta Directory Response", "application/json", PortalAPI.Schemas.OktaDirectory.ListResponse}
     ]
 
   def index(conn, _params) do
@@ -31,7 +31,7 @@ defmodule API.OktaDirectoryController do
       ]
     ],
     responses: [
-      ok: {"Okta Directory Response", "application/json", API.Schemas.OktaDirectory.Response}
+      ok: {"Okta Directory Response", "application/json", PortalAPI.Schemas.OktaDirectory.Response}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -42,7 +42,7 @@ defmodule API.OktaDirectoryController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Okta, Safe}
+    alias Portal.{Okta, Safe}
 
     def list_directories(subject) do
       from(d in Okta.Directory, as: :directories, order_by: [desc: d.inserted_at])

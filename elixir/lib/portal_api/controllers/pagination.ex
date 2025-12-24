@@ -1,6 +1,6 @@
-defmodule API.Pagination do
+defmodule PortalAPI.Pagination do
   alias LoggerJSON.Formatter.Metadata
-  alias Domain.Repo.Paginator.Metadata
+  alias Portal.Repo.Paginator.Metadata
 
   def params_to_list_opts(params) do
     [

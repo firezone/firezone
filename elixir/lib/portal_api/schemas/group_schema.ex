@@ -1,4 +1,4 @@
-defmodule API.Schemas.Group do
+defmodule PortalAPI.Schemas.Group do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -61,7 +61,7 @@ defmodule API.Schemas.Group do
   defmodule Request do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Group
+    alias PortalAPI.Schemas.Group
 
     OpenApiSpex.schema(%{
       title: "GroupRequest",
@@ -82,7 +82,7 @@ defmodule API.Schemas.Group do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Group
+    alias PortalAPI.Schemas.Group
 
     OpenApiSpex.schema(%{
       title: "GroupResponse",
@@ -109,7 +109,7 @@ defmodule API.Schemas.Group do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Group
+    alias PortalAPI.Schemas.Group
 
     OpenApiSpex.schema(%{
       title: "GroupListResponse",

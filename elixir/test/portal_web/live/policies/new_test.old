@@ -1,5 +1,5 @@
-defmodule Web.Live.Policies.NewTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Policies.NewTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -294,7 +294,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    assert Repo.get_by(Domain.Policy, attrs)
+    assert Repo.get_by(Portal.Policy, attrs)
 
     flash = assert_redirect(lv, ~p"/#{account}/policies")
     assert flash["info"] == "Policy created successfully."
@@ -353,11 +353,11 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policy, group_id: group.id)
+    policy = Repo.get_by(Portal.Policy, group_id: group.id)
     assert policy.resource_id == resource.id
 
     assert policy.conditions == [
-             %Domain.Policies.Condition{
+             %Portal.Policies.Condition{
                property: :current_utc_datetime,
                operator: :is_in_day_of_week_time_ranges,
                values: [
@@ -370,17 +370,17 @@ defmodule Web.Live.Policies.NewTest do
                  "U/23:00:00-23:59:59/US/Pacific"
                ]
              },
-             %Domain.Policies.Condition{
+             %Portal.Policies.Condition{
                property: :auth_provider_id,
                operator: :is_in,
                values: [identity.auth_provider_id]
              },
-             %Domain.Policies.Condition{
+             %Portal.Policies.Condition{
                property: :remote_ip,
                operator: :is_not_in_cidr,
                values: ["0.0.0.0/0"]
              },
-             %Domain.Policies.Condition{
+             %Portal.Policies.Condition{
                property: :remote_ip_location_region,
                operator: :is_in,
                values: ["US"]
@@ -410,7 +410,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policy, attrs)
+    policy = Repo.get_by(Portal.Policy, attrs)
     assert policy.resource_id == resource.id
 
     assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}")
@@ -450,7 +450,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policy, %{group_id: group.id})
+    policy = Repo.get_by(Portal.Policy, %{group_id: group.id})
     assert policy.resource_id == resource.id
     assert policy.conditions == []
 
@@ -479,7 +479,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policy, attrs)
+    policy = Repo.get_by(Portal.Policy, attrs)
     assert policy.resource_id == resource.id
 
     assert assert_redirect(lv, ~p"/#{account}/groups/#{group}")
@@ -506,7 +506,7 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policy, attrs)
+    policy = Repo.get_by(Portal.Policy, attrs)
     assert policy.resource_id == resource.id
 
     assert assert_redirect(lv, ~p"/#{account}/sites/#{site}?#resources")

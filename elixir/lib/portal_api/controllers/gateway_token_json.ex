@@ -1,4 +1,4 @@
-defmodule API.GatewayTokenJSON do
+defmodule PortalAPI.GatewayTokenJSON do
   def show(%{token: token, encoded_token: encoded_token}) do
     %{
       data: %{

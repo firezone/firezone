@@ -1,13 +1,13 @@
-defmodule Web.Settings.ApiClients.NewToken do
+defmodule PortalWeb.Settings.ApiClients.NewToken do
   use Web, :live_view
-  import Web.Settings.ApiClients.Components
-  alias Domain.{Auth, APIToken}
+  import PortalWeb.Settings.ApiClients.Components
+  alias Portal.{Auth, APIToken}
   alias __MODULE__.DB
   import Ecto.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
-    unless Domain.Config.global_feature_enabled?(:rest_api),
-      do: raise(Web.LiveErrors.NotFoundError)
+    unless Portal.Config.global_feature_enabled?(:rest_api),
+      do: raise(PortalWeb.LiveErrors.NotFoundError)
 
     %{type: :api_client} = actor = DB.get_api_client!(id, socket.assigns.subject)
     changeset = build_token_changeset(%{})
@@ -103,10 +103,10 @@ defmodule Web.Settings.ApiClients.NewToken do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
+    alias Portal.Safe
 
     def get_api_client!(id, subject) do
-      from(a in Domain.Actor,
+      from(a in Portal.Actor,
         where: a.id == ^id,
         where: a.type == :api_client
       )

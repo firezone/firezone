@@ -1,6 +1,6 @@
-defmodule Web.Sites.Index do
+defmodule PortalWeb.Sites.Index do
   use Web, :live_view
-  alias Domain.Presence
+  alias Portal.Presence
   alias __MODULE__.DB
   require Logger
 
@@ -159,13 +159,13 @@ defmodule Web.Sites.Index do
           <% online? = Enum.any?(@internet_site.gateways, & &1.online?) %>
 
           <.ping_icon
-            :if={Domain.Account.internet_resource_enabled?(@account)}
+            :if={Portal.Account.internet_resource_enabled?(@account)}
             color={if online?, do: "success", else: "danger"}
             title={if online?, do: "Online", else: "Offline"}
           />
 
           <.link
-            :if={not Domain.Account.internet_resource_enabled?(@account)}
+            :if={not Portal.Account.internet_resource_enabled?(@account)}
             navigate={~p"/#{@account}/settings/billing"}
             class="text-sm text-primary-500"
           >
@@ -180,7 +180,7 @@ defmodule Web.Sites.Index do
         <.docs_action path="/deploy/resources" fragment="the-internet-resource" />
       </:action>
 
-      <:action :if={Domain.Account.internet_resource_enabled?(@account)}>
+      <:action :if={Portal.Account.internet_resource_enabled?(@account)}>
         <.edit_button navigate={~p"/#{@account}/sites/#{@internet_site}"}>
           Manage Internet Site
         </.edit_button>
@@ -214,7 +214,7 @@ defmodule Web.Sites.Index do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Site, Resource}
+    alias Portal.{Safe, Site, Resource}
 
     def list_sites(subject, opts \\ []) do
       from(g in Site, as: :sites)
@@ -234,7 +234,7 @@ defmodule Web.Sites.Index do
     end
 
     def count_policies_by_site(site_ids, subject) do
-      from(p in Domain.Policy, as: :policies)
+      from(p in Portal.Policy, as: :policies)
       |> join(:inner, [policies: p], r in Resource, on: r.id == p.resource_id, as: :resources)
       |> where([resources: r], r.site_id in ^site_ids)
       |> group_by([resources: r], r.site_id)
@@ -270,7 +270,7 @@ defmodule Web.Sites.Index do
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :managed_by,
           type: :string,
           fun: &filter_managed_by/2

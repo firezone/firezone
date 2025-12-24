@@ -1,10 +1,10 @@
-defmodule API.GroupControllerTest do
-  use API.ConnCase, async: true
-  alias Domain.Group
+defmodule PortalAPI.GroupControllerTest do
+  use PortalAPI.ConnCase, async: true
+  alias Portal.Group
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.GroupFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.GroupFixtures
 
   setup do
     account = account_fixture()

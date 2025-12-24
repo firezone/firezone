@@ -106,8 +106,8 @@ defmodule Portal.GroupFixtures do
   Generate a synced group (from identity provider).
 
   Creates a static group with a directory_id, simulating a group that was
-  synced from an external directory service but is modifiable via API.
-  This is different from a managed group which cannot be fetched via the API.
+  synced from an external directory service but is modifiable via PortalAPI.
+  This is different from a managed group which cannot be fetched via the PortalAPI.
 
   ## Examples
 

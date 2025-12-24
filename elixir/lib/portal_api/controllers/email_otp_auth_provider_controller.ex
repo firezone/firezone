@@ -1,11 +1,11 @@
-defmodule API.EmailOTPAuthProviderController do
+defmodule PortalAPI.EmailOTPAuthProviderController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Domain.{EmailOTP, Safe}
+  alias Portal.{EmailOTP, Safe}
   alias __MODULE__.DB
   import Ecto.Query
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Email OTP Auth Providers"]
 
@@ -14,7 +14,7 @@ defmodule API.EmailOTPAuthProviderController do
     responses: [
       ok:
         {"Email OTP Auth Provider Response", "application/json",
-         API.Schemas.EmailOTPAuthProvider.ListResponse}
+         PortalAPI.Schemas.EmailOTPAuthProvider.ListResponse}
     ]
 
   def index(conn, _params) do
@@ -35,7 +35,7 @@ defmodule API.EmailOTPAuthProviderController do
     responses: [
       ok:
         {"Email OTP Auth Provider Response", "application/json",
-         API.Schemas.EmailOTPAuthProvider.Response}
+         PortalAPI.Schemas.EmailOTPAuthProvider.Response}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -46,7 +46,7 @@ defmodule API.EmailOTPAuthProviderController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{EmailOTP, Safe}
+    alias Portal.{EmailOTP, Safe}
 
     def list_providers(subject) do
       from(p in EmailOTP.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])

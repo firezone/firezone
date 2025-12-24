@@ -1,4 +1,4 @@
-defmodule API.ErrorJSON do
+defmodule PortalAPI.ErrorJSON do
   def render(_template, %{reason: reason} = _assigns) do
     %{error: %{reason: reason}}
   end

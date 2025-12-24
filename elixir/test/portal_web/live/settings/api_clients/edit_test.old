@@ -1,5 +1,5 @@
-defmodule Web.Live.Settings.ApiClients.EditTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Settings.ApiClients.EditTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -39,7 +39,7 @@ defmodule Web.Live.Settings.ApiClients.EditTest do
   } do
     api_client = Fixtures.Actors.delete(api_client)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}/edit")
@@ -149,7 +149,7 @@ defmodule Web.Live.Settings.ApiClients.EditTest do
 
     assert_redirected(lv, ~p"/#{account}/settings/api_clients/#{api_client}")
 
-    assert actor = Repo.get_by(Domain.Actor, id: api_client.id)
+    assert actor = Repo.get_by(Portal.Actor, id: api_client.id)
     assert actor.name == attrs.name
   end
 end

@@ -1,8 +1,8 @@
-defmodule Web.Live.Actors.User.NewIdentityTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Actors.User.NewIdentityTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
     _provider = Fixtures.Auth.create_email_provider(account: account)
@@ -197,7 +197,7 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
     |> render_submit()
 
     assert identity =
-             Repo.get_by(Domain.ExternalIdentity, provider_identifier: attrs.provider_identifier)
+             Repo.get_by(Portal.ExternalIdentity, provider_identifier: attrs.provider_identifier)
 
     assert_redirect(lv, ~p"/#{account}/actors/#{identity.actor_id}")
 
@@ -229,7 +229,7 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
     |> render_submit()
 
     assert identity =
-             Repo.get_by(Domain.ExternalIdentity, provider_identifier: attrs.provider_identifier)
+             Repo.get_by(Portal.ExternalIdentity, provider_identifier: attrs.provider_identifier)
 
     assert_redirect(lv, ~p"/#{account}/actors/#{identity.actor_id}/edit_groups")
 

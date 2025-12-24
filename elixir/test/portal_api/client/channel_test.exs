@@ -1,32 +1,32 @@
-defmodule API.Client.ChannelTest do
-  use API.ChannelCase, async: true
-  alias Domain.Changes
-  alias Domain.Presence
-  alias Domain.PubSub
+defmodule PortalAPI.Client.ChannelTest do
+  use PortalAPI.ChannelCase, async: true
+  alias Portal.Changes
+  alias Portal.Presence
+  alias Portal.PubSub
   import ExUnit.CaptureLog
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.ClientFixtures
-  import Domain.GatewayFixtures
-  import Domain.GroupFixtures
-  import Domain.IdentityFixtures
-  import Domain.MembershipFixtures
-  import Domain.PolicyFixtures
-  import Domain.RelayFixtures
-  import Domain.ResourceFixtures
-  import Domain.SiteFixtures
-  import Domain.SubjectFixtures
-  import Domain.TokenFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.ClientFixtures
+  import Portal.GatewayFixtures
+  import Portal.GroupFixtures
+  import Portal.IdentityFixtures
+  import Portal.MembershipFixtures
+  import Portal.PolicyFixtures
+  import Portal.RelayFixtures
+  import Portal.ResourceFixtures
+  import Portal.SiteFixtures
+  import Portal.SubjectFixtures
+  import Portal.TokenFixtures
 
   defp join_channel(client, subject) do
     {:ok, _reply, socket} =
-      API.Client.Socket
+      PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: client,
         subject: subject
       })
-      |> subscribe_and_join(API.Client.Channel, "client")
+      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
     socket
   end
@@ -246,12 +246,12 @@ defmodule API.Client.ChannelTest do
       Process.flag(:trap_exit, true)
 
       {:ok, _reply, _socket} =
-        API.Client.Socket
+        PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
           subject: subject
         })
-        |> subscribe_and_join(API.Client.Channel, "client")
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       refute_receive {:EXIT, _pid, _}
       refute_receive {:socket_close, _pid, _}
@@ -261,17 +261,17 @@ defmodule API.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      :ok = PubSub.subscribe(Domain.Sockets.socket_id(subject.credential.id))
+      :ok = PubSub.subscribe(Portal.Sockets.socket_id(subject.credential.id))
 
       {:ok, _reply, _socket} =
-        API.Client.Socket
+        PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
           subject: subject
         })
-        |> subscribe_and_join(API.Client.Channel, "client")
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
-      token = Repo.get_by(Domain.ClientToken, id: subject.credential.id)
+      token = Repo.get_by(Portal.ClientToken, id: subject.credential.id)
 
       data = %{
         "id" => token.id,
@@ -279,14 +279,14 @@ defmodule API.Client.ChannelTest do
         "expires_at" => token.expires_at
       }
 
-      Domain.Changes.Hooks.ClientTokens.on_delete(100, data)
+      Portal.Changes.Hooks.ClientTokens.on_delete(100, data)
 
       assert_receive %Phoenix.Socket.Broadcast{
         topic: topic,
         event: "disconnect"
       }
 
-      assert topic == Domain.Sockets.socket_id(token.id)
+      assert topic == Portal.Sockets.socket_id(token.id)
     end
 
     test "sends list of available resources after join", %{
@@ -425,12 +425,12 @@ defmodule API.Client.ChannelTest do
         resource: resource
       )
 
-      API.Client.Socket
+      PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: client,
         subject: subject
       })
-      |> subscribe_and_join(API.Client.Channel, "client")
+      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{resources: resources}
       assert Enum.count(resources, &(Map.get(&1, :address) == resource.address)) == 1
@@ -494,12 +494,12 @@ defmodule API.Client.ChannelTest do
         )
       end
 
-      API.Client.Socket
+      PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: client,
         subject: subject
       })
-      |> subscribe_and_join(API.Client.Channel, "client")
+      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{
         resources: resources
@@ -527,7 +527,7 @@ defmodule API.Client.ChannelTest do
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       update_relay(relay1,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
@@ -537,7 +537,7 @@ defmodule API.Client.ChannelTest do
 
       relay2 = relay_fixture()
       stamp_secret2 = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(relay2, stamp_secret2, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay2, stamp_secret2, relay_token.id)
 
       update_relay(relay2,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-100, :second),
@@ -545,12 +545,12 @@ defmodule API.Client.ChannelTest do
         last_seen_remote_ip_location_lon: -121.0
       )
 
-      API.Client.Socket
+      PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: client,
         subject: subject
       })
-      |> subscribe_and_join(API.Client.Channel, "client")
+      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{relays: [relay_view | _] = relays}
       relay_view_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
@@ -567,7 +567,7 @@ defmodule API.Client.ChannelTest do
              } = relay_view
 
       # Untrack from global topic to trigger presence change notification
-      Domain.Presence.Relays.untrack(self(), Domain.Presence.Relays.Global.topic(), relay1.id)
+      Portal.Presence.Relays.untrack(self(), Portal.Presence.Relays.Global.topic(), relay1.id)
 
       assert_push "relays_presence",
                   %{
@@ -600,7 +600,7 @@ defmodule API.Client.ChannelTest do
       )
 
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
 
       assert_push "relays_presence",
                   %{
@@ -626,7 +626,7 @@ defmodule API.Client.ChannelTest do
         last_seen_remote_ip_location_lon: -120.0
       )
 
-      :ok = Domain.Presence.Relays.connect(other_relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(other_relay, stamp_secret, relay_token.id)
 
       # Should receive relays_presence since client has < 2 relays
       assert_push "relays_presence",
@@ -650,7 +650,7 @@ defmodule API.Client.ChannelTest do
 
       relay1 = relay_fixture()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret, relay_token.id)
 
       update_relay(relay1,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
@@ -658,12 +658,12 @@ defmodule API.Client.ChannelTest do
         last_seen_remote_ip_location_lon: -120.0
       )
 
-      API.Client.Socket
+      PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: client,
         subject: subject
       })
-      |> subscribe_and_join(API.Client.Channel, "client")
+      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       assert_push "init", %{relays: [relay_view | _] = relays}
       relay_view_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
@@ -679,7 +679,7 @@ defmodule API.Client.ChannelTest do
              } = relay_view
 
       # Untrack from global topic to trigger presence change notification
-      Domain.Presence.Relays.untrack(self(), Domain.Presence.Relays.Global.topic(), relay1.id)
+      Portal.Presence.Relays.untrack(self(), Portal.Presence.Relays.Global.topic(), relay1.id)
 
       assert_push "relays_presence",
                   %{
@@ -787,7 +787,7 @@ defmodule API.Client.ChannelTest do
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
                   %{
@@ -805,7 +805,7 @@ defmodule API.Client.ChannelTest do
       Process.sleep(1)
 
       # Reconnect with the same stamp secret
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       # Should not receive any disconnect
       relay_id = relay1.id
@@ -826,7 +826,7 @@ defmodule API.Client.ChannelTest do
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
                   %{
@@ -845,7 +845,7 @@ defmodule API.Client.ChannelTest do
 
       # Reconnect with a different stamp secret
       stamp_secret2 = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret2, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret2, relay_token.id)
 
       # Should receive disconnect "immediately"
       assert_push "relays_presence",
@@ -868,7 +868,7 @@ defmodule API.Client.ChannelTest do
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
-      :ok = Domain.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
                   %{
@@ -1983,7 +1983,7 @@ defmodule API.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2124,7 +2124,7 @@ defmodule API.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
       update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
@@ -2132,7 +2132,7 @@ defmodule API.Client.ChannelTest do
 
       :ok = PubSub.Account.subscribe(gateway.account_id)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      :ok = PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
+      :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       # Prime cache
       send(socket.channel_pid, {:created, resource})
@@ -2182,7 +2182,7 @@ defmodule API.Client.ChannelTest do
       )
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -2193,7 +2193,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
+      PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       send(socket.channel_pid, {:created, resource})
       send(socket.channel_pid, {:created, policy})
@@ -2235,7 +2235,7 @@ defmodule API.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
       :ok = PubSub.Account.subscribe(gateway.account_id)
 
       send(socket.channel_pid, {:created, resource})
@@ -2247,7 +2247,7 @@ defmodule API.Client.ChannelTest do
       )
 
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
+      PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2270,7 +2270,7 @@ defmodule API.Client.ChannelTest do
       resource_id = recv_resource.id
 
       assert policy_authorization =
-               Repo.get_by(Domain.PolicyAuthorization,
+               Repo.get_by(Portal.PolicyAuthorization,
                  client_id: client.id,
                  resource_id: resource.id
                )
@@ -2341,15 +2341,15 @@ defmodule API.Client.ChannelTest do
       subject = subject_fixture(account: account, actor: actor, identity: identity)
 
       {:ok, _reply, socket} =
-        API.Client.Socket
+        PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
           subject: subject
         })
-        |> subscribe_and_join(API.Client.Channel, "client")
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
       update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
@@ -2358,7 +2358,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
+      PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -2388,7 +2388,7 @@ defmodule API.Client.ChannelTest do
       global_relay_token: global_relay_token
     } do
       :ok =
-        Domain.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
+        Portal.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
 
       update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
@@ -2412,12 +2412,12 @@ defmodule API.Client.ChannelTest do
       :ok = PubSub.Account.subscribe(account.id)
 
       {:ok, _reply, socket} =
-        API.Client.Socket
+        PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
           subject: subject
         })
-        |> subscribe_and_join(API.Client.Channel, "client")
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2467,7 +2467,7 @@ defmodule API.Client.ChannelTest do
       socket = join_channel(client, subject)
 
       :ok =
-        Domain.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
+        Portal.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
 
       update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
@@ -2507,7 +2507,7 @@ defmodule API.Client.ChannelTest do
 
       assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, %{}}
 
-      assert Repo.get_by(Domain.PolicyAuthorization,
+      assert Repo.get_by(Portal.PolicyAuthorization,
                resource_id: resource.id,
                gateway_id: gateway2.id,
                account_id: account.id
@@ -2522,7 +2522,7 @@ defmodule API.Client.ChannelTest do
 
       assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, %{}}
 
-      assert Repo.get_by(Domain.PolicyAuthorization,
+      assert Repo.get_by(Portal.PolicyAuthorization,
                resource_id: resource.id,
                gateway_id: gateway1.id,
                account_id: account.id
@@ -2603,7 +2603,7 @@ defmodule API.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
       update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
@@ -2656,7 +2656,7 @@ defmodule API.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
       update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
@@ -2761,7 +2761,7 @@ defmodule API.Client.ChannelTest do
         )
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
 
       update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
@@ -2828,15 +2828,15 @@ defmodule API.Client.ChannelTest do
       subject = subject_fixture(account: account, actor: actor, identity: identity)
 
       {:ok, _reply, socket} =
-        API.Client.Socket
+        PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
           subject: subject
         })
-        |> subscribe_and_join(API.Client.Channel, "client")
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       :ok =
-        Domain.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
+        Portal.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
 
       update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
@@ -2861,7 +2861,7 @@ defmodule API.Client.ChannelTest do
       global_relay_token: global_relay_token
     } do
       :ok =
-        Domain.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
+        Portal.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
 
       update_relay(global_relay,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
@@ -2882,12 +2882,12 @@ defmodule API.Client.ChannelTest do
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
       {:ok, _reply, socket} =
-        API.Client.Socket
+        PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
           subject: subject
         })
-        |> subscribe_and_join(API.Client.Channel, "client")
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -3149,17 +3149,17 @@ defmodule API.Client.ChannelTest do
       subject = subject_fixture(account: account, actor: actor, identity: identity)
 
       {:ok, _reply, socket} =
-        API.Client.Socket
+        PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
           subject: subject
         })
-        |> subscribe_and_join(API.Client.Channel, "client")
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      Phoenix.PubSub.subscribe(PubSub, Domain.Sockets.socket_id(gateway_token.id))
+      Phoenix.PubSub.subscribe(PubSub, Portal.Sockets.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3364,7 +3364,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
+      PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(resource.account_id)
 
@@ -3421,17 +3421,17 @@ defmodule API.Client.ChannelTest do
       subject = subject_fixture(account: account, actor: actor, identity: identity)
 
       {:ok, _reply, socket} =
-        API.Client.Socket
+        PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
           subject: subject
         })
-        |> subscribe_and_join(API.Client.Channel, "client")
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      Phoenix.PubSub.subscribe(PubSub, Domain.Sockets.socket_id(gateway_token.id))
+      Phoenix.PubSub.subscribe(PubSub, Portal.Sockets.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(account.id)
 
@@ -3482,7 +3482,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
+      PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       :ok = PubSub.Account.subscribe(client.account_id)
 
@@ -3529,7 +3529,7 @@ defmodule API.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      :ok = PubSub.subscribe(Domain.Sockets.socket_id(gateway_token.id))
+      :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
       :ok = PubSub.Account.subscribe(client.account_id)
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)

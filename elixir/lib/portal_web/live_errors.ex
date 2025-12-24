@@ -1,4 +1,4 @@
-defmodule Web.LiveErrors do
+defmodule PortalWeb.LiveErrors do
   defmodule NotFoundError do
     defexception message: "Not Found", skip_sentry: false
 

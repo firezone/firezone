@@ -1,4 +1,4 @@
-defmodule API.HealthController do
+defmodule PortalAPI.HealthController do
   use API, :controller
 
   def healthz(conn, _params) do

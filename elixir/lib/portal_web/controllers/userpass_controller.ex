@@ -1,17 +1,17 @@
-defmodule Web.UserpassController do
+defmodule PortalWeb.UserpassController do
   @moduledoc """
   Controller for handling user/password authentication.
   """
   use Web, :controller
 
-  alias Domain.Userpass
+  alias Portal.Userpass
 
   alias __MODULE__.DB
-  alias Web.Session.Redirector
+  alias PortalWeb.Session.Redirector
 
   require Logger
 
-  action_fallback Web.FallbackController
+  action_fallback PortalWeb.FallbackController
 
   def sign_in(
         conn,
@@ -25,9 +25,9 @@ defmodule Web.UserpassController do
     password = userpass["secret"]
     context_type = context_type(params)
 
-    with %Domain.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
+    with %Portal.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
          %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
-         %Domain.Actor{} = actor <- fetch_actor(account, email),
+         %Portal.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
          {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
          {:ok, session_or_token} <- create_session_or_token(conn, actor, provider, params) do
@@ -49,7 +49,7 @@ defmodule Web.UserpassController do
       is_nil(password_hash) ->
         {:error, :invalid_secret}
 
-      not Domain.Crypto.equal?(:argon2, password, password_hash) ->
+      not Portal.Crypto.equal?(:argon2, password, password_hash) ->
         {:error, :invalid_secret}
 
       true ->
@@ -57,8 +57,8 @@ defmodule Web.UserpassController do
     end
   end
 
-  defp check_admin(%Domain.Actor{type: :account_admin_user}, _context_type), do: :ok
-  defp check_admin(%Domain.Actor{type: :account_user}, :client), do: :ok
+  defp check_admin(%Portal.Actor{type: :account_admin_user}, _context_type), do: :ok
+  defp check_admin(%Portal.Actor{type: :account_user}, :client), do: :ok
   defp check_admin(_actor, _context_type), do: {:error, :not_admin}
 
   defp create_session_or_token(conn, actor, provider, params) do
@@ -66,7 +66,7 @@ defmodule Web.UserpassController do
     remote_ip = conn.remote_ip
     type = context_type(params)
     headers = conn.req_headers
-    context = Domain.Auth.Context.build(remote_ip, user_agent, headers, type)
+    context = Portal.Auth.Context.build(remote_ip, user_agent, headers, type)
 
     # Get the provider schema module to access default values
     schema = provider.__struct__
@@ -85,7 +85,7 @@ defmodule Web.UserpassController do
 
     case type do
       :portal ->
-        Domain.Auth.create_portal_session(
+        Portal.Auth.create_portal_session(
           actor,
           provider.id,
           context,
@@ -96,14 +96,14 @@ defmodule Web.UserpassController do
         attrs = %{
           type: :client,
           secret_nonce: params["nonce"],
-          secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
+          secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
           account_id: actor.account_id,
           actor_id: actor.id,
           auth_provider_id: provider.id,
           expires_at: expires_at
         }
 
-        Domain.Auth.create_gui_client_token(attrs)
+        Portal.Auth.create_gui_client_token(attrs)
     end
   end
 
@@ -111,7 +111,7 @@ defmodule Web.UserpassController do
   # Store session cookie and redirect to portal or redirect_to parameter
   defp signed_in(conn, :portal, account, _actor, session, params) do
     conn
-    |> Web.Cookie.Session.put(account.id, %Web.Cookie.Session{session_id: session.id})
+    |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params)
   end
 
@@ -173,13 +173,13 @@ defmodule Web.UserpassController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Account
-    alias Domain.Userpass
+    alias Portal.Safe
+    alias Portal.Account
+    alias Portal.Userpass
 
     def get_account_by_id_or_slug(id_or_slug) do
       query =
-        if Domain.Repo.valid_uuid?(id_or_slug),
+        if Portal.Repo.valid_uuid?(id_or_slug),
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
@@ -195,7 +195,7 @@ defmodule Web.UserpassController do
     end
 
     def get_actor_by_email(account, email) do
-      from(a in Domain.Actor,
+      from(a in Portal.Actor,
         where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at)
       )
       |> Safe.unscoped()

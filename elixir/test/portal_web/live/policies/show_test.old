@@ -1,5 +1,5 @@
-defmodule Web.Live.Policies.ShowTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Policies.ShowTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -83,7 +83,7 @@ defmodule Web.Live.Policies.ShowTest do
   } do
     {:ok, deleted_policy} = Fixtures.Policies.delete_policy(policy)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/policies/#{deleted_policy}")
@@ -135,8 +135,8 @@ defmodule Web.Live.Policies.ShowTest do
   } do
     policy =
       policy
-      |> Domain.Repo.preload(:group)
-      |> Domain.Repo.preload(:resource)
+      |> Portal.Repo.preload(:group)
+      |> Portal.Repo.preload(:resource)
 
     {:ok, lv, _html} =
       conn
@@ -179,8 +179,8 @@ defmodule Web.Live.Policies.ShowTest do
 
     policy =
       Fixtures.Policies.create_policy(account: account, subject: subject, resource: resource)
-      |> Domain.Repo.preload(:group)
-      |> Domain.Repo.preload(:resource)
+      |> Portal.Repo.preload(:group)
+      |> Portal.Repo.preload(:resource)
 
     {:ok, lv, _html} =
       conn
@@ -251,7 +251,7 @@ defmodule Web.Live.Policies.ShowTest do
            |> render_click() ==
              {:error, {:live_redirect, %{to: ~p"/#{account}/policies", kind: :push}}}
 
-    refute Repo.get(Domain.Policy, policy.id)
+    refute Repo.get(Portal.Policy, policy.id)
   end
 
   test "allows disabling and enabling policy", %{
@@ -269,12 +269,12 @@ defmodule Web.Live.Policies.ShowTest do
            |> element("button[type=submit]", "Disable")
            |> render_click() =~ "(disabled)"
 
-    assert Repo.get(Domain.Policy, policy.id).disabled_at
+    assert Repo.get(Portal.Policy, policy.id).disabled_at
 
     refute lv
            |> element("button[type=submit]", "Enable")
            |> render_click() =~ "(disabled)"
 
-    refute Repo.get(Domain.Policy, policy.id).disabled_at
+    refute Repo.get(Portal.Policy, policy.id).disabled_at
   end
 end

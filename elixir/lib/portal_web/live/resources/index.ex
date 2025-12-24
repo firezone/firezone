@@ -1,6 +1,6 @@
-defmodule Web.Resources.Index do
+defmodule PortalWeb.Resources.Index do
   use Web, :live_view
-  alias Domain.{Changes.Change, PubSub, Resource}
+  alias Portal.{Changes.Change, PubSub, Resource}
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
@@ -150,7 +150,7 @@ defmodule Web.Resources.Index do
       </:content>
     </.section>
 
-    <.section :if={Domain.Account.internet_resource_enabled?(@account)}>
+    <.section :if={Portal.Account.internet_resource_enabled?(@account)}>
       <:title>
         Internet
       </:title>
@@ -185,8 +185,8 @@ defmodule Web.Resources.Index do
 
   defmodule DB do
     import Ecto.Query
-    import Domain.Repo.Query
-    alias Domain.{Safe, Resource, Policy, Site}
+    import Portal.Repo.Query
+    alias Portal.{Safe, Resource, Policy, Site}
 
     def get_site(id, subject) do
       from(s in Site, as: :sites)
@@ -228,13 +228,13 @@ defmodule Web.Resources.Index do
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :name_or_address,
           title: "Name or Address",
           type: {:string, :websearch},
           fun: &filter_by_name_fts_or_address/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :site_id,
           type: {:string, :uuid},
           values: [],

@@ -1,4 +1,4 @@
-defmodule API.Schemas.ExternalIdentity do
+defmodule PortalAPI.Schemas.ExternalIdentity do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -57,7 +57,7 @@ defmodule API.Schemas.ExternalIdentity do
   defmodule Request do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.ExternalIdentity
+    alias PortalAPI.Schemas.ExternalIdentity
 
     OpenApiSpex.schema(%{
       title: "ExternalIdentityRequest",
@@ -78,7 +78,7 @@ defmodule API.Schemas.ExternalIdentity do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.ExternalIdentity
+    alias PortalAPI.Schemas.ExternalIdentity
 
     OpenApiSpex.schema(%{
       title: "ExternalIdentityResponse",
@@ -109,7 +109,7 @@ defmodule API.Schemas.ExternalIdentity do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.ExternalIdentity
+    alias PortalAPI.Schemas.ExternalIdentity
 
     OpenApiSpex.schema(%{
       title: "ExternalIdentityListResponse",

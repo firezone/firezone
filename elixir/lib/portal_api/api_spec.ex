@@ -1,6 +1,6 @@
-defmodule API.ApiSpec do
+defmodule PortalAPI.ApiSpec do
   alias OpenApiSpex.{Components, Info, OpenApi, Paths, SecurityScheme, Server}
-  alias API.{Endpoint, Router}
+  alias PortalAPI.{Endpoint, Router}
   @behaviour OpenApi
 
   @impl OpenApi

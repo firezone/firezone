@@ -1,11 +1,11 @@
-defmodule API.EntraAuthProviderController do
+defmodule PortalAPI.EntraAuthProviderController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Domain.{Entra, Safe}
+  alias Portal.{Entra, Safe}
   alias __MODULE__.DB
   import Ecto.Query
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Entra Auth Providers"]
 
@@ -14,7 +14,7 @@ defmodule API.EntraAuthProviderController do
     responses: [
       ok:
         {"Entra Auth Provider Response", "application/json",
-         API.Schemas.EntraAuthProvider.ListResponse}
+         PortalAPI.Schemas.EntraAuthProvider.ListResponse}
     ]
 
   def index(conn, _params) do
@@ -35,7 +35,7 @@ defmodule API.EntraAuthProviderController do
     responses: [
       ok:
         {"Entra Auth Provider Response", "application/json",
-         API.Schemas.EntraAuthProvider.Response}
+         PortalAPI.Schemas.EntraAuthProvider.Response}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -46,7 +46,7 @@ defmodule API.EntraAuthProviderController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Entra, Safe}
+    alias Portal.{Entra, Safe}
 
     def list_providers(subject) do
       from(p in Entra.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])

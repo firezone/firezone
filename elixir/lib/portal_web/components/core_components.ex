@@ -1,4 +1,4 @@
-defmodule Web.CoreComponents do
+defmodule PortalWeb.CoreComponents do
   @moduledoc """
   Provides core UI components.
 
@@ -945,7 +945,7 @@ defmodule Web.CoreComponents do
   def datetime(assigns) do
     ~H"""
     <span title={@datetime}>
-      {Cldr.DateTime.to_string!(@datetime, Web.CLDR, format: @format)}
+      {Cldr.DateTime.to_string!(@datetime, PortalWeb.CLDR, format: @format)}
     </span>
     """
   end
@@ -970,7 +970,7 @@ defmodule Web.CoreComponents do
           "underline underline-offset-2 decoration-1 decoration-dotted",
           DateTime.compare(@datetime, @relative_to) == :lt && @negative_class
         ]}>
-          {Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
+          {Cldr.DateTime.Relative.to_string!(@datetime, PortalWeb.CLDR, relative_to: @relative_to)
           |> String.capitalize()}
         </span>
       </:target>
@@ -979,7 +979,7 @@ defmodule Web.CoreComponents do
       </:content>
     </.popover>
     <span :if={not @popover}>
-      {Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
+      {Cldr.DateTime.Relative.to_string!(@datetime, PortalWeb.CLDR, relative_to: @relative_to)
       |> String.capitalize()}
     </span>
     <span :if={is_nil(@datetime)}>
@@ -1047,7 +1047,7 @@ defmodule Web.CoreComponents do
         title={
           if @schema.last_seen_at,
             do:
-              "Last started #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
+              "Last started #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, PortalWeb.CLDR, relative_to: @relative_to)}",
             else: "Never connected"
         }
       >
@@ -1126,7 +1126,7 @@ defmodule Web.CoreComponents do
   attr :account, :any, required: true
   attr :actor, :any, required: true
 
-  def actor_link(%{actor: %Domain.Actor{type: :api_client}} = assigns) do
+  def actor_link(%{actor: %Portal.Actor{type: :api_client}} = assigns) do
     ~H"""
     <.link class={link_style()} navigate={~p"/#{@account}/settings/api_clients/#{@actor}"}>
       {assigns.actor.name}
@@ -1251,7 +1251,7 @@ defmodule Web.CoreComponents do
     <span class="inline-block">
       {[
         @schema.last_seen_remote_ip_location_city,
-        Domain.Geo.country_common_name!(@schema.last_seen_remote_ip_location_region)
+        Portal.Geo.country_common_name!(@schema.last_seen_remote_ip_location_region)
       ]
       |> Enum.reject(&is_nil/1)
       |> Enum.join(", ")}
@@ -1297,7 +1297,7 @@ defmodule Web.CoreComponents do
 
     ~H"""
     <span data-value={@number} {@rest}>
-      {Web.CLDR.Number.Cardinal.pluralize(@number, :en, @opts)}
+      {PortalWeb.CLDR.Number.Cardinal.pluralize(@number, :en, @opts)}
     </span>
     """
   end
@@ -1340,9 +1340,9 @@ defmodule Web.CoreComponents do
     # with our gettext backend as first argument. Translations are
     # available in the errors.po file (as we use the "errors" domain).
     if count = opts[:count] do
-      Gettext.dngettext(Web.Gettext, "errors", msg, msg, count, opts)
+      Gettext.dngettext(PortalWeb.Gettext, "errors", msg, msg, count, opts)
     else
-      Gettext.dgettext(Web.Gettext, "errors", msg, opts)
+      Gettext.dgettext(PortalWeb.Gettext, "errors", msg, opts)
     end
   end
 

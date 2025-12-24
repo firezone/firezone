@@ -1,9 +1,9 @@
-defmodule API.Relay.SocketTest do
-  use API.ChannelCase, async: true
-  import API.Relay.Socket, except: [connect: 3]
-  import Domain.TokenFixtures
-  import Domain.RelayFixtures
-  alias API.Relay.Socket
+defmodule PortalAPI.Relay.SocketTest do
+  use PortalAPI.ChannelCase, async: true
+  import PortalAPI.Relay.Socket, except: [connect: 3]
+  import Portal.TokenFixtures
+  import Portal.RelayFixtures
+  alias PortalAPI.Relay.Socket
 
   @connlib_version "1.3.0"
 
@@ -99,7 +99,7 @@ defmodule API.Relay.SocketTest do
       attrs = connect_attrs(token: encrypted_secret, ipv4: relay.ipv4)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
-      assert relay = Repo.one(Domain.Relay)
+      assert relay = Repo.one(Portal.Relay)
       assert relay.id == socket.assigns.relay.id
     end
 
@@ -113,7 +113,7 @@ defmodule API.Relay.SocketTest do
     test "creates a channel for a relay" do
       relay = relay_fixture()
       token_id = Ecto.UUID.generate()
-      socket = socket(API.Relay.Socket, "", %{relay: relay, token_id: token_id})
+      socket = socket(PortalAPI.Relay.Socket, "", %{relay: relay, token_id: token_id})
 
       assert id(socket) == "socket:#{token_id}"
     end

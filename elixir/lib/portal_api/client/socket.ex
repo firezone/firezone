@@ -1,16 +1,16 @@
-defmodule API.Client.Socket do
+defmodule PortalAPI.Client.Socket do
   use Phoenix.Socket
-  alias Domain.{Auth, Version}
-  alias Domain.Client
+  alias Portal.{Auth, Version}
+  alias Portal.Client
   alias __MODULE__.DB
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.Changeset
-  import Domain.Changeset
+  import Portal.Changeset
 
   ## Channels
 
-  channel "client", API.Client.Channel
+  channel "client", PortalAPI.Client.Channel
 
   ## Authentication
 
@@ -19,7 +19,7 @@ defmodule API.Client.Socket do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "client.connect" do
-      context = API.Sockets.auth_context(connect_info, :client)
+      context = PortalAPI.Sockets.auth_context(connect_info, :client)
 
       with {:ok, %{credential: %{type: :client_token, id: token_id}} = subject} <-
              Auth.authenticate(token, context),
@@ -62,7 +62,7 @@ defmodule API.Client.Socket do
   @impl true
 
   def id(socket) do
-    Domain.Sockets.socket_id(socket.assigns.subject.credential.id)
+    Portal.Sockets.socket_id(socket.assigns.subject.credential.id)
   end
 
   defp upsert_changeset(actor, subject, attrs) do
@@ -85,7 +85,7 @@ defmodule API.Client.Socket do
     |> put_change(:last_seen_remote_ip_location_lat, subject.context.remote_ip_location_lat)
     |> put_change(:last_seen_remote_ip_location_lon, subject.context.remote_ip_location_lon)
     |> validate_required(required_fields)
-    |> Domain.Client.changeset()
+    |> Portal.Client.changeset()
     |> validate_base64(:public_key)
     |> validate_length(:public_key, is: 44)
     |> put_change(:last_seen_at, DateTime.utc_now())
@@ -106,7 +106,7 @@ defmodule API.Client.Socket do
   end
 
   defp generate_name do
-    name = Domain.NameGenerator.generate()
+    name = Portal.NameGenerator.generate()
 
     hash =
       name
@@ -123,10 +123,10 @@ defmodule API.Client.Socket do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Client
-    alias Domain.IPv4Address
-    alias Domain.IPv6Address
-    alias Domain.Safe
+    alias Portal.Client
+    alias Portal.IPv4Address
+    alias Portal.IPv6Address
+    alias Portal.Safe
 
     def upsert_client(changeset, _subject) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)

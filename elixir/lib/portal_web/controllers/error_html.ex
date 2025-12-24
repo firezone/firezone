@@ -1,4 +1,4 @@
-defmodule Web.ErrorHTML do
+defmodule PortalWeb.ErrorHTML do
   use Web, :html
 
   # If you want to customize your error pages,

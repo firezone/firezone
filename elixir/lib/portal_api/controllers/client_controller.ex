@@ -1,13 +1,13 @@
-defmodule API.ClientController do
+defmodule PortalAPI.ClientController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias API.Pagination
-  alias Domain.Presence.Clients
+  alias PortalAPI.Pagination
+  alias Portal.Presence.Clients
   alias __MODULE__.DB
   import Ecto.Changeset
-  import Domain.Changeset
+  import Portal.Changeset
 
-  action_fallback(API.FallbackController)
+  action_fallback(PortalAPI.FallbackController)
 
   tags(["Clients"])
 
@@ -23,7 +23,7 @@ defmodule API.ClientController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.ListResponse}
+      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.ListResponse}
     ]
   )
 
@@ -50,7 +50,7 @@ defmodule API.ClientController do
       ]
     ],
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
     ]
   )
 
@@ -73,9 +73,9 @@ defmodule API.ClientController do
       ]
     ],
     request_body:
-      {"Client Attributes", "application/json", API.Schemas.Client.Request, required: true},
+      {"Client Attributes", "application/json", PortalAPI.Schemas.Client.Request, required: true},
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
     ]
   )
 
@@ -102,7 +102,7 @@ defmodule API.ClientController do
     client
     |> cast(attrs, update_fields)
     |> validate_required(required_fields)
-    |> Domain.Client.changeset()
+    |> Portal.Client.changeset()
   end
 
   operation(:verify,
@@ -116,7 +116,7 @@ defmodule API.ClientController do
       ]
     ],
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
     ]
   )
 
@@ -142,7 +142,7 @@ defmodule API.ClientController do
       ]
     ],
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
     ]
   )
 
@@ -169,7 +169,7 @@ defmodule API.ClientController do
       ]
     ],
     responses: [
-      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
     ]
   )
 
@@ -185,8 +185,8 @@ defmodule API.ClientController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Presence.Clients, Safe}
-    alias Domain.Client
+    alias Portal.{Presence.Clients, Safe}
+    alias Portal.Client
 
     def list_clients(subject, opts \\ []) do
       from(c in Client, as: :clients)

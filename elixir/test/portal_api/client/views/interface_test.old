@@ -1,6 +1,6 @@
-defmodule API.Client.Views.InterfaceTest do
-  use API.ChannelCase, async: true
-  alias API.Client.Views.Interface
+defmodule PortalAPI.Client.Views.InterfaceTest do
+  use PortalAPI.ChannelCase, async: true
+  alias PortalAPI.Client.Views.Interface
 
   describe "render/1" do
     test "renders interface config with Do53 resolvers" do
@@ -18,7 +18,7 @@ defmodule API.Client.Views.InterfaceTest do
           }
         )
 
-      client = Fixtures.Clients.create_client(account: account) |> Domain.Repo.preload(:account)
+      client = Fixtures.Clients.create_client(account: account) |> Portal.Repo.preload(:account)
 
       result = Interface.render(client)
 
@@ -56,7 +56,7 @@ defmodule API.Client.Views.InterfaceTest do
           }
         )
 
-      client = Fixtures.Clients.create_client(account: account) |> Domain.Repo.preload(:account)
+      client = Fixtures.Clients.create_client(account: account) |> Portal.Repo.preload(:account)
 
       result = Interface.render(client)
 

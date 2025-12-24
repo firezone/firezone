@@ -4,11 +4,11 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
     category: :warning,
     explanations: [
       check: """
-      Domain.Repo should only be called in specific allowed contexts.
-      Use Domain.Safe in all other application contexts.
+      Portal.Repo should only be called in specific allowed contexts.
+      Use Portal.Safe in all other application contexts.
 
       Allowed contexts:
-      - Domain.Safe module
+      - Portal.Safe module
       - seeds.exs files
       - Test fixtures
       - Mix tasks
@@ -23,11 +23,11 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
     file_path = source_file.filename
 
     cond do
-      # Allow in Domain.Safe module
+      # Allow in Portal.Safe module
       String.ends_with?(file_path, "domain/lib/domain/safe.ex") ->
         []
 
-      # Allow in Domain.Repo itself and its submodules (Preloader, Paginator, Filter, Query)
+      # Allow in Portal.Repo itself and its submodules (Preloader, Paginator, Filter, Query)
       String.contains?(file_path, "domain/lib/domain/repo") ->
         []
 
@@ -53,7 +53,7 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
     end
   end
 
-  # Check for alias Domain.Repo
+  # Check for alias Portal.Repo
   defp traverse(
          {:alias, meta, [{:__aliases__, _, [:Domain, :Repo]}]} = ast,
          issues,
@@ -62,7 +62,7 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
     {ast, [issue_for(ast, meta[:line], issue_meta) | issues]}
   end
 
-  # Check for alias Domain.Repo, as: Something
+  # Check for alias Portal.Repo, as: Something
   defp traverse(
          {:alias, meta, [{:__aliases__, _, [:Domain, :Repo]}, _]} = ast,
          issues,
@@ -71,7 +71,7 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
     {ast, [issue_for(ast, meta[:line], issue_meta) | issues]}
   end
 
-  # Check for direct Domain.Repo calls
+  # Check for direct Portal.Repo calls
   defp traverse(
          {{:., meta, [{:__aliases__, _, [:Domain, :Repo]}, _]}, _, _} = ast,
          issues,
@@ -97,8 +97,8 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
     format_issue(
       issue_meta,
       message:
-        "Domain.Repo should not be called directly here. Use Domain.Safe instead or ensure you're in an allowed context (Domain.Safe module, seeds.exs, test fixtures, mix tasks, or migrations).",
-      trigger: "Domain.Repo",
+        "Portal.Repo should not be called directly here. Use Portal.Safe instead or ensure you're in an allowed context (Portal.Safe module, seeds.exs, test fixtures, mix tasks, or migrations).",
+      trigger: "Portal.Repo",
       line_no: line_no
     )
   end

@@ -1,4 +1,4 @@
-defmodule API.ChangesetJSON do
+defmodule PortalAPI.ChangesetJSON do
   def error(%{status: status, changeset: changeset}) do
     %{
       error: %{

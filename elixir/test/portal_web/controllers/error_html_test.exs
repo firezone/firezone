@@ -1,5 +1,5 @@
-defmodule Web.ErrorHTMLTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.ErrorHTMLTest do
+  use PortalWeb.ConnCase, async: true
 
   test "renders 404.html", %{conn: conn} do
     {_code, _headers, body} =

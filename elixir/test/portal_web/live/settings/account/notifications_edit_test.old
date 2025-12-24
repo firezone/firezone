@@ -1,8 +1,8 @@
-defmodule Web.Live.Settings.Account.NotificationsEditTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Settings.Account.NotificationsEditTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account =
       Fixtures.Accounts.create_account(
@@ -100,7 +100,7 @@ defmodule Web.Live.Settings.Account.NotificationsEditTest do
 
     assert_redirected(lv, ~p"/#{account}/settings/account")
 
-    assert account = Repo.get_by(Domain.Account, id: account.id)
+    assert account = Repo.get_by(Portal.Account, id: account.id)
     assert account.config.notifications.outdated_gateway.enabled == true
   end
 end

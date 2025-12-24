@@ -1,5 +1,5 @@
-defmodule API.GoogleDirectoryJSON do
-  alias Domain.Google
+defmodule PortalAPI.GoogleDirectoryJSON do
+  alias Portal.Google
 
   def index(%{directories: directories}) do
     %{data: Enum.map(directories, &data/1)}

@@ -1,11 +1,11 @@
-defmodule API.GoogleDirectoryController do
+defmodule PortalAPI.GoogleDirectoryController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Domain.{Google, Safe}
+  alias Portal.{Google, Safe}
   alias __MODULE__.DB
   import Ecto.Query
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Google Directories"]
 
@@ -14,7 +14,7 @@ defmodule API.GoogleDirectoryController do
     responses: [
       ok:
         {"Google Directory Response", "application/json",
-         API.Schemas.GoogleDirectory.ListResponse}
+         PortalAPI.Schemas.GoogleDirectory.ListResponse}
     ]
 
   def index(conn, _params) do
@@ -33,7 +33,7 @@ defmodule API.GoogleDirectoryController do
       ]
     ],
     responses: [
-      ok: {"Google Directory Response", "application/json", API.Schemas.GoogleDirectory.Response}
+      ok: {"Google Directory Response", "application/json", PortalAPI.Schemas.GoogleDirectory.Response}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -44,7 +44,7 @@ defmodule API.GoogleDirectoryController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Google, Safe}
+    alias Portal.{Google, Safe}
 
     def list_directories(subject) do
       from(d in Google.Directory, as: :directories, order_by: [desc: d.inserted_at])

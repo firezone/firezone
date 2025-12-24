@@ -1,4 +1,4 @@
-defmodule API.ErrorView do
+defmodule PortalAPI.ErrorView do
   def render("500.json", _assigns) do
     %{error: %{reason: "internal_error"}}
   end

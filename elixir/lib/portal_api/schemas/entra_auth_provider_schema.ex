@@ -1,4 +1,4 @@
-defmodule API.Schemas.EntraAuthProvider do
+defmodule PortalAPI.Schemas.EntraAuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -44,7 +44,7 @@ defmodule API.Schemas.EntraAuthProvider do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.EntraAuthProvider
+    alias PortalAPI.Schemas.EntraAuthProvider
 
     OpenApiSpex.schema(%{
       title: "EntraAuthProviderResponse",
@@ -65,7 +65,7 @@ defmodule API.Schemas.EntraAuthProvider do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.EntraAuthProvider
+    alias PortalAPI.Schemas.EntraAuthProvider
 
     OpenApiSpex.schema(%{
       title: "EntraAuthProviderListResponse",

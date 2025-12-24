@@ -1,6 +1,6 @@
-defmodule Web.AcceptanceCase do
+defmodule PortalWeb.AcceptanceCase do
   use ExUnit.CaseTemplate
-  use Domain.CaseTemplate
+  use Portal.CaseTemplate
   alias Wallaby.Query
   import Wallaby.Browser
 
@@ -9,15 +9,15 @@ defmodule Web.AcceptanceCase do
       # Import conveniences for testing with browser
       use Wallaby.DSL
       use Web, :verified_routes
-      import Web.AcceptanceCase
+      import PortalWeb.AcceptanceCase
 
-      alias Domain.Repo
-      alias Domain.Fixtures
-      alias Domain.Mocks
-      alias Web.AcceptanceCase.{Vault, Auth}
+      alias Portal.Repo
+      alias Portal.Fixtures
+      alias Portal.Mocks
+      alias PortalWeb.AcceptanceCase.{Vault, Auth}
 
       # The default endpoint for testing
-      @endpoint Web.Endpoint
+      @endpoint PortalWeb.Endpoint
       @moduletag :acceptance
       @moduletag timeout: 120_000
 
@@ -36,7 +36,7 @@ defmodule Web.AcceptanceCase do
         true
       end
 
-    metadata = Phoenix.Ecto.SQL.Sandbox.metadata_for(Domain.Repo, self())
+    metadata = Phoenix.Ecto.SQL.Sandbox.metadata_for(Portal.Repo, self())
     {:ok, session} = start_session(headless?, metadata)
 
     user_agent =

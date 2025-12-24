@@ -1,4 +1,4 @@
-defmodule Web.Layouts do
+defmodule PortalWeb.Layouts do
   use Web, :html
 
   embed_templates "layouts/*"

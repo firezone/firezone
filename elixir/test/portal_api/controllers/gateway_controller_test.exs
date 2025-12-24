@@ -1,11 +1,11 @@
-defmodule API.GatewayControllerTest do
-  use API.ConnCase, async: true
-  alias Domain.Gateway
+defmodule PortalAPI.GatewayControllerTest do
+  use PortalAPI.ConnCase, async: true
+  alias Portal.Gateway
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.SiteFixtures
-  import Domain.GatewayFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.SiteFixtures
+  import Portal.GatewayFixtures
 
   setup do
     account = account_fixture()
@@ -132,8 +132,8 @@ defmodule API.GatewayControllerTest do
                "data" => %{
                  "id" => gateway.id,
                  "name" => gateway.name,
-                 "ipv4" => Domain.Types.IP.to_string(gateway.ipv4_address.address),
-                 "ipv6" => Domain.Types.IP.to_string(gateway.ipv6_address.address),
+                 "ipv4" => Portal.Types.IP.to_string(gateway.ipv4_address.address),
+                 "ipv6" => Portal.Types.IP.to_string(gateway.ipv6_address.address),
                  "online" => false
                }
              }
@@ -169,8 +169,8 @@ defmodule API.GatewayControllerTest do
                "data" => %{
                  "id" => gateway.id,
                  "name" => gateway.name,
-                 "ipv4" => Domain.Types.IP.to_string(gateway.ipv4_address.address),
-                 "ipv6" => Domain.Types.IP.to_string(gateway.ipv6_address.address),
+                 "ipv4" => Portal.Types.IP.to_string(gateway.ipv4_address.address),
+                 "ipv6" => Portal.Types.IP.to_string(gateway.ipv6_address.address),
                  "online" => false
                }
              }

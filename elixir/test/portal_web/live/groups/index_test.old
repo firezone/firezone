@@ -1,5 +1,5 @@
-defmodule Web.Live.Groups.IndexTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Groups.IndexTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()

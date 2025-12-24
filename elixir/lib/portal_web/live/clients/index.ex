@@ -1,7 +1,7 @@
-defmodule Web.Clients.Index do
+defmodule PortalWeb.Clients.Index do
   use Web, :live_view
-  import Web.Clients.Components
-  alias Domain.{Presence.Clients, ComponentVersions}
+  import PortalWeb.Clients.Components
+  alias Portal.{Presence.Clients, ComponentVersions}
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
@@ -144,9 +144,9 @@ defmodule Web.Clients.Index do
 
   defmodule DB do
     import Ecto.Query
-    import Domain.Repo.Query
-    alias Domain.{Presence.Clients, Safe}
-    alias Domain.Client
+    import Portal.Repo.Query
+    alias Portal.{Presence.Clients, Safe}
+    alias Portal.Client
 
     def list_clients(subject, opts \\ []) do
       base_query = from(c in Client, as: :clients)
@@ -187,13 +187,13 @@ defmodule Web.Clients.Index do
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :name,
           title: "Client or Actor",
           type: {:string, :websearch},
           fun: &filter_by_name_or_email_fts/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :verification,
           title: "Verification Status",
           type: :string,
@@ -203,7 +203,7 @@ defmodule Web.Clients.Index do
           ],
           fun: &filter_by_verification/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :presence,
           title: "Presence",
           type: :string,

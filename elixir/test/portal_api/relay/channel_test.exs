@@ -1,31 +1,31 @@
-defmodule API.Relay.ChannelTest do
-  use API.ChannelCase, async: true
+defmodule PortalAPI.Relay.ChannelTest do
+  use PortalAPI.ChannelCase, async: true
 
-  import Domain.RelayFixtures
-  import Domain.TokenFixtures
+  import Portal.RelayFixtures
+  import Portal.TokenFixtures
 
   setup do
     relay = relay_fixture()
     token = relay_token_fixture()
 
-    stamp_secret = Domain.Crypto.random_token()
+    stamp_secret = Portal.Crypto.random_token()
 
     {:ok, _, socket} =
-      API.Relay.Socket
+      PortalAPI.Relay.Socket
       |> socket("relay:#{relay.id}", %{
         token_id: token.id,
         relay: relay,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
+      |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
     %{relay: relay, socket: socket, token: token}
   end
 
   describe "join/3" do
     test "tracks presence after join", %{relay: relay} do
-      presence = Domain.Presence.Relays.Global.list()
+      presence = Portal.Presence.Relays.Global.list()
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
       assert is_number(online_at)

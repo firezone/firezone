@@ -1,6 +1,6 @@
-defmodule Web.Live.Resources.EditTest do
-  use Web.ConnCase, async: true
-  alias Domain.{Changes, PubSub, Resource}
+defmodule PortalWeb.Live.Resources.EditTest do
+  use PortalWeb.ConnCase, async: true
+  alias Portal.{Changes, PubSub, Resource}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -50,7 +50,7 @@ defmodule Web.Live.Resources.EditTest do
   } do
     resource = Fixtures.Resources.delete_resource(resource)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}/edit")
@@ -250,7 +250,7 @@ defmodule Web.Live.Resources.EditTest do
 
     assert updated_resource.id == resource.id
 
-    assert updated_resource = Repo.get_by(Domain.Resource, id: resource.id)
+    assert updated_resource = Repo.get_by(Portal.Resource, id: resource.id)
     assert updated_resource.name == attrs.name
     assert html =~ "Resource #{updated_resource.name} updated successfully"
 
@@ -291,7 +291,7 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/resources")
 
-    assert updated_resource = Repo.get_by(Domain.Resource, id: resource.id)
+    assert updated_resource = Repo.get_by(Portal.Resource, id: resource.id)
     assert updated_resource.name == attrs.name
     assert updated_resource.type == :dns
     assert updated_resource.address == attrs.address
@@ -358,7 +358,7 @@ defmodule Web.Live.Resources.EditTest do
     resource: resource,
     conn: conn
   } do
-    Domain.Config.feature_flag_override(:traffic_filters, false)
+    Portal.Config.feature_flag_override(:traffic_filters, false)
 
     {:ok, lv, html} =
       conn
@@ -393,7 +393,7 @@ defmodule Web.Live.Resources.EditTest do
     resource: resource,
     conn: conn
   } do
-    Domain.Config.feature_flag_override(:traffic_filters, false)
+    Portal.Config.feature_flag_override(:traffic_filters, false)
     resource = Ecto.Changeset.change(resource, filters: []) |> Repo.update!()
 
     conn = authorize_conn(conn, identity)
@@ -412,7 +412,7 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/sites/#{site}")
 
-    assert saved_resource = Repo.get_by(Domain.Resource, id: resource.id)
+    assert saved_resource = Repo.get_by(Portal.Resource, id: resource.id)
     assert saved_resource.name == attrs.name
     assert html =~ "Resource #{saved_resource.name} updated successfully."
 
@@ -450,7 +450,7 @@ defmodule Web.Live.Resources.EditTest do
     resource: resource,
     conn: conn
   } do
-    Domain.Config.feature_flag_override(:traffic_filters, false)
+    Portal.Config.feature_flag_override(:traffic_filters, false)
 
     {:ok, lv, _html} =
       conn
@@ -463,7 +463,7 @@ defmodule Web.Live.Resources.EditTest do
     assert has_element?(lv, "input[name='resource[filters][tcp][ports]'][disabled]")
     assert has_element?(lv, "input[name='resource[filters][udp][enabled]'][disabled]")
     assert has_element?(lv, "input[name='resource[filters][udp][ports]'][disabled]")
-    assert saved_resource = Repo.get_by(Domain.Resource, id: resource.id)
+    assert saved_resource = Repo.get_by(Portal.Resource, id: resource.id)
     assert saved_resource.name == resource.name
     assert saved_resource.filters == resource.filters
   end

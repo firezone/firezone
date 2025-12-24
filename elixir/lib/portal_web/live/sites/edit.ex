@@ -1,4 +1,4 @@
-defmodule Web.Sites.Edit do
+defmodule PortalWeb.Sites.Edit do
   use Web, :live_view
   alias __MODULE__.DB
 
@@ -80,7 +80,7 @@ defmodule Web.Sites.Edit do
     site
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> Domain.Site.changeset()
+    |> Portal.Site.changeset()
   end
 
   defp update_changeset(site, attrs, _subject) do
@@ -89,15 +89,15 @@ defmodule Web.Sites.Edit do
     site
     |> cast(attrs, [:name])
     |> validate_required([:name])
-    |> Domain.Site.changeset()
+    |> Portal.Site.changeset()
   end
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
+    alias Portal.Safe
 
     def get_site!(id, subject) do
-      from(s in Domain.Site, as: :site)
+      from(s in Portal.Site, as: :site)
       |> where([site: s], s.id == ^id)
       |> preload(:account)
       |> Safe.scoped(subject)

@@ -1,4 +1,4 @@
-defmodule Web.Plugs.PutCSPHeader do
+defmodule PortalWeb.Plugs.PutCSPHeader do
   @behaviour Plug
 
   @impl true
@@ -6,7 +6,7 @@ defmodule Web.Plugs.PutCSPHeader do
 
   @impl true
   def call(%Plug.Conn{} = conn, _opts) do
-    csp_nonce = Domain.Crypto.random_token(8)
+    csp_nonce = Portal.Crypto.random_token(8)
 
     policy =
       Application.fetch_env!(:web, __MODULE__)

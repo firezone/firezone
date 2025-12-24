@@ -4,11 +4,11 @@ import Config
 ##### Domain ##################
 ###############################
 
-config :domain, Domain.Repo,
+config :domain, Portal.Repo,
   pool_size: 10,
   show_sensitive_data_on_connection_error: false
 
-config :domain, Domain.Entra.AuthProvider,
+config :domain, Portal.Entra.AuthProvider,
   # This is used for public OAuth apps
   discovery_document_uri:
     "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
@@ -17,7 +17,7 @@ config :domain, Domain.Entra.AuthProvider,
 ##### Web #####################
 ###############################
 
-config :web, Web.Endpoint,
+config :web, PortalWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true
 
@@ -25,7 +25,7 @@ config :web, Web.Endpoint,
 ##### API #####################
 ###############################
 
-config :api, API.Endpoint, server: true
+config :api, PortalAPI.Endpoint, server: true
 
 ###############################
 ##### Third-party configs #####

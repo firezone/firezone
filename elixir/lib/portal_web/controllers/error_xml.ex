@@ -1,4 +1,4 @@
-defmodule Web.ErrorXML do
+defmodule PortalWeb.ErrorXML do
   use Web, :xml
 
   # If you want to customize your error pages,

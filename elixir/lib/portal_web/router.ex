@@ -1,4 +1,4 @@
-defmodule Web.Router do
+defmodule PortalWeb.Router do
   use Web, :router
 
   pipeline :public do
@@ -6,7 +6,7 @@ defmodule Web.Router do
     plug :fetch_session
     plug :protect_from_forgery
     plug :fetch_live_flash
-    plug :put_root_layout, html: {Web.Layouts, :root}
+    plug :put_root_layout, html: {PortalWeb.Layouts, :root}
     plug :delete_legacy_cookies
   end
 
@@ -96,7 +96,7 @@ defmodule Web.Router do
     pipe_through :public
 
     live_session :verification,
-      on_mount: [Web.LiveHooks.AllowEctoSandbox] do
+      on_mount: [PortalWeb.LiveHooks.AllowEctoSandbox] do
       live "/verification", Verification
     end
   end
@@ -104,10 +104,10 @@ defmodule Web.Router do
   scope "/:account_id_or_slug", Web do
     pipe_through [
       :public,
-      Web.Plugs.FetchAccount,
-      Web.Plugs.FetchSubject,
-      Web.Plugs.RedirectIfAuthenticated,
-      Web.Plugs.AutoRedirectDefaultProvider
+      PortalWeb.Plugs.FetchAccount,
+      PortalWeb.Plugs.FetchSubject,
+      PortalWeb.Plugs.RedirectIfAuthenticated,
+      PortalWeb.Plugs.AutoRedirectDefaultProvider
     ]
 
     # Email auth entry point
@@ -120,21 +120,21 @@ defmodule Web.Router do
 
     live_session :redirect_if_user_is_authenticated,
       on_mount: [
-        Web.LiveHooks.AllowEctoSandbox,
-        Web.LiveHooks.FetchAccount,
-        Web.LiveHooks.FetchSubject,
-        Web.LiveHooks.RedirectIfAuthenticated
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.FetchAccount,
+        PortalWeb.LiveHooks.FetchSubject,
+        PortalWeb.LiveHooks.RedirectIfAuthenticated
       ] do
       live "/", SignIn
     end
 
     live_session :email_otp_verify,
-      session: {Web.Cookie.EmailOTP, :fetch_state, []},
+      session: {PortalWeb.Cookie.EmailOTP, :fetch_state, []},
       on_mount: [
-        Web.LiveHooks.AllowEctoSandbox,
-        Web.LiveHooks.FetchAccount,
-        Web.LiveHooks.FetchSubject,
-        Web.LiveHooks.RedirectIfAuthenticated
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.FetchAccount,
+        PortalWeb.LiveHooks.FetchSubject,
+        PortalWeb.LiveHooks.RedirectIfAuthenticated
       ] do
       live "/sign_in/email_otp/:auth_provider_id", SignIn.Email
     end
@@ -147,7 +147,7 @@ defmodule Web.Router do
   scope "/:account_id_or_slug", Web do
     pipe_through [
       :public,
-      Web.Plugs.FetchAccount
+      PortalWeb.Plugs.FetchAccount
     ]
 
     get "/sign_in/client_redirect", SignInController, :client_redirect
@@ -158,8 +158,8 @@ defmodule Web.Router do
   scope "/:account_id_or_slug", Web do
     pipe_through [
       :public,
-      Web.Plugs.FetchAccount,
-      Web.Plugs.FetchSubject
+      PortalWeb.Plugs.FetchAccount,
+      PortalWeb.Plugs.FetchSubject
     ]
 
     post "/sign_out", SignOutController, :sign_out
@@ -169,20 +169,20 @@ defmodule Web.Router do
   scope "/:account_id_or_slug", Web do
     pipe_through [
       :public,
-      Web.Plugs.FetchAccount,
-      Web.Plugs.FetchSubject,
-      Web.Plugs.EnsureAuthenticated,
-      Web.Plugs.EnsureAdmin
+      PortalWeb.Plugs.FetchAccount,
+      PortalWeb.Plugs.FetchSubject,
+      PortalWeb.Plugs.EnsureAuthenticated,
+      PortalWeb.Plugs.EnsureAdmin
     ]
 
     live_session :ensure_authenticated,
       on_mount: [
-        Web.LiveHooks.AllowEctoSandbox,
-        Web.LiveHooks.FetchAccount,
-        Web.LiveHooks.FetchSubject,
-        Web.LiveHooks.EnsureAuthenticated,
-        Web.LiveHooks.EnsureAdmin,
-        Web.LiveHooks.SetCurrentUri
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.FetchAccount,
+        PortalWeb.LiveHooks.FetchSubject,
+        PortalWeb.LiveHooks.EnsureAuthenticated,
+        PortalWeb.LiveHooks.EnsureAdmin,
+        PortalWeb.LiveHooks.SetCurrentUri
       ] do
       # Actors
       live "/actors", Actors

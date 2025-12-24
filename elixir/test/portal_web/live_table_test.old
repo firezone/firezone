@@ -1,6 +1,6 @@
-defmodule Web.LiveTableTest do
-  use Web.ConnCase, async: true
-  import Web.LiveTable
+defmodule PortalWeb.LiveTableTest do
+  use PortalWeb.ConnCase, async: true
+  import PortalWeb.LiveTable
 
   describe "<.live_table /> component" do
     setup do
@@ -63,7 +63,7 @@ defmodule Web.LiveTableTest do
       assigns = %{
         assigns
         | filters: [
-            %Domain.Repo.Filter{
+            %Portal.Repo.Filter{
               name: :search,
               title: "Query",
               type: {:string, :websearch}
@@ -95,7 +95,7 @@ defmodule Web.LiveTableTest do
       assigns = %{
         assigns
         | filters: [
-            %Domain.Repo.Filter{
+            %Portal.Repo.Filter{
               name: :email,
               title: "Email",
               type: {:string, :email}
@@ -127,7 +127,7 @@ defmodule Web.LiveTableTest do
       assigns = %{
         assigns
         | filters: [
-            %Domain.Repo.Filter{
+            %Portal.Repo.Filter{
               name: :id,
               title: "ID",
               type: {:string, :uuid},
@@ -170,7 +170,7 @@ defmodule Web.LiveTableTest do
       assigns = %{
         assigns
         | filters: [
-            %Domain.Repo.Filter{
+            %Portal.Repo.Filter{
               name: :btn,
               title: "Button",
               type: :string,
@@ -220,7 +220,7 @@ defmodule Web.LiveTableTest do
       assigns = %{
         assigns
         | filters: [
-            %Domain.Repo.Filter{
+            %Portal.Repo.Filter{
               name: :select,
               title: "Select",
               type: :string,
@@ -568,8 +568,8 @@ defmodule Web.LiveTableTest do
         }
 
       for {reason, exception} <- [
-            {:not_found, Web.LiveErrors.NotFoundError},
-            {:unauthorized, Web.LiveErrors.NotFoundError}
+            {:not_found, PortalWeb.LiveErrors.NotFoundError},
+            {:unauthorized, PortalWeb.LiveErrors.NotFoundError}
           ] do
         socket =
           assign_live_table(socket, "table-id",

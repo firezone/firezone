@@ -1,6 +1,6 @@
-defmodule API.Relay.Channel do
+defmodule PortalAPI.Relay.Channel do
   use API, :channel
-  alias Domain.Presence
+  alias Portal.Presence
   require OpenTelemetry.Tracer
   require Logger
 

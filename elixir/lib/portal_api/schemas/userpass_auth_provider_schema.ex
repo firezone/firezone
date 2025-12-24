@@ -1,4 +1,4 @@
-defmodule API.Schemas.UserpassAuthProvider do
+defmodule PortalAPI.Schemas.UserpassAuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -43,7 +43,7 @@ defmodule API.Schemas.UserpassAuthProvider do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.UserpassAuthProvider
+    alias PortalAPI.Schemas.UserpassAuthProvider
 
     OpenApiSpex.schema(%{
       title: "UserpassAuthProviderResponse",
@@ -64,7 +64,7 @@ defmodule API.Schemas.UserpassAuthProvider do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.UserpassAuthProvider
+    alias PortalAPI.Schemas.UserpassAuthProvider
 
     OpenApiSpex.schema(%{
       title: "UserpassAuthProviderListResponse",

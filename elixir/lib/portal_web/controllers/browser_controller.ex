@@ -1,4 +1,4 @@
-defmodule Web.BrowserController do
+defmodule PortalWeb.BrowserController do
   use Web, :controller
 
   def config(conn, _params) do

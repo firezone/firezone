@@ -1,4 +1,4 @@
-defmodule Web.Groups do
+defmodule PortalWeb.Groups do
   use Web, :live_view
 
   alias __MODULE__.DB
@@ -24,7 +24,7 @@ defmodule Web.Groups do
 
   # Add Group Modal
   def handle_params(params, uri, %{assigns: %{live_action: :add}} = socket) do
-    changeset = changeset(%Domain.Group{}, %{})
+    changeset = changeset(%Portal.Group{}, %{})
     socket = handle_live_tables_params(socket, params, uri)
 
     {:noreply,
@@ -86,7 +86,7 @@ defmodule Web.Groups do
   end
 
   def handle_event("validate", %{"group" => attrs}, socket) do
-    group = Map.get(socket.assigns, :group, %Domain.Group{})
+    group = Map.get(socket.assigns, :group, %Portal.Group{})
     changeset = changeset(group, attrs)
 
     # Only search if member_search value has changed
@@ -124,7 +124,7 @@ defmodule Web.Groups do
         {uniq_by_id([actor | socket.assigns.members_to_add]), []}
       end
 
-    group = Map.get(socket.assigns, :group, %Domain.Group{})
+    group = Map.get(socket.assigns, :group, %Portal.Group{})
     updated_params = Map.put(socket.assigns.form.params, "member_search", "")
     changeset = changeset(group, updated_params)
 
@@ -176,7 +176,7 @@ defmodule Web.Groups do
 
   def handle_event("create", %{"group" => attrs}, socket) do
     attrs = build_attrs_with_memberships_for_add(attrs, socket)
-    group = %Domain.Group{account_id: socket.assigns.subject.account.id}
+    group = %Portal.Group{account_id: socket.assigns.subject.account.id}
     changeset = changeset(group, attrs)
 
     case DB.create(changeset, socket.assigns.subject) do
@@ -896,22 +896,22 @@ defmodule Web.Groups do
 
   defmodule DB do
     import Ecto.Query
-    import Domain.Repo.Query
-    alias Domain.Safe
-    alias Domain.Directory
-    alias Domain.Repo.Filter
+    import Portal.Repo.Query
+    alias Portal.Safe
+    alias Portal.Directory
+    alias Portal.Repo.Filter
 
     def all do
-      from(groups in Domain.Group, as: :groups)
+      from(groups in Portal.Group, as: :groups)
     end
 
-    # Inlined from Domain.Actors.list_groups
+    # Inlined from Portal.Actors.list_groups
     def list_groups(subject, opts \\ []) do
       # Extract order_by to handle member_count sorting specially
       {order_by, opts} = Keyword.pop(opts, :order_by, [])
 
       member_counts_query =
-        from(m in Domain.Membership,
+        from(m in Portal.Membership,
           group_by: m.group_id,
           select: %{
             group_id: m.group_id,
@@ -920,7 +920,7 @@ defmodule Web.Groups do
         )
 
       query =
-        from(g in Domain.Group, as: :groups)
+        from(g in Portal.Group, as: :groups)
         |> join(:left, [groups: g], mc in subquery(member_counts_query),
           on: mc.group_id == g.id,
           as: :member_counts
@@ -1002,11 +1002,11 @@ defmodule Web.Groups do
       directories =
         from(d in Directory,
           where: d.account_id == ^subject.account.id,
-          left_join: google in Domain.Google.Directory,
+          left_join: google in Portal.Google.Directory,
           on: google.id == d.id and d.type == :google,
-          left_join: entra in Domain.Entra.Directory,
+          left_join: entra in Portal.Entra.Directory,
           on: entra.id == d.id and d.type == :entra,
-          left_join: okta in Domain.Okta.Directory,
+          left_join: okta in Portal.Okta.Directory,
           on: okta.id == d.id and d.type == :okta,
           select: %{
             id: d.id,
@@ -1047,7 +1047,7 @@ defmodule Web.Groups do
     end
 
     def get_group!(id, subject) do
-      from(g in Domain.Group, as: :groups)
+      from(g in Portal.Group, as: :groups)
       |> join(:left, [groups: g], d in Directory,
         on: d.id == g.directory_id,
         as: :directory
@@ -1061,7 +1061,7 @@ defmodule Web.Groups do
     end
 
     def get_actor!(id, subject) do
-      from(a in Domain.Actor, as: :actors)
+      from(a in Portal.Actor, as: :actors)
       |> where([actors: a], a.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one!()
@@ -1070,7 +1070,7 @@ defmodule Web.Groups do
     def search_actors(search_term, subject, exclude_actors) do
       exclude_ids = Enum.map(exclude_actors, & &1.id)
 
-      case from(a in Domain.Actor, as: :actors)
+      case from(a in Portal.Actor, as: :actors)
            |> where(
              [actors: a],
              (fulltext_search(a.name, ^search_term) or fulltext_search(a.email, ^search_term)) and
@@ -1086,21 +1086,21 @@ defmodule Web.Groups do
 
     def get_group_with_actors!(id, subject) do
       query =
-        from(g in Domain.Group, as: :groups)
+        from(g in Portal.Group, as: :groups)
         |> where([groups: groups], groups.id == ^id)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
         |> select_merge([groups: g, directory: d], %{
           directory_type: d.type
         })
-        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+        |> join(:left, [directory: d], gd in Portal.Google.Directory,
           on: gd.id == d.id and d.type == :google,
           as: :google_directory
         )
-        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
           on: ed.id == d.id and d.type == :entra,
           as: :entra_directory
         )
-        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+        |> join(:left, [directory: d], od in Portal.Okta.Directory,
           on: od.id == d.id and d.type == :okta,
           as: :okta_directory
         )

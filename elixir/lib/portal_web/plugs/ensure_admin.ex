@@ -1,10 +1,10 @@
-defmodule Web.Plugs.EnsureAdmin do
+defmodule PortalWeb.Plugs.EnsureAdmin do
   @behaviour Plug
 
   import Plug.Conn
 
-  alias Domain.Auth.Subject
-  alias Domain.Actor
+  alias Portal.Auth.Subject
+  alias Portal.Actor
 
   @impl true
   def init(opts), do: opts
@@ -21,7 +21,7 @@ defmodule Web.Plugs.EnsureAdmin do
 
   def call(conn, _opts) do
     conn
-    |> Web.FallbackController.call({:error, :not_found})
+    |> PortalWeb.FallbackController.call({:error, :not_found})
     |> halt()
   end
 end

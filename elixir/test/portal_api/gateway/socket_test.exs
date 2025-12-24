@@ -1,12 +1,12 @@
-defmodule API.Gateway.SocketTest do
-  use API.ChannelCase, async: true
-  import API.Gateway.Socket, except: [connect: 3]
-  import Domain.AccountFixtures
-  import Domain.SiteFixtures
-  import Domain.GatewayFixtures
-  import Domain.TokenFixtures
-  import Domain.SubjectFixtures
-  alias API.Gateway.Socket
+defmodule PortalAPI.Gateway.SocketTest do
+  use PortalAPI.ChannelCase, async: true
+  import PortalAPI.Gateway.Socket, except: [connect: 3]
+  import Portal.AccountFixtures
+  import Portal.SiteFixtures
+  import Portal.GatewayFixtures
+  import Portal.TokenFixtures
+  import Portal.SubjectFixtures
+  alias PortalAPI.Gateway.Socket
 
   @connlib_version "1.3.0"
 
@@ -91,7 +91,7 @@ defmodule API.Gateway.SocketTest do
       attrs = connect_attrs(token: encrypted_secret, external_id: gateway.external_id)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
-      assert gateway = Repo.one(Domain.Gateway)
+      assert gateway = Repo.one(Portal.Gateway)
       assert gateway.id == socket.assigns.gateway.id
     end
 
@@ -128,7 +128,7 @@ defmodule API.Gateway.SocketTest do
   describe "id/1" do
     test "creates a channel for a gateway" do
       subject = subject_fixture(type: :client)
-      socket = socket(API.Gateway.Socket, "", %{token_id: subject.credential.id})
+      socket = socket(PortalAPI.Gateway.Socket, "", %{token_id: subject.credential.id})
 
       assert id(socket) == "socket:#{subject.credential.id}"
     end

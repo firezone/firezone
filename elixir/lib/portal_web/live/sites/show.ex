@@ -1,4 +1,4 @@
-defmodule Web.Sites.Show do
+defmodule PortalWeb.Sites.Show do
   use Web, :live_view
   alias __MODULE__.DB
 
@@ -6,7 +6,7 @@ defmodule Web.Sites.Show do
     site = DB.get_site!(id, socket.assigns.subject)
 
     if connected?(socket) do
-      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
+      :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
     end
 
     socket =
@@ -81,7 +81,7 @@ defmodule Web.Sites.Show do
   end
 
   def handle_gateways_update!(socket, list_opts) do
-    online_ids = Domain.Presence.Gateways.Site.list(socket.assigns.site.id) |> Map.keys()
+    online_ids = Portal.Presence.Gateways.Site.list(socket.assigns.site.id) |> Map.keys()
 
     list_opts =
       list_opts
@@ -235,7 +235,7 @@ defmodule Web.Sites.Show do
               </code>
             </:col>
             <:col :let={gateway} label="version">
-              <.version_status outdated={Domain.Gateway.gateway_outdated?(gateway)} />
+              <.version_status outdated={Portal.Gateway.gateway_outdated?(gateway)} />
               {gateway.last_seen_version}
             </:col>
             <:col :let={gateway} label="status">
@@ -437,7 +437,7 @@ defmodule Web.Sites.Show do
     do: handle_live_table_event(event, params, socket)
 
   def handle_event("revoke_all_tokens", _params, socket) do
-    # Permission check happens in Domain.Safe - only account_admin_user can delete tokens
+    # Permission check happens in Portal.Safe - only account_admin_user can delete tokens
     deleted_token_count =
       case DB.delete_tokens_for_site(socket.assigns.site, socket.assigns.subject) do
         {:error, :unauthorized} -> 0
@@ -507,18 +507,18 @@ defmodule Web.Sites.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Gateway
+    alias Portal.Safe
+    alias Portal.Gateway
 
     def get_site!(id, subject) do
-      from(s in Domain.Site, as: :sites)
+      from(s in Portal.Site, as: :sites)
       |> where([sites: s], s.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one!()
     end
 
     def delete_tokens_for_site(site, subject) do
-      from(t in Domain.GatewayToken, where: t.site_id == ^site.id)
+      from(t in Portal.GatewayToken, where: t.site_id == ^site.id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
     end
@@ -538,20 +538,20 @@ defmodule Web.Sites.Show do
 
     def preloads do
       [
-        online?: &Domain.Presence.Gateways.preload_gateways_presence/1
+        online?: &Portal.Presence.Gateways.preload_gateways_presence/1
       ]
     end
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :site_id,
           title: "Site",
           type: {:string, :uuid},
           values: [],
           fun: &filter_by_site_id/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :ids,
           type: {:list, {:string, :uuid}},
           fun: &filter_by_ids/2
@@ -579,12 +579,12 @@ defmodule Web.Sites.Show do
         |> Safe.aggregate(:count)
 
       tokens =
-        from(t in Domain.GatewayToken, where: t.site_id == ^site.id)
+        from(t in Portal.GatewayToken, where: t.site_id == ^site.id)
         |> Safe.scoped(subject)
         |> Safe.aggregate(:count)
 
       resources =
-        from(r in Domain.Resource, where: r.site_id == ^site.id)
+        from(r in Portal.Resource, where: r.site_id == ^site.id)
         |> Safe.scoped(subject)
         |> Safe.aggregate(:count)
 
@@ -592,7 +592,7 @@ defmodule Web.Sites.Show do
     end
 
     def get_internet_resource!(subject) do
-      from(r in Domain.Resource, as: :resources)
+      from(r in Portal.Resource, as: :resources)
       |> where([resources: r], r.type == :internet)
       |> limit(1)
       |> Safe.scoped(subject)
@@ -600,13 +600,13 @@ defmodule Web.Sites.Show do
     end
 
     def list_resources(subject, opts \\ []) do
-      from(r in Domain.Resource, as: :resources)
+      from(r in Portal.Resource, as: :resources)
       |> Safe.scoped(subject)
       |> Safe.list(DB.ResourceQuery, opts)
     end
 
     def count_policies_by_resource(resource_ids, subject) do
-      from(p in Domain.Policy, as: :policies)
+      from(p in Portal.Policy, as: :policies)
       |> where([policies: p], p.resource_id in ^resource_ids)
       |> group_by([policies: p], p.resource_id)
       |> select([policies: p], {p.resource_id, count(p.id)})
@@ -616,7 +616,7 @@ defmodule Web.Sites.Show do
     end
 
     def list_policies(subject, opts \\ []) do
-      from(p in Domain.Policy, as: :policies)
+      from(p in Portal.Policy, as: :policies)
       |> Safe.scoped(subject)
       |> Safe.list(DB.PolicyQuery, opts)
     end
@@ -624,7 +624,7 @@ defmodule Web.Sites.Show do
 
   defmodule DB.ResourceQuery do
     import Ecto.Query
-    import Domain.Repo.Query
+    import Portal.Repo.Query
 
     def cursor_fields do
       [
@@ -636,13 +636,13 @@ defmodule Web.Sites.Show do
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :name_or_address,
           title: "Name or Address",
           type: {:string, :websearch},
           fun: &filter_by_name_fts_or_address/2
         },
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :site_id,
           type: {:string, :uuid},
           values: [],
@@ -676,7 +676,7 @@ defmodule Web.Sites.Show do
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :resource_id,
           type: {:string, :uuid},
           fun: &filter_by_resource_id/2

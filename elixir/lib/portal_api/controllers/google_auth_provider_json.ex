@@ -1,5 +1,5 @@
-defmodule API.GoogleAuthProviderJSON do
-  alias Domain.Google
+defmodule PortalAPI.GoogleAuthProviderJSON do
+  alias Portal.Google
 
   def index(%{providers: providers}) do
     %{data: Enum.map(providers, &data/1)}

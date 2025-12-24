@@ -1,6 +1,6 @@
-defmodule Web.ConnCase do
+defmodule PortalWeb.ConnCase do
   use ExUnit.CaseTemplate
-  use Domain.CaseTemplate
+  use Portal.CaseTemplate
   use Web, :verified_routes
   import Phoenix.LiveViewTest
   import Phoenix.ConnTest
@@ -9,7 +9,7 @@ defmodule Web.ConnCase do
   using do
     quote do
       # The default endpoint for testing
-      @endpoint Web.Endpoint
+      @endpoint PortalWeb.Endpoint
 
       use Web, :verified_routes
 
@@ -17,13 +17,13 @@ defmodule Web.ConnCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
-      import Web.ConnCase
+      import PortalWeb.ConnCase
 
       import Swoosh.TestAssertions
 
-      alias Domain.Repo
-      alias Domain.Fixtures
-      alias Domain.Mocks
+      alias Portal.Repo
+      alias Portal.Fixtures
+      alias Portal.Mocks
     end
   end
 
@@ -38,7 +38,7 @@ defmodule Web.ConnCase do
       |> Plug.Conn.put_req_header("x-geo-location-city", "Kyiv")
       |> Plug.Conn.put_req_header("x-geo-location-coordinates", "50.4333,30.5167")
 
-    conn = %{conn | secret_key_base: Web.Endpoint.config(:secret_key_base)}
+    conn = %{conn | secret_key_base: PortalWeb.Endpoint.config(:secret_key_base)}
 
     {:ok, conn: conn, user_agent: user_agent}
   end
@@ -55,10 +55,10 @@ defmodule Web.ConnCase do
     Phoenix.Flash.get(conn.assigns.flash, key)
   end
 
-  def authorize_conn(conn, %Domain.Actor{} = actor) do
+  def authorize_conn(conn, %Portal.Actor{} = actor) do
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0, "FooBar 1.1")
 
-    context = %Domain.Auth.Context{
+    context = %Portal.Auth.Context{
       type: :portal,
       user_agent: user_agent,
       remote_ip_location_region: "UA",
@@ -69,27 +69,27 @@ defmodule Web.ConnCase do
     }
 
     # Fetch the real account from the database
-    account = Domain.Repo.get!(Domain.Account, actor.account_id)
+    account = Portal.Repo.get!(Portal.Account, actor.account_id)
 
     # Create an auth provider for this account if needed
-    auth_provider = Domain.AuthProviderFixtures.email_otp_provider_fixture(account: account)
+    auth_provider = Portal.AuthProviderFixtures.email_otp_provider_fixture(account: account)
 
     expires_at = DateTime.add(DateTime.utc_now(), 300, :second)
 
     {:ok, session} =
-      Domain.Auth.create_portal_session(
+      Portal.Auth.create_portal_session(
         actor,
         auth_provider.id,
         context,
         expires_at
       )
 
-    {:ok, subject} = Domain.Auth.build_subject(session, context)
+    {:ok, subject} = Portal.Auth.build_subject(session, context)
 
     # Set the cookie. We need to set it as a response cookie first,
     # then transfer to request cookies for subsequent requests.
-    cookie = %Web.Cookie.Session{session_id: session.id}
-    conn = Web.Cookie.Session.put(conn, actor.account_id, cookie)
+    cookie = %PortalWeb.Cookie.Session{session_id: session.id}
+    conn = PortalWeb.Cookie.Session.put(conn, actor.account_id, cookie)
     cookie_name = "sess_#{actor.account_id}"
     cookie_value = conn.resp_cookies[cookie_name].value
 

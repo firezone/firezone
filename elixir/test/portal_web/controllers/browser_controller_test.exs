@@ -1,5 +1,5 @@
-defmodule Web.BrowserControllerTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.BrowserControllerTest do
+  use PortalWeb.ConnCase, async: true
 
   describe "config/2" do
     test "returns valid XML browser config", %{conn: conn} do

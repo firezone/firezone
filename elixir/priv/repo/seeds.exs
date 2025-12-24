@@ -947,7 +947,7 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  Token: #{global_relay_encoded_token}")
     IO.puts("")
 
-    # Create relays directly using the inline upsert logic from API.Relay.Socket
+    # Create relays directly using the inline upsert logic from PortalAPI.Relay.Socket
     relay_context = %Auth.Context{
       type: :relay,
       user_agent: "Ubuntu/14.04 connlib/0.7.412",

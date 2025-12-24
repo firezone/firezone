@@ -1,8 +1,8 @@
-defmodule API.AccountControllerTest do
-  use API.ConnCase, async: true
+defmodule PortalAPI.AccountControllerTest do
+  use PortalAPI.ConnCase, async: true
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
 
   describe "show/2" do
     test "returns account details with limits", %{conn: conn} do

@@ -1,4 +1,4 @@
-defmodule API.Endpoint do
+defmodule PortalAPI.Endpoint do
   use Sentry.PlugCapture
   use Phoenix.Endpoint, otp_app: :api
 
@@ -25,12 +25,12 @@ defmodule API.Endpoint do
   # https://hexdocs.pm/phoenix/Phoenix.Logger.html
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
-  socket "/gateway", API.Gateway.Socket, API.Sockets.options(timeout: :timer.seconds(37))
-  socket "/client", API.Client.Socket, API.Sockets.options(timeout: :timer.seconds(307))
-  socket "/relay", API.Relay.Socket, API.Sockets.options(timeout: :timer.seconds(41))
+  socket "/gateway", PortalAPI.Gateway.Socket, PortalAPI.Sockets.options(timeout: :timer.seconds(37))
+  socket "/client", PortalAPI.Client.Socket, PortalAPI.Sockets.options(timeout: :timer.seconds(307))
+  socket "/relay", PortalAPI.Relay.Socket, PortalAPI.Sockets.options(timeout: :timer.seconds(41))
 
   plug :fetch_user_agent
-  plug API.Router
+  plug PortalAPI.Router
 
   plug Sentry.PlugContext
 
@@ -66,12 +66,12 @@ defmodule API.Endpoint do
   end
 
   def external_trusted_proxies do
-    Domain.Config.fetch_env!(:api, :external_trusted_proxies)
+    Portal.Config.fetch_env!(:api, :external_trusted_proxies)
     |> Enum.map(&to_string/1)
   end
 
   def clients do
-    Domain.Config.fetch_env!(:api, :private_clients)
+    Portal.Config.fetch_env!(:api, :private_clients)
     |> Enum.map(&to_string/1)
   end
 end

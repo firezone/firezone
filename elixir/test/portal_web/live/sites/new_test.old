@@ -1,5 +1,5 @@
-defmodule Web.Live.Sites.NewTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Sites.NewTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -120,7 +120,7 @@ defmodule Web.Live.Sites.NewTest do
     |> render_submit()
 
     group =
-      Repo.get_by(Domain.Site, name: attrs.name)
+      Repo.get_by(Portal.Site, name: attrs.name)
       |> Repo.preload(:tokens)
 
     assert assert_redirect(lv, ~p"/#{account}/sites/#{group}")

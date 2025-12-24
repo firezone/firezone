@@ -1,11 +1,11 @@
-defmodule API.GatewayTokenControllerTest do
-  use API.ConnCase, async: true
-  alias Domain.GatewayToken
+defmodule PortalAPI.GatewayTokenControllerTest do
+  use PortalAPI.ConnCase, async: true
+  alias Portal.GatewayToken
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.SiteFixtures
-  import Domain.TokenFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.SiteFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()

@@ -147,7 +147,7 @@ defmodule Portal.AuthProviderFixtures do
 
   ## Examples
 
-      bypass = Web.Mocks.OIDC.discovery_document_server()
+      bypass = PortalWeb.Mocks.OIDC.discovery_document_server()
       provider = oidc_provider_fixture(bypass, account: account)
 
   """

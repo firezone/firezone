@@ -1,5 +1,5 @@
-defmodule Web.Live.Groups.EditTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Groups.EditTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -40,7 +40,7 @@ defmodule Web.Live.Groups.EditTest do
   } do
     group = Fixtures.Actors.delete_group(group)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups/#{group}/edit")
@@ -63,7 +63,7 @@ defmodule Web.Live.Groups.EditTest do
     )
     |> Repo.update!()
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups/#{group}/edit")
@@ -181,7 +181,7 @@ defmodule Web.Live.Groups.EditTest do
 
     assert_redirected(lv, ~p"/#{account}/groups/#{group}")
 
-    assert group = Repo.get_by(Domain.Group, id: group.id)
+    assert group = Repo.get_by(Portal.Group, id: group.id)
     assert group.name == attrs.name
   end
 end

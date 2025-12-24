@@ -1,13 +1,13 @@
-defmodule Web.LiveHooks.RedirectIfAuthenticated do
+defmodule PortalWeb.LiveHooks.RedirectIfAuthenticated do
   @moduledoc """
   Redirects authenticated users to the portal when accessing sign-in pages.
 
   When `as=client` is specified in the params, this hook does NOT redirect,
   allowing client sign-in flows to proceed even when a portal session exists.
   """
-  alias Domain.Account
-  alias Domain.Auth.Subject
-  alias Web.Session.Redirector
+  alias Portal.Account
+  alias Portal.Auth.Subject
+  alias PortalWeb.Session.Redirector
 
   def on_mount(
         :default,

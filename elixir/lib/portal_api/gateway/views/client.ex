@@ -1,5 +1,5 @@
-defmodule API.Gateway.Views.Client do
-  alias Domain.Client
+defmodule PortalAPI.Gateway.Views.Client do
+  alias Portal.Client
 
   def render(%Client{} = client, preshared_key) do
     # The OS name can have spaces, hence split the user-agent step by step.

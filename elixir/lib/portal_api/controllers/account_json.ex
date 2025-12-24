@@ -1,4 +1,4 @@
-defmodule API.AccountJSON do
+defmodule PortalAPI.AccountJSON do
   alias __MODULE__.DB
 
   @doc """
@@ -8,7 +8,7 @@ defmodule API.AccountJSON do
     %{data: data(account)}
   end
 
-  defp data(%Domain.Account{} = account) do
+  defp data(%Portal.Account{} = account) do
     %{
       id: account.id,
       slug: account.slug,
@@ -54,9 +54,9 @@ defmodule API.AccountJSON do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Actor
-    alias Domain.Client
+    alias Portal.Safe
+    alias Portal.Actor
+    alias Portal.Client
 
     def count_users_for_account(account) do
       from(a in Actor,
@@ -102,7 +102,7 @@ defmodule API.AccountJSON do
     end
 
     def count_groups_for_account(account) do
-      from(g in Domain.Site,
+      from(g in Portal.Site,
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )

@@ -1,5 +1,5 @@
-defmodule Web.Live.Sites.IndexTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Sites.IndexTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -99,9 +99,9 @@ defmodule Web.Live.Sites.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites")
 
-    Domain.Config.put_env_override(:test_pid, self())
-    :ok = Domain.Presence.Gateways.Account.subscribe(account.id)
-    :ok = Domain.Presence.Gateways.connect(gateway, token.id)
+    Portal.Config.put_env_override(:test_pid, self())
+    :ok = Portal.Presence.Gateways.Account.subscribe(account.id)
+    :ok = Portal.Presence.Gateways.connect(gateway, token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _}
     assert_receive {:live_table_reloaded, "sites"}, 250
 
@@ -145,8 +145,8 @@ defmodule Web.Live.Sites.IndexTest do
     site = Fixtures.Gateways.create_internet_site(account: account)
     token = Fixtures.Sites.create_token(account: account, site: site)
     gateway = Fixtures.Gateways.create_gateway(account: account, site: site)
-    Domain.Config.put_env_override(:test_pid, self())
-    :ok = Domain.Presence.Gateways.Account.subscribe(account.id)
+    Portal.Config.put_env_override(:test_pid, self())
+    :ok = Portal.Presence.Gateways.Account.subscribe(account.id)
 
     {:ok, lv, _html} =
       conn
@@ -159,7 +159,7 @@ defmodule Web.Live.Sites.IndexTest do
 
     assert has_element?(lv, "#internet-site-banner a[href='/#{account.slug}/sites/#{site.id}']")
 
-    :ok = Domain.Presence.Gateways.connect(gateway, token.id)
+    :ok = Portal.Presence.Gateways.connect(gateway, token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _}
     assert_receive {:live_table_reloaded, "sites"}, 250
     assert lv |> element("#internet-site-banner") |> render() =~ "Online"

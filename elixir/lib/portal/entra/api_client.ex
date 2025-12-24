@@ -1,6 +1,6 @@
 defmodule Portal.Entra.APIClient do
   @moduledoc """
-  Client for Microsoft Graph API.
+  Client for Microsoft Graph PortalAPI.
   """
 
   @doc """

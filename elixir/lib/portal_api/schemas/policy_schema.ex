@@ -1,4 +1,4 @@
-defmodule API.Schemas.Policy do
+defmodule PortalAPI.Schemas.Policy do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -28,7 +28,7 @@ defmodule API.Schemas.Policy do
   defmodule Request do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Policy
+    alias PortalAPI.Schemas.Policy
 
     OpenApiSpex.schema(%{
       title: "PolicyRequest",
@@ -51,7 +51,7 @@ defmodule API.Schemas.Policy do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Policy
+    alias PortalAPI.Schemas.Policy
 
     OpenApiSpex.schema(%{
       title: "PolicyResponse",
@@ -74,7 +74,7 @@ defmodule API.Schemas.Policy do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Policy
+    alias PortalAPI.Schemas.Policy
 
     OpenApiSpex.schema(%{
       title: "PolicyListResponse",

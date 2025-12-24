@@ -1,4 +1,4 @@
-defmodule Web.Sites.Gateways.Index do
+defmodule PortalWeb.Sites.Gateways.Index do
   use Web, :live_view
   alias __MODULE__.DB
 
@@ -6,7 +6,7 @@ defmodule Web.Sites.Gateways.Index do
     site = DB.get_site!(id, socket.assigns.subject)
 
     if connected?(socket) do
-      :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
+      :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
     end
 
     socket =
@@ -139,10 +139,10 @@ defmodule Web.Sites.Gateways.Index do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Gateway}
+    alias Portal.{Safe, Gateway}
 
     def get_site!(id, subject) do
-      from(s in Domain.Site, as: :sites)
+      from(s in Portal.Site, as: :sites)
       |> where([sites: s], s.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one!()
@@ -164,13 +164,13 @@ defmodule Web.Sites.Gateways.Index do
 
     def preloads do
       [
-        online?: &Domain.Presence.Gateways.preload_gateways_presence/1
+        online?: &Portal.Presence.Gateways.preload_gateways_presence/1
       ]
     end
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :site_id,
           title: "Site",
           type: {:string, :uuid},

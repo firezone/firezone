@@ -1,4 +1,4 @@
-defmodule API.Schemas.Gateway do
+defmodule PortalAPI.Schemas.Gateway do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -43,7 +43,7 @@ defmodule API.Schemas.Gateway do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Gateway
+    alias PortalAPI.Schemas.Gateway
 
     OpenApiSpex.schema(%{
       title: "GatewayResponse",
@@ -67,7 +67,7 @@ defmodule API.Schemas.Gateway do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Gateway
+    alias PortalAPI.Schemas.Gateway
 
     OpenApiSpex.schema(%{
       title: "GatewaysResponse",

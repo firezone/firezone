@@ -1,6 +1,6 @@
-defmodule Web.Policies.Components do
+defmodule PortalWeb.Policies.Components do
   use Web, :component_library
-  alias Domain.Policies.Condition
+  alias Portal.Policies.Condition
 
   @days_of_week [
     {"M", "Monday"},
@@ -37,7 +37,7 @@ defmodule Web.Policies.Components do
   end
 
   def maybe_drop_unsupported_conditions(attrs, socket) do
-    if Domain.Account.policy_conditions_enabled?(socket.assigns.account) do
+    if Portal.Account.policy_conditions_enabled?(socket.assigns.account) do
       attrs
     else
       Map.delete(attrs, "conditions")
@@ -154,7 +154,7 @@ defmodule Web.Policies.Components do
       <span :if={@operator == :is_in}>from</span>
       <span :if={@operator == :is_not_in}>from any counties except</span>
       <span class="font-medium">
-        {@values |> Enum.map(&Domain.Geo.country_common_name!/1) |> Enum.join(", ")}
+        {@values |> Enum.map(&Portal.Geo.country_common_name!/1) |> Enum.join(", ")}
       </span>
     </span>
     """
@@ -219,7 +219,7 @@ defmodule Web.Policies.Components do
   defp condition(%{property: :current_utc_datetime, values: values} = assigns) do
     assigns =
       assign_new(assigns, :tz_time_ranges_by_dow, fn ->
-        {:ok, ranges} = Domain.Policies.Evaluator.parse_days_of_week_time_ranges(values)
+        {:ok, ranges} = Portal.Policies.Evaluator.parse_days_of_week_time_ranges(values)
 
         ranges
         |> Enum.reject(fn {_dow, time_ranges} -> time_ranges == [] end)
@@ -279,7 +279,7 @@ defmodule Web.Policies.Components do
     assigns =
       assigns
       |> assign_new(:policy_conditions_enabled?, fn ->
-        Domain.Account.policy_conditions_enabled?(assigns.account)
+        Portal.Account.policy_conditions_enabled?(assigns.account)
       end)
       |> assign_new(:enabled_conditions, fn ->
         Map.fetch!(@conditions_by_resource_type, assigns.selected_resource.type)
@@ -410,7 +410,7 @@ defmodule Web.Policies.Components do
                 field={condition_form[:values]}
                 name="policy[conditions][remote_ip_location_region][values][]"
                 id={"policy_conditions_remote_ip_location_region_values_#{index}"}
-                options={[{"Select Country", nil}] ++ Domain.Geo.all_country_options!()}
+                options={[{"Select Country", nil}] ++ Portal.Geo.all_country_options!()}
                 disabled={@disabled}
                 value_index={index}
                 value={value}
@@ -801,7 +801,7 @@ defmodule Web.Policies.Components do
   end
 
   defp condition_operator_options(property) do
-    Domain.Policies.Condition.valid_operators_for_property(property)
+    Portal.Policies.Condition.valid_operators_for_property(property)
     |> Enum.map(&{condition_operator_option_name(&1), &1})
   end
 
@@ -812,8 +812,8 @@ defmodule Web.Policies.Components do
 
   defmodule DB do
     import Ecto.Query
-    import Domain.Repo.Query
-    alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
+    import Portal.Repo.Query
+    alias Portal.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
 
     def all_active_providers_for_account(account, subject) do
       # Query all auth provider types that are not disabled
@@ -856,21 +856,21 @@ defmodule Web.Policies.Components do
         (okta_query |> Safe.scoped(subject) |> Safe.all())
     end
 
-    # Inlined from Web.Groups.Components
+    # Inlined from PortalWeb.Groups.Components
     def fetch_group_option(id, subject) do
       group =
-        from(g in Domain.Group, as: :groups)
+        from(g in Portal.Group, as: :groups)
         |> where([groups: g], g.id == ^id)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
-        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+        |> join(:left, [directory: d], gd in Portal.Google.Directory,
           on: gd.id == d.id and d.type == :google,
           as: :google_directory
         )
-        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
           on: ed.id == d.id and d.type == :entra,
           as: :entra_directory
         )
-        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+        |> join(:left, [directory: d], od in Portal.Okta.Directory,
           on: od.id == d.id and d.type == :okta,
           as: :okta_directory
         )
@@ -895,17 +895,17 @@ defmodule Web.Policies.Components do
 
     def list_group_options(search_query_or_nil, subject) do
       query =
-        from(g in Domain.Group, as: :groups)
+        from(g in Portal.Group, as: :groups)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
-        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+        |> join(:left, [directory: d], gd in Portal.Google.Directory,
           on: gd.id == d.id and d.type == :google,
           as: :google_directory
         )
-        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
           on: ed.id == d.id and d.type == :entra,
           as: :entra_directory
         )
-        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+        |> join(:left, [directory: d], od in Portal.Okta.Directory,
           on: od.id == d.id and d.type == :okta,
           as: :okta_directory
         )
@@ -978,16 +978,16 @@ defmodule Web.Policies.Components do
       {group.id, group.name, group}
     end
 
-    # Inlined from Domain.Actors helpers
+    # Inlined from Portal.Actors helpers
     defp group_synced?(group), do: not is_nil(group.directory_id)
     defp group_managed?(group), do: group.type == :managed
 
-    # Inline functions from Domain.PolicyAuthorizations
+    # Inline functions from Portal.PolicyAuthorizations
     def list_policy_authorizations_for(assoc, subject, opts \\ [])
 
     def list_policy_authorizations_for(
-          %Domain.Policy{} = policy,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Policy{} = policy,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -996,8 +996,8 @@ defmodule Web.Policies.Components do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Resource{} = resource,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Resource{} = resource,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -1006,8 +1006,8 @@ defmodule Web.Policies.Components do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Client{} = client,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Client{} = client,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -1016,8 +1016,8 @@ defmodule Web.Policies.Components do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Actor{} = actor,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Actor{} = actor,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -1026,8 +1026,8 @@ defmodule Web.Policies.Components do
     end
 
     def list_policy_authorizations_for(
-          %Domain.Gateway{} = gateway,
-          %Domain.Auth.Subject{} = subject,
+          %Portal.Gateway{} = gateway,
+          %Portal.Auth.Subject{} = subject,
           opts
         ) do
       DB.PolicyAuthorizationQuery.all()
@@ -1037,8 +1037,8 @@ defmodule Web.Policies.Components do
 
     defp list_policy_authorizations(queryable, subject, opts) do
       queryable
-      |> Domain.Safe.scoped(subject)
-      |> Domain.Safe.list(DB.PolicyAuthorizationQuery, opts)
+      |> Portal.Safe.scoped(subject)
+      |> Portal.Safe.list(DB.PolicyAuthorizationQuery, opts)
     end
   end
 
@@ -1046,7 +1046,7 @@ defmodule Web.Policies.Components do
     import Ecto.Query
 
     def all do
-      from(policy_authorizations in Domain.PolicyAuthorization, as: :policy_authorizations)
+      from(policy_authorizations in Portal.PolicyAuthorization, as: :policy_authorizations)
     end
 
     def expired(queryable) do

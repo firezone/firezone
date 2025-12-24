@@ -1,4 +1,4 @@
-defmodule Web.Resources.Components do
+defmodule PortalWeb.Resources.Components do
   use Web, :component_library
   alias __MODULE__.DB
 
@@ -54,7 +54,7 @@ defmodule Web.Resources.Components do
 
   def map_filters_form_attrs(attrs, account) do
     attrs =
-      if Domain.Account.traffic_filters_enabled?(account) do
+      if Portal.Account.traffic_filters_enabled?(account) do
         attrs
       else
         Map.put(attrs, "filters", %{})
@@ -110,7 +110,7 @@ defmodule Web.Resources.Components do
       |> Map.put(:forms_by_protocol, forms_by_protocol)
       |> Map.put(
         :traffic_filters_enabled?,
-        Domain.Account.traffic_filters_enabled?(assigns.account)
+        Portal.Account.traffic_filters_enabled?(assigns.account)
       )
 
     ~H"""
@@ -344,7 +344,7 @@ defmodule Web.Resources.Components do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Safe, Resource}
+    alias Portal.{Safe, Resource}
 
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
@@ -362,7 +362,7 @@ defmodule Web.Resources.Components do
 
   defmodule DB.ListQuery do
     import Ecto.Query
-    import Domain.Repo.Query
+    import Portal.Repo.Query
 
     def cursor_fields do
       [
@@ -375,7 +375,7 @@ defmodule Web.Resources.Components do
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :name_or_address,
           title: "Name or Address",
           type: {:string, :websearch},

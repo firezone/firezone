@@ -1,5 +1,5 @@
-defmodule API.EmailOTPAuthProviderJSON do
-  alias Domain.EmailOTP
+defmodule PortalAPI.EmailOTPAuthProviderJSON do
+  alias Portal.EmailOTP
 
   def index(%{providers: providers}) do
     %{data: Enum.map(providers, &data/1)}

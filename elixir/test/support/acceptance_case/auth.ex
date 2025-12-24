@@ -1,13 +1,13 @@
-defmodule Web.AcceptanceCase.Auth do
+defmodule PortalWeb.AcceptanceCase.Auth do
   import ExUnit.Assertions
 
   def fetch_session_cookie(session) do
-    options = Web.Session.options()
+    options = PortalWeb.Session.options()
 
     key = Keyword.fetch!(options, :key)
     encryption_salt = Keyword.fetch!(options, :encryption_salt)
     signing_salt = Keyword.fetch!(options, :signing_salt)
-    secret_key_base = Web.Endpoint.config(:secret_key_base)
+    secret_key_base = PortalWeb.Endpoint.config(:secret_key_base)
 
     with {:ok, cookie} <- fetch_cookie(session, key),
          encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, []),
@@ -32,11 +32,11 @@ defmodule Web.AcceptanceCase.Auth do
     end
   end
 
-  def authenticate(session, %Domain.ExternalIdentity{} = identity) do
+  def authenticate(session, %Portal.ExternalIdentity{} = identity) do
     user_agent = fetch_session_user_agent!(session)
     remote_ip = {127, 0, 0, 1}
 
-    context = %Domain.Auth.Context{
+    context = %Portal.Auth.Context{
       type: :browser,
       user_agent: user_agent,
       remote_ip_location_region: "UA",
@@ -46,19 +46,19 @@ defmodule Web.AcceptanceCase.Auth do
       remote_ip: remote_ip
     }
 
-    {:ok, token} = Domain.Auth.create_token(identity, context, "", nil)
+    {:ok, token} = Portal.Auth.create_token(identity, context, "", nil)
     authenticate(session, token)
   end
 
-  def authenticate(session, %Domain.ClientToken{} = token) do
-    options = Web.Session.options()
+  def authenticate(session, %Portal.ClientToken{} = token) do
+    options = PortalWeb.Session.options()
 
     key = Keyword.fetch!(options, :key)
     encryption_salt = Keyword.fetch!(options, :encryption_salt)
     signing_salt = Keyword.fetch!(options, :signing_salt)
-    secret_key_base = Web.Endpoint.config(:secret_key_base)
+    secret_key_base = PortalWeb.Endpoint.config(:secret_key_base)
 
-    encoded_token = Domain.Crypto.encode_token_fragment!(token)
+    encoded_token = Portal.Crypto.encode_token_fragment!(token)
     encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
     signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
 
@@ -83,13 +83,13 @@ defmodule Web.AcceptanceCase.Auth do
           user_agent = fetch_session_user_agent!(session)
           remote_ip = {127, 0, 0, 1}
 
-          context = %Domain.Auth.Context{
+          context = %Portal.Auth.Context{
             type: :browser,
             user_agent: user_agent,
             remote_ip: remote_ip
           }
 
-          assert {:ok, subject} = Domain.Auth.authenticate(token, context)
+          assert {:ok, subject} = Portal.Auth.authenticate(token, context)
           flunk("User is authenticated, identity: #{inspect(subject.identity)}")
           :ok
 
@@ -104,7 +104,7 @@ defmodule Web.AcceptanceCase.Auth do
   def mock_client_sign_in_callback do
     test_pid = self()
     bypass = Bypass.open()
-    Domain.Config.put_env_override(:web, :client_handler, "http://localhost:#{bypass.port}/")
+    Portal.Config.put_env_override(:web, :client_handler, "http://localhost:#{bypass.port}/")
 
     Bypass.expect_once(bypass, "GET", "/handle_client_sign_in_callback", fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
@@ -121,14 +121,14 @@ defmodule Web.AcceptanceCase.Auth do
 
   def assert_authenticated(session, identity) do
     with {:ok, cookie} <- fetch_session_cookie(session),
-         context = %Domain.Auth.Context{
+         context = %Portal.Auth.Context{
            type: :browser,
            user_agent: fetch_session_user_agent!(session),
            remote_ip: {127, 0, 0, 1}
          },
          {:browser, _account_id, token} <-
            List.keyfind(cookie["sessions"], identity.account_id, 1),
-         {:ok, subject} <- Domain.Auth.authenticate(token, context) do
+         {:ok, subject} <- Portal.Auth.authenticate(token, context) do
       assert subject.identity.id == identity.id,
              "Expected #{inspect(identity)}, got #{inspect(subject.identity)}"
 

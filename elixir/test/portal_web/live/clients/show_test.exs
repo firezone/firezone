@@ -1,11 +1,11 @@
-defmodule Web.Live.Clients.ShowTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Clients.ShowTest do
+  use PortalWeb.ConnCase, async: true
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.ClientFixtures
-  import Domain.PolicyAuthorizationFixtures
-  import Domain.TokenFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.ClientFixtures
+  import Portal.PolicyAuthorizationFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -118,7 +118,7 @@ defmodule Web.Live.Clients.ShowTest do
   } do
     client_token = client_token_fixture(account: account, actor: actor)
 
-    :ok = Domain.Presence.Clients.connect(client, client_token.id)
+    :ok = Portal.Presence.Clients.connect(client, client_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -145,11 +145,11 @@ defmodule Web.Live.Clients.ShowTest do
       |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
-    :ok = Domain.Presence.Clients.Actor.subscribe(actor.id)
+    :ok = Portal.Presence.Clients.Actor.subscribe(actor.id)
 
     client_token = client_token_fixture(account: account, actor: actor)
 
-    assert Domain.Presence.Clients.connect(client, client_token.id) == :ok
+    assert Portal.Presence.Clients.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
 
     wait_for(fn ->
@@ -337,6 +337,6 @@ defmodule Web.Live.Clients.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/clients")
 
-    refute Repo.get_by(Domain.Client, id: client.id, account_id: client.account_id)
+    refute Repo.get_by(Portal.Client, id: client.id, account_id: client.account_id)
   end
 end

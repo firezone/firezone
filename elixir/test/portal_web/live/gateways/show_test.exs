@@ -1,10 +1,10 @@
-defmodule Web.Live.Gateways.ShowTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Gateways.ShowTest do
+  use PortalWeb.ConnCase, async: true
 
-  import Domain.AccountFixtures
-  import Domain.ActorFixtures
-  import Domain.GatewayFixtures
-  import Domain.TokenFixtures
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.GatewayFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -103,7 +103,7 @@ defmodule Web.Live.Gateways.ShowTest do
     conn: conn
   } do
     gateway_token = gateway_token_fixture(site: gateway.site, account: account)
-    :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
+    :ok = Portal.Presence.Gateways.connect(gateway, gateway_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -136,7 +136,7 @@ defmodule Web.Live.Gateways.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/sites/#{gateway.site}")
 
-    refute Repo.get_by(Domain.Gateway, id: gateway.id, account_id: gateway.account_id)
+    refute Repo.get_by(Portal.Gateway, id: gateway.id, account_id: gateway.account_id)
   end
 
   test "updates gateway status on presence event", %{
@@ -150,9 +150,9 @@ defmodule Web.Live.Gateways.ShowTest do
       |> authorize_conn(actor)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
-    :ok = Domain.Presence.Gateways.Site.subscribe(gateway.site.id)
+    :ok = Portal.Presence.Gateways.Site.subscribe(gateway.site.id)
     gateway_token = gateway_token_fixture(site: gateway.site, account: account)
-    :ok = Domain.Presence.Gateways.connect(gateway, gateway_token.id)
+    :ok = Portal.Presence.Gateways.connect(gateway, gateway_token.id)
     assert_receive %{topic: "presences:sites:" <> _}
 
     table =

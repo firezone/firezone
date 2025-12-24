@@ -1,8 +1,8 @@
-defmodule Web.Acceptance.SignIn.EmailTest do
-  use Web.AcceptanceCase, async: true
+defmodule PortalWeb.Acceptance.SignIn.EmailTest do
+  use PortalWeb.AcceptanceCase, async: true
 
   feature "renders success on invalid email to prevent enumeration attacks", %{session: session} do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
     Fixtures.Auth.create_email_provider(account: account)
@@ -18,7 +18,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
   end
 
   feature "allows to sign in using email link to the portal", %{session: session} do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
     provider = Fixtures.Auth.create_email_provider(account: account)
@@ -38,7 +38,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
   end
 
   feature "allows client to sign in using email link", %{session: session} do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
     nonce = Ecto.UUID.generate()
     state = Ecto.UUID.generate()
 
@@ -78,16 +78,16 @@ defmodule Web.Acceptance.SignIn.EmailTest do
 
     context = Fixtures.Auth.build_context(type: :client)
     token = redirect_params["nonce"] <> fragment
-    assert Domain.Auth.authenticate(fragment, context) == {:error, :unauthorized}
-    assert Domain.Auth.authenticate(redirect_params["nonce"], context) == {:error, :unauthorized}
-    assert {:ok, _subject} = Domain.Auth.authenticate(token, context)
+    assert Portal.Auth.authenticate(fragment, context) == {:error, :unauthorized}
+    assert Portal.Auth.authenticate(redirect_params["nonce"], context) == {:error, :unauthorized}
+    assert {:ok, _subject} = Portal.Auth.authenticate(token, context)
   end
 
   feature "allows to sign in using email link to the client even with active browser session", %{
     session: session
   } do
     Auth.mock_client_sign_in_callback()
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
     redirect_params = %{"as" => "client", "state" => "STATE", "nonce" => "NONCE"}
 
     account = Fixtures.Accounts.create_account()

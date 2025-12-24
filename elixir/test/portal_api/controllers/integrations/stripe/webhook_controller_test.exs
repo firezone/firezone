@@ -1,8 +1,8 @@
-defmodule API.Integrations.Stripe.WebhookControllerTest do
-  use API.ConnCase, async: true
-  import API.Integrations.Stripe.WebhookController
+defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
+  use PortalAPI.ConnCase, async: true
+  import PortalAPI.Integrations.Stripe.WebhookController
 
-  import Domain.AccountFixtures
+  import Portal.AccountFixtures
 
   describe "handle_webhook/2" do
     test "returns error when payload is not signed", %{conn: conn} do
@@ -31,7 +31,7 @@ defmodule API.Integrations.Stripe.WebhookControllerTest do
         account
         |> Ecto.Changeset.change()
         |> Ecto.Changeset.put_change(:metadata, %{stripe: %{customer_id: customer_id}})
-        |> Domain.Repo.update!()
+        |> Portal.Repo.update!()
 
       Bypass.open()
       |> Mocks.Stripe.mock_fetch_customer_endpoint(account)
@@ -80,7 +80,7 @@ defmodule API.Integrations.Stripe.WebhookControllerTest do
   end
 
   defp generate_signature(timestamp, payload) do
-    secret = Domain.Billing.fetch_webhook_signing_secret!()
+    secret = Portal.Billing.fetch_webhook_signing_secret!()
     sign(timestamp, secret, payload)
   end
 

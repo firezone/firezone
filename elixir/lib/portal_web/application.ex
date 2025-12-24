@@ -1,4 +1,4 @@
-defmodule Web.Application do
+defmodule PortalWeb.Application do
   use Application
 
   @impl true
@@ -9,16 +9,16 @@ defmodule Web.Application do
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
     children = [
-      Web.Endpoint
+      PortalWeb.Endpoint
     ]
 
-    opts = [strategy: :one_for_one, name: Web.Supervisor]
+    opts = [strategy: :one_for_one, name: PortalWeb.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
   @impl true
   def config_change(changed, _new, removed) do
-    Web.Endpoint.config_change(changed, removed)
+    PortalWeb.Endpoint.config_change(changed, removed)
     :ok
   end
 

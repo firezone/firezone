@@ -1,4 +1,4 @@
-defmodule API.Application do
+defmodule PortalAPI.Application do
   use Application
 
   @impl true
@@ -9,17 +9,17 @@ defmodule API.Application do
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
     children = [
-      API.Endpoint,
-      API.RateLimit
+      PortalAPI.Endpoint,
+      PortalAPI.RateLimit
     ]
 
-    opts = [strategy: :one_for_one, name: API.Supervisor]
+    opts = [strategy: :one_for_one, name: PortalAPI.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
   @impl true
   def config_change(changed, _new, removed) do
-    API.Endpoint.config_change(changed, removed)
+    PortalAPI.Endpoint.config_change(changed, removed)
     :ok
   end
 

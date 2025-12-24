@@ -1,6 +1,6 @@
-defmodule Web.Settings.Billing do
+defmodule PortalWeb.Settings.Billing do
   use Web, :live_view
-  alias Domain.Billing
+  alias Portal.Billing
   alias __MODULE__.DB
   require Logger
 
@@ -25,7 +25,7 @@ defmodule Web.Settings.Billing do
 
       {:ok, socket}
     else
-      raise Web.LiveErrors.NotFoundError
+      raise PortalWeb.LiveErrors.NotFoundError
     end
   end
 
@@ -252,7 +252,7 @@ defmodule Web.Settings.Billing do
         </h3>
         <p class="ml-4 mb-4 text-neutral-600">
           <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-red-500" /> To
-          <span :if={Domain.Account.active?(@account)}>disable your account and</span>
+          <span :if={Portal.Account.active?(@account)}>disable your account and</span>
           schedule it for deletion, please <.link
             class={link_style()}
             target="_blank"
@@ -290,10 +290,10 @@ defmodule Web.Settings.Billing do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Account
-    alias Domain.Actor
-    alias Domain.Client
+    alias Portal.Safe
+    alias Portal.Account
+    alias Portal.Actor
+    alias Portal.Client
 
     def count_account_admin_users_for_account(%Account{} = account) do
       from(a in Actor,
@@ -339,7 +339,7 @@ defmodule Web.Settings.Billing do
     end
 
     def count_groups_for_account(account) do
-      from(g in Domain.Site,
+      from(g in Portal.Site,
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )

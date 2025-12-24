@@ -1,4 +1,4 @@
-defmodule Web.Settings.Account.Notifications.Edit do
+defmodule PortalWeb.Settings.Account.Notifications.Edit do
   use Web, :live_view
   alias __MODULE__.DB
 
@@ -133,7 +133,7 @@ defmodule Web.Settings.Account.Notifications.Edit do
   end
 
   defmodule DB do
-    alias Domain.Safe
+    alias Portal.Safe
 
     def update(changeset, subject) do
       changeset

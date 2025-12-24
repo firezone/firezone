@@ -1,4 +1,4 @@
-defmodule Web.Cookie.Session do
+defmodule PortalWeb.Cookie.Session do
   @moduledoc """
   Cookie for storing session ID for an account.
   Uses per-account cookie names: `sess_<account_id>`.
@@ -46,9 +46,9 @@ defmodule Web.Cookie.Session do
       sign: true,
       max_age: @max_cookie_age,
       same_site: "Lax",
-      secure: Domain.Config.fetch_env!(:web, :cookie_secure),
+      secure: Portal.Config.fetch_env!(:web, :cookie_secure),
       http_only: true,
-      signing_salt: Domain.Config.fetch_env!(:web, :cookie_signing_salt)
+      signing_salt: Portal.Config.fetch_env!(:web, :cookie_signing_salt)
     ]
   end
 end

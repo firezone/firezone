@@ -1,11 +1,11 @@
-defmodule API.OIDCAuthProviderController do
+defmodule PortalAPI.OIDCAuthProviderController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Domain.{OIDC, Safe}
+  alias Portal.{OIDC, Safe}
   alias __MODULE__.DB
   import Ecto.Query
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["OIDC Auth Providers"]
 
@@ -14,7 +14,7 @@ defmodule API.OIDCAuthProviderController do
     responses: [
       ok:
         {"OIDC Auth Provider Response", "application/json",
-         API.Schemas.OIDCAuthProvider.ListResponse}
+         PortalAPI.Schemas.OIDCAuthProvider.ListResponse}
     ]
 
   def index(conn, _params) do
@@ -34,7 +34,7 @@ defmodule API.OIDCAuthProviderController do
     ],
     responses: [
       ok:
-        {"OIDC Auth Provider Response", "application/json", API.Schemas.OIDCAuthProvider.Response}
+        {"OIDC Auth Provider Response", "application/json", PortalAPI.Schemas.OIDCAuthProvider.Response}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -45,7 +45,7 @@ defmodule API.OIDCAuthProviderController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{OIDC, Safe}
+    alias Portal.{OIDC, Safe}
 
     def list_providers(subject) do
       from(p in OIDC.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])

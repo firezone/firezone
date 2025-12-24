@@ -1,5 +1,5 @@
-defmodule Web.Live.Settings.ApiClient.NewTokenTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Settings.ApiClient.NewTokenTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()

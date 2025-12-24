@@ -29,9 +29,9 @@ defmodule API do
   def verified_routes do
     quote do
       use Phoenix.VerifiedRoutes,
-        endpoint: API.Endpoint,
-        router: API.Router,
-        statics: API.static_paths()
+        endpoint: PortalAPI.Endpoint,
+        router: PortalAPI.Router,
+        statics: PortalAPI.static_paths()
     end
   end
 

@@ -1,5 +1,5 @@
-defmodule API.PolicyJSON do
-  alias API.Pagination
+defmodule PortalAPI.PolicyJSON do
+  alias PortalAPI.Pagination
 
   @doc """
   Renders a list of Policies.
@@ -18,7 +18,7 @@ defmodule API.PolicyJSON do
     %{data: data(policy)}
   end
 
-  defp data(%Domain.Policy{} = policy) do
+  defp data(%Portal.Policy{} = policy) do
     %{
       id: policy.id,
       group_id: policy.group_id,

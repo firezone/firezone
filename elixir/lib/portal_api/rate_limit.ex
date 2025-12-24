@@ -1,6 +1,6 @@
-defmodule API.RateLimit do
+defmodule PortalAPI.RateLimit do
   @moduledoc """
-  Distributed, eventually consistent rate limiter using `Domain.PubSub` and `Hammer`.
+  Distributed, eventually consistent rate limiter using `Portal.PubSub` and `Hammer`.
 
   This module provides a rate-limiting mechanism for requests using a distributed,
   eventually consistent approach. It combines local in-memory counting with a
@@ -15,7 +15,7 @@ defmodule API.RateLimit do
 
   def hit(key, refill_rate, capacity, cost \\ @default_cost) do
     :ok = broadcast({:hit, key, refill_rate, capacity, cost, Node.self()})
-    API.RateLimit.Local.hit(key, refill_rate, capacity, cost)
+    PortalAPI.RateLimit.Local.hit(key, refill_rate, capacity, cost)
   end
 
   defmodule Local do
@@ -35,7 +35,7 @@ defmodule API.RateLimit do
 
     @impl true
     def init(topic) do
-      :ok = Domain.PubSub.subscribe(topic)
+      :ok = Portal.PubSub.subscribe(topic)
       {:ok, []}
     end
 
@@ -52,7 +52,7 @@ defmodule API.RateLimit do
   @topic "__ratelimit"
 
   defp broadcast(message) do
-    Domain.PubSub.broadcast(@topic, message)
+    Portal.PubSub.broadcast(@topic, message)
   end
 
   def child_spec(opts) do

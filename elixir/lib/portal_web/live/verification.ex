@@ -1,7 +1,7 @@
-defmodule Web.Verification do
-  use Web, {:live_view, layout: {Web.Layouts, :verification}}
+defmodule PortalWeb.Verification do
+  use Web, {:live_view, layout: {PortalWeb.Layouts, :verification}}
 
-  alias Domain.Entra
+  alias Portal.Entra
 
   def mount(_params, session, socket) do
     # Store verification data from session - uses a single :verification key
@@ -35,7 +35,7 @@ defmodule Web.Verification do
     # Only broadcast on WebSocket connection, not initial HTTP request
     if connected?(socket) do
       # Broadcast to authentication LiveView
-      Domain.PubSub.broadcast(
+      Portal.PubSub.broadcast(
         "oidc-verification:#{verification_token}",
         {:oidc_verify, self(), verification_code, verification_token}
       )
@@ -105,13 +105,13 @@ defmodule Web.Verification do
     # Only do verification on WebSocket connection, not initial HTTP request
     if connected?(socket) do
       # Verify directory access with client credentials
-      config = Domain.Config.fetch_env!(:domain, Entra.APIClient)
+      config = Portal.Config.fetch_env!(:domain, Entra.APIClient)
       client_id = config[:client_id]
 
       case verify_directory_access(tenant_id, client_id) do
         {:ok, :verified} ->
           # Broadcast success to DirectorySync LiveView
-          Domain.PubSub.broadcast(
+          Portal.PubSub.broadcast(
             "entra-admin-consent:#{verification_token}",
             {:entra_admin_consent, self(), nil, tenant_id, verification_token}
           )
@@ -136,7 +136,7 @@ defmodule Web.Verification do
       # For auth provider, broadcast success to Authentication LiveView
       issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0"
 
-      Domain.PubSub.broadcast(
+      Portal.PubSub.broadcast(
         "entra-verification:#{verification_token}",
         {:entra_admin_consent, self(), issuer, tenant_id, verification_token}
       )

@@ -1,10 +1,10 @@
-defmodule Web.LiveHooks.RedirectIfAuthenticatedTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.LiveHooks.RedirectIfAuthenticatedTest do
+  use PortalWeb.ConnCase, async: true
 
-  import Domain.AccountFixtures
-  import Domain.SubjectFixtures
+  import Portal.AccountFixtures
+  import Portal.SubjectFixtures
 
-  alias Web.LiveHooks.RedirectIfAuthenticated
+  alias PortalWeb.LiveHooks.RedirectIfAuthenticated
 
   setup do
     account = account_fixture()
@@ -67,7 +67,7 @@ defmodule Web.LiveHooks.RedirectIfAuthenticatedTest do
       account: account
     } do
       # Create an authenticated admin actor
-      actor = Domain.ActorFixtures.admin_actor_fixture(account: account)
+      actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
 
       # Authenticate and mount LiveView with as=client
       {:ok, _view, html} =
@@ -84,7 +84,7 @@ defmodule Web.LiveHooks.RedirectIfAuthenticatedTest do
       account: account
     } do
       # Create an authenticated admin actor
-      actor = Domain.ActorFixtures.admin_actor_fixture(account: account)
+      actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
 
       # Authenticate and try to mount LiveView without as=client
       {:error, {:redirect, %{to: redirect_path}}} =

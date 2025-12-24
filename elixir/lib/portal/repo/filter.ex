@@ -67,7 +67,7 @@ defmodule Portal.Repo.Filter do
   @doc """
   Defines a filter.
 
-  Setting `title` to `nil` will hide it from rendering by `Web.LiveTable`.
+  Setting `title` to `nil` will hide it from rendering by `PortalWeb.LiveTable`.
   """
   @type t :: %__MODULE__{
           name: atom(),

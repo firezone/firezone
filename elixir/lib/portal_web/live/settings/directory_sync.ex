@@ -1,7 +1,7 @@
-defmodule Web.Settings.DirectorySync do
+defmodule PortalWeb.Settings.DirectorySync do
   use Web, :live_view
 
-  alias Domain.{
+  alias Portal.{
     Crypto.JWK,
     Entra,
     Google,
@@ -108,7 +108,7 @@ defmodule Web.Settings.DirectorySync do
   end
 
   def handle_params(%{"type" => _type}, _url, _socket) do
-    raise Web.LiveErrors.NotFoundError
+    raise PortalWeb.LiveErrors.NotFoundError
   end
 
   def handle_params(_params, _url, socket) do
@@ -262,9 +262,9 @@ defmodule Web.Settings.DirectorySync do
   def handle_event("sync_directory", %{"id" => id, "type" => type}, socket) do
     sync_module =
       case type do
-        "entra" -> Domain.Entra.Sync
-        "google" -> Domain.Google.Sync
-        "okta" -> Domain.Okta.Sync
+        "entra" -> Portal.Entra.Sync
+        "google" -> Portal.Google.Sync
+        "okta" -> Portal.Okta.Sync
         _ -> raise "Unsupported directory type for sync: #{type}"
       end
 
@@ -283,7 +283,7 @@ defmodule Web.Settings.DirectorySync do
   end
 
   def handle_info({:entra_admin_consent, pid, _issuer, tenant_id, state_token}, socket) do
-    :ok = Domain.PubSub.unsubscribe("entra-admin-consent:#{state_token}")
+    :ok = Portal.PubSub.unsubscribe("entra-admin-consent:#{state_token}")
     stored_token = socket.assigns.verification.token
 
     # Verify the state token matches
@@ -323,7 +323,7 @@ defmodule Web.Settings.DirectorySync do
       </.breadcrumb>
     </.breadcrumbs>
 
-    <%= if Domain.Account.idp_sync_enabled?(@account) do %>
+    <%= if Portal.Account.idp_sync_enabled?(@account) do %>
       <.section>
         <:title>Directories</:title>
         <:action><.docs_action path="/directory-sync" /></:action>
@@ -1222,7 +1222,7 @@ defmodule Web.Settings.DirectorySync do
     directory_id = Ecto.UUID.generate()
 
     directory_changeset =
-      %Domain.Directory{}
+      %Portal.Directory{}
       |> Ecto.Changeset.change(%{
         id: directory_id,
         account_id: account_id,
@@ -1296,7 +1296,7 @@ defmodule Web.Settings.DirectorySync do
   defp start_verification(%{assigns: %{type: "google"}} = socket) do
     changeset = socket.assigns.form.source
     impersonation_email = get_field(changeset, :impersonation_email)
-    config = Domain.Config.fetch_env!(:domain, Google.APIClient)
+    config = Portal.Config.fetch_env!(:domain, Google.APIClient)
     key = config[:service_account_key] |> JSON.decode!()
 
     with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
@@ -1331,10 +1331,10 @@ defmodule Web.Settings.DirectorySync do
     # configured in the app registration. This is the correct way to request
     # application permissions (not delegated) via the admin consent endpoint.
 
-    token = Domain.Crypto.random_token(32)
+    token = Portal.Crypto.random_token(32)
     state = "entra-admin-consent:#{token}"
 
-    config = Domain.Config.fetch_env!(:domain, Entra.APIClient)
+    config = Portal.Config.fetch_env!(:domain, Entra.APIClient)
     client_id = config[:client_id]
 
     # Build admin consent URL - route through /auth/oidc/callback so admins only need one redirect URI
@@ -1353,7 +1353,7 @@ defmodule Web.Settings.DirectorySync do
     admin_consent_url =
       "https://login.microsoftonline.com/organizations/v2.0/adminconsent?#{query_string}"
 
-    :ok = Domain.PubSub.subscribe("entra-admin-consent:#{token}")
+    :ok = Portal.PubSub.subscribe("entra-admin-consent:#{token}")
 
     verification = %{token: token, url: admin_consent_url}
 
@@ -1465,7 +1465,7 @@ defmodule Web.Settings.DirectorySync do
 
     cond do
       error_code == "E0000021" ->
-        "Bad request to Okta API. Please verify your Okta domain and API configuration."
+        "Bad request to Okta PortalAPI. Please verify your Okta domain and API configuration."
 
       error_code == "E0000001" ->
         "API validation failed: #{error_summary || "Invalid request parameters"}"
@@ -1493,7 +1493,7 @@ defmodule Web.Settings.DirectorySync do
         "Invalid token. Please ensure your Client ID and private key are correct and the JWT is properly signed."
 
       error_code == "E0000061" ->
-        "Access denied. The client application is not authorized to use this API."
+        "Access denied. The client application is not authorized to use this PortalAPI."
 
       error_code == "invalid_client" ->
         "Client authentication failed. Please verify your Client ID and ensure the public key is registered in Okta."
@@ -1612,7 +1612,7 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defmodule DB do
-    alias Domain.{Entra, Google, Okta, Safe}
+    alias Portal.{Entra, Google, Okta, Safe}
     import Ecto.Query
 
     def list_all_directories(subject) do
@@ -1645,9 +1645,9 @@ defmodule Web.Settings.DirectorySync do
     end
 
     def delete_directory(directory, subject) do
-      # Delete the parent Domain.Directory, which will CASCADE delete the child
+      # Delete the parent Portal.Directory, which will CASCADE delete the child
       parent =
-        from(d in Domain.Directory, where: d.id == ^directory.id)
+        from(d in Portal.Directory, where: d.id == ^directory.id)
         |> Safe.scoped(subject)
         |> Safe.one!()
 
@@ -1658,29 +1658,29 @@ defmodule Web.Settings.DirectorySync do
       directory_id = directory.id
 
       actors_count =
-        from(a in Domain.Actor,
+        from(a in Portal.Actor,
           where: a.created_by_directory_id == ^directory_id
         )
         |> Safe.scoped(subject)
         |> Safe.aggregate(:count)
 
       identities_count =
-        from(ei in Domain.ExternalIdentity,
+        from(ei in Portal.ExternalIdentity,
           where: ei.directory_id == ^directory_id
         )
         |> Safe.scoped(subject)
         |> Safe.aggregate(:count)
 
       groups_count =
-        from(g in Domain.Group,
+        from(g in Portal.Group,
           where: g.directory_id == ^directory_id
         )
         |> Safe.scoped(subject)
         |> Safe.aggregate(:count)
 
       policies_count =
-        from(p in Domain.Policy,
-          join: g in Domain.Group,
+        from(p in Portal.Policy,
+          join: g in Portal.Group,
           on: p.group_id == g.id,
           where: g.directory_id == ^directory_id
         )
@@ -1715,7 +1715,7 @@ defmodule Web.Settings.DirectorySync do
       # filtering on directory_ids which are already scoped to the account
       active_jobs =
         from(j in Oban.Job,
-          where: j.worker in ["Domain.Entra.Sync", "Domain.Google.Sync", "Domain.Okta.Sync"],
+          where: j.worker in ["Portal.Entra.Sync", "Portal.Google.Sync", "Portal.Okta.Sync"],
           where: j.state in ["available", "executing", "scheduled"],
           where: fragment("?->>'directory_id'", j.args) in ^directory_ids
         )
@@ -1740,7 +1740,7 @@ defmodule Web.Settings.DirectorySync do
 
       # Count actors per directory (actors that have identities from this directory)
       actors_counts =
-        from(ei in Domain.ExternalIdentity,
+        from(ei in Portal.ExternalIdentity,
           where: ei.directory_id in ^directory_ids,
           group_by: ei.directory_id,
           select: {ei.directory_id, count(ei.actor_id, :distinct)}
@@ -1751,7 +1751,7 @@ defmodule Web.Settings.DirectorySync do
 
       # Count groups per directory
       groups_counts =
-        from(g in Domain.Group,
+        from(g in Portal.Group,
           where: g.directory_id in ^directory_ids,
           group_by: g.directory_id,
           select: {g.directory_id, count(g.id)}

@@ -1,4 +1,4 @@
-defmodule Web.Sites.NewToken do
+defmodule PortalWeb.Sites.NewToken do
   use Web, :live_view
   alias __MODULE__.DB
 
@@ -8,7 +8,7 @@ defmodule Web.Sites.NewToken do
     {site, token, env} =
       if connected?(socket) do
         {:ok, token, encoded_token} = DB.create_token(site, socket.assigns.subject)
-        :ok = Domain.Presence.Gateways.Site.subscribe(site.id)
+        :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
         {site, token, env(encoded_token)}
       else
         {site, nil, nil}
@@ -289,7 +289,7 @@ defmodule Web.Sites.NewToken do
 
   defp env(encoded_token) do
     api_url_override =
-      if api_url = Domain.Config.get_env(:web, :api_url_override) do
+      if api_url = Portal.Config.get_env(:web, :api_url_override) do
         {"FIREZONE_API_URL", api_url}
       end
 
@@ -347,7 +347,7 @@ defmodule Web.Sites.NewToken do
       end),
       "--env FIREZONE_NAME=$(hostname)",
       "--env RUST_LOG=info",
-      "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:1"
+      "#{Portal.Config.fetch_env!(:domain, :docker_registry)}/gateway:1"
     ]
     |> List.flatten()
     |> Enum.join(" \\\n  ")
@@ -423,18 +423,18 @@ defmodule Web.Sites.NewToken do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
+    alias Portal.Safe
 
     def get_site!(id, subject) do
-      from(s in Domain.Site, as: :sites)
+      from(s in Portal.Site, as: :sites)
       |> where([sites: s], s.id == ^id)
       |> Safe.scoped(subject)
       |> Safe.one!()
     end
 
     def create_token(site, subject) do
-      with {:ok, token} <- Domain.Auth.create_gateway_token(site, subject) do
-        {:ok, %{token | secret_fragment: nil}, Domain.Auth.encode_fragment!(token)}
+      with {:ok, token} <- Portal.Auth.create_gateway_token(site, subject) do
+        {:ok, %{token | secret_fragment: nil}, Portal.Auth.encode_fragment!(token)}
       end
     end
   end

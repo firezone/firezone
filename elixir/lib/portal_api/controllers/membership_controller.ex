@@ -1,11 +1,11 @@
-defmodule API.MembershipController do
+defmodule PortalAPI.MembershipController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias API.Pagination
+  alias PortalAPI.Pagination
   alias __MODULE__.DB
   import Ecto.Changeset
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Memberships"]
 
@@ -26,7 +26,7 @@ defmodule API.MembershipController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Membership Response", "application/json", API.Schemas.Membership.ListResponse}
+      ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.ListResponse}
     ]
 
   # List members for a given Group
@@ -50,10 +50,10 @@ defmodule API.MembershipController do
       ]
     ],
     request_body:
-      {"Membership Attributes", "application/json", API.Schemas.Membership.PutRequest,
+      {"Membership Attributes", "application/json", PortalAPI.Schemas.Membership.PutRequest,
        required: true},
     responses: [
-      ok: {"Membership Response", "application/json", API.Schemas.Membership.MembershipResponse}
+      ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.MembershipResponse}
     ]
 
   def update_put(
@@ -87,10 +87,10 @@ defmodule API.MembershipController do
       ]
     ],
     request_body:
-      {"Membership Attributes", "application/json", API.Schemas.Membership.PatchRequest,
+      {"Membership Attributes", "application/json", PortalAPI.Schemas.Membership.PatchRequest,
        required: true},
     responses: [
-      ok: {"Membership Response", "application/json", API.Schemas.Membership.MembershipResponse}
+      ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.MembershipResponse}
     ]
 
   # Update Memberships
@@ -135,7 +135,7 @@ defmodule API.MembershipController do
 
     membership
     |> cast(attrs, [:actor_id, :group_id, :account_id, :last_synced_at])
-    |> Domain.Membership.changeset()
+    |> Portal.Membership.changeset()
   end
 
   defp prepare_membership_attrs(group, add, remove) do
@@ -154,16 +154,16 @@ defmodule API.MembershipController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
+    alias Portal.Safe
 
     def list_actors(subject, opts) do
-      from(a in Domain.Actor, as: :actors)
+      from(a in Portal.Actor, as: :actors)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_group(id, subject) do
-      from(g in Domain.Group, where: g.id == ^id)
+      from(g in Portal.Group, where: g.id == ^id)
       |> preload(:memberships)
       |> Safe.scoped(subject)
       |> Safe.one()
@@ -189,7 +189,7 @@ defmodule API.MembershipController do
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :group_id,
           title: "Group",
           type: {:string, :uuid},
@@ -203,7 +203,7 @@ defmodule API.MembershipController do
         dynamic(
           [actors: a],
           a.id in subquery(
-            from(m in Domain.Membership,
+            from(m in Portal.Membership,
               where: m.group_id == ^group_id,
               select: m.actor_id
             )

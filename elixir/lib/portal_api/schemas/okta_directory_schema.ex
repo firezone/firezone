@@ -1,4 +1,4 @@
-defmodule API.Schemas.OktaDirectory do
+defmodule PortalAPI.Schemas.OktaDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -41,7 +41,7 @@ defmodule API.Schemas.OktaDirectory do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.OktaDirectory
+    alias PortalAPI.Schemas.OktaDirectory
 
     OpenApiSpex.schema(%{
       title: "OktaDirectoryResponse",
@@ -62,7 +62,7 @@ defmodule API.Schemas.OktaDirectory do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.OktaDirectory
+    alias PortalAPI.Schemas.OktaDirectory
 
     OpenApiSpex.schema(%{
       title: "OktaDirectoryListResponse",

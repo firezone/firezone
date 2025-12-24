@@ -1,7 +1,7 @@
-defmodule Web.Cookie.EmailOTPTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Cookie.EmailOTPTest do
+  use PortalWeb.ConnCase, async: true
 
-  alias Web.Cookie.EmailOTP
+  alias PortalWeb.Cookie.EmailOTP
 
   @cookie_key "email_otp"
 
@@ -9,7 +9,7 @@ defmodule Web.Cookie.EmailOTPTest do
     cookie_value = conn.resp_cookies[@cookie_key].value
 
     build_conn()
-    |> Map.put(:secret_key_base, Web.Endpoint.config(:secret_key_base))
+    |> Map.put(:secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
     |> Plug.Test.put_req_cookie(@cookie_key, cookie_value)
   end
 

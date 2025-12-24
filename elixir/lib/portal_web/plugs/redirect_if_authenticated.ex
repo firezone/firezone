@@ -1,4 +1,4 @@
-defmodule Web.Plugs.RedirectIfAuthenticated do
+defmodule PortalWeb.Plugs.RedirectIfAuthenticated do
   @moduledoc """
   Redirects authenticated users to the portal when accessing sign-in pages.
 
@@ -7,9 +7,9 @@ defmodule Web.Plugs.RedirectIfAuthenticated do
   """
   @behaviour Plug
 
-  alias Domain.Account
-  alias Domain.Auth.Subject
-  alias Web.Session.Redirector
+  alias Portal.Account
+  alias Portal.Auth.Subject
+  alias PortalWeb.Session.Redirector
 
   @impl true
   def init(opts), do: opts

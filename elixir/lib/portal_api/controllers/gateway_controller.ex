@@ -1,11 +1,11 @@
-defmodule API.GatewayController do
+defmodule PortalAPI.GatewayController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias API.Pagination
+  alias PortalAPI.Pagination
   alias __MODULE__.DB
-  alias Domain.Presence
+  alias Portal.Presence
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Gateways"]
 
@@ -22,7 +22,7 @@ defmodule API.GatewayController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.ListResponse}
+      ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.ListResponse}
     ]
 
   # List Gateways
@@ -61,7 +61,7 @@ defmodule API.GatewayController do
       ]
     ],
     responses: [
-      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response}
+      ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}
     ]
 
   # Show a specific Gateway
@@ -89,7 +89,7 @@ defmodule API.GatewayController do
       ]
     ],
     responses: [
-      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response}
+      ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}
     ]
 
   # Delete a Gateway
@@ -104,9 +104,9 @@ defmodule API.GatewayController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Gateway
-    alias Domain.Presence
+    alias Portal.Safe
+    alias Portal.Gateway
+    alias Portal.Presence
 
     def list_gateways(subject, opts \\ []) do
       from(g in Gateway, as: :gateways)
@@ -129,7 +129,7 @@ defmodule API.GatewayController do
 
     def filters do
       [
-        %Domain.Repo.Filter{
+        %Portal.Repo.Filter{
           name: :site_id,
           title: "Site",
           type: {:string, :uuid},

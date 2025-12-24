@@ -1,4 +1,4 @@
-defmodule Web.Components.FormComponents.SelectWithGroups do
+defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
   @moduledoc """
   This components allows selecting options from a grouped list with a search.
 
@@ -6,7 +6,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
   support large lists of options without loading them all at once.
   """
   use Phoenix.LiveComponent
-  import Web.CoreComponents
+  import PortalWeb.CoreComponents
   alias Phoenix.LiveView.JS
 
   @impl true
@@ -32,7 +32,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
   defp maybe_load_options(socket, %{disabled: true}) do
     socket
     |> assign(:options, [])
-    |> assign(:metadata, %Domain.Repo.Paginator.Metadata{})
+    |> assign(:metadata, %Portal.Repo.Paginator.Metadata{})
   end
 
   defp maybe_load_options(socket, %{list_options_callback: callback}) do
@@ -84,7 +84,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
     required: true,
     doc: """
     a callback that receives a search query (or `nil`) and returns a list of options
-    using the `Domain.Repo.list/3` function, eg returning: {:ok, options, metadata},
+    using the `Portal.Repo.list/3` function, eg returning: {:ok, options, metadata},
     where options is a list of options and metadata is a map with pagination info.
 
     The list of options should be in format of [{group, [{value, key, slot_assigns}, ..]}, ..].

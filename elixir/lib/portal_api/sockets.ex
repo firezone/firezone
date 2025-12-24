@@ -1,4 +1,4 @@
-defmodule API.Sockets do
+defmodule PortalAPI.Sockets do
   @moduledoc """
   This module provides a set of helper function for Phoenix sockets and
   error handling around them.
@@ -35,7 +35,7 @@ defmodule API.Sockets do
 
   def handle_error(conn, %Ecto.Changeset{} = changeset) do
     Logger.error("Invalid connection request", changeset: inspect(changeset))
-    errors = Domain.Changeset.errors_to_string(changeset)
+    errors = Portal.Changeset.errors_to_string(changeset)
     Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters: #{errors}")
   end
 
@@ -44,13 +44,13 @@ defmodule API.Sockets do
 
   def auth_context(%{user_agent: user_agent, x_headers: x_headers, peer_data: peer_data}, type) do
     remote_ip = real_ip(x_headers, peer_data)
-    Domain.Auth.Context.build(remote_ip, user_agent, x_headers, type)
+    Portal.Auth.Context.build(remote_ip, user_agent, x_headers, type)
   end
 
   defp real_ip(x_headers, peer_data) do
     real_ip =
       if is_list(x_headers) and x_headers != [] do
-        RemoteIp.from(x_headers, API.Endpoint.real_ip_opts())
+        RemoteIp.from(x_headers, PortalAPI.Endpoint.real_ip_opts())
       end
 
     real_ip || peer_data.address

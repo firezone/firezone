@@ -1,6 +1,6 @@
-defmodule Web.AcceptanceCase.Vault do
+defmodule PortalWeb.AcceptanceCase.Vault do
   use Wallaby.DSL
-  alias Domain.Fixtures
+  alias Portal.Fixtures
 
   @vault_root_token "firezone"
   @vault_endpoint "http://127.0.0.1:8200"

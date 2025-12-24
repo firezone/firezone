@@ -1,6 +1,6 @@
-defmodule Web.AuthTest do
-  use Web.ConnCase, async: true
-  import Web.Auth
+defmodule PortalWeb.AuthTest do
+  use PortalWeb.ConnCase, async: true
+  import PortalWeb.Auth
 
   setup %{conn: conn} do
     account = Fixtures.Accounts.create_account()
@@ -8,7 +8,7 @@ defmodule Web.AuthTest do
     context = Fixtures.Auth.build_context(type: :browser)
     nonce = "nonce"
 
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
     provider = Fixtures.Auth.create_email_provider(account: account)
 
     # Admin
@@ -19,8 +19,8 @@ defmodule Web.AuthTest do
 
     admin_identity = %{admin_identity | actor: admin_actor}
 
-    {:ok, admin_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
-    admin_encoded_fragment = Domain.Crypto.encode_token_fragment!(admin_token)
+    {:ok, admin_token} = Portal.Auth.create_token(admin_identity, context, nonce, nil)
+    admin_encoded_fragment = Portal.Crypto.encode_token_fragment!(admin_token)
 
     admin_subject =
       Fixtures.Auth.create_subject(
@@ -38,8 +38,8 @@ defmodule Web.AuthTest do
 
     user_identity = %{user_identity | actor: user_actor}
 
-    {:ok, user_token} = Domain.Auth.create_token(user_identity, context, nonce, nil)
-    user_encoded_fragment = Domain.Crypto.encode_token_fragment!(user_token)
+    {:ok, user_token} = Portal.Auth.create_token(user_identity, context, nonce, nil)
+    user_encoded_fragment = Portal.Crypto.encode_token_fragment!(user_token)
 
     user_subject =
       Fixtures.Auth.create_subject(
@@ -273,7 +273,7 @@ defmodule Web.AuthTest do
       response =
         %{conn | path_params: %{"account_id_or_slug" => account.slug}}
         |> put_private(:phoenix_endpoint, @endpoint)
-        |> Web.Plugs.SecureHeaders.call([])
+        |> PortalWeb.Plugs.SecureHeaders.call([])
         |> fetch_flash()
         |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
         |> Phoenix.ConnTest.response(200)
@@ -304,7 +304,7 @@ defmodule Web.AuthTest do
       response =
         %{conn | path_params: %{"account_id_or_slug" => account.slug}}
         |> put_private(:phoenix_endpoint, @endpoint)
-        |> Web.Plugs.SecureHeaders.call([])
+        |> PortalWeb.Plugs.SecureHeaders.call([])
         |> fetch_flash()
         |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
         |> Phoenix.ConnTest.response(200)
@@ -535,7 +535,7 @@ defmodule Web.AuthTest do
       admin_subject: subject,
       conn: conn
     } do
-      live_socket_id = Domain.Tokens.socket_id(subject.token_id)
+      live_socket_id = Portal.Tokens.socket_id(subject.token_id)
 
       conn
       |> assign(:account, account)
@@ -544,7 +544,7 @@ defmodule Web.AuthTest do
       |> put_session(:live_socket_id, live_socket_id)
       |> sign_out(%{})
 
-      refute(Repo.get(Domain.ClientToken, subject.token_id))
+      refute(Repo.get(Portal.ClientToken, subject.token_id))
     end
   end
 
@@ -602,8 +602,8 @@ defmodule Web.AuthTest do
       admin_identity: admin_identity
     } do
       context = %{context | type: :client}
-      {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
-      encoded_fragment = Domain.Crypto.encode_token_fragment!(client_token)
+      {:ok, client_token} = Portal.Auth.create_token(admin_identity, context, nonce, nil)
+      encoded_fragment = Portal.Crypto.encode_token_fragment!(client_token)
 
       conn =
         %{
@@ -631,8 +631,8 @@ defmodule Web.AuthTest do
       admin_identity: admin_identity
     } do
       context = %{context | type: :client}
-      {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
-      encoded_fragment = Domain.Crypto.encode_token_fragment!(client_token)
+      {:ok, client_token} = Portal.Auth.create_token(admin_identity, context, nonce, nil)
+      encoded_fragment = Portal.Crypto.encode_token_fragment!(client_token)
 
       conn =
         %{
@@ -772,9 +772,9 @@ defmodule Web.AuthTest do
     } do
       context = %{context | type: :client}
 
-      {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
-      encoded_fragment = Domain.Crypto.encode_token_fragment!(client_token)
-      {:ok, client_subject} = Domain.Auth.authenticate(nonce <> encoded_fragment, context)
+      {:ok, client_token} = Portal.Auth.create_token(admin_identity, context, nonce, nil)
+      encoded_fragment = Portal.Crypto.encode_token_fragment!(client_token)
+      {:ok, client_subject} = Portal.Auth.authenticate(nonce <> encoded_fragment, context)
 
       redirect_params = %{"as" => "client", "state" => "STATE", "nonce" => nonce}
 
@@ -785,7 +785,7 @@ defmodule Web.AuthTest do
             params: redirect_params
         }
         |> put_private(:phoenix_endpoint, @endpoint)
-        |> Web.Plugs.SecureHeaders.call([])
+        |> PortalWeb.Plugs.SecureHeaders.call([])
         |> put_session(:sessions, [{context.type, account.id, encoded_fragment}])
         |> assign(:subject, client_subject)
         |> redirect_if_user_is_authenticated([])
@@ -917,8 +917,8 @@ defmodule Web.AuthTest do
       admin_identity: admin_identity
     } do
       context = %{context | type: :client}
-      {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
-      encoded_fragment = Domain.Crypto.encode_token_fragment!(client_token)
+      {:ok, client_token} = Portal.Auth.create_token(admin_identity, context, nonce, nil)
+      encoded_fragment = Portal.Crypto.encode_token_fragment!(client_token)
 
       session =
         conn
@@ -1066,7 +1066,7 @@ defmodule Web.AuthTest do
   describe "on_mount: ensure_authenticated" do
     setup context do
       socket = %Phoenix.LiveView.Socket{
-        endpoint: Web.Endpoint,
+        endpoint: PortalWeb.Endpoint,
         assigns: %{__changed__: %{}, flash: %{}, account: context.account},
         private: %{
           live_temp: %{},
@@ -1147,7 +1147,7 @@ defmodule Web.AuthTest do
   describe "on_mount: :redirect_if_user_is_authenticated" do
     setup context do
       socket = %Phoenix.LiveView.Socket{
-        endpoint: Web.Endpoint,
+        endpoint: PortalWeb.Endpoint,
         assigns: %{__changed__: %{}, flash: %{}},
         private: %{
           live_temp: %{},

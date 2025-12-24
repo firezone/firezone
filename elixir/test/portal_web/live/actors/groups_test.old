@@ -1,5 +1,5 @@
-defmodule Web.Live.Actors.GroupsTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Actors.GroupsTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -38,7 +38,7 @@ defmodule Web.Live.Actors.GroupsTest do
       Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       |> Fixtures.Actors.delete()
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/#{actor}/edit_groups")

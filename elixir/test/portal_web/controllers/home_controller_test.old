@@ -1,5 +1,5 @@
-defmodule Web.HomeControllerTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.HomeControllerTest do
+  use PortalWeb.ConnCase, async: true
 
   describe "home/2" do
     test "renders the form to find the account sign in page", %{conn: conn} do
@@ -30,7 +30,7 @@ defmodule Web.HomeControllerTest do
         |> :erlang.term_to_binary()
 
       %{resp_cookies: %{"recent_account_ids" => %{value: value}}} =
-        %{build_conn() | secret_key_base: Web.Endpoint.config(:secret_key_base)}
+        %{build_conn() | secret_key_base: PortalWeb.Endpoint.config(:secret_key_base)}
         |> put_resp_cookie("recent_account_ids", account_ids, encrypt: true, secure: true)
 
       conn =

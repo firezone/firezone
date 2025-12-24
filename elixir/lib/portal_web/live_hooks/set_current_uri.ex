@@ -1,4 +1,4 @@
-defmodule Web.LiveHooks.SetCurrentUri do
+defmodule PortalWeb.LiveHooks.SetCurrentUri do
   @moduledoc """
   A unified live hook that parses the current URI and sets:
 

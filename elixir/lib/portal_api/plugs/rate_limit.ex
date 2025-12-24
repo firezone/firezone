@@ -1,9 +1,9 @@
-defmodule API.Plugs.RateLimit do
+defmodule PortalAPI.Plugs.RateLimit do
   import Plug.Conn
 
-  @refill_rate_default Domain.Config.fetch_env!(:api, API.RateLimit)[:refill_rate]
-  @capacity_default Domain.Config.fetch_env!(:api, API.RateLimit)[:capacity]
-  @cost_default API.RateLimit.default_cost()
+  @refill_rate_default Portal.Config.fetch_env!(:api, PortalAPI.RateLimit)[:refill_rate]
+  @capacity_default Portal.Config.fetch_env!(:api, PortalAPI.RateLimit)[:capacity]
+  @cost_default PortalAPI.RateLimit.default_cost()
 
   def init(opts), do: Keyword.get(opts, :context_type, :api_client)
 
@@ -17,7 +17,7 @@ defmodule API.Plugs.RateLimit do
     refill_rate = refill_rate(account)
     capacity = capacity(account)
 
-    case API.RateLimit.hit(key, refill_rate, capacity, @cost_default) do
+    case PortalAPI.RateLimit.hit(key, refill_rate, capacity, @cost_default) do
       {:allow, _count} ->
         conn
 
@@ -25,7 +25,7 @@ defmodule API.Plugs.RateLimit do
         conn
         |> put_resp_header("retry-after", Integer.to_string(div(@cost_default, refill_rate)))
         |> put_status(429)
-        |> Phoenix.Controller.put_view(json: API.ErrorJSON)
+        |> Phoenix.Controller.put_view(json: PortalAPI.ErrorJSON)
         |> Phoenix.Controller.render(:"429")
         |> halt()
     end

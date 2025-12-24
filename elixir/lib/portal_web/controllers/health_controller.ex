@@ -1,4 +1,4 @@
-defmodule Web.HealthController do
+defmodule PortalWeb.HealthController do
   use Web, :controller
 
   def healthz(conn, _params) do

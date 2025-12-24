@@ -1,4 +1,4 @@
-defmodule API.Schemas.Account do
+defmodule PortalAPI.Schemas.Account do
   alias OpenApiSpex.Schema
 
   defmodule LimitSchema do
@@ -27,11 +27,11 @@ defmodule API.Schemas.Account do
       description: "Account limits and usage information",
       type: :object,
       properties: %{
-        users: API.Schemas.Account.LimitSchema,
-        monthly_active_users: API.Schemas.Account.LimitSchema,
-        service_accounts: API.Schemas.Account.LimitSchema,
-        account_admin_users: API.Schemas.Account.LimitSchema,
-        sites: API.Schemas.Account.LimitSchema
+        users: PortalAPI.Schemas.Account.LimitSchema,
+        monthly_active_users: PortalAPI.Schemas.Account.LimitSchema,
+        service_accounts: PortalAPI.Schemas.Account.LimitSchema,
+        account_admin_users: PortalAPI.Schemas.Account.LimitSchema,
+        sites: PortalAPI.Schemas.Account.LimitSchema
       }
     })
   end
@@ -49,7 +49,7 @@ defmodule API.Schemas.Account do
         slug: %Schema{type: :string, description: "Account slug"},
         name: %Schema{type: :string, description: "Account name"},
         legal_name: %Schema{type: :string, description: "Account legal name"},
-        limits: API.Schemas.Account.LimitsSchema
+        limits: PortalAPI.Schemas.Account.LimitsSchema
       },
       required: [:id, :slug, :name]
     })
@@ -64,7 +64,7 @@ defmodule API.Schemas.Account do
       description: "Response schema for Account",
       type: :object,
       properties: %{
-        data: API.Schemas.Account.Schema
+        data: PortalAPI.Schemas.Account.Schema
       },
       required: [:data]
     })

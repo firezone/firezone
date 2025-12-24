@@ -1,4 +1,4 @@
-defmodule API.Schemas.GoogleAuthProvider do
+defmodule PortalAPI.Schemas.GoogleAuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -44,7 +44,7 @@ defmodule API.Schemas.GoogleAuthProvider do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.GoogleAuthProvider
+    alias PortalAPI.Schemas.GoogleAuthProvider
 
     OpenApiSpex.schema(%{
       title: "GoogleAuthProviderResponse",
@@ -65,7 +65,7 @@ defmodule API.Schemas.GoogleAuthProvider do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.GoogleAuthProvider
+    alias PortalAPI.Schemas.GoogleAuthProvider
 
     OpenApiSpex.schema(%{
       title: "GoogleAuthProviderListResponse",

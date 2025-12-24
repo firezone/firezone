@@ -1,11 +1,11 @@
-defmodule API.UserpassAuthProviderController do
+defmodule PortalAPI.UserpassAuthProviderController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Domain.{Userpass, Safe}
+  alias Portal.{Userpass, Safe}
   alias __MODULE__.DB
   import Ecto.Query
 
-  action_fallback API.FallbackController
+  action_fallback PortalAPI.FallbackController
 
   tags ["Userpass Auth Providers"]
 
@@ -14,7 +14,7 @@ defmodule API.UserpassAuthProviderController do
     responses: [
       ok:
         {"Userpass Auth Provider Response", "application/json",
-         API.Schemas.UserpassAuthProvider.ListResponse}
+         PortalAPI.Schemas.UserpassAuthProvider.ListResponse}
     ]
 
   def index(conn, _params) do
@@ -35,7 +35,7 @@ defmodule API.UserpassAuthProviderController do
     responses: [
       ok:
         {"Userpass Auth Provider Response", "application/json",
-         API.Schemas.UserpassAuthProvider.Response}
+         PortalAPI.Schemas.UserpassAuthProvider.Response}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -46,7 +46,7 @@ defmodule API.UserpassAuthProviderController do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Userpass, Safe}
+    alias Portal.{Userpass, Safe}
 
     def list_providers(subject) do
       from(p in Userpass.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])

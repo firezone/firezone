@@ -1,6 +1,6 @@
-defmodule API.ActorJSON do
-  alias API.Pagination
-  alias Domain.Actor
+defmodule PortalAPI.ActorJSON do
+  alias PortalAPI.Pagination
+  alias Portal.Actor
 
   @doc """
   Renders a list of Actors.

@@ -1,6 +1,6 @@
-defmodule Web.Gateways.Show do
+defmodule PortalWeb.Gateways.Show do
   use Web, :live_view
-  alias Domain.Presence
+  alias Portal.Presence
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -177,8 +177,8 @@ defmodule Web.Gateways.Show do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Gateway
+    alias Portal.Safe
+    alias Portal.Gateway
 
     def get_gateway!(id, subject) do
       from(g in Gateway, as: :gateways)

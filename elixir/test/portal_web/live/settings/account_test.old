@@ -1,8 +1,8 @@
-defmodule Web.Live.Settings.AccountTest do
-  use Web.ConnCase, async: true
+defmodule PortalWeb.Live.Settings.AccountTest do
+  use PortalWeb.ConnCase, async: true
 
   setup do
-    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account =
       Fixtures.Accounts.create_account(

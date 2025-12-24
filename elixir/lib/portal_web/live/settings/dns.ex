@@ -1,11 +1,11 @@
-defmodule Web.Settings.DNS do
+defmodule PortalWeb.Settings.DNS do
   use Web, :live_view
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
     account = DB.get_account_by_id!(socket.assigns.account.id, socket.assigns.subject)
     # Ensure config has proper defaults
-    account = %{account | config: Domain.Accounts.Config.ensure_defaults(account.config)}
+    account = %{account | config: Portal.Accounts.Config.ensure_defaults(account.config)}
 
     doh_disabled = System.get_env("DISABLE_DOH_RESOLVERS") == "true"
 
@@ -323,8 +323,8 @@ defmodule Web.Settings.DNS do
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
-    alias Domain.Account
+    alias Portal.Safe
+    alias Portal.Account
 
     def get_account_by_id!(id, subject) do
       from(a in Account, where: a.id == ^id)

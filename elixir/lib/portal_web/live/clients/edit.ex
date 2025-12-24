@@ -1,6 +1,6 @@
-defmodule Web.Clients.Edit do
+defmodule PortalWeb.Clients.Edit do
   use Web, :live_view
-  alias Domain.Presence.Clients
+  alias Portal.Presence.Clients
   alias __MODULE__.DB
 
   def mount(%{"id" => id}, _session, socket) do
@@ -85,13 +85,13 @@ defmodule Web.Clients.Edit do
     client
     |> cast(attrs, update_fields)
     |> validate_required(required_fields)
-    |> Domain.Client.changeset()
+    |> Portal.Client.changeset()
   end
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.{Presence.Clients, Safe}
-    alias Domain.Client
+    alias Portal.{Presence.Clients, Safe}
+    alias Portal.Client
 
     def get_client!(id, subject) do
       from(c in Client, as: :clients)

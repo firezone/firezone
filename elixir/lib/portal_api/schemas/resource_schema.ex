@@ -1,4 +1,4 @@
-defmodule API.Schemas.Resource do
+defmodule PortalAPI.Schemas.Resource do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -44,7 +44,7 @@ defmodule API.Schemas.Resource do
   defmodule Request do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Resource
+    alias PortalAPI.Schemas.Resource
 
     OpenApiSpex.schema(%{
       title: "ResourceRequest",
@@ -69,7 +69,7 @@ defmodule API.Schemas.Resource do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Resource
+    alias PortalAPI.Schemas.Resource
 
     OpenApiSpex.schema(%{
       title: "ResourceResponse",
@@ -93,7 +93,7 @@ defmodule API.Schemas.Resource do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Resource
+    alias PortalAPI.Schemas.Resource
 
     OpenApiSpex.schema(%{
       title: "ResourceListResponse",

@@ -1,5 +1,5 @@
-defmodule API.Client.Views.Site do
-  alias Domain.Cache.Cacheable
+defmodule PortalAPI.Client.Views.Site do
+  alias Portal.Cache.Cacheable
 
   def render(%Cacheable.Site{} = site) do
     %{

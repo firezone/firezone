@@ -1,4 +1,4 @@
-defmodule Web.LogFormatter do
+defmodule PortalWeb.LogFormatter do
   @moduledoc """
   Custom log formatter for development that only shows the message and
   explicitly passed metadata, filtering out Phoenix's automatic metadata.

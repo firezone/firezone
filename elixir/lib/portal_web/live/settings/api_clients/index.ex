@@ -1,12 +1,12 @@
-defmodule Web.Settings.ApiClients.Index do
+defmodule PortalWeb.Settings.ApiClients.Index do
   use Web, :live_view
 
   defmodule DB do
     import Ecto.Query
-    alias Domain.Safe
+    alias Portal.Safe
 
     def list_actors(subject, opts \\ []) do
-      from(a in Domain.Actor, as: :actors)
+      from(a in Portal.Actor, as: :actors)
       |> where([actors: a], a.type == :api_client)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
@@ -21,11 +21,11 @@ defmodule Web.Settings.ApiClients.Index do
   end
 
   def mount(_params, _session, socket) do
-    if Domain.Account.rest_api_enabled?(socket.assigns.account) do
+    if Portal.Account.rest_api_enabled?(socket.assigns.account) do
       socket =
         socket
         |> assign(page_title: "API Clients")
-        |> assign(api_url: Domain.Config.get_env(:web, :api_external_url))
+        |> assign(api_url: Portal.Config.get_env(:web, :api_external_url))
         |> assign_live_table("actors",
           query_module: DB,
           sortable_fields: [
@@ -68,7 +68,7 @@ defmodule Web.Settings.ApiClients.Index do
     <.section>
       <:title>{@page_title}</:title>
       <:help>
-        API Clients are used to manage Firezone configuration through a REST API. See our
+        API Clients are used to manage Firezone configuration through a REST PortalAPI. See our
         <.link navigate={"#{@api_url}/swaggerui"} class={link_style()} target="_blank">
           OpenAPI-powered docs
         </.link>
@@ -104,7 +104,7 @@ defmodule Web.Settings.ApiClients.Index do
             </.badge>
           </:col>
           <:col :let={actor} label="created at">
-            {Cldr.DateTime.Formatter.date(actor.inserted_at, 1, "en", Web.CLDR, [])}
+            {Cldr.DateTime.Formatter.date(actor.inserted_at, 1, "en", PortalWeb.CLDR, [])}
           </:col>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">

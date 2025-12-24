@@ -1,6 +1,6 @@
-defmodule Web.Live.Resources.IndexTest do
-  use Web.ConnCase, async: true
-  alias Domain.Changes
+defmodule PortalWeb.Live.Resources.IndexTest do
+  use PortalWeb.ConnCase, async: true
+  alias Portal.Changes
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -62,7 +62,7 @@ defmodule Web.Live.Resources.IndexTest do
     identity: identity,
     conn: conn
   } do
-    Domain.Config.feature_flag_override(:multi_site_resources, false)
+    Portal.Config.feature_flag_override(:multi_site_resources, false)
 
     {:ok, _lv, html} =
       conn
@@ -308,7 +308,7 @@ defmodule Web.Live.Resources.IndexTest do
       refute html =~ "The table data has changed."
       refute html =~ "reload-btn"
 
-      Domain.Resources.delete_resource(resource, subject)
+      Portal.Resources.delete_resource(resource, subject)
 
       Changes.Hooks.Resources.on_delete(
         0,

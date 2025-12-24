@@ -1,4 +1,4 @@
-defmodule API.Router do
+defmodule PortalAPI.Router do
   use API, :router
 
   pipeline :api do
@@ -8,8 +8,8 @@ defmodule API.Router do
       json_decoder: Phoenix.json_library()
 
     plug :accepts, ["json"]
-    plug API.Plugs.Auth
-    plug API.Plugs.RateLimit
+    plug PortalAPI.Plugs.Auth
+    plug PortalAPI.Plugs.RateLimit
   end
 
   pipeline :public do
@@ -17,7 +17,7 @@ defmodule API.Router do
   end
 
   pipeline :openapi do
-    plug OpenApiSpex.Plug.PutApiSpec, module: API.ApiSpec
+    plug OpenApiSpex.Plug.PutApiSpec, module: PortalAPI.ApiSpec
   end
 
   scope "/openapi" do
@@ -78,7 +78,7 @@ defmodule API.Router do
     resources "/okta_directories", OktaDirectoryController, only: [:index, :show]
   end
 
-  scope "/integrations", API.Integrations do
+  scope "/integrations", PortalAPI.Integrations do
     scope "/stripe", Stripe do
       post "/webhooks", WebhookController, :handle_webhook
     end

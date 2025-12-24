@@ -1,4 +1,4 @@
-defmodule Web.Settings.Account do
+defmodule PortalWeb.Settings.Account do
   use Web, :live_view
 
   def mount(_params, _session, socket) do
@@ -110,11 +110,11 @@ defmodule Web.Settings.Account do
   end
 
   def handle_event("delete_account", _params, socket) do
-    Domain.Mailer.AccountDelete.account_delete_email(
+    Portal.Mailer.AccountDelete.account_delete_email(
       socket.assigns.account,
       socket.assigns.subject
     )
-    |> Domain.Mailer.deliver()
+    |> Portal.Mailer.deliver()
 
     socket =
       socket
@@ -158,9 +158,9 @@ defmodule Web.Settings.Account do
     """
   end
 
-  defp account_type(%Domain.Account{metadata: %{string: %{product_name: type}}}) do
+  defp account_type(%Portal.Account{metadata: %{string: %{product_name: type}}}) do
     type || "Starter"
   end
 
-  defp account_type(%Domain.Account{}), do: "Starter"
+  defp account_type(%Portal.Account{}), do: "Starter"
 end
