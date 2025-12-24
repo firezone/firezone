@@ -1292,9 +1292,6 @@ defmodule API.Client.ChannelTest do
         struct: updated_client
       })
 
-      # Give time for the message to be processed
-      Process.sleep(10)
-
       # Verify the socket still has the original addresses preserved
       state = :sys.get_state(socket.channel_pid)
       assert state.assigns.client.name == "Updated Name"
