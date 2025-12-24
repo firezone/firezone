@@ -134,7 +134,10 @@ clean:
 format:
 	@echo "Formatting Swift code..."
 	@find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -not -path "./FirezoneKit/.build/*" | xargs swift format format --in-place --parallel
-	@echo "Linting Swift code..."
+
+.PHONY: format-check
+format-check:
+	@echo "Checking Swift formatting..."
 	@find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -not -path "./FirezoneKit/.build/*" | xargs swift format lint --parallel --strict
 
 .PHONY: setup

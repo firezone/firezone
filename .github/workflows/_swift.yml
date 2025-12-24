@@ -33,6 +33,17 @@ jobs:
       - run: swift test
         working-directory: swift/apple/FirezoneKit
 
+  static-analysis:
+    runs-on: macos-15
+    env:
+      XCODE_VERSION: "26.0"
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - name: Check Swift formatting
+        run: make format-check
+        working-directory: swift/apple
+
   build:
     name: ${{ matrix.job_name }}
     needs: update-release-draft
