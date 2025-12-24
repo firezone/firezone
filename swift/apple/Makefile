@@ -15,7 +15,7 @@ CLIENT_FFI_SOURCES=$(shell find $(CLIENT_FFI_DIR)/src -name "*.rs" 2>/dev/null)
 
 # Set consistent environment to prevent Rust rebuilds
 # This must match the Xcode project setting
-export MACOSX_DEPLOYMENT_TARGET=12.4
+export MACOSX_DEPLOYMENT_TARGET=13.0
 
 # Map architecture names for Rust targets
 ifeq ($(ARCH),arm64)
