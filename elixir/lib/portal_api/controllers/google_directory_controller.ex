@@ -33,7 +33,9 @@ defmodule PortalAPI.GoogleDirectoryController do
       ]
     ],
     responses: [
-      ok: {"Google Directory Response", "application/json", PortalAPI.Schemas.GoogleDirectory.Response}
+      ok:
+        {"Google Directory Response", "application/json",
+         PortalAPI.Schemas.GoogleDirectory.Response}
     ]
 
   def show(conn, %{"id" => id}) do

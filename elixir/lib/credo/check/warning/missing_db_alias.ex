@@ -27,7 +27,8 @@ defmodule Credo.Check.Warning.MissingDBAlias do
     |> Enum.map(fn {module_name, info} ->
       format_issue(
         issue_meta,
-        message: "Module #{module_name} has a DB submodule but doesn't alias it. Add `alias __MODULE__.DB` to the module.",
+        message:
+          "Module #{module_name} has a DB submodule but doesn't alias it. Add `alias __MODULE__.DB` to the module.",
         trigger: module_name,
         line_no: info.line_no
       )
@@ -39,7 +40,10 @@ defmodule Credo.Check.Warning.MissingDBAlias do
     modules
   end
 
-  defp extract_module_info({:defmodule, meta, [{:__aliases__, _, module_parts}, [do: body]]} = ast, acc) do
+  defp extract_module_info(
+         {:defmodule, meta, [{:__aliases__, _, module_parts}, [do: body]]} = ast,
+         acc
+       ) do
     module_name = Enum.join(module_parts, ".")
 
     # Check if this module has a DB submodule
@@ -60,31 +64,41 @@ defmodule Credo.Check.Warning.MissingDBAlias do
   defp extract_module_info(ast, acc), do: {ast, acc}
 
   defp has_inline_db_module?(body) do
-    {_, result} = Macro.prewalk(body, false, fn
-      {:defmodule, _, [{:__aliases__, _, ["DB"]}, _]}, _acc ->
-        {:halt, true}
-      ast, acc ->
-        {ast, acc}
-    end)
+    {_, result} =
+      Macro.prewalk(body, false, fn
+        {:defmodule, _, [{:__aliases__, _, ["DB"]}, _]}, _acc ->
+          {:halt, true}
+
+        ast, acc ->
+          {ast, acc}
+      end)
+
     result
   end
 
   defp has_db_alias?(body) do
-    {_, result} = Macro.prewalk(body, false, fn
-      # Check for alias __MODULE__.DB
-      {:alias, _, [{:__aliases__, _, [{:__MODULE__, _, _}, "DB"]}]}, _acc ->
-        {:halt, true}
-      # Check for alias __MODULE__.DB, as: DB
-      {:alias, _, [{:__aliases__, _, [{:__MODULE__, _, _}, "DB"]}, [as: {:__aliases__, _, ["DB"]}]]}, _acc ->
-        {:halt, true}
-      # Also check for the common pattern where __MODULE__ is expanded
-      {:alias, _, [{:__aliases__, _, [_, "DB"]}]}, _acc ->
-        # This could be a pattern like `alias MyModule.DB` where MyModule is __MODULE__
-        # We'll be conservative and consider this as having the alias
-        {:halt, true}
-      ast, acc ->
-        {ast, acc}
-    end)
+    {_, result} =
+      Macro.prewalk(body, false, fn
+        # Check for alias __MODULE__.DB
+        {:alias, _, [{:__aliases__, _, [{:__MODULE__, _, _}, "DB"]}]}, _acc ->
+          {:halt, true}
+
+        # Check for alias __MODULE__.DB, as: DB
+        {:alias, _,
+         [{:__aliases__, _, [{:__MODULE__, _, _}, "DB"]}, [as: {:__aliases__, _, ["DB"]}]]},
+        _acc ->
+          {:halt, true}
+
+        # Also check for the common pattern where __MODULE__ is expanded
+        {:alias, _, [{:__aliases__, _, [_, "DB"]}]}, _acc ->
+          # This could be a pattern like `alias MyModule.DB` where MyModule is __MODULE__
+          # We'll be conservative and consider this as having the alias
+          {:halt, true}
+
+        ast, acc ->
+          {ast, acc}
+      end)
+
     result
   end
 end

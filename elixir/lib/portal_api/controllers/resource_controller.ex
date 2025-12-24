@@ -51,7 +51,8 @@ defmodule PortalAPI.ResourceController do
     summary: "Create Resource",
     parameters: [],
     request_body:
-      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.Request, required: true},
+      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.Request,
+       required: true},
     responses: [
       ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
     ]
@@ -83,7 +84,8 @@ defmodule PortalAPI.ResourceController do
       ]
     ],
     request_body:
-      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.Request, required: true},
+      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.Request,
+       required: true},
     responses: [
       ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
     ]

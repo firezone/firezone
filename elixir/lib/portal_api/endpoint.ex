@@ -25,8 +25,14 @@ defmodule PortalAPI.Endpoint do
   # https://hexdocs.pm/phoenix/Phoenix.Logger.html
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
-  socket "/gateway", PortalAPI.Gateway.Socket, PortalAPI.Sockets.options(timeout: :timer.seconds(37))
-  socket "/client", PortalAPI.Client.Socket, PortalAPI.Sockets.options(timeout: :timer.seconds(307))
+  socket "/gateway",
+         PortalAPI.Gateway.Socket,
+         PortalAPI.Sockets.options(timeout: :timer.seconds(37))
+
+  socket "/client",
+         PortalAPI.Client.Socket,
+         PortalAPI.Sockets.options(timeout: :timer.seconds(307))
+
   socket "/relay", PortalAPI.Relay.Socket, PortalAPI.Sockets.options(timeout: :timer.seconds(41))
 
   plug :fetch_user_agent

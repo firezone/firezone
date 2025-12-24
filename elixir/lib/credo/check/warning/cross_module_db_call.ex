@@ -29,7 +29,10 @@ defmodule Credo.Check.Warning.CrossModuleDBCall do
   end
 
   # Extract module definitions
-  defp extract_info({:defmodule, _, [{:__aliases__, _, module_parts}, _]} = ast, {modules, aliases})
+  defp extract_info(
+         {:defmodule, _, [{:__aliases__, _, module_parts}, _]} = ast,
+         {modules, aliases}
+       )
        when is_list(module_parts) do
     module_name = Enum.map_join(module_parts, ".", &to_string/1)
     {ast, {[module_name | modules], aliases}}

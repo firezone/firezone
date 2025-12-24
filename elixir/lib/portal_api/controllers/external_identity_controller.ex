@@ -50,7 +50,9 @@ defmodule PortalAPI.ExternalIdentityController do
       ]
     ],
     responses: [
-      ok: {"ExternalIdentity Response", "application/json", PortalAPI.Schemas.ExternalIdentity.Response}
+      ok:
+        {"ExternalIdentity Response", "application/json",
+         PortalAPI.Schemas.ExternalIdentity.Response}
     ]
 
   # Show a specific External Identity
@@ -77,7 +79,9 @@ defmodule PortalAPI.ExternalIdentityController do
       ]
     ],
     responses: [
-      ok: {"ExternalIdentity Response", "application/json", PortalAPI.Schemas.ExternalIdentity.Response}
+      ok:
+        {"ExternalIdentity Response", "application/json",
+         PortalAPI.Schemas.ExternalIdentity.Response}
     ]
 
   # Delete an External Identity

@@ -13,7 +13,8 @@ defmodule PortalAPI.EntraDirectoryController do
     summary: "List Entra Directories",
     responses: [
       ok:
-        {"Entra Directory Response", "application/json", PortalAPI.Schemas.EntraDirectory.ListResponse}
+        {"Entra Directory Response", "application/json",
+         PortalAPI.Schemas.EntraDirectory.ListResponse}
     ]
 
   def index(conn, _params) do
@@ -32,7 +33,9 @@ defmodule PortalAPI.EntraDirectoryController do
       ]
     ],
     responses: [
-      ok: {"Entra Directory Response", "application/json", PortalAPI.Schemas.EntraDirectory.Response}
+      ok:
+        {"Entra Directory Response", "application/json",
+         PortalAPI.Schemas.EntraDirectory.Response}
     ]
 
   def show(conn, %{"id" => id}) do

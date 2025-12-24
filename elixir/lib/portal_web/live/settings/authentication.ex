@@ -806,7 +806,8 @@ defmodule PortalWeb.Settings.Authentication do
         account_id = assigns.account_id
         provider_id = Ecto.Changeset.get_field(assigns.form.source, :id)
 
-        PortalWeb.Endpoint.url() <> "/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"
+        PortalWeb.Endpoint.url() <>
+          "/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"
       else
         PortalWeb.Endpoint.url() <> "/auth/oidc/callback"
       end

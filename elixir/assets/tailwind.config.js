@@ -61,8 +61,8 @@ module.exports = {
   content: [
     "./node_modules/flowbite/**/*.js",
     "./js/**/*.js",
-    "../lib/web.ex",
-    "../lib/web/**/*.*ex",
+    "../lib/portal_web.ex",
+    "../lib/portal_web/**/*.*ex",
   ],
   theme: {
     fontFamily: {

@@ -50,7 +50,9 @@ defmodule PortalAPI.GatewayTokenController do
       ]
     ],
     responses: [
-      ok: {"Deleted Token Response", "application/json", PortalAPI.Schemas.GatewayToken.DeletedResponse}
+      ok:
+        {"Deleted Token Response", "application/json",
+         PortalAPI.Schemas.GatewayToken.DeletedResponse}
     ]
 
   def delete(conn, %{"site_id" => _site_id, "id" => token_id}) do

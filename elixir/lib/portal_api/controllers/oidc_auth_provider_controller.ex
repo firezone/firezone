@@ -34,7 +34,8 @@ defmodule PortalAPI.OIDCAuthProviderController do
     ],
     responses: [
       ok:
-        {"OIDC Auth Provider Response", "application/json", PortalAPI.Schemas.OIDCAuthProvider.Response}
+        {"OIDC Auth Provider Response", "application/json",
+         PortalAPI.Schemas.OIDCAuthProvider.Response}
     ]
 
   def show(conn, %{"id" => id}) do

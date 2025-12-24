@@ -165,7 +165,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     changeset =
       socket.assigns.form.source
       |> delete_change(:is_verified)
-      |> delete_change(:portal)
+      |> delete_change(:domain)
       |> delete_change(:tenant_id)
       |> delete_change(:okta_domain)
       |> apply_changes()
@@ -1130,7 +1130,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp verification_fields_status(assigns) do
     field =
       case assigns.type do
-        "google" -> :portal
+        "google" -> :domain
         "entra" -> :tenant_id
         "okta" -> :okta_domain
       end
@@ -1179,7 +1179,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp ready_to_verify?(form) do
     Enum.all?(form.source.errors, fn
       {excluded, _errors}
-      when excluded in [:is_verified, :portal, :tenant_id, :okta_domain] ->
+      when excluded in [:is_verified, :domain, :tenant_id, :okta_domain] ->
         true
 
       {_field, _errors} ->
@@ -1288,7 +1288,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp verification_errors(changeset) do
     changeset.errors
     |> Enum.filter(fn {field, _error} ->
-      field in [:portal, :tenant_id, :okta_domain]
+      field in [:domain, :tenant_id, :okta_domain]
     end)
     |> Enum.map_join(" ", fn {_field, {message, _opts}} -> message end)
   end

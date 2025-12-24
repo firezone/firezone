@@ -34,7 +34,8 @@ defmodule PortalAPI.OktaAuthProviderController do
     ],
     responses: [
       ok:
-        {"Okta Auth Provider Response", "application/json", PortalAPI.Schemas.OktaAuthProvider.Response}
+        {"Okta Auth Provider Response", "application/json",
+         PortalAPI.Schemas.OktaAuthProvider.Response}
     ]
 
   def show(conn, %{"id" => id}) do

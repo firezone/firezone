@@ -53,7 +53,9 @@ defmodule PortalAPI.MembershipController do
       {"Membership Attributes", "application/json", PortalAPI.Schemas.Membership.PutRequest,
        required: true},
     responses: [
-      ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.MembershipResponse}
+      ok:
+        {"Membership Response", "application/json",
+         PortalAPI.Schemas.Membership.MembershipResponse}
     ]
 
   def update_put(
@@ -90,7 +92,9 @@ defmodule PortalAPI.MembershipController do
       {"Membership Attributes", "application/json", PortalAPI.Schemas.Membership.PatchRequest,
        required: true},
     responses: [
-      ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.MembershipResponse}
+      ok:
+        {"Membership Response", "application/json",
+         PortalAPI.Schemas.Membership.MembershipResponse}
     ]
 
   # Update Memberships

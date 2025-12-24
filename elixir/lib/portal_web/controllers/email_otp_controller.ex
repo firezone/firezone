@@ -124,7 +124,12 @@ defmodule PortalWeb.EmailOTPController do
         @constant_execution_time
       )
 
-    cookie = %PortalWeb.Cookie.EmailOTP{actor_id: actor_id, passcode_id: passcode_id, email: email}
+    cookie = %PortalWeb.Cookie.EmailOTP{
+      actor_id: actor_id,
+      passcode_id: passcode_id,
+      email: email
+    }
+
     conn = PortalWeb.Cookie.EmailOTP.put(conn, cookie)
 
     case error do

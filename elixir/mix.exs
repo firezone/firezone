@@ -9,7 +9,7 @@ defmodule Portal.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
-      listeners: listeners(),
+      listeners: [Phoenix.CodeReloader],
       preferred_cli_env: [
         coveralls: :test,
         "coveralls.detail": :test,
@@ -40,14 +40,6 @@ defmodule Portal.MixProject do
         :dialyzer
       ]
     ]
-  end
-
-  defp listeners do
-    if Code.ensure_loaded?(Phoenix.CodeReloader) do
-      [Phoenix.CodeReloader]
-    else
-      []
-    end
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
