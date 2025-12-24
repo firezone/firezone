@@ -66,12 +66,6 @@ defmodule API.Client.Channel do
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
 
-    # Delete any stale policy_authorizations for resources we may not have access to anymore based on policy conditions
-    delete_stale_policy_authorizations_on_connect(
-      socket.assigns.client,
-      Enum.map(resources, &Ecto.UUID.load!(&1.id))
-    )
-
     push(socket, "init", %{
       resources: Views.Resource.render_many(resources),
       relays:
@@ -1055,18 +1049,6 @@ defmodule API.Client.Channel do
   end
 
   # Inline functions from Domain.PolicyAuthorizations
-
-  defp delete_stale_policy_authorizations_on_connect(%Domain.Client{} = client, resource_ids)
-       when is_list(resource_ids) do
-    import Ecto.Query
-
-    from(pa in Domain.PolicyAuthorization, as: :policy_authorizations)
-    |> where([policy_authorizations: pa], pa.account_id == ^client.account_id)
-    |> where([policy_authorizations: pa], pa.client_id == ^client.id)
-    |> where([policy_authorizations: pa], pa.resource_id not in ^resource_ids)
-    |> Domain.Safe.unscoped()
-    |> Domain.Safe.delete_all()
-  end
 
   defp create_policy_authorization(
          %Domain.Client{
