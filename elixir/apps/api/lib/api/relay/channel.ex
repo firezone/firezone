@@ -6,6 +6,9 @@ defmodule API.Relay.Channel do
 
   @impl true
   def join("relay", %{"stamp_secret" => stamp_secret}, socket) do
+    # If we crash, take the transport process down with us since connlib expects the WebSocket to close on error
+    Process.link(socket.transport_pid)
+
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 

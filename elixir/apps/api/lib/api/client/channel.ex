@@ -26,6 +26,9 @@ defmodule API.Client.Channel do
 
   @impl true
   def join("client", _payload, socket) do
+    # If we crash, take the transport process down with us since connlib expects the WebSocket to close on error
+    Process.link(socket.transport_pid)
+
     send(self(), :after_join)
 
     {:ok, socket}
