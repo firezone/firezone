@@ -44,7 +44,9 @@ public final class Store: ObservableObject {
   var firezoneId: String?
 
   let sessionNotification = SessionNotification()
-  let updateChecker: UpdateChecker
+  #if os(macOS)
+    let updateChecker: UpdateChecker
+  #endif
 
   private var resourcesTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
@@ -58,7 +60,9 @@ public final class Store: ObservableObject {
 
   public init(configuration: Configuration? = nil) {
     self.configuration = configuration ?? Configuration.shared
-    self.updateChecker = UpdateChecker(configuration: configuration)
+    #if os(macOS)
+      self.updateChecker = UpdateChecker(configuration: configuration)
+    #endif
 
     // Load GUI-only cached state
     self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
