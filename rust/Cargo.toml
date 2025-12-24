@@ -86,7 +86,7 @@ etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 firezone-headless-client = { path = "headless-client" }
 firezone-relay = { path = "relay/server" }
-flume = { version = "0.11.1", features = ["async"] }
+flume = { version = "0.12.0", features = ["async"] }
 futures = { version = "0.3.31" }
 futures-bounded = "0.3.0"
 gat-lending-iterator = "0.1.8"
