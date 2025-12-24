@@ -24,8 +24,8 @@ defmodule Domain.Types.IP do
     with {:ok, address} <- Domain.Types.IPPort.cast_address(binary) do
       {:ok, %Postgrex.INET{address: address, netmask: nil}}
     else
-      {:error, _reason} ->
-        {:error, message: "is invalid"}
+      {:error, reason} ->
+        {:error, message: "#{binary} is invalid: #{reason}"}
     end
   end
 
