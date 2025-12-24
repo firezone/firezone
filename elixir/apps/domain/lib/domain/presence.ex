@@ -332,7 +332,9 @@ defmodule Domain.Presence do
                token_id: token_id,
                ipv4: relay.ipv4,
                ipv6: relay.ipv6,
-               port: relay.port
+               port: relay.port,
+               last_seen_remote_ip_location_lat: relay.last_seen_remote_ip_location_lat,
+               last_seen_remote_ip_location_lon: relay.last_seen_remote_ip_location_lon
              }),
            {:ok, _} <-
              Domain.Presence.track(self(), "presences:relays:#{relay.id}", relay.id, %{}) do
@@ -348,12 +350,20 @@ defmodule Domain.Presence do
         connected_relays
         |> Enum.reject(fn {id, _} -> id in except_ids end)
         |> Enum.map(fn {id, %{metas: metas}} ->
-          %{secret: stamp_secret, ipv4: ipv4, ipv6: ipv6, port: port} =
+          meta =
             metas
             |> Enum.sort_by(& &1.online_at, :desc)
             |> List.first()
 
-          %Domain.Relay{id: id, ipv4: ipv4, ipv6: ipv6, port: port, stamp_secret: stamp_secret}
+          %Domain.Relay{
+            id: id,
+            ipv4: meta.ipv4,
+            ipv6: meta.ipv6,
+            port: meta.port,
+            stamp_secret: meta.secret,
+            last_seen_remote_ip_location_lat: Map.get(meta, :last_seen_remote_ip_location_lat),
+            last_seen_remote_ip_location_lon: Map.get(meta, :last_seen_remote_ip_location_lon)
+          }
         end)
 
       {:ok, relays}
