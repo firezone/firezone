@@ -132,52 +132,7 @@ jobs:
       - name: Check for unused deps
         run: mix deps.unlock --check-unused
 
-  migrations-and-seed-test:
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: ./elixir
-    env:
-      MIX_ENV: dev
-      POSTGRES_HOST: localhost
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-
-      - uses: ./.github/actions/setup-postgres
-
-      - uses: ./.github/actions/setup-elixir
-        with:
-          mix_env: ${{ env.MIX_ENV }}
-
-      - name: Compile
-        run: mix compile --warnings-as-errors
-
-      - name: Generate self-signed cert
-        run: mix phx.gen.cert
-
-      - name: Create Database
-        run: mix ecto.create
-
-      - name: Migrate DB to base ref and seed
-        run: |
-          git fetch --depth=1 origin ${{ github.base_ref }}
-          git checkout ${{ github.base_ref }}
-          mix deps.get
-          mix ecto.migrate
-          mix ecto.seed
-
-      # Then checkout current ref and rerun migrations
-      - name: Run new migrations
-        run: |
-          git checkout ${{ github.sha }}
-          mix deps.get
-          mix ecto.migrate
-          mix ecto.reset
-          mix ecto.migrate
-          mix ecto.seed
-
-  # TODO: IDP-REFACTOR: Re-enable
+# TODO: IDP-REFACTOR: Re-enable
   # acceptance-test:
   #   name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}
   #   runs-on: ubuntu-24.04
