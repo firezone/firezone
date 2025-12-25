@@ -30,6 +30,7 @@ if config_env() == :prod do
            )
 
   config :portal, Portal.ChangeLogs.ReplicationConnection,
+    # TODO: Use a dedicated node for Change Log replication
     enabled: env_var_to_config!(:background_jobs_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
     publication_name: env_var_to_config!(:database_change_logs_publication_name),
@@ -51,7 +52,13 @@ if config_env() == :prod do
           else: [{:hostname, env_var_to_config!(:database_host)}]
         )
 
+  # Web / API node coloring
+
+  config :portal, PortalWeb, enabled: env_var_to_config!(:portal_web_enabled)
+  config :portal, PortalAPI, enabled: env_var_to_config!(:portal_api_enabled)
+
   config :portal, Portal.Changes.ReplicationConnection,
+    # TODO: Use a dedicated node for Change Data Capture replication
     enabled: env_var_to_config!(:background_jobs_enabled),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
     publication_name: env_var_to_config!(:database_changes_publication_name),

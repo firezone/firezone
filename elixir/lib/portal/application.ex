@@ -43,15 +43,8 @@ defmodule Portal.Application do
       Portal.Billing,
       Portal.Mailer,
       Portal.Mailer.RateLimiter,
-      Portal.ComponentVersions,
-
-      # Web endpoint
-      PortalWeb.Endpoint,
-
-      # API endpoint and rate limiter
-      PortalAPI.Endpoint,
-      PortalAPI.RateLimit
-    ] ++ telemetry() ++ oban() ++ replication()
+      Portal.ComponentVersions
+    ] ++ web() ++ api() ++ telemetry() ++ oban() ++ replication()
   end
 
   defp configure_logger do
@@ -82,6 +75,26 @@ defmodule Portal.Application do
       "warn" -> :warn
       "debug" -> :debug
       _ -> :info
+    end
+  end
+
+  defp web do
+    config = Application.fetch_env!(:portal, PortalWeb)
+
+    if config[:enabled] do
+      [PortalWeb.Endpoint]
+    else
+      []
+    end
+  end
+
+  defp api do
+    config = Application.fetch_env!(:portal, PortalAPI)
+
+    if config[:enabled] do
+      [PortalAPI.Endpoint, PortalAPI.RateLimit]
+    else
+      []
     end
   end
 

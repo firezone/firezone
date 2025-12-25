@@ -41,85 +41,6 @@ defmodule Portal.Config.Definitions do
     @local_development_adapters []
   end
 
-  def doc_sections do
-    [
-      {"Background Jobs",
-       """
-       You need to make sure that at least one of the nodes in the cluster has background jobs enabled.
-       """,
-       [
-         :background_jobs_enabled
-       ]},
-      {"WebServer",
-       [
-         :web_external_url,
-         :api_external_url,
-         :phoenix_secure_cookies,
-         :phoenix_listen_address,
-         :phoenix_http_web_port,
-         :phoenix_http_api_port,
-         :phoenix_http_protocol_options,
-         :phoenix_external_trusted_proxies,
-         :phoenix_private_clients
-       ]},
-      {"Database",
-       [
-         :database_host,
-         :database_socket_dir,
-         :database_port,
-         :database_name,
-         :database_user,
-         :database_password,
-         :database_pool_size,
-         :database_queue_target,
-         :database_queue_interval,
-         :database_ssl_enabled,
-         :database_ssl_opts,
-         :database_parameters,
-         :database_replication_slot_name,
-         :database_publication_name
-       ]},
-      {"Cloud Platform",
-       [
-         :platform_adapter,
-         :platform_adapter_config
-       ]},
-      {"Erlang Cluster",
-       [
-         :erlang_cluster_adapter,
-         :erlang_cluster_adapter_config
-       ]},
-      {"Secrets and Encryption",
-       """
-       Your secrets should be generated during installation automatically and persisted to `.env` file.
-
-       All secrets should be a **base64-encoded string**.
-       """,
-       [
-         :tokens_key_base,
-         :tokens_salt,
-         :secret_key_base,
-         :live_view_signing_salt,
-         :cookie_signing_salt,
-         :cookie_encryption_salt
-       ]},
-      {"Outbound Emails",
-       [
-         :outbound_email_from,
-         :outbound_email_adapter,
-         :outbound_email_adapter_opts
-       ]},
-      {"Instrumentation",
-       [
-         :healthz_port,
-         :instrumentation_client_logs_enabled,
-         :instrumentation_client_logs_bucket,
-         :telemetry_metrics_reporter,
-         :telemetry_metrics_reporter_opts
-       ]}
-    ]
-  end
-
   ##############################################
   ## Background Jobs
   ##############################################
@@ -134,6 +55,11 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   @doc """
+  Enable or disable the Web Endpoint for this node.
+  """
+  defconfig(:portal_web_enabled, :boolean, default: false)
+
+  @doc """
   The external URL the UI will be accessible at.
 
   If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
@@ -146,6 +72,11 @@ defmodule Portal.Config.Definitions do
       |> Portal.Changeset.normalize_url(key)
     end
   )
+
+  @doc """
+  Enable or disable the API Endpoint for this node.
+  """
+  defconfig(:portal_api_enabled, :boolean, default: false)
 
   @doc """
   The external URL the API will be accessible at.

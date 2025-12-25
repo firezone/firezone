@@ -146,7 +146,7 @@ jobs:
       - uses: ./.github/actions/setup-docker
       - uses: ./.github/actions/setup-scripts
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
+        run: docker compose run elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Start docker compose in the background
         if: ${{ steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure' }} # Run if version checks succeed or are skipped
         run: |

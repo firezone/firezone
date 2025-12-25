@@ -44,7 +44,7 @@ jobs:
       - uses: ./.github/actions/setup-docker
       - uses: ./.github/actions/setup-scripts
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
+        run: docker compose run elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Increase max UDP buffer sizes
         run: |
           sudo sysctl -w net.core.wmem_max=16777216 # 16 MB
