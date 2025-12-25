@@ -263,7 +263,7 @@ updates:
           - "@types/react"
           - "@types/react-dom"
   - package-ecosystem: npm
-    directory: elixir/apps/web/assets/
+    directory: elixir/assets/
     schedule:
       interval: weekly
     cooldown:

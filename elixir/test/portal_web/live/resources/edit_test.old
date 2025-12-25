@@ -1,0 +1,598 @@
+defmodule PortalWeb.Live.Resources.EditTest do
+  use PortalWeb.ConnCase, async: true
+  alias Portal.{Changes, PubSub, Resource}
+
+  setup do
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+
+    site = Fixtures.Sites.create_site(account: account, subject: subject)
+
+    resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        subject: subject,
+        site_id: site.id
+      )
+
+    %{
+      account: account,
+      actor: actor,
+      identity: identity,
+      site: site,
+      resource: resource
+    }
+  end
+
+  test "redirects to sign in page for unauthorized user", %{
+    account: account,
+    resource: resource,
+    conn: conn
+  } do
+    path = ~p"/#{account}/resources/#{resource}/edit"
+
+    assert live(conn, path) ==
+             {:error,
+              {:redirect,
+               %{
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
+                 flash: %{"error" => "You must sign in to access this page."}
+               }}}
+  end
+
+  test "renders not found error when resource is deleted", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    resource = Fixtures.Resources.delete_resource(resource)
+
+    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+    end
+  end
+
+  test "renders breadcrumbs item", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
+    breadcrumbs = String.trim(Floki.text(item))
+    assert breadcrumbs =~ "Resources"
+    assert breadcrumbs =~ resource.name
+    assert breadcrumbs =~ "Edit"
+  end
+
+  test "renders form", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    form = form(lv, "form")
+
+    expected_inputs =
+      [
+        "resource[address]",
+        "resource[address_description]",
+        "resource[filters][icmp][enabled]",
+        "resource[filters][icmp][protocol]",
+        "resource[filters][tcp][enabled]",
+        "resource[filters][tcp][ports]",
+        "resource[filters][tcp][protocol]",
+        "resource[filters][udp][enabled]",
+        "resource[filters][udp][ports]",
+        "resource[filters][udp][protocol]",
+        "resource[ip_stack]",
+        "resource[name]",
+        "resource[type]"
+      ]
+      |> Enum.sort()
+
+    assert find_inputs(form) == expected_inputs
+  end
+
+  test "renders form without connections when site is set by query param", %{
+    account: account,
+    site: site,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{site}")
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == [
+             "resource[address]",
+             "resource[address_description]",
+             "resource[filters][icmp][enabled]",
+             "resource[filters][icmp][protocol]",
+             "resource[filters][tcp][enabled]",
+             "resource[filters][tcp][ports]",
+             "resource[filters][tcp][protocol]",
+             "resource[filters][udp][enabled]",
+             "resource[filters][udp][ports]",
+             "resource[filters][udp][protocol]",
+             "resource[ip_stack]",
+             "resource[name]",
+             "resource[type]"
+           ]
+  end
+
+  test "renders changeset errors on input change", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    attrs = %{
+      name: "foobar.com",
+      filters: %{
+        tcp: %{ports: "80, 443"},
+        udp: %{ports: "100"}
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    lv
+    |> form("form", resource: attrs)
+    |> validate_change(%{resource: %{name: String.duplicate("a", 256)}}, fn form, _html ->
+      assert form_validation_errors(form) == %{
+               "resource[name]" => ["should be at most 255 character(s)"]
+             }
+    end)
+    |> validate_change(%{resource: %{filters: %{tcp: %{ports: "a"}}}}, fn form, _html ->
+      assert form_validation_errors(form) == %{
+               "resource[filters][tcp][ports]" => ["bad format"]
+             }
+    end)
+    |> validate_change(%{resource: %{filters: %{tcp: %{ports: "8080-90"}}}}, fn form, _html ->
+      assert form_validation_errors(form) == %{
+               "resource[filters][tcp][ports]" => [
+                 "lower value cannot be higher than upper value"
+               ]
+             }
+    end)
+  end
+
+  test "renders changeset errors on submit", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    attrs = %{name: String.duplicate("a", 500)}
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    assert lv
+           |> form("form", resource: attrs)
+           |> render_submit()
+           |> form_validation_errors() == %{
+             "resource[name]" => ["should be at most 255 character(s)"]
+           }
+  end
+
+  test "updates a resource on valid breaking change attrs", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    conn = authorize_conn(conn, identity)
+
+    attrs = %{
+      name: "foobar.com",
+      filters: %{
+        icmp: %{enabled: true},
+        tcp: %{ports: "8080, 4443"},
+        udp: %{ports: "4000 - 5000"}
+      }
+    }
+
+    :ok = PubSub.Account.subscribe(account.id)
+
+    {:ok, lv, _html} =
+      conn
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    old_data = %{
+      "id" => resource.id,
+      "account_id" => resource.account_id,
+      "type" => resource.type,
+      "address" => resource.address,
+      "filters" => [%{"protocol" => "icmp", "ports" => ["80"]}],
+      "ip_stack" => resource.ip_stack
+    }
+
+    data = Map.put(old_data, "filters", attrs.filters)
+    :ok = Changes.Hooks.Resources.on_update(0, old_data, data)
+
+    {:ok, _lv, html} =
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+      |> follow_redirect(conn, ~p"/#{account}/resources")
+
+    assert_receive %Changes.Change{
+      lsn: 0,
+      old_struct: %Resource{},
+      struct: %Resource{} = updated_resource
+    }
+
+    assert updated_resource.id == resource.id
+
+    assert updated_resource = Repo.get_by(Portal.Resource, id: resource.id)
+    assert updated_resource.name == attrs.name
+    assert html =~ "Resource #{updated_resource.name} updated successfully"
+
+    updated_filters =
+      for filter <- updated_resource.filters, into: %{} do
+        {filter.protocol, %{ports: Enum.join(filter.ports, ", ")}}
+      end
+
+    assert Map.keys(updated_filters) == Map.keys(attrs.filters)
+    assert updated_filters.tcp == attrs.filters.tcp
+    assert updated_filters.udp == attrs.filters.udp
+  end
+
+  test "updates ip_stack when resource type is dns", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    conn = authorize_conn(conn, identity)
+
+    attrs = %{
+      name: "foobar.com",
+      type: "dns",
+      address: "foobar.com",
+      ip_stack: "ipv4_only"
+    }
+
+    {:ok, lv, html} =
+      conn
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    refute html =~ "Recommended for this Resource"
+
+    {:ok, _lv, html} =
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+      |> follow_redirect(conn, ~p"/#{account}/resources")
+
+    assert updated_resource = Repo.get_by(Portal.Resource, id: resource.id)
+    assert updated_resource.name == attrs.name
+    assert updated_resource.type == :dns
+    assert updated_resource.address == attrs.address
+    assert updated_resource.ip_stack == :ipv4_only
+    assert html =~ "Resource #{updated_resource.name} updated successfully"
+  end
+
+  test "renders ip stack recommendation", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    conn = authorize_conn(conn, identity)
+
+    resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        type: :dns,
+        address: "**.mongodb.net"
+      )
+
+    {:ok, _lv, html} =
+      conn
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    assert html =~ "Recommended for this Resource"
+  end
+
+  test "redirects to a site when site_id query param is set", %{
+    account: account,
+    identity: identity,
+    site: site,
+    resource: resource,
+    conn: conn
+  } do
+    conn = authorize_conn(conn, identity)
+
+    attrs = %{
+      name: "foobar.com",
+      filters: %{
+        icmp: %{enabled: true},
+        tcp: %{ports: "8080, 4443"},
+        udp: %{ports: "4000 - 5000"}
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{site}")
+
+    {:ok, _lv, html} =
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+      |> follow_redirect(conn, ~p"/#{account}/sites/#{site}")
+
+    assert html =~ "Resource #{attrs.name} updated successfully"
+  end
+
+  test "shows disabled traffic filter form when traffic filters disabled", %{
+    account: account,
+    site: site,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    Portal.Config.feature_flag_override(:traffic_filters, false)
+
+    {:ok, lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{site}")
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == [
+             "resource[address]",
+             "resource[address_description]",
+             "resource[filters][icmp][enabled]",
+             "resource[filters][icmp][protocol]",
+             "resource[filters][tcp][enabled]",
+             "resource[filters][tcp][ports]",
+             "resource[filters][tcp][protocol]",
+             "resource[filters][udp][enabled]",
+             "resource[filters][udp][ports]",
+             "resource[filters][udp][protocol]",
+             "resource[ip_stack]",
+             "resource[name]",
+             "resource[type]"
+           ]
+
+    assert html =~ "UPGRADE TO UNLOCK"
+  end
+
+  test "updates a resource on valid attrs when traffic filters disabled", %{
+    account: account,
+    site: site,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    Portal.Config.feature_flag_override(:traffic_filters, false)
+    resource = Ecto.Changeset.change(resource, filters: []) |> Repo.update!()
+
+    conn = authorize_conn(conn, identity)
+
+    attrs = %{
+      name: "foobar.com"
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{site}")
+
+    {:ok, _lv, html} =
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+      |> follow_redirect(conn, ~p"/#{account}/sites/#{site}")
+
+    assert saved_resource = Repo.get_by(Portal.Resource, id: resource.id)
+    assert saved_resource.name == attrs.name
+    assert html =~ "Resource #{saved_resource.name} updated successfully."
+
+    assert saved_resource.filters == []
+  end
+
+  test "maintains selection of site", %{
+    account: account,
+    site: _site,
+    resource: resource,
+    identity: identity,
+    conn: conn
+  } do
+    site2 = Fixtures.Sites.create_site(account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    lv
+    |> form("form")
+    |> render_change(%{"resource[site_id]" => site2.id})
+
+    assert has_element?(
+             lv,
+             "select[name='resource[site_id]'] option[value='#{site2.id}'][selected]"
+           )
+  end
+
+  test "disables traffic filters form fields when traffic filters disabled", %{
+    account: account,
+    site: site,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    Portal.Config.feature_flag_override(:traffic_filters, false)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{site}")
+
+    assert has_element?(lv, "input[name='resource[filters][icmp][enabled]'][disabled]")
+    assert has_element?(lv, "input[name='resource[filters][icmp][enabled]'][disabled]")
+    assert has_element?(lv, "input[name='resource[filters][tcp][enabled]'][disabled]")
+    assert has_element?(lv, "input[name='resource[filters][tcp][ports]'][disabled]")
+    assert has_element?(lv, "input[name='resource[filters][udp][enabled]'][disabled]")
+    assert has_element?(lv, "input[name='resource[filters][udp][ports]'][disabled]")
+    assert saved_resource = Repo.get_by(Portal.Resource, id: resource.id)
+    assert saved_resource.name == resource.name
+    assert saved_resource.filters == resource.filters
+  end
+
+  test "redirects to resources page when resource type is edited", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    attrs = %{
+      "resource[type]" => "ip",
+      "resource[address]" => "1.2.3.4"
+    }
+
+    form = form(lv, "form")
+
+    form
+    |> render_change(attrs)
+
+    form
+    |> render_submit()
+
+    assert_redirect(lv, ~p"/#{account}/resources")
+  end
+
+  test "prevents updating resource type to ip when address is not an IP address", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    attrs = %{
+      "type" => "ip"
+    }
+
+    assert lv
+           |> form("form", resource: attrs)
+           |> render_submit()
+           |> form_validation_errors() == %{
+             "resource[address]" => ["is not a valid IP address"]
+           }
+  end
+
+  test "prevents updating resource type to dns when address is an IP", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    resource = Fixtures.Resources.create_resource(account: account, type: :ip, address: "1.1.1.1")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    attrs = %{
+      "type" => "dns"
+    }
+
+    assert lv
+           |> form("form", resource: attrs)
+           |> render_submit()
+           |> form_validation_errors() == %{
+             "resource[address]" => ["IP addresses are not allowed, use an IP Resource instead"]
+           }
+  end
+
+  test "prevents updating resource type to dns when address is a CIDR", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    resource =
+      Fixtures.Resources.create_resource(account: account, type: :cidr, address: "1.1.1.1/32")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    attrs = %{
+      "type" => "dns"
+    }
+
+    assert lv
+           |> form("form", resource: attrs)
+           |> render_submit()
+           |> form_validation_errors() == %{
+             "resource[address]" => [
+               "must be a valid hostname (letters, digits, hyphens, dots; wildcards *, ?, ** allowed)",
+               "IP addresses are not allowed, use an IP Resource instead"
+             ]
+           }
+  end
+
+  test "redirects to resources page when resource address is edited", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    attrs = %{
+      "resource[address]" => "foo.bar.com"
+    }
+
+    form = form(lv, "form")
+
+    form
+    |> render_change(attrs)
+
+    form
+    |> render_submit()
+
+    assert_redirected(lv, ~p"/#{account}/resources")
+  end
+end

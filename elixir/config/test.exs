@@ -1,7 +1,7 @@
 import Config
 
 ###############################
-##### Domain ##################
+##### Portal ##################
 ###############################
 
 partition_suffix =
@@ -11,18 +11,18 @@ partition_suffix =
     ""
   end
 
-config :domain, sql_sandbox: true
+config :portal, sql_sandbox: true
 
-config :domain, run_manual_migrations: true
+config :portal, run_manual_migrations: true
 
-config :domain, Domain.Repo,
+config :portal, Portal.Repo,
   database: "firezone_test#{partition_suffix}",
   pool: Ecto.Adapters.SQL.Sandbox,
   queue_target: 1000
 
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
-config :domain, Oban,
+config :portal, Oban,
   # Periodic jobs don't make sense in tests
   plugins: [
     # Keep the last 90 days of completed, cancelled, and discarded jobs
@@ -38,14 +38,14 @@ config :domain, Oban,
     # {Oban.Plugins.Cron,
     #  crontab: [
     #    # Delete expired policy_authorizations every minute
-    #    {"* * * * *", Domain.Workers.DeleteExpiredPolicyAuthorizations}
+    #    {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations}
     #  ]}
   ],
   queues: [default: 10],
   engine: Oban.Engines.Basic,
-  repo: Domain.Repo
+  repo: Portal.Repo
 
-config :domain, Domain.ChangeLogs.ReplicationConnection,
+config :portal, Portal.ChangeLogs.ReplicationConnection,
   replication_slot_name: "test_change_logs_slot",
   publication_name: "test_change_logs_publication",
   enabled: false,
@@ -53,7 +53,7 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
-config :domain, Domain.Changes.ReplicationConnection,
+config :portal, Portal.Changes.ReplicationConnection,
   replication_slot_name: "test_changes_slot",
   publication_name: "test_changes_publication",
   enabled: false,
@@ -61,7 +61,7 @@ config :domain, Domain.Changes.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
-config :domain, Domain.Billing.Stripe.APIClient,
+config :portal, Portal.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
   finch_transport_opts: [],
   retry_config: [
@@ -70,15 +70,15 @@ config :domain, Domain.Billing.Stripe.APIClient,
     max_delay_ms: 1000
   ]
 
-config :domain, Domain.Telemetry, enabled: false
+config :portal, Portal.Telemetry, enabled: false
 
-config :domain, Domain.ConnectivityChecks, enabled: false
+config :portal, Portal.ConnectivityChecks, enabled: false
 
-config :domain, platform_adapter: Domain.GoogleCloudPlatform
+config :portal, platform_adapter: Portal.GoogleCloudPlatform
 
-config :domain, Domain.GoogleCloudPlatform, service_account_email: "foo@iam.example.com"
+config :portal, Portal.GoogleCloudPlatform, service_account_email: "foo@iam.example.com"
 
-config :domain, Domain.ComponentVersions,
+config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
   versions: [
     apple: "1.0.0",
@@ -88,23 +88,23 @@ config :domain, Domain.ComponentVersions,
     headless: "1.0.0"
   ]
 
-config :domain, Domain.Telemetry.Reporter.GoogleCloudMetrics, project_id: "fz-test"
+config :portal, Portal.Telemetry.Reporter.GoogleCloudMetrics, project_id: "fz-test"
 
-config :domain, web_external_url: "http://localhost:13100"
+config :portal, web_external_url: "http://localhost:13100"
 
 # Prevent Oban from running jobs and plugins in tests
-config :domain, Oban, testing: :manual
+config :portal, Oban, testing: :manual
 
 ###############################
-##### Web #####################
+##### PortalWeb Endpoint ######
 ###############################
 
-config :web, Web.Endpoint,
+config :portal, PortalWeb.Endpoint,
   http: [port: 13_100],
   url: [port: 13_100],
   server: true
 
-config :web, Web.Plugs.SecureHeaders,
+config :portal, PortalWeb.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
@@ -112,25 +112,24 @@ config :web, Web.Plugs.SecureHeaders,
     "script-src 'self' 'unsafe-inline'"
   ]
 
-config :web, :constant_execution_time, 1
+config :portal, :constant_execution_time, 1
 
 ###############################
-##### API #####################
+##### PortalAPI Endpoint ######
 ###############################
 
-config :api, API.Endpoint,
+config :portal, PortalAPI.Endpoint,
   http: [port: 13_101],
   url: [port: 13_101],
   server: true
 
-config :api,
-  # shorten debounce timeout for tests
-  relays_presence_debounce_timeout_ms: 100
+# shorten debounce timeout for tests
+config :portal, relays_presence_debounce_timeout_ms: 100
 
 ###############################
 ##### Third-party configs #####
 ###############################
-config :domain, Domain.Mailer, adapter: Domain.Mailer.TestAdapter
+config :portal, Portal.Mailer, adapter: Portal.Mailer.TestAdapter
 
 # Allow asserting on info logs and higher
 config :logger, level: :info

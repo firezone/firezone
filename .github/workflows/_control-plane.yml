@@ -20,25 +20,15 @@ jobs:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         include:
-          - image_name: domain
+          - image_name: portal
             target: runtime
             build-args: |
-              APPLICATION_NAME=domain
-              GIT_SHA=${{ inputs.sha }}
-          - image_name: api
-            target: runtime
-            build-args: |
-              APPLICATION_NAME=api
-              GIT_SHA=${{ inputs.sha }}
-          - image_name: web
-            target: runtime
-            build-args: |
-              APPLICATION_NAME=web
+              APPLICATION_NAME=portal
               GIT_SHA=${{ inputs.sha }}
           - image_name: elixir
             target: compiler
             build-args: |
-              APPLICATION_NAME=api
+              APPLICATION_NAME=portal
               GIT_SHA=${{ inputs.sha }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1

@@ -22,8 +22,7 @@ jobs:
           mix_env: ${{ env.MIX_ENV }}
 
       - name: Compile Application
-        # run: mix compile --warnings-as-errors TODO: IDP-REFACTOR re-enable warnings-as-errors
-        run: mix compile
+        run: mix compile --warnings-as-errors
 
       - name: Setup Database
         run: |
@@ -50,25 +49,9 @@ jobs:
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: elixir/apps/api/cover/lcov.info
+          file: elixir/cover/lcov.info
           format: lcov
-          flag-name: elixir-api
-          parallel: true
-
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: elixir/apps/web/cover/lcov.info
-          format: lcov
-          flag-name: elixir-web
-          parallel: true
-
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: elixir/apps/domain/cover/lcov.info
-          format: lcov
-          flag-name: elixir-domain
+          flag-name: portal
           parallel: true
 
   type-check:
@@ -128,9 +111,7 @@ jobs:
           mix_env: ${{ env.MIX_ENV }}
 
       - name: Compile Application
-        run: |
-          # TODO: Re-enable --force when we fix all warnings
-          mix compile # --force --warnings-as-errors
+        run: mix compile --force --warnings-as-errors
 
       - name: Check Formatting
         run: mix format --check-formatted
@@ -141,157 +122,108 @@ jobs:
       - name: Check For Vulnerable Packages
         run: mix deps.audit
 
-      - name: Run Sobelow vulnerability scanner for web app
-        working-directory: ./elixir/apps/web
-        run: mix sobelow --skip
+      - name: Run Sobelow vulnerability scanner
+        working-directory: ./elixir
+        run: mix sobelow --skip --exit
 
       - name: Run Credo
         run: mix credo --strict
 
       - name: Check for unused deps
         run: mix deps.unlock --check-unused
-
-  migrations-and-seed-test:
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: ./elixir
-    env:
-      MIX_ENV: dev
-      POSTGRES_HOST: localhost
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-
-      - uses: ./.github/actions/setup-postgres
-
-      - uses: ./.github/actions/setup-elixir
-        with:
-          mix_env: ${{ env.MIX_ENV }}
-
-      - name: Compile
-        run: |
-          # TODO: IDP REFACTOR
-          #  revert
-          mix compile # --warnings-as-errors
-
-      - name: Generate self-signed cert
-        run: cd apps/web && mix phx.gen.cert
-
-      - name: Create Database
-        run: mix ecto.create
-
-      - name: Migrate DB to base ref and seed
-        run: |
-          git fetch --depth=1 origin ${{ github.base_ref }}
-          git checkout ${{ github.base_ref }}
-          mix deps.get
-          mix ecto.migrate
-          mix ecto.seed
-
-      # Then checkout current ref and rerun migrations
-      - name: Run new migrations
-        run: |
-          git checkout ${{ github.sha }}
-          mix deps.get
-          mix ecto.migrate
-          mix ecto.reset
-          mix ecto.migrate
-          mix ecto.seed
-
-  # TODO: IDP-REFACTOR: Re-enable
-  # acceptance-test:
-  #   name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}
-  #   runs-on: ubuntu-24.04
-  #   defaults:
-  #     run:
-  #       working-directory: ./elixir
-  #   permissions:
-  #     checks: write
-  #   strategy:
-  #     fail-fast: ${{ github.event_name == 'merge_group' }}
-  #     matrix:
-  #       MIX_TEST_PARTITION: [1]
-  #   env:
-  #     MIX_ENV: test
-  #     POSTGRES_HOST: localhost
-  #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #     MIX_TEST_PARTITIONS: 1
-  #   services:
-  #     vault:
-  #       image: vault:1.12.2
-  #       env:
-  #         VAULT_ADDR: "http://127.0.0.1:8200"
-  #         VAULT_DEV_ROOT_TOKEN_ID: "firezone"
-  #       ports:
-  #         - 8200:8200/tcp
-  #       options: --cap-add=IPC_LOCK
-  #   steps:
-  #     - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-  #     - uses: ./.github/actions/setup-postgres
-  #     - uses: nanasess/setup-chromedriver@e93e57b843c0c92788f22483f1a31af8ee48db25 # v2.3.0
-  #
-  #     - name: Setup Xvfb and ChromeDriver
-  #       run: |
-  #         export DISPLAY=:99
-  #         chromedriver --url-base=/wd/hub &
-  #         sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
-  #
-  #     - uses: ./.github/actions/setup-elixir
-  #       with:
-  #         mix_env: ${{ env.MIX_ENV }}
-  #
-  #     - uses: ./.github/actions/setup-node
-  #       with:
-  #         npmjs-token: ${{ secrets.NPMJS_TOKEN }}
-  #         lockfile-dir: ./elixir/apps/web/assets
-  #
-  #     - name: Compile Application
-  #       # run: mix compile --warnings-as-errors TODO: IPD-REFACOR re-enable warnings-as-errors
-  #       run: mix compile
-  #
-  #     - name: Install Front-End Dependencies
-  #       run: |
-  #         cd apps/web
-  #         mix assets.setup
-  #
-  #     - name: Build Web Assets
-  #       run: |
-  #         cd apps/web
-  #         mix assets.build
-  #
-  #     # Run tests
-  #     - name: Setup Database
-  #       run: |
-  #         mix ecto.create
-  #         mix ecto.migrate
-  #
-  #     - name: Run Acceptance Tests
-  #       env:
-  #         MIX_TEST_PARTITION: ${{ matrix.MIX_TEST_PARTITION }}
-  #         E2E_DEFAULT_WAIT_SECONDS: 20
-  #       run: |
-  #         mix test --only acceptance:true \
-  #                  --partitions=${{ env.MIX_TEST_PARTITIONS }} \
-  #                  --no-compile \
-  #                  --no-archives-check \
-  #                  --no-deps-check \
-  #             || pkill -f chromedriver \
-  #             || mix test --only acceptance:true --failed \
-  #             || pkill -f chromedriver \
-  #             || mix test --only acceptance:true --failed
-  #
-  #     - name: Save Screenshots
-  #       if: ${{ github.event.pull_request.head.repo.full_name == github.repository && always() }}
-  #       uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
-  #       with:
-  #         name: screenshots-${{ matrix.MIX_TEST_PARTITION }}
-  #         path: elixir/apps/web/screenshots
-  #
-  #     - name: Test Report
-  #       if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (success() || failure()) }}
-  #       uses: dorny/test-reporter@fe45e9537387dac839af0d33ba56eed8e24189e8 # v2.3.0
-  #       with:
-  #         name: Elixir Acceptance Test Report
-  #         path: elixir/_build/test/lib/*/test-junit-report.xml
-  #         reporter: java-junit
+# TODO: IDP-REFACTOR: Re-enable
+# acceptance-test:
+#   name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}
+#   runs-on: ubuntu-24.04
+#   defaults:
+#     run:
+#       working-directory: ./elixir
+#   permissions:
+#     checks: write
+#   strategy:
+#     fail-fast: ${{ github.event_name == 'merge_group' }}
+#     matrix:
+#       MIX_TEST_PARTITION: [1]
+#   env:
+#     MIX_ENV: test
+#     POSTGRES_HOST: localhost
+#     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#     MIX_TEST_PARTITIONS: 1
+#   services:
+#     vault:
+#       image: vault:1.12.2
+#       env:
+#         VAULT_ADDR: "http://127.0.0.1:8200"
+#         VAULT_DEV_ROOT_TOKEN_ID: "firezone"
+#       ports:
+#         - 8200:8200/tcp
+#       options: --cap-add=IPC_LOCK
+#   steps:
+#     - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+#     - uses: ./.github/actions/setup-postgres
+#     - uses: nanasess/setup-chromedriver@e93e57b843c0c92788f22483f1a31af8ee48db25 # v2.3.0
+#
+#     - name: Setup Xvfb and ChromeDriver
+#       run: |
+#         export DISPLAY=:99
+#         chromedriver --url-base=/wd/hub &
+#         sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
+#
+#     - uses: ./.github/actions/setup-elixir
+#       with:
+#         mix_env: ${{ env.MIX_ENV }}
+#
+#     - uses: ./.github/actions/setup-node
+#       with:
+#         npmjs-token: ${{ secrets.NPMJS_TOKEN }}
+#         lockfile-dir: ./elixir/apps/web/assets
+#
+#     - name: Compile Application
+#       # run: mix compile --warnings-as-errors TODO: IPD-REFACOR re-enable warnings-as-errors
+#       run: mix compile
+#
+#     - name: Install Front-End Dependencies
+#       run: |
+#         cd apps/web
+#         mix assets.setup
+#
+#     - name: Build Web Assets
+#       run: |
+#         cd apps/web
+#         mix assets.build
+#
+#     # Run tests
+#     - name: Setup Database
+#       run: |
+#         mix ecto.create
+#         mix ecto.migrate
+#
+#     - name: Run Acceptance Tests
+#       env:
+#         MIX_TEST_PARTITION: ${{ matrix.MIX_TEST_PARTITION }}
+#         E2E_DEFAULT_WAIT_SECONDS: 20
+#       run: |
+#         mix test --only acceptance:true \
+#                  --partitions=${{ env.MIX_TEST_PARTITIONS }} \
+#                  --no-compile \
+#                  --no-archives-check \
+#                  --no-deps-check \
+#             || pkill -f chromedriver \
+#             || mix test --only acceptance:true --failed \
+#             || pkill -f chromedriver \
+#             || mix test --only acceptance:true --failed
+#
+#     - name: Save Screenshots
+#       if: ${{ github.event.pull_request.head.repo.full_name == github.repository && always() }}
+#       uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+#       with:
+#         name: screenshots-${{ matrix.MIX_TEST_PARTITION }}
+#         path: elixir/apps/web/screenshots
+#
+#     - name: Test Report
+#       if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (success() || failure()) }}
+#       uses: dorny/test-reporter@fe45e9537387dac839af0d33ba56eed8e24189e8 # v2.3.0
+#       with:
+#         name: Elixir Acceptance Test Report
+#         path: elixir/_build/test/lib/*/test-junit-report.xml
+#         reporter: java-junit

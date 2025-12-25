@@ -350,5 +350,5 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           parallel-finished: true
-          carryforward: elixir-api,elixir-web,elixir-domain,rust-tunnel-test,rust-test-Linux,rust-test-macOS,rust-test-Windows
+          carryforward: portal,rust-tunnel-test,rust-test-Linux,rust-test-macOS,rust-test-Windows
           fail-on-error: false # Make CI less flaky
