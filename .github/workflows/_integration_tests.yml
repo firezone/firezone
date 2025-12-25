@@ -3,27 +3,11 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
-      domain_image:
+      portal_image:
         required: false
         type: string
-        default: "ghcr.io/firezone/domain"
-      domain_tag:
-        required: false
-        type: string
-        default: ${{ github.sha }}
-      api_image:
-        required: false
-        type: string
-        default: "ghcr.io/firezone/api"
-      api_tag:
-        required: false
-        type: string
-        default: ${{ github.sha }}
-      web_image:
-        required: false
-        type: string
-        default: "ghcr.io/firezone/web"
-      web_tag:
+        default: "ghcr.io/firezone/portal"
+      portal_tag:
         required: false
         type: string
         default: ${{ github.sha }}
@@ -80,12 +64,8 @@ jobs:
       id-token: write
       pull-requests: write
     env:
-      DOMAIN_IMAGE: ${{ inputs.domain_image }}
-      DOMAIN_TAG: ${{ inputs.domain_tag }}
-      API_IMAGE: ${{ inputs.api_image }}
-      API_TAG: ${{ inputs.api_tag }}
-      WEB_IMAGE: ${{ inputs.web_image }}
-      WEB_TAG: ${{ inputs.web_tag }}
+      PORTAL_IMAGE: ${{ inputs.portal_image }}
+      PORTAL_TAG: ${{ inputs.portal_tag }}
       RELAY_IMAGE: ${{ inputs.relay_image }}
       RELAY_TAG: ${{ inputs.relay_tag }}
       GATEWAY_IMAGE: ${{ inputs.gateway_image }}
@@ -166,7 +146,7 @@ jobs:
       - uses: ./.github/actions/setup-docker
       - uses: ./.github/actions/setup-scripts
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
+        run: docker compose run elixir /bin/sh -c 'mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
       - name: Start docker compose in the background
         if: ${{ steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure' }} # Run if version checks succeed or are skipped
         run: |
@@ -188,14 +168,14 @@ jobs:
             export GATEWAY_DISABLE_IPV6="${{ matrix.test.gateway_disable_ipv6 }}"
           fi
 
-          docker compose build client-router gateway-router relay-1-router relay-2-router api-router
+          docker compose build client-router gateway-router relay-1-router relay-2-router portal-router
 
           # Start one-by-one to avoid variability in service startup order
           # Retries are used because network I/O is flaky in GitHub Actions runners
           retry docker compose up -d dns.httpbin.search.test --no-build
           retry docker compose up -d httpbin --no-build
           retry docker compose up -d download.httpbin --no-build
-          retry docker compose up -d api web domain --no-build
+          retry docker compose up -d portal --no-build
           retry docker compose up -d otel --no-build
           retry docker compose up -d relay-1 --no-build
           retry docker compose up -d relay-2 --no-build
@@ -252,9 +232,9 @@ jobs:
         if: "!cancelled()"
         run: docker compose logs gateway
 
-      - name: Show API logs
+      - name: Show Portal logs
         if: "!cancelled()"
-        run: docker compose logs api
+        run: docker compose logs portal
 
       - name: Ensure no eBPF checksum errors on relay-1
         if: "!cancelled() && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"

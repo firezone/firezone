@@ -9,7 +9,7 @@
   plugins: [Phoenix.LiveView.HTMLFormatter],
   inputs: [
     "*.{ex,exs}",
-    "{config,lib,test,priv}/**/*.{ex,exs,heex,xml.heex,html.heex}"
+    "{.credo,config,lib,test,priv}/**/*.{ex,exs,heex,xml.heex,html.heex}"
   ],
   locals_without_parens: [
     assert_authenticated: 2,

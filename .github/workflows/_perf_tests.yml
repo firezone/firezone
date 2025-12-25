@@ -15,10 +15,8 @@ jobs:
       id-token: write
       pull-requests: write
     env:
-      API_IMAGE: "ghcr.io/firezone/api"
-      API_TAG: ${{ github.sha }}
-      WEB_IMAGE: "ghcr.io/firezone/web"
-      WEB_TAG: ${{ github.sha }}
+      PORTAL_IMAGE: "ghcr.io/firezone/portal"
+      PORTAL_TAG: ${{ github.sha }}
       ELIXIR_IMAGE: "ghcr.io/firezone/elixir"
       ELIXIR_TAG: ${{ github.sha }}
       GATEWAY_IMAGE: "ghcr.io/firezone/perf/gateway"
@@ -46,7 +44,7 @@ jobs:
       - uses: ./.github/actions/setup-docker
       - uses: ./.github/actions/setup-scripts
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
+        run: docker compose run elixir /bin/sh -c 'mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
       - name: Increase max UDP buffer sizes
         run: |
           sudo sysctl -w net.core.wmem_max=16777216 # 16 MB
@@ -58,12 +56,12 @@ jobs:
             echo "UDP_BITRATE=300M" >> "$GITHUB_ENV"
           fi
 
-          docker compose build client-router gateway-router relay-1-router relay-2-router api-router
+          docker compose build client-router gateway-router relay-1-router relay-2-router portal-router
 
           # Start services in the same order each time for the tests
           # Retries are used because network I/O is flaky in GitHub Actions runners
           retry docker compose up -d iperf3
-          retry docker compose up -d api web domain --no-build
+          retry docker compose up -d portal --no-build
           retry docker compose up -d relay-1 relay-2 --no-build
           retry docker compose up -d gateway --no-build
           retry docker compose up -d client --no-build
@@ -93,9 +91,9 @@ jobs:
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway
-      - name: Show API logs
+      - name: Show Portal logs
         if: "!cancelled()"
-        run: docker compose logs api
+        run: docker compose logs portal
       - name: Show iperf3 logs
         if: "!cancelled()"
         run: docker compose logs iperf3

@@ -22,8 +22,7 @@ jobs:
           mix_env: ${{ env.MIX_ENV }}
 
       - name: Compile Application
-        # run: mix compile --warnings-as-errors TODO: IDP-REFACTOR re-enable warnings-as-errors
-        run: mix compile
+        run: mix compile --warnings-as-errors
 
       - name: Setup Database
         run: |
@@ -50,25 +49,9 @@ jobs:
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: elixir/apps/api/cover/lcov.info
+          file: elixir/cover/lcov.info
           format: lcov
-          flag-name: elixir-api
-          parallel: true
-
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: elixir/apps/web/cover/lcov.info
-          format: lcov
-          flag-name: elixir-web
-          parallel: true
-
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: elixir/apps/domain/cover/lcov.info
-          format: lcov
-          flag-name: elixir-domain
+          flag-name: portal
           parallel: true
 
   type-check:
@@ -128,9 +111,7 @@ jobs:
           mix_env: ${{ env.MIX_ENV }}
 
       - name: Compile Application
-        run: |
-          # TODO: Re-enable --force when we fix all warnings
-          mix compile # --force --warnings-as-errors
+        run: mix compile --force --warnings-as-errors
 
       - name: Check Formatting
         run: mix format --check-formatted
@@ -141,8 +122,8 @@ jobs:
       - name: Check For Vulnerable Packages
         run: mix deps.audit
 
-      - name: Run Sobelow vulnerability scanner for web app
-        working-directory: ./elixir/apps/web
+      - name: Run Sobelow vulnerability scanner
+        working-directory: ./elixir
         run: mix sobelow --skip
 
       - name: Run Credo
@@ -170,13 +151,10 @@ jobs:
           mix_env: ${{ env.MIX_ENV }}
 
       - name: Compile
-        run: |
-          # TODO: IDP REFACTOR
-          #  revert
-          mix compile # --warnings-as-errors
+        run: mix compile --warnings-as-errors
 
       - name: Generate self-signed cert
-        run: cd apps/web && mix phx.gen.cert
+        run: mix phx.gen.cert
 
       - name: Create Database
         run: mix ecto.create

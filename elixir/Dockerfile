@@ -224,31 +224,28 @@ RUN npm i -g pnpm
 # Copy only the files needed to fetch the dependencies,
 # to leverage Docker layer cache for them
 COPY mix.exs mix.lock ./
-COPY apps/domain/mix.exs ./apps/domain/mix.exs
-COPY apps/web/mix.exs ./apps/web/mix.exs
-COPY apps/api/mix.exs ./apps/api/mix.exs
 COPY config config
 
 # Fetch and compile the dependencies
 ARG MIX_ENV="prod"
 RUN mix deps.get --only ${MIX_ENV}
-RUN mix deps.compile --skip-umbrella-children
+RUN mix deps.compile
 
 # Copy the files needed to fetch asset deps
-COPY apps/web/assets/package.json ./apps/web/assets/
-COPY apps/web/assets/pnpm-lock.yaml ./apps/web/assets/
+COPY assets/package.json ./assets/
+COPY assets/pnpm-lock.yaml ./assets/
 
 # Install npm deps and assets pipeline
-RUN cd apps/web \
-    && mix assets.setup
+RUN mix assets.setup
 
-# Tailwind needs assets and app directories to look for used classes,
+# Tailwind needs assets and lib directories to look for used classes,
 # so we can't optimize further at this stage
-COPY apps apps
+COPY lib lib
+COPY assets assets
+COPY priv priv
 
-# Install pipeline and compile assets for Web app
-RUN cd apps/web \
-    && mix assets.deploy
+# Install pipeline and compile assets
+RUN mix assets.deploy
 
 # Copy the rest of the application files and compile them
 # mix doesn't know when GIT_SHA changes, so --force is needed to avoid
