@@ -33,11 +33,11 @@ function client_nslookup() {
     client timeout 30 sh -c "nslookup $1 | tee >(cat 1>&2) | tail -n +4"
 }
 
-function api_send_reject_access() {
+function portal_send_reject_access() {
     local site_name="$1"
     local resource_name="$2"
 
-    docker compose exec -T api bin/api rpc "
+    docker compose exec -T portal bin/portal rpc "
 Application.ensure_all_started(:portal)
 account_id = \"c89bcc8c-9392-4dae-a40d-888aef6d28e0\"
 

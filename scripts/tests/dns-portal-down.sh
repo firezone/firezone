@@ -14,6 +14,6 @@ function run_test() {
 
 run_test
 
-docker compose stop api
+docker compose stop portal
 
 run_test
