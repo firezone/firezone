@@ -131,7 +131,6 @@ jobs:
 
       - name: Check for unused deps
         run: mix deps.unlock --check-unused
-
 # TODO: IDP-REFACTOR: Re-enable
 # acceptance-test:
 #   name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}
