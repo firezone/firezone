@@ -25,15 +25,35 @@ defmodule PortalAPI.Endpoint do
   # https://hexdocs.pm/phoenix/Phoenix.Logger.html
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
-  socket "/gateway",
-         PortalAPI.Gateway.Socket,
-         PortalAPI.Sockets.options(timeout: :timer.seconds(37))
+  socket "/gateway", PortalAPI.Gateway.Socket,
+    websocket: [
+      transport_log: :debug,
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false
 
-  socket "/client",
-         PortalAPI.Client.Socket,
-         PortalAPI.Sockets.options(timeout: :timer.seconds(307))
+  socket "/client", PortalAPI.Client.Socket,
+    websocket: [
+      transport_log: :debug,
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(307)
+    ],
+    longpoll: false
 
-  socket "/relay", PortalAPI.Relay.Socket, PortalAPI.Sockets.options(timeout: :timer.seconds(41))
+  socket "/relay", PortalAPI.Relay.Socket,
+    websocket: [
+      transport_log: :debug,
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(41)
+    ],
+    longpoll: false
 
   plug :fetch_user_agent
   plug PortalAPI.Router
