@@ -118,7 +118,7 @@ defmodule PortalWeb.ConnCase do
       Map.merge(%{"email" => %{"provider_identifier" => identity.provider_identifier}}, params)
 
     redirected_conn =
-      post(conn, ~p"/#{account}/sign_in/providers/#{provider.id}/request_email_otp", params)
+      post(conn, ~p"/#{account}/sign_in/email_otp/#{provider.id}", params)
 
     assert_received {:email, email}
     [_match, secret] = Regex.run(~r/secret=([^&\n]*)/, email.text_body)
@@ -133,7 +133,7 @@ defmodule PortalWeb.ConnCase do
 
   def put_idp_auth_state(conn, account, provider, params \\ %{}) do
     redirected_conn =
-      get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", params)
+      get(conn, ~p"/#{account.id}/sign_in/#{provider.adapter}/#{provider.id}", params)
 
     cookie_key = "fz_auth_state_#{provider.id}"
     redirected_conn = Plug.Conn.fetch_cookies(redirected_conn, signed: [cookie_key])
@@ -168,7 +168,7 @@ defmodule PortalWeb.ConnCase do
       )
 
     redirected_conn =
-      post(conn, ~p"/#{account}/sign_in/providers/#{provider.id}/request_email_otp", params)
+      post(conn, ~p"/#{account}/sign_in/email_otp/#{provider.id}", params)
 
     assert_received {:email, email}
     [_match, secret] = Regex.run(~r/secret=([^&\n]*)/, email.text_body)
@@ -179,7 +179,7 @@ defmodule PortalWeb.ConnCase do
     verified_conn =
       conn
       |> put_req_cookie("fz_auth_state_#{provider.id}", signed_state)
-      |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+      |> post(~p"/#{account}/sign_in/email_otp/#{provider.id}/verify", %{
         "identity_id" => identity.id,
         "secret" => secret
       })

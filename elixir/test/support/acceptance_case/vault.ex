@@ -1,6 +1,6 @@
 defmodule PortalWeb.AcceptanceCase.Vault do
   use Wallaby.DSL
-  alias Portal.Fixtures
+  import Portal.AuthProviderFixtures
 
   @vault_root_token "firezone"
   @vault_endpoint "http://127.0.0.1:8200"
@@ -74,16 +74,14 @@ defmodule PortalWeb.AcceptanceCase.Vault do
     {:ok, {200, params}} = request(:get, "identity/oidc/client/firezone")
 
     provider =
-      Fixtures.Auth.create_openid_connect_provider(
+      oidc_provider_fixture(
         name: "Vault",
-        adapter_config: %{
-          "discovery_document_uri" =>
-            "#{@vault_endpoint}/v1/identity/oidc/provider/default/.well-known/openid-configuration",
-          "client_id" => params["data"]["client_id"],
-          "client_secret" => params["data"]["client_secret"],
-          "response_type" => "code",
-          "scope" => "openid email name offline_access"
-        },
+        discovery_document_uri:
+          "#{@vault_endpoint}/v1/identity/oidc/provider/default/.well-known/openid-configuration",
+        client_id: params["data"]["client_id"],
+        client_secret: params["data"]["client_secret"],
+        response_type: "code",
+        scope: "openid email name offline_access",
         account: account
       )
 
