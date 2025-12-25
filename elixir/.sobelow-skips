@@ -1,7 +1,3 @@
-# Legacy skips (retained from before)
-82F99CCB197A5F9A7DB683022A398743
-B56B19E35BDEC3E7E513809EDBAB0D02
-
 # Config file issues - can't use inline comments in .exs files
 # Dev database password - real password comes from runtime.exs
 Config.Secrets: Hardcoded Secret,config/config.exs:106,56F4E1B

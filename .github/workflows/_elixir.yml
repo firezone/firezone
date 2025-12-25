@@ -124,7 +124,7 @@ jobs:
 
       - name: Run Sobelow vulnerability scanner
         working-directory: ./elixir
-        run: mix sobelow --skip
+        run: mix sobelow --skip --exit
 
       - name: Run Credo
         run: mix credo --strict
