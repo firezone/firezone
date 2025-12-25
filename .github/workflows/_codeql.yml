@@ -21,7 +21,7 @@ jobs:
           - language: "javascript-typescript"
             working-directory: "website/"
           - language: "javascript-typescript"
-            working-directory: "elixir/apps/web/assets/"
+            working-directory: "elixir/assets/"
           # TODO
           # - language: 'java-kotlin'
           #   working-directory: 'kotlin/android'

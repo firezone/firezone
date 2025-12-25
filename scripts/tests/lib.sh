@@ -33,20 +33,20 @@ function client_nslookup() {
     client timeout 30 sh -c "nslookup $1 | tee >(cat 1>&2) | tail -n +4"
 }
 
-function api_send_reject_access() {
+function portal_send_reject_access() {
     local site_name="$1"
     local resource_name="$2"
 
-    docker compose exec -T api bin/api rpc "
-Application.ensure_all_started(:domain)
+    docker compose exec -T portal bin/portal rpc "
+Application.ensure_all_started(:portal)
 account_id = \"c89bcc8c-9392-4dae-a40d-888aef6d28e0\"
 
-site = Domain.Repo.get_by!(Domain.Site, account_id: account_id, name: \"$site_name\")
-[gateway_id | _] = Domain.Presence.Gateways.Site.list(site.id) |> Map.keys()
-[client_id | _] = Domain.Presence.Clients.Account.list(account_id) |> Map.keys()
-resource = Domain.Repo.get_by!(Domain.Resource, account_id: account_id, name: \"$resource_name\")
+site = Portal.Repo.get_by!(Portal.Site, account_id: account_id, name: \"$site_name\")
+[gateway_id | _] = Portal.Presence.Gateways.Site.list(site.id) |> Map.keys()
+[client_id | _] = Portal.Presence.Clients.Account.list(account_id) |> Map.keys()
+resource = Portal.Repo.get_by!(Portal.Resource, account_id: account_id, name: \"$resource_name\")
 
-Domain.PubSub.Account.broadcast(account_id, {{:reject_access, gateway_id}, client_id, resource.id})
+Portal.PubSub.Account.broadcast(account_id, {{:reject_access, gateway_id}, client_id, resource.id})
 "
 }
 

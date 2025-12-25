@@ -78,9 +78,7 @@ Firezone is **not:**
 This is a monorepo containing the full Firezone product, marketing website, and
 product documentation, organized as follows:
 
-- [elixir](../elixir): Control plane and internal Elixir libraries:
-  - [elixir/apps/web](../elixir/apps/web): Admin UI
-  - [elixir/apps/api](../elixir/apps/api): API for Clients, Relays and Gateways.
+- [elixir](../elixir): Admin portal and control plane
 - [rust/](../rust): Data plane and internal Rust libraries:
   - [rust/gateway](../rust/gateway): Gateway - Tunnel server based on WireGuard
     and deployed to your infrastructure.

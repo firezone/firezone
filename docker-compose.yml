@@ -6,7 +6,7 @@ include:
 
 x-erlang-cluster: &erlang-cluster
   ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
-  ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
+  ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["portal@portal.cluster.local"]}'
 
 x-portal-urls: &portal-urls
   WEB_EXTERNAL_URL: http://localhost:8080/
@@ -23,48 +23,23 @@ x-health-check: &health-check
   timeout: 1s
 
 services:
-  web:
+  portal:
     extends:
       file: scripts/compose/portal.yml
       service: common
     build:
       context: elixir
       args:
-        APPLICATION_NAME: web
-    image: ${WEB_IMAGE:-ghcr.io/firezone/web}:${WEB_TAG:-main}
-    hostname: web.cluster.local
+        APPLICATION_NAME: portal
+    image: ${PORTAL_IMAGE:-ghcr.io/firezone/portal}:${PORTAL_TAG:-main}
+    hostname: portal.cluster.local
     ports:
       - 8080:8080/tcp
-    environment:
-      <<: [*portal-urls, *erlang-cluster, *phoenix-config]
-      RELEASE_HOSTNAME: "web.cluster.local"
-      RELEASE_NAME: "web"
-      LOG_LEVEL: "debug"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f localhost:8080/healthz"]
-      <<: *health-check
-    depends_on:
-      vault:
-        condition: "service_healthy"
-      postgres:
-        condition: "service_healthy"
-
-  api:
-    extends:
-      file: scripts/compose/portal.yml
-      service: common
-    build:
-      context: elixir
-      args:
-        APPLICATION_NAME: api
-    image: ${API_IMAGE:-ghcr.io/firezone/api}:${API_TAG:-main}
-    hostname: api.cluster.local
-    ports:
       - 8081:8081/tcp
     environment:
       <<: [*portal-urls, *erlang-cluster, *phoenix-config]
-      RELEASE_HOSTNAME: "api.cluster.local"
-      RELEASE_NAME: "api"
+      RELEASE_HOSTNAME: "portal.cluster.local"
+      RELEASE_NAME: "portal"
       LOG_LEVEL: "debug"
     user: root # Needed to run `ip route` commands
     cap_add:
@@ -85,7 +60,7 @@ services:
         condition: "service_healthy"
       postgres:
         condition: "service_healthy"
-      api-router:
+      portal-router:
         condition: "service_healthy"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8081/healthz"]
@@ -95,7 +70,7 @@ services:
         ipv4_address: 172.28.0.100
         ipv6_address: 172:28:0::100
 
-  api-router:
+  portal-router:
     extends:
       file: scripts/compose/router.yml
       service: router
@@ -115,30 +90,6 @@ services:
         ipv6_address: 203:0:113::10
         interface_name: internet
 
-  domain:
-    extends:
-      file: scripts/compose/portal.yml
-      service: common
-    build:
-      context: elixir
-      args:
-        APPLICATION_NAME: domain
-    image: ${DOMAIN_IMAGE:-ghcr.io/firezone/domain}:${DOMAIN_TAG:-main}
-    hostname: domain.cluster.local
-    environment:
-      <<: *erlang-cluster
-      RELEASE_HOSTNAME: "domain.cluster.local"
-      RELEASE_NAME: "domain"
-      LOG_LEVEL: "debug"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f localhost:4000/healthz"]
-      <<: *health-check
-    depends_on:
-      vault:
-        condition: "service_healthy"
-      postgres:
-        condition: "service_healthy"
-
   # This is a service container which allows to run mix tasks for local development
   # without having to install Elixir and Erlang on the host machine.
   elixir:
@@ -149,7 +100,7 @@ services:
       context: elixir
       target: compiler
       args:
-        APPLICATION_NAME: api
+        APPLICATION_NAME: portal
     image: ${ELIXIR_IMAGE:-ghcr.io/firezone/elixir}:${ELIXIR_TAG:-main}
     hostname: elixir
     environment:
@@ -174,7 +125,7 @@ services:
       FIREZONE_DNS_CONTROL: "${FIREZONE_DNS_CONTROL:-etc-resolv-conf}"
       FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAR_ywiZQBYgABUYA.PLNlzyqMSgZlbQb1QX5EzZgYNuY9oeOddP0qDkTwtGg"
       RUST_LOG: ${RUST_LOG:-wire=trace,debug}
-      FIREZONE_API_URL: ws://api:8081
+      FIREZONE_API_URL: ws://portal:8081
       FIREZONE_ID: EFC7A9E3-3576-4633-B633-7D47BA9E14AC
       FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
     command:
@@ -213,15 +164,15 @@ services:
     depends_on:
       client-router:
         condition: "service_healthy"
-      api:
+      portal:
         condition: "service_healthy"
     networks:
       client-internal:
         ipv4_address: 172.30.0.100
         ipv6_address: 172:30:0::100
     extra_hosts:
-      - "api:203.0.113.10"
-      - "api:203:0:113::10"
+      - "portal:203.0.113.10"
+      - "portal:203:0:113::10"
 
   client-router:
     extends:
@@ -245,7 +196,7 @@ services:
     environment:
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkMjI3NDU2MGItZTk3Yi00NWU0LThiMzQtNjc5Yzc2MTdlOThkbQAAADhPMDJMN1VTMkozVklOT01QUjlKNklMODhRSVFQNlVPOEFRVk82VTVJUEwwVkpDMjJKR0gwPT09PW4GAAH8sImUAWIAAVGA.tAm2O9FcyF67VAF3rZdwQpeADrYOIs3S2l2K51G26OM"
       RUST_LOG: ${RUST_LOG:-wire=trace,debug,flow_logs=trace}
-      FIREZONE_API_URL: ws://api:8081
+      FIREZONE_API_URL: ws://portal:8081
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
       FZFF_GATEWAY_USERSPACE_DNS_A_AAAA_RECORDS: true
     command:
@@ -290,7 +241,7 @@ services:
     depends_on:
       gateway-router:
         condition: "service_healthy"
-      api:
+      portal:
         condition: "service_healthy"
     networks:
       gateway-internal:
@@ -299,8 +250,8 @@ services:
       dns_resources:
       resources:
     extra_hosts:
-      - "api:203.0.113.10"
-      - "api:203:0:113::10"
+      - "portal:203.0.113.10"
+      - "portal:203:0:113::10"
 
   gateway-router:
     extends:
