@@ -82,6 +82,9 @@ services:
       # Emails
       OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
       OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
+      # Color nodes
+      PORTAL_API_ENABLED: true
+      PORTAL_WEB_ENABLED: true
     networks:
       - app-internal
 
