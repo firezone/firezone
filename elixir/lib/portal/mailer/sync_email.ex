@@ -3,11 +3,16 @@ defmodule Portal.Mailer.SyncEmail do
   import Portal.Mailer
   import Phoenix.Template, only: [embed_templates: 2]
 
+  use Phoenix.VerifiedRoutes,
+    endpoint: PortalWeb.Endpoint,
+    router: PortalWeb.Router,
+    statics: PortalWeb.static_paths()
+
   embed_templates "sync_email/*.html", suffix: "_html"
   embed_templates "sync_email/*.text", suffix: "_text"
 
   def sync_error_email(directory, email) do
-    settings_url = url("/#{directory.account.slug}/settings/directory_sync")
+    settings_url = ~p"/#{directory.account.slug}/settings/directory_sync"
 
     default_email()
     |> subject("Directory Sync Error - #{directory.name}")

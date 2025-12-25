@@ -3,6 +3,11 @@ defmodule Portal.Mailer.AuthEmail do
   import Portal.Mailer
   import Phoenix.Template, only: [embed_templates: 2]
 
+  use Phoenix.VerifiedRoutes,
+    endpoint: PortalWeb.Endpoint,
+    router: PortalWeb.Router,
+    statics: PortalWeb.static_paths()
+
   embed_templates "auth_email/*.html", suffix: "_html"
   embed_templates "auth_email/*.text", suffix: "_text"
 
@@ -12,7 +17,7 @@ defmodule Portal.Mailer.AuthEmail do
         user_agent,
         remote_ip
       ) do
-    sign_in_form_url = url("/#{account.slug}")
+    sign_in_form_url = ~p"/#{account.slug}"
 
     default_email()
     |> subject("Welcome to Firezone")
@@ -35,12 +40,8 @@ defmodule Portal.Mailer.AuthEmail do
         params \\ %{}
       ) do
     params = Map.merge(params, %{secret: secret})
-
-    sign_in_url =
-      url(
-        "/#{actor.account.slug}/sign_in/email_otp/#{auth_provider_id}/verify",
-        params
-      )
+    query = Plug.Conn.Query.encode(params)
+    sign_in_url = ~p"/#{actor.account.slug}/sign_in/email_otp/#{auth_provider_id}/verify?#{query}"
 
     token_created_at =
       Cldr.DateTime.to_string!(token_created_at, Portal.CLDR, format: :short) <> " UTC"

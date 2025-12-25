@@ -93,20 +93,4 @@ defmodule Portal.Mailer do
     Email.new()
     |> Email.from({"Firezone Notifications", from_email})
   end
-
-  def url(path, params \\ %{}) do
-    Portal.Config.fetch_env!(:portal, :web_external_url)
-    |> URI.parse()
-    |> URI.append_path(path)
-    |> maybe_append_query(params)
-    |> URI.to_string()
-  end
-
-  defp maybe_append_query(uri, params) do
-    if Enum.empty?(params) do
-      uri
-    else
-      URI.append_query(uri, URI.encode_query(params))
-    end
-  end
 end

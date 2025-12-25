@@ -3,12 +3,17 @@ defmodule Portal.Mailer.Notifications do
   import Portal.Mailer
   import Phoenix.Template, only: [embed_templates: 2]
 
+  use Phoenix.VerifiedRoutes,
+    endpoint: PortalWeb.Endpoint,
+    router: PortalWeb.Router,
+    statics: PortalWeb.static_paths()
+
   embed_templates "notifications/*.html", suffix: "_html"
   embed_templates "notifications/*.text", suffix: "_text"
 
   def outdated_gateway_email(account, gateways, incompatible_client_count, email) do
-    outdated_clients_url =
-      url("/#{account.id}/clients", %{clients_order_by: "clients:asc:last_seen_version"})
+    query = Plug.Conn.Query.encode(%{clients_order_by: "clients:asc:last_seen_version"})
+    outdated_clients_url = ~p"/#{account.id}/clients?#{query}"
 
     default_email()
     |> subject("Firezone Gateway Upgrade Available")
