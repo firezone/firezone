@@ -12,8 +12,8 @@ defmodule Portal.Health do
   plug :dispatch
 
   def child_spec(_opts) do
-    config = Portal.Config.fetch_env!(:portal, Portal.Telemetry)
-    port = Keyword.fetch!(config, :healthz_port)
+    config = Portal.Config.fetch_env!(:portal, Portal.Health)
+    port = Keyword.fetch!(config, :health_port)
 
     %{
       id: __MODULE__,
@@ -39,9 +39,10 @@ defmodule Portal.Health do
 
   get "/readyz" do
     conn = put_resp_content_type(conn, "application/json")
+    draining_file_path = draining_file_path()
 
     cond do
-      File.exists?("/var/run/firezone-draining") ->
+      File.exists?(draining_file_path) ->
         send_resp(conn, 503, JSON.encode!(%{status: :draining}))
 
       not endpoints_ready?() ->
@@ -54,6 +55,10 @@ defmodule Portal.Health do
 
   match _ do
     send_resp(conn, 404, "Not found")
+  end
+
+  defp draining_file_path do
+    Portal.Config.fetch_env!(:portal, Portal.Health)[:draining_file_path]
   end
 
   defp endpoints_ready? do
