@@ -12,8 +12,8 @@ defmodule Portal.Mailer.Notifications do
   embed_templates "notifications/*.text", suffix: "_text"
 
   def outdated_gateway_email(account, gateways, incompatible_client_count, email) do
-    query = Plug.Conn.Query.encode(%{clients_order_by: "clients:asc:last_seen_version"})
-    outdated_clients_url = url(~p"/#{account.id}/clients?#{query}")
+    params = %{clients_order_by: "clients:asc:last_seen_version"}
+    outdated_clients_url = url(~p"/#{account.id}/clients?#{params}")
 
     default_email()
     |> subject("Firezone Gateway Upgrade Available")
