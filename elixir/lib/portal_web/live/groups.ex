@@ -926,7 +926,7 @@ defmodule PortalWeb.Groups do
           as: :member_counts
         )
         |> join(:left, [groups: g], d in Directory,
-          on: d.id == g.directory_id,
+          on: d.id == g.directory_id and d.account_id == g.account_id,
           as: :directory
         )
         |> where(
@@ -1049,7 +1049,7 @@ defmodule PortalWeb.Groups do
     def get_group!(id, subject) do
       from(g in Portal.Group, as: :groups)
       |> join(:left, [groups: g], d in Directory,
-        on: d.id == g.directory_id,
+        on: d.id == g.directory_id and d.account_id == g.account_id,
         as: :directory
       )
       |> where([groups: groups], groups.id == ^id)

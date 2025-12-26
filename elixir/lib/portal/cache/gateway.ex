@@ -331,7 +331,10 @@ defmodule Portal.Cache.Gateway do
       |> join(:inner, [policies: p], ag in assoc(p, :group), as: :group)
       |> join(:inner, [policies: p], r in assoc(p, :resource), as: :resource)
       |> where([resource: r], r.site_id == ^site_id)
-      |> join(:inner, [], actor in Portal.Actor, on: actor.id == ^actor_id, as: :actor)
+      |> join(:inner, [], actor in Portal.Actor,
+        on: actor.id == ^actor_id and actor.account_id == ^account_id,
+        as: :actor
+      )
       |> join(:left, [group: ag], m in assoc(ag, :memberships), as: :memberships)
       |> where(
         [memberships: m, group: ag, actor: a],

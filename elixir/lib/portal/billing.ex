@@ -435,7 +435,10 @@ defmodule Portal.Billing do
       from(c in Client, as: :clients)
       |> where([clients: c], c.account_id == ^account.id)
       |> where([clients: c], c.last_seen_at > ago(1, "month"))
-      |> join(:inner, [clients: c], a in Actor, on: c.actor_id == a.id, as: :actor)
+      |> join(:inner, [clients: c], a in Actor,
+        on: c.actor_id == a.id and c.account_id == a.account_id,
+        as: :actor
+      )
       |> where([actor: a], is_nil(a.disabled_at))
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
