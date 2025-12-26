@@ -1681,7 +1681,7 @@ defmodule PortalWeb.Settings.DirectorySync do
       policies_count =
         from(p in Portal.Policy,
           join: g in Portal.Group,
-          on: p.group_id == g.id,
+          on: p.group_id == g.id and p.account_id == g.account_id,
           where: g.directory_id == ^directory_id
         )
         |> Safe.scoped(subject)
