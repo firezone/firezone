@@ -1,13 +1,7 @@
-<<<<<<<< HEAD:elixir/test/portal_web/live_table_test.old
 defmodule PortalWeb.LiveTableTest do
   use PortalWeb.ConnCase, async: true
   import PortalWeb.LiveTable
-========
-defmodule Web.LiveTableTest do
-  use Web.ConnCase, async: true
-  import Web.LiveTable
-  import Domain.SubjectFixtures
->>>>>>>> 7c4afa0ce (test(portal): fix & enable live_table tests):elixir/test/portal_web/live_table_test.exs
+  import Portal.SubjectFixtures
 
   describe "<.live_table /> component" do
     setup do
