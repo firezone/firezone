@@ -153,7 +153,7 @@ config :portal, Portal.Telemetry,
 
 config :portal, Portal.Health,
   health_port: 4000,
-  draining_file_path: "/var/run/firezone-draining"
+  draining_file_path: "/var/run/firezone/draining"
 
 config :portal, Portal.Entra.APIClient,
   client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),

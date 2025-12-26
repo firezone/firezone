@@ -484,7 +484,7 @@ defmodule Portal.Config.Definitions do
 
   When this file exists, the `/readyz` endpoint will return 503 with status "draining".
   """
-  defconfig(:draining_file_path, :string, default: "/var/run/firezone-draining")
+  defconfig(:draining_file_path, :string, default: "/var/run/firezone/draining")
 
   ##############################################
   ## Telemetry
