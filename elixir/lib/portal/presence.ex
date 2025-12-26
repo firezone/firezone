@@ -335,9 +335,7 @@ defmodule Portal.Presence do
                port: relay.port,
                last_seen_remote_ip_location_lat: relay.last_seen_remote_ip_location_lat,
                last_seen_remote_ip_location_lon: relay.last_seen_remote_ip_location_lon
-             }),
-           {:ok, _} <-
-             Portal.Presence.track(self(), "presences:relays:#{relay.id}", relay.id, %{}) do
+             }) do
         :ok = PubSub.Relay.subscribe(relay.id)
         :ok
       end

@@ -5,6 +5,9 @@ defmodule Portal.Ops do
   @doc """
   Counts presences grouped by topic prefix.
 
+  Uses `Portal.Presence.list/1` to get the merged/deduplicated presence counts
+  across all nodes in the cluster.
+
   ## Examples
 
       iex> count_presences()
@@ -14,17 +17,28 @@ defmodule Portal.Ops do
         {"presences:actor_clients", 430},
         {"presences:global_relays", 34},
         {"presences:portal_sessions", 8},
-        {"presences:relays", 34},
         {"presences:sites", 421}
       ]
 
   """
-  def count_presences(shard \\ Portal.Presence_shard0) do
-    :ets.tab2list(shard)
-    |> Enum.group_by(fn {{topic, _pid, _id}, _meta, _clock} ->
-      topic |> String.split(":") |> Enum.take(2) |> Enum.join(":")
+  def count_presences do
+    # Get unique topics from the ETS shard
+    topics =
+      :ets.tab2list(Portal.Presence_shard0)
+      |> Enum.map(fn {{topic, _pid, _id}, _meta, _clock} -> topic end)
+      |> Enum.uniq()
+
+    # For each topic, get the merged presence count using Presence.list/1
+    # which properly deduplicates entries across cluster nodes
+    topics
+    |> Enum.map(fn topic ->
+      count = topic |> Portal.Presence.list() |> map_size()
+      prefix = topic |> String.split(":") |> Enum.take(2) |> Enum.join(":")
+      {prefix, count}
     end)
-    |> Enum.map(fn {topic_prefix, entries} -> {topic_prefix, length(entries)} end)
+    |> Enum.group_by(fn {prefix, _count} -> prefix end, fn {_prefix, count} -> count end)
+    |> Enum.map(fn {prefix, counts} -> {prefix, Enum.sum(counts)} end)
+    |> Enum.sort()
   end
 
   def sync_pricing_plans do

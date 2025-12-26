@@ -12,31 +12,26 @@ defmodule Portal.OpsTest do
   import Portal.ResourceFixtures
   import Portal.TokenFixtures
 
-  describe "count_presences/1" do
+  describe "count_presences/0" do
     test "returns presence counts grouped by topic prefix" do
-      table = :ets.new(:test_presences, [:set, :public])
+      # Track actual presence entries using the Presence module
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:account_clients:acc1", "client1", %{})
 
-      # Insert mock presence entries matching the Phoenix.Presence format
-      :ets.insert(table, {{"presences:account_clients:acc1", self(), "client1"}, %{}, {1, 0}})
-      :ets.insert(table, {{"presences:account_clients:acc1", self(), "client2"}, %{}, {2, 0}})
-      :ets.insert(table, {{"presences:account_gateways:acc1", self(), "gw1"}, %{}, {3, 0}})
-      :ets.insert(table, {{"presences:global_relays", self(), "relay1"}, %{}, {4, 0}})
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:account_clients:acc1", "client2", %{})
 
-      result = count_presences(table)
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:account_gateways:acc1", "gw1", %{})
+
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:global_relays", "relay1", %{})
+
+      result = count_presences()
 
       assert {"presences:account_clients", 2} in result
       assert {"presences:account_gateways", 1} in result
       assert {"presences:global_relays", 1} in result
-
-      :ets.delete(table)
-    end
-
-    test "returns empty list when no presences exist" do
-      table = :ets.new(:test_presences_empty, [:set, :public])
-
-      assert count_presences(table) == []
-
-      :ets.delete(table)
     end
   end
 
