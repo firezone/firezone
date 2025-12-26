@@ -17,7 +17,7 @@ defmodule Portal.Mailer.AuthEmail do
         user_agent,
         remote_ip
       ) do
-    sign_in_form_url = ~p"/#{account.slug}"
+    sign_in_form_url = url(~p"/#{account.slug}")
 
     default_email()
     |> subject("Welcome to Firezone")
@@ -41,7 +41,9 @@ defmodule Portal.Mailer.AuthEmail do
       ) do
     params = Map.merge(params, %{secret: secret})
     query = Plug.Conn.Query.encode(params)
-    sign_in_url = ~p"/#{actor.account.slug}/sign_in/email_otp/#{auth_provider_id}/verify?#{query}"
+
+    sign_in_url =
+      url(~p"/#{actor.account.slug}/sign_in/email_otp/#{auth_provider_id}/verify?#{query}")
 
     token_created_at =
       Cldr.DateTime.to_string!(token_created_at, Portal.CLDR, format: :short) <> " UTC"

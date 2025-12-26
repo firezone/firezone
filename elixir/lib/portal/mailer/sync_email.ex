@@ -12,7 +12,7 @@ defmodule Portal.Mailer.SyncEmail do
   embed_templates "sync_email/*.text", suffix: "_text"
 
   def sync_error_email(directory, email) do
-    settings_url = ~p"/#{directory.account.slug}/settings/directory_sync"
+    settings_url = url(~p"/#{directory.account.slug}/settings/directory_sync")
 
     default_email()
     |> subject("Directory Sync Error - #{directory.name}")
