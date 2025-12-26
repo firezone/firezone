@@ -892,6 +892,60 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert relay_id == relay1.id
     end
+
+    test "push_leave is not triggered when an unrelated relay connects", %{
+      client: client,
+      subject: subject
+    } do
+      _socket = join_channel(client, subject)
+
+      # Connect relay1
+      relay1 = relay_fixture()
+      stamp_secret1 = Ecto.UUID.generate()
+      relay_token1 = relay_token_fixture()
+      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token1.id)
+
+      assert_push "relays_presence",
+                  %{
+                    connected: [relay_view1, relay_view2],
+                    disconnected_ids: []
+                  },
+                  relays_presence_timeout() + 10
+
+      assert relay1.id == relay_view1.id
+      assert relay1.id == relay_view2.id
+
+      # Disconnect relay1 - this queues a pending leave
+      disconnect_relay(relay1)
+
+      # presence_diff isn't immediate
+      Process.sleep(1)
+
+      # Connect a completely different relay2 - this should NOT trigger relay1's disconnect
+      relay2 = relay_fixture()
+      stamp_secret2 = Ecto.UUID.generate()
+      relay_token2 = relay_token_fixture()
+      :ok = Portal.Presence.Relays.connect(relay2, stamp_secret2, relay_token2.id)
+
+      # We might receive a relays_presence for relay2 connecting, but relay1 should NOT
+      # be in disconnected_ids yet - it should still be debounced
+      relay1_id = relay1.id
+
+      refute_push "relays_presence",
+                  %{
+                    disconnected_ids: [^relay1_id]
+                  },
+                  50
+
+      # Now wait for the debounce timeout - relay1 should be disconnected
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [relay_id]
+                  },
+                  relays_presence_timeout() + 10
+
+      assert relay_id == relay1.id
+    end
   end
 
   describe "handle_info/2 for change events" do

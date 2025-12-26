@@ -424,8 +424,11 @@ defmodule Portal.Presence do
         cached_stamp_secrets = Map.get(socket.assigns, :stamp_secrets, %{})
 
         # Check for stamp_secret changes in pending_leaves
+        # Only check relays that are in both pending_leaves AND joined_ids
         disconnected_from_pending =
-          Enum.reduce(pending_leaves, [], fn {relay_id, stamp_secret}, acc ->
+          pending_leaves
+          |> Enum.filter(fn {relay_id, _} -> relay_id in joined_ids end)
+          |> Enum.reduce([], fn {relay_id, stamp_secret}, acc ->
             if Map.get(joined_stamp_secrets, relay_id) != stamp_secret do
               [relay_id | acc]
             else
