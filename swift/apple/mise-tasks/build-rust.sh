@@ -6,7 +6,7 @@ trap 'echo "ERROR: Build script failed at line $LINENO" >&2' ERR
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-RUST_DIR="$SCRIPT_DIR/../../rust"
+RUST_DIR="$SCRIPT_DIR/../../../rust"
 
 # Sanitize the environment to prevent Xcode's shenanigans from leaking
 # into our highly evolved Rust-based build system.
@@ -161,7 +161,7 @@ done
 echo ""
 echo "Generating UniFFI bindings..."
 cd "$SCRIPT_DIR"
-make uniffi-bindings
+./uniffi-bindings.sh
 
 echo ""
 echo "✅ Rust library build completed successfully!"
