@@ -16,7 +16,7 @@ defmodule PortalWeb.Cookie.EmailOTP do
   @cookie_options [
     sign: true,
     max_age: 15 * 60,
-    same_site: "Strict",
+    same_site: "Lax",
     secure: Portal.Config.fetch_env!(:portal, :cookie_secure),
     http_only: true,
     signing_salt: Portal.Config.fetch_env!(:portal, :cookie_signing_salt)
