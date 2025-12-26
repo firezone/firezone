@@ -935,6 +935,7 @@ defmodule Portal.Repo.Seeds do
     global_relay_token =
       %Portal.RelayToken{
         id: "e82fcdc1-057a-4015-b90b-3b18f0f28053",
+        secret_fragment: "C14NGA87EJRR03G4QPR07A9C6G784TSSTHSF4TI5T0GD8D6L0VRG====",
         secret_salt: "lZWUdgh-syLGVDsZEu_29A",
         secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
       }
