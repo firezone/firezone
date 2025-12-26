@@ -16,12 +16,10 @@ Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:39,598BC2
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:49,65A0AD6
 Config.Headers: Missing Secure Browser Headers,lib/portal_api/router.ex:16,6D3C5B2
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:5,6FAAF8B
-DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:174,793EAFA
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:25,7A45AA2
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:14,7D8E9A6
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/oidc.ex:72,1687D24
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:38,17684C4
-DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:173,1C285EC
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal/types/filter.ex:22,1E1F28F
 SQL.Query: SQL injection,lib/portal/safe.ex:285,224B461
 DOS.BinToAtom: Unsafe atom interpolation,lib/portal/account.ex:83,2831B26
@@ -38,3 +36,5 @@ Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/client_auth.ex:42,
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/mailer.ex:62,6EFEB9E
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:13,7269EC9
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:28,7369D64
+
+DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:172,1FD0413

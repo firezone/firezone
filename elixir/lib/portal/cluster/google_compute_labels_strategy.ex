@@ -153,9 +153,9 @@ defmodule Portal.Cluster.GoogleComputeLabelsStrategy do
     project_id = Keyword.fetch!(state.config, :project_id)
     cluster_name = Keyword.fetch!(state.config, :cluster_name)
     cluster_version = Keyword.fetch!(state.config, :cluster_version)
+    release_name = Keyword.fetch!(state.config, :release_name)
     cluster_name_label = Keyword.get(state.config, :cluster_name_label, "cluster_name")
     cluster_version_label = Keyword.get(state.config, :cluster_version_label, "cluster_version")
-    node_name_label = Keyword.get(state.config, :node_name_label, "application")
 
     with {:ok, instances} <-
            Portal.GoogleCloudPlatform.list_google_cloud_instances_by_labels(
@@ -167,8 +167,7 @@ defmodule Portal.Cluster.GoogleComputeLabelsStrategy do
            ) do
       nodes =
         instances
-        |> Enum.map(fn %{"zone" => zone, "name" => name, "labels" => labels} ->
-          release_name = Map.fetch!(labels, node_name_label)
+        |> Enum.map(fn %{"zone" => zone, "name" => name} ->
           zone = String.split(zone, "/") |> List.last()
           node_name = :"#{release_name}@#{name}.#{zone}.c.#{project_id}.internal"
 
@@ -191,31 +190,9 @@ defmodule Portal.Cluster.GoogleComputeLabelsStrategy do
 
   defp enough_nodes_connected?(state) do
     connected_nodes = state.connected_nodes ++ [Node.self()]
-    expected_api_node_count = Keyword.fetch!(state.config, :api_node_count)
-    expected_domain_node_count = Keyword.fetch!(state.config, :domain_node_count)
-    expected_web_node_count = Keyword.fetch!(state.config, :web_node_count)
-    connected_api_node_count = connected_node_count(connected_nodes, "api")
-    connected_domain_node_count = connected_node_count(connected_nodes, "domain")
-    connected_web_node_count = connected_node_count(connected_nodes, "web")
+    expected_node_count = Keyword.fetch!(state.config, :node_count)
+    connected_node_count = connected_nodes |> Enum.uniq() |> length()
 
-    api_nodes_connected? = connected_api_node_count >= expected_api_node_count
-    domain_nodes_connected? = connected_domain_node_count >= expected_domain_node_count
-    web_nodes_connected? = connected_web_node_count >= expected_web_node_count
-
-    api_nodes_connected? and domain_nodes_connected? and web_nodes_connected?
-  end
-
-  defp connected_node_count(nodes, target_app) do
-    nodes
-    |> Enum.uniq()
-    |> Enum.count(fn node_name ->
-      app =
-        node_name
-        |> Atom.to_string()
-        |> String.split("@")
-        |> List.first()
-
-      target_app == app
-    end)
+    connected_node_count >= expected_node_count
   end
 end
