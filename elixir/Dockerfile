@@ -303,6 +303,10 @@ COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
 # Allow the default user to write to the priv directory of some libraries
 RUN chmod -R ugo+rw /app/lib/tzdata-*/priv
 
+# Allow the default user to write to /var/run/firezone for node draining
+RUN mkdir -p /var/run/firezone \
+    && chmod -R ugo+rw /var/run/firezone
+
 # Change user to "default" to limit runtime privileges
 USER default
 
