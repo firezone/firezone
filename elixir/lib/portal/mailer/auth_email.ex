@@ -40,10 +40,9 @@ defmodule Portal.Mailer.AuthEmail do
         params \\ %{}
       ) do
     params = Map.merge(params, %{secret: secret})
-    query = Plug.Conn.Query.encode(params)
 
     sign_in_url =
-      url(~p"/#{actor.account.slug}/sign_in/email_otp/#{auth_provider_id}/verify?#{query}")
+      url(~p"/#{actor.account.slug}/sign_in/email_otp/#{auth_provider_id}/verify?#{params}")
 
     token_created_at =
       Cldr.DateTime.to_string!(token_created_at, Portal.CLDR, format: :short) <> " UTC"
