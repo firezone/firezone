@@ -121,7 +121,6 @@ defmodule Portal.RelayFixtures do
   """
   def disconnect_relay(relay) do
     :ok = Portal.Presence.untrack(self(), Portal.Presence.Relays.Global.topic(), relay.id)
-    :ok = Portal.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
     :ok = Portal.PubSub.unsubscribe("relays:#{relay.id}")
     :ok
   end
