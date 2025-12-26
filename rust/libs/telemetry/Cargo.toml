@@ -6,9 +6,14 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+bytes = { workspace = true }
+circuit-breaker = { workspace = true }
 flume = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
+http = { workspace = true }
+http-client = { workspace = true }
+httpdate = { workspace = true }
 ip-packet = { workspace = true }
 moka = { workspace = true, features = ["sync"] }
 opentelemetry = { workspace = true }
@@ -19,7 +24,9 @@ sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+socket-factory = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
+tokio-util = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 uuid = { workspace = true }
