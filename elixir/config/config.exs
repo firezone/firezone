@@ -326,7 +326,7 @@ config :portal, PortalAPI.Endpoint,
   secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
   pubsub_server: Portal.PubSub
 
-config :portal, relays_presence_debounce_timeout_ms: 3_000
+config :portal, relays_presence_debounce_timeout_ms: 1_000
 
 config :portal, PortalAPI.RateLimit,
   refill_rate: 10,
