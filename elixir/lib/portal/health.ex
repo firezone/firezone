@@ -1,0 +1,73 @@
+defmodule Portal.Health do
+  @moduledoc """
+  Health check server that handles liveness and readiness probes.
+
+  - `/healthz` - Liveness check, always returns 200 OK
+  - `/readyz` - Readiness check, returns 200 when endpoints are ready,
+                503 when draining or starting
+  """
+  use Plug.Router
+
+  plug :match
+  plug :dispatch
+
+  def child_spec(_opts) do
+    config = Portal.Config.fetch_env!(:portal, Portal.Telemetry)
+    port = Keyword.fetch!(config, :healthz_port)
+
+    %{
+      id: __MODULE__,
+      start:
+        {Bandit, :start_link,
+         [
+           [
+             plug: __MODULE__,
+             scheme: :http,
+             port: port,
+             thousand_island_options: [num_acceptors: 2]
+           ]
+         ]},
+      type: :supervisor
+    }
+  end
+
+  get "/healthz" do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, JSON.encode!(%{status: :ok}))
+  end
+
+  get "/readyz" do
+    conn = put_resp_content_type(conn, "application/json")
+
+    cond do
+      File.exists?("/var/run/firezone-draining") ->
+        send_resp(conn, 503, JSON.encode!(%{status: :draining}))
+
+      not endpoints_ready?() ->
+        send_resp(conn, 503, JSON.encode!(%{status: :starting}))
+
+      true ->
+        send_resp(conn, 200, JSON.encode!(%{status: :ready}))
+    end
+  end
+
+  match _ do
+    send_resp(conn, 404, "Not found")
+  end
+
+  defp endpoints_ready? do
+    web_ready? = not web_enabled?() or Process.whereis(PortalWeb.Endpoint) != nil
+    api_ready? = not api_enabled?() or Process.whereis(PortalAPI.Endpoint) != nil
+
+    web_ready? and api_ready?
+  end
+
+  defp web_enabled? do
+    Portal.Config.fetch_env!(:portal, PortalWeb)[:enabled]
+  end
+
+  defp api_enabled? do
+    Portal.Config.fetch_env!(:portal, PortalAPI)[:enabled]
+  end
+end
