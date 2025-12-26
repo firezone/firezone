@@ -15,6 +15,11 @@ defmodule Portal.Telemetry.Sentry do
     nil
   end
 
+  # These are expected from bots/malicious actors sending invalid CSRF tokens.
+  def before_send(%{original_exception: %Plug.CSRFProtection.InvalidCSRFTokenError{}}) do
+    nil
+  end
+
   def before_send(%{message: %{formatted: formatted_message}} = event)
       when is_binary(formatted_message) do
     if Enum.any?(@ignored_message_patterns, fn p ->
