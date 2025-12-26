@@ -150,7 +150,10 @@ defmodule Portal.Workers.OutdatedGateways do
           (fragment("split_part(?, '.', 1)::int", c.last_seen_version) == ^g_major and
              fragment("split_part(?, '.', 2)::int", c.last_seen_version) <= ^(g_minor - 2))
       )
-      |> join(:inner, [clients: c], a in Portal.Actor, on: c.actor_id == a.id, as: :actor)
+      |> join(:inner, [clients: c], a in Portal.Actor,
+        on: c.actor_id == a.id and c.account_id == a.account_id,
+        as: :actor
+      )
       |> where([actor: a], is_nil(a.disabled_at))
       |> Safe.unscoped()
       |> Safe.aggregate(:count)

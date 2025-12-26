@@ -235,7 +235,10 @@ defmodule PortalWeb.Sites.Index do
 
     def count_policies_by_site(site_ids, subject) do
       from(p in Portal.Policy, as: :policies)
-      |> join(:inner, [policies: p], r in Resource, on: r.id == p.resource_id, as: :resources)
+      |> join(:inner, [policies: p], r in Resource,
+        on: r.id == p.resource_id and r.account_id == p.account_id,
+        as: :resources
+      )
       |> where([resources: r], r.site_id in ^site_ids)
       |> group_by([resources: r], r.site_id)
       |> select([resources: r], {r.site_id, count()})
