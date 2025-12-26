@@ -1,7 +1,6 @@
 defmodule Portal.Telemetry do
   use Supervisor
   import Telemetry.Metrics
-  alias Portal.Telemetry
   require Logger
 
   def start_link(arg) do
@@ -13,10 +12,6 @@ defmodule Portal.Telemetry do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
     children = [
-      # We start a /healthz endpoint that is used for liveness probes
-      {Bandit,
-       plug: Telemetry.HealthzPlug, scheme: :http, port: Keyword.get(config, :healthz_port)},
-
       # Telemetry poller will execute the given period measurements
       # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
       {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
@@ -35,11 +30,11 @@ defmodule Portal.Telemetry do
   def metrics do
     [
       # Database Metrics
-      distribution("domain.repo.query.total_time", unit: {:native, :millisecond}),
-      summary("domain.repo.query.decode_time", unit: {:native, :millisecond}),
-      summary("domain.repo.query.query_time", tags: [:query], unit: {:native, :millisecond}),
-      summary("domain.repo.query.queue_time", unit: {:native, :millisecond}),
-      summary("domain.repo.query.idle_time", unit: {:native, :millisecond}),
+      distribution("portal.repo.query.total_time", unit: {:native, :millisecond}),
+      summary("portal.repo.query.decode_time", unit: {:native, :millisecond}),
+      summary("portal.repo.query.query_time", tags: [:query], unit: {:native, :millisecond}),
+      summary("portal.repo.query.queue_time", unit: {:native, :millisecond}),
+      summary("portal.repo.query.idle_time", unit: {:native, :millisecond}),
 
       # Phoenix Metrics
       summary("phoenix.endpoint.start.system_time",
@@ -108,17 +103,17 @@ defmodule Portal.Telemetry do
       last_value("vm.scheduler_utilization.scheduler_count"),
 
       # Application metrics
-      last_value("domain.relays.online_relays_count"),
-      last_value("domain.cluster.discovered_nodes_count"),
+      last_value("portal.relays.online_relays_count"),
+      last_value("portal.cluster.discovered_nodes_count"),
 
       ## Directory Syncs
-      summary("domain.directory_sync.data_fetch_total_time",
+      summary("portal.directory_sync.data_fetch_total_time",
         tags: [:account_id, :provider_id, :provider_adapter]
       ),
-      summary("domain.directory_sync.db_operations_total_time",
+      summary("portal.directory_sync.db_operations_total_time",
         tags: [:account_id, :provider_id, :provider_adapter]
       ),
-      distribution("domain.directory_sync.total_time",
+      distribution("portal.directory_sync.total_time",
         tags: [:account_id, :provider_id, :provider_adapter]
       )
     ]

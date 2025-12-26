@@ -337,8 +337,9 @@ if config_env() == :prod do
       otlp_endpoint: System.get_env("OTLP_ENDPOINT")
   end
 
+  config :portal, Portal.Health, health_port: env_var_to_config!(:health_port)
+
   config :portal, Portal.Telemetry,
-    healthz_port: env_var_to_config!(:healthz_port),
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
 
   if telemetry_metrics_reporter = env_var_to_config!(:telemetry_metrics_reporter) do

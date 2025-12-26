@@ -63,7 +63,7 @@ services:
       portal-router:
         condition: "service_healthy"
     healthcheck:
-      test: ["CMD-SHELL", "curl -f localhost:8081/healthz"]
+      test: ["CMD-SHELL", "curl -f localhost:4000/readyz"]
       <<: *health-check
     networks:
       app-internal:

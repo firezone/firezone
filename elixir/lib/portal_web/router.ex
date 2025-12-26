@@ -46,12 +46,6 @@ defmodule PortalWeb.Router do
     post "/", HomeController, :redirect_to_sign_in
   end
 
-  scope "/", PortalWeb do
-    pipe_through :public
-
-    get "/healthz", HealthController, :healthz
-  end
-
   if Mix.env() in [:dev, :test] do
     scope "/dev" do
       pipe_through [:dev_tools]

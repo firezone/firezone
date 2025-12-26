@@ -1,40 +1,24 @@
-# Config file issues - can't use inline comments in .exs files
-# Dev database password - real password comes from runtime.exs
-Config.Secrets: Hardcoded Secret,config/config.exs:106,56F4E1B
 
-# Stripe test keys - real keys come from runtime.exs
-Config.Secrets: Hardcoded Secret,config/config.exs:204,7F38DEB
-Config.Secrets: Hardcoded Secret,config/config.exs:205,E9FD90
-
-# HTTPS is configured in runtime.exs for production
-Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
-
-DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:34,3168343
-Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:29,37D06D9
-Config.CSRFRoute: CSRF via Action Reuse,lib/portal_web/router.ex:116,3ED6CC1
-Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:39,598BC2B
-Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:49,65A0AD6
-Config.Headers: Missing Secure Browser Headers,lib/portal_api/router.ex:16,6D3C5B2
-Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:5,6FAAF8B
-DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:25,7A45AA2
-Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:14,7D8E9A6
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/oidc.ex:72,1687D24
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:38,17684C4
+Config.CSRFRoute: CSRF via Action Reuse,lib/portal_web/router.ex:109,17FA088
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal/types/filter.ex:22,1E1F28F
+DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:172,1FD0413
 SQL.Query: SQL injection,lib/portal/safe.ex:285,224B461
 DOS.BinToAtom: Unsafe atom interpolation,lib/portal/account.ex:83,2831B26
+Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
 Config.Headers: Missing Secure Browser Headers,lib/portal_api/router.ex:15,464028
+Config.Secrets: Hardcoded Secret,config/config.exs:208,4700588
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:4,490DB25
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:48,49E8E80
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:20,4C29336
 SQL.Query: SQL injection,lib/portal/safe.ex:291,4C5F170
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/email_otp.ex:65,5078E69
-Config.CSRFRoute: CSRF via Action Reuse,lib/portal_web/router.ex:115,55B7647
+Config.Secrets: Hardcoded Secret,config/config.exs:106,56F4E1B
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:24,5775968
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:33,58DA1AC
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/client_auth.ex:42,5F2F213
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/mailer.ex:62,6EFEB9E
+Config.Secrets: Hardcoded Secret,config/config.exs:207,7165BCA
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:13,7269EC9
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:28,7369D64
-
-DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:172,1FD0413

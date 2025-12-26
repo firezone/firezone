@@ -33,12 +33,6 @@ defmodule PortalAPI.Router do
   end
 
   scope "/", PortalAPI do
-    pipe_through :public
-
-    get "/healthz", HealthController, :healthz
-  end
-
-  scope "/", PortalAPI do
     pipe_through :api
 
     resources "/account", AccountController, only: [:show], singleton: true
