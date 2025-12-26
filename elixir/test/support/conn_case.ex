@@ -51,6 +51,26 @@ defmodule PortalWeb.ConnCase do
     MapSet.equal?(MapSet.new(list1), MapSet.new(list2))
   end
 
+  @doc """
+  Sets up socket assigns for URI-based navigation, simulating what
+  the SetCurrentUri hook does during handle_params.
+  """
+  def put_uri_assigns(socket, uri) do
+    parsed = URI.parse(uri)
+
+    query_params =
+      if parsed.query do
+        URI.decode_query(parsed.query)
+      else
+        %{}
+      end
+
+    Phoenix.Component.assign(socket,
+      current_path: parsed.path,
+      query_params: query_params
+    )
+  end
+
   def flash(conn, key) do
     Phoenix.Flash.get(conn.assigns.flash, key)
   end
