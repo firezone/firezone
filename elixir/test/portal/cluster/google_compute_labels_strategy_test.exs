@@ -13,14 +13,15 @@ defmodule Portal.Cluster.GoogleComputeLabelsStrategyTest do
         config: [
           project_id: "firezone-staging",
           cluster_name: "firezone",
-          cluster_version: "1"
+          cluster_version: "1",
+          release_name: "portal"
         ]
       }
 
       assert {:ok, nodes, _state} = fetch_nodes(state)
 
       assert nodes == [
-               :"api@api-q3j6.us-east1-d.c.firezone-staging.internal"
+               :"portal@api-q3j6.us-east1-d.c.firezone-staging.internal"
              ]
     end
   end
