@@ -305,7 +305,7 @@ RUN chmod -R ugo+rw /app/lib/tzdata-*/priv
 
 # Allow the default user to write to /var/run/firezone for node draining
 RUN mkdir -p /var/run/firezone \
-    && chown -R ugo+rw /var/run/firezone
+    && chmod -R ugo+rw /var/run/firezone
 
 # Change user to "default" to limit runtime privileges
 USER default
