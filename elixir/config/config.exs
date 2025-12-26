@@ -149,8 +149,11 @@ config :portal, Portal.Tokens,
 
 config :portal, Portal.Telemetry,
   metrics_reporter: nil,
-  enabled: true,
-  healthz_port: 4000
+  enabled: true
+
+config :portal, Portal.Health,
+  health_port: 4000,
+  draining_file_path: "/var/run/firezone-draining"
 
 config :portal, Portal.Entra.APIClient,
   client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),

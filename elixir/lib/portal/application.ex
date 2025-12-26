@@ -43,7 +43,10 @@ defmodule Portal.Application do
       Portal.Billing,
       Portal.Mailer,
       Portal.Mailer.RateLimiter,
-      Portal.ComponentVersions
+      Portal.ComponentVersions,
+
+      # Health check server (always enabled)
+      Portal.Health
     ] ++ web() ++ api() ++ telemetry() ++ oban() ++ replication()
   end
 

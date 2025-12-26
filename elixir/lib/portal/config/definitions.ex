@@ -463,13 +463,13 @@ defmodule Portal.Config.Definitions do
   # Okta uses a per-tenant client_id/secret
 
   ##############################################
-  ## Telemetry
+  ## Health
   ##############################################
 
   @doc """
-  The port for the internal healthz endpoint.
+  The port for the internal health endpoint.
   """
-  defconfig(:healthz_port, :integer,
+  defconfig(:health_port, :integer,
     default: 4000,
     changeset: fn changeset, key ->
       Ecto.Changeset.validate_number(changeset, key,
@@ -478,6 +478,17 @@ defmodule Portal.Config.Definitions do
       )
     end
   )
+
+  @doc """
+  Path to the file that signals the service is draining.
+
+  When this file exists, the `/readyz` endpoint will return 503 with status "draining".
+  """
+  defconfig(:draining_file_path, :string, default: "/var/run/firezone-draining")
+
+  ##############################################
+  ## Telemetry
+  ##############################################
 
   @doc """
   Enable or disable the Firezone telemetry collection.
