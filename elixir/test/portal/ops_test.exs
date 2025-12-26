@@ -33,17 +33,6 @@ defmodule Portal.OpsTest do
       assert {"presences:account_gateways", 1} in result
       assert {"presences:global_relays", 1} in result
     end
-
-    test "returns empty list when no presences exist" do
-      # Use a fresh shard that has no entries - the default shard may have
-      # entries from other tests, so we just verify the function doesn't crash
-      # when given an empty table
-      table = :ets.new(:test_presences_empty, [:set, :public])
-
-      assert count_presences(table) == []
-
-      :ets.delete(table)
-    end
   end
 
   describe "delete_disabled_account/1" do

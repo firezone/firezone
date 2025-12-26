@@ -21,10 +21,10 @@ defmodule Portal.Ops do
       ]
 
   """
-  def count_presences(shard \\ Portal.Presence_shard0) do
+  def count_presences do
     # Get unique topics from the ETS shard
     topics =
-      :ets.tab2list(shard)
+      :ets.tab2list(Portal.Presence_shard0)
       |> Enum.map(fn {{topic, _pid, _id}, _meta, _clock} -> topic end)
       |> Enum.uniq()
 
