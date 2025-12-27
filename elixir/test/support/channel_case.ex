@@ -28,6 +28,9 @@ defmodule PortalAPI.ChannelCase do
       "presences:global_relays:#{inspect(make_ref())}"
     )
 
+    # Set debounce to 0 in tests for faster execution
+    Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 0)
+
     for presence <- @presences, pid <- presence.fetchers_pids() do
       # TODO: If we start using Presence.fetch/2 callback we might want to
       # contribute to Phoenix.Presence a way to propagate sandbox access from

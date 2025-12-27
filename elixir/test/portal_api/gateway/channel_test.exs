@@ -2613,5 +2613,46 @@ defmodule PortalAPI.Gateway.ChannelTest do
       relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
       assert length(relay_ids) <= 2
     end
+
+    test "debounces multiple rapid presence_diff events", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      # Set debounce to 50ms so the test is fast but we can still observe coalescing
+      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 50)
+
+      _socket = join_channel(gateway, site, token)
+
+      assert_push "init", %{relays: []}
+
+      stamp_secret = Ecto.UUID.generate()
+      relay = relay_fixture()
+
+      update_relay(relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      relay_token = relay_token_fixture()
+
+      # Connect the relay - this triggers a presence_diff
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+
+      # Should receive exactly one relays_presence after debounce period
+      assert_push "relays_presence", %{connected: [_, _], disconnected_ids: []}, 200
+
+      # Rapidly disconnect and reconnect the relay multiple times
+      # Each triggers a presence_diff, but they should be coalesced
+      for _ <- 1..3 do
+        disconnect_relay(relay)
+        :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      end
+
+      # After debounce, should receive exactly one update reflecting final state
+      # Since the relay is online with the same stamp_secret, no disconnects should be reported
+      refute_push "relays_presence", %{disconnected_ids: [_]}, 200
+    end
   end
 end
