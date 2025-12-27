@@ -429,7 +429,7 @@ mod tests {
             }
         })
         .await
-        .ok();
+        .expect("timeout waiting for waker to be set");
 
         // The flush_waker should have been woken by the writeable event
         assert!(
