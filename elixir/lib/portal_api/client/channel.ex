@@ -991,23 +991,21 @@ defmodule PortalAPI.Client.Channel do
 
   defp load_balance_relays({lat, lon}, relays) do
     relays
-    # This allows to group relays that are running at the same location so
-    # we are using at least 2 locations to build ICE candidates
-    |> Enum.group_by(fn relay ->
-      {relay.last_seen_remote_ip_location_lat, relay.last_seen_remote_ip_location_lon}
+    |> Enum.map(fn relay ->
+      case {relay.last_seen_remote_ip_location_lat, relay.last_seen_remote_ip_location_lon} do
+        {nil, _} -> {nil, relay}
+        {_, nil} -> {nil, relay}
+        {relay_lat, relay_lon} -> {Portal.Geo.distance({lat, lon}, {relay_lat, relay_lon}), relay}
+      end
     end)
-    |> Enum.map(fn
-      {{nil, nil}, relay} ->
-        {nil, relay}
-
-      {{relay_lat, relay_lon}, relay} ->
-        distance = Portal.Geo.distance({lat, lon}, {relay_lat, relay_lon})
-        {distance, relay}
-    end)
-    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.sort_by(&elem(&1, 0), &nils_last/2)
     |> Enum.take(2)
-    |> Enum.map(&Enum.random(elem(&1, 1)))
+    |> Enum.map(&elem(&1, 1))
   end
+
+  defp nils_last(nil, _), do: false
+  defp nils_last(_, nil), do: true
+  defp nils_last(a, b), do: a <= b
 
   # Inline functions from Portal.PolicyAuthorizations
 

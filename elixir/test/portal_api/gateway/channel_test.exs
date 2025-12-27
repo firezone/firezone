@@ -19,6 +19,21 @@ defmodule PortalAPI.Gateway.ChannelTest do
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
 
+  defp join_channel(gateway, site, token) do
+    {:ok, _reply, socket} =
+      PortalAPI.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        token_id: token.id,
+        gateway: gateway,
+        site: site,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+
+    socket
+  end
+
   setup do
     account = account_fixture()
     actor = actor_fixture(type: :account_admin_user, account: account)
@@ -41,17 +56,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
     token = gateway_token_fixture(site: site, account: account)
 
-    {:ok, _, socket} =
-      PortalAPI.Gateway.Socket
-      |> socket("gateway:#{gateway.id}", %{
-        token_id: token.id,
-        gateway: gateway,
-        site: site,
-        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
-      })
-      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
-
     relay = relay_fixture()
     global_relay = relay_fixture()
 
@@ -72,20 +76,28 @@ defmodule PortalAPI.Gateway.ChannelTest do
       policy: policy,
       relay: relay,
       global_relay: global_relay,
-      socket: socket,
       token: token
     }
   end
 
   describe "join/3" do
-    test "tracks presence after join", %{account: account, gateway: gateway} do
+    test "tracks presence after join", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      _socket = join_channel(gateway, site, token)
+
       presence = Portal.Presence.Gateways.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
       assert is_number(online_at)
     end
 
-    test "channel crash takes down the transport", %{socket: socket} do
+    test "channel crash takes down the transport", %{gateway: gateway, site: site, token: token} do
+      socket = join_channel(gateway, site, token)
+
       Process.flag(:trap_exit, true)
 
       # In tests, we (the test process) are the transport_pid
@@ -100,8 +112,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
     test "sends init message after join", %{
       account: account,
-      gateway: gateway
+      gateway: gateway,
+      site: site,
+      token: token
     } do
+      _socket = join_channel(gateway, site, token)
+
       assert_push "init", %{
         account_slug: account_slug,
         interface: interface,
@@ -123,7 +139,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
   end
 
   describe "handle_info/2" do
-    test "logs warning and ignores out of order %Change{}", %{socket: socket} do
+    test "logs warning and ignores out of order %Change{}", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+
       send(socket.channel_pid, %Changes.Change{lsn: 100})
 
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
@@ -147,11 +169,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
       actor: actor,
       client: client,
       resource: resource,
-      socket: socket,
       gateway: gateway,
+      site: site,
+      token: token,
       subject: subject,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       expired_policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -213,11 +238,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
       actor: actor,
       client: client,
       resource: resource,
-      socket: socket,
       gateway: gateway,
+      site: site,
+      token: token,
       subject: subject,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       expired_policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -315,8 +343,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
 
     test "resends init when account slug changes", %{
-      account: account
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
     } do
+      _socket = join_channel(gateway, site, token)
+
       :ok = PubSub.Account.subscribe(account.id)
 
       old_data = %{
@@ -347,8 +380,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
     test "disconnects socket when token is deleted", %{
       account: account,
+      gateway: gateway,
+      site: site,
       token: token
     } do
+      _socket = join_channel(gateway, site, token)
+
       # Consume the init message from join
       assert_push "init", _init_payload
 
@@ -374,8 +411,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
     test "disconnect socket when gateway is deleted", %{
       account: account,
-      gateway: gateway
+      gateway: gateway,
+      site: site,
+      token: token
     } do
+      _socket = join_channel(gateway, site, token)
+
       Process.flag(:trap_exit, true)
 
       :ok = PubSub.Account.subscribe(account.id)
@@ -402,9 +443,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       gateway: gateway,
       resource: resource,
       relay: relay,
-      socket: socket,
+      site: site,
+      token: token,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -458,9 +502,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       client: client,
       gateway: gateway,
       relay: relay,
-      socket: socket,
+      site: site,
+      token: token,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       # Consume the init message from join
       assert_push "init", _init_payload
 
@@ -526,10 +573,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client: client,
            resource: resource,
            gateway: gateway,
-           socket: socket,
+           site: site,
+           token: token,
            subject: subject,
            group: group
          } do
+      socket = join_channel(gateway, site, token)
+
       channel_pid = self()
       socket_ref = make_ref()
       client_payload = "RTC_SD_or_DNS_Q"
@@ -631,10 +681,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       resource: resource,
       gateway: gateway,
       relay: relay,
-      socket: socket,
+      site: site,
+      token: token,
       subject: subject,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -700,10 +753,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
            resource: resource,
            gateway: gateway,
            relay: relay,
-           socket: socket,
+           site: site,
+           token: token,
            subject: subject,
            group: group
          } do
+      socket = join_channel(gateway, site, token)
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -868,9 +924,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       gateway: gateway,
       resource: resource,
       relay: relay,
-      socket: socket,
+      site: site,
+      token: token,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -932,9 +991,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       account: account,
       actor: actor,
       resource: resource,
-      socket: socket,
+      site: site,
+      token: token,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -1010,9 +1072,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       account: account,
       actor: actor,
       resource: resource,
-      socket: socket,
+      site: site,
+      token: token,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -1078,8 +1143,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
 
     test "sends resource_updated when filters change even without resource in cache", %{
-      resource: resource
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token
     } do
+      _socket = join_channel(gateway, site, token)
+
       # The resource is already connected to the gateway via the setup
       # No policy authorizations exist yet, so the resource isn't in the cache
 
@@ -1172,10 +1242,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
 
     test "does not send resource_updated when DNS adaptation fails", %{
-      socket: socket,
-      account: account,
-      site: site
+      gateway: gateway,
+      site: site,
+      token: token,
+      account: account
     } do
+      socket = join_channel(gateway, site, token)
+
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
         put_in(state.assigns.gateway.last_seen_version, "1.1.0")
@@ -1211,10 +1284,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
 
     test "adapts DNS resource address for old gateway versions", %{
-      socket: socket,
-      account: account,
-      site: site
+      gateway: gateway,
+      site: site,
+      token: token,
+      account: account
     } do
+      socket = join_channel(gateway, site, token)
+
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
         put_in(state.assigns.gateway.last_seen_version, "1.1.0")
@@ -1330,9 +1406,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      # Consume the init message from the setup socket
-      assert_push "init", _setup_init
-
       stamp_secret = Ecto.UUID.generate()
 
       relay = relay_fixture()
@@ -1416,8 +1489,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
     test "pushes ice_candidates message", %{
       client: client,
       gateway: gateway,
-      socket: socket
+      site: site,
+      token: token
     } do
+      socket = join_channel(gateway, site, token)
+
       candidates = ["foo", "bar"]
 
       send(
@@ -1436,8 +1512,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
     test "pushes invalidate_ice_candidates message", %{
       client: client,
       gateway: gateway,
-      socket: socket
+      site: site,
+      token: token
     } do
+      socket = join_channel(gateway, site, token)
+
       candidates = ["foo", "bar"]
 
       send(
@@ -1460,9 +1539,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       resource: resource,
       gateway: gateway,
       global_relay: relay,
-      socket: socket,
+      site: site,
+      token: token,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -1531,10 +1613,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
            gateway: gateway,
            resource: resource,
            relay: relay,
-           socket: socket,
+           site: site,
+           token: token,
            subject: subject,
            group: group
          } do
+      socket = join_channel(gateway, site, token)
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -1600,10 +1685,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       actor: actor,
       gateway: gateway,
       resource: resource,
-      socket: socket,
+      site: site,
+      token: token,
       subject: subject,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -1685,10 +1773,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       actor: actor,
       gateway: gateway,
       resource: resource,
-      socket: socket,
+      site: site,
+      token: token,
       subject: subject,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -1752,10 +1843,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client: client,
            gateway: gateway,
            resource: resource,
-           socket: socket,
+           site: site,
+           token: token,
            subject: subject,
            group: group
          } do
+      socket = join_channel(gateway, site, token)
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -1818,7 +1912,9 @@ defmodule PortalAPI.Gateway.ChannelTest do
   end
 
   describe "handle_in/3" do
-    test "for unknown messages it doesn't crash", %{socket: socket} do
+    test "for unknown messages it doesn't crash", %{gateway: gateway, site: site, token: token} do
+      socket = join_channel(gateway, site, token)
+
       ref = push(socket, "unknown_message", %{})
       assert_reply ref, :error, %{reason: :unknown_message}
     end
@@ -1829,10 +1925,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       actor: actor,
       resource: resource,
       gateway: gateway,
-      socket: socket,
+      site: site,
+      token: token,
       subject: subject,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -1892,8 +1991,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
 
     test "flow_authorized pushes an error when ref is invalid", %{
-      socket: socket
+      gateway: gateway,
+      site: site,
+      token: token
     } do
+      socket = join_channel(gateway, site, token)
+
       push_ref =
         push(socket, "flow_authorized", %{
           "ref" => "foo"
@@ -1909,9 +2012,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       resource: resource,
       relay: relay,
       gateway: gateway,
-      socket: socket,
+      site: site,
+      token: token,
       group: group
     } do
+      socket = join_channel(gateway, site, token)
+
       policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -1977,8 +2083,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
 
     test "connection_ready pushes an error when ref is invalid", %{
-      socket: socket
+      gateway: gateway,
+      site: site,
+      token: token
     } do
+      socket = join_channel(gateway, site, token)
+
       push_ref =
         push(socket, "connection_ready", %{
           "ref" => "foo",
@@ -1989,9 +2099,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
 
     test "broadcast ice candidates does nothing when gateways list is empty", %{
-      socket: socket,
+      gateway: gateway,
+      site: site,
+      token: token,
       account: account
     } do
+      socket = join_channel(gateway, site, token)
+
       candidates = ["foo", "bar"]
 
       :ok = PubSub.Account.subscribe(account.id)
@@ -2009,9 +2123,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       client: client,
       gateway: gateway,
       subject: subject,
-      socket: socket,
+      site: site,
+      token: token,
       account: account
     } do
+      socket = join_channel(gateway, site, token)
+
       candidates = ["foo", "bar"]
 
       attrs = %{
@@ -2041,9 +2158,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
 
     test "broadcast_invalidated_ice_candidates does nothing when gateways list is empty", %{
-      socket: socket,
+      gateway: gateway,
+      site: site,
+      token: token,
       account: account
     } do
+      socket = join_channel(gateway, site, token)
+
       candidates = ["foo", "bar"]
 
       :ok = PubSub.Account.subscribe(account.id)
@@ -2061,9 +2182,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       client: client,
       gateway: gateway,
       subject: subject,
-      socket: socket,
+      site: site,
+      token: token,
       account: account
     } do
+      socket = join_channel(gateway, site, token)
+
       candidates = ["foo", "bar"]
 
       attrs = %{
@@ -2231,6 +2355,263 @@ defmodule PortalAPI.Gateway.ChannelTest do
                   100
 
       assert relay_id == relay1.id
+    end
+
+    test "selects closest relays by distance when gateway has location", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      # Create gateway in Texas (Houston area)
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_remote_ip_location_lat: 29.69,
+          last_seen_remote_ip_location_lon: -95.90
+        )
+
+      # Create relays at different distances from Texas
+      # Kansas (~930km from Houston)
+      relay_kansas = relay_fixture()
+
+      update_relay(relay_kansas,
+        last_seen_remote_ip_location_lat: 38.0,
+        last_seen_remote_ip_location_lon: -97.0
+      )
+
+      # Mexico (~1100km from Houston)
+      relay_mexico = relay_fixture()
+
+      update_relay(relay_mexico,
+        last_seen_remote_ip_location_lat: 20.59,
+        last_seen_remote_ip_location_lon: -100.39
+      )
+
+      # Sydney, Australia (~13700km from Houston)
+      relay_sydney = relay_fixture()
+
+      update_relay(relay_sydney,
+        last_seen_remote_ip_location_lat: -33.87,
+        last_seen_remote_ip_location_lon: 151.21
+      )
+
+      # Connect all relays - need to reload to get updated location
+      relay_kansas = Repo.reload!(relay_kansas)
+      relay_mexico = Repo.reload!(relay_mexico)
+      relay_sydney = Repo.reload!(relay_sydney)
+
+      relay_token = relay_token_fixture()
+      :ok = Portal.Presence.Relays.connect(relay_kansas, Ecto.UUID.generate(), relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay_mexico, Ecto.UUID.generate(), relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay_sydney, Ecto.UUID.generate(), relay_token.id)
+
+      _socket = join_channel(gateway, site, token)
+
+      # Should receive the 2 closest relays (Kansas and Mexico), not Sydney
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+
+      assert relay_kansas.id in relay_ids
+      assert relay_mexico.id in relay_ids
+      refute relay_sydney.id in relay_ids
+    end
+
+    test "selects closest relays even when multiple relays share the same location", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_remote_ip_location_lat: 29.69,
+          last_seen_remote_ip_location_lon: -95.90
+        )
+
+      # 2 relays in Kansas at the SAME coordinates (~930km from Houston)
+      relay_kansas_1 = relay_fixture()
+
+      update_relay(relay_kansas_1,
+        last_seen_remote_ip_location_lat: 38.0,
+        last_seen_remote_ip_location_lon: -97.0
+      )
+
+      relay_kansas_2 = relay_fixture()
+
+      update_relay(relay_kansas_2,
+        last_seen_remote_ip_location_lat: 38.0,
+        last_seen_remote_ip_location_lon: -97.0
+      )
+
+      # 8 distant relays
+      distant_locations = [
+        {-33.87, 151.21},
+        {35.68, 139.69},
+        {51.51, -0.13},
+        {-33.93, 18.42},
+        {19.08, 72.88},
+        {1.35, 103.82},
+        {-36.85, 174.76},
+        {55.76, 37.62}
+      ]
+
+      distant_relays =
+        Enum.map(distant_locations, fn {lat, lon} ->
+          relay = relay_fixture()
+
+          update_relay(relay,
+            last_seen_remote_ip_location_lat: lat,
+            last_seen_remote_ip_location_lon: lon
+          )
+
+          Repo.reload!(relay)
+        end)
+
+      relay_kansas_1 = Repo.reload!(relay_kansas_1)
+      relay_kansas_2 = Repo.reload!(relay_kansas_2)
+
+      relay_token = relay_token_fixture()
+      :ok = Portal.Presence.Relays.connect(relay_kansas_1, Ecto.UUID.generate(), relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay_kansas_2, Ecto.UUID.generate(), relay_token.id)
+
+      for relay <- distant_relays do
+        :ok = Portal.Presence.Relays.connect(relay, Ecto.UUID.generate(), relay_token.id)
+      end
+
+      _socket = join_channel(gateway, site, token)
+
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+      distant_relay_ids = Enum.map(distant_relays, & &1.id)
+
+      assert relay_kansas_1.id in relay_ids
+      assert relay_kansas_2.id in relay_ids
+
+      for distant_id <- distant_relay_ids do
+        refute distant_id in relay_ids
+      end
+    end
+
+    test "prefers relays with location over relays without location", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      # Create gateway in Texas (Houston area)
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_remote_ip_location_lat: 29.69,
+          last_seen_remote_ip_location_lon: -95.90
+        )
+
+      # Create relays with location
+      relay_with_location_1 = relay_fixture()
+
+      update_relay(relay_with_location_1,
+        last_seen_remote_ip_location_lat: 38.0,
+        last_seen_remote_ip_location_lon: -97.0
+      )
+
+      relay_with_location_2 = relay_fixture()
+
+      update_relay(relay_with_location_2,
+        last_seen_remote_ip_location_lat: 20.59,
+        last_seen_remote_ip_location_lon: -100.39
+      )
+
+      # Create relay without location (nil lat/lon)
+      relay_without_location = relay_fixture()
+
+      update_relay(relay_without_location,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      relay_with_location_1 = Repo.reload!(relay_with_location_1)
+      relay_with_location_2 = Repo.reload!(relay_with_location_2)
+
+      relay_token = relay_token_fixture()
+
+      :ok =
+        Portal.Presence.Relays.connect(
+          relay_with_location_1,
+          Ecto.UUID.generate(),
+          relay_token.id
+        )
+
+      :ok =
+        Portal.Presence.Relays.connect(
+          relay_with_location_2,
+          Ecto.UUID.generate(),
+          relay_token.id
+        )
+
+      :ok =
+        Portal.Presence.Relays.connect(
+          relay_without_location,
+          Ecto.UUID.generate(),
+          relay_token.id
+        )
+
+      _socket = join_channel(gateway, site, token)
+
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+
+      # Should prefer relays with location over relays without location
+      assert relay_with_location_1.id in relay_ids
+      assert relay_with_location_2.id in relay_ids
+      refute relay_without_location.id in relay_ids
+    end
+
+    test "shuffles relays when gateway has no location", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      # Create gateway without location
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_remote_ip_location_lat: nil,
+          last_seen_remote_ip_location_lon: nil
+        )
+
+      relay1 = relay_fixture()
+
+      update_relay(relay1,
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -122.0
+      )
+
+      relay2 = relay_fixture()
+
+      update_relay(relay2,
+        last_seen_remote_ip_location_lat: 40.0,
+        last_seen_remote_ip_location_lon: -74.0
+      )
+
+      relay1 = Repo.reload!(relay1)
+      relay2 = Repo.reload!(relay2)
+
+      relay_token = relay_token_fixture()
+      :ok = Portal.Presence.Relays.connect(relay1, Ecto.UUID.generate(), relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay2, Ecto.UUID.generate(), relay_token.id)
+
+      _socket = join_channel(gateway, site, token)
+
+      # Should still receive 2 relays (randomly selected)
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+      assert length(relay_ids) <= 2
     end
   end
 end
