@@ -13,7 +13,13 @@ defmodule Portal.Workers.DeleteExpiredPolicyAuthorizations do
   require Logger
 
   @impl Oban.Worker
-  def perform(_args) do
+  def perform(%Oban.Job{attempt: 1}) do
+    # Snooze 30s on first attempt to avoid deadlocks with DeleteExpiredClientTokens
+    # which runs at the start of every 5th minute and cascades deletes to this table
+    {:snooze, 30}
+  end
+
+  def perform(_job) do
     {count, nil} = DB.delete_expired_policy_authorizations()
 
     Logger.info("Deleted #{count} expired policy authorizations")
