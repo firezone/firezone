@@ -1318,7 +1318,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                     disconnected_ids: [relay1_id],
                     connected: [relay_view1, relay_view2]
                   },
-                  relays_presence_timeout() + 10
+                  100
 
       assert relay_view1.id == relay2.id
       assert relay_view2.id == relay2.id
@@ -1363,7 +1363,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                     disconnected_ids: [],
                     connected: [relay_view, _relay_view]
                   },
-                  relays_presence_timeout() + 10
+                  100
 
       assert %{
                addr: _,
@@ -1391,7 +1391,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                     disconnected_ids: [],
                     connected: _connected
                   },
-                  relays_presence_timeout() + 10
+                  100
 
       # Now connect a third relay - should NOT receive relays_presence since we have >= 2 relays
       third_relay = relay_fixture()
@@ -1410,7 +1410,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                     disconnected_ids: [],
                     connected: [%{id: ^third_relay_id} | _]
                   },
-                  relays_presence_timeout() + 10
+                  100
     end
 
     test "pushes ice_candidates message", %{
@@ -2093,121 +2093,144 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
   end
 
-  # Debouncer tests
-  describe "handle_info/3" do
-    test "push_leave cancels leave if reconnecting with the same stamp secret" do
-      # Consume the init message from join
-      assert_push "init", _init_payload
-
+  # Relay presence tests (CRDT-based, no debouncing)
+  describe "handle_info/3 for presence events" do
+    test "does not send disconnect when relay reconnects with same stamp secret", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
+
+      update_relay(relay1,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
       :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
-      assert_push "relays_presence",
-                  %{
-                    connected: [relay_view1, relay_view2],
-                    disconnected_ids: []
-                  },
-                  relays_presence_timeout() + 10
+      PortalAPI.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        token_id: token.id,
+        gateway: gateway,
+        site: site,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
+      assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
+      # Disconnect then reconnect with same stamp secret (simulating transient disconnect)
       disconnect_relay(relay1)
-
-      # presence_diff isn't immediate
-      Process.sleep(1)
-
-      # Reconnect with the same stamp secret
       :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
-      # Should not receive any disconnect
+      # Should not receive any disconnect since relay is still online with same secret
       relay_id = relay1.id
 
       refute_push "relays_presence",
                   %{
-                    connected: [],
                     disconnected_ids: [^relay_id]
                   },
-                  relays_presence_timeout() + 10
+                  100
     end
 
-    test "disconnects immediately if reconnecting with a different stamp secret" do
-      # Consume the init message from join
-      assert_push "init", _init_payload
-
+    test "sends disconnect when relay reconnects with different stamp secret", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
+
+      update_relay(relay1,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
       :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
-      assert_push "relays_presence",
-                  %{
-                    connected: [relay_view1, relay_view2],
-                    disconnected_ids: []
-                  },
-                  relays_presence_timeout() + 10
+      PortalAPI.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        token_id: token.id,
+        gateway: gateway,
+        site: site,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
+      assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
+      # Reconnect with a different stamp secret (relay process restarted)
       disconnect_relay(relay1)
-
-      # presence_diff isn't immediate
-      Process.sleep(1)
-
-      # Reconnect with a different stamp secret
       stamp_secret2 = Ecto.UUID.generate()
       :ok = Portal.Presence.Relays.connect(relay1, stamp_secret2, relay_token.id)
 
-      # Should receive disconnect "immediately"
+      # Should receive disconnect since stamp_secret changed
       assert_push "relays_presence",
                   %{
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: [relay_id]
                   },
-                  relays_presence_timeout() + 10
+                  100
 
       assert relay_view1.id == relay1.id
       assert relay_view2.id == relay1.id
       assert relay_id == relay1.id
     end
 
-    test "disconnects after the debounce timeout expires" do
-      # Consume the init message from join
-      assert_push "init", _init_payload
-
+    test "sends disconnect when relay goes offline", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
+
+      update_relay(relay1,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
       :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
-      assert_push "relays_presence",
-                  %{
-                    connected: [relay_view1, relay_view2],
-                    disconnected_ids: []
-                  },
-                  relays_presence_timeout() + 10
+      PortalAPI.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        token_id: token.id,
+        gateway: gateway,
+        site: site,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
+      assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
+      # Disconnect relay - should send disconnect immediately (no debouncing)
       disconnect_relay(relay1)
 
-      # Should receive disconnect after timeout
       assert_push "relays_presence",
                   %{
                     connected: [],
                     disconnected_ids: [relay_id]
                   },
-                  relays_presence_timeout() + 10
+                  100
 
       assert relay_id == relay1.id
     end
-  end
-
-  defp relays_presence_timeout do
-    Application.fetch_env!(:portal, :relays_presence_debounce_timeout_ms)
   end
 end

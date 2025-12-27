@@ -57,8 +57,8 @@ defmodule PortalAPI.Client.Channel do
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.Global.subscribe()
 
-    # Initialize debouncer for flappy relays
-    socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
+    # Cache relay IDs and stamp secrets for tracking
+    socket = cache_stamp_secrets(socket, relays)
 
     # Track client's presence
     :ok = Presence.Clients.connect(socket.assigns.client, socket.assigns.subject.credential.id)
@@ -82,18 +82,6 @@ defmodule PortalAPI.Client.Channel do
     })
 
     {:noreply, assign(socket, cache: cache)}
-  end
-
-  # Called to actually push relays_presence with a disconnected relay to the client
-  def handle_info({:push_leave, relay_id, stamp_secret, payload}, socket) do
-    {:noreply,
-     Presence.Relays.Debouncer.handle_leave(
-       socket,
-       relay_id,
-       stamp_secret,
-       payload,
-       &push/3
-     )}
   end
 
   ####################################
@@ -152,86 +140,55 @@ defmodule PortalAPI.Client.Channel do
   #### Reacting to relay presence ####
   ####################################
 
-  # Handle relay presence changes from global topic
+  # Handle relay presence changes from global topic.
+  # Instead of reacting to joins/leaves (which can arrive out of order),
+  # we check the current CRDT state to see if our cached relays are still valid.
   def handle_info(
         %Phoenix.Socket.Broadcast{
           event: "presence_diff",
-          topic: "presences:global_relays" <> _,
-          payload: %{joins: joins, leaves: leaves}
+          topic: "presences:global_relays" <> _
         },
         socket
       ) do
-    # Get the relay IDs we're currently tracking
-    tracked_relay_ids = Map.keys(socket.assigns[:stamp_secrets] || %{})
+    cached_secrets = socket.assigns[:stamp_secrets] || %{}
 
-    # Filter leaves to only relays we're tracking
-    left_relay_ids =
-      leaves
-      |> Map.keys()
-      |> Enum.filter(&(&1 in tracked_relay_ids))
+    # Check current presence state - this is the authoritative CRDT-merged state
+    current_relays = Presence.Relays.Global.list()
 
-    # Queue leaves for tracked relays that disconnected
-    socket =
-      Enum.reduce(left_relay_ids, socket, fn relay_id, socket ->
-        {:ok, relays} = select_relays(socket, [relay_id])
-
-        payload = %{
-          disconnected_ids: [relay_id],
-          connected:
-            Views.Relay.render_many(
-              relays,
-              socket.assigns.client.public_key,
-              socket.assigns.subject.expires_at
-            )
-        }
-
-        Presence.Relays.Debouncer.queue_leave(self(), socket, relay_id, payload)
-      end)
-
-    # Handle joins
-    if map_size(joins) > 0 do
-      # If a relay reconnects with a different stamp_secret, disconnect them immediately
-      joined_ids = Map.keys(joins)
-
-      {socket, disconnected_ids} =
-        Presence.Relays.Debouncer.cancel_leaves_or_disconnect_immediately(
-          socket,
-          joined_ids,
-          socket.assigns.client.account_id
-        )
-
-      # Count how many relays we've already sent to the client
-      current_relay_count = map_size(socket.assigns[:stamp_secrets] || %{})
-
-      # Only send relays_presence for new relays if client has < 2 relays,
-      # or if we need to notify about disconnected relays from stamp_secret changes
-      if current_relay_count < 2 or disconnected_ids != [] do
-        {:ok, relays} = select_relays(socket)
-
-        if relays != [] do
-          # Cache new stamp secrets
-          socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
-
-          push(socket, "relays_presence", %{
-            disconnected_ids: disconnected_ids,
-            connected:
-              Views.Relay.render_many(
-                relays,
-                socket.assigns.client.public_key,
-                socket.assigns.subject.expires_at
-              )
-          })
-
-          {:noreply, socket}
-        else
-          {:noreply, socket}
+    # Find which cached relays are now invalid (offline or stamp_secret changed)
+    disconnected_ids =
+      Enum.filter(cached_secrets, fn {relay_id, cached_secret} ->
+        case Map.get(current_relays, relay_id) do
+          # Relay is offline
+          nil -> true
+          # Relay is online but stamp_secret changed
+          %{metas: [%{secret: secret} | _]} -> secret != cached_secret
+          _ -> false
         end
-      else
-        # Client already has >= 2 relays, just cache any new stamp secrets for tracking
-        {:ok, relays} = select_relays(socket)
-        socket = Presence.Relays.Debouncer.cache_stamp_secrets(socket, relays)
-        {:noreply, socket}
-      end
+      end)
+      |> Enum.map(&elem(&1, 0))
+
+    # Send relays_presence if any cached relays are invalid OR if we have fewer than 2 relays
+    # and more are now available
+    needs_update =
+      disconnected_ids != [] or
+        (map_size(cached_secrets) < 2 and map_size(current_relays) > 0)
+
+    if needs_update do
+      {:ok, relays} = select_relays(socket)
+      socket = cache_stamp_secrets(socket, relays)
+
+      push(socket, "relays_presence", %{
+        disconnected_ids: disconnected_ids,
+        connected:
+          Views.Relay.render_many(
+            relays,
+            socket.assigns.client.public_key,
+            socket.assigns.subject.expires_at
+          )
+      })
+
+      {:noreply, socket}
     else
       {:noreply, socket}
     end
@@ -652,8 +609,7 @@ defmodule PortalAPI.Client.Channel do
   end
 
   defp select_relays(socket, except_ids \\ []) do
-    {:ok, relays} =
-      Presence.Relays.all_connected_relays(except_ids)
+    {:ok, relays} = Presence.Relays.all_connected_relays(except_ids)
 
     location = {
       socket.assigns.client.last_seen_remote_ip_location_lat,
@@ -663,6 +619,11 @@ defmodule PortalAPI.Client.Channel do
     relays = load_balance_relays(location, relays)
 
     {:ok, relays}
+  end
+
+  defp cache_stamp_secrets(socket, relays) do
+    stamp_secrets = Map.new(relays, fn relay -> {relay.id, relay.stamp_secret} end)
+    assign(socket, :stamp_secrets, stamp_secrets)
   end
 
   defp generate_preshared_key(client, gateway) do
