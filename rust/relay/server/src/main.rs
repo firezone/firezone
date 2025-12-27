@@ -19,7 +19,7 @@ use std::borrow::Cow;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::task::{Poll, ready};
+use std::task::Poll;
 use std::time::{Duration, Instant};
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use telemetry::{RELAY_DSN, Telemetry};
@@ -483,7 +483,12 @@ where
         loop {
             let mut ready = false;
 
-            ready!(self.sockets.flush(cx))?;
+            // Don't use `ready!` here - we must not block the loop on socket flushing.
+            // If we do, the phoenix channel never gets polled and heartbeats don't get sent,
+            // causing the portal to close our connection.
+            if let Poll::Ready(result) = self.sockets.flush(cx) {
+                result?;
+            }
 
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
