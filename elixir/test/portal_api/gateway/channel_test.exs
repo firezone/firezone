@@ -2182,7 +2182,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: [relay_id]
                   },
-                  500
+                  100
 
       assert relay_view1.id == relay1.id
       assert relay_view2.id == relay1.id

@@ -868,7 +868,7 @@ defmodule PortalAPI.Client.ChannelTest do
                     connected: [],
                     disconnected_ids: [relay_id]
                   },
-                  500
+                  100
 
       assert relay_id == relay1.id
     end
