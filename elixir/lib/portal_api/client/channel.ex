@@ -140,8 +140,8 @@ defmodule PortalAPI.Client.Channel do
   ####################################
 
   # Handle relay presence changes from global topic.
-  # Instead of reacting to joins/leaves (which can arrive out of order),
-  # we check the current CRDT state to see if our cached relays are still valid.
+  # Instead of reacting immediately, we debounce by scheduling a delayed check.
+  # This avoids spurious updates during transient relay disconnections.
   def handle_info(
         %Phoenix.Socket.Broadcast{
           event: "presence_diff",
@@ -149,6 +149,13 @@ defmodule PortalAPI.Client.Channel do
         },
         socket
       ) do
+    debounce_ms = Portal.Config.get_env(:portal, :relay_presence_debounce_ms, 1_000)
+    Process.send_after(self(), :check_relay_presence, debounce_ms)
+    {:noreply, socket}
+  end
+
+  # Debounced relay presence check - queries the CRDT state after the debounce period.
+  def handle_info(:check_relay_presence, socket) do
     cached_secrets = socket.assigns[:stamp_secrets] || %{}
 
     # Check current presence state - this is the authoritative CRDT-merged state
