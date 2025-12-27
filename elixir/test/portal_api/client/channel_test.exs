@@ -574,11 +574,11 @@ defmodule PortalAPI.Client.ChannelTest do
                     disconnected_ids: [relay1_id],
                     connected: [relay_view1, relay_view2]
                   },
-                  relays_presence_timeout()
+                  100
 
+      assert relay1_id == relay1.id
       assert relay_view1.id == relay2.id
       assert relay_view2.id == relay2.id
-      assert relay1_id == relay1.id
     end
 
     test "subscribes for account relays presence if there were no relays online", %{
@@ -607,7 +607,7 @@ defmodule PortalAPI.Client.ChannelTest do
                     disconnected_ids: [],
                     connected: [relay_view, _relay_view]
                   },
-                  relays_presence_timeout()
+                  100
 
       assert %{
                addr: _,
@@ -634,7 +634,7 @@ defmodule PortalAPI.Client.ChannelTest do
                     disconnected_ids: [],
                     connected: connected
                   },
-                  relays_presence_timeout()
+                  100
 
       # Both relays should be in the connected list
       relay_ids = Enum.map(connected, & &1.id) |> Enum.uniq()
@@ -686,7 +686,7 @@ defmodule PortalAPI.Client.ChannelTest do
                     disconnected_ids: [relay1_id],
                     connected: []
                   },
-                  relays_presence_timeout()
+                  100
 
       assert relay1_id == relay1.id
     end
@@ -779,116 +779,96 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_info/2 for presence events" do
-    test "push_leave cancels leave if reconnecting with the same stamp secret", %{
+    test "does not send disconnect if relay reconnects with same stamp secret", %{
       client: client,
       subject: subject
     } do
-      _socket = join_channel(client, subject)
+      # Connect relay BEFORE client joins so it's included in init
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
       :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
-      assert_push "relays_presence",
-                  %{
-                    connected: [relay_view1, relay_view2],
-                    disconnected_ids: []
-                  },
-                  relays_presence_timeout() + 10
+      _socket = join_channel(client, subject)
 
+      assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
+      # Disconnect and immediately reconnect with same stamp secret
+      # The CRDT state will show the relay as online when we check Presence.list()
       disconnect_relay(relay1)
-
-      # presence_diff isn't immediate
-      Process.sleep(1)
-
-      # Reconnect with the same stamp secret
       :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
-      # Should not receive any disconnect
+      # Should not receive any disconnect since relay is still online with same secret
       relay_id = relay1.id
 
       refute_push "relays_presence",
                   %{
-                    connected: [],
                     disconnected_ids: [^relay_id]
                   },
-                  relays_presence_timeout() + 10
+                  100
     end
 
-    test "push_leave disconnects immediately if reconnecting with a different stamp secret", %{
+    test "sends disconnect when relay reconnects with a different stamp secret", %{
       client: client,
       subject: subject
     } do
-      _socket = join_channel(client, subject)
+      # Connect relay BEFORE client joins so it's included in init
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
       :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
-      assert_push "relays_presence",
-                  %{
-                    connected: [relay_view1, relay_view2],
-                    disconnected_ids: []
-                  },
-                  relays_presence_timeout() + 10
+      _socket = join_channel(client, subject)
 
+      assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
+      # Disconnect and reconnect with a different stamp secret
       disconnect_relay(relay1)
-
-      # presence_diff isn't immediate
-      Process.sleep(1)
-
-      # Reconnect with a different stamp secret
       stamp_secret2 = Ecto.UUID.generate()
       :ok = Portal.Presence.Relays.connect(relay1, stamp_secret2, relay_token.id)
 
-      # Should receive disconnect "immediately"
+      # Should receive disconnect since stamp_secret changed
       assert_push "relays_presence",
                   %{
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: [relay_id]
                   },
-                  relays_presence_timeout() + 10
+                  100
 
       assert relay_view1.id == relay1.id
       assert relay_view2.id == relay1.id
       assert relay_id == relay1.id
     end
 
-    test "push_leave disconnects after the debounce timeout expires", %{
+    test "sends disconnect when relay goes offline", %{
       client: client,
       subject: subject
     } do
-      _socket = join_channel(client, subject)
+      # Connect relay BEFORE client joins so it's included in init
       relay1 = relay_fixture()
       stamp_secret1 = Ecto.UUID.generate()
       relay_token = relay_token_fixture()
       :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
 
-      assert_push "relays_presence",
-                  %{
-                    connected: [relay_view1, relay_view2],
-                    disconnected_ids: []
-                  },
-                  relays_presence_timeout() + 10
+      _socket = join_channel(client, subject)
 
+      assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
       disconnect_relay(relay1)
 
-      # Should receive disconnect after timeout
+      # Should receive disconnect (no debouncing - but presence_diff takes a moment)
       assert_push "relays_presence",
                   %{
                     connected: [],
                     disconnected_ids: [relay_id]
                   },
-                  relays_presence_timeout() + 10
+                  500
 
       assert relay_id == relay1.id
     end
@@ -3601,9 +3581,5 @@ defmodule PortalAPI.Client.ChannelTest do
       ref = push(socket, "unknown_message", %{})
       assert_reply ref, :error, %{reason: :unknown_message}
     end
-  end
-
-  defp relays_presence_timeout do
-    Application.fetch_env!(:portal, :relays_presence_debounce_timeout_ms) + 10
   end
 end
