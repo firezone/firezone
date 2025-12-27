@@ -305,28 +305,12 @@ impl TestSelector {
 
         let concurrent = self.rng.gen_range(config.concurrent) as usize;
         let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));
-        let timeout = Duration::from_secs(self.rng.gen_range(config.timeout_secs));
-        let ping_interval = Some(Duration::from_secs(
-            self.rng.gen_range(config.ping_interval_secs),
-        ));
-        let echo_mode = config.echo_mode;
-        let echo_payload_size = self.rng.gen_range(config.echo_payload_size) as usize;
-        let echo_interval = Some(Duration::from_secs(
-            self.rng.gen_range(config.echo_interval_secs),
-        ));
-        let echo_read_timeout =
-            Duration::from_secs(self.rng.gen_range(config.echo_read_timeout_secs));
 
         websocket::TestConfig {
             url: address,
             concurrent,
             hold_duration: duration,
-            connect_timeout: timeout,
-            ping_interval,
-            echo_mode,
-            echo_payload_size,
-            echo_interval,
-            echo_read_timeout,
+            max_echo_interval: Duration::from_secs(config.max_echo_interval_secs),
         }
     }
 
