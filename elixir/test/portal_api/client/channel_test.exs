@@ -924,6 +924,227 @@ defmodule PortalAPI.Client.ChannelTest do
       assert relay2.id == relay_view1.id
       assert relay2.id == relay_view2.id
     end
+
+    test "selects closest relays by distance when client has location", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # Create client in Texas (Houston area)
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_seen_remote_ip_location_lat: 29.69,
+          last_seen_remote_ip_location_lon: -95.90
+        )
+
+      # Create relays at different distances from Texas
+      # Kansas (~930km from Houston)
+      relay_kansas =
+        relay_with_location_fixture(%{
+          last_seen_remote_ip_location_lat: 38.0,
+          last_seen_remote_ip_location_lon: -97.0
+        })
+
+      # Mexico (~1100km from Houston)
+      relay_mexico =
+        relay_with_location_fixture(%{
+          last_seen_remote_ip_location_lat: 20.59,
+          last_seen_remote_ip_location_lon: -100.39
+        })
+
+      # Sydney, Australia (~13700km from Houston)
+      relay_sydney =
+        relay_with_location_fixture(%{
+          last_seen_remote_ip_location_lat: -33.87,
+          last_seen_remote_ip_location_lon: 151.21
+        })
+
+      # Connect all relays
+      relay_token = relay_token_fixture()
+      :ok = Portal.Presence.Relays.connect(relay_kansas, Ecto.UUID.generate(), relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay_mexico, Ecto.UUID.generate(), relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay_sydney, Ecto.UUID.generate(), relay_token.id)
+
+      _socket = join_channel(client, subject)
+
+      # Should receive the 2 closest relays (Kansas and Mexico), not Sydney
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+
+      assert relay_kansas.id in relay_ids
+      assert relay_mexico.id in relay_ids
+      refute relay_sydney.id in relay_ids
+    end
+
+    test "selects closest relays even when multiple relays share the same location", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_seen_remote_ip_location_lat: 29.69,
+          last_seen_remote_ip_location_lon: -95.90
+        )
+
+      # 2 relays in Kansas at the SAME coordinates (~930km from Houston)
+      relay_kansas_1 =
+        relay_with_location_fixture(%{
+          last_seen_remote_ip_location_lat: 38.0,
+          last_seen_remote_ip_location_lon: -97.0
+        })
+
+      relay_kansas_2 =
+        relay_with_location_fixture(%{
+          last_seen_remote_ip_location_lat: 38.0,
+          last_seen_remote_ip_location_lon: -97.0
+        })
+
+      # 8 distant relays
+      distant_locations = [
+        {-33.87, 151.21},
+        {35.68, 139.69},
+        {51.51, -0.13},
+        {-33.93, 18.42},
+        {19.08, 72.88},
+        {1.35, 103.82},
+        {-36.85, 174.76},
+        {55.76, 37.62}
+      ]
+
+      distant_relays =
+        Enum.map(distant_locations, fn {lat, lon} ->
+          relay_with_location_fixture(%{
+            last_seen_remote_ip_location_lat: lat,
+            last_seen_remote_ip_location_lon: lon
+          })
+        end)
+
+      relay_token = relay_token_fixture()
+      :ok = Portal.Presence.Relays.connect(relay_kansas_1, Ecto.UUID.generate(), relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay_kansas_2, Ecto.UUID.generate(), relay_token.id)
+
+      for relay <- distant_relays do
+        :ok = Portal.Presence.Relays.connect(relay, Ecto.UUID.generate(), relay_token.id)
+      end
+
+      _socket = join_channel(client, subject)
+
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+      distant_relay_ids = Enum.map(distant_relays, & &1.id)
+
+      assert relay_kansas_1.id in relay_ids and relay_kansas_2.id in relay_ids
+
+      for distant_id <- distant_relay_ids do
+        refute distant_id in relay_ids
+      end
+    end
+
+    test "prefers relays with location over relays without location", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # Create client in Texas (Houston area)
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_seen_remote_ip_location_lat: 29.69,
+          last_seen_remote_ip_location_lon: -95.90
+        )
+
+      # Create relays with location
+      relay_with_location_1 =
+        relay_with_location_fixture(%{
+          last_seen_remote_ip_location_lat: 38.0,
+          last_seen_remote_ip_location_lon: -97.0
+        })
+
+      relay_with_location_2 =
+        relay_with_location_fixture(%{
+          last_seen_remote_ip_location_lat: 20.59,
+          last_seen_remote_ip_location_lon: -100.39
+        })
+
+      # Create relays without location (nil lat/lon)
+      relay_without_location = relay_fixture()
+
+      update_relay(relay_without_location,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      relay_token = relay_token_fixture()
+
+      :ok =
+        Portal.Presence.Relays.connect(
+          relay_with_location_1,
+          Ecto.UUID.generate(),
+          relay_token.id
+        )
+
+      :ok =
+        Portal.Presence.Relays.connect(
+          relay_with_location_2,
+          Ecto.UUID.generate(),
+          relay_token.id
+        )
+
+      :ok =
+        Portal.Presence.Relays.connect(
+          relay_without_location,
+          Ecto.UUID.generate(),
+          relay_token.id
+        )
+
+      _socket = join_channel(client, subject)
+
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+
+      # Should prefer relays with location over relays without location
+      assert relay_with_location_1.id in relay_ids
+      assert relay_with_location_2.id in relay_ids
+      refute relay_without_location.id in relay_ids
+    end
+
+    test "shuffles relays when client has no location", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # Create client without location
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_seen_remote_ip_location_lat: nil,
+          last_seen_remote_ip_location_lon: nil
+        )
+
+      relay1 = relay_with_location_fixture()
+      relay2 = relay_with_location_fixture()
+
+      relay_token = relay_token_fixture()
+      :ok = Portal.Presence.Relays.connect(relay1, Ecto.UUID.generate(), relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay2, Ecto.UUID.generate(), relay_token.id)
+
+      _socket = join_channel(client, subject)
+
+      # Should still receive 2 relays (randomly selected)
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+      assert length(relay_ids) <= 2
+    end
   end
 
   describe "handle_info/2 for change events" do
