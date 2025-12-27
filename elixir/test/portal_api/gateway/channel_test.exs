@@ -2488,7 +2488,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
       distant_relay_ids = Enum.map(distant_relays, & &1.id)
 
-      assert relay_kansas_1.id in relay_ids or relay_kansas_2.id in relay_ids
+      assert relay_kansas_1.id in relay_ids
+      assert relay_kansas_2.id in relay_ids
 
       for distant_id <- distant_relay_ids do
         refute distant_id in relay_ids
