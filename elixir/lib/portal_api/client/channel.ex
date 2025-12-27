@@ -35,7 +35,6 @@ defmodule PortalAPI.Client.Channel do
   end
 
   @impl true
-
   # Called immediately after the client joins the channel
   def handle_info(:after_join, socket) do
     # Schedule reassessing allowed resources
