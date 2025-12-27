@@ -439,36 +439,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn flush_pending_stores_waker_and_preserves_packet() {
+    async fn flush_processes_queued_packets() {
         let mut sockets = Sockets::new();
 
-        // Add a packet destined for a socket that doesn't exist
-        // This will cause try_send_internal to fail with NotConnected, not WouldBlock
-        // So we need a different approach - manually insert a pending packet
-        // and verify the flush logic
-
-        // First, verify flush works when empty
+        // First, verify flush completes successfully when there are no pending packets.
         let result = poll_fn(|cx| sockets.flush(cx)).await;
         assert!(result.is_ok());
         assert!(sockets.pending_packets.is_empty());
 
-        // Now test that pending_packets are preserved on WouldBlock
-        // by checking the try_send -> pending_packets flow
+        // Bind a socket so we can attempt to send a packet through it.
         sockets
             .bind(12346, AddressFamily::V4)
             .expect("should bind socket");
 
-        // Give mio worker time to register
+        // Give mio worker time to register.
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        // Queue a packet via try_send (it should succeed immediately or queue)
+        // Queue a packet via try_send (it may be sent immediately or queued).
         let dest = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9999);
         let msg = vec![0u8; 100];
 
-        // This should either send immediately or queue the packet
+        // This should either send immediately or queue the packet.
         let _ = sockets.try_send(12346, dest, Cow::Owned(msg));
 
-        // Flush should process the queue
+        // Flush should process any queued packets without error.
         let result = poll_fn(|cx| sockets.flush(cx)).await;
         assert!(result.is_ok());
     }
