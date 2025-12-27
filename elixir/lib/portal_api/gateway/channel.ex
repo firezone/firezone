@@ -683,10 +683,14 @@ defmodule PortalAPI.Gateway.Channel do
         {relay_lat, relay_lon} -> {Portal.Geo.distance({lat, lon}, {relay_lat, relay_lon}), relay}
       end
     end)
-    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.sort_by(&elem(&1, 0), &nils_last/2)
     |> Enum.take(2)
     |> Enum.map(&elem(&1, 1))
   end
+
+  defp nils_last(nil, _), do: false
+  defp nils_last(_, nil), do: true
+  defp nils_last(a, b), do: a <= b
 
   defmodule DB do
     import Ecto.Query

@@ -2496,6 +2496,80 @@ defmodule PortalAPI.Gateway.ChannelTest do
       end
     end
 
+    test "prefers relays with location over relays without location", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      # Create gateway in Texas (Houston area)
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_remote_ip_location_lat: 29.69,
+          last_seen_remote_ip_location_lon: -95.90
+        )
+
+      # Create relays with location
+      relay_with_location_1 = relay_fixture()
+
+      update_relay(relay_with_location_1,
+        last_seen_remote_ip_location_lat: 38.0,
+        last_seen_remote_ip_location_lon: -97.0
+      )
+
+      relay_with_location_2 = relay_fixture()
+
+      update_relay(relay_with_location_2,
+        last_seen_remote_ip_location_lat: 20.59,
+        last_seen_remote_ip_location_lon: -100.39
+      )
+
+      # Create relay without location (nil lat/lon)
+      relay_without_location = relay_fixture()
+
+      update_relay(relay_without_location,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      relay_with_location_1 = Repo.reload!(relay_with_location_1)
+      relay_with_location_2 = Repo.reload!(relay_with_location_2)
+
+      relay_token = relay_token_fixture()
+
+      :ok =
+        Portal.Presence.Relays.connect(
+          relay_with_location_1,
+          Ecto.UUID.generate(),
+          relay_token.id
+        )
+
+      :ok =
+        Portal.Presence.Relays.connect(
+          relay_with_location_2,
+          Ecto.UUID.generate(),
+          relay_token.id
+        )
+
+      :ok =
+        Portal.Presence.Relays.connect(
+          relay_without_location,
+          Ecto.UUID.generate(),
+          relay_token.id
+        )
+
+      _socket = join_channel(gateway, site, token)
+
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+
+      # Should prefer relays with location over relays without location
+      assert relay_with_location_1.id in relay_ids
+      assert relay_with_location_2.id in relay_ids
+      refute relay_without_location.id in relay_ids
+    end
+
     test "shuffles relays when gateway has no location", %{
       account: account,
       site: site,
