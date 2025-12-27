@@ -873,7 +873,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert relay_id == relay1.id
     end
 
-    test "push_leave is not triggered when an unrelated relay connects", %{
+    test "sends separate presence updates for disconnect and new relay connect", %{
       client: client,
       subject: subject
     } do
@@ -890,41 +890,39 @@ defmodule PortalAPI.Client.ChannelTest do
                     connected: [relay_view1, relay_view2],
                     disconnected_ids: []
                   },
-                  relays_presence_timeout() + 10
+                  100
 
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
-      # Disconnect relay1 - this queues a pending leave
+      # Disconnect relay1 - with CRDT-based approach, this is detected immediately
       disconnect_relay(relay1)
 
-      # presence_diff isn't immediate
-      Process.sleep(1)
+      # Should receive disconnect notification immediately (no debouncing)
+      assert_push "relays_presence",
+                  %{
+                    connected: [],
+                    disconnected_ids: [relay1_id]
+                  },
+                  100
 
-      # Connect a completely different relay2 - this should NOT trigger relay1's disconnect
+      assert relay1_id == relay1.id
+
+      # Connect relay2 - should receive update with new relay
       relay2 = relay_fixture()
       stamp_secret2 = Ecto.UUID.generate()
       relay_token2 = relay_token_fixture()
       :ok = Portal.Presence.Relays.connect(relay2, stamp_secret2, relay_token2.id)
 
-      # We might receive a relays_presence for relay2 connecting, but relay1 should NOT
-      # be in disconnected_ids yet - it should still be debounced
-      relay1_id = relay1.id
-
-      refute_push "relays_presence",
-                  %{
-                    disconnected_ids: [^relay1_id]
-                  },
-                  50
-
-      # Now wait for the debounce timeout - relay1 should be disconnected
       assert_push "relays_presence",
                   %{
-                    disconnected_ids: [relay_id]
+                    connected: [relay_view1, relay_view2],
+                    disconnected_ids: []
                   },
-                  relays_presence_timeout() + 10
+                  100
 
-      assert relay_id == relay1.id
+      assert relay2.id == relay_view1.id
+      assert relay2.id == relay_view2.id
     end
   end
 
