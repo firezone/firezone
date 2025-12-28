@@ -22,3 +22,5 @@ DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/mailer.ex:62,6EFEB9E
 Config.Secrets: Hardcoded Secret,config/config.exs:207,7165BCA
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:13,7269EC9
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:28,7369D64
+
+Config.Secrets: Hardcoded Secret,config/config.exs:209,8DFEA3

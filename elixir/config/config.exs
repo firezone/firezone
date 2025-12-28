@@ -114,6 +114,7 @@ config :portal, Portal.Changes.ReplicationConnection,
     actors
     memberships
     clients
+    external_identities
     policy_authorizations
     gateways
     gateway_tokens
