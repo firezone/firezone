@@ -7,6 +7,7 @@ defmodule Portal.Changes.ReplicationConnection do
     "actors" => Hooks.Actors,
     "memberships" => Hooks.Memberships,
     "clients" => Hooks.Clients,
+    "external_identities" => Hooks.ExternalIdentities,
     "policy_authorizations" => Hooks.PolicyAuthorizations,
     "gateways" => Hooks.Gateways,
     "gateway_tokens" => Hooks.GatewayTokens,
