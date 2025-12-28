@@ -182,7 +182,14 @@ defmodule PortalWeb.Settings.Authentication do
     # Load providers again to ensure we have the latest state
     socket = init(socket)
 
-    if DB.other_active_providers_exist?(provider, socket.assigns.subject) do
+    if id == socket.assigns.subject.credential.auth_provider_id do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "You cannot delete the provider you are currently signed in with."
+       )}
+    else
       case DB.delete_provider!(provider, socket.assigns.subject) do
         {:ok, _provider} ->
           {:noreply,
@@ -195,9 +202,6 @@ defmodule PortalWeb.Settings.Authentication do
           Logger.info("Failed to delete authentication provider", reason: reason)
           {:noreply, put_flash(socket, :error, "Failed to delete authentication provider.")}
       end
-    else
-      {:noreply,
-       put_flash(socket, :error, "Cannot delete the last active authentication provider.")}
     end
   end
 
@@ -205,9 +209,8 @@ defmodule PortalWeb.Settings.Authentication do
     provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
     new_disabled_state = not provider.is_disabled
 
-    # Check if we're trying to disable the last active provider
     can_disable =
-      not new_disabled_state or DB.other_active_providers_exist?(provider, socket.assigns.subject)
+      id != socket.assigns.subject.credential.auth_provider_id or not new_disabled_state
 
     changeset =
       if can_disable do
@@ -217,7 +220,10 @@ defmodule PortalWeb.Settings.Authentication do
       else
         provider
         |> change(is_disabled: new_disabled_state)
-        |> add_error(:is_disabled, "Cannot disable the last active authentication provider")
+        |> add_error(
+          :is_disabled,
+          "You cannot disable the provider you are currently signed in with."
+        )
       end
 
     case DB.update_provider(changeset, socket.assigns.subject) do
@@ -251,7 +257,7 @@ defmodule PortalWeb.Settings.Authentication do
         {:noreply, put_flash(socket, :error, error_message)}
 
       {:error, reason} ->
-        Logger.info("Failed to toggle authentication provider: #{inspect(reason)}")
+        Logger.info("Failed to toggle authentication provider", reason: inspect(reason))
         {:noreply, put_flash(socket, :error, "Failed to update authentication provider.")}
     end
   end
@@ -1347,29 +1353,6 @@ defmodule PortalWeb.Settings.Authentication do
         |> Safe.one!()
 
       parent |> Safe.scoped(subject) |> Safe.delete()
-    end
-
-    def other_active_providers_exist?(provider, subject) do
-      # List of all provider schema modules
-      provider_schemas = [
-        EmailOTP.AuthProvider,
-        Userpass.AuthProvider,
-        Google.AuthProvider,
-        Entra.AuthProvider,
-        Okta.AuthProvider,
-        OIDC.AuthProvider
-      ]
-
-      # Check if any other active provider exists across all schemas
-      Enum.any?(provider_schemas, fn schema ->
-        query =
-          from(p in schema,
-            where:
-              p.account_id == ^provider.account_id and p.id != ^provider.id and not p.is_disabled
-          )
-
-        query |> Safe.scoped(subject) |> Safe.exists?()
-      end)
     end
 
     def set_default_provider(provider, assigns) do
