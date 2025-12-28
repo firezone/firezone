@@ -1,9 +1,0 @@
-name: "Restore mtime"
-description: "Restore file modification times from git history for better cache hits. Requires fetch-depth: 0 on checkout."
-
-runs:
-  using: "composite"
-  steps:
-    - name: Restore file modification times
-      shell: python
-      run: .github/actions/restore-mtime/restore_mtime.py
