@@ -41,6 +41,7 @@ updates:
       - "/.github/workflows"
       # Dependabot doesn't look in these by default
       - "/.github/actions/create-sentry-release"
+      - "/.github/actions/restore-mtime"
       - "/.github/actions/ghcr-docker-login"
       - "/.github/actions/setup-android"
       - "/.github/actions/setup-azure-cli"
@@ -54,7 +55,8 @@ updates:
       - "/.github/actions/setup-rust-nightly"
       - "/.github/actions/setup-rust-sccache"
       - "/.github/actions/setup-rust-stable"
-      - "/.github/actions/setup-rust-target-cache"
+      - "/.github/actions/setup-rust-target-dependency-cache"
+      - "/.github/actions/setup-rust-target-workspace-cache"
       - "/.github/actions/setup-tauri-v2"
       - "/.github/actions/setup-scripts"
     schedule:
