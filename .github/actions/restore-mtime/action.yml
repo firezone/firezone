@@ -5,24 +5,5 @@ runs:
   using: "composite"
   steps:
     - name: Restore file modification times
-      shell: bash
-      run: |
-        # Restore mtime for all tracked files based on their last commit time.
-        # This enables incremental build tools to correctly identify unchanged files.
-        #
-        # Based on git-restore-mtime by MestreLion, simplified for CI use.
-        # Requires full git history (fetch-depth: 0).
-
-        # Get all tracked files and their last commit times in a single git log pass
-        git log --pretty=format:'%H %ct' --name-only --diff-filter=ACMRT | \
-        awk '
-          /^[0-9a-f]{40,64} [0-9]+$/ { commit_time = $2; next }
-          /^$/ { next }
-          !seen[$0]++ { print commit_time, $0 }
-        ' | while read -r timestamp filepath; do
-          if [ -f "$filepath" ]; then
-            touch -d "@$timestamp" "$filepath" 2>/dev/null || true
-          fi
-        done
-
-        echo "Restored mtime for $(git ls-files | wc -l | tr -d ' ') tracked files"
+      shell: python
+      run: ${{ github.action_path }}/restore_mtime.py
