@@ -325,6 +325,11 @@ defmodule Portal.Presence do
     end
 
     def connect(%Portal.Relay{} = relay, secret, token_id) do
+      # Kill any existing connections with the same stamp_secret to handle
+      # reconnection scenarios where the load balancer killed the old connection
+      # but the backend hasn't learned about it yet (heartbeat timeout pending)
+      disconnect_by_stamp_secret(secret)
+
       with {:ok, _} <-
              Portal.Presence.track(self(), __MODULE__.Global.topic(), relay.id, %{
                online_at: System.system_time(:second),
@@ -339,6 +344,23 @@ defmodule Portal.Presence do
         :ok = PubSub.Relay.subscribe(relay.id)
         :ok
       end
+    end
+
+    defp disconnect_by_stamp_secret(secret) do
+      topic = __MODULE__.Global.topic()
+
+      # Get all connected relays and find any with matching stamp_secret
+      topic
+      |> Portal.Presence.list()
+      |> Enum.each(fn {relay_id, _} ->
+        # Phoenix.Tracker.get_by_key returns [{pid, meta}] for each presence
+        Phoenix.Tracker.get_by_key(Portal.Presence, topic, relay_id)
+        |> Enum.each(fn {pid, meta} ->
+          if meta.secret == secret and pid != self() do
+            Process.exit(pid, :shutdown)
+          end
+        end)
+      end)
     end
 
     def all_connected_relays(except_ids \\ []) do
