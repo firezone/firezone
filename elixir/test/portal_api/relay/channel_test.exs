@@ -39,14 +39,64 @@ defmodule PortalAPI.Relay.ChannelTest do
       assert socket.transport_pid == self()
 
       # Kill the channel - we receive EXIT because we're linked
-      Process.exit(socket.channel_pid, :kill)
+      Process.exit(socket.channel_pid, :shutdown)
 
-      assert_receive {:EXIT, pid, :killed}
+      assert_receive {:EXIT, pid, :shutdown}
       assert pid == socket.channel_pid
     end
 
     test "sends init message after join" do
       assert_push "init", %{}
+    end
+
+    test "kills existing connection when new relay connects with same stamp_secret" do
+      # Create a new relay
+      relay = relay_fixture()
+      token = relay_token_fixture()
+      stamp_secret = Portal.Crypto.random_token()
+
+      test_pid = self()
+
+      # Capture the test-specific topic before spawning
+      topic = Portal.Presence.Relays.Global.topic()
+
+      # First "connection" - spawn a process that tracks presence directly
+      first_pid =
+        spawn(fn ->
+          # Track presence directly using the test-specific topic
+          {:ok, _} =
+            Portal.Presence.track(self(), topic, relay.id, %{
+              online_at: System.system_time(:second),
+              secret: stamp_secret,
+              token_id: token.id,
+              ipv4: relay.ipv4,
+              ipv6: relay.ipv6,
+              port: relay.port,
+              last_seen_remote_ip_location_lat: relay.last_seen_remote_ip_location_lat,
+              last_seen_remote_ip_location_lon: relay.last_seen_remote_ip_location_lon
+            })
+
+          send(test_pid, :first_connected)
+
+          # Keep the process alive until killed
+          Process.sleep(:infinity)
+        end)
+
+      # Wait for first connection to be tracked
+      assert_receive :first_connected, 1000
+
+      # Verify first connection is tracked
+      presence = Portal.Presence.Relays.Global.list()
+      assert %{metas: [%{secret: ^stamp_secret}]} = Map.fetch!(presence, relay.id)
+
+      # Monitor the first process
+      ref = Process.monitor(first_pid)
+
+      # Second connection with same stamp_secret (this should kill the first)
+      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, token.id)
+
+      # First process should be killed
+      assert_receive {:DOWN, ^ref, :process, ^first_pid, :shutdown}, 1000
     end
   end
 
