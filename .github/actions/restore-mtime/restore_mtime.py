@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Restore file modification times from git history for better cache hits.
 
