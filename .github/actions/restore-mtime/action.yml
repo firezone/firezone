@@ -6,4 +6,4 @@ runs:
   steps:
     - name: Restore file modification times
       shell: python
-      run: ${{ github.action_path }}/restore_mtime.py
+      run: .github/actions/restore-mtime/restore_mtime.py

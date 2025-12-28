@@ -11,7 +11,6 @@ Requires full git history (fetch-depth: 0).
 
 import os
 import subprocess
-import sys
 
 
 def main():
