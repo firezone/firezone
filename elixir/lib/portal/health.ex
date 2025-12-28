@@ -62,17 +62,9 @@ defmodule Portal.Health do
   end
 
   defp endpoints_ready? do
-    web_ready? = not web_enabled?() or Process.whereis(PortalWeb.Endpoint) != nil
-    api_ready? = not api_enabled?() or Process.whereis(PortalAPI.Endpoint) != nil
+    web_ready? = Process.whereis(PortalWeb.Endpoint) != nil
+    api_ready? = Process.whereis(PortalAPI.Endpoint) != nil
 
     web_ready? and api_ready?
-  end
-
-  defp web_enabled? do
-    Portal.Config.fetch_env!(:portal, PortalWeb)[:enabled]
-  end
-
-  defp api_enabled? do
-    Portal.Config.fetch_env!(:portal, PortalAPI)[:enabled]
   end
 end

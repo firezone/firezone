@@ -55,11 +55,6 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   @doc """
-  Enable or disable the Web Endpoint for this node.
-  """
-  defconfig(:portal_web_enabled, :boolean, default: false)
-
-  @doc """
   The external URL the UI will be accessible at.
 
   If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
@@ -72,11 +67,6 @@ defmodule Portal.Config.Definitions do
       |> Portal.Changeset.normalize_url(key)
     end
   )
-
-  @doc """
-  Enable or disable the API Endpoint for this node.
-  """
-  defconfig(:portal_api_enabled, :boolean, default: false)
 
   @doc """
   The external URL the API will be accessible at.
