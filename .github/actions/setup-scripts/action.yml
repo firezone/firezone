@@ -5,5 +5,5 @@ runs:
   steps:
     - shell: bash
       run: |
-        sudo cp scripts/retry.sh /usr/local/bin/retry
+        sudo cp "$GITHUB_ACTION_PATH/retry.sh" /usr/local/bin/retry
         sudo chmod +x /usr/local/bin/retry
