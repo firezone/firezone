@@ -20,13 +20,6 @@ defmodule Portal.Application do
     Supervisor.start_link(children(), strategy: :one_for_one, name: __MODULE__.Supervisor)
   end
 
-  @impl true
-  def config_change(changed, _new, removed) do
-    PortalWeb.Endpoint.config_change(changed, removed)
-    PortalAPI.Endpoint.config_change(changed, removed)
-    :ok
-  end
-
   defp children do
     [
       # Core services
@@ -46,8 +39,13 @@ defmodule Portal.Application do
       Portal.ComponentVersions,
 
       # Health check server (always enabled)
-      Portal.Health
-    ] ++ web() ++ api() ++ telemetry() ++ oban() ++ replication()
+      Portal.Health,
+
+      # Web and API apps are always started to allow VerifiedRoutes to work
+      PortalWeb.Endpoint,
+      PortalAPI.Endpoint,
+      PortalAPI.RateLimit
+    ] ++ telemetry() ++ oban() ++ replication()
   end
 
   defp configure_logger do
@@ -78,26 +76,6 @@ defmodule Portal.Application do
       "warn" -> :warn
       "debug" -> :debug
       _ -> :info
-    end
-  end
-
-  defp web do
-    config = Application.fetch_env!(:portal, PortalWeb)
-
-    if config[:enabled] do
-      [PortalWeb.Endpoint]
-    else
-      []
-    end
-  end
-
-  defp api do
-    config = Application.fetch_env!(:portal, PortalAPI)
-
-    if config[:enabled] do
-      [PortalAPI.Endpoint, PortalAPI.RateLimit]
-    else
-      []
     end
   end
 

@@ -52,11 +52,6 @@ if config_env() == :prod do
           else: [{:hostname, env_var_to_config!(:database_host)}]
         )
 
-  # Web / API node coloring
-
-  config :portal, PortalWeb, enabled: env_var_to_config!(:portal_web_enabled)
-  config :portal, PortalAPI, enabled: env_var_to_config!(:portal_api_enabled)
-
   config :portal, Portal.Changes.ReplicationConnection,
     # TODO: Use a dedicated node for Change Data Capture replication
     enabled: env_var_to_config!(:background_jobs_enabled),

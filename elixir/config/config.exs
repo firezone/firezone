@@ -259,9 +259,6 @@ config :portal, client_handler: "firezone-fd0020211111://"
 ##### PortalWeb Endpoint ######
 ###############################
 
-# Used to conditionally enable the PortalWeb endpoint in the supervision tree
-config :portal, PortalWeb, enabled: true
-
 config :portal, PortalWeb.Endpoint,
   url: [
     scheme: "http",
@@ -308,9 +305,6 @@ config :portal, api_url_override: "ws://localhost:13001/"
 ###############################
 ##### PortalAPI Endpoint ######
 ###############################
-
-# Used to conditionally enable the PortalAPI endpoint in the supervision tree
-config :portal, PortalAPI, enabled: true
 
 config :portal, PortalAPI.Endpoint,
   url: [
