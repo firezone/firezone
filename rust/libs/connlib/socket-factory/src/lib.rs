@@ -307,7 +307,7 @@ impl UdpSocket {
             datagram.dst,
             datagram.src.map(|s| s.ip()),
             datagram.packet.chunk(),
-            datagram.segment_size,
+            Some(datagram.segment_size),
             datagram.ecn,
         )?;
 
@@ -415,7 +415,7 @@ impl UdpSocket {
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
         let transmit = self
-            .prepare_transmit(dst, None, payload, payload.len(), Ecn::NonEct)
+            .prepare_transmit(dst, None, payload, None, Ecn::NonEct)
             .map_err(|e| io::Error::other(format!("{e:#}")))?;
 
         self.inner
@@ -446,7 +446,7 @@ impl UdpSocket {
         dst: SocketAddr,
         src_ip: Option<IpAddr>,
         packet: &'a [u8],
-        segment_size: usize,
+        segment_size: Option<usize>,
         ecn: Ecn,
     ) -> Result<quinn_udp::Transmit<'a>> {
         let src_ip = match src_ip {
@@ -468,7 +468,7 @@ impl UdpSocket {
                 Ecn::Ce => Some(quinn_udp::EcnCodepoint::Ce),
             },
             contents: packet,
-            segment_size: Some(segment_size),
+            segment_size,
             src_ip,
         };
 

@@ -488,6 +488,14 @@ impl ClientState {
 
                 return; // Our UDP DNS query timeout is likely longer than the one from the OS, so don't bother sending a response.
             }
+            Err(e)
+                if e.any_downcast_ref::<io::Error>()
+                    .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput) =>
+            {
+                tracing::warn!("Recursive DNS query failed: {e:#}");
+
+                dns_types::Response::servfail(&response.query)
+            }
             Err(e) => {
                 tracing::debug!("Recursive DNS query failed: {e:#}");
 
