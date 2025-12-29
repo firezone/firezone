@@ -58,6 +58,7 @@ defmodule Portal.Resource do
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:address_description, min: 1, max: 512)
     |> maybe_put_default_ip_stack()
+    |> validate_address_format()
     |> check_constraint(:ip_stack,
       name: :resources_ip_stack_not_null,
       message:
@@ -77,51 +78,38 @@ defmodule Portal.Resource do
     )
   end
 
-  def validate_address(changeset, account) do
-    if has_errors?(changeset, :type) do
+  defp validate_address_format(changeset) do
+    if has_errors?(changeset, :type) or has_errors?(changeset, :address) do
       changeset
     else
-      # Force address revalidation if type has changed
-      changeset =
-        if Map.has_key?(changeset.changes, :type) do
-          case fetch_field(changeset, :address) do
-            {_, address} when not is_nil(address) ->
-              force_change(changeset, :address, address)
+      changeset
+      |> maybe_force_address_revalidation()
+      |> validate_address_has_no_port()
+      |> validate_address_by_type()
+    end
+  end
 
-            _ ->
-              changeset
-          end
-        else
-          changeset
-        end
+  defp maybe_force_address_revalidation(changeset) do
+    if Map.has_key?(changeset.changes, :type) do
+      case fetch_field(changeset, :address) do
+        {_, address} when not is_nil(address) ->
+          force_change(changeset, :address, address)
 
-      case fetch_field(changeset, :type) do
-        {_data_or_changes, :dns} ->
-          changeset
-          |> validate_required(:address)
-          |> validate_address_has_no_port()
-          |> validate_dns_address()
-
-        {_data_or_changes, :cidr} ->
-          changeset
-          |> validate_required(:address)
-          |> validate_address_has_no_port()
-          |> validate_no_malformed_brackets()
-          |> validate_cidr_address(account)
-
-        {_data_or_changes, :ip} ->
-          changeset
-          |> validate_required(:address)
-          |> validate_address_has_no_port()
-          |> validate_no_malformed_brackets()
-          |> validate_ip_address()
-
-        {_data_or_changes, :internet} ->
-          put_change(changeset, :address, nil)
-
-        _other ->
+        _ ->
           changeset
       end
+    else
+      changeset
+    end
+  end
+
+  defp validate_address_by_type(changeset) do
+    case fetch_field(changeset, :type) do
+      {_, :dns} -> validate_dns_address(changeset)
+      {_, :cidr} -> validate_cidr_address(changeset)
+      {_, :ip} -> validate_ip_address(changeset)
+      {_, :internet} -> put_change(changeset, :address, nil)
+      _ -> changeset
     end
   end
 
@@ -220,72 +208,67 @@ defmodule Portal.Resource do
     end)
   end
 
-  defp validate_cidr_address(changeset, account) do
-    internet_resource_message =
-      if Portal.Account.internet_resource_enabled?(account) do
-        "the Internet Resource is already created in your account. Define a Policy for it instead"
-      else
-        "routing all traffic through Firezone is available on paid plans using the Internet Resource"
-      end
-
+  defp validate_cidr_address(changeset) do
     changeset
+    |> validate_no_malformed_brackets()
     |> validate_and_normalize_cidr(:address)
-    |> validate_not_in_cidr(:address, %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 32},
-      message: internet_resource_message
+    |> validate_not_full_tunnel(
+      ipv4_message: "please use the Internet Resource for full-tunnel traffic",
+      ipv6_message: "please use the Internet Resource for full-tunnel traffic"
     )
-    |> validate_not_in_cidr(:address, %Postgrex.INET{address: {127, 0, 0, 0}, netmask: 8},
-      message: "cannot contain loopback addresses"
-    )
-    |> validate_not_in_cidr(
-      :address,
-      %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 128},
-      message: internet_resource_message
-    )
-    |> validate_not_in_cidr(
-      :address,
-      %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128},
-      message: "cannot contain loopback addresses"
-    )
-    |> validate_address_is_not_in_private_range()
+    |> validate_not_loopback()
+    |> validate_not_in_private_range()
   end
 
   defp validate_ip_address(changeset) do
     changeset
+    |> validate_no_malformed_brackets()
     |> validate_and_normalize_ip(:address)
-    |> validate_not_in_cidr(:address, %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 32},
-      message: "cannot contain all IPv4 addresses"
+    |> validate_not_full_tunnel(
+      ipv4_message: "cannot contain all IPv4 addresses",
+      ipv6_message: "cannot contain all IPv6 addresses"
     )
-    |> validate_not_in_cidr(:address, %Postgrex.INET{address: {127, 0, 0, 0}, netmask: 8},
-      message: "cannot contain loopback addresses"
+    |> validate_not_loopback()
+    |> validate_not_in_private_range()
+  end
+
+  defp validate_not_full_tunnel(changeset, opts) do
+    changeset
+    |> validate_not_in_cidr(:address, %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 32},
+      message: opts[:ipv4_message]
     )
     |> validate_not_in_cidr(
       :address,
       %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 128},
-      message: "cannot contain all IPv6 addresses"
+      message: opts[:ipv6_message]
+    )
+  end
+
+  defp validate_not_loopback(changeset) do
+    changeset
+    |> validate_not_in_cidr(:address, %Postgrex.INET{address: {127, 0, 0, 0}, netmask: 8},
+      message: "cannot contain loopback addresses"
     )
     |> validate_not_in_cidr(
       :address,
       %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128},
       message: "cannot contain loopback addresses"
     )
-    |> validate_address_is_not_in_private_range()
   end
 
-  defp validate_address_is_not_in_private_range(changeset) do
-    cond do
-      has_errors?(changeset, :address) ->
-        changeset
+  defp validate_not_in_private_range(changeset) do
+    if has_errors?(changeset, :address) do
+      changeset
+    else
+      address = get_field(changeset, :address)
 
-      get_field(changeset, :address) == "0.0.0.0/0" ->
+      if address in ["0.0.0.0/0", "::/0"] do
         changeset
-
-      get_field(changeset, :address) == "::/0" ->
-        changeset
-
-      true ->
+      else
         changeset
         |> validate_not_in_cidr(:address, Portal.IPv4Address.reserved_cidr())
         |> validate_not_in_cidr(:address, Portal.IPv6Address.reserved_cidr())
+      end
     end
   end
 

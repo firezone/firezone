@@ -13,7 +13,7 @@ defmodule Portal.ResourceFixtures do
 
     Enum.into(attrs, %{
       name: "Resource #{unique_num}",
-      address: "10.0.#{rem(unique_num, 255)}.#{rem(unique_num, 255)}",
+      address: "10.0.#{rem(unique_num, 255)}.0/24",
       type: :cidr
     })
   end

@@ -144,14 +144,11 @@ defmodule PortalAPI.ResourceController do
   end
 
   defp create_changeset(attrs, subject) do
-    account = subject.account
-
     %Portal.Resource{}
     |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack site_id]a)
     |> Portal.Resource.changeset()
     |> Ecto.Changeset.validate_required(~w[name type site_id]a)
-    |> Ecto.Changeset.put_change(:account_id, account.id)
-    |> Portal.Resource.validate_address(account)
+    |> Ecto.Changeset.put_change(:account_id, subject.account.id)
   end
 
   defmodule DB do
@@ -195,14 +192,13 @@ defmodule PortalAPI.ResourceController do
       |> Safe.insert()
     end
 
-    defp changeset(resource, attrs, subject) do
+    defp changeset(resource, attrs, _subject) do
       update_fields = ~w[address address_description name type ip_stack site_id]a
       required_fields = ~w[name type site_id]a
 
       resource
       |> Ecto.Changeset.cast(attrs, update_fields)
       |> Ecto.Changeset.validate_required(required_fields)
-      |> Portal.Resource.validate_address(subject.account)
       |> Portal.Resource.changeset()
     end
 

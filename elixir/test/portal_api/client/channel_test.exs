@@ -446,35 +446,35 @@ defmodule PortalAPI.Client.ChannelTest do
       client = %{client | last_seen_version: "1.1.55"}
 
       star_mapped_resource =
-        resource_fixture(
+        dns_resource_fixture(
           address: "**.glob-example.com",
           account: account,
           site: site
         )
 
       question_mark_mapped_resource =
-        resource_fixture(
+        dns_resource_fixture(
           address: "*.question-example.com",
           account: account,
           site: site
         )
 
       mid_question_mark_mapped_resource =
-        resource_fixture(
+        dns_resource_fixture(
           address: "foo.*.example.com",
           account: account,
           site: site
         )
 
       mid_star_mapped_resource =
-        resource_fixture(
+        dns_resource_fixture(
           address: "foo.**.glob-example.com",
           account: account,
           site: site
         )
 
       mid_single_char_mapped_resource =
-        resource_fixture(
+        dns_resource_fixture(
           address: "us-east?-d.glob-example.com",
           account: account,
           site: site
@@ -2967,7 +2967,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> Repo.preload(:site)
 
       resource =
-        resource_fixture(
+        dns_resource_fixture(
           address: "foo.*.example.com",
           account: account,
           site: site
