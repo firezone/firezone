@@ -1,15 +1,16 @@
 defmodule PortalWeb.Live.Settings.ApiClients.BetaTest do
   use PortalWeb.ConnCase, async: true
 
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    identity = Fixtures.Auth.create_identity(account: account, actor: [type: :account_admin_user])
+    account = account_fixture()
+    actor = admin_actor_fixture(account: account)
 
     %{
       account: account,
-      actor: actor,
-      identity: identity
+      actor: actor
     }
   end
 
@@ -21,18 +22,18 @@ defmodule PortalWeb.Live.Settings.ApiClients.BetaTest do
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must sign in to access this page."}
+                 flash: %{"error" => "You must sign in to access that page."}
                }}}
   end
 
   test "redirects to API client index when feature enabled", %{
     account: account,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     assert {:error, {:live_redirect, %{to: path, flash: _}}} =
              conn
-             |> authorize_conn(identity)
+             |> authorize_conn(actor)
              |> live(~p"/#{account}/settings/api_clients/beta")
 
     assert path == ~p"/#{account}/settings/api_clients"
@@ -40,17 +41,14 @@ defmodule PortalWeb.Live.Settings.ApiClients.BetaTest do
 
   test "renders breadcrumbs item", %{
     account: account,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
-    features = Map.from_struct(account.features)
-    attrs = %{features: %{features | rest_api: false}}
-
-    account = Fixtures.Accounts.update_account(account, attrs)
+    account = update_account(account, %{features: %{rest_api: false}})
 
     {:ok, _lv, html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/beta")
 
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
@@ -61,24 +59,23 @@ defmodule PortalWeb.Live.Settings.ApiClients.BetaTest do
 
   test "sends beta request email", %{
     account: account,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
-    attrs = %{
-      features: %{
-        rest_api: false,
-        traffic_filters: true,
-        policy_conditions: true,
-        multi_site_resources: true,
-        idp_sync: true
-      }
-    }
-
-    account = Fixtures.Accounts.update_account(account, attrs)
+    account =
+      update_account(account, %{
+        features: %{
+          rest_api: false,
+          traffic_filters: true,
+          policy_conditions: true,
+          multi_site_resources: true,
+          idp_sync: true
+        }
+      })
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/beta")
 
     assert lv
@@ -92,7 +89,7 @@ defmodule PortalWeb.Live.Settings.ApiClients.BetaTest do
       assert email.subject == "REST API Beta Request - #{account.id}"
       assert email.text_body =~ "REST API Beta Request"
       assert email.text_body =~ "#{account.id}"
-      assert email.text_body =~ "#{identity.actor_id}"
+      assert email.text_body =~ "#{actor.id}"
     end)
   end
 end

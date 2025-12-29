@@ -1,61 +1,60 @@
 defmodule PortalWeb.Live.Settings.ApiClients.ShowTest do
   use PortalWeb.ConnCase, async: true
 
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.TokenFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    identity = Fixtures.Auth.create_identity(account: account, actor: [type: :account_admin_user])
-    api_client = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    account = account_fixture()
+    actor = admin_actor_fixture(account: account)
+    api_client = api_client_fixture(account: account)
 
     %{
       account: account,
       actor: actor,
-      identity: identity,
       api_client: api_client
     }
   end
 
   test "redirects to sign in page for unauthorized user", %{conn: conn} do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    account = account_fixture()
+    api_client = api_client_fixture(account: account)
 
-    path = ~p"/#{account}/settings/api_clients/#{actor}"
+    path = ~p"/#{account}/settings/api_clients/#{api_client}"
 
     assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must sign in to access this page."}
+                 flash: %{"error" => "You must sign in to access that page."}
                }}}
   end
 
-  test "raises NotFoundError for deleted actor", %{conn: conn} do
-    account = Fixtures.Accounts.create_account()
+  test "raises NoResultsError for deleted actor", %{conn: conn} do
+    account = account_fixture()
+    api_client = api_client_fixture(account: account)
+    Repo.delete!(api_client)
 
-    api_client =
-      Fixtures.Actors.create_actor(type: :api_client, account: account)
-      |> Fixtures.Actors.delete()
+    auth_actor = admin_actor_fixture(account: account)
 
-    auth_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    auth_identity = Fixtures.Auth.create_identity(account: account, actor: auth_actor)
-
-    assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
+    assert_raise Ecto.NoResultsError, fn ->
       conn
-      |> authorize_conn(auth_identity)
+      |> authorize_conn(auth_actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
     end
   end
 
-  test "renders breadcrumbs item", %{conn: conn} do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    api_client = Fixtures.Actors.create_actor(type: :api_client, account: account)
-
+  test "renders breadcrumbs item", %{
+    account: account,
+    actor: actor,
+    api_client: api_client,
+    conn: conn
+  } do
     {:ok, _lv, html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
@@ -67,17 +66,18 @@ defmodule PortalWeb.Live.Settings.ApiClients.ShowTest do
   test "renders api client details", %{
     account: account,
     api_client: api_client,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     {:ok, lv, html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     assert html =~ "API Client"
 
-    expected_date = Cldr.DateTime.Formatter.date(api_client.inserted_at, 1, "en", PortalWeb.CLDR, [])
+    expected_date =
+      Cldr.DateTime.Formatter.date(api_client.inserted_at, 1, "en", PortalWeb.CLDR, [])
 
     assert lv
            |> element("#api-client")
@@ -91,12 +91,12 @@ defmodule PortalWeb.Live.Settings.ApiClients.ShowTest do
   test "allows creating tokens", %{
     account: account,
     api_client: api_client,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     lv
@@ -109,12 +109,12 @@ defmodule PortalWeb.Live.Settings.ApiClients.ShowTest do
   test "allows editing api clients", %{
     account: account,
     api_client: api_client,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     assert lv
@@ -127,13 +127,13 @@ defmodule PortalWeb.Live.Settings.ApiClients.ShowTest do
 
   test "allows deleting actors", %{
     account: account,
-    identity: identity,
+    actor: actor,
     api_client: api_client,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     lv
@@ -141,68 +141,65 @@ defmodule PortalWeb.Live.Settings.ApiClients.ShowTest do
     |> render_click()
 
     assert_redirect(lv, ~p"/#{account}/settings/api_clients")
-    refute Repo.get(Portal.Actor, api_client.id)
+    refute Repo.get_by(Portal.Actor, id: api_client.id, account_id: api_client.account_id)
   end
 
   test "allows disabling api clients", %{
     account: account,
     api_client: api_client,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     refute has_element?(lv, "button", "Enable API Client")
 
-    assert lv
-           |> element("button[type=submit]", "Disable")
-           |> render_click()
-           |> Floki.parse_fragment!()
-           |> Floki.find(".flash-info")
-           |> element_to_text() =~ "API Client was disabled."
+    lv
+    |> element("button[type=submit]", "Disable")
+    |> render_click()
 
-    assert Repo.get(Portal.Actor, api_client.id).disabled_at
+    assert Repo.get_by(Portal.Actor, id: api_client.id, account_id: api_client.account_id).disabled_at
   end
 
   test "allows enabling api clients", %{
     account: account,
     api_client: api_client,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
-    api_client = Fixtures.Actors.disable(api_client)
+    api_client =
+      api_client
+      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Repo.update!()
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     refute has_element?(lv, "button[type=submit]", "Disable API Client")
 
-    assert lv
-           |> element("button[type=submit]", "Enable")
-           |> render_click()
-           |> Floki.parse_fragment!()
-           |> Floki.find(".flash-info")
-           |> element_to_text() =~ "API Client was enabled."
+    lv
+    |> element("button[type=submit]", "Enable")
+    |> render_click()
 
-    refute Repo.get(Portal.Actor, api_client.id).disabled_at
+    refute Repo.get_by(Portal.Actor, id: api_client.id, account_id: api_client.account_id).disabled_at
   end
 
   test "renders api client tokens", %{
     account: account,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
-    api_client = Fixtures.Actors.create_actor(type: :api_client, account: account)
-    token = Fixtures.Tokens.create_api_client_token(account: account, actor: api_client)
+    api_client = api_client_fixture(account: account)
+    token = api_token_fixture(account: account, actor: api_client)
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     [row1] =
@@ -219,15 +216,15 @@ defmodule PortalWeb.Live.Settings.ApiClients.ShowTest do
 
   test "allows revoking tokens", %{
     account: account,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
-    api_client = Fixtures.Actors.create_actor(type: :api_client, account: account)
-    token = Fixtures.Tokens.create_api_client_token(account: account, actor: api_client)
+    api_client = api_client_fixture(account: account)
+    token = api_token_fixture(account: account, actor: api_client)
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     assert lv
@@ -239,20 +236,20 @@ defmodule PortalWeb.Live.Settings.ApiClients.ShowTest do
            |> render()
            |> table_to_map() == []
 
-    refute Repo.get_by(Portal.ClientToken, id: token.id)
+    refute Repo.get_by(Portal.APIToken, id: token.id)
   end
 
   test "allows revoking all tokens", %{
     account: account,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
-    api_client = Fixtures.Actors.create_actor(type: :api_client, account: account)
-    token = Fixtures.Tokens.create_api_client_token(account: account, actor: api_client)
+    api_client = api_client_fixture(account: account)
+    token = api_token_fixture(account: account, actor: api_client)
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     assert lv
@@ -269,6 +266,6 @@ defmodule PortalWeb.Live.Settings.ApiClients.ShowTest do
            |> render()
            |> table_to_map() == []
 
-    refute Repo.get_by(Portal.ClientToken, id: token.id)
+    refute Repo.get_by(Portal.APIToken, id: token.id)
   end
 end

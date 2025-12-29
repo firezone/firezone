@@ -1,16 +1,18 @@
-defmodule PortalWeb.Live.Settings.ApiClient.NewTokenTest do
+defmodule PortalWeb.Live.Settings.ApiClients.NewTokenTest do
   use PortalWeb.ConnCase, async: true
 
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.TokenFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    api_client = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    account = account_fixture()
+    actor = admin_actor_fixture(account: account)
+    api_client = api_client_fixture(account: account)
 
     %{
       account: account,
       actor: actor,
-      identity: identity,
       api_client: api_client
     }
   end
@@ -27,19 +29,37 @@ defmodule PortalWeb.Live.Settings.ApiClient.NewTokenTest do
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must sign in to access this page."}
+                 flash: %{"error" => "You must sign in to access that page."}
                }}}
+  end
+
+  test "redirects to API client page when token limit is reached", %{
+    account: account,
+    actor: actor,
+    api_client: api_client,
+    conn: conn
+  } do
+    account = update_account(account, %{limits: %{api_tokens_per_client_count: 1}})
+    _token = api_token_fixture(account: account, actor: api_client)
+
+    assert {:error, {:live_redirect, %{to: path, flash: flash}}} =
+             conn
+             |> authorize_conn(actor)
+             |> live(~p"/#{account}/settings/api_clients/#{api_client}/new_token")
+
+    assert path == ~p"/#{account}/settings/api_clients/#{api_client}"
+    assert flash["error"] =~ "maximum number of API tokens"
   end
 
   test "renders breadcrumbs item", %{
     account: account,
     api_client: api_client,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     {:ok, _lv, html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}/new_token")
 
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
@@ -52,89 +72,66 @@ defmodule PortalWeb.Live.Settings.ApiClient.NewTokenTest do
   test "renders form", %{
     account: account,
     api_client: api_client,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}/new_token")
 
     assert lv
-           |> form("form")
+           |> form("form[phx-submit=submit]")
            |> find_inputs() == [
-             "token[expires_at]",
-             "token[name]"
+             "api_token[expires_at]",
+             "api_token[name]"
            ]
-  end
-
-  test "renders changeset errors on input change", %{
-    account: account,
-    api_client: api_client,
-    identity: identity,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/api_clients/#{api_client}/new_token")
-
-    lv
-    |> form("form", identity: %{})
-    |> validate_change(
-      %{token: %{expires_at: "1991-01-01"}},
-      fn form, _html ->
-        assert %{
-                 "token[expires_at]" => ["must be greater than" <> _]
-               } = form_validation_errors(form)
-      end
-    )
   end
 
   test "renders changeset errors on submit", %{
     account: account,
     api_client: api_client,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     attrs = %{expires_at: "1991-01-01"}
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}/new_token")
 
     html =
       lv
-      |> form("form", token: attrs)
+      |> form("form[phx-submit=submit]", api_token: attrs)
       |> render_submit()
 
     assert %{
-             "token[expires_at]" => ["must be greater than" <> _]
+             "api_token[expires_at]" => ["must be greater than" <> _]
            } = form_validation_errors(html)
   end
 
   test "creates a new token on valid attrs", %{
     account: account,
     api_client: api_client,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     expires_at = Date.utc_today() |> Date.add(3)
 
     attrs = %{
-      name: Fixtures.Actors.actor_attrs().name,
+      name: "Test Token",
       expires_at: Date.to_iso8601(expires_at)
     }
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}/new_token")
 
     html =
       lv
-      |> form("form", token: attrs)
+      |> form("form[phx-submit=submit]", api_token: attrs)
       |> render_submit()
 
     assert html =~ "Your API Token"
@@ -155,5 +152,32 @@ defmodule PortalWeb.Live.Settings.ApiClient.NewTokenTest do
     {path, _flash} = assert_redirect(lv)
 
     assert path =~ ~p"/#{account}/settings/api_clients/#{api_client}"
+  end
+
+  test "redirects when limit is reached during submit", %{
+    account: account,
+    actor: actor,
+    api_client: api_client,
+    conn: conn
+  } do
+    account = update_account(account, %{limits: %{api_tokens_per_client_count: 1}})
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/api_clients/#{api_client}/new_token")
+
+    # Create a token after loading the page to simulate a race condition
+    _token = api_token_fixture(account: account, actor: api_client)
+
+    expires_at = Date.utc_today() |> Date.add(3)
+
+    lv
+    |> form("form[phx-submit=submit]",
+      api_token: %{name: "Test", expires_at: Date.to_iso8601(expires_at)}
+    )
+    |> render_submit()
+
+    assert_redirect(lv, ~p"/#{account}/settings/api_clients/#{api_client}")
   end
 end

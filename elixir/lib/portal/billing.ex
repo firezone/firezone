@@ -105,6 +105,32 @@ defmodule Portal.Billing do
          account_admins_count < account.limits.account_admin_users_count)
   end
 
+  def api_clients_limit_exceeded?(%Portal.Account{} = account, api_clients_count) do
+    not is_nil(account.limits.api_clients_count) and
+      api_clients_count > account.limits.api_clients_count
+  end
+
+  def can_create_api_clients?(%Portal.Account{} = account) do
+    api_clients_count = DB.count_api_clients_for_account(account)
+
+    Portal.Account.active?(account) and
+      (is_nil(account.limits.api_clients_count) or
+         api_clients_count < account.limits.api_clients_count)
+  end
+
+  def api_tokens_limit_exceeded?(%Portal.Account{} = account, api_tokens_count) do
+    not is_nil(account.limits.api_tokens_per_client_count) and
+      api_tokens_count > account.limits.api_tokens_per_client_count
+  end
+
+  def can_create_api_tokens?(%Portal.Account{} = account, %Portal.Actor{} = actor) do
+    api_tokens_count = DB.count_api_tokens_for_actor(actor)
+
+    Portal.Account.active?(account) and
+      (is_nil(account.limits.api_tokens_per_client_count) or
+         api_tokens_count < account.limits.api_tokens_per_client_count)
+  end
+
   # API wrappers
 
   def create_customer(%Portal.Account{} = account) do
@@ -451,6 +477,25 @@ defmodule Portal.Billing do
       from(g in Portal.Site,
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_api_clients_for_account(%Account{} = account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: is_nil(a.disabled_at),
+        where: a.type == :api_client
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_api_tokens_for_actor(%Actor{} = actor) do
+      from(t in Portal.APIToken,
+        where: t.actor_id == ^actor.id,
+        where: t.account_id == ^actor.account_id
       )
       |> Safe.unscoped()
       |> Safe.aggregate(:count)

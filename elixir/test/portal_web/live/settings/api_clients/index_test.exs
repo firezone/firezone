@@ -1,16 +1,18 @@
 defmodule PortalWeb.Live.Settings.ApiClients.IndexTest do
   use PortalWeb.ConnCase, async: true
 
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.TokenFixtures
+
   setup do
-    account = Fixtures.Accounts.create_account()
-    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    identity = Fixtures.Auth.create_identity(account: account, actor: [type: :account_admin_user])
-    api_client = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    account = account_fixture()
+    actor = admin_actor_fixture(account: account)
+    api_client = api_client_fixture(account: account)
 
     %{
       account: account,
       actor: actor,
-      identity: identity,
       api_client: api_client
     }
   end
@@ -23,23 +25,20 @@ defmodule PortalWeb.Live.Settings.ApiClients.IndexTest do
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must sign in to access this page."}
+                 flash: %{"error" => "You must sign in to access that page."}
                }}}
   end
 
   test "redirects to beta page when feature not enabled for account", %{
     account: account,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
-    features = Map.from_struct(account.features)
-    attrs = %{features: %{features | rest_api: false}}
-
-    account = Fixtures.Accounts.update_account(account, attrs)
+    account = update_account(account, %{features: %{rest_api: false}})
 
     assert {:error, {:live_redirect, %{to: path, flash: _}}} =
              conn
-             |> authorize_conn(identity)
+             |> authorize_conn(actor)
              |> live(~p"/#{account}/settings/api_clients")
 
     assert path == ~p"/#{account}/settings/api_clients/beta"
@@ -47,12 +46,12 @@ defmodule PortalWeb.Live.Settings.ApiClients.IndexTest do
 
   test "renders breadcrumbs item", %{
     account: account,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     {:ok, _lv, html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients")
 
     assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
@@ -62,12 +61,12 @@ defmodule PortalWeb.Live.Settings.ApiClients.IndexTest do
 
   test "renders add api client button", %{
     account: account,
-    identity: identity,
+    actor: actor,
     conn: conn
   } do
     {:ok, _lv, html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients")
 
     assert button =
@@ -80,19 +79,24 @@ defmodule PortalWeb.Live.Settings.ApiClients.IndexTest do
 
   test "renders table with multiple api clients", %{
     account: account,
-    identity: identity,
+    actor: actor,
     api_client: api_client,
     conn: conn
   } do
-    api_client_2 = Fixtures.Actors.create_actor(type: :api_client, account: account)
-    api_client_3 = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    api_client_2 = api_client_fixture(account: account)
+    api_client_3 = api_client_fixture(account: account)
 
-    Fixtures.Actors.disable(api_client_2)
-    Fixtures.Tokens.create_api_client_token(account: account, actor: api_client_3)
+    # Disable api_client_2
+    api_client_2 =
+      api_client_2
+      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Repo.update!()
+
+    api_token_fixture(account: account, actor: api_client_3)
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
+      |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/api_clients")
 
     rows =
