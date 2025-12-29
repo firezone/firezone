@@ -39,7 +39,7 @@ defmodule Portal.Policy do
     |> validate_length(:description, min: 1, max: 1024)
     |> unique_constraint(
       :base,
-      name: :policies_resource_id_group_id_index,
+      name: :policies_account_id_resource_id_group_id_index,
       message: "Policy for the selected Group and Resource already exists"
     )
     |> assoc_constraint(:resource)
