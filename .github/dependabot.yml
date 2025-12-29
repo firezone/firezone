@@ -59,6 +59,7 @@ updates:
       - "/.github/actions/setup-rust-target-workspace-cache"
       - "/.github/actions/setup-tauri-v2"
       - "/.github/actions/setup-scripts"
+      - "/.github/actions/winget-releaser"
     schedule:
       interval: weekly
     # Unfortunately the github-actions ecosystem doesn't support semver cooldowns, and because they update very frequently
