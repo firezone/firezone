@@ -90,6 +90,7 @@ jobs:
           - identifier: Firezone.Client.Headless
             tag_prefix: headless-client
     steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - id: get-version
         run: |
           version=${{ inputs.release_name || github.event.release.name }}
