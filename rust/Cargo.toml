@@ -141,7 +141,7 @@ png = "0.17.16"
 proc-macro2 = "1.0"
 proptest = "1.9.0"
 proptest-state-machine = "0.6.0"
-quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
+quinn-udp = { git = "https://github.com/firezone/quinn", branch = "fix/windows-gso-detection", features = ["fast-apple-datapath"] }
 quote = "1.0"
 rand = "0.8.5"
 rand_core = "0.6.4"
@@ -254,7 +254,6 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 moka = { git = "https://github.com/moka-rs/moka", branch = "main" } # Waiting for release.
-quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 

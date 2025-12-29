@@ -6025,7 +6025,7 @@ dependencies = [
  "cfg_aliases",
  "pin-project-lite",
  "quinn-proto",
- "quinn-udp",
+ "quinn-udp 0.5.14",
  "rustc-hash",
  "rustls",
  "socket2 0.5.10",
@@ -6058,15 +6058,28 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.5.12"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#06995454f44171d4164753b95e0bce900089a9a7"
+version = "0.5.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "addec6a0dcad8a8d96a771f815f0eaf55f9d1805756410b39f5fa81332574cbd"
 dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "quinn-udp"
+version = "0.6.0"
+source = "git+https://github.com/firezone/quinn?branch=fix%2Fwindows-gso-detection#6422682fa546d9ef2dd0201080021d83c51817a7"
+dependencies = [
+ "cfg_aliases",
+ "libc",
+ "socket2 0.6.1",
+ "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7303,7 +7316,7 @@ dependencies = [
  "ip-packet",
  "libc",
  "opentelemetry",
- "quinn-udp",
+ "quinn-udp 0.6.0",
  "socket2 0.6.1",
  "tokio",
  "tracing",
