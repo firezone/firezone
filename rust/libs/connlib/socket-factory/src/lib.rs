@@ -466,14 +466,12 @@ impl UdpSocket {
     /// Performs a single request-response handshake with the specified destination socket address.
     ///
     /// This consumes `self` because we want to enforce that we only receive a single message on this socket.
-    /// UDP is stateless and therefore, anybody can just send a packet to our socket.
+    /// UDP is stateless and therefore, anybody can just send a packet to the destination.
     ///
     /// To simulate a handshake, we therefore only wait for a single message arriving on this socket,
     /// after that, we discard it, freeing up the used source port.
     ///
     /// This is similar to the `connect` functionality but that one doesn't seem to work reliably in a cross-platform way.
-    ///
-    /// TODO: Should we make a type-safe API to ensure only one "mode" of the socket can be used?
     pub async fn handshake<const BUF_SIZE: usize>(
         self,
         dst: SocketAddr,
