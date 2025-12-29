@@ -43,7 +43,7 @@ runs:
         $PkgId = '${{ inputs.identifier }}'
         Invoke-WebRequest -Uri "https://github.com/microsoft/winget-pkgs/tree/master/manifests/$($PkgId.ToLower()[0])\$($PkgId.Replace('.', '/'))" -Method Head
         if (-not $?) {
-          Write-Output "::error::Package $PkgId does not exist in the winget-pkgs repository. Please add atleast one version of the package before using this action."
+          Write-Output "::error::Package $PkgId does not exist in the winget-pkgs repository. Please add at least one version of the package before using this action."
           exit 1
         }
       shell: pwsh
