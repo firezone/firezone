@@ -6,18 +6,33 @@ defmodule PortalWeb.Settings.ApiClients.New do
   alias __MODULE__.DB
 
   def mount(_params, _session, socket) do
-    if Portal.Account.rest_api_enabled?(socket.assigns.account) do
-      changeset = changeset(%{})
+    account = socket.assigns.account
 
-      socket =
-        assign(socket,
-          form: to_form(changeset),
-          page_title: "New API Client"
-        )
+    cond do
+      not Portal.Account.rest_api_enabled?(account) ->
+        {:ok, push_navigate(socket, to: ~p"/#{account}/settings/api_clients/beta")}
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
+      not Portal.Billing.can_create_api_clients?(account) ->
+        socket =
+          socket
+          |> put_flash(
+            :error,
+            "You have reached the maximum number of API clients allowed for your account."
+          )
+          |> push_navigate(to: ~p"/#{account}/settings/api_clients")
+
+        {:ok, socket}
+
+      true ->
+        changeset = changeset(%{})
+
+        socket =
+          assign(socket,
+            form: to_form(changeset),
+            page_title: "New API Client"
+          )
+
+        {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     end
   end
 
@@ -60,20 +75,33 @@ defmodule PortalWeb.Settings.ApiClients.New do
   end
 
   def handle_event("submit", %{"actor" => attrs}, socket) do
-    attrs = Map.put(attrs, "type", :api_client)
+    account = socket.assigns.account
 
-    changeset = changeset(attrs)
+    if Portal.Billing.can_create_api_clients?(account) do
+      attrs = Map.put(attrs, "type", :api_client)
+      changeset = changeset(attrs)
 
-    with {:ok, actor} <- DB.create_api_client(changeset, socket.assigns.subject) do
+      with {:ok, actor} <- DB.create_api_client(changeset, socket.assigns.subject) do
+        socket =
+          push_navigate(socket,
+            to: ~p"/#{account}/settings/api_clients/#{actor}/new_token"
+          )
+
+        {:noreply, socket}
+      else
+        {:error, changeset} ->
+          {:noreply, assign(socket, form: to_form(changeset))}
+      end
+    else
       socket =
-        push_navigate(socket,
-          to: ~p"/#{socket.assigns.account}/settings/api_clients/#{actor}/new_token"
+        socket
+        |> put_flash(
+          :error,
+          "You have reached the maximum number of API clients allowed for your account."
         )
+        |> push_navigate(to: ~p"/#{account}/settings/api_clients")
 
       {:noreply, socket}
-    else
-      {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
     end
   end
 

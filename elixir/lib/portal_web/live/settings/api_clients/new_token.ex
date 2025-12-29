@@ -9,18 +9,32 @@ defmodule PortalWeb.Settings.ApiClients.NewToken do
     unless Portal.Config.global_feature_enabled?(:rest_api),
       do: raise(PortalWeb.LiveErrors.NotFoundError)
 
+    account = socket.assigns.account
     %{type: :api_client} = actor = DB.get_api_client!(id, socket.assigns.subject)
-    changeset = build_token_changeset(%{})
 
-    socket =
-      assign(socket,
-        actor: actor,
-        encoded_token: nil,
-        form: to_form(changeset),
-        page_title: "New API Token"
-      )
+    if Portal.Billing.can_create_api_tokens?(account, actor) do
+      changeset = build_token_changeset(%{})
 
-    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+      socket =
+        assign(socket,
+          actor: actor,
+          encoded_token: nil,
+          form: to_form(changeset),
+          page_title: "New API Token"
+        )
+
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+    else
+      socket =
+        socket
+        |> put_flash(
+          :error,
+          "You have reached the maximum number of API tokens allowed for this API client."
+        )
+        |> push_navigate(to: ~p"/#{account}/settings/api_clients/#{actor}")
+
+      {:ok, socket}
+    end
   end
 
   def render(assigns) do
@@ -61,7 +75,7 @@ defmodule PortalWeb.Settings.ApiClients.NewToken do
     """
   end
 
-  def handle_event("change", %{"token" => attrs}, socket) do
+  def handle_event("change", %{"api_token" => attrs}, socket) do
     attrs = map_expires_at(attrs)
 
     changeset =
@@ -72,18 +86,33 @@ defmodule PortalWeb.Settings.ApiClients.NewToken do
   end
 
   def handle_event("submit", %{"api_token" => attrs}, socket) do
-    attrs = map_expires_at(attrs)
+    account = socket.assigns.account
+    actor = socket.assigns.actor
 
-    with {:ok, encoded_token} <-
-           Auth.create_api_token(
-             socket.assigns.actor,
-             attrs,
-             socket.assigns.subject
-           ) do
-      {:noreply, assign(socket, encoded_token: encoded_token)}
+    if Portal.Billing.can_create_api_tokens?(account, actor) do
+      attrs = map_expires_at(attrs)
+
+      with {:ok, encoded_token} <-
+             Auth.create_api_token(
+               actor,
+               attrs,
+               socket.assigns.subject
+             ) do
+        {:noreply, assign(socket, encoded_token: encoded_token)}
+      else
+        {:error, changeset} ->
+          {:noreply, assign(socket, form: to_form(changeset))}
+      end
     else
-      {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+      socket =
+        socket
+        |> put_flash(
+          :error,
+          "You have reached the maximum number of API tokens allowed for this API client."
+        )
+        |> push_navigate(to: ~p"/#{account}/settings/api_clients/#{actor}")
+
+      {:noreply, socket}
     end
   end
 
