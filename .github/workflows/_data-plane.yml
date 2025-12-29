@@ -246,7 +246,7 @@ jobs:
         with:
           key: ${{ matrix.name.package }}-${{ inputs.stage }}-${{ inputs.profile }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
+      - uses: taiki-e/install-action@4c6723ec9c638cccae824b8957c5085b695c8085 # v2.65.7
         with:
           tool: bpf-linker,cargo-deb
         env:
