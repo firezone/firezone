@@ -56,11 +56,7 @@ runs:
         }
       shell: pwsh
     - uses: cargo-bins/cargo-binstall@80aaafe04903087c333980fa2686259ddd34b2d9 # v1.16.6
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
     - run: cargo binstall komac -y
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
       shell: pwsh
     - run: |
         # get release information
@@ -74,7 +70,7 @@ runs:
         }
         Write-Output "urls=$($ReleaseInfo.assets.Where({ $_.name -match '${{ inputs.installers-regex }}' }).browser_download_url -join ' ')" >> $env:GITHUB_OUTPUT
       env:
-        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_TOKEN: ${{ inputs.token }}
       id: version-and-urls
       shell: pwsh
     - run: komac sync-fork
