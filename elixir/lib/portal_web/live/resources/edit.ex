@@ -268,25 +268,23 @@ defmodule PortalWeb.Resources.Edit do
     end
   end
 
-  defp change_resource(resource, attrs \\ %{}, subject) do
+  defp change_resource(resource, attrs \\ %{}, _subject) do
     update_fields = ~w[address address_description name type ip_stack site_id]a
     required_fields = ~w[name type site_id]a
 
     resource
     |> Ecto.Changeset.cast(attrs, update_fields)
     |> Ecto.Changeset.validate_required(required_fields)
-    |> Portal.Resource.validate_address(subject.account)
     |> Portal.Resource.changeset()
   end
 
-  defp update_changeset(resource, attrs, subject) do
+  defp update_changeset(resource, attrs, _subject) do
     update_fields = ~w[address address_description name type ip_stack site_id]a
     required_fields = ~w[name type site_id]a
 
     resource
     |> Ecto.Changeset.cast(attrs, update_fields)
     |> Ecto.Changeset.validate_required(required_fields)
-    |> Portal.Resource.validate_address(subject.account)
     |> Portal.Resource.changeset()
   end
 
