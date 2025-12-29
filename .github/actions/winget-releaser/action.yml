@@ -1,0 +1,139 @@
+name: WinGet Releaser
+description: Publish new releases of your application to Windows Package Manager easily.
+author: vedantmgoyal9 (Vedant)
+inputs:
+  identifier:
+    description: "The package identifier in the winget-pkgs repository (e.g., Microsoft.VisualStudioCode)"
+    required: true
+  version:
+    description: 'The version to be published. If not provided, the tag name of the release will be used (with a leading "v" removed, if present).'
+    required: false
+  installers-regex:
+    description: "A regex pattern to match the installer files in the release assets."
+    required: true
+    default: ".(exe|msi|msix|appx)(bundle){0,1}$"
+  max-versions-to-keep:
+    description: "The maximum number of versions to keep in the winget-pkgs repository. Set to 0 to keep all versions."
+    required: true
+    default: "0"
+  release-repository:
+    description: "The repository where the release is published."
+    required: true
+    default: ${{ github.event.repository.name }}
+  release-tag:
+    description: "The tag name of the release to be published."
+    required: true
+    default: ${{ github.event.release.tag_name || github.ref_name }}
+  release-notes-url:
+    description: "URL pointing to the release notes for this version."
+    required: false
+  token:
+    description: "GitHub token with permissions to create pull requests in the forked repository."
+    required: true
+  fork-user:
+    description: "GitHub username of the fork where the changes will be pushed."
+    required: true
+    default: ${{ github.repository_owner }}
+runs:
+  using: composite
+  steps:
+    - run: |
+        # check if at least one version of the package is already present in winget-pkgs repository
+        $ErrorActionPreference = 'SilentlyContinue'
+        $PkgId = '${{ inputs.identifier }}'
+        Invoke-WebRequest -Uri "https://github.com/microsoft/winget-pkgs/tree/master/manifests/$($PkgId.ToLower()[0])\$($PkgId.Replace('.', '/'))" -Method Head
+        if (-not $?) {
+          Write-Output "::error::Package $PkgId does not exist in the winget-pkgs repository. Please add atleast one version of the package before using this action."
+          exit 1
+        }
+      shell: pwsh
+    - run: |
+        # check if max-versions-to-keep is a valid number and is 0 (keep all versions) or greater than 0
+        $MaxVersionsToKeep = '${{ inputs.max-versions-to-keep }}'
+        if (-not [int]::TryParse($MaxVersionsToKeep, [ref]$null) -or $MaxVersionsToKeep -lt 0) {
+          Write-Output "::error::Invalid input: max-versions-to-keep should be 0 (zero - keep all versions) or a POSITIVE INTEGER."
+          exit 1
+        }
+      shell: pwsh
+    - uses: cargo-bins/cargo-binstall@80aaafe04903087c333980fa2686259ddd34b2d9 # v1.16.6
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+    - run: cargo binstall komac -y
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      shell: pwsh
+    - run: |
+        # get release information
+        $ReleaseInfo = Invoke-RestMethod `
+          -Uri 'https://api.github.com/repos/${{ github.repository_owner }}/${{ inputs.release-repository }}/releases/tags/${{ inputs.release-tag }}' `
+          -Headers @{ Authorization = "token $env:GITHUB_TOKEN" }
+        If ('' -eq '${{ inputs.version }}') {
+          Write-Output "version=$($ReleaseInfo.tag_name -replace '^v')" >> $env:GITHUB_OUTPUT
+        } Else {
+          Write-Output "version=${{ inputs.version }}" >> $env:GITHUB_OUTPUT
+        }
+        Write-Output "urls=$($ReleaseInfo.assets.Where({ $_.name -match '${{ inputs.installers-regex }}' }).browser_download_url -join ' ')" >> $env:GITHUB_OUTPUT
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      id: version-and-urls
+      shell: pwsh
+    - run: komac sync-fork
+      env:
+        KOMAC_FORK_OWNER: ${{ inputs.fork-user }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+      shell: pwsh
+    - run: |
+        $ReplaceFlag = $Null
+        $ReleaseNotesUrlFlag = $Null
+        if (${{ inputs.max-versions-to-keep }} -eq 1) {
+          $ReplaceFlag = "--replace"
+        }
+        if (-not [string]::IsNullOrEmpty('${{ inputs.release-notes-url }}')) {
+          # multiple arguments should be provided as an array of strings to ensure powershell passes them to komac correctly
+          $ReleaseNotesUrlFlag = @('--release-notes-url', '${{ inputs.release-notes-url }}')
+        }
+        komac update '${{ inputs.identifier }}' --version '${{ steps.version-and-urls.outputs.version }}' $ReplaceFlag  $ReleaseNotesUrlFlag --submit --urls ${{ steps.version-and-urls.outputs.urls }}
+      env:
+        KOMAC_FORK_OWNER: ${{ inputs.fork-user }}
+        KOMAC_CREATED_WITH: WinGet Releaser
+        KOMAC_CREATED_WITH_URL: ${{ github.server_url }}/${{ github.action_repository }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+      shell: pwsh
+    - run: "komac cleanup --only-merged # clean up stale branches (for which PRs have been merged)"
+      env:
+        KOMAC_FORK_OWNER: ${{ inputs.fork-user }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+      shell: pwsh
+    - if: fromJSON(inputs.max-versions-to-keep) > 0 # https://docs.github.com/en/actions/learn-github-actions/expressions
+      run: |
+        # delete previous versions w.r.t. max-versions-to-keep (if any)
+        $ToNatural = { [regex]::Replace($_, '\d+', { $args[0].Value.PadLeft(20) }) }
+        #[Issue #307] -NoEnumerate has been added so that $Versions does not get converted to a string, when only one version exists in winget-pkgs
+        $Versions = $(komac list-versions '${{ inputs.identifier }}' --json | ConvertFrom-Json -NoEnumerate) | Sort-Object $ToNatural -Descending
+        $Reason = 'This version is older than what has been set in `max-versions-to-keep` by the publisher.'
+
+        # Prevents replaced version from being deleted
+        if (${{ inputs.max-versions-to-keep }} -eq 1) {
+          $Versions = $Versions | Select-Object -SkipLast 1
+        }
+
+        If ($Versions.Count + 1 -gt ${{ inputs.max-versions-to-keep }}) {
+          $VersionsToDelete = $Versions[(${{ inputs.max-versions-to-keep }} - 1)..($Versions.Count - 1)]
+          Write-Output "Versions to delete: $($VersionsToDelete -join ', ')"
+
+          ForEach ($Version in $VersionsToDelete) {
+            Write-Output "Deleting version: $Version"
+            komac remove '${{ inputs.identifier }}' --version $Version --reason "$Reason" --submit
+          }
+        } Else {
+          Write-Output "No versions to delete. All good :)"
+        }
+      env:
+        KOMAC_FORK_OWNER: ${{ inputs.fork-user }}
+        KOMAC_CREATED_WITH: WinGet Releaser
+        KOMAC_CREATED_WITH_URL: ${{ github.server_url }}/${{ github.action_repository }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+      shell: pwsh
+branding:
+  color: blue
+  icon: package
