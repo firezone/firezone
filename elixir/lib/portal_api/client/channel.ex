@@ -90,17 +90,17 @@ defmodule PortalAPI.Client.Channel do
   def handle_info(%Change{lsn: lsn} = change, socket) do
     last_lsn = Map.get(socket.assigns, :last_lsn, 0)
 
-    if lsn <= last_lsn do
-      Logger.warning("Out of order or duplicate change received; ignoring",
-        change: change,
-        last_lsn: last_lsn
-      )
+    if lsn > last_lsn do
+      case handle_change(change, socket) do
+        {:noreply, socket} ->
+          {:noreply, assign(socket, last_lsn: lsn)}
 
-      {:noreply, socket}
+        result ->
+          result
+      end
     else
-      socket = assign(socket, last_lsn: lsn)
-
-      handle_change(change, socket)
+      # Change already processed; ignore to prevent replaying it
+      {:noreply, socket}
     end
   end
 

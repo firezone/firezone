@@ -3,7 +3,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
   alias Portal.Changes
   alias Portal.PubSub
   import Portal.Cache.Cacheable, only: [to_cache: 1]
-  import ExUnit.CaptureLog
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -135,7 +134,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
   end
 
   describe "handle_info/2" do
-    test "logs warning and ignores out of order %Change{}", %{
+    test "ignores out of order %Change{}", %{
       gateway: gateway,
       site: site,
       token: token
@@ -146,16 +145,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
 
-      message =
-        capture_log(fn ->
-          send(socket.channel_pid, %Changes.Change{lsn: 50})
-
-          # Force the channel to process the message before continuing
-          # :sys.get_state/1 is synchronous and will wait for all pending messages to be handled
-          :sys.get_state(socket.channel_pid)
-        end)
-
-      assert message =~ "[warning] Out of order or duplicate change received; ignoring"
+      send(socket.channel_pid, %Changes.Change{lsn: 50})
 
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
     end
