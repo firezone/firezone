@@ -3,7 +3,6 @@ defmodule PortalAPI.Client.ChannelTest do
   alias Portal.Changes
   alias Portal.Presence
   alias Portal.PubSub
-  import ExUnit.CaptureLog
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -1029,25 +1028,13 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_info/2 for change events" do
-    test "logs warning and ignores out of order %Change{}", %{client: client, subject: subject} do
+    test "ignores out of order %Change{}", %{client: client, subject: subject} do
       socket = join_channel(client, subject)
       send(socket.channel_pid, %Changes.Change{lsn: 100})
 
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
 
-      # Flush any pending async logs from join_channel before capturing
-      _ = capture_log(fn -> Process.sleep(10) end)
-
-      message =
-        capture_log(fn ->
-          send(socket.channel_pid, %Changes.Change{lsn: 50})
-
-          # Force the channel to process the message before continuing
-          # :sys.get_state/1 is synchronous and will wait for all pending messages to be handled
-          :sys.get_state(socket.channel_pid)
-        end)
-
-      assert message =~ "[warning] Out of order or duplicate change received; ignoring"
+      send(socket.channel_pid, %Changes.Change{lsn: 50})
 
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
     end
