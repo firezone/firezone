@@ -687,10 +687,6 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Membership, :api_client), do: :ok
   def permit(:read, Portal.Membership, _), do: :ok
 
-  # Relay permissions
-  def permit(_action, Portal.Relay, :account_admin_user), do: :ok
-  def permit(:read, Portal.Relay, _), do: :ok
-
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 
   # Helper function to emit subject information to the replication stream

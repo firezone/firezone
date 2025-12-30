@@ -24,59 +24,52 @@ defmodule PortalAPI.Relay.SocketTest do
       assert connect(Socket, %{}, connect_info: @connect_info) == {:error, :missing_token}
     end
 
-    test "creates a new relay" do
+    test "builds a relay from connection params" do
       token = relay_token_fixture()
       encrypted_secret = encode_relay_token(token)
 
-      attrs = connect_attrs(token: encrypted_secret)
+      attrs = %{
+        "token" => encrypted_secret,
+        "ipv4" => "100.64.1.1",
+        "ipv6" => "2001:db8::1",
+        "port" => 3478
+      }
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
       assert relay = Map.fetch!(socket.assigns, :relay)
 
-      assert relay.ipv4.address == attrs["ipv4"]
-      assert relay.ipv6.address == attrs["ipv6"]
-      assert relay.last_seen_user_agent == @connect_info.user_agent
-      assert relay.last_seen_remote_ip.address == {189, 172, 73, 153}
-      assert relay.last_seen_remote_ip_location_region == "Ukraine"
-      assert relay.last_seen_remote_ip_location_city == "Kyiv"
-      assert relay.last_seen_remote_ip_location_lat == 50.4333
-      assert relay.last_seen_remote_ip_location_lon == 30.5167
-      assert relay.last_seen_version == @connlib_version
-    end
-
-    test "creates a new named relay" do
-      token = relay_token_fixture()
-      encrypted_secret = encode_relay_token(token)
-
-      attrs =
-        connect_attrs(token: encrypted_secret)
-        |> Map.put("name", "us-east1-x381")
-
-      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
-      assert relay = Map.fetch!(socket.assigns, :relay)
-      assert relay.name == "us-east1-x381"
+      assert relay.ipv4 == "100.64.1.1"
+      assert relay.ipv6 == "2001:db8::1"
+      assert relay.port == 3478
+      assert relay.lat == 50.4333
+      assert relay.lon == 30.5167
     end
 
     test "uses region code to put default coordinates" do
       token = relay_token_fixture()
       encrypted_secret = encode_relay_token(token)
 
-      attrs = connect_attrs(token: encrypted_secret)
+      attrs = %{
+        "token" => encrypted_secret,
+        "ipv4" => "100.64.1.1"
+      }
 
       connect_info = %{@connect_info | x_headers: [{"x-geo-location-region", "UA"}]}
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert relay = Map.fetch!(socket.assigns, :relay)
-      assert relay.last_seen_remote_ip_location_region == "UA"
-      assert relay.last_seen_remote_ip_location_city == nil
-      assert relay.last_seen_remote_ip_location_lat == 49.0
-      assert relay.last_seen_remote_ip_location_lon == 32.0
+      assert relay.lat == 49.0
+      assert relay.lon == 32.0
     end
 
     test "propagates trace context" do
       token = relay_token_fixture()
       encrypted_secret = encode_relay_token(token)
-      attrs = connect_attrs(token: encrypted_secret)
+
+      attrs = %{
+        "token" => encrypted_secret,
+        "ipv4" => "100.64.1.1"
+      }
 
       span_ctx = OpenTelemetry.Tracer.start_span("test")
       OpenTelemetry.Tracer.set_current_span(span_ctx)
@@ -91,38 +84,27 @@ defmodule PortalAPI.Relay.SocketTest do
       assert span_ctx != OpenTelemetry.Tracer.current_span_ctx()
     end
 
-    test "updates existing relay" do
-      relay = relay_fixture()
+    test "returns error when token is invalid" do
+      attrs = %{"token" => "foo", "ipv4" => "100.64.1.1"}
+      assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}
+    end
+
+    test "returns error when no IP is provided" do
       token = relay_token_fixture()
       encrypted_secret = encode_relay_token(token)
 
-      attrs = connect_attrs(token: encrypted_secret, ipv4: relay.ipv4)
-
-      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
-      assert relay = Repo.one(Portal.Relay)
-      assert relay.id == socket.assigns.relay.id
-    end
-
-    test "returns error when token is invalid" do
-      attrs = connect_attrs(token: "foo")
-      assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}
+      attrs = %{"token" => encrypted_secret}
+      assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :missing_ip}
     end
   end
 
   describe "id/1" do
-    test "creates a channel for a relay" do
+    test "returns socket id based on token_id" do
       relay = relay_fixture()
       token_id = Ecto.UUID.generate()
       socket = socket(PortalAPI.Relay.Socket, "", %{relay: relay, token_id: token_id})
 
       assert id(socket) == "socket:#{token_id}"
     end
-  end
-
-  defp connect_attrs(attrs) do
-    valid_relay_attrs()
-    |> Map.take([:ipv4, :ipv6])
-    |> Map.merge(Enum.into(attrs, %{}))
-    |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end
 end

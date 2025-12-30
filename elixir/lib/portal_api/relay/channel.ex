@@ -42,7 +42,6 @@ defmodule PortalAPI.Relay.Channel do
     case get_transport_timeout_num(socket.transport_pid) do
       {:ok, timeout_num} when timeout_num >= @idle_timeout_warning_threshold ->
         Logger.warning("Relay missed heartbeat, connection will timeout",
-          relay_id: socket.assigns.relay.id,
           timeout_ticks: timeout_num
         )
 
@@ -64,12 +63,12 @@ defmodule PortalAPI.Relay.Channel do
     OpenTelemetry.Tracer.with_span "relay.after_join" do
       push(socket, "init", %{})
       relay = socket.assigns.relay
-      token_id = socket.assigns.token_id
 
-      # Connect the relay by tracking presence and subscribing to PubSub topics
-      :ok = Presence.Relays.connect(relay, stamp_secret, token_id)
+      # Generate the relay ID from the stamp_secret and connect
+      relay = %{relay | id: Portal.Relay.generate_id(stamp_secret), stamp_secret: stamp_secret}
+      :ok = Presence.Relays.connect(relay)
 
-      {:noreply, socket}
+      {:noreply, assign(socket, :relay, relay)}
     end
   end
 

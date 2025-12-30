@@ -31,11 +31,10 @@ defmodule PortalAPI.Client.Views.Relay do
     }
   end
 
-  defp format_address(%Postgrex.INET{address: address} = inet) when tuple_size(address) == 4,
-    do: inet
-
-  defp format_address(%Postgrex.INET{address: address} = inet) when tuple_size(address) == 8,
-    do: "[#{inet}]"
+  # IPv4 string
+  defp format_address(ip) when is_binary(ip) do
+    if String.contains?(ip, ":"), do: "[#{ip}]", else: ip
+  end
 
   defp generate_username_and_password(%Relay{stamp_secret: stamp_secret}, public_key, expires_at)
        when is_binary(stamp_secret) do

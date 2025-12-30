@@ -57,7 +57,7 @@ defmodule PortalAPI.Client.Channel do
     :ok = Presence.Relays.Global.subscribe()
 
     # Cache relay IDs and stamp secrets for tracking
-    socket = cache_stamp_secrets(socket, relays)
+    socket = cache_relays(socket, relays)
 
     # Track client's presence
     :ok = Presence.Clients.connect(socket.assigns.client, socket.assigns.subject.credential.id)
@@ -155,34 +155,30 @@ defmodule PortalAPI.Client.Channel do
   end
 
   # Debounced relay presence check - queries the CRDT state after the debounce period.
+  # cached_relay_ids is a MapSet of relay IDs we've sent to the client.
+  # Presence is keyed by relay ID.
   def handle_info(:check_relay_presence, socket) do
-    cached_secrets = socket.assigns[:stamp_secrets] || %{}
+    cached_relay_ids = socket.assigns[:cached_relay_ids] || MapSet.new()
 
     # Check current presence state - this is the authoritative CRDT-merged state
-    current_relays = Presence.Relays.Global.list()
+    # Presence is keyed by relay ID
+    current_relay_ids = Presence.Relays.Global.list() |> Map.keys() |> MapSet.new()
 
-    # Find which cached relays are now invalid (offline or stamp_secret changed)
+    # Find which cached relays are now disconnected (ID no longer in presence)
     disconnected_ids =
-      Enum.filter(cached_secrets, fn {relay_id, cached_secret} ->
-        case Map.get(current_relays, relay_id) do
-          # Relay is offline
-          nil -> true
-          # Relay is online but stamp_secret changed
-          %{metas: [%{secret: secret} | _]} -> secret != cached_secret
-          _ -> false
-        end
-      end)
-      |> Enum.map(&elem(&1, 0))
+      cached_relay_ids
+      |> Enum.reject(&MapSet.member?(current_relay_ids, &1))
+      |> Enum.to_list()
 
-    # Send relays_presence if any cached relays are invalid OR if we have fewer than 2 relays
+    # Send relays_presence if any cached relays are disconnected OR if we have fewer than 2 relays
     # and more are now available
     needs_update =
       disconnected_ids != [] or
-        (map_size(cached_secrets) < 2 and map_size(current_relays) > 0)
+        (MapSet.size(cached_relay_ids) < 2 and MapSet.size(current_relay_ids) > 0)
 
     if needs_update do
       {:ok, relays} = select_relays(socket)
-      socket = cache_stamp_secrets(socket, relays)
+      socket = cache_relays(socket, relays)
 
       push(socket, "relays_presence", %{
         disconnected_ids: disconnected_ids,
@@ -627,9 +623,9 @@ defmodule PortalAPI.Client.Channel do
     {:ok, relays}
   end
 
-  defp cache_stamp_secrets(socket, relays) do
-    stamp_secrets = Map.new(relays, fn relay -> {relay.id, relay.stamp_secret} end)
-    assign(socket, :stamp_secrets, stamp_secrets)
+  defp cache_relays(socket, relays) do
+    cached_relay_ids = MapSet.new(relays, fn relay -> relay.id end)
+    assign(socket, :cached_relay_ids, cached_relay_ids)
   end
 
   defp generate_preshared_key(client, gateway) do
@@ -998,7 +994,7 @@ defmodule PortalAPI.Client.Channel do
   defp load_balance_relays({lat, lon}, relays) do
     relays
     |> Enum.map(fn relay ->
-      case {relay.last_seen_remote_ip_location_lat, relay.last_seen_remote_ip_location_lon} do
+      case {relay.lat, relay.lon} do
         {nil, _} -> {nil, relay}
         {_, nil} -> {nil, relay}
         {relay_lat, relay_lon} -> {Portal.Geo.distance({lat, lon}, {relay_lat, relay_lon}), relay}
