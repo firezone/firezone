@@ -23,7 +23,6 @@ defmodule Portal.Repo.Seeds do
     NameGenerator,
     OIDC,
     Policy,
-    Relay,
     Resource,
     Site,
     ClientToken,
@@ -932,7 +931,7 @@ defmodule Portal.Repo.Seeds do
     IO.puts("")
 
     # Create relay token with static values
-    global_relay_token =
+    relay_token =
       %Portal.RelayToken{
         id: "e82fcdc1-057a-4015-b90b-3b18f0f28053",
         secret_fragment: "C14NGA87EJRR03G4QPR07A9C6G784TSSTHSF4TI5T0GD8D6L0VRG====",
@@ -941,58 +940,11 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    global_relay_encoded_token =
-      Auth.encode_fragment!(global_relay_token)
+    relay_encoded_token =
+      Auth.encode_fragment!(relay_token)
 
-    IO.puts("Created global relay token:")
-    IO.puts("  Token: #{global_relay_encoded_token}")
-    IO.puts("")
-
-    # Create relays directly using the inline upsert logic from PortalAPI.Relay.Socket
-    relay_context = %Auth.Context{
-      type: :relay,
-      user_agent: "Ubuntu/14.04 connlib/0.7.412",
-      remote_ip: {100, 64, 100, 58}
-    }
-
-    # Create first global relay
-    global_relay =
-      %Relay{}
-      |> Ecto.Changeset.cast(
-        %{
-          name: "global-relay-1",
-          ipv4: {189, 172, 72, 111},
-          ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
-        },
-        [:name, :ipv4, :ipv6]
-      )
-      |> put_change(:last_seen_at, DateTime.utc_now())
-      |> put_change(:last_seen_user_agent, relay_context.user_agent)
-      |> put_change(:last_seen_remote_ip, relay_context.remote_ip)
-      |> put_change(:last_seen_version, "0.7.412")
-      |> Repo.insert!()
-
-    # Create additional global relays
-    for i <- 1..5 do
-      _global_relay =
-        %Relay{}
-        |> Ecto.Changeset.cast(
-          %{
-            name: "global-relay-#{i + 1}",
-            ipv4: {189, 172, 72, 111 + i},
-            ipv6: {0, 0, 0, 0, 0, 0, 0, i}
-          },
-          [:name, :ipv4, :ipv6]
-        )
-        |> put_change(:last_seen_at, DateTime.utc_now())
-        |> put_change(:last_seen_user_agent, relay_context.user_agent)
-        |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: {189, 172, 72, 111 + i}})
-        |> put_change(:last_seen_version, "0.7.412")
-        |> Repo.insert!()
-    end
-
-    IO.puts("Created global relays:")
-    IO.puts("  Relay: IPv4: #{global_relay.ipv4} IPv6: #{global_relay.ipv6}")
+    IO.puts("Created relay token:")
+    IO.puts("  Token: #{relay_encoded_token}")
     IO.puts("")
 
     site =

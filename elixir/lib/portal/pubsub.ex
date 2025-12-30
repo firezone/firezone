@@ -61,22 +61,4 @@ defmodule Portal.PubSub do
       Atom.to_string(__MODULE__) <> ":" <> account_id
     end
   end
-
-  defmodule Relay do
-    def subscribe(relay_id) do
-      relay_id
-      |> topic()
-      |> Portal.PubSub.subscribe()
-    end
-
-    def broadcast(relay_id, payload) do
-      relay_id
-      |> topic()
-      |> Portal.PubSub.broadcast(payload)
-    end
-
-    defp topic(relay_id) do
-      "relays:" <> relay_id
-    end
-  end
 end

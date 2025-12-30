@@ -174,13 +174,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
     subject = %{subject | expires_at: expires_at}
 
-    global_relay =
-      relay_fixture(
-        last_seen_remote_ip_location_lat: 37,
-        last_seen_remote_ip_location_lon: -120
-      )
-
-    global_relay_token = relay_token_fixture()
+    global_relay = relay_fixture(%{lat: 37.0, lon: -120.0})
 
     %{
       account: account,
@@ -205,8 +199,7 @@ defmodule PortalAPI.Client.ChannelTest do
       offline_resource: offline_resource,
       dns_resource_policy: dns_resource_policy,
       internet_resource_policy: internet_resource_policy,
-      global_relay: global_relay,
-      global_relay_token: global_relay_token
+      global_relay: global_relay
     }
   end
 
@@ -524,26 +517,8 @@ defmodule PortalAPI.Client.ChannelTest do
     end
 
     test "subscribes for relays presence", %{client: client, subject: subject} do
-      relay1 = relay_fixture()
-      stamp_secret1 = Ecto.UUID.generate()
-      relay_token = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
-
-      update_relay(relay1,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
-        last_seen_remote_ip_location_lat: 37.0,
-        last_seen_remote_ip_location_lon: -120.0
-      )
-
-      relay2 = relay_fixture()
-      stamp_secret2 = Ecto.UUID.generate()
-      :ok = Portal.Presence.Relays.connect(relay2, stamp_secret2, relay_token.id)
-
-      update_relay(relay2,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-100, :second),
-        last_seen_remote_ip_location_lat: 38.0,
-        last_seen_remote_ip_location_lon: -121.0
-      )
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
 
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
@@ -567,7 +542,7 @@ defmodule PortalAPI.Client.ChannelTest do
              } = relay_view
 
       # Untrack from global topic to trigger presence change notification
-      Portal.Presence.Relays.untrack(self(), Portal.Presence.Relays.Global.topic(), relay1.id)
+      Portal.Presence.Relays.disconnect(relay1)
 
       assert_push "relays_presence",
                   %{
@@ -589,18 +564,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Consume the init message
       assert_push "init", %{relays: []}
 
-      stamp_secret = Ecto.UUID.generate()
-
-      relay = relay_fixture()
-
-      update_relay(relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
-        last_seen_remote_ip_location_lat: 37.0,
-        last_seen_remote_ip_location_lon: -120.0
-      )
-
-      relay_token = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      relay = connect_relay(%{lat: 37.0, lon: -120.0})
 
       assert_push "relays_presence",
                   %{
@@ -618,15 +582,7 @@ defmodule PortalAPI.Client.ChannelTest do
                username: _
              } = relay_view
 
-      other_relay = relay_fixture()
-
-      update_relay(other_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
-        last_seen_remote_ip_location_lat: 37.0,
-        last_seen_remote_ip_location_lon: -120.0
-      )
-
-      :ok = Portal.Presence.Relays.connect(other_relay, stamp_secret, relay_token.id)
+      other_relay = connect_relay(%{lat: 37.0, lon: -120.0})
 
       # Should receive relays_presence since client has < 2 relays
       assert_push "relays_presence",
@@ -646,17 +602,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      stamp_secret = Ecto.UUID.generate()
-
-      relay1 = relay_fixture()
-      relay_token = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret, relay_token.id)
-
-      update_relay(relay1,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
-        last_seen_remote_ip_location_lat: 37.0,
-        last_seen_remote_ip_location_lon: -120.0
-      )
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
@@ -679,7 +625,7 @@ defmodule PortalAPI.Client.ChannelTest do
              } = relay_view
 
       # Untrack from global topic to trigger presence change notification
-      Portal.Presence.Relays.untrack(self(), Portal.Presence.Relays.Global.topic(), relay1.id)
+      Portal.Presence.Relays.disconnect(relay1)
 
       assert_push "relays_presence",
                   %{
@@ -779,15 +725,12 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_info/2 for presence events" do
-    test "does not send disconnect if relay reconnects with same stamp secret", %{
+    test "does not send disconnect if relay reconnects with same id", %{
       client: client,
       subject: subject
     } do
       # Connect relay BEFORE client joins so it's included in init
-      relay1 = relay_fixture()
-      stamp_secret1 = Ecto.UUID.generate()
-      relay_token = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
       _socket = join_channel(client, subject)
 
@@ -795,12 +738,12 @@ defmodule PortalAPI.Client.ChannelTest do
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
-      # Disconnect and immediately reconnect with same stamp secret
+      # Disconnect and immediately reconnect with same relay (same id)
       # The CRDT state will show the relay as online when we check Presence.list()
-      disconnect_relay(relay1)
-      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      Portal.Presence.Relays.disconnect(relay1)
+      :ok = Portal.Presence.Relays.connect(relay1)
 
-      # Should not receive any disconnect since relay is still online with same secret
+      # Should not receive any disconnect since relay is still online with same id
       relay_id = relay1.id
 
       refute_push "relays_presence",
@@ -810,15 +753,12 @@ defmodule PortalAPI.Client.ChannelTest do
                   100
     end
 
-    test "sends disconnect when relay reconnects with a different stamp secret", %{
+    test "sends disconnect when relay reconnects with a different id", %{
       client: client,
       subject: subject
     } do
       # Connect relay BEFORE client joins so it's included in init
-      relay1 = relay_fixture()
-      stamp_secret1 = Ecto.UUID.generate()
-      relay_token = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
       _socket = join_channel(client, subject)
 
@@ -826,12 +766,11 @@ defmodule PortalAPI.Client.ChannelTest do
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
-      # Disconnect and reconnect with a different stamp secret
-      disconnect_relay(relay1)
-      stamp_secret2 = Ecto.UUID.generate()
-      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret2, relay_token.id)
+      # Disconnect and connect a new relay (different id)
+      Portal.Presence.Relays.disconnect(relay1)
+      relay2 = connect_relay(%{lat: 37.0, lon: -120.0})
 
-      # Should receive disconnect since stamp_secret changed
+      # Should receive disconnect for old relay and connect for new relay
       assert_push "relays_presence",
                   %{
                     connected: [relay_view1, relay_view2],
@@ -839,8 +778,8 @@ defmodule PortalAPI.Client.ChannelTest do
                   },
                   100
 
-      assert relay_view1.id == relay1.id
-      assert relay_view2.id == relay1.id
+      assert relay_view1.id == relay2.id
+      assert relay_view2.id == relay2.id
       assert relay_id == relay1.id
     end
 
@@ -849,10 +788,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       # Connect relay BEFORE client joins so it's included in init
-      relay1 = relay_fixture()
-      stamp_secret1 = Ecto.UUID.generate()
-      relay_token = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token.id)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
       _socket = join_channel(client, subject)
 
@@ -860,7 +796,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert relay1.id == relay_view1.id
       assert relay1.id == relay_view2.id
 
-      disconnect_relay(relay1)
+      Portal.Presence.Relays.disconnect(relay1)
 
       # Should receive disconnect (no debouncing - but presence_diff takes a moment)
       assert_push "relays_presence",
@@ -880,10 +816,7 @@ defmodule PortalAPI.Client.ChannelTest do
       _socket = join_channel(client, subject)
 
       # Connect relay1
-      relay1 = relay_fixture()
-      stamp_secret1 = Ecto.UUID.generate()
-      relay_token1 = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay1, stamp_secret1, relay_token1.id)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
       assert_push "relays_presence",
                   %{
@@ -896,7 +829,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert relay1.id == relay_view2.id
 
       # Disconnect relay1 - with CRDT-based approach, this is detected immediately
-      disconnect_relay(relay1)
+      Portal.Presence.Relays.disconnect(relay1)
 
       # Should receive disconnect notification immediately (no debouncing)
       assert_push "relays_presence",
@@ -909,10 +842,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert relay1_id == relay1.id
 
       # Connect relay2 - should receive update with new relay
-      relay2 = relay_fixture()
-      stamp_secret2 = Ecto.UUID.generate()
-      relay_token2 = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay2, stamp_secret2, relay_token2.id)
+      relay2 = connect_relay(%{lat: 37.0, lon: -120.0})
 
       assert_push "relays_presence",
                   %{
@@ -941,31 +871,11 @@ defmodule PortalAPI.Client.ChannelTest do
 
       # Create relays at different distances from Texas
       # Kansas (~930km from Houston)
-      relay_kansas =
-        relay_with_location_fixture(%{
-          last_seen_remote_ip_location_lat: 38.0,
-          last_seen_remote_ip_location_lon: -97.0
-        })
-
+      relay_kansas = connect_relay(%{lat: 38.0, lon: -97.0})
       # Mexico (~1100km from Houston)
-      relay_mexico =
-        relay_with_location_fixture(%{
-          last_seen_remote_ip_location_lat: 20.59,
-          last_seen_remote_ip_location_lon: -100.39
-        })
-
+      relay_mexico = connect_relay(%{lat: 20.59, lon: -100.39})
       # Sydney, Australia (~13700km from Houston)
-      relay_sydney =
-        relay_with_location_fixture(%{
-          last_seen_remote_ip_location_lat: -33.87,
-          last_seen_remote_ip_location_lon: 151.21
-        })
-
-      # Connect all relays
-      relay_token = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay_kansas, Ecto.UUID.generate(), relay_token.id)
-      :ok = Portal.Presence.Relays.connect(relay_mexico, Ecto.UUID.generate(), relay_token.id)
-      :ok = Portal.Presence.Relays.connect(relay_sydney, Ecto.UUID.generate(), relay_token.id)
+      relay_sydney = connect_relay(%{lat: -33.87, lon: 151.21})
 
       _socket = join_channel(client, subject)
 
@@ -993,17 +903,8 @@ defmodule PortalAPI.Client.ChannelTest do
         )
 
       # 2 relays in Kansas at the SAME coordinates (~930km from Houston)
-      relay_kansas_1 =
-        relay_with_location_fixture(%{
-          last_seen_remote_ip_location_lat: 38.0,
-          last_seen_remote_ip_location_lon: -97.0
-        })
-
-      relay_kansas_2 =
-        relay_with_location_fixture(%{
-          last_seen_remote_ip_location_lat: 38.0,
-          last_seen_remote_ip_location_lon: -97.0
-        })
+      relay_kansas_1 = connect_relay(%{lat: 38.0, lon: -97.0})
+      relay_kansas_2 = connect_relay(%{lat: 38.0, lon: -97.0})
 
       # 8 distant relays
       distant_locations = [
@@ -1019,19 +920,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       distant_relays =
         Enum.map(distant_locations, fn {lat, lon} ->
-          relay_with_location_fixture(%{
-            last_seen_remote_ip_location_lat: lat,
-            last_seen_remote_ip_location_lon: lon
-          })
+          connect_relay(%{lat: lat, lon: lon})
         end)
-
-      relay_token = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay_kansas_1, Ecto.UUID.generate(), relay_token.id)
-      :ok = Portal.Presence.Relays.connect(relay_kansas_2, Ecto.UUID.generate(), relay_token.id)
-
-      for relay <- distant_relays do
-        :ok = Portal.Presence.Relays.connect(relay, Ecto.UUID.generate(), relay_token.id)
-      end
 
       _socket = join_channel(client, subject)
 
@@ -1062,47 +952,11 @@ defmodule PortalAPI.Client.ChannelTest do
         )
 
       # Create relays with location
-      relay_with_location_1 =
-        relay_with_location_fixture(%{
-          last_seen_remote_ip_location_lat: 38.0,
-          last_seen_remote_ip_location_lon: -97.0
-        })
+      relay_with_location_1 = connect_relay(%{lat: 38.0, lon: -97.0})
+      relay_with_location_2 = connect_relay(%{lat: 20.59, lon: -100.39})
 
-      relay_with_location_2 =
-        relay_with_location_fixture(%{
-          last_seen_remote_ip_location_lat: 20.59,
-          last_seen_remote_ip_location_lon: -100.39
-        })
-
-      # Create relays without location (nil lat/lon)
-      relay_without_location = relay_fixture()
-
-      update_relay(relay_without_location,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
-
-      relay_token = relay_token_fixture()
-
-      :ok =
-        Portal.Presence.Relays.connect(
-          relay_with_location_1,
-          Ecto.UUID.generate(),
-          relay_token.id
-        )
-
-      :ok =
-        Portal.Presence.Relays.connect(
-          relay_with_location_2,
-          Ecto.UUID.generate(),
-          relay_token.id
-        )
-
-      :ok =
-        Portal.Presence.Relays.connect(
-          relay_without_location,
-          Ecto.UUID.generate(),
-          relay_token.id
-        )
+      # Create relay without location (nil lat/lon)
+      relay_without_location = connect_relay(%{lat: nil, lon: nil})
 
       _socket = join_channel(client, subject)
 
@@ -1130,12 +984,8 @@ defmodule PortalAPI.Client.ChannelTest do
           last_seen_remote_ip_location_lon: nil
         )
 
-      relay1 = relay_with_location_fixture()
-      relay2 = relay_with_location_fixture()
-
-      relay_token = relay_token_fixture()
-      :ok = Portal.Presence.Relays.connect(relay1, Ecto.UUID.generate(), relay_token.id)
-      :ok = Portal.Presence.Relays.connect(relay2, Ecto.UUID.generate(), relay_token.id)
+      _relay1 = connect_relay(%{lat: 37.7749, lon: -122.4194})
+      _relay2 = connect_relay(%{lat: 37.7749, lon: -122.4194})
 
       _socket = join_channel(client, subject)
 
@@ -1157,19 +1007,10 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "init", %{relays: []}
 
-      stamp_secret = Ecto.UUID.generate()
-      relay = relay_fixture()
-
-      update_relay(relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
-        last_seen_remote_ip_location_lat: 37.0,
-        last_seen_remote_ip_location_lon: -120.0
-      )
-
-      relay_token = relay_token_fixture()
+      relay = relay_fixture(%{lat: 37.0, lon: -120.0})
 
       # Connect the relay - this triggers a presence_diff
-      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+      :ok = Portal.Presence.Relays.connect(relay)
 
       # Should receive exactly one relays_presence after debounce period
       assert_push "relays_presence", %{connected: [_, _], disconnected_ids: []}, 200
@@ -1177,8 +1018,8 @@ defmodule PortalAPI.Client.ChannelTest do
       # Rapidly disconnect and reconnect the relay multiple times
       # Each triggers a presence_diff, but they should be coalesced
       for _ <- 1..3 do
-        disconnect_relay(relay)
-        :ok = Portal.Presence.Relays.connect(relay, stamp_secret, relay_token.id)
+        Portal.Presence.Relays.disconnect(relay)
+        :ok = Portal.Presence.Relays.connect(relay)
       end
 
       # After debounce, should receive exactly one update reflecting final state
@@ -2271,12 +2112,10 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject,
       dns_resource: resource,
-      global_relay: global_relay,
-      global_relay_token: global_relay_token
+      global_relay: global_relay
     } do
       socket = join_channel(client, subject)
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2412,16 +2251,10 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token: gateway_token,
       gateway: gateway,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
       subject: subject
     } do
       socket = join_channel(client, subject)
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
+      :ok = Portal.Presence.Relays.connect(global_relay)
 
       :ok = PubSub.Account.subscribe(gateway.account_id)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
@@ -2463,7 +2296,6 @@ defmodule PortalAPI.Client.ChannelTest do
       internet_resource: resource,
       client: client,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
       subject: subject
     } do
       socket = join_channel(client, subject)
@@ -2474,14 +2306,9 @@ defmodule PortalAPI.Client.ChannelTest do
         }
       )
 
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay)
 
       :ok = PubSub.Account.subscribe(account.id)
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
@@ -2523,21 +2350,15 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token: gateway_token,
       gateway: gateway,
       subject: subject,
-      global_relay: global_relay,
-      global_relay_token: global_relay_token
+      global_relay: global_relay
     } do
       socket = join_channel(client, subject)
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
+      :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = PubSub.Account.subscribe(gateway.account_id)
 
       send(socket.channel_pid, {:created, resource})
       send(socket.channel_pid, {:created, policy})
       send(socket.channel_pid, {:created, membership})
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
 
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
@@ -2623,7 +2444,6 @@ defmodule PortalAPI.Client.ChannelTest do
       membership: membership,
       gateway: gateway,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
       group: group
     } do
       actor = actor_fixture(type: :service_account, account: account)
@@ -2641,12 +2461,7 @@ defmodule PortalAPI.Client.ChannelTest do
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
+      :ok = Portal.Presence.Relays.connect(global_relay)
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
@@ -2677,15 +2492,10 @@ defmodule PortalAPI.Client.ChannelTest do
       membership: _membership,
       subject: subject,
       client: client,
-      global_relay: global_relay,
-      global_relay_token: global_relay_token
+      global_relay: global_relay
     } do
       :ok =
-        Portal.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
+        Portal.Presence.Relays.connect(global_relay)
 
       # Use an older client version for this test
       client = %{client | last_seen_version: "1.4.55"}
@@ -2753,18 +2563,12 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource_policy: policy,
       membership: membership,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
       client: client,
       subject: subject
     } do
       socket = join_channel(client, subject)
 
-      :ok =
-        Portal.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
+      :ok = Portal.Presence.Relays.connect(global_relay)
 
       gateway1 =
         gateway_fixture(
@@ -2891,16 +2695,10 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject,
       dns_resource: resource,
       gateway: gateway,
-      global_relay: global_relay,
-      global_relay_token: global_relay_token
+      global_relay: global_relay
     } do
       socket = join_channel(client, subject)
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
+      :ok = Portal.Presence.Relays.connect(global_relay)
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
@@ -2944,16 +2742,10 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject,
       group: group,
       membership: membership,
-      global_relay: global_relay,
-      global_relay_token: global_relay_token
+      global_relay: global_relay
     } do
       socket = join_channel(client, subject)
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
+      :ok = Portal.Presence.Relays.connect(global_relay)
 
       site = site_fixture(account: account)
 
@@ -2997,10 +2789,6 @@ defmodule PortalAPI.Client.ChannelTest do
         )
         |> Repo.preload(:site)
 
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
-
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       :ok = PubSub.Account.subscribe(account.id)
@@ -3041,8 +2829,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject,
       internet_site: internet_site,
       internet_resource: resource,
-      global_relay: global_relay,
-      global_relay_token: global_relay_token
+      global_relay: global_relay
     } do
       socket = join_channel(client, subject)
 
@@ -3053,12 +2840,7 @@ defmodule PortalAPI.Client.ChannelTest do
           }
         )
 
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Portal.Presence.Relays.connect(global_relay, stamp_secret, global_relay_token.id)
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
+      :ok = Portal.Presence.Relays.connect(global_relay)
 
       gateway =
         gateway_fixture(
@@ -3086,10 +2868,6 @@ defmodule PortalAPI.Client.ChannelTest do
         )
         |> Repo.preload(:site)
 
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
-
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
@@ -3110,7 +2888,6 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource: resource,
       gateway: gateway,
       global_relay: global_relay,
-      global_relay_token: global_relay_token,
       group: group
     } do
       actor = actor_fixture(type: :service_account, account: account)
@@ -3129,11 +2906,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
       :ok =
-        Portal.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
+        Portal.Presence.Relays.connect(global_relay)
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
@@ -3150,15 +2923,10 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource: resource,
       subject: subject,
       client: client,
-      global_relay: global_relay,
-      global_relay_token: global_relay_token
+      global_relay: global_relay
     } do
       :ok =
-        Portal.Presence.Relays.connect(global_relay, Ecto.UUID.generate(), global_relay_token.id)
-
-      update_relay(global_relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
-      )
+        Portal.Presence.Relays.connect(global_relay)
 
       client = %{client | last_seen_version: "1.2.55"}
 

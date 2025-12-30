@@ -280,41 +280,12 @@ defmodule Portal.Presence do
   end
 
   defmodule Relays do
-    def track(pid, topic, id, meta) do
-      Portal.Presence.track(pid, topic, id, meta)
-    end
+    @moduledoc """
+    Presence tracking for relays. Relays are ephemeral and only exist while connected.
+    They are identified by their id (a UUID derived from the stamp_secret).
+    """
 
-    def untrack(pid, topic, id) do
-      Portal.Presence.untrack(pid, topic, id)
-    end
-
-    # Functions moved from Portal.Relays
-    @doc false
-    def preload_relays_presence([relay]) do
-      __MODULE__.Global.topic()
-      |> Portal.Presence.get_by_key(relay.id)
-      |> case do
-        [] -> %{relay | online?: false}
-        %{metas: [_ | _]} -> %{relay | online?: true}
-      end
-      |> List.wrap()
-    end
-
-    def preload_relays_presence(relays) do
-      # Only global relays now
-      connected_relays =
-        __MODULE__.Global.list()
-        |> Map.keys()
-
-      Enum.map(relays, fn relay ->
-        %{relay | online?: relay.id in connected_relays}
-      end)
-    end
-
-    def online_relay_ids do
-      __MODULE__.Global.list()
-      |> Map.keys()
-    end
+    alias Portal.Relay
 
     def send_metrics do
       count = __MODULE__.Global.list() |> Enum.count()
@@ -324,43 +295,42 @@ defmodule Portal.Presence do
       })
     end
 
-    def connect(%Portal.Relay{} = relay, secret, token_id) do
-      # Kill any existing connections with the same stamp_secret to handle
+    def connect(%Relay{} = relay) do
+      # Kill any existing connections with the same id to handle
       # reconnection scenarios where the load balancer killed the old connection
       # but the backend hasn't learned about it yet (heartbeat timeout pending)
-      disconnect_by_stamp_secret(secret)
+      disconnect_by_id(relay.id)
 
       with {:ok, _} <-
              Portal.Presence.track(self(), __MODULE__.Global.topic(), relay.id, %{
-               online_at: System.system_time(:second),
-               secret: secret,
-               token_id: token_id,
+               stamp_secret: relay.stamp_secret,
                ipv4: relay.ipv4,
                ipv6: relay.ipv6,
                port: relay.port,
-               last_seen_remote_ip_location_lat: relay.last_seen_remote_ip_location_lat,
-               last_seen_remote_ip_location_lon: relay.last_seen_remote_ip_location_lon
+               lat: relay.lat,
+               lon: relay.lon
              }) do
-        :ok = PubSub.Relay.subscribe(relay.id)
         :ok
       end
     end
 
-    defp disconnect_by_stamp_secret(secret) do
+    defp disconnect_by_id(id) do
       topic = __MODULE__.Global.topic()
 
-      # Get all connected relays and find any with matching stamp_secret
-      topic
-      |> Portal.Presence.list()
-      |> Enum.each(fn {relay_id, _} ->
-        # Phoenix.Tracker.get_by_key returns [{pid, meta}] for each presence
-        Phoenix.Tracker.get_by_key(Portal.Presence, topic, relay_id)
-        |> Enum.each(fn {pid, meta} ->
-          if meta.secret == secret and pid != self() do
-            Process.exit(pid, :shutdown)
-          end
-        end)
+      # Phoenix.Tracker.get_by_key returns [{pid, meta}] for each presence
+      Phoenix.Tracker.get_by_key(Portal.Presence, topic, id)
+      |> Enum.each(fn {pid, _meta} ->
+        if pid != self() do
+          Process.exit(pid, :shutdown)
+        end
       end)
+    end
+
+    @doc """
+    Disconnects a relay from presence.
+    """
+    def disconnect(%Relay{id: id}) do
+      Portal.Presence.untrack(self(), __MODULE__.Global.topic(), id)
     end
 
     def all_connected_relays(except_ids \\ []) do
@@ -369,20 +339,15 @@ defmodule Portal.Presence do
       relays =
         connected_relays
         |> Enum.reject(fn {id, _} -> id in except_ids end)
-        |> Enum.map(fn {id, %{metas: metas}} ->
-          meta =
-            metas
-            |> Enum.sort_by(& &1.online_at, :desc)
-            |> List.first()
-
-          %Portal.Relay{
+        |> Enum.map(fn {id, %{metas: [meta | _]}} ->
+          %Relay{
             id: id,
+            stamp_secret: meta.stamp_secret,
             ipv4: meta.ipv4,
             ipv6: meta.ipv6,
             port: meta.port,
-            stamp_secret: meta.secret,
-            last_seen_remote_ip_location_lat: Map.get(meta, :last_seen_remote_ip_location_lat),
-            last_seen_remote_ip_location_lon: Map.get(meta, :last_seen_remote_ip_location_lon)
+            lat: Map.get(meta, :lat),
+            lon: Map.get(meta, :lon)
           }
         end)
 
