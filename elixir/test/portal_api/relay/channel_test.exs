@@ -9,11 +9,11 @@ defmodule PortalAPI.Relay.ChannelTest do
     relay = relay_fixture()
     token = relay_token_fixture()
 
-    stamp_secret = Portal.Crypto.random_token()
+    stamp_secret = relay.stamp_secret
 
     {:ok, _, socket} =
       PortalAPI.Relay.Socket
-      |> socket("relay:#{relay.id}", %{
+      |> socket("relay:#{stamp_secret}", %{
         token_id: token.id,
         relay: relay,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
@@ -21,15 +21,14 @@ defmodule PortalAPI.Relay.ChannelTest do
       })
       |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
-    %{relay: relay, socket: socket, token: token}
+    %{relay: relay, socket: socket, token: token, stamp_secret: stamp_secret}
   end
 
   describe "join/3" do
     test "tracks presence after join", %{relay: relay} do
       presence = Portal.Presence.Relays.Global.list()
 
-      assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
-      assert is_number(online_at)
+      assert %{metas: [%{ipv4: _, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
     end
 
     test "channel crash takes down the transport", %{socket: socket} do
@@ -49,11 +48,9 @@ defmodule PortalAPI.Relay.ChannelTest do
       assert_push "init", %{}
     end
 
-    test "kills existing connection when new relay connects with same stamp_secret" do
-      # Create a new relay
+    test "kills existing connection when new relay connects with same id" do
+      # Create a new relay with a known stamp_secret
       relay = relay_fixture()
-      token = relay_token_fixture()
-      stamp_secret = Portal.Crypto.random_token()
 
       test_pid = self()
 
@@ -63,17 +60,15 @@ defmodule PortalAPI.Relay.ChannelTest do
       # First "connection" - spawn a process that tracks presence directly
       first_pid =
         spawn(fn ->
-          # Track presence directly using the test-specific topic
+          # Track presence directly using the relay ID
           {:ok, _} =
             Portal.Presence.track(self(), topic, relay.id, %{
-              online_at: System.system_time(:second),
-              secret: stamp_secret,
-              token_id: token.id,
+              stamp_secret: relay.stamp_secret,
               ipv4: relay.ipv4,
               ipv6: relay.ipv6,
               port: relay.port,
-              last_seen_remote_ip_location_lat: relay.last_seen_remote_ip_location_lat,
-              last_seen_remote_ip_location_lon: relay.last_seen_remote_ip_location_lon
+              lat: relay.lat,
+              lon: relay.lon
             })
 
           send(test_pid, :first_connected)
@@ -87,13 +82,13 @@ defmodule PortalAPI.Relay.ChannelTest do
 
       # Verify first connection is tracked
       presence = Portal.Presence.Relays.Global.list()
-      assert %{metas: [%{secret: ^stamp_secret}]} = Map.fetch!(presence, relay.id)
+      assert %{metas: [%{ipv4: _}]} = Map.fetch!(presence, relay.id)
 
       # Monitor the first process
       ref = Process.monitor(first_pid)
 
-      # Second connection with same stamp_secret (this should kill the first)
-      :ok = Portal.Presence.Relays.connect(relay, stamp_secret, token.id)
+      # Second connection with same ID (this should kill the first)
+      :ok = Portal.Presence.Relays.connect(relay)
 
       # First process should be killed
       assert_receive {:DOWN, ^ref, :process, ^first_pid, :shutdown}, 1000
@@ -128,7 +123,6 @@ defmodule PortalAPI.Relay.ChannelTest do
 
       assert log =~ "[warning]"
       assert log =~ "Relay missed heartbeat"
-      assert log =~ relay.id
       assert log =~ "timeout_ticks=9"
     end
 
