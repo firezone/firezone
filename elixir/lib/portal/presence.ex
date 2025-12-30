@@ -356,7 +356,7 @@ defmodule Portal.Presence do
 
     defmodule Global do
       def topic do
-        Portal.Config.get_env(:portal, :relay_presence_topic, "presences:relays")
+        Portal.Config.get_env(:portal, :relay_presence_topic, "presences:global_relays")
       end
 
       def list do
