@@ -24,6 +24,54 @@ defmodule PortalAPI.Relay.SocketTest do
       assert connect(Socket, %{}, connect_info: @connect_info) == {:error, :missing_token}
     end
 
+    test "accepts token from x-authorization header" do
+      token = relay_token_fixture()
+      encrypted_secret = encode_relay_token(token)
+
+      # Attrs without token param
+      attrs = %{
+        "ipv4" => "100.64.1.1",
+        "ipv6" => "2001:db8::1",
+        "port" => 3478
+      }
+
+      # Add x-authorization header with Bearer token
+      connect_info = %{
+        @connect_info
+        | x_headers: [{"x-authorization", "Bearer #{encrypted_secret}"} | @connect_info.x_headers]
+      }
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert relay = Map.fetch!(socket.assigns, :relay)
+      assert relay.ipv4 == "100.64.1.1"
+    end
+
+    test "x-authorization header takes precedence over token param" do
+      # Create two tokens
+      token1 = relay_token_fixture()
+      encrypted_secret1 = encode_relay_token(token1)
+
+      token2 = relay_token_fixture()
+      encrypted_secret2 = encode_relay_token(token2)
+
+      # Use token1 in header, token2 in params
+      attrs = %{
+        "token" => encrypted_secret2,
+        "ipv4" => "100.64.1.1"
+      }
+
+      connect_info = %{
+        @connect_info
+        | x_headers: [
+            {"x-authorization", "Bearer #{encrypted_secret1}"} | @connect_info.x_headers
+          ]
+      }
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      # Should use the header token (token1)
+      assert socket.assigns.token_id == token1.id
+    end
+
     test "builds a relay from connection params" do
       token = relay_token_fixture()
       encrypted_secret = encode_relay_token(token)

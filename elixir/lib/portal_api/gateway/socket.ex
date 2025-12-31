@@ -15,49 +15,52 @@ defmodule PortalAPI.Gateway.Socket do
   ## Authentication
 
   @impl true
-  def connect(%{"token" => encoded_token} = attrs, socket, connect_info) do
+  def connect(attrs, socket, connect_info) do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "gateway.connect" do
-      context = PortalAPI.Sockets.auth_context(connect_info, :gateway)
-      attrs = Map.take(attrs, ~w[external_id name public_key])
-
-      with {:ok, gateway_token} <- Auth.verify_gateway_token(encoded_token),
-           {:ok, site} <- DB.fetch_site(gateway_token.site_id),
-           changeset = upsert_changeset(site, attrs, context),
-           {:ok, gateway} <- DB.upsert_gateway(changeset, site) do
-        OpenTelemetry.Tracer.set_attributes(%{
-          token_id: gateway_token.id,
-          gateway_id: gateway.id,
-          account_id: gateway.account_id,
-          version: gateway.last_seen_version
-        })
-
-        socket =
-          socket
-          |> assign(:token_id, gateway_token.id)
-          |> assign(:site, site)
-          |> assign(:gateway, gateway)
-          |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
-          |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
-
-        {:ok, socket}
-      else
-        error ->
-          trace = Process.info(self(), :current_stacktrace)
-          Logger.info("Gateway socket connection failed", error: error, stacktrace: trace)
-
-          error
+      case PortalAPI.Sockets.extract_token(attrs, connect_info) do
+        {:ok, encoded_token} -> do_connect(encoded_token, attrs, socket, connect_info)
+        :error -> {:error, :missing_token}
       end
     end
   end
 
-  def connect(_params, _socket, _connect_info) do
-    {:error, :missing_token}
-  end
-
   @impl true
   def id(socket), do: Portal.Sockets.socket_id(socket.assigns.token_id)
+
+  defp do_connect(encoded_token, attrs, socket, connect_info) do
+    context = PortalAPI.Sockets.auth_context(connect_info, :gateway)
+    attrs = Map.take(attrs, ~w[external_id name public_key])
+
+    with {:ok, gateway_token} <- Auth.verify_gateway_token(encoded_token),
+         {:ok, site} <- DB.fetch_site(gateway_token.site_id),
+         changeset = upsert_changeset(site, attrs, context),
+         {:ok, gateway} <- DB.upsert_gateway(changeset, site) do
+      OpenTelemetry.Tracer.set_attributes(%{
+        token_id: gateway_token.id,
+        gateway_id: gateway.id,
+        account_id: gateway.account_id,
+        version: gateway.last_seen_version
+      })
+
+      socket =
+        socket
+        |> assign(:token_id, gateway_token.id)
+        |> assign(:site, site)
+        |> assign(:gateway, gateway)
+        |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
+        |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
+
+      {:ok, socket}
+    else
+      error ->
+        trace = Process.info(self(), :current_stacktrace)
+        Logger.info("Gateway socket connection failed", error: error, stacktrace: trace)
+
+        error
+    end
+  end
 
   defp upsert_changeset(site, attrs, context) do
     upsert_fields = ~w[external_id name public_key
