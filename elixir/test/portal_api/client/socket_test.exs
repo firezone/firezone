@@ -34,6 +34,48 @@ defmodule PortalAPI.Client.SocketTest do
       assert connect(Socket, %{}, connect_info: @connect_info) == {:error, :missing_token}
     end
 
+    test "accepts token from x-authorization header" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+
+      # Attrs without token param, but with other required fields
+      attrs =
+        valid_client_attrs()
+        |> Map.take([:external_id, :public_key])
+        |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+
+      # Add x-authorization header with Bearer token
+      connect_info = %{
+        @connect_info
+        | x_headers: [{"x-authorization", "Bearer #{encoded_token}"} | @connect_info.x_headers]
+      }
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert client = Map.fetch!(socket.assigns, :client)
+      assert client.external_id == attrs["external_id"]
+    end
+
+    test "x-authorization header takes precedence over token param" do
+      # Create two tokens
+      token1 = client_token_fixture()
+      encoded_token1 = encode_token(token1)
+
+      token2 = client_token_fixture()
+      encoded_token2 = encode_token(token2)
+
+      # Use token1 in header, token2 in params
+      attrs = connect_attrs(token: encoded_token2)
+
+      connect_info = %{
+        @connect_info
+        | x_headers: [{"x-authorization", "Bearer #{encoded_token1}"} | @connect_info.x_headers]
+      }
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      # Should use the header token (token1)
+      assert socket.assigns.subject.credential.id == token1.id
+    end
+
     test "returns error when token is invalid" do
       attrs = connect_attrs(token: "foo")
       assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}
