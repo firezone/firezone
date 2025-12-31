@@ -1,5 +1,5 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
-use secrecy::{CloneableSecret, ExposeSecret as _, SecretString, zeroize::Zeroize};
+use secrecy::SecretString;
 use serde::Deserialize;
 use sha2::Digest as _;
 use std::{
@@ -41,15 +41,10 @@ pub struct LoginUrl<TFinish> {
     host: String,
     port: u16,
 
-    phantom: PhantomData<TFinish>,
-}
+    /// The authentication token, sent via X-Authorization header.
+    token: SecretString,
 
-impl<TFinish> Zeroize for LoginUrl<TFinish> {
-    fn zeroize(&mut self) {
-        let placeholder = Url::parse("http://a.com")
-            .expect("placeholder URL should always be valid, it's hard-coded");
-        let _ = std::mem::replace(&mut self.url, placeholder);
-    }
+    phantom: PhantomData<TFinish>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,8 +71,6 @@ impl IntoIterator for NoParams {
     }
 }
 
-impl<TFinish> CloneableSecret for LoginUrl<TFinish> where TFinish: Clone {}
-
 impl LoginUrl<PublicKeyParam> {
     pub fn client<E>(
         url: impl TryInto<Url, Error = E>,
@@ -98,7 +91,6 @@ impl LoginUrl<PublicKeyParam> {
 
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
-            firezone_token,
             "client",
             Some(external_id),
             Some(device_name),
@@ -114,6 +106,7 @@ impl LoginUrl<PublicKeyParam> {
             host,
             port,
             url,
+            token: firezone_token.clone(),
             phantom: PhantomData,
         })
     }
@@ -135,7 +128,6 @@ impl LoginUrl<PublicKeyParam> {
 
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
-            firezone_token,
             "gateway",
             Some(external_id),
             Some(device_name),
@@ -151,6 +143,7 @@ impl LoginUrl<PublicKeyParam> {
             host,
             port,
             url,
+            token: firezone_token.clone(),
             phantom: PhantomData,
         })
     }
@@ -167,7 +160,6 @@ impl LoginUrl<NoParams> {
     ) -> Result<Self, LoginUrlError<E>> {
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
-            firezone_token,
             "relay",
             None,
             device_name,
@@ -183,6 +175,7 @@ impl LoginUrl<NoParams> {
             host,
             port,
             url,
+            token: firezone_token.clone(),
             phantom: PhantomData,
         })
     }
@@ -213,6 +206,10 @@ impl<TFinish> LoginUrl<TFinish> {
         url.set_query(None);
 
         url.to_string()
+    }
+
+    pub fn token(&self) -> &SecretString {
+        &self.token
     }
 }
 
@@ -255,7 +252,6 @@ fn get_host_name() -> Option<String> {
 
 fn get_websocket_path<E>(
     mut api_url: Url,
-    token: &SecretString,
     mode: &str,
     external_id: Option<String>,
     name: Option<String>,
@@ -279,7 +275,6 @@ fn get_websocket_path<E>(
     {
         let mut query_pairs = api_url.query_pairs_mut();
         query_pairs.clear();
-        query_pairs.append_pair("token", token.expose_secret());
 
         if let Some(external_id) = external_id {
             query_pairs.append_pair("external_id", &external_id);

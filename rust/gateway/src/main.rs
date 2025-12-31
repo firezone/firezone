@@ -21,7 +21,7 @@ use telemetry::{
 use tunnel::GatewayTunnel;
 
 use phoenix_channel::PhoenixChannel;
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use std::{collections::BTreeSet, fmt};
 use std::{path::PathBuf, process::ExitCode};
 use std::{sync::Arc, time::Duration};
@@ -198,7 +198,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         nameservers,
     );
     let portal = PhoenixChannel::disconnected(
-        SecretBox::init_with(|| login),
+        login,
         get_user_agent("gateway", env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),

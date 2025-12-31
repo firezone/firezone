@@ -14,7 +14,7 @@ use logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
@@ -239,7 +239,7 @@ async fn try_main(args: Args) -> Result<()> {
     )?;
 
     let mut channel = PhoenixChannel::disconnected(
-        SecretBox::init_with(|| login),
+        login,
         get_user_agent("relay", env!("CARGO_PKG_VERSION")),
         "relay",
         JoinMessage {
