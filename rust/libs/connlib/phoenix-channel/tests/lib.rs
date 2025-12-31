@@ -99,6 +99,9 @@ async fn client_does_not_pipeline_messages() {
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
                 }
+                phoenix_channel::Event::RetryAfter { error, .. } => {
+                    panic!("Unexpected retry-after: {error:?}")
+                }
                 phoenix_channel::Event::Closed => break,
             }
         }
@@ -207,6 +210,9 @@ async fn client_deduplicates_messages() {
                 }
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
+                }
+                phoenix_channel::Event::RetryAfter { error, .. } => {
+                    panic!("Unexpected retry-after: {error:?}")
                 }
                 phoenix_channel::Event::Closed => break,
             }

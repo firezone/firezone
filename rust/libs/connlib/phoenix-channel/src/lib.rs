@@ -233,6 +233,25 @@ impl std::error::Error for InternalError {
     }
 }
 
+/// Parses a Retry-After header value into a Duration.
+///
+/// The header can be either:
+/// - A number of seconds (e.g., "120")
+/// - An HTTP date (e.g., "Wed, 21 Oct 2015 07:28:00 GMT") - not currently supported
+fn parse_retry_after(response: &tungstenite::http::Response<Option<Vec<u8>>>) -> Option<Duration> {
+    let header = response.headers().get("retry-after")?;
+    let value = header.to_str().ok()?;
+
+    // Try parsing as seconds first (most common for 429 responses)
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    // TODO: Parse HTTP date format if needed
+
+    None
+}
+
 /// A strict-monotonically increasing ID for outbound requests.
 #[derive(Debug, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct OutboundRequestId(u64);
@@ -492,6 +511,27 @@ where
                             && r.status() != StatusCode::REQUEST_TIMEOUT =>
                     {
                         return Poll::Ready(Err(Error::Client(r.status())));
+                    }
+                    // Handle 429 and 503 with Retry-After header
+                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
+                        if (r.status() == StatusCode::TOO_MANY_REQUESTS
+                            || r.status() == StatusCode::SERVICE_UNAVAILABLE)
+                            && parse_retry_after(&r).is_some() =>
+                    {
+                        let duration = parse_retry_after(&r).expect("checked above");
+                        let status = r.status();
+
+                        self.state = State::Reconnect { backoff: duration };
+
+                        return Poll::Ready(Ok(Event::RetryAfter {
+                            duration,
+                            error: anyhow::Error::new(InternalError::WebSocket(
+                                tungstenite::Error::Http(r),
+                            ))
+                            .context(format!(
+                                "Server returned {status} with Retry-After: {duration:?}"
+                            )),
+                        }));
                     }
                     // Unfortunately, the underlying error gets stringified by tungstenite so we cannot match on anything other than the string.
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Io(io))))
@@ -797,6 +837,11 @@ pub enum Event<TInboundMsg> {
     Hiccup {
         backoff: Duration,
         max_elapsed_time: Option<Duration>,
+        error: anyhow::Error,
+    },
+    /// The server sent a 429 or 503 with a Retry-After header specifying when to retry.
+    RetryAfter {
+        duration: Duration,
         error: anyhow::Error,
     },
     /// The connection was closed successfully.
@@ -1268,9 +1313,9 @@ mod tests {
         let mut channel = make_test_channel(port);
         channel.connect(PublicKeyParam([0u8; 32]));
 
-        let mut previous_backoff = Duration::ZERO;
+        let mut backoffs = Vec::new();
 
-        // Poll multiple times and verify backoff increases
+        // Poll multiple times and collect backoff values
         for i in 0..5 {
             let result = tokio::time::timeout(Duration::from_secs(5), async {
                 future::poll_fn(|cx| channel.poll(cx)).await
@@ -1283,21 +1328,143 @@ mod tests {
                 other => panic!("expected Event::Hiccup on iteration {i}, got {other:?}"),
             };
 
-            // First attempt has zero backoff, subsequent attempts should grow
-            if i > 0 {
-                assert!(
-                    current_backoff > previous_backoff,
-                    "backoff should increase: iteration {i}, previous={previous_backoff:?}, current={current_backoff:?}"
-                );
-            }
-
-            previous_backoff = current_backoff;
+            backoffs.push(current_backoff);
         }
 
-        // Verify we actually saw meaningful backoff growth
+        // First attempt should have zero backoff
+        assert_eq!(backoffs[0], Duration::ZERO, "first backoff should be zero");
+
+        // Subsequent backoffs should be non-zero (exponential backoff has jitter, so we can't
+        // guarantee strict monotonic increase, but they should all be positive after first)
+        for (i, backoff) in backoffs.iter().enumerate().skip(1) {
+            assert!(
+                *backoff > Duration::ZERO,
+                "backoff {i} should be positive, got {backoff:?}"
+            );
+        }
+
+        // Final backoff should be significant (showing exponential growth over time)
+        let final_backoff = backoffs.last().unwrap();
         assert!(
-            previous_backoff > Duration::from_millis(100),
-            "final backoff should be significant, got {previous_backoff:?}"
+            *final_backoff > Duration::from_millis(100),
+            "final backoff should be significant, got {final_backoff:?}"
+        );
+    }
+
+    async fn http_status_server_with_retry_after(
+        status: u16,
+        reason: &str,
+        retry_after: u64,
+    ) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let response = format!(
+            "HTTP/1.1 {status} {reason}\r\n\
+             Connection: close\r\n\
+             Content-Type: text/plain\r\n\
+             Retry-After: {retry_after}\r\n\
+             Content-Length: 0\r\n\r\n"
+        );
+
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let response = response.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let mut total_read = 0;
+                    loop {
+                        match tokio::time::timeout(
+                            Duration::from_millis(500),
+                            tokio::io::AsyncReadExt::read(&mut socket, &mut buf[total_read..]),
+                        )
+                        .await
+                        {
+                            Ok(Ok(0)) => break,
+                            Ok(Ok(n)) => {
+                                total_read += n;
+                                if buf[..total_read].windows(4).any(|w| w == b"\r\n\r\n") {
+                                    break;
+                                }
+                            }
+                            _ => break,
+                        }
+                    }
+
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.flush().await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+
+        port
+    }
+
+    #[tokio::test]
+    async fn http_429_with_retry_after_returns_retry_after_event() {
+        let port = http_status_server_with_retry_after(429, "Too Many Requests", 30).await;
+
+        let mut channel = make_test_channel(port);
+        channel.connect(PublicKeyParam([0u8; 32]));
+
+        let result = tokio::time::timeout(Duration::from_secs(5), async {
+            future::poll_fn(|cx| channel.poll(cx)).await
+        })
+        .await
+        .expect("should not timeout");
+
+        // 429 with Retry-After should return Event::RetryAfter with the specified duration
+        match result {
+            Ok(Event::RetryAfter { duration, .. }) => {
+                assert_eq!(duration, Duration::from_secs(30));
+            }
+            other => {
+                panic!("expected Event::RetryAfter for 429 with Retry-After header, got {other:?}")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn http_503_with_retry_after_returns_retry_after_event() {
+        let port = http_status_server_with_retry_after(503, "Service Unavailable", 60).await;
+
+        let mut channel = make_test_channel(port);
+        channel.connect(PublicKeyParam([0u8; 32]));
+
+        let result = tokio::time::timeout(Duration::from_secs(5), async {
+            future::poll_fn(|cx| channel.poll(cx)).await
+        })
+        .await
+        .expect("should not timeout");
+
+        // 503 with Retry-After should return Event::RetryAfter with the specified duration
+        match result {
+            Ok(Event::RetryAfter { duration, .. }) => {
+                assert_eq!(duration, Duration::from_secs(60));
+            }
+            other => {
+                panic!("expected Event::RetryAfter for 503 with Retry-After header, got {other:?}")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn http_503_without_retry_after_returns_hiccup() {
+        let port = http_status_server(503, "Service Unavailable").await;
+
+        let mut channel = make_test_channel(port);
+        channel.connect(PublicKeyParam([0u8; 32]));
+
+        let result = tokio::time::timeout(Duration::from_secs(5), async {
+            future::poll_fn(|cx| channel.poll(cx)).await
+        })
+        .await
+        .expect("should not timeout");
+
+        // 503 without Retry-After should fall back to Event::Hiccup with exponential backoff
+        assert!(
+            matches!(result, Ok(Event::Hiccup { .. })),
+            "expected Event::Hiccup for 503 without Retry-After header, got {result:?}"
         );
     }
 }
