@@ -5,6 +5,20 @@ defmodule PortalAPI.Sockets do
   """
   require Logger
 
+  @doc """
+  Extracts the token from connection parameters or headers.
+
+  Checks the `x-authorization` header first (expecting "Bearer {token}" format),
+  then falls back to the `token` query parameter.
+
+  Returns `{:ok, token}` if found, or `:error` if no token is present.
+  """
+  def extract_token(params, connect_info) do
+    with :error <- extract_token_from_header(connect_info) do
+      extract_token_from_params(params)
+    end
+  end
+
   def handle_error(conn, :invalid_token),
     do: Plug.Conn.send_resp(conn, 401, "Invalid token")
 
@@ -38,4 +52,16 @@ defmodule PortalAPI.Sockets do
 
     real_ip || peer_data.address
   end
+
+  defp extract_token_from_header(%{x_headers: x_headers}) when is_list(x_headers) do
+    case List.keyfind(x_headers, "x-authorization", 0) do
+      {"x-authorization", "Bearer " <> token} -> {:ok, token}
+      _ -> :error
+    end
+  end
+
+  defp extract_token_from_header(_connect_info), do: :error
+
+  defp extract_token_from_params(%{"token" => token}) when is_binary(token), do: {:ok, token}
+  defp extract_token_from_params(_params), do: :error
 end

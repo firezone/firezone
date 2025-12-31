@@ -27,6 +27,53 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert connect(Socket, %{}, connect_info: @connect_info) == {:error, :missing_token}
     end
 
+    test "accepts token from x-authorization header" do
+      token = gateway_token_fixture()
+      encrypted_secret = encode_gateway_token(token)
+
+      # Attrs without token param, but with other required fields
+      attrs =
+        valid_gateway_attrs()
+        |> Map.take([:external_id, :public_key])
+        |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+
+      # Add x-authorization header with Bearer token
+      connect_info = %{
+        @connect_info
+        | x_headers: [{"x-authorization", "Bearer #{encrypted_secret}"} | @connect_info.x_headers]
+      }
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert gateway = Map.fetch!(socket.assigns, :gateway)
+      assert gateway.external_id == attrs["external_id"]
+    end
+
+    test "x-authorization header takes precedence over token param" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+
+      # Create two tokens for the same site
+      token1 = gateway_token_fixture(account: account, site: site)
+      encrypted_secret1 = encode_gateway_token(token1)
+
+      token2 = gateway_token_fixture(account: account, site: site)
+      encrypted_secret2 = encode_gateway_token(token2)
+
+      # Use token1 in header, token2 in params
+      attrs = connect_attrs(token: encrypted_secret2)
+
+      connect_info = %{
+        @connect_info
+        | x_headers: [
+            {"x-authorization", "Bearer #{encrypted_secret1}"} | @connect_info.x_headers
+          ]
+      }
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      # Should use the header token (token1)
+      assert socket.assigns.token_id == token1.id
+    end
+
     test "creates a new gateway" do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)
