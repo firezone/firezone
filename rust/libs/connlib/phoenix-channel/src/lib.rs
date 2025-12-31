@@ -237,17 +237,32 @@ impl std::error::Error for InternalError {
 ///
 /// The header can be either:
 /// - A number of seconds (e.g., "120")
-/// - An HTTP date (e.g., "Wed, 21 Oct 2015 07:28:00 GMT") - not currently supported
+/// - An HTTP date in IMF-fixdate format (e.g., "Wed, 21 Oct 2015 07:28:00 GMT")
 fn parse_retry_after(response: &tungstenite::http::Response<Option<Vec<u8>>>) -> Option<Duration> {
     let header = response.headers().get("retry-after")?;
     let value = header.to_str().ok()?;
+    parse_retry_after_value(value)
+}
 
+fn parse_retry_after_value(value: &str) -> Option<Duration> {
     // Try parsing as seconds first (most common for 429 responses)
     if let Ok(seconds) = value.parse::<u64>() {
         return Some(Duration::from_secs(seconds));
     }
 
-    // TODO: Parse HTTP date format if needed
+    // Try parsing as HTTP date (IMF-fixdate format: "Wed, 21 Oct 2015 07:28:00 GMT")
+    if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
+        let now = chrono::Utc::now();
+        let retry_at = date.with_timezone(&chrono::Utc);
+
+        if retry_at > now {
+            let duration = retry_at - now;
+            return duration.to_std().ok();
+        } else {
+            // Date is in the past, retry immediately
+            return Some(Duration::ZERO);
+        }
+    }
 
     None
 }
@@ -1170,5 +1185,53 @@ mod tests {
         .await
         .unwrap()
         .unwrap();
+    }
+
+    #[test]
+    fn parse_retry_after_seconds() {
+        assert_eq!(
+            parse_retry_after_value("120"),
+            Some(Duration::from_secs(120))
+        );
+        assert_eq!(parse_retry_after_value("0"), Some(Duration::from_secs(0)));
+        assert_eq!(
+            parse_retry_after_value("3600"),
+            Some(Duration::from_secs(3600))
+        );
+    }
+
+    #[test]
+    fn parse_retry_after_http_date_in_future() {
+        // Create a date 60 seconds in the future
+        let future_date = chrono::Utc::now() + chrono::Duration::seconds(60);
+        let date_str = future_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+        let result = parse_retry_after_value(&date_str);
+        assert!(result.is_some(), "should parse future HTTP date");
+
+        let duration = result.unwrap();
+        // Allow some tolerance for test execution time
+        assert!(
+            duration >= Duration::from_secs(58) && duration <= Duration::from_secs(62),
+            "duration should be approximately 60 seconds, got {duration:?}"
+        );
+    }
+
+    #[test]
+    fn parse_retry_after_http_date_in_past() {
+        // Create a date 60 seconds in the past
+        let past_date = chrono::Utc::now() - chrono::Duration::seconds(60);
+        let date_str = past_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+        let result = parse_retry_after_value(&date_str);
+        assert_eq!(result, Some(Duration::ZERO), "past date should return zero");
+    }
+
+    #[test]
+    fn parse_retry_after_invalid() {
+        assert_eq!(parse_retry_after_value("invalid"), None);
+        assert_eq!(parse_retry_after_value(""), None);
+        assert_eq!(parse_retry_after_value("-1"), None);
+        assert_eq!(parse_retry_after_value("12.5"), None);
     }
 }

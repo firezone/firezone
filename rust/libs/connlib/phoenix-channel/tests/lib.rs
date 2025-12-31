@@ -496,6 +496,14 @@ async fn http_status_server(status: u16, reason: &str) -> u16 {
 }
 
 async fn http_status_server_with_retry_after(status: u16, reason: &str, retry_after: u64) -> u16 {
+    http_status_server_with_retry_after_str(status, reason, &retry_after.to_string()).await
+}
+
+async fn http_status_server_with_retry_after_str(
+    status: u16,
+    reason: &str,
+    retry_after: &str,
+) -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let response = format!(
@@ -538,4 +546,38 @@ async fn http_status_server_with_retry_after(status: u16, reason: &str, retry_af
     });
 
     port
+}
+
+#[tokio::test]
+async fn http_429_with_retry_after_http_date_returns_retry_after_event() {
+    use chrono::{Duration as ChronoDuration, Utc};
+
+    // Create a date 45 seconds in the future
+    let future_date = Utc::now() + ChronoDuration::seconds(45);
+    let date_str = future_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+    let port = http_status_server_with_retry_after_str(429, "Too Many Requests", &date_str).await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    // 429 with Retry-After HTTP date should return Event::RetryAfter
+    match result {
+        Ok(Event::RetryAfter { duration, .. }) => {
+            // Allow tolerance for test execution time
+            assert!(
+                duration >= Duration::from_secs(43) && duration <= Duration::from_secs(47),
+                "duration should be approximately 45 seconds, got {duration:?}"
+            );
+        }
+        other => {
+            panic!("expected Event::RetryAfter for 429 with Retry-After HTTP date, got {other:?}")
+        }
+    }
 }
