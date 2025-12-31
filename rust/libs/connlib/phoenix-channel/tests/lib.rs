@@ -1,6 +1,15 @@
 #![cfg(not(windows))] // For some reason, Windows doesn't like this test.
 #![allow(clippy::unwrap_used)]
 
+use std::{future, sync::Arc, time::Duration};
+
+use phoenix_channel::{
+    DeviceInfo, Error, Event, LoginUrl, PhoenixChannel, PublicKeyParam, StatusCode,
+};
+use secrecy::{SecretBox, SecretString};
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+
 #[tokio::test]
 async fn client_does_not_pipeline_messages() {
     use std::{str::FromStr, sync::Arc, time::Duration};
@@ -239,4 +248,294 @@ enum InboundMsg {
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum OutboundMsg {
     Bar,
+}
+
+#[tokio::test]
+async fn http_429_triggers_retry() {
+    let port = http_status_server(429, "Too Many Requests").await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    // 429 should trigger a Hiccup (retry) not an Error::Client
+    assert!(
+        matches!(result, Ok(Event::Hiccup { .. })),
+        "expected Event::Hiccup for 429, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn http_408_triggers_retry() {
+    let port = http_status_server(408, "Request Timeout").await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    // 408 should trigger a Hiccup (retry) not an Error::Client
+    assert!(
+        matches!(result, Ok(Event::Hiccup { .. })),
+        "expected Event::Hiccup for 408, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn http_400_returns_client_error() {
+    let port = http_status_server(400, "Bad Request").await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    // 400 should return Error::Client (fatal, no retry)
+    assert!(
+        matches!(result, Err(Error::Client(StatusCode::BAD_REQUEST))),
+        "expected Error::Client(400) for 400, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn backoff_grows_with_repeated_429_failures() {
+    let port = http_status_server(429, "Too Many Requests").await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let mut backoffs = Vec::new();
+
+    // Poll multiple times and collect backoff values
+    for i in 0..5 {
+        let result = tokio::time::timeout(Duration::from_secs(5), async {
+            future::poll_fn(|cx| channel.poll(cx)).await
+        })
+        .await
+        .expect("should not timeout");
+
+        let current_backoff = match result {
+            Ok(Event::Hiccup { backoff, .. }) => backoff,
+            other => panic!("expected Event::Hiccup on iteration {i}, got {other:?}"),
+        };
+
+        backoffs.push(current_backoff);
+    }
+
+    // First attempt should have zero backoff
+    assert_eq!(backoffs[0], Duration::ZERO, "first backoff should be zero");
+
+    // Subsequent backoffs should be non-zero (exponential backoff has jitter, so we can't
+    // guarantee strict monotonic increase, but they should all be positive after first)
+    for (i, backoff) in backoffs.iter().enumerate().skip(1) {
+        assert!(
+            *backoff > Duration::ZERO,
+            "backoff {i} should be positive, got {backoff:?}"
+        );
+    }
+
+    // Final backoff should be significant (showing exponential growth over time)
+    let final_backoff = backoffs.last().unwrap();
+    assert!(
+        *final_backoff > Duration::from_millis(100),
+        "final backoff should be significant, got {final_backoff:?}"
+    );
+}
+
+#[tokio::test]
+async fn http_429_with_retry_after_returns_retry_after_event() {
+    let port = http_status_server_with_retry_after(429, "Too Many Requests", 30).await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    // 429 with Retry-After should return Event::RetryAfter with the specified duration
+    match result {
+        Ok(Event::RetryAfter { duration, .. }) => {
+            assert_eq!(duration, Duration::from_secs(30));
+        }
+        other => {
+            panic!("expected Event::RetryAfter for 429 with Retry-After header, got {other:?}")
+        }
+    }
+}
+
+#[tokio::test]
+async fn http_503_with_retry_after_returns_retry_after_event() {
+    let port = http_status_server_with_retry_after(503, "Service Unavailable", 60).await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    // 503 with Retry-After should return Event::RetryAfter with the specified duration
+    match result {
+        Ok(Event::RetryAfter { duration, .. }) => {
+            assert_eq!(duration, Duration::from_secs(60));
+        }
+        other => {
+            panic!("expected Event::RetryAfter for 503 with Retry-After header, got {other:?}")
+        }
+    }
+}
+
+#[tokio::test]
+async fn http_503_without_retry_after_returns_hiccup() {
+    let port = http_status_server(503, "Service Unavailable").await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    // 503 without Retry-After should fall back to Event::Hiccup with exponential backoff
+    assert!(
+        matches!(result, Ok(Event::Hiccup { .. })),
+        "expected Event::Hiccup for 503 without Retry-After header, got {result:?}"
+    );
+}
+
+fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
+    let url = LoginUrl::client(
+        format!("ws://127.0.0.1:{port}").as_str(),
+        &SecretString::from("test_token"),
+        "test-device-id".to_string(),
+        Some("test-device".to_string()),
+        DeviceInfo::default(),
+    )
+    .unwrap();
+
+    PhoenixChannel::disconnected(
+        SecretBox::new(Box::new(url)),
+        "test-user-agent".to_string(),
+        "test",
+        (),
+        || {
+            backoff::ExponentialBackoffBuilder::new()
+                .with_max_elapsed_time(Some(std::time::Duration::from_secs(60)))
+                .build()
+        },
+        Arc::new(socket_factory::tcp),
+    )
+    .unwrap()
+}
+
+async fn http_status_server(status: u16, reason: &str) -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let response = format!(
+        "HTTP/1.1 {status} {reason}\r\n\
+         Connection: close\r\n\
+         Content-Type: text/plain\r\n\
+         Content-Length: 0\r\n\r\n"
+    );
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let response = response.clone();
+            tokio::spawn(async move {
+                // Read the full HTTP request
+                let mut buf = vec![0u8; 4096];
+                let mut total_read = 0;
+                loop {
+                    match tokio::time::timeout(
+                        Duration::from_millis(500),
+                        tokio::io::AsyncReadExt::read(&mut socket, &mut buf[total_read..]),
+                    )
+                    .await
+                    {
+                        Ok(Ok(0)) => break,
+                        Ok(Ok(n)) => {
+                            total_read += n;
+                            // Check if we've received the end of headers
+                            if buf[..total_read].windows(4).any(|w| w == b"\r\n\r\n") {
+                                break;
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+
+                // Send the HTTP error response
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+
+    port
+}
+
+async fn http_status_server_with_retry_after(status: u16, reason: &str, retry_after: u64) -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let response = format!(
+        "HTTP/1.1 {status} {reason}\r\n\
+         Connection: close\r\n\
+         Content-Type: text/plain\r\n\
+         Retry-After: {retry_after}\r\n\
+         Content-Length: 0\r\n\r\n"
+    );
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let response = response.clone();
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 4096];
+                let mut total_read = 0;
+                loop {
+                    match tokio::time::timeout(
+                        Duration::from_millis(500),
+                        tokio::io::AsyncReadExt::read(&mut socket, &mut buf[total_read..]),
+                    )
+                    .await
+                    {
+                        Ok(Ok(0)) => break,
+                        Ok(Ok(n)) => {
+                            total_read += n;
+                            if buf[..total_read].windows(4).any(|w| w == b"\r\n\r\n") {
+                                break;
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+
+    port
 }

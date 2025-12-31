@@ -553,6 +553,23 @@ async fn phoenix_channel_event_loop(
 
                 portal.update_ips(ips);
             }
+            Either::Left((Ok(phoenix_channel::Event::RetryAfter { duration, error }), _)) => {
+                tracing::info!(?duration, "Server requested retry-after: {error:#}");
+
+                let ips = match udp_dns_client
+                    .resolve(portal.host())
+                    .await
+                    .context("Failed to lookup portal host")
+                {
+                    Ok(ips) => ips.into_iter().collect(),
+                    Err(e) => {
+                        tracing::debug!(host = %portal.host(), "{e:#}");
+                        continue;
+                    }
+                };
+
+                portal.update_ips(ips);
+            }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 
