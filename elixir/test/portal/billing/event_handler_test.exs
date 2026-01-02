@@ -71,6 +71,31 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated_account.name == "Friendly Display Name"
       assert updated_account.legal_name == "Legal Corp Inc"
     end
+
+    test "updates account slug from metadata", %{bypass: bypass, account: account} do
+      original_slug = account.slug
+
+      customer =
+        Stripe.build_customer(
+          id: account.metadata.stripe.customer_id,
+          name: "Same Name",
+          email: "updated@example.com",
+          metadata: %{
+            "account_id" => account.id,
+            "account_slug" => "new-custom-slug"
+          }
+        )
+
+      event = Stripe.build_event("customer.updated", customer)
+
+      Stripe.fetch_customer_endpoint(bypass, customer)
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated_account = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated_account.slug == "new-custom-slug"
+      assert updated_account.slug != original_slug
+    end
   end
 
   describe "handle_event/1 with customer.subscription.deleted" do
