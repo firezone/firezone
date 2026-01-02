@@ -14,7 +14,7 @@ use tokio::net::TcpListener;
 async fn client_does_not_pipeline_messages() {
     use std::{str::FromStr, sync::Arc, time::Duration};
 
-    use backoff::exponential::ExponentialBackoff;
+    use backoff::ExponentialBackoffBuilder;
     use futures::{SinkExt, StreamExt};
     use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, PublicKeyParam};
     use secrecy::SecretString;
@@ -82,7 +82,11 @@ async fn client_does_not_pipeline_messages() {
         "test/1.0.0".to_owned(),
         "test",
         (),
-        ExponentialBackoff::default,
+        || {
+            ExponentialBackoffBuilder::default()
+                .with_initial_interval(Duration::from_secs(1))
+                .build()
+        },
         Arc::new(socket_factory::tcp),
     )
     .unwrap();
@@ -126,7 +130,7 @@ async fn client_does_not_pipeline_messages() {
 async fn client_deduplicates_messages() {
     use std::{str::FromStr, sync::Arc, time::Duration};
 
-    use backoff::exponential::ExponentialBackoff;
+    use backoff::ExponentialBackoffBuilder;
     use futures::{SinkExt, StreamExt};
     use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, PublicKeyParam};
     use secrecy::SecretString;
@@ -185,7 +189,11 @@ async fn client_deduplicates_messages() {
         "test/1.0.0".to_owned(),
         "test",
         (),
-        ExponentialBackoff::default,
+        || {
+            ExponentialBackoffBuilder::default()
+                .with_initial_interval(Duration::from_secs(1))
+                .build()
+        },
         Arc::new(socket_factory::tcp),
     )
     .unwrap();
@@ -329,11 +337,11 @@ async fn backoff_grows_with_repeated_429_failures() {
         backoffs.push(current_backoff);
     }
 
-    // First attempt should have 1 second backoff (minimum for 429/503)
-    assert_eq!(
-        backoffs[0],
-        Duration::from_secs(1),
-        "first backoff should be 1 second"
+    // First attempt should have approximately 1 second backoff (with jitter, ranges from 500ms to 1.5s)
+    assert!(
+        backoffs[0] >= Duration::from_millis(500) && backoffs[0] <= Duration::from_millis(1500),
+        "first backoff should be approximately 1 second, got {:?}",
+        backoffs[0]
     );
 
     // Subsequent backoffs should be non-zero (exponential backoff has jitter, so we can't
@@ -370,6 +378,7 @@ fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
         (),
         || {
             backoff::ExponentialBackoffBuilder::new()
+                .with_initial_interval(std::time::Duration::from_secs(1))
                 .with_max_elapsed_time(Some(std::time::Duration::from_secs(60)))
                 .build()
         },

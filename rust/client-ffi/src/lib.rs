@@ -495,6 +495,7 @@ fn connect(
         (),
         || {
             ExponentialBackoffBuilder::default()
+                .with_initial_interval(Duration::from_secs(1))
                 .with_max_elapsed_time(Some(platform::MAX_PARTITION_TIME))
                 .build()
         },

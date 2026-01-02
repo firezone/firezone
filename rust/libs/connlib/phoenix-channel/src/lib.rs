@@ -502,8 +502,12 @@ where
                                         final_error: r.status().to_string(),
                                     })?,
                                 None => {
-                                    self.reconnect_backoff = Some((self.make_reconnect_backoff)());
-                                    Duration::from_secs(1)
+                                    let mut backoff = (self.make_reconnect_backoff)();
+                                    let duration = backoff
+                                        .next_backoff()
+                                        .expect("first backoff should always succeed");
+                                    self.reconnect_backoff = Some(backoff);
+                                    duration
                                 }
                             },
                         };
