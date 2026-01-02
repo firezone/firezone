@@ -1,8 +1,6 @@
 #![cfg(not(windows))] // For some reason, Windows doesn't like this test.
 #![allow(clippy::unwrap_used)]
 
-use secrecy::SecretBox;
-
 #[tokio::test]
 async fn client_does_not_pipeline_messages() {
     use std::{str::FromStr, sync::Arc, time::Duration};
@@ -61,19 +59,17 @@ async fn client_does_not_pipeline_messages() {
         }
     });
 
-    let login_url = SecretBox::init_with(|| {
-        LoginUrl::client(
-            Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
-            &SecretString::from("secret"),
-            String::new(),
-            None,
-            DeviceInfo::default(),
-        )
-        .unwrap()
-    });
+    let login_url = LoginUrl::client(
+        Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
+        String::new(),
+        None,
+        DeviceInfo::default(),
+    )
+    .unwrap();
 
     let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
         login_url,
+        SecretString::from("secret"),
         "test/1.0.0".to_owned(),
         "test",
         (),
@@ -166,19 +162,17 @@ async fn client_deduplicates_messages() {
         }
     });
 
-    let login_url = SecretBox::init_with(|| {
-        LoginUrl::client(
-            Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
-            &SecretString::from("secret"),
-            String::new(),
-            None,
-            DeviceInfo::default(),
-        )
-        .unwrap()
-    });
+    let login_url = LoginUrl::client(
+        Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
+        String::new(),
+        None,
+        DeviceInfo::default(),
+    )
+    .unwrap();
 
     let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
         login_url,
+        SecretString::from("secret"),
         "test/1.0.0".to_owned(),
         "test",
         (),

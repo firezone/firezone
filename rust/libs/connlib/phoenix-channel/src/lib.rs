@@ -20,7 +20,7 @@ use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
 use logging::err_with_src;
 use rand_core::{OsRng, RngCore};
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::{ExposeSecret as _, SecretString};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
@@ -53,9 +53,11 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     pending_join_requests: BTreeMap<OutboundRequestId, Instant>,
 
     // Stored here to allow re-connecting.
-    url_prototype: SecretBox<LoginUrl<TFinish>>,
+    url_prototype: LoginUrl<TFinish>,
     last_url: Option<Url>,
     user_agent: String,
+    /// The authentication token, sent via X-Authorization header.
+    token: SecretString,
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     reconnect_backoff: Option<ExponentialBackoff>,
 
@@ -83,10 +85,12 @@ impl State {
         addresses: Vec<SocketAddr>,
         host: String,
         user_agent: String,
+        token: SecretString,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
         Self::Connecting(
-            create_and_connect_websocket(url, addresses, host, user_agent, socket_factory).boxed(),
+            create_and_connect_websocket(url, addresses, host, user_agent, token, socket_factory)
+                .boxed(),
         )
     }
 }
@@ -96,6 +100,7 @@ async fn create_and_connect_websocket(
     addresses: Vec<SocketAddr>,
     host: String,
     user_agent: String,
+    token: SecretString,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
     tracing::debug!(%host, ?addresses, %user_agent, "Connecting to portal");
@@ -105,7 +110,7 @@ async fn create_and_connect_websocket(
         .await
         .map_err(|_| InternalError::Timeout { duration })??;
 
-    let (stream, _) = client_async_tls(make_request(url, host, user_agent), socket)
+    let (stream, _) = client_async_tls(make_request(url, host, user_agent, &token), socket)
         .await
         .map_err(InternalError::WebSocket)?;
 
@@ -269,16 +274,16 @@ where
     /// You must explicitly call [`PhoenixChannel::connect`] to establish a connection.
     ///
     /// The provided URL must contain a host.
-    /// Additionally, you must already provide any query parameters required for authentication.
     pub fn disconnected(
-        url: SecretBox<LoginUrl<TFinish>>,
+        url: LoginUrl<TFinish>,
+        token: SecretString,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
         make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Result<Self> {
-        let host_and_port = url.expose_secret().host_and_port();
+        let host_and_port = url.host_and_port();
 
         // Statically resolve the host in the URL to a set of addresses.
         // We use these when connecting the socket to avoid a dependency on DNS resolution later on.
@@ -293,6 +298,7 @@ where
             reconnect_backoff: None,
             url_prototype: url,
             user_agent,
+            token,
             state: State::Closed,
             socket_factory,
             waker: None,
@@ -354,7 +360,7 @@ where
 
     /// Establishes a new connection, dropping the current one if any exists.
     pub fn connect(&mut self, params: TFinish) {
-        let url = self.url_prototype.expose_secret().to_url(params);
+        let url = self.url_prototype.to_url(params);
 
         if matches!(self.state, State::Connecting(_)) && Some(&url) == self.last_url.as_ref() {
             tracing::debug!("We are already connecting");
@@ -366,11 +372,13 @@ where
 
         // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
+        let token = self.token.clone();
         self.state = State::connect(
             url.clone(),
             self.socket_addresses(),
             self.host(),
             user_agent,
+            token,
             self.socket_factory.clone(),
         );
         self.last_url = Some(url);
@@ -382,15 +390,11 @@ where
     }
 
     pub fn url(&self) -> String {
-        self.url_prototype.expose_secret().base_url()
+        self.url_prototype.base_url()
     }
 
     pub fn host(&self) -> String {
-        self.url_prototype
-            .expose_secret()
-            .host_and_port()
-            .0
-            .to_owned()
+        self.url_prototype.host_and_port().0.to_owned()
     }
 
     pub fn update_ips(&mut self, ips: Vec<IpAddr>) {
@@ -446,6 +450,7 @@ where
                         .expect("should have last URL if we receive connection error")
                         .clone();
                     let user_agent = self.user_agent.clone();
+                    let token = self.token.clone();
                     let socket_factory = self.socket_factory.clone();
 
                     self.state = State::Connecting(Box::pin(async move {
@@ -455,6 +460,7 @@ where
                             socket_addresses,
                             host,
                             user_agent,
+                            token,
                             socket_factory,
                         )
                         .await
@@ -473,7 +479,7 @@ where
                         self.pending_joins.clear();
                         self.pending_join_requests.clear();
 
-                        let (host, _) = self.url_prototype.expose_secret().host_and_port();
+                        let (host, _) = self.url_prototype.host_and_port();
 
                         tracing::info!(%host, "Connected to portal");
                         self.join(self.login, self.init_req.clone());
@@ -757,7 +763,7 @@ where
     }
 
     fn socket_addresses(&self) -> Vec<SocketAddr> {
-        let port = self.url_prototype.expose_secret().host_and_port().1;
+        let port = self.url_prototype.host_and_port().1;
 
         self.resolved_addresses
             .iter()
@@ -905,7 +911,7 @@ impl<T> PhoenixMessage<T> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(url: Url, host: String, user_agent: String) -> Request {
+fn make_request(url: Url, host: String, user_agent: String, token: &SecretString) -> Request {
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
@@ -920,6 +926,10 @@ fn make_request(url: Url, host: String, user_agent: String) -> Request {
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
         .header("User-Agent", user_agent)
+        .header(
+            "X-Authorization",
+            format!("Bearer {}", token.expose_secret()),
+        )
         .uri(url.to_string())
         .body(())
         .expect("should always be able to build a request if we only pass strings to it")
