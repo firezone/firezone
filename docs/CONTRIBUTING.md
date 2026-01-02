@@ -114,7 +114,7 @@ On macOS you can generate and trust a certificate with:
 
 ```sh
 cd elixir && mix phx.gen.cert
-sudo security add-trusted-cert -d -r trustAsRoot -k /Library/Keychains/System.keychain priv/cert/selfsigned.pem
+sudo security add-trusted-cert -d -p ssl -k /Library/Keychains/System.keychain priv/cert/selfsigned.pem
 ```
 
 This will generate a self-signed certificate for `localhost` and add it to your
