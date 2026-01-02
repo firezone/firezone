@@ -583,9 +583,9 @@ defmodule Portal.Billing.EventHandler do
     import Ecto.Changeset
 
     %Portal.Account{}
-    |> cast(attrs, [:name])
+    |> cast(attrs, [:name, :legal_name, :slug])
     |> cast_embed(:metadata)
-    |> validate_required([:name])
+    |> validate_required([:name, :legal_name, :slug])
   end
 
   defmodule DB do
@@ -640,7 +640,7 @@ defmodule Portal.Billing.EventHandler do
       |> case do
         %Account{} = account ->
           account
-          |> cast(attrs, [])
+          |> cast(attrs, [:name, :legal_name, :slug, :disabled_at, :disabled_reason])
           |> cast_embed(:limits)
           |> cast_embed(:features)
           |> cast_embed(:metadata)
