@@ -108,20 +108,16 @@ After this you will have running:
 
 ### Generating a self-signed cert
 
-We recommend generating a valid self-signed ceriticate for local development to avoid debugging TLS issues.
+We recommend generating a trusted self-signed certificate for local development to avoid debugging TLS issues.
 
-On macOS or Linux you can use the `mkcert` utility:
+On macOS you can generate and trust a certificate with:
 
 ```sh
-brew install mkcert
-mkcert -install
-mkcert localhost 127.0.0.1 ::1
-mv localhost+2-key.pem elixir/priv/cert/selfsigned_key.pem
-mv localhost+2.pem elixir/priv/cert/selfsigned.pem
+cd elixir && mix phx.gen.cert
+sudo security add-trusted-cert -d -r trustAsRoot -k /Library/Keychains/System.keychain priv/cert/selfsigned.pem
 ```
 
-This will generate a self-signed certificate for `localhost` and place it in the
-correct location for the Elixir application to use, as well as adding the local CA to your
+This will generate a self-signed certificate for `localhost` and add it to your
 system trust store for easier testing in browsers.
 
 ### Ensure Everything Works
