@@ -4,20 +4,21 @@ use std::{
     borrow::Cow,
     collections::BTreeMap,
     fmt, mem,
-    net::{SocketAddr, ToSocketAddrs as _},
+    net::{IpAddr, ToSocketAddrs as _},
     str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
+use crate::{sentry_http_client::SentryHttpClient, sentry_vendor::TransportThread};
 use anyhow::{Context, Result, anyhow, bail};
 use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, SessionStatus},
-    transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
+use socket_factory::{SocketFactory, TcpSocket};
 
 pub mod analytics;
 pub mod feature_flags;
@@ -27,6 +28,8 @@ mod api_url;
 mod maybe_push_metrics_exporter;
 mod noop_push_metrics_exporter;
 mod posthog;
+mod sentry_http_client;
+mod sentry_vendor;
 
 pub use maybe_push_metrics_exporter::MaybePushMetricsExporter;
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
@@ -174,6 +177,10 @@ impl Telemetry {
             inner: None,
             transport: TransportFactory::without_addresses(),
         }
+    }
+
+    pub fn set_tcp_socket_factory(&mut self, sf: Arc<dyn SocketFactory<TcpSocket>>) {
+        self.transport.tcp_socket_factory = sf;
     }
 
     pub async fn start(&mut self, api_url: &str, release: &str, dsn: Dsn, firezone_id: String) {
@@ -431,9 +438,10 @@ fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TransportFactory {
-    ingest_domain_addresses: Vec<SocketAddr>,
+    ingest_domain_addresses: Vec<IpAddr>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 }
 
 impl TransportFactory {
@@ -441,39 +449,96 @@ impl TransportFactory {
         let resolved_addresses = (INGEST_HOST, 443u16)
             .to_socket_addrs()
             .with_context(|| format!("Failed to resolve {INGEST_HOST}"))?
+            .map(|s| s.ip())
             .collect();
 
         tracing::debug!(host = %INGEST_HOST, addresses = ?resolved_addresses, "Resolved ingest host IPs");
 
         Ok(Self {
             ingest_domain_addresses: resolved_addresses,
+            tcp_socket_factory: Arc::new(socket_factory::tcp),
         })
     }
 
     fn without_addresses() -> Self {
         Self {
             ingest_domain_addresses: Default::default(),
+            tcp_socket_factory: Arc::new(socket_factory::tcp),
         }
     }
 }
 
 impl sentry::TransportFactory for TransportFactory {
     fn create_transport(&self, options: &sentry::ClientOptions) -> Arc<dyn sentry::Transport> {
-        let mut builder = reqwest::ClientBuilder::new()
-            .http2_prior_knowledge()
-            .http2_keep_alive_while_idle(true)
-            .http2_keep_alive_timeout(Duration::from_secs(1))
-            .http2_keep_alive_interval(Duration::from_secs(5)); // Ensure we detect broken connections, i.e. when enabling / disabling the Internet Resource.
+        Arc::new(Transport::new(
+            options,
+            self.ingest_domain_addresses.clone(),
+            self.tcp_socket_factory.clone(),
+        ))
+    }
+}
 
-        if !self.ingest_domain_addresses.is_empty() {
-            builder = builder.resolve_to_addrs(INGEST_HOST, &self.ingest_domain_addresses);
-        } else {
-            tracing::debug!(host = %INGEST_HOST, "No addresses were pre-resolved for ingest host");
-        }
+struct Transport {
+    thread: TransportThread,
+}
 
-        let client = builder.build().expect("Failed to build HTTP client");
+impl Transport {
+    fn new(
+        options: &sentry::ClientOptions,
+        addresses: Vec<IpAddr>,
+        sf: Arc<dyn SocketFactory<TcpSocket>>,
+    ) -> Self {
+        let client = SentryHttpClient::new(options, addresses, sf);
 
-        Arc::new(ReqwestHttpTransport::with_client(options, client))
+        let thread = TransportThread::new(client, move |mut client, envelope, mut rl| async move {
+            let response = match client.send(envelope).await {
+                Ok(response) => response,
+                Err(e) => {
+                    tracing::debug!("{e:#}");
+                    return (client, rl);
+                }
+            };
+
+            if let Some(sentry_header) = response
+                .headers()
+                .get("x-sentry-rate-limits")
+                .and_then(|x| x.to_str().ok())
+            {
+                rl.update_from_sentry_header(sentry_header);
+
+                return (client, rl);
+            }
+
+            if let Some(retry_after) = response
+                .headers()
+                .get(http::header::RETRY_AFTER)
+                .and_then(|x| x.to_str().ok())
+            {
+                rl.update_from_retry_after(retry_after);
+
+                return (client, rl);
+            }
+
+            if response.status() == http::StatusCode::TOO_MANY_REQUESTS {
+                rl.update_from_429();
+
+                return (client, rl);
+            }
+
+            (client, rl)
+        });
+
+        Self { thread }
+    }
+}
+
+impl sentry::Transport for Transport {
+    fn send_envelope(&self, envelope: sentry::Envelope) {
+        self.thread.send(envelope);
+    }
+
+    fn flush(&self, timeout: Duration) -> bool {
+        self.thread.flush(timeout)
     }
 }
 

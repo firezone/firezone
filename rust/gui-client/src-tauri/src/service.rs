@@ -22,6 +22,7 @@ use futures::{
 use logging::{FilterReloadHandle, err_with_src};
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretBox, SecretString};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     io::{self, Write},
     mem,
@@ -184,6 +185,9 @@ struct Handler<'a> {
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
+
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 }
 
 #[derive(Default, Debug)]
@@ -322,6 +326,8 @@ impl<'a> Handler<'a> {
             tun_device,
             dns_notifier,
             network_notifier,
+            tcp_socket_factory: Arc::new(tcp_socket_factory),
+            udp_socket_factory: Arc::new(UdpSocketFactory::default()),
         })
     }
 
@@ -604,6 +610,8 @@ impl<'a> Handler<'a> {
 
                 if !no_telemetry {
                     self.telemetry
+                        .set_tcp_socket_factory(self.tcp_socket_factory.clone());
+                    self.telemetry
                         .start(
                             &environment,
                             &release,
@@ -658,14 +666,14 @@ impl<'a> Handler<'a> {
                     .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
                     .build()
             },
-            Arc::new(tcp_socket_factory),
+            self.tcp_socket_factory.clone(),
         )?;
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
         let (connlib, event_stream) = client_shared::Session::connect(
-            Arc::new(tcp_socket_factory),
-            Arc::new(UdpSocketFactory::default()),
+            self.tcp_socket_factory.clone(),
+            self.udp_socket_factory.clone(),
             portal,
             is_internet_resource_active,
             tokio::runtime::Handle::current(),

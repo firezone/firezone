@@ -4,7 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::process::ExitCode;
+use std::{process::ExitCode, sync::Arc};
 
 use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
@@ -82,6 +82,8 @@ fn try_main(
     let id = bin_shared::device_id::get_client().context("Failed to get device ID")?;
 
     if cli.is_telemetry_allowed() {
+        telemetry.set_tcp_socket_factory(Arc::new(bin_shared::platform::tcp_socket_factory));
+
         rt.block_on(telemetry.start(
             &api_url,
             firezone_gui_client::RELEASE,
