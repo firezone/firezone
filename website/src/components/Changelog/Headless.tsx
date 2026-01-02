@@ -9,7 +9,12 @@ export default function Headless({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="11595">
+          Passes the authentication token in the x-authorization header instead
+          of in the URL, improving rate limiting for users behind shared IPs.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.5" date={new Date("2025-12-23")}>
         {os == OS.Linux && (
           <ChangeItem pull="10742">
