@@ -231,7 +231,6 @@ async fn try_main(args: Args) -> Result<()> {
 
     let login = LoginUrl::relay(
         args.api_url.clone(),
-        &args.token,
         args.name.clone(),
         args.listen_port,
         args.public_ip4_addr,
@@ -240,6 +239,7 @@ async fn try_main(args: Args) -> Result<()> {
 
     let mut channel = PhoenixChannel::disconnected(
         login,
+        args.token.clone(),
         get_user_agent("relay", env!("CARGO_PKG_VERSION")),
         "relay",
         JoinMessage {

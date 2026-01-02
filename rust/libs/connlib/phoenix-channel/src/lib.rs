@@ -56,6 +56,8 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     url_prototype: LoginUrl<TFinish>,
     last_url: Option<Url>,
     user_agent: String,
+    /// The authentication token, sent via X-Authorization header.
+    token: SecretString,
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     reconnect_backoff: Option<ExponentialBackoff>,
 
@@ -274,6 +276,7 @@ where
     /// The provided URL must contain a host.
     pub fn disconnected(
         url: LoginUrl<TFinish>,
+        token: SecretString,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
@@ -295,6 +298,7 @@ where
             reconnect_backoff: None,
             url_prototype: url,
             user_agent,
+            token,
             state: State::Closed,
             socket_factory,
             waker: None,
@@ -368,7 +372,7 @@ where
 
         // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
-        let token = self.url_prototype.token().clone();
+        let token = self.token.clone();
         self.state = State::connect(
             url.clone(),
             self.socket_addresses(),
@@ -446,7 +450,7 @@ where
                         .expect("should have last URL if we receive connection error")
                         .clone();
                     let user_agent = self.user_agent.clone();
-                    let token = self.url_prototype.token().clone();
+                    let token = self.token.clone();
                     let socket_factory = self.socket_factory.clone();
 
                     self.state = State::Connecting(Box::pin(async move {

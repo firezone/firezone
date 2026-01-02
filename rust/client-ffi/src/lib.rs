@@ -479,7 +479,6 @@ fn connect(
 
     let url = LoginUrl::client(
         api_url.as_str(),
-        &secret,
         device_id.clone(),
         device_name,
         device_info,
@@ -490,6 +489,7 @@ fn connect(
 
     let portal = PhoenixChannel::disconnected(
         url,
+        secret,
         get_user_agent(platform::COMPONENT, platform::VERSION),
         "client",
         (),

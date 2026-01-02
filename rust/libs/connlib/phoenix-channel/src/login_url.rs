@@ -1,5 +1,4 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
-use secrecy::SecretString;
 use serde::Deserialize;
 use sha2::Digest as _;
 use std::{
@@ -41,9 +40,6 @@ pub struct LoginUrl<TFinish> {
     host: String,
     port: u16,
 
-    /// The authentication token, sent via X-Authorization header.
-    token: SecretString,
-
     phantom: PhantomData<TFinish>,
 }
 
@@ -74,7 +70,6 @@ impl IntoIterator for NoParams {
 impl LoginUrl<PublicKeyParam> {
     pub fn client<E>(
         url: impl TryInto<Url, Error = E>,
-        firezone_token: &SecretString,
         device_id: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
@@ -106,14 +101,12 @@ impl LoginUrl<PublicKeyParam> {
             host,
             port,
             url,
-            token: firezone_token.clone(),
             phantom: PhantomData,
         })
     }
 
     pub fn gateway<E>(
         url: impl TryInto<Url, Error = E>,
-        firezone_token: &SecretString,
         device_id: String,
         device_name: Option<String>,
     ) -> Result<Self, LoginUrlError<E>> {
@@ -143,7 +136,6 @@ impl LoginUrl<PublicKeyParam> {
             host,
             port,
             url,
-            token: firezone_token.clone(),
             phantom: PhantomData,
         })
     }
@@ -152,7 +144,6 @@ impl LoginUrl<PublicKeyParam> {
 impl LoginUrl<NoParams> {
     pub fn relay<E>(
         url: impl TryInto<Url, Error = E>,
-        firezone_token: &SecretString,
         device_name: Option<String>,
         listen_port: u16,
         ipv4_address: Option<Ipv4Addr>,
@@ -175,7 +166,6 @@ impl LoginUrl<NoParams> {
             host,
             port,
             url,
-            token: firezone_token.clone(),
             phantom: PhantomData,
         })
     }
@@ -206,10 +196,6 @@ impl<TFinish> LoginUrl<TFinish> {
         url.set_query(None);
 
         url.to_string()
-    }
-
-    pub fn token(&self) -> &SecretString {
-        &self.token
     }
 }
 
@@ -329,7 +315,6 @@ mod tests {
     fn base_url_removes_params_and_path() {
         let login_url = LoginUrl::client(
             "wss://api.firez.one",
-            &SecretString::from("foobar"),
             "some-id".to_owned(),
             None,
             DeviceInfo::default(),

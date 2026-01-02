@@ -636,7 +636,6 @@ impl<'a> Handler<'a> {
 
         let url = LoginUrl::client(
             Url::parse(api_url).context("Failed to parse URL")?,
-            &token,
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -650,6 +649,7 @@ impl<'a> Handler<'a> {
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
             url,
+            token,
             get_user_agent("gui-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),

@@ -179,7 +179,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         opentelemetry::global::set_meter_provider(provider);
     }
 
-    let login = LoginUrl::gateway(cli.api_url, &token, firezone_id, cli.firezone_name)
+    let login = LoginUrl::gateway(cli.api_url, firezone_id, cli.firezone_name)
         .context("Failed to construct URL for logging into portal")?;
 
     let resolv_conf = resolv_conf::Config::parse(
@@ -199,6 +199,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     );
     let portal = PhoenixChannel::disconnected(
         login,
+        token,
         get_user_agent("gateway", env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),
