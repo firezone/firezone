@@ -108,9 +108,6 @@ async fn client_does_not_pipeline_messages() {
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
                 }
-                phoenix_channel::Event::RetryAfter { error, .. } => {
-                    panic!("Unexpected retry-after: {error:?}")
-                }
                 phoenix_channel::Event::Closed => break,
             }
         }
@@ -219,9 +216,6 @@ async fn client_deduplicates_messages() {
                 }
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
-                }
-                phoenix_channel::Event::RetryAfter { error, .. } => {
-                    panic!("Unexpected retry-after: {error:?}")
                 }
                 phoenix_channel::Event::Closed => break,
             }
@@ -335,8 +329,12 @@ async fn backoff_grows_with_repeated_429_failures() {
         backoffs.push(current_backoff);
     }
 
-    // First attempt should have zero backoff
-    assert_eq!(backoffs[0], Duration::ZERO, "first backoff should be zero");
+    // First attempt should have 1 second backoff (minimum for 429/503)
+    assert_eq!(
+        backoffs[0],
+        Duration::from_secs(1),
+        "first backoff should be 1 second"
+    );
 
     // Subsequent backoffs should be non-zero (exponential backoff has jitter, so we can't
     // guarantee strict monotonic increase, but they should all be positive after first)
@@ -352,74 +350,6 @@ async fn backoff_grows_with_repeated_429_failures() {
     assert!(
         *final_backoff > Duration::from_millis(100),
         "final backoff should be significant, got {final_backoff:?}"
-    );
-}
-
-#[tokio::test]
-async fn http_429_with_retry_after_returns_retry_after_event() {
-    let port = http_status_server_with_retry_after(429, "Too Many Requests", 30).await;
-
-    let mut channel = make_test_channel(port);
-    channel.connect(PublicKeyParam([0u8; 32]));
-
-    let result = tokio::time::timeout(Duration::from_secs(5), async {
-        future::poll_fn(|cx| channel.poll(cx)).await
-    })
-    .await
-    .expect("should not timeout");
-
-    // 429 with Retry-After should return Event::RetryAfter with the specified duration
-    match result {
-        Ok(Event::RetryAfter { duration, .. }) => {
-            assert_eq!(duration, Duration::from_secs(30));
-        }
-        other => {
-            panic!("expected Event::RetryAfter for 429 with Retry-After header, got {other:?}")
-        }
-    }
-}
-
-#[tokio::test]
-async fn http_503_with_retry_after_returns_retry_after_event() {
-    let port = http_status_server_with_retry_after(503, "Service Unavailable", 60).await;
-
-    let mut channel = make_test_channel(port);
-    channel.connect(PublicKeyParam([0u8; 32]));
-
-    let result = tokio::time::timeout(Duration::from_secs(5), async {
-        future::poll_fn(|cx| channel.poll(cx)).await
-    })
-    .await
-    .expect("should not timeout");
-
-    // 503 with Retry-After should return Event::RetryAfter with the specified duration
-    match result {
-        Ok(Event::RetryAfter { duration, .. }) => {
-            assert_eq!(duration, Duration::from_secs(60));
-        }
-        other => {
-            panic!("expected Event::RetryAfter for 503 with Retry-After header, got {other:?}")
-        }
-    }
-}
-
-#[tokio::test]
-async fn http_503_without_retry_after_returns_hiccup() {
-    let port = http_status_server(503, "Service Unavailable").await;
-
-    let mut channel = make_test_channel(port);
-    channel.connect(PublicKeyParam([0u8; 32]));
-
-    let result = tokio::time::timeout(Duration::from_secs(5), async {
-        future::poll_fn(|cx| channel.poll(cx)).await
-    })
-    .await
-    .expect("should not timeout");
-
-    // 503 without Retry-After should fall back to Event::Hiccup with exponential backoff
-    assert!(
-        matches!(result, Ok(Event::Hiccup { .. })),
-        "expected Event::Hiccup for 503 without Retry-After header, got {result:?}"
     );
 }
 
@@ -449,70 +379,29 @@ fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
 }
 
 async fn http_status_server(status: u16, reason: &str) -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    let response = format!(
+    http_response_server(format!(
         "HTTP/1.1 {status} {reason}\r\n\
          Connection: close\r\n\
          Content-Type: text/plain\r\n\
          Content-Length: 0\r\n\r\n"
-    );
-
-    tokio::spawn(async move {
-        while let Ok((mut socket, _)) = listener.accept().await {
-            let response = response.clone();
-            tokio::spawn(async move {
-                // Read the full HTTP request
-                let mut buf = vec![0u8; 4096];
-                let mut total_read = 0;
-                loop {
-                    match tokio::time::timeout(
-                        Duration::from_millis(500),
-                        tokio::io::AsyncReadExt::read(&mut socket, &mut buf[total_read..]),
-                    )
-                    .await
-                    {
-                        Ok(Ok(0)) => break,
-                        Ok(Ok(n)) => {
-                            total_read += n;
-                            // Check if we've received the end of headers
-                            if buf[..total_read].windows(4).any(|w| w == b"\r\n\r\n") {
-                                break;
-                            }
-                        }
-                        _ => break,
-                    }
-                }
-
-                // Send the HTTP error response
-                let _ = socket.write_all(response.as_bytes()).await;
-                let _ = socket.flush().await;
-                let _ = socket.shutdown().await;
-            });
-        }
-    });
-
-    port
+    ))
+    .await
 }
 
 async fn http_status_server_with_retry_after(status: u16, reason: &str, retry_after: u64) -> u16 {
-    http_status_server_with_retry_after_str(status, reason, &retry_after.to_string()).await
-}
-
-async fn http_status_server_with_retry_after_str(
-    status: u16,
-    reason: &str,
-    retry_after: &str,
-) -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    let response = format!(
+    http_response_server(format!(
         "HTTP/1.1 {status} {reason}\r\n\
          Connection: close\r\n\
          Content-Type: text/plain\r\n\
          Retry-After: {retry_after}\r\n\
          Content-Length: 0\r\n\r\n"
-    );
+    ))
+    .await
+}
+
+async fn http_response_server(response: String) -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
 
     tokio::spawn(async move {
         while let Ok((mut socket, _)) = listener.accept().await {
@@ -549,14 +438,8 @@ async fn http_status_server_with_retry_after_str(
 }
 
 #[tokio::test]
-async fn http_429_with_retry_after_http_date_returns_retry_after_event() {
-    use chrono::{Duration as ChronoDuration, Utc};
-
-    // Create a date 45 seconds in the future
-    let future_date = Utc::now() + ChronoDuration::seconds(45);
-    let date_str = future_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-
-    let port = http_status_server_with_retry_after_str(429, "Too Many Requests", &date_str).await;
+async fn http_503_triggers_retry() {
+    let port = http_status_server(503, "Service Unavailable").await;
 
     let mut channel = make_test_channel(port);
     channel.connect(PublicKeyParam([0u8; 32]));
@@ -567,17 +450,61 @@ async fn http_429_with_retry_after_http_date_returns_retry_after_event() {
     .await
     .expect("should not timeout");
 
-    // 429 with Retry-After HTTP date should return Event::RetryAfter
+    // 503 should trigger a Hiccup (retry) not an Error::Client
+    assert!(
+        matches!(result, Ok(Event::Hiccup { .. })),
+        "expected Event::Hiccup for 503, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn http_429_with_retry_after_uses_header_value() {
+    let port = http_status_server_with_retry_after(429, "Too Many Requests", 30).await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    // 429 with Retry-After should use the header value for backoff
     match result {
-        Ok(Event::RetryAfter { duration, .. }) => {
-            // Allow tolerance for test execution time
-            assert!(
-                duration >= Duration::from_secs(43) && duration <= Duration::from_secs(47),
-                "duration should be approximately 45 seconds, got {duration:?}"
-            );
+        Ok(Event::Hiccup { backoff, .. }) => {
+            assert_eq!(backoff, Duration::from_secs(30));
         }
         other => {
-            panic!("expected Event::RetryAfter for 429 with Retry-After HTTP date, got {other:?}")
+            panic!(
+                "expected Event::Hiccup with 30s backoff for 429 with Retry-After, got {other:?}"
+            )
+        }
+    }
+}
+
+#[tokio::test]
+async fn http_503_with_retry_after_uses_header_value() {
+    let port = http_status_server_with_retry_after(503, "Service Unavailable", 60).await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    // 503 with Retry-After should use the header value for backoff
+    match result {
+        Ok(Event::Hiccup { backoff, .. }) => {
+            assert_eq!(backoff, Duration::from_secs(60));
+        }
+        other => {
+            panic!(
+                "expected Event::Hiccup with 60s backoff for 503 with Retry-After, got {other:?}"
+            )
         }
     }
 }

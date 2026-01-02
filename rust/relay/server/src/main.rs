@@ -747,9 +747,6 @@ where
                 max_elapsed_time,
                 error,
             } => tracing::warn!(?backoff, ?max_elapsed_time, "{error:#}"),
-            Event::RetryAfter { duration, error } => {
-                tracing::warn!(?duration, "Server requested retry-after: {error:#}")
-            }
         }
     }
 }

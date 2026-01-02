@@ -34,6 +34,7 @@ use url::Url;
 pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
 pub use tokio_tungstenite::tungstenite::http::StatusCode;
+use tokio_tungstenite::tungstenite::http::header::RETRY_AFTER;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
@@ -231,40 +232,6 @@ impl std::error::Error for InternalError {
             InternalError::RoomJoinTimedOut => None,
         }
     }
-}
-
-/// Parses a Retry-After header value into a Duration.
-///
-/// The header can be either:
-/// - A number of seconds (e.g., "120")
-/// - An HTTP date in IMF-fixdate format (e.g., "Wed, 21 Oct 2015 07:28:00 GMT")
-fn parse_retry_after(response: &tungstenite::http::Response<Option<Vec<u8>>>) -> Option<Duration> {
-    let header = response.headers().get("retry-after")?;
-    let value = header.to_str().ok()?;
-    parse_retry_after_value(value)
-}
-
-fn parse_retry_after_value(value: &str) -> Option<Duration> {
-    // Try parsing as seconds first (most common for 429 responses)
-    if let Ok(seconds) = value.parse::<u64>() {
-        return Some(Duration::from_secs(seconds));
-    }
-
-    // Try parsing as HTTP date (IMF-fixdate format: "Wed, 21 Oct 2015 07:28:00 GMT")
-    if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
-        let now = chrono::Utc::now();
-        let retry_at = date.with_timezone(&chrono::Utc);
-
-        if retry_at > now {
-            let duration = retry_at - now;
-            return duration.to_std().ok();
-        } else {
-            // Date is in the past, retry immediately
-            return Some(Duration::ZERO);
-        }
-    }
-
-    None
 }
 
 /// A strict-monotonically increasing ID for outbound requests.
@@ -520,33 +487,45 @@ where
 
                         continue;
                     }
+                    // Handle 408, 429 and 503 with Retry-After header, falling back to exponential backoff
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
-                        if r.status().is_client_error()
-                            && r.status() != StatusCode::TOO_MANY_REQUESTS
-                            && r.status() != StatusCode::REQUEST_TIMEOUT =>
+                        if r.status() == StatusCode::REQUEST_TIMEOUT
+                            || r.status() == StatusCode::TOO_MANY_REQUESTS
+                            || r.status() == StatusCode::SERVICE_UNAVAILABLE =>
                     {
-                        return Poll::Ready(Err(Error::Client(r.status())));
-                    }
-                    // Handle 429 and 503 with Retry-After header
-                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
-                        if (r.status() == StatusCode::TOO_MANY_REQUESTS
-                            || r.status() == StatusCode::SERVICE_UNAVAILABLE)
-                            && parse_retry_after(&r).is_some() =>
-                    {
-                        let duration = parse_retry_after(&r).expect("checked above");
-                        let status = r.status();
+                        let backoff = match parse_retry_after(&r) {
+                            Some(duration) => duration,
+                            None => match self.reconnect_backoff.as_mut() {
+                                Some(reconnect_backoff) => reconnect_backoff
+                                    .next_backoff()
+                                    .ok_or_else(|| Error::MaxRetriesReached {
+                                        final_error: r.status().to_string(),
+                                    })?,
+                                None => {
+                                    self.reconnect_backoff = Some((self.make_reconnect_backoff)());
+                                    Duration::from_secs(1)
+                                }
+                            },
+                        };
 
-                        self.state = State::Reconnect { backoff: duration };
+                        self.state = State::Reconnect { backoff };
 
-                        return Poll::Ready(Ok(Event::RetryAfter {
-                            duration,
+                        return Poll::Ready(Ok(Event::Hiccup {
+                            backoff,
+                            max_elapsed_time: self
+                                .reconnect_backoff
+                                .as_ref()
+                                .and_then(|b| b.max_elapsed_time),
                             error: anyhow::Error::new(InternalError::WebSocket(
                                 tungstenite::Error::Http(r),
                             ))
-                            .context(format!(
-                                "Server returned {status} with Retry-After: {duration:?}"
-                            )),
+                            .context("Reconnecting to portal on transient error"),
                         }));
+                    }
+                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
+                        if r.status().is_client_error() =>
+                    {
+                        return Poll::Ready(Err(Error::Client(r.status())));
                     }
                     // Unfortunately, the underlying error gets stringified by tungstenite so we cannot match on anything other than the string.
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Io(io))))
@@ -829,6 +808,37 @@ where
     }
 }
 
+/// Parses a Retry-After header value into a Duration.
+///
+/// The header can be either:
+/// - A number of seconds (e.g., "120")
+/// - An HTTP date in IMF-fixdate format (e.g., "Wed, 21 Oct 2015 07:28:00 GMT")
+fn parse_retry_after(response: &tungstenite::http::Response<Option<Vec<u8>>>) -> Option<Duration> {
+    let header = response.headers().get(RETRY_AFTER)?;
+    let value = header.to_str().ok()?;
+    let duration = parse_retry_after_value(value)?;
+
+    Some(duration)
+}
+
+fn parse_retry_after_value(value: &str) -> Option<Duration> {
+    // Try parsing as seconds first (most common for 429 responses)
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    // Try parsing as HTTP date (IMF-fixdate format: "Wed, 21 Oct 2015 07:28:00 GMT")
+    if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
+        let now = Duration::from_secs(chrono::Utc::now().timestamp() as u64);
+        let retry_at = Duration::from_secs(date.timestamp() as u64);
+        let duration = retry_at.saturating_sub(now);
+
+        return Some(duration);
+    }
+
+    None
+}
+
 #[derive(Debug)]
 pub enum Event<TInboundMsg> {
     SuccessResponse {
@@ -852,11 +862,6 @@ pub enum Event<TInboundMsg> {
     Hiccup {
         backoff: Duration,
         max_elapsed_time: Option<Duration>,
-        error: anyhow::Error,
-    },
-    /// The server sent a 429 or 503 with a Retry-After header specifying when to retry.
-    RetryAfter {
-        duration: Duration,
         error: anyhow::Error,
     },
     /// The connection was closed successfully.
