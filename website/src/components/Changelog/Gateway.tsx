@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="11595">
+          Passes the authentication token in the x-authorization header instead
+          of in the URL, improving rate limiting for users behind shared IPs.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.19" date={new Date("2025-12-23")}>
         <ChangeItem pull="10972">
           Fixes an issue where IPv6-only DNS resources could not be reached.

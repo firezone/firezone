@@ -24,7 +24,12 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="11595">
+          Passes the authentication token in the x-authorization header instead
+          of in the URL, improving rate limiting for users behind shared IPs.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.11" date={new Date("2025-12-23")}>
         <ChangeItem pull="11141">
           Fixes an issue where spurious resource updates would result in

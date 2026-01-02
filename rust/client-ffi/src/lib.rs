@@ -13,7 +13,7 @@ use backoff::ExponentialBackoffBuilder;
 use logging::sentry_layer;
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
-use secrecy::{SecretBox, SecretString};
+use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use telemetry::{Telemetry, analytics};
 use tokio::sync::Mutex;
@@ -479,7 +479,6 @@ fn connect(
 
     let url = LoginUrl::client(
         api_url.as_str(),
-        &secret,
         device_id.clone(),
         device_name,
         device_info,
@@ -489,7 +488,8 @@ fn connect(
     let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
     let portal = PhoenixChannel::disconnected(
-        SecretBox::init_with(|| url),
+        url,
+        secret,
         get_user_agent(platform::COMPONENT, platform::VERSION),
         "client",
         (),
