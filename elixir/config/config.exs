@@ -261,6 +261,7 @@ config :portal, client_handler: "firezone-fd0020211111://"
 ###############################
 
 config :portal, PortalWeb.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
   url: [
     scheme: "http",
     host: "localhost",
@@ -308,6 +309,7 @@ config :portal, api_url_override: "ws://localhost:13001/"
 ###############################
 
 config :portal, PortalAPI.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
   url: [
     scheme: "http",
     host: "localhost",

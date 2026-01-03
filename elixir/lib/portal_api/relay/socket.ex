@@ -1,5 +1,7 @@
 defmodule PortalAPI.Relay.Socket do
   use Phoenix.Socket
+  defoverridable terminate: 2
+
   alias Portal.Auth
   alias Portal.Relay
   require Logger
@@ -8,6 +10,24 @@ defmodule PortalAPI.Relay.Socket do
   ## Channels
 
   channel "relay", PortalAPI.Relay.Channel
+
+  ## Termination
+
+  @impl true
+  def terminate(:timeout, {_state, socket}) do
+    relay = socket.assigns[:relay]
+
+    if relay do
+      Logger.warning("Relay missed heartbeat, connection will timeout",
+        ipv4: relay.ipv4,
+        ipv6: relay.ipv6
+      )
+    end
+
+    :ok
+  end
+
+  def terminate(reason, state), do: super(reason, state)
 
   ## Authentication
 
