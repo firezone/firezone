@@ -495,21 +495,17 @@ where
                     {
                         let backoff = match parse_retry_after(&r) {
                             Some(duration) => duration,
-                            None => match self.reconnect_backoff.as_mut() {
-                                Some(reconnect_backoff) => reconnect_backoff
-                                    .next_backoff()
-                                    .ok_or_else(|| Error::MaxRetriesReached {
+                            None => {
+                                let reconnect_backoff = self
+                                    .reconnect_backoff
+                                    .get_or_insert_with(&self.make_reconnect_backoff);
+
+                                reconnect_backoff.next_backoff().ok_or_else(|| {
+                                    Error::MaxRetriesReached {
                                         final_error: r.status().to_string(),
-                                    })?,
-                                None => {
-                                    let mut backoff = (self.make_reconnect_backoff)();
-                                    let duration = backoff
-                                        .next_backoff()
-                                        .expect("first backoff should always succeed");
-                                    self.reconnect_backoff = Some(backoff);
-                                    duration
-                                }
-                            },
+                                    }
+                                })?
+                            }
                         };
 
                         self.state = State::Reconnect { backoff };
@@ -833,11 +829,11 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
 
     // Try parsing as HTTP date (IMF-fixdate format: "Wed, 21 Oct 2015 07:28:00 GMT")
     if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
-        let now = Duration::from_secs(chrono::Utc::now().timestamp() as u64);
-        let retry_at = Duration::from_secs(date.timestamp() as u64);
-        let duration = retry_at.saturating_sub(now);
+        let now = chrono::Utc::now();
+        let retry_at = date.to_utc();
+        let duration = retry_at - now;
 
-        return Some(duration);
+        return duration.to_std().ok();
     }
 
     None
@@ -1233,7 +1229,8 @@ mod tests {
         let date_str = past_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
 
         let result = parse_retry_after_value(&date_str);
-        assert_eq!(result, Some(Duration::ZERO), "past date should return zero");
+        // Past dates return None, falling back to default backoff behavior
+        assert_eq!(result, None, "past date should return None");
     }
 
     #[test]

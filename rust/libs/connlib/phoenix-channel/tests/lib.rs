@@ -6,7 +6,7 @@ use std::{future, sync::Arc, time::Duration};
 use phoenix_channel::{
     DeviceInfo, Error, Event, LoginUrl, PhoenixChannel, PublicKeyParam, StatusCode,
 };
-use secrecy::{SecretBox, SecretString};
+use secrecy::SecretString;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 
@@ -364,7 +364,6 @@ async fn backoff_grows_with_repeated_429_failures() {
 fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
     let url = LoginUrl::client(
         format!("ws://127.0.0.1:{port}").as_str(),
-        &SecretString::from("test_token"),
         "test-device-id".to_string(),
         Some("test-device".to_string()),
         DeviceInfo::default(),
@@ -372,7 +371,8 @@ fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
     .unwrap();
 
     PhoenixChannel::disconnected(
-        SecretBox::new(Box::new(url)),
+        url,
+        SecretString::from("test_token"),
         "test-user-agent".to_string(),
         "test",
         (),
