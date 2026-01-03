@@ -95,12 +95,11 @@ defmodule PortalWeb.Resources.Components do
     forms = parent_form.impl.to_form(parent_form.source, parent_form, field_name, options)
 
     forms_by_protocol =
-      for form <- forms, into: %{} do
-        %Phoenix.HTML.Form{params: params} = form
+      for %Phoenix.HTML.Form{params: params, hidden: hidden} = form <- forms, into: %{} do
         id = Ecto.Changeset.apply_changes(form.source).protocol
         form_id = "#{parent_form.id}_#{field_name}_#{id}"
         new_params = Map.put(params, :protocol, id)
-        new_hidden = [{:protocol, id} | form.hidden]
+        new_hidden = [{:protocol, id} | hidden]
         new_form = %Phoenix.HTML.Form{form | id: form_id, params: new_params, hidden: new_hidden}
         {id, new_form}
       end

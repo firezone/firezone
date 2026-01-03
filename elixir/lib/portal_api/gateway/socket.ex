@@ -126,6 +126,8 @@ defmodule PortalAPI.Gateway.Socket do
       end
     end
 
+    # OTP 28 dialyzer is stricter about opaque types (MapSet) inside Ecto.Multi
+    @dialyzer {:no_opaque, upsert_gateway: 2}
     def upsert_gateway(changeset, _site) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)
       site_id = Ecto.Changeset.get_field(changeset, :site_id)
