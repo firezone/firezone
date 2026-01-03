@@ -14,24 +14,27 @@ defmodule Portal.OpsTest do
 
   describe "count_presences/0" do
     test "returns presence counts grouped by topic prefix" do
+      # Use unique topic names to avoid collisions with parallel tests
+      unique_id = Ecto.UUID.generate()
+
       # Track actual presence entries using the Presence module
       {:ok, _} =
-        Portal.Presence.track(self(), "presences:account_clients:acc1", "client1", %{})
+        Portal.Presence.track(self(), "presences:test_clients:#{unique_id}", "client1", %{})
 
       {:ok, _} =
-        Portal.Presence.track(self(), "presences:account_clients:acc1", "client2", %{})
+        Portal.Presence.track(self(), "presences:test_clients:#{unique_id}", "client2", %{})
 
       {:ok, _} =
-        Portal.Presence.track(self(), "presences:account_gateways:acc1", "gw1", %{})
+        Portal.Presence.track(self(), "presences:test_gateways:#{unique_id}", "gw1", %{})
 
       {:ok, _} =
-        Portal.Presence.track(self(), "presences:global_relays", "relay1", %{})
+        Portal.Presence.track(self(), "presences:test_relays:#{unique_id}", "relay1", %{})
 
       result = count_presences()
 
-      assert {"presences:account_clients", 2} in result
-      assert {"presences:account_gateways", 1} in result
-      assert {"presences:global_relays", 1} in result
+      assert {"presences:test_clients", 2} in result
+      assert {"presences:test_gateways", 1} in result
+      assert {"presences:test_relays", 1} in result
     end
   end
 

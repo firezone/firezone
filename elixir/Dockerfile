@@ -1,10 +1,10 @@
 ARG ALPINE_VERSION="3.20.6"
-ARG ERLANG_VERSION="27.3.4.1"
-# curl -fsSL https://github.com/erlang/otp/releases/download/OTP-27.3.4.1/otp_src_27.3.4.1.tar.gz | sha256
-ARG ERLANG_DOWNLOAD_SHA256="2672f0c52b9ff39695b9c8f99cd1846ed9e47e21cd5b045ccdd08719a3019652"
-ARG ELIXIR_VERSION="1.18.4"
-# curl -fsSL https://github.com/elixir-lang/elixir/archive/refs/tags/v1.18.4.tar.gz | sha256
-ARG ELIXIR_DOWNLOAD_SHA256="8e136c0a92160cdad8daa74560e0e9c6810486bd232fbce1709d40fcc426b5e0"
+ARG ERLANG_VERSION="28.3"
+# curl -fsSL https://github.com/erlang/otp/releases/download/OTP-28.3/otp_src_28.3.tar.gz | sha256sum
+ARG ERLANG_DOWNLOAD_SHA256="1956ad6584678b631ab4f9b8aebe2dac037cd7401abb44564a01134ff0ac5bed"
+ARG ELIXIR_VERSION="1.19.4"
+# curl -fsSL https://github.com/elixir-lang/elixir/archive/refs/tags/v1.19.4.tar.gz | sha256sum
+ARG ELIXIR_DOWNLOAD_SHA256="a2df9d5411fc53d97ec17c069765c8fb781f8dc36c4e06ec1cd4b189340d364b"
 
 FROM alpine:${ALPINE_VERSION} AS base
 

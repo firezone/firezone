@@ -14,7 +14,7 @@ defmodule PortalAPI.Schemas.Gateway do
         name: %Schema{
           type: :string,
           description: "Gateway Name",
-          pattern: ~r/[a-zA-Z][a-zA-Z0-9_]+/
+          pattern: "[a-zA-Z][a-zA-Z0-9_]+"
         },
         ipv4: %Schema{
           type: :string,
