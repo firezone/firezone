@@ -138,6 +138,13 @@ defmodule Portal.Billing.EventHandlerTest do
   end
 
   describe "handle_event/1 with customer.created" do
+    setup do
+      bypass = Bypass.open()
+      Stripe.override_endpoint_url("http://localhost:#{bypass.port}")
+
+      %{bypass: bypass}
+    end
+
     test "returns error when required metadata is missing" do
       customer_id = "cus_" <> Stripe.random_id()
 
@@ -178,6 +185,50 @@ defmodule Portal.Billing.EventHandlerTest do
       # No account should be created
       account = Portal.Repo.get_by(Portal.Account, slug: "existing")
       assert account == nil
+    end
+
+    test "creates account with all defaults when metadata is complete", %{bypass: bypass} do
+      customer_id = "cus_" <> Stripe.random_id()
+
+      customer =
+        Stripe.build_customer(
+          id: customer_id,
+          name: "New Corp Inc",
+          email: "billing@newcorp.com",
+          metadata: %{
+            "company_website" => "https://newcorp.com",
+            "account_owner_first_name" => "Jane",
+            "account_owner_last_name" => "Doe"
+          }
+        )
+
+      event = Stripe.build_event("customer.created", customer)
+
+      # Mock the update customer endpoint (called to set account_id in Stripe metadata)
+      Bypass.expect(bypass, "POST", "v1/customers/#{customer_id}", fn conn ->
+        Plug.Conn.send_resp(conn, 200, JSON.encode!(customer))
+      end)
+
+      Stripe.mock_create_subscription_endpoint(bypass)
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      # Account should be created
+      account = Portal.Repo.get_by(Portal.Account, slug: "newcorp")
+      assert account != nil
+      assert account.name == "New Corp Inc"
+      assert account.legal_name == "New Corp Inc"
+
+      # Email OTP provider should be created
+      email_provider = Portal.Repo.get_by(Portal.EmailOTP.AuthProvider, account_id: account.id)
+      assert email_provider != nil
+      assert email_provider.name == "Email (OTP)"
+
+      # Admin actor should be created
+      admin = Portal.Repo.get_by(Portal.Actor, account_id: account.id, type: :account_admin_user)
+      assert admin != nil
+      assert admin.email == "billing@newcorp.com"
+      assert admin.name == "Jane Doe"
     end
   end
 end
