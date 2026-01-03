@@ -63,7 +63,6 @@ defmodule Portal.MixProject do
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:bandit, "~> 1.0"},
       {:plug, "~> 1.15"},
-      {:plug_cowboy, "~> 2.7"},
       {:gettext, "~> 0.20"},
       {:remote_ip, "~> 1.1"},
 
@@ -109,7 +108,7 @@ defmodule Portal.MixProject do
       {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_finch, "~> 0.2.0"},
       {:opentelemetry_telemetry, "~> 1.1", override: true},
-      {:opentelemetry_cowboy, "~> 1.0"},
+      {:opentelemetry_bandit, "~> 0.3"},
       {:opentelemetry_phoenix, "~> 2.0"},
       {:nimble_options, "~> 1.0", override: true},
       {:sentry, "~> 11.0"},
