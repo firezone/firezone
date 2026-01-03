@@ -616,14 +616,17 @@ defmodule Portal.Billing.EventHandler do
 
     def create_email_provider(account) do
       id = Ecto.UUID.generate()
-      attrs = %{account_id: account.id, id: id, type: :email_otp}
-      parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id type]a)
-      attrs = %{id: id, name: "Email (OTP)"}
 
-      changeset = cast(%EmailOTP.AuthProvider{}, attrs, ~w[id name]a)
+      auth_provider = %AuthProvider{id: id, account_id: account.id, type: :email_otp}
 
-      with {:ok, _auth_provider} <- Safe.unscoped(parent_changeset) |> Safe.insert(),
-           {:ok, email_provider} <- Safe.unscoped(changeset) |> Safe.insert() do
+      email_otp_provider = %EmailOTP.AuthProvider{
+        id: id,
+        name: "Email (OTP)",
+        account_id: account.id
+      }
+
+      with {:ok, _auth_provider} <- Safe.unscoped(auth_provider) |> Safe.insert(),
+           {:ok, email_provider} <- Safe.unscoped(email_otp_provider) |> Safe.insert() do
         {:ok, email_provider}
       end
     end
