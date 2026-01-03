@@ -113,12 +113,26 @@ We recommend generating a trusted self-signed certificate for local development 
 On macOS you can generate and trust a certificate with:
 
 ```sh
-cd elixir && mix phx.gen.cert
+cd elixir
+
+# Generate a self-signed certificate for localhost
+# Note: We use openssl instead of `mix phx.gen.cert` because of a Phoenix bug
+# that generates invalid certificates missing parameters: :NULL
+# See: https://github.com/phoenixframework/phoenix/issues/6319 which introduced this bug
+openssl req -x509 -newkey rsa:2048 -keyout priv/cert/selfsigned_key.pem -out priv/cert/selfsigned.pem -days 365 -nodes -subj "/O=Firezone Development/CN=localhost" -addext "subjectAltName=DNS:localhost"
+
+# Add the new cert to the system trust store
 sudo security add-trusted-cert -d -p ssl -k /Library/Keychains/System.keychain priv/cert/selfsigned.pem
 ```
 
 This will generate a self-signed certificate for `localhost` and add it to your
 system trust store for easier testing in browsers.
+
+**Note for Firefox users:** Firefox uses its own certificate store and ignores the
+macOS system keychain by default. To trust the certificate in Firefox, either:
+
+1. Go to `about:config` and set `security.enterprise_roots.enabled` to `true`, or
+2. Import the cert directly: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import `priv/cert/selfsigned.pem`
 
 ### Ensure Everything Works
 
