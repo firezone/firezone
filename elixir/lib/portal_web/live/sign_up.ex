@@ -519,6 +519,8 @@ defmodule PortalWeb.SignUp do
       Safe
     }
 
+    # OTP 28 dialyzer is stricter about opaque types (MapSet) inside Ecto.Multi
+    @dialyzer {:no_opaque, [register_account: 8, create_email_provider: 1]}
     def register_account(
           registration,
           account_changeset_fn,

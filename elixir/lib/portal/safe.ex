@@ -270,7 +270,7 @@ defmodule Portal.Safe do
   def transact(fun, opts) when is_function(fun), do: Repo.transact(fun, opts)
 
   @spec transact(Ecto.Multi.t(), Keyword.t()) :: {:ok, map()} | {:error, atom(), any(), map()}
-  def transact(%Ecto.Multi{} = multi, opts), do: Repo.transact(multi, opts)
+  def transact(multi, opts) when is_struct(multi, Ecto.Multi), do: Repo.transact(multi, opts)
 
   @doc """
   Executes raw SQL query without authorization checks.
