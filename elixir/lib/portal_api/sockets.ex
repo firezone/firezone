@@ -36,8 +36,16 @@ defmodule PortalAPI.Sockets do
     Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters")
   end
 
-  def handle_error(conn, :rate_limit),
-    do: Plug.Conn.send_resp(conn, 429, "Too many requests")
+  # We use 503 instead of 429 because connlib treats 429 as fatal until
+  # https://github.com/firezone/firezone/pull/11594 is widely distributed.
+  def handle_error(conn, :rate_limit) do
+    conn
+    |> Plug.Conn.put_resp_header(
+      "retry-after",
+      Integer.to_string(PortalAPI.Sockets.RateLimit.retry_after_seconds())
+    )
+    |> Plug.Conn.send_resp(503, "Service Unavailable")
+  end
 
   def auth_context(%{user_agent: user_agent, x_headers: x_headers, peer_data: peer_data}, type) do
     remote_ip = real_ip(x_headers, peer_data)

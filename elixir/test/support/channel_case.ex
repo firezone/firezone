@@ -20,6 +20,59 @@ defmodule PortalAPI.ChannelCase do
     end
   end
 
+  @doc """
+  Generates a unique random IP address for test isolation.
+  """
+  def unique_ip do
+    {:rand.uniform(255), :rand.uniform(255), :rand.uniform(255), :rand.uniform(255)}
+  end
+
+  @geo_headers [
+    {"x-geo-location-region", "Ukraine"},
+    {"x-geo-location-city", "Kyiv"},
+    {"x-geo-location-coordinates", "50.4333,30.5167"}
+  ]
+
+  @doc """
+  Builds connect_info for socket tests with rate limiting isolation.
+
+  Options:
+    * `:ip` - IP address tuple (default: random)
+    * `:token` - Authorization token to include in headers
+    * `:user_agent` - User agent string (default: "iOS/12.7 connlib/1.3.0")
+    * `:x_headers` - Custom x_headers that REPLACE the default geo headers
+  """
+  def build_connect_info(opts \\ []) do
+    ip = Keyword.get(opts, :ip, unique_ip())
+    token = Keyword.get(opts, :token)
+    user_agent = Keyword.get(opts, :user_agent, "iOS/12.7 connlib/1.3.0")
+    custom_headers = Keyword.get(opts, :x_headers)
+
+    # If custom headers are provided, use those; otherwise use default geo headers
+    geo_headers =
+      if custom_headers do
+        custom_headers
+      else
+        @geo_headers
+      end
+
+    base_headers = [{"x-forwarded-for", :inet.ntoa(ip) |> to_string()} | geo_headers]
+
+    x_headers =
+      if token do
+        [{"x-authorization", "Bearer #{token}"} | base_headers]
+      else
+        base_headers
+      end
+
+    %{
+      user_agent: user_agent,
+      peer_data: %{address: ip},
+      x_headers: x_headers,
+      trace_context_headers: []
+    }
+  end
+
   setup tags do
     # Isolate relay presence per test to prevent interference between async tests
     Portal.Config.put_env_override(

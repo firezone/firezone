@@ -19,8 +19,11 @@ defmodule PortalAPI.Gateway.Socket do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "gateway.connect" do
-      case PortalAPI.Sockets.extract_token(attrs, connect_info) do
-        {:ok, encoded_token} -> do_connect(encoded_token, attrs, socket, connect_info)
+      with :ok <- PortalAPI.Sockets.RateLimit.check(connect_info),
+           {:ok, encoded_token} <- PortalAPI.Sockets.extract_token(attrs, connect_info) do
+        do_connect(encoded_token, attrs, socket, connect_info)
+      else
+        {:error, :rate_limit} -> {:error, :rate_limit}
         :error -> {:error, :missing_token}
       end
     end
