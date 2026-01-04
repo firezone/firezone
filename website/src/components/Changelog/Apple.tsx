@@ -29,6 +29,10 @@ export default function Apple() {
           Passes the authentication token in the x-authorization header instead
           of in the URL, improving rate limiting for users behind shared IPs.
         </ChangeItem>
+        <ChangeItem pull="11594">
+          Implements retry with exponential backoff on 429 (Too Many Requests)
+          responses from the portal.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.11" date={new Date("2025-12-23")}>
         <ChangeItem pull="11141">

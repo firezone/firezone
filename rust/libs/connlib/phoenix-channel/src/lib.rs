@@ -34,6 +34,7 @@ use url::Url;
 pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
 pub use tokio_tungstenite::tungstenite::http::StatusCode;
+use tokio_tungstenite::tungstenite::http::header::RETRY_AFTER;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
@@ -486,6 +487,41 @@ where
 
                         continue;
                     }
+                    // Handle 408, 429 and 503 with Retry-After header, falling back to exponential backoff
+                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
+                        if r.status() == StatusCode::REQUEST_TIMEOUT
+                            || r.status() == StatusCode::TOO_MANY_REQUESTS
+                            || r.status() == StatusCode::SERVICE_UNAVAILABLE =>
+                    {
+                        let backoff = match parse_retry_after(&r) {
+                            Some(duration) => duration,
+                            None => {
+                                let reconnect_backoff = self
+                                    .reconnect_backoff
+                                    .get_or_insert_with(&self.make_reconnect_backoff);
+
+                                reconnect_backoff.next_backoff().ok_or_else(|| {
+                                    Error::MaxRetriesReached {
+                                        final_error: r.status().to_string(),
+                                    }
+                                })?
+                            }
+                        };
+
+                        self.state = State::Reconnect { backoff };
+
+                        return Poll::Ready(Ok(Event::Hiccup {
+                            backoff,
+                            max_elapsed_time: self
+                                .reconnect_backoff
+                                .as_ref()
+                                .and_then(|b| b.max_elapsed_time),
+                            error: anyhow::Error::new(InternalError::WebSocket(
+                                tungstenite::Error::Http(r),
+                            ))
+                            .context("Reconnecting to portal on transient error"),
+                        }));
+                    }
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
                         if r.status().is_client_error() =>
                     {
@@ -770,6 +806,40 @@ where
             .map(|ip| SocketAddr::new(*ip, port))
             .collect()
     }
+}
+
+/// Parses a Retry-After header value into a Duration.
+///
+/// The header can be either:
+/// - A number of seconds (e.g., "120")
+/// - An HTTP date in IMF-fixdate format (e.g., "Wed, 21 Oct 2015 07:28:00 GMT")
+fn parse_retry_after(response: &tungstenite::http::Response<Option<Vec<u8>>>) -> Option<Duration> {
+    let header = response.headers().get(RETRY_AFTER)?;
+    let value = header.to_str().ok()?;
+    let duration = parse_retry_after_value(value)?;
+
+    Some(duration)
+}
+
+fn parse_retry_after_value(value: &str) -> Option<Duration> {
+    // Try parsing as seconds first (most common for 429 responses)
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    // Try parsing as HTTP date (IMF-fixdate format: "Wed, 21 Oct 2015 07:28:00 GMT")
+    if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
+        let now = chrono::Utc::now();
+        let retry_at = date.to_utc();
+        let duration = retry_at
+            .signed_duration_since(now)
+            .to_std()
+            .unwrap_or(Duration::ZERO);
+
+        return Some(duration);
+    }
+
+    None
 }
 
 #[derive(Debug)]
@@ -1123,5 +1193,53 @@ mod tests {
         .await
         .unwrap()
         .unwrap();
+    }
+
+    #[test]
+    fn parse_retry_after_seconds() {
+        assert_eq!(
+            parse_retry_after_value("120"),
+            Some(Duration::from_secs(120))
+        );
+        assert_eq!(parse_retry_after_value("0"), Some(Duration::from_secs(0)));
+        assert_eq!(
+            parse_retry_after_value("3600"),
+            Some(Duration::from_secs(3600))
+        );
+    }
+
+    #[test]
+    fn parse_retry_after_http_date_in_future() {
+        // Create a date 60 seconds in the future
+        let future_date = chrono::Utc::now() + chrono::Duration::seconds(60);
+        let date_str = future_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+        let result = parse_retry_after_value(&date_str);
+        assert!(result.is_some(), "should parse future HTTP date");
+
+        let duration = result.unwrap();
+        // Allow some tolerance for test execution time
+        assert!(
+            duration >= Duration::from_secs(58) && duration <= Duration::from_secs(62),
+            "duration should be approximately 60 seconds, got {duration:?}"
+        );
+    }
+
+    #[test]
+    fn parse_retry_after_http_date_in_past() {
+        // Create a date 60 seconds in the past
+        let past_date = chrono::Utc::now() - chrono::Duration::seconds(60);
+        let date_str = past_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+        let result = parse_retry_after_value(&date_str);
+        assert_eq!(result, Some(Duration::ZERO), "past date should return zero");
+    }
+
+    #[test]
+    fn parse_retry_after_invalid() {
+        assert_eq!(parse_retry_after_value("invalid"), None);
+        assert_eq!(parse_retry_after_value(""), None);
+        assert_eq!(parse_retry_after_value("-1"), None);
+        assert_eq!(parse_retry_after_value("12.5"), None);
     }
 }
