@@ -42,6 +42,11 @@ impl UdpDnsClient {
         let host = host.into();
 
         async move {
+            // If no DNS servers are configured, fall back to the system resolver.
+            if servers.is_empty() {
+                return resolve_via_system(host.as_ref()).await;
+            }
+
             let host =
                 DomainName::vec_from_str(host.as_ref()).context("Failed to parse domain name")?;
 
@@ -80,6 +85,20 @@ impl UdpDnsClient {
             Ok(Vec::from_iter(ips))
         }
     }
+}
+
+/// Resolves a hostname using the system's default resolver.
+async fn resolve_via_system(host: &str) -> Result<Vec<IpAddr>> {
+    // Use port 0 as a placeholder; tokio::net::lookup_host requires host:port format
+    let host_with_port = format!("{host}:0");
+
+    let addrs = tokio::net::lookup_host(&host_with_port)
+        .await
+        .with_context(|| format!("System DNS lookup failed for {host}"))?;
+
+    let ips: Vec<IpAddr> = addrs.map(|addr| addr.ip()).collect();
+
+    Ok(ips)
 }
 
 async fn send_query(
@@ -160,5 +179,15 @@ mod tests {
 
         assert!(!ips.is_empty());
         assert!(now.elapsed() >= UdpDnsClient::TIMEOUT) // Still need to wait for the unreachable server.
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires Internet"]
+    async fn falls_back_to_system_resolver_when_no_servers_configured() {
+        let client = UdpDnsClient::new(Arc::new(socket_factory::udp), vec![]);
+
+        let ips = client.resolve("example.com").await.unwrap();
+
+        assert!(!ips.is_empty())
     }
 }

@@ -495,6 +495,8 @@ async fn phoenix_channel_event_loop(
     use futures::future::select;
     use std::future::poll_fn;
 
+    // Initialize with empty DNS servers; the UdpDnsClient will fall back to
+    // the system resolver if no servers are configured.
     let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), vec![]);
 
     loop {
