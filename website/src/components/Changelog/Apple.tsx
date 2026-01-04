@@ -33,6 +33,10 @@ export default function Apple() {
           Fixes an issue where reconnections would fail if the portal host is an
           IP address.
         </ChangeItem>
+        <ChangeItem pull="11626">
+          Fixes an issue where reconnecting to the portal would fail if the DNS
+          resolver list was empty due to a network reset or other edge case.
+        </ChangeItem>
         <ChangeItem pull="11595">
           Passes the authentication token in the x-authorization header instead
           of in the URL, improving rate limiting for users behind shared IPs.
