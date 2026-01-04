@@ -217,10 +217,6 @@ impl UdpSocket {
         })
     }
 
-    pub fn port(&self) -> u16 {
-        self.port
-    }
-
     /// Configures a new source IP resolver for this UDP socket.
     ///
     /// In case [`DatagramOut::src`] is [`None`], this function will be used to set a source IP given the destination IP of the datagram.
