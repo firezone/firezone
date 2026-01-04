@@ -342,7 +342,6 @@ fn try_main() -> Result<()> {
             (),
             move || {
                 ExponentialBackoffBuilder::default()
-                    .with_initial_interval(Duration::from_secs(1))
                     .with_max_elapsed_time(max_partition_time)
                     .build()
             },

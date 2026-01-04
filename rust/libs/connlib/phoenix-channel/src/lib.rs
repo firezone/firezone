@@ -831,9 +831,12 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
     if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
         let now = chrono::Utc::now();
         let retry_at = date.to_utc();
-        let duration = retry_at - now;
+        let duration = retry_at
+            .signed_duration_since(now)
+            .to_std()
+            .unwrap_or(Duration::ZERO);
 
-        return duration.to_std().ok();
+        return Some(duration);
     }
 
     None
@@ -1229,8 +1232,7 @@ mod tests {
         let date_str = past_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
 
         let result = parse_retry_after_value(&date_str);
-        // Past dates return None, falling back to default backoff behavior
-        assert_eq!(result, None, "past date should return None");
+        assert_eq!(result, Some(Duration::ZERO), "past date should return zero");
     }
 
     #[test]

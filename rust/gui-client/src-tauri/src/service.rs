@@ -655,7 +655,6 @@ impl<'a> Handler<'a> {
             (),
             || {
                 ExponentialBackoffBuilder::default()
-                    .with_initial_interval(Duration::from_secs(1))
                     .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
                     .build()
             },

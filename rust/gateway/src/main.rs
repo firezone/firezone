@@ -205,7 +205,6 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         (),
         || {
             ExponentialBackoffBuilder::default()
-                .with_initial_interval(Duration::from_secs(1))
                 .with_max_elapsed_time(Some(Duration::from_secs(60 * 15)))
                 .build()
         },
