@@ -42,6 +42,11 @@ impl UdpDnsClient {
         let host = host.into();
 
         async move {
+            // If the host is already an IP address, return it directly without DNS resolution.
+            if let Ok(ip) = host.as_ref().parse::<IpAddr>() {
+                return Ok(vec![ip]);
+            }
+
             let host =
                 DomainName::vec_from_str(host.as_ref()).context("Failed to parse domain name")?;
 
@@ -116,6 +121,30 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
+
+    #[tokio::test]
+    async fn ip_address_returns_directly() {
+        let client = UdpDnsClient::new(
+            Arc::new(socket_factory::udp),
+            vec![], // No DNS servers needed for IP address resolution
+        );
+
+        let ips = client.resolve("192.168.1.1").await.unwrap();
+
+        assert_eq!(ips, vec![IpAddr::from([192, 168, 1, 1])]);
+    }
+
+    #[tokio::test]
+    async fn ipv6_address_returns_directly() {
+        let client = UdpDnsClient::new(
+            Arc::new(socket_factory::udp),
+            vec![], // No DNS servers needed for IP address resolution
+        );
+
+        let ips = client.resolve("::1").await.unwrap();
+
+        assert_eq!(ips, vec![IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1])]);
+    }
 
     #[tokio::test]
     #[ignore = "Requires Internet"]
