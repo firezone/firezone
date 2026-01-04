@@ -13,6 +13,7 @@ use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
 
 use backoff::ExponentialBackoff;
+use backoff::ExponentialBackoffBuilder;
 use backoff::backoff::Backoff;
 use base64::Engine;
 use futures::future::BoxFuture;
@@ -38,6 +39,25 @@ use tokio_tungstenite::tungstenite::http::header::RETRY_AFTER;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
+/// Maximum time to retry initial connection attempts before giving up.
+const INITIAL_CONNECT_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
+
+/// Fixed interval between initial connection attempts.
+const INITIAL_CONNECT_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Creates a backoff strategy for initial connection attempts (before ever connecting successfully).
+///
+/// Uses a fixed 1s interval with 15s max elapsed time to fail fast.
+fn make_initial_backoff() -> ExponentialBackoff {
+    ExponentialBackoffBuilder::default()
+        .with_initial_interval(INITIAL_CONNECT_INTERVAL)
+        .with_max_interval(INITIAL_CONNECT_INTERVAL)
+        .with_multiplier(1.0) // No exponential increase, fixed interval
+        .with_randomization_factor(0.0) // No jitter, predictable intervals
+        .with_max_elapsed_time(Some(INITIAL_CONNECT_MAX_ELAPSED_TIME))
+        .build()
+}
+
 pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     state: State,
     waker: Option<Waker>,
@@ -59,8 +79,19 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     user_agent: String,
     /// The authentication token, sent via X-Authorization header.
     token: SecretString,
+    make_initial_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
-    reconnect_backoff: Option<ExponentialBackoff>,
+    /// The current backoff state, if any.
+    ///
+    /// When `was_connected` is false, uses `make_initial_backoff` (fixed 5s interval, 30s max).
+    /// When `was_connected` is true, uses `make_reconnect_backoff` (caller-provided, longer timeout).
+    backoff: Option<ExponentialBackoff>,
+    /// Whether we have ever successfully connected to the portal.
+    ///
+    /// Used to determine which backoff strategy to use:
+    /// - Initial connection: shorter timeout (e.g. 30s) to fail fast
+    /// - Reconnection: longer timeout to survive longer partitions
+    was_connected: bool,
 
     resolved_addresses: Vec<IpAddr>,
 
@@ -275,6 +306,12 @@ where
     /// You must explicitly call [`PhoenixChannel::connect`] to establish a connection.
     ///
     /// The provided URL must contain a host.
+    ///
+    /// # Arguments
+    ///
+    /// * `make_reconnect_backoff` - Backoff strategy for reconnection attempts (after a successful connection).
+    ///   Should have a longer max elapsed time to survive network partitions.
+    ///   For initial connection attempts (before ever connecting), a fixed 1s interval with 15s max is used.
     pub fn disconnected(
         url: LoginUrl<TFinish>,
         token: SecretString,
@@ -295,8 +332,10 @@ where
             .collect();
 
         Ok(Self {
+            make_initial_backoff: Box::new(make_initial_backoff),
             make_reconnect_backoff: Box::new(make_reconnect_backoff),
-            reconnect_backoff: None,
+            backoff: None,
+            was_connected: false,
             url_prototype: url,
             user_agent,
             token,
@@ -369,7 +408,7 @@ where
         }
 
         // 1. Reset the backoff.
-        self.reconnect_backoff = None;
+        self.backoff = None;
 
         // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
@@ -471,7 +510,8 @@ where
                 }
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
-                        self.reconnect_backoff = None;
+                        self.backoff = None;
+                        self.was_connected = true;
                         self.heartbeat.reset();
                         self.state = State::Connected(stream);
 
@@ -534,25 +574,36 @@ where
                         return Poll::Ready(Err(Error::FatalIo(io)));
                     }
                     Poll::Ready(Err(e)) => {
-                        let backoff = match self.reconnect_backoff.as_mut() {
-                            Some(reconnect_backoff) => reconnect_backoff
-                                .next_backoff()
-                                .ok_or_else(|| Error::MaxRetriesReached {
-                                    final_error: err_with_src(&e).to_string(),
+                        let backoff_duration =
+                            match self.backoff.as_mut() {
+                                Some(backoff) => backoff.next_backoff().ok_or_else(|| {
+                                    Error::MaxRetriesReached {
+                                        final_error: err_with_src(&e).to_string(),
+                                    }
                                 })?,
-                            None => {
-                                self.reconnect_backoff = Some((self.make_reconnect_backoff)());
+                                None => {
+                                    // Create a new backoff based on whether we've ever connected.
+                                    // - Initial connection: fixed 1s interval, 15s max
+                                    // - Reconnection: caller-provided backoff (longer timeout)
+                                    let new_backoff = if self.was_connected {
+                                        (self.make_reconnect_backoff)()
+                                    } else {
+                                        (self.make_initial_backoff)()
+                                    };
+                                    self.backoff = Some(new_backoff);
 
-                                Duration::ZERO
-                            }
+                                    Duration::ZERO
+                                }
+                            };
+
+                        self.state = State::Reconnect {
+                            backoff: backoff_duration,
                         };
 
-                        self.state = State::Reconnect { backoff };
-
                         return Poll::Ready(Ok(Event::Hiccup {
-                            backoff,
+                            backoff: backoff_duration,
                             max_elapsed_time: self
-                                .reconnect_backoff
+                                .backoff
                                 .as_ref()
                                 .and_then(|b| b.max_elapsed_time),
                             error: anyhow::Error::new(e)

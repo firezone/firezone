@@ -21,6 +21,10 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11625">
+          Fails faster when the initial connection to the control plane cannot
+          be established, allowing the user to retry sooner.
+        </ChangeItem>
         <ChangeItem pull="11584">
           Improves connection reliability on systems where certain UDP socket
           features are unavailable.
