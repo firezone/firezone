@@ -11,10 +11,10 @@ defmodule PortalAPI.Sockets do
   Checks the `x-authorization` header first (expecting "Bearer {token}" format),
   then falls back to the `token` query parameter.
 
-  Returns `{:ok, token}` if found, or `:error` if no token is present.
+  Returns `{:ok, token}` if found, or `{:error, :missing_token}` if no token is present.
   """
   def extract_token(params, connect_info) do
-    with :error <- extract_token_from_header(connect_info) do
+    with {:error, :missing_token} <- extract_token_from_header(connect_info) do
       extract_token_from_params(params)
     end
   end
@@ -36,8 +36,16 @@ defmodule PortalAPI.Sockets do
     Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters")
   end
 
-  def handle_error(conn, :rate_limit),
-    do: Plug.Conn.send_resp(conn, 429, "Too many requests")
+  # We use 503 instead of 429 because connlib treats 429 as fatal until
+  # https://github.com/firezone/firezone/pull/11594 is widely distributed.
+  def handle_error(conn, :rate_limit) do
+    conn
+    |> Plug.Conn.put_resp_header(
+      "retry-after",
+      Integer.to_string(PortalAPI.Sockets.RateLimit.retry_after_seconds())
+    )
+    |> Plug.Conn.send_resp(503, "Service Unavailable")
+  end
 
   def auth_context(%{user_agent: user_agent, x_headers: x_headers, peer_data: peer_data}, type) do
     remote_ip = real_ip(x_headers, peer_data)
@@ -56,12 +64,12 @@ defmodule PortalAPI.Sockets do
   defp extract_token_from_header(%{x_headers: x_headers}) when is_list(x_headers) do
     case List.keyfind(x_headers, "x-authorization", 0) do
       {"x-authorization", "Bearer " <> token} -> {:ok, token}
-      _ -> :error
+      _ -> {:error, :missing_token}
     end
   end
 
-  defp extract_token_from_header(_connect_info), do: :error
+  defp extract_token_from_header(_connect_info), do: {:error, :missing_token}
 
   defp extract_token_from_params(%{"token" => token}) when is_binary(token), do: {:ok, token}
-  defp extract_token_from_params(_params), do: :error
+  defp extract_token_from_params(_params), do: {:error, :missing_token}
 end

@@ -35,21 +35,21 @@ defmodule PortalAPI.SocketsTest do
       params = %{}
       connect_info = %{x_headers: []}
 
-      assert Sockets.extract_token(params, connect_info) == :error
+      assert Sockets.extract_token(params, connect_info) == {:error, :missing_token}
     end
 
     test "returns error when header exists but without Bearer prefix" do
       params = %{}
       connect_info = %{x_headers: [{"x-authorization", "my-token"}]}
 
-      assert Sockets.extract_token(params, connect_info) == :error
+      assert Sockets.extract_token(params, connect_info) == {:error, :missing_token}
     end
 
     test "returns error when header exists with wrong prefix" do
       params = %{}
       connect_info = %{x_headers: [{"x-authorization", "Basic my-token"}]}
 
-      assert Sockets.extract_token(params, connect_info) == :error
+      assert Sockets.extract_token(params, connect_info) == {:error, :missing_token}
     end
 
     test "handles multiple x_headers correctly" do
@@ -71,6 +71,54 @@ defmodule PortalAPI.SocketsTest do
       connect_info = %{x_headers: [{"x-authorization", ""}]}
 
       assert Sockets.extract_token(params, connect_info) == {:ok, "fallback-token"}
+    end
+  end
+
+  describe "handle_error/2" do
+    test "returns 401 for invalid_token" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :invalid_token)
+
+      assert result.status == 401
+      assert result.resp_body == "Invalid token"
+    end
+
+    test "returns 401 for missing_token" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :missing_token)
+
+      assert result.status == 401
+      assert result.resp_body == "Missing token"
+    end
+
+    test "returns 403 for account_disabled" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :account_disabled)
+
+      assert result.status == 403
+      assert result.resp_body == "The account is disabled"
+    end
+
+    test "returns 403 for unauthenticated" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :unauthenticated)
+
+      assert result.status == 403
+      assert result.resp_body == "Forbidden"
+    end
+
+    test "returns 503 with retry-after header for rate_limit" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :rate_limit)
+
+      assert result.status == 503
+      assert result.resp_body == "Service Unavailable"
+      assert Plug.Conn.get_resp_header(result, "retry-after") == ["1"]
     end
   end
 end

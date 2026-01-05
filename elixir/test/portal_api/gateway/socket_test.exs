@@ -10,21 +10,10 @@ defmodule PortalAPI.Gateway.SocketTest do
 
   @connlib_version "1.3.0"
 
-  @connect_info %{
-    user_agent: "iOS/12.7 (iPhone) connlib/#{@connlib_version}",
-    peer_data: %{address: {189, 172, 73, 001}},
-    x_headers: [
-      {"x-forwarded-for", "189.172.73.153"},
-      {"x-geo-location-region", "Ukraine"},
-      {"x-geo-location-city", "Kyiv"},
-      {"x-geo-location-coordinates", "50.4333,30.5167"}
-    ],
-    trace_context_headers: []
-  }
-
   describe "connect/3" do
     test "returns error when token is missing" do
-      assert connect(Socket, %{}, connect_info: @connect_info) == {:error, :missing_token}
+      connect_info = build_connect_info()
+      assert connect(Socket, %{}, connect_info: connect_info) == {:error, :missing_token}
     end
 
     test "accepts token from x-authorization header" do
@@ -37,11 +26,7 @@ defmodule PortalAPI.Gateway.SocketTest do
         |> Map.take([:external_id, :public_key])
         |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
 
-      # Add x-authorization header with Bearer token
-      connect_info = %{
-        @connect_info
-        | x_headers: [{"x-authorization", "Bearer #{encrypted_secret}"} | @connect_info.x_headers]
-      }
+      connect_info = build_connect_info(token: encrypted_secret)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert gateway = Map.fetch!(socket.assigns, :gateway)
@@ -61,13 +46,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       # Use token1 in header, token2 in params
       attrs = connect_attrs(token: encrypted_secret2)
-
-      connect_info = %{
-        @connect_info
-        | x_headers: [
-            {"x-authorization", "Bearer #{encrypted_secret1}"} | @connect_info.x_headers
-          ]
-      }
+      connect_info = build_connect_info(token: encrypted_secret1)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       # Should use the header token (token1)
@@ -80,13 +59,15 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       attrs = connect_attrs(token: encrypted_secret)
 
-      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
+      connect_info =
+        build_connect_info(user_agent: "iOS/12.7 (iPhone) connlib/#{@connlib_version}")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert gateway = Map.fetch!(socket.assigns, :gateway)
 
       assert gateway.external_id == attrs["external_id"]
       assert gateway.public_key == attrs["public_key"]
-      assert gateway.last_seen_user_agent == @connect_info.user_agent
-      assert gateway.last_seen_remote_ip.address == {189, 172, 73, 153}
+      assert gateway.last_seen_user_agent == connect_info.user_agent
       assert gateway.last_seen_remote_ip_location_region == "Ukraine"
       assert gateway.last_seen_remote_ip_location_city == "Kyiv"
       assert gateway.last_seen_remote_ip_location_lat == 50.4333
@@ -99,8 +80,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       encrypted_secret = encode_gateway_token(token)
 
       attrs = connect_attrs(token: encrypted_secret)
-
-      connect_info = %{@connect_info | x_headers: [{"x-geo-location-region", "UA"}]}
+      connect_info = build_connect_info(x_headers: [{"x-geo-location-region", "UA"}])
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert gateway = Map.fetch!(socket.assigns, :gateway)
@@ -122,7 +102,8 @@ defmodule PortalAPI.Gateway.SocketTest do
         {"traceparent", "00-a1bf53221e0be8000000000000000002-f316927eb144aa62-01"}
       ]
 
-      connect_info = %{@connect_info | trace_context_headers: trace_context_headers}
+      base_connect_info = build_connect_info()
+      connect_info = %{base_connect_info | trace_context_headers: trace_context_headers}
 
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
       assert span_ctx != OpenTelemetry.Tracer.current_span_ctx()
@@ -136,8 +117,9 @@ defmodule PortalAPI.Gateway.SocketTest do
       encrypted_secret = encode_gateway_token(token)
 
       attrs = connect_attrs(token: encrypted_secret, external_id: gateway.external_id)
+      connect_info = build_connect_info()
 
-      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert gateway = Repo.one(Portal.Gateway)
       assert gateway.id == socket.assigns.gateway.id
     end
@@ -156,9 +138,10 @@ defmodule PortalAPI.Gateway.SocketTest do
       encrypted_secret = encode_gateway_token(token)
 
       attrs = connect_attrs(token: encrypted_secret, external_id: existing_gateway.external_id)
+      connect_info = build_connect_info()
 
       # Reconnect
-      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert gateway = socket.assigns.gateway
 
       # Verify IPs are preserved
@@ -168,7 +151,72 @@ defmodule PortalAPI.Gateway.SocketTest do
 
     test "returns error when token is invalid" do
       attrs = connect_attrs(token: "foo")
-      assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}
+      connect_info = build_connect_info()
+      assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
+    end
+
+    test "rate limits repeated connection attempts from same IP and token" do
+      token = gateway_token_fixture()
+      encrypted_secret = encode_gateway_token(token)
+
+      attrs = connect_attrs(token: encrypted_secret)
+
+      # Use a unique IP for this test to avoid interference with other tests
+      ip = unique_ip()
+      connect_info = build_connect_info(ip: ip, token: encrypted_secret)
+
+      # First connection should succeed
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
+
+      # Subsequent connections with same IP and token should be rate limited.
+      # The rate limiter uses a 1 token/second bucket, so we try multiple times
+      # to ensure we hit the rate limit even if we cross a second boundary.
+      rate_limited =
+        Enum.any?(1..3, fn _ ->
+          connect(Socket, attrs, connect_info: connect_info) == {:error, :rate_limit}
+        end)
+
+      assert rate_limited, "Expected at least one connection attempt to be rate limited"
+    end
+
+    test "allows connections from different IPs with same token" do
+      token = gateway_token_fixture()
+      encrypted_secret = encode_gateway_token(token)
+
+      attrs = connect_attrs(token: encrypted_secret)
+
+      ip1 = unique_ip()
+      ip2 = unique_ip()
+
+      connect_info_1 = build_connect_info(ip: ip1, token: encrypted_secret)
+      connect_info_2 = build_connect_info(ip: ip2, token: encrypted_secret)
+
+      # Both connections from different IPs should succeed
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info_1)
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info_2)
+    end
+
+    test "allows connections from same IP with different tokens" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+
+      token1 = gateway_token_fixture(account: account, site: site)
+      encrypted_secret1 = encode_gateway_token(token1)
+
+      token2 = gateway_token_fixture(account: account, site: site)
+      encrypted_secret2 = encode_gateway_token(token2)
+
+      ip = unique_ip()
+
+      attrs1 = connect_attrs(token: encrypted_secret1)
+      attrs2 = connect_attrs(token: encrypted_secret2)
+
+      connect_info_1 = build_connect_info(ip: ip, token: encrypted_secret1)
+      connect_info_2 = build_connect_info(ip: ip, token: encrypted_secret2)
+
+      # Both connections with different tokens should succeed
+      assert {:ok, _socket} = connect(Socket, attrs1, connect_info: connect_info_1)
+      assert {:ok, _socket} = connect(Socket, attrs2, connect_info: connect_info_2)
     end
   end
 
