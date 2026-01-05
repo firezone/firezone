@@ -135,6 +135,7 @@ defmodule Portal.Google.APIClient do
   @doc """
   Streams members of a specific group.
   Returns a stream that yields pages of members.
+  Uses includeDerivedMembership to fetch transitive memberships.
   """
   def stream_group_members(access_token, group_key) do
     query =
