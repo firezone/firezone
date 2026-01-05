@@ -131,6 +131,8 @@ defmodule PortalAPI.Client.Socket do
     alias Portal.IPv6Address
     alias Portal.Safe
 
+    # OTP 28 dialyzer is stricter about opaque types (MapSet) inside Ecto.Multi
+    @dialyzer {:no_opaque, upsert_client: 2}
     def upsert_client(changeset, _subject) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)
       actor_id = Ecto.Changeset.get_field(changeset, :actor_id)

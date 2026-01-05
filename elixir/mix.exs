@@ -1,6 +1,17 @@
 defmodule Portal.MixProject do
   use Mix.Project
 
+  def cli do
+    [
+      preferred_envs: [
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.html": :test
+      ]
+    ]
+  end
+
   def project do
     [
       app: :portal,
@@ -10,12 +21,6 @@ defmodule Portal.MixProject do
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       listeners: [Phoenix.CodeReloader],
-      preferred_cli_env: [
-        coveralls: :test,
-        "coveralls.detail": :test,
-        "coveralls.post": :test,
-        "coveralls.html": :test
-      ],
       docs: [
         logo: "assets/static/images/logo.svg",
         extras: ["docs/README.md", "docs/SECURITY.md", "docs/CONTRIBUTING.md"]
@@ -151,7 +156,7 @@ defmodule Portal.MixProject do
       reboot: ["ecto.reset", "run priv/repo/seeds.exs", "start"],
       sobelow: ["sobelow --config"],
       "assets.setup": [
-        "cmd cd assets && CI=true pnpm i",
+        "cmd --shell cd assets && CI=true pnpm i",
         "tailwind.install --if-missing",
         "esbuild.install --if-missing"
       ],

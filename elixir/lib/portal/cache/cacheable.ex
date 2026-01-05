@@ -6,8 +6,6 @@ defprotocol Portal.Cache.Cacheable do
 end
 
 defimpl Portal.Cache.Cacheable, for: Portal.Site do
-  def to_cache(nil), do: nil
-
   def to_cache(%Portal.Site{} = site) do
     %Portal.Cache.Cacheable.Site{
       id: Ecto.UUID.dump!(site.id),
