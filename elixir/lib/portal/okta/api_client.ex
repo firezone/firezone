@@ -62,7 +62,7 @@ defmodule Portal.Okta.APIClient do
     {_type, dpop_jwt} =
       key
       |> JOSE.JWK.from_map()
-      |> JOSE.JWS.sign(Jason.encode!(claims), header)
+      |> JOSE.JWS.sign(JSON.encode!(claims), header)
       |> JOSE.JWS.compact()
 
     dpop_jwt
@@ -369,7 +369,7 @@ defmodule Portal.Okta.APIClient do
     {_type, jwt} =
       client.private_key
       |> JOSE.JWK.from_map()
-      |> JOSE.JWS.sign(Jason.encode!(claims), header)
+      |> JOSE.JWS.sign(JSON.encode!(claims), header)
       |> JOSE.JWS.compact()
 
     jwt
