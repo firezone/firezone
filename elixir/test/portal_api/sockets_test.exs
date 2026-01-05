@@ -35,21 +35,21 @@ defmodule PortalAPI.SocketsTest do
       params = %{}
       connect_info = %{x_headers: []}
 
-      assert Sockets.extract_token(params, connect_info) == :error
+      assert Sockets.extract_token(params, connect_info) == {:error, :missing_token}
     end
 
     test "returns error when header exists but without Bearer prefix" do
       params = %{}
       connect_info = %{x_headers: [{"x-authorization", "my-token"}]}
 
-      assert Sockets.extract_token(params, connect_info) == :error
+      assert Sockets.extract_token(params, connect_info) == {:error, :missing_token}
     end
 
     test "returns error when header exists with wrong prefix" do
       params = %{}
       connect_info = %{x_headers: [{"x-authorization", "Basic my-token"}]}
 
-      assert Sockets.extract_token(params, connect_info) == :error
+      assert Sockets.extract_token(params, connect_info) == {:error, :missing_token}
     end
 
     test "handles multiple x_headers correctly" do

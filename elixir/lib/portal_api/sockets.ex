@@ -11,10 +11,10 @@ defmodule PortalAPI.Sockets do
   Checks the `x-authorization` header first (expecting "Bearer {token}" format),
   then falls back to the `token` query parameter.
 
-  Returns `{:ok, token}` if found, or `:error` if no token is present.
+  Returns `{:ok, token}` if found, or `{:error, :missing_token}` if no token is present.
   """
   def extract_token(params, connect_info) do
-    with :error <- extract_token_from_header(connect_info) do
+    with {:error, :missing_token} <- extract_token_from_header(connect_info) do
       extract_token_from_params(params)
     end
   end
@@ -64,12 +64,12 @@ defmodule PortalAPI.Sockets do
   defp extract_token_from_header(%{x_headers: x_headers}) when is_list(x_headers) do
     case List.keyfind(x_headers, "x-authorization", 0) do
       {"x-authorization", "Bearer " <> token} -> {:ok, token}
-      _ -> :error
+      _ -> {:error, :missing_token}
     end
   end
 
-  defp extract_token_from_header(_connect_info), do: :error
+  defp extract_token_from_header(_connect_info), do: {:error, :missing_token}
 
   defp extract_token_from_params(%{"token" => token}) when is_binary(token), do: {:ok, token}
-  defp extract_token_from_params(_params), do: :error
+  defp extract_token_from_params(_params), do: {:error, :missing_token}
 end

@@ -22,9 +22,6 @@ defmodule PortalAPI.Client.Socket do
       with :ok <- PortalAPI.Sockets.RateLimit.check(connect_info),
            {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info) do
         do_connect(token, attrs, socket, connect_info)
-      else
-        {:error, :rate_limit} -> {:error, :rate_limit}
-        :error -> {:error, :missing_token}
       end
     end
   end
