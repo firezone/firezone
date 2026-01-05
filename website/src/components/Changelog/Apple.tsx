@@ -29,6 +29,10 @@ export default function Apple() {
           Bumps minimum macOS version from 12.4 to 13.0 (Ventura) to enable
           SwiftUI MenuBarExtra API.
         </ChangeItem>
+        <ChangeItem pull="11627">
+          Fixes an issue where reconnections would fail if the portal host is an
+          IP address.
+        </ChangeItem>
         <ChangeItem pull="11595">
           Passes the authentication token in the x-authorization header instead
           of in the URL, improving rate limiting for users behind shared IPs.
