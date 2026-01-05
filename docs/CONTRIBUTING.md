@@ -119,7 +119,14 @@ cd elixir
 # Note: We use openssl instead of `mix phx.gen.cert` because of a Phoenix bug
 # that generates invalid certificates missing parameters: :NULL
 # See: https://github.com/phoenixframework/phoenix/issues/6319 which introduced this bug
-openssl req -x509 -newkey rsa:2048 -keyout priv/cert/selfsigned_key.pem -out priv/cert/selfsigned.pem -days 365 -nodes -subj "/O=Firezone Development/CN=localhost" -addext "subjectAltName=DNS:localhost"
+openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 \
+    -keyout priv/cert/selfsigned-key.pem \
+    -out priv/cert/selfsigned.pem \
+    -subj "/O=Firezone Development/CN=localhost" \
+    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+    -addext "basicConstraints=critical,CA:FALSE" \
+    -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
+    -addext "extendedKeyUsage=critical,serverAuth"
 
 # Add the new cert to the system trust store
 sudo security add-trusted-cert -d -p ssl -k /Library/Keychains/System.keychain priv/cert/selfsigned.pem
