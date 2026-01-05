@@ -139,7 +139,8 @@ defmodule Portal.Google.APIClient do
   def stream_group_members(access_token, group_key) do
     query =
       URI.encode_query(%{
-        "maxResults" => "200"
+        "maxResults" => "200",
+        "includeDerivedMembership" => "true"
       })
 
     path = "/admin/directory/v1/groups/#{group_key}/members"
