@@ -127,16 +127,19 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Allows to override Cowboy HTTP server options.
+  Allows to override Bandit HTTP/1.1 server options.
 
-  Keep in mind though changing those limits can pose a security risk. Other times,
-  browsers and proxies along the way may have equally strict limits, which means
-  the request will still fail or the URL will be pruned.
+  These options are passed to Bandit's `http_1_options`. Keep in mind that changing
+  these limits can pose a security risk. Browsers and proxies along the way may have
+  equally strict limits, which means the request will still fail or the URL will be pruned.
 
-  You can see all supported options at https://ninenines.eu/docs/en/cowboy/2.5/manual/cowboy_http/.
+  You can see all supported options at https://hexdocs.pm/bandit/Bandit.html#t:http_1_options/0.
+
+  Note: Bandit's default max_header_length (combined key & value per header) is 10000 bytes,
+  compared to Cowboy's max_header_value_length which was 4096 bytes (value only).
   """
   defconfig(:phoenix_http_protocol_options, :map,
-    default: %{max_header_value_length: 8192},
+    default: %{},
     dump: &Dumper.keyword/1
   )
 

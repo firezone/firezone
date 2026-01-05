@@ -249,7 +249,7 @@ if config_env() == :prod do
       http: [
         ip: env_var_to_config!(:phoenix_listen_address).address,
         port: env_var_to_config!(:phoenix_http_web_port),
-        protocol_options: env_var_to_config!(:phoenix_http_protocol_options)
+        http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
       ],
       url: [
         scheme: web_external_url_scheme,
@@ -287,7 +287,7 @@ if config_env() == :prod do
       http: [
         ip: env_var_to_config!(:phoenix_listen_address).address,
         port: env_var_to_config!(:phoenix_http_api_port),
-        protocol_options: env_var_to_config!(:phoenix_http_protocol_options)
+        http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
       ],
       url: [
         scheme: api_external_url_scheme,

@@ -11,8 +11,8 @@ defmodule Portal.Application do
     # OpenTelemetry setup
     _ = OpentelemetryLoggerMetadata.setup()
     _ = OpentelemetryEcto.setup([:portal, :repo])
-    _ = :opentelemetry_cowboy.setup()
-    _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
+    _ = OpentelemetryBandit.setup()
+    _ = OpentelemetryPhoenix.setup(adapter: :bandit)
 
     # Can be uncommented when this bug is fixed: https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/327
     # _ = OpentelemetryFinch.setup()

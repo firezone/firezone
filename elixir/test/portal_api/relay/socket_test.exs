@@ -1,5 +1,6 @@
 defmodule PortalAPI.Relay.SocketTest do
   use PortalAPI.ChannelCase, async: true
+  import ExUnit.CaptureLog
   import PortalAPI.Relay.Socket, except: [connect: 3]
   import Portal.TokenFixtures
   import Portal.RelayFixtures
@@ -153,6 +154,34 @@ defmodule PortalAPI.Relay.SocketTest do
       socket = socket(PortalAPI.Relay.Socket, "", %{relay: relay, token_id: token_id})
 
       assert id(socket) == "socket:#{token_id}"
+    end
+  end
+
+  describe "terminate/2" do
+    test "logs warning when connection times out" do
+      relay = relay_fixture()
+      socket = socket(PortalAPI.Relay.Socket, "", %{relay: relay})
+
+      log =
+        capture_log(fn ->
+          assert :ok = Socket.terminate(:timeout, {%{}, socket})
+        end)
+
+      assert log =~ "Relay missed heartbeat"
+      assert log =~ relay.ipv4
+      assert log =~ relay.ipv6
+    end
+
+    test "does not log for other termination reasons" do
+      relay = relay_fixture()
+      socket = socket(PortalAPI.Relay.Socket, "", %{relay: relay})
+
+      log =
+        capture_log(fn ->
+          assert :ok = Socket.terminate(:shutdown, {%{}, socket})
+        end)
+
+      refute log =~ "Relay missed heartbeat"
     end
   end
 end
