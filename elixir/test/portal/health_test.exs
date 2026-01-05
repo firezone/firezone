@@ -25,7 +25,7 @@ defmodule Portal.HealthTest do
         |> Portal.Health.call([])
 
       assert conn.status == 200
-      assert Jason.decode!(conn.resp_body) == %{"status" => "ok"}
+      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
     end
   end
 
@@ -37,7 +37,7 @@ defmodule Portal.HealthTest do
         |> Portal.Health.call([])
 
       assert conn.status == 200
-      assert Jason.decode!(conn.resp_body) == %{"status" => "ready"}
+      assert JSON.decode!(conn.resp_body) == %{"status" => "ready"}
     end
 
     test "returns 503 with status draining when draining file exists", %{
@@ -51,7 +51,7 @@ defmodule Portal.HealthTest do
         |> Portal.Health.call([])
 
       assert conn.status == 503
-      assert Jason.decode!(conn.resp_body) == %{"status" => "draining"}
+      assert JSON.decode!(conn.resp_body) == %{"status" => "draining"}
     end
   end
 

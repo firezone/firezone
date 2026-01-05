@@ -43,7 +43,7 @@ defmodule Portal.Crypto.JWK do
 
     # Generate key ID using RFC 7638 thumbprint
     thumbprint_json =
-      Jason.encode!(%{
+      JSON.encode!(%{
         "e" => jwk["e"],
         "kty" => jwk["kty"],
         "n" => jwk["n"]
