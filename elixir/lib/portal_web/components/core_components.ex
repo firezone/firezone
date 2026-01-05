@@ -945,7 +945,7 @@ defmodule PortalWeb.CoreComponents do
   def datetime(assigns) do
     ~H"""
     <span title={@datetime}>
-      {Cldr.DateTime.to_string!(@datetime, PortalWeb.CLDR, format: @format)}
+      {Cldr.DateTime.to_string!(@datetime, Portal.CLDR, format: @format)}
     </span>
     """
   end
@@ -970,7 +970,7 @@ defmodule PortalWeb.CoreComponents do
           "underline underline-offset-2 decoration-1 decoration-dotted",
           DateTime.compare(@datetime, @relative_to) == :lt && @negative_class
         ]}>
-          {Cldr.DateTime.Relative.to_string!(@datetime, PortalWeb.CLDR, relative_to: @relative_to)
+          {Cldr.DateTime.Relative.to_string!(@datetime, Portal.CLDR, relative_to: @relative_to)
           |> String.capitalize()}
         </span>
       </:target>
@@ -979,7 +979,7 @@ defmodule PortalWeb.CoreComponents do
       </:content>
     </.popover>
     <span :if={not @popover}>
-      {Cldr.DateTime.Relative.to_string!(@datetime, PortalWeb.CLDR, relative_to: @relative_to)
+      {Cldr.DateTime.Relative.to_string!(@datetime, Portal.CLDR, relative_to: @relative_to)
       |> String.capitalize()}
     </span>
     <span :if={is_nil(@datetime)}>
@@ -1047,7 +1047,7 @@ defmodule PortalWeb.CoreComponents do
         title={
           if @schema.last_seen_at,
             do:
-              "Last started #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, PortalWeb.CLDR, relative_to: @relative_to)}",
+              "Last started #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Portal.CLDR, relative_to: @relative_to)}",
             else: "Never connected"
         }
       >
@@ -1297,7 +1297,7 @@ defmodule PortalWeb.CoreComponents do
 
     ~H"""
     <span data-value={@number} {@rest}>
-      {PortalWeb.CLDR.Number.Cardinal.pluralize(@number, :en, @opts)}
+      {Portal.CLDR.Number.Cardinal.pluralize(@number, :en, @opts)}
     </span>
     """
   end

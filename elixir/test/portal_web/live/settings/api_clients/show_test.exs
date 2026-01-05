@@ -77,7 +77,7 @@ defmodule PortalWeb.Live.Settings.ApiClients.ShowTest do
     assert html =~ "API Client"
 
     expected_date =
-      Cldr.DateTime.Formatter.date(api_client.inserted_at, 1, "en", PortalWeb.CLDR, [])
+      Cldr.DateTime.Formatter.date(api_client.inserted_at, 1, "en", Portal.CLDR, [])
 
     assert lv
            |> element("#api-client")
