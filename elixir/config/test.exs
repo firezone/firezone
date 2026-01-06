@@ -63,11 +63,9 @@ config :portal, Portal.Changes.ReplicationConnection,
 
 config :portal, Portal.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
-  finch_transport_opts: [],
-  retry_config: [
-    max_retries: 3,
-    base_delay_ms: 100,
-    max_delay_ms: 1000
+  req_options: [
+    plug: {Req.Test, Portal.Billing.Stripe.APIClient},
+    retry: false
   ]
 
 config :portal, Portal.Telemetry, enabled: false

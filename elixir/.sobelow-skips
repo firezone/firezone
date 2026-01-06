@@ -26,3 +26,5 @@ Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:28,7369D6
 Config.Secrets: Hardcoded Secret,config/config.exs:209,8DFEA3
 
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/mailer.ex:49,2064866
+Config.Secrets: Hardcoded Secret,config/config.exs:201,3CFE1A
+Config.Secrets: Hardcoded Secret,config/config.exs:202,43A0604

@@ -194,14 +194,7 @@ config :portal, Portal.OIDC.AuthProvider,
   response_type: "code",
   scope: "openid email profile"
 
-config :portal, Portal.Billing.Stripe.APIClient,
-  endpoint: "https://api.stripe.com",
-  finch_transport_opts: [],
-  retry_config: [
-    max_retries: 3,
-    base_delay_ms: 1000,
-    max_delay_ms: 10_000
-  ]
+config :portal, Portal.Billing.Stripe.APIClient, endpoint: "https://api.stripe.com"
 
 config :portal, Portal.Billing,
   enabled: true,

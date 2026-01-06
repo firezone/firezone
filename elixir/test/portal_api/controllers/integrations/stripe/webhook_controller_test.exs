@@ -4,6 +4,8 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
 
   import Portal.AccountFixtures
 
+  alias Portal.Mocks.Stripe
+
   describe "handle_webhook/2" do
     test "returns error when payload is not signed", %{conn: conn} do
       conn = post(conn, "/integrations/stripe/webhooks", %{"message" => "Hello, world!"})
@@ -33,14 +35,16 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
         |> Ecto.Changeset.put_change(:metadata, %{stripe: %{customer_id: customer_id}})
         |> Portal.Repo.update!()
 
-      Bypass.open()
-      |> Mocks.Stripe.mock_fetch_customer_endpoint(account)
-      |> Mocks.Stripe.mock_fetch_product_endpoint("prod_Na6dGcTsmU0I4R")
+      expectations =
+        Stripe.mock_fetch_customer_endpoint(account) ++
+          Stripe.mock_fetch_product_endpoint("prod_Na6dGcTsmU0I4R")
+
+      Stripe.stub(expectations)
 
       payload =
-        Mocks.Stripe.build_event(
+        Stripe.build_event(
           "customer.subscription.updated",
-          Mocks.Stripe.subscription_object(customer_id, %{}, %{}, 0)
+          Stripe.subscription_object(customer_id, %{}, %{}, 0)
         )
         |> JSON.encode!()
 
@@ -59,9 +63,9 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
 
     test "returns error with the signature is too old", %{conn: conn} do
       payload =
-        Mocks.Stripe.build_event(
+        Stripe.build_event(
           "customer.subscription.updated",
-          Mocks.Stripe.subscription_object("cus_xxx", %{}, %{}, 0)
+          Stripe.subscription_object("cus_xxx", %{}, %{}, 0)
         )
         |> JSON.encode!()
 
