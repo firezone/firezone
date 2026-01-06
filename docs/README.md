@@ -71,7 +71,7 @@ Firezone is:
 - **Fast:** Built on WireGuard® to be
   [3-4 times](https://wireguard.com/performance/) faster than OpenVPN with sub-10ms latency overhead.
 - **Scalable:** Deploy two or more gateways for automatic load balancing and
-  failover. <!-- TODO: Add specific scaling numbers, e.g., "Tested with 10,000+ concurrent users" -->
+  failover.
 - **Private:** Peer-to-peer, end-to-end encrypted tunnels prevent packets from
   routing through our infrastructure.
 - **Secure:** Zero attack surface thanks to Firezone's holepunching tech which
