@@ -44,6 +44,8 @@ defmodule PortalWeb.Settings.Authentication do
       @common_fields ++ ~w[discovery_document_uri client_id client_secret is_verified is_legacy]a
   }
 
+  @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the URI returns valid OpenID Connect configuration."
+
   def mount(_params, _session, socket) do
     socket = assign(socket, page_title: "Authentication")
 
@@ -1190,27 +1192,85 @@ defmodule PortalWeb.Settings.Authentication do
     end
   end
 
+  # Transport errors (network issues)
   defp handle_verification_setup_error(
-         {:error, %Mint.TransportError{reason: reason}},
+         {:error, %Req.TransportError{reason: reason}},
          field,
          socket
        ) do
-    msg = "Failed to start verification: #{inspect(reason)}."
-    add_verification_error(msg, field, socket)
-  end
-
-  defp handle_verification_setup_error({:error, %Jason.DecodeError{}}, field, socket) do
     msg =
-      "Failed to start verification: the Discovery Document URI did not return a valid JSON response."
+      case reason do
+        :nxdomain ->
+          "Unable to fetch discovery document: DNS lookup failed. Please verify the domain is correct."
+
+        :econnrefused ->
+          "Unable to fetch discovery document: Connection refused. The identity provider may be down."
+
+        :timeout ->
+          "Unable to fetch discovery document: Connection timed out. Please try again."
+
+        _ ->
+          "Unable to fetch discovery document: #{inspect(reason)}. Please check your network connection."
+      end
 
     add_verification_error(msg, field, socket)
   end
 
+  # HTTP protocol errors
+  defp handle_verification_setup_error(
+         {:error, %Req.HTTPError{protocol: protocol, reason: reason}},
+         field,
+         socket
+       ) do
+    msg = "Identity provider returned a #{protocol} protocol error: #{inspect(reason)}."
+    add_verification_error(msg, field, socket)
+  end
+
+  # HTTP error status codes
+  defp handle_verification_setup_error({:error, {status, body}}, field, socket)
+       when is_integer(status) do
+    msg =
+      case {status, body} do
+        {404, _} ->
+          "Discovery document not found (HTTP 404). Please verify the Discovery Document URI is correct."
+
+        {status, _} when status in 500..599 ->
+          "Identity provider returned a server error (HTTP #{status}). Please try again later."
+
+        {status, %{"error" => error_code}} ->
+          "Identity provider returned an error: #{error_code} (HTTP #{status})."
+
+        {status, _} ->
+          "Failed to fetch discovery document (HTTP #{status}). Please verify your configuration."
+      end
+
+    add_verification_error(msg, field, socket)
+  end
+
+  # JSON decode errors
+  defp handle_verification_setup_error({:error, {:unexpected_end, _offset}}, field, socket) do
+    add_verification_error(@invalid_json_error_message, field, socket)
+  end
+
+  defp handle_verification_setup_error({:error, {:invalid_byte, _offset, _byte}}, field, socket) do
+    add_verification_error(@invalid_json_error_message, field, socket)
+  end
+
+  defp handle_verification_setup_error(
+         {:error, {:unexpected_sequence, _offset, _bytes}},
+         field,
+         socket
+       ) do
+    add_verification_error(@invalid_json_error_message, field, socket)
+  end
+
+  # Invalid URI
   defp handle_verification_setup_error({:error, :invalid_discovery_document_uri}, field, socket) do
-    msg = "Failed to start verification: the Discovery Document URI is invalid."
+    msg = "The Discovery Document URI is invalid. Please enter a valid URL."
     add_verification_error(msg, field, socket)
   end
 
+  # Catch-all for unexpected errors
   defp handle_verification_setup_error({:error, reason}, field, socket) do
     Logger.info(
       "Unexpected error during OIDC verification setup",
@@ -1218,7 +1278,7 @@ defmodule PortalWeb.Settings.Authentication do
       reason: reason
     )
 
-    msg = "Failed to start verification: An unexpected error occurred."
+    msg = "An unexpected error occurred: #{inspect(reason)}. Please try again or contact support."
     add_verification_error(msg, field, socket)
   end
 

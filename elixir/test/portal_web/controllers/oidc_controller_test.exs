@@ -307,14 +307,16 @@ defmodule PortalWeb.OIDCControllerTest do
       {:ok, account: account, provider: provider, bypass: bypass}
     end
 
-    test "redirects with error when token exchange fails", %{
+    test "redirects with descriptive error when token exchange returns invalid_grant", %{
       conn: conn,
       account: account,
       provider: provider,
       bypass: bypass
     } do
       Bypass.expect_once(bypass, "POST", "/oauth/token", fn conn ->
-        Plug.Conn.resp(conn, 400, JSON.encode!(%{"error" => "invalid_grant"}))
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(400, JSON.encode!(%{"error" => "invalid_grant"}))
       end)
 
       cookie = build_oidc_cookie(account, provider)
@@ -323,10 +325,77 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) == "/#{account.slug}"
 
       assert flash(conn, :error) ==
-               "An unexpected error occurred while signing you in. Please try again."
+               "The authorization code has expired or was already used. Please try signing in again."
     end
 
-    test "redirects with error when token verification fails", %{
+    test "redirects with descriptive error when token exchange returns invalid_client", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      Bypass.expect_once(bypass, "POST", "/oauth/token", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(400, JSON.encode!(%{"error" => "invalid_client"}))
+      end)
+
+      cookie = build_oidc_cookie(account, provider)
+      conn = perform_callback(conn, cookie)
+
+      assert redirected_to(conn) == "/#{account.slug}"
+
+      assert flash(conn, :error) ==
+               "Identity provider rejected the client credentials. Please verify your Client ID and Client Secret."
+    end
+
+    test "redirects with descriptive error when token exchange returns 401", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      Bypass.expect_once(bypass, "POST", "/oauth/token", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(401, JSON.encode!(%{"error" => "unauthorized"}))
+      end)
+
+      cookie = build_oidc_cookie(account, provider)
+      conn = perform_callback(conn, cookie)
+
+      assert redirected_to(conn) == "/#{account.slug}"
+
+      assert flash(conn, :error) ==
+               "Identity provider rejected the credentials. Please verify your Client ID and Client Secret are correct."
+    end
+
+    test "redirects with descriptive error when token exchange returns 500", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      # Disable retry to avoid multiple requests
+      Application.put_env(:openid_connect, :retry, false)
+      on_exit(fn -> Application.delete_env(:openid_connect, :retry) end)
+
+      Bypass.expect_once(bypass, "POST", "/oauth/token", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(500, JSON.encode!(%{"error" => "server_error"}))
+      end)
+
+      cookie = build_oidc_cookie(account, provider)
+      conn = perform_callback(conn, cookie)
+
+      assert redirected_to(conn) == "/#{account.slug}"
+
+      assert flash(conn, :error) ==
+               "Identity provider returned a server error (HTTP 500). Please try again later."
+    end
+
+    test "redirects with descriptive error when JWT verification fails", %{
       conn: conn,
       account: account,
       provider: provider,
@@ -339,8 +408,77 @@ defmodule PortalWeb.OIDCControllerTest do
 
       assert redirected_to(conn) == "/#{account.slug}"
 
+      assert flash(conn, :error) =~ "Failed to verify identity token:"
+    end
+
+    test "redirects with descriptive error when token endpoint is unreachable (transport error)",
+         %{
+           conn: conn,
+           account: account,
+           provider: provider,
+           bypass: bypass
+         } do
+      # Disable Req retry for this test to avoid timeouts
+      Application.put_env(:openid_connect, :retry, false)
+      on_exit(fn -> Application.delete_env(:openid_connect, :retry) end)
+
+      Bypass.down(bypass)
+
+      cookie = build_oidc_cookie(account, provider)
+      conn = perform_callback(conn, cookie)
+
+      assert redirected_to(conn) == "/#{account.slug}"
+
       assert flash(conn, :error) ==
-               "An unexpected error occurred while signing you in. Please try again."
+               "Unable to reach identity provider: Connection refused. The provider may be down or blocking requests."
+    end
+
+    test "redirects with descriptive error when token endpoint returns invalid JSON", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      Bypass.expect_once(bypass, "POST", "/oauth/token", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(200, "not valid json")
+      end)
+
+      cookie = build_oidc_cookie(account, provider)
+
+      log =
+        capture_log(fn ->
+          conn = perform_callback(conn, cookie)
+
+          assert redirected_to(conn) == "/#{account.slug}"
+
+          # JSON decode errors fall through to catch-all since they're unexpected
+          assert flash(conn, :error) =~ "An unexpected error occurred"
+        end)
+
+      assert log =~ "OIDC sign-in error"
+    end
+
+    test "redirects with descriptive error when token exchange returns generic 400 error", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      Bypass.expect_once(bypass, "POST", "/oauth/token", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(400, JSON.encode!(%{"error" => "invalid_request"}))
+      end)
+
+      cookie = build_oidc_cookie(account, provider)
+      conn = perform_callback(conn, cookie)
+
+      assert redirected_to(conn) == "/#{account.slug}"
+
+      assert flash(conn, :error) ==
+               "Identity provider returned an error: invalid_request. Please try again."
     end
   end
 
@@ -511,6 +649,10 @@ defmodule PortalWeb.OIDCControllerTest do
 
   describe "callback/2 with userinfo fetch failure" do
     setup do
+      # Disable Req retry for these tests to avoid multiple requests
+      Application.put_env(:openid_connect, :retry, false)
+      on_exit(fn -> Application.delete_env(:openid_connect, :retry) end)
+
       account = account_fixture()
       %{bypass: bypass, provider: provider} = setup_oidc_provider(account)
 
@@ -788,6 +930,115 @@ defmodule PortalWeb.OIDCControllerTest do
 
       assert redirected_to(conn) =~ "http://localhost:#{bypass.port}/authorize"
       assert conn.resp_cookies["oidc"]
+    end
+  end
+
+  describe "sign_in/2 discovery document errors" do
+    setup do
+      # Disable Req retry for these tests to avoid timeouts
+      Application.put_env(:openid_connect, :retry, false)
+
+      on_exit(fn ->
+        Application.delete_env(:openid_connect, :retry)
+      end)
+
+      :ok
+    end
+
+    test "redirects with descriptive error when discovery document is unreachable (econnrefused)",
+         %{
+           conn: conn
+         } do
+      account = account_fixture()
+      %{bypass: bypass, provider: provider} = setup_oidc_provider(account)
+
+      # Bring down the bypass server to simulate connection refused
+      Bypass.down(bypass)
+
+      log =
+        capture_log(fn ->
+          conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
+
+          assert redirected_to(conn) == "/#{account.slug}"
+
+          assert flash(conn, :error) ==
+                   "Unable to fetch discovery document: Connection refused. The identity provider may be down."
+        end)
+
+      assert log =~ "OIDC authorization URI error"
+    end
+
+    test "redirects with descriptive error when discovery document returns invalid JSON", %{
+      conn: conn
+    } do
+      account = account_fixture()
+      bypass = Bypass.open()
+
+      Bypass.stub(bypass, "GET", "/.well-known/openid-configuration", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(200, "not valid json")
+      end)
+
+      provider = oidc_provider_fixture(bypass, account: account)
+
+      log =
+        capture_log(fn ->
+          conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
+
+          assert redirected_to(conn) == "/#{account.slug}"
+
+          assert flash(conn, :error) =~
+                   "Discovery document contains invalid JSON"
+        end)
+
+      assert log =~ "OIDC authorization URI error"
+    end
+
+    test "redirects with descriptive error when discovery document returns 404", %{conn: conn} do
+      account = account_fixture()
+      bypass = Bypass.open()
+
+      Bypass.stub(bypass, "GET", "/.well-known/openid-configuration", fn conn ->
+        Plug.Conn.resp(conn, 404, "Not Found")
+      end)
+
+      provider = oidc_provider_fixture(bypass, account: account)
+
+      log =
+        capture_log(fn ->
+          conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
+
+          assert redirected_to(conn) == "/#{account.slug}"
+
+          assert flash(conn, :error) ==
+                   "Discovery document not found (HTTP 404). Please verify the Discovery Document URI is correct."
+        end)
+
+      assert log =~ "OIDC authorization URI error"
+    end
+
+    test "redirects with descriptive error when discovery document returns 500", %{conn: conn} do
+      account = account_fixture()
+      bypass = Bypass.open()
+
+      Bypass.stub(bypass, "GET", "/.well-known/openid-configuration", fn conn ->
+        Plug.Conn.resp(conn, 500, "Internal Server Error")
+      end)
+
+      provider = oidc_provider_fixture(bypass, account: account)
+
+      log =
+        capture_log(fn ->
+          conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
+
+          assert redirected_to(conn) == "/#{account.slug}"
+
+          assert flash(conn, :error) ==
+                   "Identity provider returned a server error (HTTP 500). Please try again later."
+        end)
+
+      assert log =~ "OIDC authorization URI error"
     end
   end
 

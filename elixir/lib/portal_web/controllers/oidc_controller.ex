@@ -14,6 +14,8 @@ defmodule PortalWeb.OIDCController do
 
   action_fallback PortalWeb.FallbackController
 
+  @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     account = DB.get_account_by_id_or_slug!(account_id_or_slug)
     provider = get_provider!(account, params)
@@ -147,22 +149,111 @@ defmodule PortalWeb.OIDCController do
         []
       end
 
-    with {:ok, uri, state, verifier} <- PortalWeb.OIDC.authorization_uri(provider, opts) do
-      cookie = %PortalWeb.Cookie.OIDC{
-        auth_provider_type: params["auth_provider_type"],
-        auth_provider_id: params["auth_provider_id"],
-        account_id: account.id,
-        account_slug: account.slug,
-        state: state,
-        verifier: verifier,
-        params: sanitize(params)
-      }
+    case PortalWeb.OIDC.authorization_uri(provider, opts) do
+      {:ok, uri, state, verifier} ->
+        cookie = %PortalWeb.Cookie.OIDC{
+          auth_provider_type: params["auth_provider_type"],
+          auth_provider_id: params["auth_provider_id"],
+          account_id: account.id,
+          account_slug: account.slug,
+          state: state,
+          verifier: verifier,
+          params: sanitize(params)
+        }
 
-      conn
-      |> PortalWeb.Cookie.OIDC.put(cookie)
-      |> redirect(external: uri)
+        conn
+        |> PortalWeb.Cookie.OIDC.put(cookie)
+        |> redirect(external: uri)
+
+      {:error, reason} ->
+        handle_authorization_uri_error(conn, account, provider, reason)
     end
   end
+
+  defp handle_authorization_uri_error(conn, account, provider, %Req.TransportError{reason: reason}) do
+    Logger.warning("OIDC authorization URI error",
+      account_id: account.id,
+      provider_id: provider.id,
+      reason: inspect(reason)
+    )
+
+    error = transport_error_message(reason)
+
+    conn
+    |> put_flash(:error, error)
+    |> redirect(to: ~p"/#{account.slug}")
+  end
+
+  defp handle_authorization_uri_error(conn, account, provider, {status, _body})
+       when is_integer(status) do
+    Logger.warning("OIDC authorization URI error",
+      account_id: account.id,
+      provider_id: provider.id,
+      reason: "HTTP #{status}"
+    )
+
+    error = discovery_http_error_message(status)
+
+    conn
+    |> put_flash(:error, error)
+    |> redirect(to: ~p"/#{account.slug}")
+  end
+
+  defp handle_authorization_uri_error(conn, account, provider, reason) do
+    Logger.warning("OIDC authorization URI error",
+      account_id: account.id,
+      provider_id: provider.id,
+      reason: inspect(reason)
+    )
+
+    error = discovery_error_message(reason)
+
+    conn
+    |> put_flash(:error, error)
+    |> redirect(to: ~p"/#{account.slug}")
+  end
+
+  defp transport_error_message(:nxdomain),
+    do:
+      "Unable to fetch discovery document: DNS lookup failed. Please verify the Discovery Document URI domain is correct."
+
+  defp transport_error_message(:econnrefused),
+    do:
+      "Unable to fetch discovery document: Connection refused. The identity provider may be down."
+
+  defp transport_error_message(:timeout),
+    do: "Unable to fetch discovery document: Connection timed out. Please try again."
+
+  defp transport_error_message(reason),
+    do:
+      "Unable to fetch discovery document: #{inspect(reason)}. Please check the Discovery Document URI."
+
+  defp discovery_http_error_message(404),
+    do:
+      "Discovery document not found (HTTP 404). Please verify the Discovery Document URI is correct."
+
+  defp discovery_http_error_message(status) when status in 500..599,
+    do: "Identity provider returned a server error (HTTP #{status}). Please try again later."
+
+  defp discovery_http_error_message(status),
+    do:
+      "Failed to fetch discovery document (HTTP #{status}). Please verify your provider configuration."
+
+  defp discovery_error_message({:unexpected_end, _}),
+    do: @invalid_json_error_message
+
+  defp discovery_error_message({:invalid_byte, _, _}),
+    do: @invalid_json_error_message
+
+  defp discovery_error_message({:unexpected_sequence, _, _}),
+    do: @invalid_json_error_message
+
+  defp discovery_error_message(:invalid_discovery_document_uri),
+    do: "The Discovery Document URI is invalid. Please check your provider configuration."
+
+  defp discovery_error_message(reason),
+    do:
+      "Unable to connect to the identity provider: #{inspect(reason)}. Please try again or contact your administrator."
 
   defp get_provider!(account, %{"auth_provider_type" => type, "auth_provider_id" => id}) do
     DB.get_provider!(account.id, type, id)
@@ -425,6 +516,76 @@ defmodule PortalWeb.OIDCController do
   defp handle_error(conn, {:error, :invalid_callback_params}) do
     {account_slug, original_params} = fetch_error_context(conn)
     error = "Invalid sign-in request. Please try again."
+    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
+
+    redirect_for_error(conn, error, path)
+  end
+
+  # Transport errors (network issues)
+  defp handle_error(conn, {:error, %Req.TransportError{reason: reason}}) do
+    {account_slug, original_params} = fetch_error_context(conn)
+
+    error =
+      case reason do
+        :nxdomain ->
+          "Unable to reach identity provider: DNS lookup failed. Please verify the provider's domain is correct."
+
+        :econnrefused ->
+          "Unable to reach identity provider: Connection refused. The provider may be down or blocking requests."
+
+        :timeout ->
+          "Unable to reach identity provider: Connection timed out. Please try again."
+
+        _ ->
+          "Unable to reach identity provider: #{inspect(reason)}. Please check your network connection and try again."
+      end
+
+    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
+    redirect_for_error(conn, error, path)
+  end
+
+  # HTTP protocol errors
+  defp handle_error(conn, {:error, %Req.HTTPError{protocol: protocol, reason: reason}}) do
+    {account_slug, original_params} = fetch_error_context(conn)
+    error = "Identity provider returned a #{protocol} protocol error: #{inspect(reason)}."
+    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
+
+    redirect_for_error(conn, error, path)
+  end
+
+  # HTTP error status codes from token endpoint
+  defp handle_error(conn, {:error, {status, body}}) when is_integer(status) do
+    {account_slug, original_params} = fetch_error_context(conn)
+
+    error =
+      case {status, body} do
+        {401, _} ->
+          "Identity provider rejected the credentials. Please verify your Client ID and Client Secret are correct."
+
+        {400, %{"error" => "invalid_grant"}} ->
+          "The authorization code has expired or was already used. Please try signing in again."
+
+        {400, %{"error" => "invalid_client"}} ->
+          "Identity provider rejected the client credentials. Please verify your Client ID and Client Secret."
+
+        {400, %{"error" => error_code}} ->
+          "Identity provider returned an error: #{error_code}. Please try again."
+
+        {status, _} when status in 500..599 ->
+          "Identity provider returned a server error (HTTP #{status}). Please try again later."
+
+        {status, _} ->
+          "Identity provider returned an error (HTTP #{status}). Please try again."
+      end
+
+    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
+    redirect_for_error(conn, error, path)
+  end
+
+  # JWT verification failures
+  defp handle_error(conn, {:error, {:invalid_jwt, reason}}) do
+    {account_slug, original_params} = fetch_error_context(conn)
+    error = "Failed to verify identity token: #{reason}. Please try signing in again."
     path = ~p"/#{account_slug}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)
