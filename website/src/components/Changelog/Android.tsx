@@ -21,6 +21,10 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11627">
+          Fixes an issue where reconnections would fail if the portal host is an
+          IP address.
+        </ChangeItem>
         <ChangeItem pull="11595">
           Passes the authentication token in the x-authorization header instead
           of in the URL, improving rate limiting for users behind shared IPs.
