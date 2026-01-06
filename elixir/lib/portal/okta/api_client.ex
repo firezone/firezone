@@ -138,7 +138,7 @@ defmodule Portal.Okta.APIClient do
 
     req_options =
       [base_url: client.base_url]
-      |> Keyword.merge(Application.get_env(:portal, :okta_req_options, []))
+      |> Keyword.merge(fetch_config(:req_options) || [])
 
     Req.new(req_options)
     |> Req.merge(url: "/oauth2/v1/introspect")
@@ -268,7 +268,7 @@ defmodule Portal.Okta.APIClient do
   defp new_request(%APIClient{} = client, access_token, nonce \\ nil) do
     req_options =
       [base_url: client.base_url]
-      |> Keyword.merge(Application.get_env(:portal, :okta_req_options, []))
+      |> Keyword.merge(fetch_config(:req_options) || [])
 
     Req.new(req_options)
     |> ReqDPoP.attach(
@@ -437,6 +437,11 @@ defmodule Portal.Okta.APIClient do
 
   defp test_groups(client, token) do
     test_endpoint(client, token, @groups_path, params: [limit: 1])
+  end
+
+  defp fetch_config(key) do
+    Portal.Config.fetch_env!(:portal, __MODULE__)
+    |> Keyword.get(key)
   end
 end
 

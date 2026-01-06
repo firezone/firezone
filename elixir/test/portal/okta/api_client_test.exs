@@ -8,13 +8,6 @@ defmodule Portal.Okta.APIClientTest do
   @test_private_key_jwk @test_jwk |> JOSE.JWK.to_map() |> elem(1)
 
   setup do
-    # Configure Req.Test adapter for all requests
-    Application.put_env(:portal, :okta_req_options, plug: {Req.Test, APIClient})
-
-    on_exit(fn ->
-      Application.delete_env(:portal, :okta_req_options)
-    end)
-
     client = %APIClient{
       base_url: "http://test.okta.com",
       client_id: "test_client",
