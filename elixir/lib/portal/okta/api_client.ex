@@ -32,12 +32,7 @@ defmodule Portal.Okta.APIClient do
 
   @spec new(Directory.t()) :: t()
   def new(%Directory{} = directory) do
-    %APIClient{
-      base_url: "https://#{directory.okta_domain}",
-      client_id: directory.client_id,
-      private_key: directory.private_key_jwk,
-      kid: directory.kid
-    }
+    new(directory.okta_domain, directory.client_id, directory.private_key_jwk, directory.kid)
   end
 
   @spec new(String.t(), String.t(), map(), String.t()) :: t()
@@ -141,7 +136,11 @@ defmodule Portal.Okta.APIClient do
       "client_assertion" => client_assertion
     }
 
-    Req.new(base_url: client.base_url)
+    req_options =
+      [base_url: client.base_url]
+      |> Keyword.merge(Application.get_env(:portal, :okta_req_options, []))
+
+    Req.new(req_options)
     |> Req.merge(url: "/oauth2/v1/introspect")
     |> Req.Request.put_header("content-type", "application/x-www-form-urlencoded")
     |> Req.post(form: form_data)
@@ -267,7 +266,11 @@ defmodule Portal.Okta.APIClient do
   end
 
   defp new_request(%APIClient{} = client, access_token, nonce \\ nil) do
-    Req.new(base_url: client.base_url)
+    req_options =
+      [base_url: client.base_url]
+      |> Keyword.merge(Application.get_env(:portal, :okta_req_options, []))
+
+    Req.new(req_options)
     |> ReqDPoP.attach(
       sign_fun: &dpop_sign(&1, client.private_key, client.kid),
       access_token: access_token,
