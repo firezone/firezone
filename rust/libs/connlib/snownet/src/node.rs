@@ -430,7 +430,8 @@ where
         let candidate_kind = candidate.kind();
         let has_state = maybe_state.is_some();
 
-        tracing::debug!(
+        // Temporarily using info! for debugging the ICE nomination race condition
+        tracing::info!(
             ?candidate,
             ?candidate_kind,
             has_state,
@@ -446,7 +447,7 @@ where
         // circumventing restrictive NATs where we talk to relay or server-reflexive addresses.
         match candidate_kind {
             CandidateKind::Host => {
-                tracing::debug!("Host candidate - skipping TURN channel binding");
+                tracing::info!("Host candidate - skipping TURN channel binding");
             }
             CandidateKind::Relayed
             | CandidateKind::ServerReflexive
@@ -463,10 +464,10 @@ where
             // Make sure we move out of idle mode when we add new candidates.
             // Also triggers re-evaluation if we're connected via relay and a
             // potentially better (host) candidate arrives.
-            tracing::debug!(%state, "Calling on_candidate for established connection");
+            tracing::info!(%state, "Calling on_candidate for established connection");
             state.on_candidate(cid, agent, now);
         } else {
-            tracing::debug!("Connection is initial (not established) - no state to notify");
+            tracing::info!("Connection is initial (not established) - no state to notify");
         }
     }
 
@@ -1634,11 +1635,12 @@ impl ConnectionState {
     where
         TId: fmt::Display,
     {
-        tracing::debug!(%cid, state = %self, "on_candidate called");
+        // Temporarily using info! for debugging the ICE nomination race condition
+        tracing::info!(%cid, state = %self, "on_candidate called");
 
         let peer_socket = match self {
             Self::Idle { peer_socket } => {
-                tracing::debug!(%cid, socket = %peer_socket.kind(), "State is Idle, will transition to Connected");
+                tracing::info!(%cid, socket = %peer_socket.kind(), "State is Idle, will transition to Connected");
                 *peer_socket
             }
             Self::Connected {
@@ -1653,7 +1655,7 @@ impl ConnectionState {
                 // This handles the race where relay nomination happens before host
                 // candidates are exchanged.
                 if peer_socket.uses_relay() {
-                    tracing::debug!(
+                    tracing::info!(
                         %cid,
                         socket = %peer_socket.kind(),
                         "New candidate while connected via relay, triggering connectivity checks"
@@ -1662,7 +1664,7 @@ impl ConnectionState {
                     // Immediately drive the ICE agent to process new candidate pairs
                     agent.handle_timeout(now);
                 } else {
-                    tracing::debug!(
+                    tracing::info!(
                         %cid,
                         socket = %peer_socket.kind(),
                         "Already connected peer-to-peer, no re-check needed"
@@ -1672,11 +1674,11 @@ impl ConnectionState {
                 return;
             }
             Self::Failed => {
-                tracing::debug!(%cid, "State is Failed, ignoring candidate");
+                tracing::info!(%cid, "State is Failed, ignoring candidate");
                 return;
             }
             Self::Connecting { .. } => {
-                tracing::debug!(%cid, "State is Connecting, ignoring candidate");
+                tracing::info!(%cid, "State is Connecting, ignoring candidate");
                 return;
             }
         };
@@ -1937,7 +1939,8 @@ where
                     source,
                     ..
                 } => {
-                    tracing::debug!(
+                    // Temporarily using info! for debugging the ICE nomination race condition
+                    tracing::info!(
                         %source,
                         %destination,
                         current_state = %self.state,
