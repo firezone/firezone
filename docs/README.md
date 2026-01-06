@@ -232,12 +232,12 @@ can be found at [https://www.firezone.dev/kb](https://www.firezone.dev/kb).
 
 ### For Contributors
 
-- 🎯 **Check out [good first issues](https://github.com/firezone/firezone/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)** to get started
+- 🎯 **Check out [help wanted](https://github.com/firezone/firezone/issues?q=is%3Aissue+is%3Aopen+label%3Akind/help_wanted)** to get started
 - 📖 **Read our [contribution guide](CONTRIBUTING.md)** for development setup
 - 🏗️ **See the [development environment setup](CONTRIBUTING.md)** to start coding
 - 🔄 **Submit a pull request** - all contributions welcome!
 
-**Recognition:** All contributors get <!-- TODO: Describe contributor recognition/rewards -->!
+**Recognition:** All contributors get credited in our [contributors list](https://github.com/firezone/firezone/graphs/contributors).
 
 ## Get Help
 
