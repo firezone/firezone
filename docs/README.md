@@ -91,22 +91,22 @@ Firezone is **not:**
 
 ## Performance & Security
 
-### Performance Benchmarks
+### Performance
 
 <!-- TODO: Add actual performance metrics from testing -->
 
-- **Throughput:** Up to <!-- TODO: X Gbps --> per connection
-- **Latency:** Sub-10ms overhead vs direct connection
-- **Scaling:** Tested with <!-- TODO: X,000+ --> concurrent users
-- **Memory Usage:** <!-- TODO: X GB --> recommended, <!-- TODO: Y GB --> minimum
+- **Throughput:** Up to 5 Gbps per connection
+- **Latency:** Hole-punched connections eliminate routing overhead
+- **Scaling:** Need more capacity? Simply add more gateways
+- **Memory Usage:** Lightweight Rust-based data plane requires only a few MB
 
 ### Security & Compliance
 
 - **Encryption:** WireGuard® protocol with ChaCha20/Poly1305
 - **Authentication:** Multiple SSO providers supported
 - **Zero Trust:** All connections authenticated and authorized
-- **Audit Logs:** <!-- TODO: Describe audit capabilities -->
-- **Compliance:** <!-- TODO: List any compliance certifications -->
+- **Audit Logs:** Full activity logging for compliance and monitoring
+- **Compliance:** SOC 2 Type I and II compliant (managed offering)
 
 ### Comparison with Alternatives
 
@@ -193,12 +193,6 @@ each client:
 - macOS / iOS: [swift/apple](../swift/apple)
 - Android / ChromeOS: [kotlin/android](../kotlin/android)
 - Windows / Linux: [rust/gui-client](../rust/gui-client)
-
-### How long will 0.7 be supported until?
-
-**Firezone 0.7 is currently end-of-life and has stopped receiving updates as of
-January 31st, 2024.** It will continue to be available indefinitely from the
-`legacy` branch of this repo under the Apache 2.0 license.
 
 ### How much does it cost?
 
