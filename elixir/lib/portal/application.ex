@@ -14,9 +14,6 @@ defmodule Portal.Application do
     _ = OpentelemetryBandit.setup()
     _ = OpentelemetryPhoenix.setup(adapter: :bandit)
 
-    # Can be uncommented when this bug is fixed: https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/327
-    # _ = OpentelemetryFinch.setup()
-
     Supervisor.start_link(children(), strategy: :one_for_one, name: __MODULE__.Supervisor)
   end
 
