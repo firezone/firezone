@@ -427,7 +427,15 @@ where
             return;
         };
 
-        tracing::debug!(?candidate, "Received candidate from remote");
+        let candidate_kind = candidate.kind();
+        let has_state = maybe_state.is_some();
+
+        tracing::debug!(
+            ?candidate,
+            ?candidate_kind,
+            has_state,
+            "Received candidate from remote"
+        );
 
         agent.add_remote_candidate(candidate.clone());
 
@@ -436,8 +444,10 @@ where
         // Bind TURN channels for non-host candidates to optimize relay traffic.
         // Host candidates don't need TURN channels - they're only useful for
         // circumventing restrictive NATs where we talk to relay or server-reflexive addresses.
-        match candidate.kind() {
-            CandidateKind::Host => {}
+        match candidate_kind {
+            CandidateKind::Host => {
+                tracing::debug!("Host candidate - skipping TURN channel binding");
+            }
             CandidateKind::Relayed
             | CandidateKind::ServerReflexive
             | CandidateKind::PeerReflexive => {
@@ -453,7 +463,10 @@ where
             // Make sure we move out of idle mode when we add new candidates.
             // Also triggers re-evaluation if we're connected via relay and a
             // potentially better (host) candidate arrives.
+            tracing::debug!(%state, "Calling on_candidate for established connection");
             state.on_candidate(cid, agent, now);
+        } else {
+            tracing::debug!("Connection is initial (not established) - no state to notify");
         }
     }
 
@@ -1621,8 +1634,13 @@ impl ConnectionState {
     where
         TId: fmt::Display,
     {
+        tracing::debug!(%cid, state = %self, "on_candidate called");
+
         let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
+            Self::Idle { peer_socket } => {
+                tracing::debug!(%cid, socket = %peer_socket.kind(), "State is Idle, will transition to Connected");
+                *peer_socket
+            }
             Self::Connected {
                 last_activity,
                 peer_socket,
@@ -1640,11 +1658,24 @@ impl ConnectionState {
                         "New candidate while connected via relay, re-checking for better path"
                     );
                     apply_default_stun_timings(agent);
+                } else {
+                    tracing::debug!(
+                        %cid,
+                        socket = %peer_socket.kind(),
+                        "Already connected peer-to-peer, no re-check needed"
+                    );
                 }
 
                 return;
             }
-            Self::Failed | Self::Connecting { .. } => return,
+            Self::Failed => {
+                tracing::debug!(%cid, "State is Failed, ignoring candidate");
+                return;
+            }
+            Self::Connecting { .. } => {
+                tracing::debug!(%cid, "State is Connecting, ignoring candidate");
+                return;
+            }
         };
 
         self.transition_to_connected(cid, peer_socket, agent, "candidates changed", now);
@@ -1903,6 +1934,13 @@ where
                     source,
                     ..
                 } => {
+                    tracing::debug!(
+                        %source,
+                        %destination,
+                        current_state = %self.state,
+                        "Received NominatedSend event from ICE agent"
+                    );
+
                     let source_relay = allocations.get_mut_by_allocation(source).map(|(r, _)| r);
 
                     if source_relay.is_some_and(|r| self.relay.id != r) {
