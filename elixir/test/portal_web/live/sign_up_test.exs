@@ -1,12 +1,19 @@
 defmodule PortalWeb.SignUpTest do
-  use PortalWeb.ConnCase, async: false
+  use PortalWeb.ConnCase, async: true
   import Swoosh.TestAssertions
   import Portal.DataCase, only: [errors_on: 1]
   import Portal.AccountFixtures
+  alias Portal.Billing.Stripe.APIClient
 
   setup do
-    # Disable billing for all tests to avoid Stripe API calls
-    Portal.Config.put_env_override(Portal.Billing, enabled: false)
+    # Enable billing with test secret key
+    Portal.Config.put_env_override(Portal.Billing,
+      enabled: true,
+      secret_key: "sk_test_123",
+      webhook_signing_secret: "whsec_test_123",
+      default_price_id: "price_test_123"
+    )
+
     :ok
   end
 
@@ -175,6 +182,37 @@ defmodule PortalWeb.SignUpTest do
     setup do
       Portal.Config.put_env_override(:enabled_features, sign_up: true)
       Portal.Config.put_env_override(:sign_up_whitelisted_domains, [])
+
+      # Stub Stripe API calls for account creation
+      Req.Test.stub(APIClient, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"POST", "/v1/customers"} ->
+            # Return mock customer
+            response = %{
+              "id" => "cus_test_#{System.unique_integer([:positive])}",
+              "email" => "billing@example.com",
+              "name" => "Test Company"
+            }
+
+            Req.Test.json(conn, response)
+
+          {"POST", "/v1/subscriptions"} ->
+            # Return mock subscription
+            response = %{
+              "id" => "sub_test_#{System.unique_integer([:positive])}",
+              "customer" => "cus_test_123",
+              "status" => "active"
+            }
+
+            Req.Test.json(conn, response)
+
+          _ ->
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(404, JSON.encode!(%{"error" => "not_found"}))
+        end
+      end)
+
       :ok
     end
 
@@ -407,10 +445,42 @@ defmodule PortalWeb.SignUpTest do
   end
 
   describe "welcome/1" do
-    test "renders welcome message after successful registration", %{conn: conn} do
+    setup do
       Portal.Config.put_env_override(:enabled_features, sign_up: true)
       Portal.Config.put_env_override(:sign_up_whitelisted_domains, [])
 
+      # Stub Stripe API calls for account creation
+      Req.Test.stub(APIClient, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"POST", "/v1/customers"} ->
+            response = %{
+              "id" => "cus_test_#{System.unique_integer([:positive])}",
+              "email" => "billing@example.com",
+              "name" => "Test Company"
+            }
+
+            Req.Test.json(conn, response)
+
+          {"POST", "/v1/subscriptions"} ->
+            response = %{
+              "id" => "sub_test_#{System.unique_integer([:positive])}",
+              "customer" => "cus_test_123",
+              "status" => "active"
+            }
+
+            Req.Test.json(conn, response)
+
+          _ ->
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(404, JSON.encode!(%{"error" => "not_found"}))
+        end
+      end)
+
+      :ok
+    end
+
+    test "renders welcome message after successful registration", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
       lv
