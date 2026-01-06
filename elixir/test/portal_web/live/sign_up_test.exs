@@ -6,14 +6,6 @@ defmodule PortalWeb.SignUpTest do
   alias Portal.Billing.Stripe.APIClient
 
   setup do
-    # Enable billing with test secret key
-    Portal.Config.put_env_override(Portal.Billing,
-      enabled: true,
-      secret_key: "sk_test_123",
-      webhook_signing_secret: "whsec_test_123",
-      default_price_id: "price_test_123"
-    )
-
     :ok
   end
 
