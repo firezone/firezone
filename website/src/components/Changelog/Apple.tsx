@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11634">
+          Bumps minimum macOS version from 12.4 to 13.0 (Ventura) to enable
+          SwiftUI MenuBarExtra API.
+        </ChangeItem>
         <ChangeItem pull="11595">
           Passes the authentication token in the x-authorization header instead
           of in the URL, improving rate limiting for users behind shared IPs.
