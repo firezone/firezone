@@ -111,7 +111,6 @@ defmodule Portal.MixProject do
       {:opentelemetry_logger_metadata, "~> 0.2.0"},
       {:opentelemetry_exporter, "~> 1.8"},
       {:opentelemetry_ecto, "~> 1.2"},
-      {:opentelemetry_finch, "~> 0.2.0"},
       {:opentelemetry_telemetry, "~> 1.1", override: true},
       {:opentelemetry_bandit, "~> 0.3"},
       {:opentelemetry_phoenix, "~> 2.0"},
