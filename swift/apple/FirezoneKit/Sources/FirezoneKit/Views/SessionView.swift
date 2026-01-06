@@ -17,28 +17,32 @@ import SwiftUI
     var body: some View {
       switch store.vpnStatus {
       case .connected:
-        switch store.resourceList {
-        case .loaded(let resources):
-          if resources.isEmpty {
-            Text("No Resources. Contact your admin to be granted access.")
-          } else {
-            List {
-              if !store.favorites.isEmpty() {
-                Section("Favorites") {
-                  ResourceSection(resources: favoriteResources())
-                }
+        if store.configuration.publishedHideResourceList {
+          Text("Signed in as \(store.actorName)")
+        } else {
+          switch store.resourceList {
+          case .loaded(let resources):
+            if resources.isEmpty {
+              Text("No Resources. Contact your admin to be granted access.")
+            } else {
+              List {
+                if !store.favorites.isEmpty() {
+                  Section("Favorites") {
+                    ResourceSection(resources: favoriteResources())
+                  }
 
-                Section("Other Resources") {
-                  ResourceSection(resources: nonFavoriteResources())
+                  Section("Other Resources") {
+                    ResourceSection(resources: nonFavoriteResources())
+                  }
+                } else {
+                  ResourceSection(resources: resources)
                 }
-              } else {
-                ResourceSection(resources: resources)
               }
+              .listStyle(GroupedListStyle())
             }
-            .listStyle(GroupedListStyle())
+          case .loading:
+            Text("Loading Resources...")
           }
-        case .loading:
-          Text("Loading Resources...")
         }
       case nil:
         Text("Loading VPN configurations from system settings…")

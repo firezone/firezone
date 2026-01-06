@@ -10,13 +10,35 @@ export default function Headless({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11595">
+          Passes the authentication token in the x-authorization header instead
+          of in the URL, improving rate limiting for users behind shared IPs.
+        </ChangeItem>
+        <ChangeItem pull="11594">
+          Implements retry with exponential backoff on 429 (Too Many Requests)
+          responses from the portal.
+        </ChangeItem>
+      </Unreleased>
+      <Entry version="1.5.5" date={new Date("2025-12-23")}>
         {os == OS.Linux && (
           <ChangeItem pull="10742">
             Fixes an issue where CIDR/IP resources whose routes conflict with
             the local network were not routable.
           </ChangeItem>
         )}
-      </Unreleased>
+        <ChangeItem pull="10773">
+          Fixes an issue where the order of upstream / system DNS resolvers was
+          not respected.
+        </ChangeItem>
+        <ChangeItem pull="10914">
+          Fixes an issue where concurrent DNS queries with the same ID would be
+          dropped.
+        </ChangeItem>
+        <ChangeItem pull="11115">
+          Fixes an issue where Firezone would not connect if an IPv6 interface
+          is present but not routable.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.5.4" date={new Date("2025-10-16")}>
         <ChangeItem pull="10533">
           Improves reliability by caching DNS responses as per their TTL.

@@ -8,6 +8,7 @@
 # The `pool-` directories are referenced by the live repository metadata and the files in there need to atomically change with the metadata.
 
 set -euo pipefail
+shopt -s globstar
 
 COMPONENT="main"
 WORK_DIR="$(mktemp -d)"
@@ -57,7 +58,11 @@ for DISTRIBUTION in "stable" "preview"; do
     if [ "$(ls -A "${IMPORT_DIR}")" ]; then
         echo "Normalizing package names..."
 
-        for deb in "${IMPORT_DIR}"/*.deb; do
+        for deb in "${IMPORT_DIR}"/**; do
+            if [[ ! "$deb" == *.deb ]]; then
+                continue
+            fi
+
             if [ -f "$deb" ]; then
                 # Extract metadata from the .deb file
                 PACKAGE=$(dpkg-deb -f "$deb" Package 2>/dev/null)
@@ -72,20 +77,11 @@ for DISTRIBUTION in "stable" "preview"; do
 
                 # Construct the proper filename
                 NORMALIZED_NAME="${PACKAGE}_${VERSION}_${ARCH}.deb"
-                NORMALIZED_PATH="${IMPORT_DIR}/${NORMALIZED_NAME}"
 
-                # Rename if needed
-                if [ "$(basename "$deb")" == "$NORMALIZED_NAME" ]; then
-                    continue
-                fi
-
-                echo "Renaming $(basename "$deb") → $NORMALIZED_NAME"
-                mv "$deb" "$NORMALIZED_PATH"
+                echo "Importing $(basename "$deb") as ${NORMALIZED_NAME}"
+                mv --force "$deb" "${POOL_DIR}/${NORMALIZED_NAME}"
             fi
         done
-
-        echo "Importing new packages..."
-        mv --force --target-directory="${POOL_DIR}/" "${IMPORT_DIR}"/*.deb
     fi
 
     if [ -z "$(ls -A "${POOL_DIR}")" ]; then

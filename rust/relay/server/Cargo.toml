@@ -12,16 +12,15 @@ anyhow = { workspace = true }
 axum = { workspace = true, features = ["http1", "tokio", "query"] }
 backoff = { workspace = true }
 base64 = { workspace = true }
+bin-shared = { workspace = true }
 bytecodec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 derive_more = { workspace = true, features = ["from"] }
-firezone-bin-shared = { workspace = true }
-firezone-logging = { workspace = true }
-firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
+logging = { workspace = true }
 mio = { workspace = true, features = ["net"] }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
@@ -38,6 +37,7 @@ smallvec = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
 stun_codec = { workspace = true }
+telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
 tracing = { workspace = true, features = ["log"] }
@@ -55,7 +55,7 @@ aya-log = { workspace = true }
 ebpf-shared = { workspace = true, features = ["std"] }
 
 [target.'cfg(target_os = "linux")'.build-dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 aya-build = { workspace = true }
 
 [dev-dependencies]

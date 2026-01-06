@@ -203,7 +203,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_such_service() -> Result<()> {
-        let _guard = firezone_logging::test("trace");
+        let _guard = logging::test("trace");
         const ID: SocketId = SocketId::Test("H56FRXVH");
 
         if super::connect::<(), ()>(ID, super::ConnectOptions::default())
@@ -228,7 +228,7 @@ mod tests {
     /// Make sure the IPC client and server can exchange messages
     #[tokio::test]
     async fn smoke() -> Result<()> {
-        let _guard = firezone_logging::test("trace");
+        let _guard = logging::test("trace");
         let loops = 10;
         const ID: SocketId = SocketId::Test("OB5SZCGN");
 
@@ -309,7 +309,7 @@ mod tests {
     /// this test will fail.
     #[tokio::test]
     async fn loop_to_next_client() -> Result<()> {
-        let _guard = firezone_logging::test("trace");
+        let _guard = logging::test("trace");
 
         let mut server = Server::new(SocketId::Test("H6L73DG5"))?;
         for i in 0..5 {

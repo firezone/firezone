@@ -1,7 +1,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use anyhow::{Result, bail};
-use firezone_bin_shared::{DnsControlMethod, signals};
+use bin_shared::{DnsControlMethod, signals};
 
 /// Cross-platform entry point for systemd / Windows services
 ///

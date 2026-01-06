@@ -2,27 +2,26 @@ use crate::{
     ipc::{self, SocketId},
     logging,
 };
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
-use connlib_model::ResourceView;
-use firezone_bin_shared::{
+use bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
     device_id::{self, DeviceId},
     device_info, known_dirs,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
-use firezone_logging::{FilterReloadHandle, err_with_src};
-use firezone_telemetry::{Telemetry, analytics};
+use connlib_model::ResourceView;
 use futures::{
     Future as _, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
     stream::{self, BoxStream},
     task::{Context, Poll},
 };
+use logging::{FilterReloadHandle, err_with_src};
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use std::{
     io::{self, Write},
     mem,
@@ -30,6 +29,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use telemetry::{Telemetry, analytics};
 use tokio::time::Instant;
 use url::Url;
 
@@ -113,12 +113,13 @@ async fn ipc_listen(
 ) -> Result<()> {
     // Create the device ID and Tunnel service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
-    let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
+    let device_id =
+        device_id::get_or_create_client().context("Failed to read / create device ID")?;
 
     // Fix up the group of the device ID file and directory so the GUI client can access it.
     #[cfg(target_os = "linux")]
-    {
-        let path = device_id::path().context("Failed to access device ID path")?;
+    if device_id.source == device_id::Source::Disk {
+        let path = device_id::client_path().context("Failed to access device ID path")?;
         let group_id = crate::firezone_client_group()
             .context("Failed to get `firezone-client` group")?
             .gid
@@ -398,7 +399,7 @@ impl<'a> Handler<'a> {
                         if let Some(e) = result
                             .as_ref()
                             .err()
-                            .and_then(|e| e.root_cause().downcast_ref::<io::Error>())
+                            .and_then(|e| e.any_downcast_ref::<io::Error>())
                         {
                             tracing::debug!("Still cannot connect to Firezone: {e}");
 
@@ -495,7 +496,7 @@ impl<'a> Handler<'a> {
 
                 self.tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
                 self.dns_controller
-                    .set_dns(config.dns_sentinel_ips(), config.search_domain)
+                    .set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain)
                     .await?;
                 self.tun_device
                     .set_routes(config.ipv4_routes, config.ipv6_routes)
@@ -533,7 +534,7 @@ impl<'a> Handler<'a> {
                 if let Some(e) = result
                     .as_ref()
                     .err()
-                    .and_then(|e| e.root_cause().downcast_ref::<io::Error>())
+                    .and_then(|e| e.any_downcast_ref::<io::Error>())
                 {
                     tracing::debug!(
                         "Encountered IO error when connecting to portal, most likely we don't have Internet: {e}"
@@ -606,7 +607,7 @@ impl<'a> Handler<'a> {
                         .start(
                             &environment,
                             &release,
-                            firezone_telemetry::GUI_DSN,
+                            telemetry::GUI_DSN,
                             self.device_id.id.clone(),
                         )
                         .await;
@@ -630,11 +631,11 @@ impl<'a> Handler<'a> {
     ) -> Result<Session> {
         let started_at = Instant::now();
 
-        let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
+        let device_id =
+            device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
         let url = LoginUrl::client(
             Url::parse(api_url).context("Failed to parse URL")?,
-            &token,
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -647,8 +648,9 @@ impl<'a> Handler<'a> {
 
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
-            SecretBox::init_with(|| url),
-            get_user_agent(None, "gui-client", env!("CARGO_PKG_VERSION")),
+            url,
+            token,
+            get_user_agent("gui-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
             || {
@@ -703,7 +705,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
     tracing::info!(
         arch = std::env::consts::ARCH,
         version = env!("CARGO_PKG_VERSION"),
-        system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
+        system_uptime_seconds = bin_shared::uptime::get().map(|dur| dur.as_secs()),
     );
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
@@ -724,7 +726,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
 pub fn run_smoke_test() -> Result<()> {
     use crate::ipc::{self, SocketId};
     use anyhow::{Context as _, bail};
-    use firezone_bin_shared::{DnsController, device_id};
+    use bin_shared::{DnsController, device_id};
 
     let log_filter_reloader = logging::setup_stdout()?;
     if !elevation_check()? {
@@ -744,7 +746,8 @@ pub fn run_smoke_test() -> Result<()> {
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
-        let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
+        let device_id =
+            device_id::get_or_create_client().context("Failed to read / create device ID")?;
         let mut server = ipc::Server::new(SocketId::Tunnel)?;
         let _ = Handler::new(
             device_id,
@@ -765,7 +768,7 @@ pub fn run_smoke_test() -> Result<()> {
 }
 
 async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = firezone_bin_shared::new_dns_notifier(
+    let worker = bin_shared::new_dns_notifier(
         tokio::runtime::Handle::current(),
         DnsControlMethod::default(),
     )
@@ -779,7 +782,7 @@ async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
 }
 
 async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = firezone_bin_shared::new_network_notifier(
+    let worker = bin_shared::new_network_notifier(
         tokio::runtime::Handle::current(),
         DnsControlMethod::default(),
     )

@@ -102,36 +102,37 @@ feedback on
 
 </Alert>
 
-## Configuring Client DNS upstream resolvers
+## Configuring Client DNS
+
+Go to `Settings -> DNS` to configure how Firezone Clients should resolve DNS.
+
+### Default system resolvers
+
+By default, Firezone Clients will use the system resolvers, typically set by the
+DHCP server of their local network.
+
+### Secure DNS
+
+<Alert color="info">
+  Secure DNS was added in macOS 1.5.10, iOS 1.5.10, Android 1.5.7, Windows
+  1.5.9, and Linux 1.5.9.
+</Alert>
+
+Firezone Clients can use the DNS-over-HTTPS protocol for all non-Firezone
+resources. Secure DNS encrypts all DNS traffic, preventing middleboxes
+(including ISPs) from seeing or manipulating DNS traffic. This is especially
+useful on insecure or untrusted networks.
+
+### Custom resolvers
 
 Upstream DNS in all Clients can be configured with the servers of your choosing
 so that all queries on Client devices will be forwarded to the servers you
 specify for all non-Firezone resources.
 
-Go to `Settings -> DNS` and enter IPv4 and/or IPv6 servers to use as fallback
-resolvers. Firezone Clients will use these servers in the order they are defined
-for any query that doesn't match a Resource the user has access to.
-
 <Alert color="warning">
   When setting custom upstream resolvers, it is **highly** recommended to
   configure **both** an IPv4 and IPv6 option. Otherwise, a Client that has only
   IPv4 or IPv6 connectivity may not be able to resolve DNS queries.
-</Alert>
-
-<Alert color="warning">
-  Firezone Clients support only DNS over UDP/53 at this time. DNS-over-TLS and
-  DNS-over-HTTPS upstream servers are not yet supported.
-</Alert>
-
-If no custom resolvers are configured, Firezone Clients will fall back to the
-default system resolvers, typically set by the DHCP server of their local
-network.
-
-<Alert color="info">
-  Custom resolvers such as
-  [Cloudflare](https://developers.cloudflare.com/1.1.1.1/setup/#1111-for-families)
-  or [NextDNS](https://nextdns.io) can be used to block malware, ads, adult
-  material and other content for all users in your Firezone account.
 </Alert>
 
 ## Configuring Gateway resolvers

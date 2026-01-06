@@ -1,7 +1,7 @@
 use super::{ControllerRequest, CtlrTx};
 use anyhow::{Context, Result};
-use firezone_bin_shared::BUNDLE_ID;
-use firezone_logging::err_with_src;
+use bin_shared::BUNDLE_ID;
+use logging::err_with_src;
 use std::env;
 use tauri::AppHandle;
 use winreg::RegKey;

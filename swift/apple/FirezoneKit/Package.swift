@@ -1,4 +1,4 @@
-// swift-tools-version: 5.7
+// swift-tools-version: 6.2
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -12,7 +12,7 @@ let package = Package(
     .library(name: "FirezoneKit", targets: ["FirezoneKit"])
   ],
   dependencies: [
-    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "8.56.2")
+    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.0.0")
   ],
   targets: [
     .target(

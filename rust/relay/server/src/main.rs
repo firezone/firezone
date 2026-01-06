@@ -2,20 +2,19 @@
 
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
+use bin_shared::{http_health_check, signals};
 use clap::Parser;
-use firezone_bin_shared::{http_health_check, signals};
-use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
     Sleep, VERSION, control_endpoint, ebpf, sockets,
 };
-use firezone_telemetry::{RELAY_DSN, Telemetry};
 use futures::{FutureExt, future};
+use logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
@@ -23,6 +22,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
 use stun_codec::rfc5766::attributes::ChannelNumber;
+use telemetry::{RELAY_DSN, Telemetry};
 use tracing::Subscriber;
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
@@ -111,7 +111,7 @@ struct Args {
     control_endpoint: SocketAddr,
 
     /// Enable sentry.io crash-reporting agent.
-    #[arg(long, env = "FIREZONE_TELEMETRY", default_value_t = false)]
+    #[arg(long, env = "TELEMETRY", default_value_t = false)]
     telemetry: bool,
 }
 
@@ -231,7 +231,6 @@ async fn try_main(args: Args) -> Result<()> {
 
     let login = LoginUrl::relay(
         args.api_url.clone(),
-        &args.token,
         args.name.clone(),
         args.listen_port,
         args.public_ip4_addr,
@@ -239,8 +238,9 @@ async fn try_main(args: Args) -> Result<()> {
     )?;
 
     let mut channel = PhoenixChannel::disconnected(
-        SecretBox::init_with(|| login),
-        get_user_agent(None, "relay", env!("CARGO_PKG_VERSION")),
+        login,
+        args.token.clone(),
+        get_user_agent("relay", env!("CARGO_PKG_VERSION")),
         "relay",
         JoinMessage {
             stamp_secret: server.auth_secret().expose_secret().to_string(),
@@ -288,7 +288,7 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
     let (dispatch, reload_handle) = match args.otlp_grpc_endpoint.clone() {
         None => {
-            let (filter, reload_handle) = firezone_logging::try_filter(&directives)?;
+            let (filter, reload_handle) = logging::try_filter(&directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
                 .with(log_layer(args).with_filter(filter))
@@ -333,8 +333,8 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
             tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
 
-            let (log_filter, log_reload_handle) = firezone_logging::try_filter(&directives)?;
-            let (otel_filter, otel_reload_handle) = firezone_logging::try_filter(&directives)?;
+            let (log_filter, log_reload_handle) = logging::try_filter(&directives)?;
+            let (otel_filter, otel_reload_handle) = logging::try_filter(&directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
                 .with(log_layer(args).with_filter(log_filter))
@@ -372,7 +372,7 @@ where
 {
     match (args.log_format, args.google_cloud_project_id.clone()) {
         (LogFormat::Human, _) => tracing_subscriber::fmt::layer()
-            .with_ansi(firezone_logging::stdout_supports_ansi())
+            .with_ansi(logging::stdout_supports_ansi())
             .boxed(),
         (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
         (LogFormat::GoogleCloud, None) => {
@@ -416,7 +416,7 @@ struct Eventloop<R> {
     sockets: Sockets,
 
     server: Server<R>,
-    channel: Option<PhoenixChannel<JoinMessage, IngressMessage, NoParams>>,
+    channel: Option<PhoenixChannel<JoinMessage, (), IngressMessage, NoParams>>,
     sleep: Sleep,
 
     ebpf: Option<ebpf::Program>,
@@ -438,7 +438,7 @@ where
     fn new(
         server: Server<R>,
         ebpf: Option<ebpf::Program>,
-        channel: PhoenixChannel<JoinMessage, IngressMessage, NoParams>,
+        channel: PhoenixChannel<JoinMessage, (), IngressMessage, NoParams>,
         public_address: IpStack,
         last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
     ) -> Result<Self> {
@@ -769,10 +769,10 @@ fn fmt_human_throughput(mut throughput: f64) -> String {
 fn make_is_healthy(
     last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
 ) -> impl Fn() -> bool + Clone + Send + Sync + 'static {
-    move || is_healthy(last_heartbeat_sent.clone())
+    move || is_healthy(Instant::now(), last_heartbeat_sent.clone())
 }
 
-fn is_healthy(last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
+fn is_healthy(now: Instant, last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
     let guard = last_heartbeat_sent
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -781,7 +781,7 @@ fn is_healthy(last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
         return true; // If we are not connected to the portal, we are always healthy.
     };
 
-    last_hearbeat_sent.elapsed() < MAX_PARTITION_TIME
+    now.duration_since(last_hearbeat_sent) < MAX_PARTITION_TIME
 }
 
 fn make_otel_metadata() -> opentelemetry_sdk::Resource {
@@ -814,25 +814,31 @@ mod tests {
     // If we are running in standalone mode, we are always healthy.
     #[test]
     fn given_no_heartbeat_is_healthy() {
-        let is_healthy = is_healthy(Arc::new(Mutex::new(None)));
+        let is_healthy = is_healthy(Instant::now(), Arc::new(Mutex::new(None)));
 
         assert!(is_healthy)
     }
 
     #[test]
     fn given_heartbeat_in_last_15_min_is_healthy() {
-        let is_healthy = is_healthy(Arc::new(Mutex::new(Some(
-            Instant::now() - Duration::from_secs(10),
-        ))));
+        let now = Instant::now() + Duration::from_hours(1);
+
+        let is_healthy = is_healthy(
+            now,
+            Arc::new(Mutex::new(Some(now - Duration::from_secs(10)))),
+        );
 
         assert!(is_healthy)
     }
 
     #[test]
     fn given_last_heartbeat_older_than_15_min_is_not_healthy() {
-        let is_healthy = is_healthy(Arc::new(Mutex::new(Some(
-            Instant::now() - Duration::from_secs(60 * 15),
-        ))));
+        let now = Instant::now() + Duration::from_hours(1); // Advance to the future to avoid underflow.
+
+        let is_healthy = is_healthy(
+            now,
+            Arc::new(Mutex::new(Some(now - Duration::from_secs(60 * 15)))),
+        );
 
         assert!(!is_healthy)
     }

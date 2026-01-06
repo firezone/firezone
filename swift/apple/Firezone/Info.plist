@@ -47,5 +47,12 @@
   <false/>
   <key>GitSha</key>
   <string>$(GIT_SHA)</string>
+	<key>LSEnvironment</key>
+	<dict>
+		<key>SWIFT_UNEXPECTED_EXECUTOR_LOG_LEVEL</key>
+		<string>1</string>
+		<key>SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE</key>
+		<string>nocrash</string>
+	</dict>
 </dict>
 </plist>

@@ -1,4 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
+// Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.tunnel
 
 import DisconnectMonitor
@@ -293,7 +293,6 @@ class TunnelService : VpnService() {
                             accountSlug = config.accountSlug,
                             deviceId = deviceId(),
                             deviceName = getDeviceName(),
-                            osVersion = Build.VERSION.RELEASE,
                             logDir = getLogDir(),
                             logFilter = config.logFilter,
                             isInternetResourceActive = resourceState.isEnabled(),

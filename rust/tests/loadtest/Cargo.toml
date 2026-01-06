@@ -1,0 +1,34 @@
+[package]
+name = "firezone-loadtest"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+description = "Load testing CLI for Firezone VPN"
+
+[[bin]]
+name = "firezone-loadtest"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+axum = { workspace = true, features = ["http1", "tokio", "ws"] }
+clap = { workspace = true, features = ["derive"] }
+futures = { workspace = true }
+goose = { version = "0.18", default-features = false, features = ["rustls-tls"] }
+gumdrop = "0.8"
+logging = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true, features = ["rustls-tls", "gzip", "http2"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+surge-ping = "0.8"
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util"] }
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+url = { workspace = true }
+
+[lints]
+workspace = true

@@ -2,7 +2,7 @@ use axum::Router;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::routing::post;
-use firezone_logging::FilterReloadHandle;
+use logging::FilterReloadHandle;
 use std::net::SocketAddr;
 use std::sync::Arc;
 

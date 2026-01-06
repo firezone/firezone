@@ -36,9 +36,11 @@ mod platform {
     impl Error {
         pub fn user_friendly_msg(&self) -> String {
             match self {
-                Error::UserNotInFirezoneGroup => format!(
-                    "You are not a member of the group `{FIREZONE_CLIENT_GROUP}`. Try `sudo usermod -aG {FIREZONE_CLIENT_GROUP} $USER` and then reboot"
-                ),
+                Error::UserNotInFirezoneGroup => {
+                    format!(
+                        "You are not a member of the group `{FIREZONE_CLIENT_GROUP}`. If you have just installed Firezone for the first time, you need to reboot your computer for membership changes to take effect."
+                    )
+                }
                 Error::Other(e) => format!("Failed to determine group ownership: {e:#}"),
             }
         }

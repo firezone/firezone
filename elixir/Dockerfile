@@ -1,10 +1,10 @@
 ARG ALPINE_VERSION="3.20.6"
-ARG ERLANG_VERSION="27.3.4.1"
-# curl -fsSL https://github.com/erlang/otp/releases/download/OTP-27.3.4.1/otp_src_27.3.4.1.tar.gz | sha256
-ARG ERLANG_DOWNLOAD_SHA256="2672f0c52b9ff39695b9c8f99cd1846ed9e47e21cd5b045ccdd08719a3019652"
-ARG ELIXIR_VERSION="1.18.4"
-# curl -fsSL https://github.com/elixir-lang/elixir/archive/refs/tags/v1.18.4.tar.gz | sha256
-ARG ELIXIR_DOWNLOAD_SHA256="8e136c0a92160cdad8daa74560e0e9c6810486bd232fbce1709d40fcc426b5e0"
+ARG ERLANG_VERSION="28.3"
+# curl -fsSL https://github.com/erlang/otp/releases/download/OTP-28.3/otp_src_28.3.tar.gz | sha256sum
+ARG ERLANG_DOWNLOAD_SHA256="1956ad6584678b631ab4f9b8aebe2dac037cd7401abb44564a01134ff0ac5bed"
+ARG ELIXIR_VERSION="1.19.4"
+# curl -fsSL https://github.com/elixir-lang/elixir/archive/refs/tags/v1.19.4.tar.gz | sha256sum
+ARG ELIXIR_DOWNLOAD_SHA256="a2df9d5411fc53d97ec17c069765c8fb781f8dc36c4e06ec1cd4b189340d364b"
 
 FROM alpine:${ALPINE_VERSION} AS base
 
@@ -224,31 +224,28 @@ RUN npm i -g pnpm
 # Copy only the files needed to fetch the dependencies,
 # to leverage Docker layer cache for them
 COPY mix.exs mix.lock ./
-COPY apps/domain/mix.exs ./apps/domain/mix.exs
-COPY apps/web/mix.exs ./apps/web/mix.exs
-COPY apps/api/mix.exs ./apps/api/mix.exs
 COPY config config
 
 # Fetch and compile the dependencies
 ARG MIX_ENV="prod"
 RUN mix deps.get --only ${MIX_ENV}
-RUN mix deps.compile --skip-umbrella-children
+RUN mix deps.compile
 
 # Copy the files needed to fetch asset deps
-COPY apps/web/assets/package.json ./apps/web/assets/
-COPY apps/web/assets/pnpm-lock.yaml ./apps/web/assets/
+COPY assets/package.json ./assets/
+COPY assets/pnpm-lock.yaml ./assets/
 
 # Install npm deps and assets pipeline
-RUN cd apps/web \
-    && mix assets.setup
+RUN mix assets.setup
 
-# Tailwind needs assets and app directories to look for used classes,
+# Tailwind needs assets and lib directories to look for used classes,
 # so we can't optimize further at this stage
-COPY apps apps
+COPY lib lib
+COPY assets assets
+COPY priv priv
 
-# Install pipeline and compile assets for Web app
-RUN cd apps/web \
-    && mix assets.deploy
+# Install pipeline and compile assets
+RUN mix assets.deploy
 
 # Copy the rest of the application files and compile them
 # mix doesn't know when GIT_SHA changes, so --force is needed to avoid
@@ -305,6 +302,10 @@ COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
 
 # Allow the default user to write to the priv directory of some libraries
 RUN chmod -R ugo+rw /app/lib/tzdata-*/priv
+
+# Allow the default user to write to /var/run/firezone for node draining
+RUN mkdir -p /var/run/firezone \
+    && chmod -R ugo+rw /var/run/firezone
 
 # Change user to "default" to limit runtime privileges
 USER default

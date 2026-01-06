@@ -22,19 +22,13 @@
         # In the latter case `**/*.{ex,exs}` will be used.
         #
         included: [
-          "lib/",
-          "src/",
-          "test/",
-          "web/",
-          "apps/*/lib/",
-          "apps/*/src/",
-          "apps/*/web/"
+          "lib/"
+          # "test/"
         ],
         excluded: [
           ~r"/_build/",
           ~r"/deps/",
-          ~r"/node_modules/",
-          "apps/*/test/"
+          ~r"/node_modules/"
         ]
       },
       #
@@ -45,7 +39,12 @@
       # If you create your own checks, you must specify the source files for
       # them here, so they can be loaded by Credo before running the analysis.
       #
-      requires: [],
+      requires: [
+        ".credo/check/warning/unsafe_repo_usage.ex",
+        ".credo/check/warning/safe_calls_outside_db_module.ex",
+        ".credo/check/warning/missing_db_alias.ex",
+        ".credo/check/warning/cross_module_db_call.ex"
+      ],
       #
       # If you want to enforce a style guide and need a more traditional linting
       # experience, you can change `strict` to `true` below:
@@ -159,6 +158,11 @@
           {Credo.Check.Warning.UnsafeExec, []}
         ],
         disabled: [
+          # Custom Checks for Portal conventions
+          {Credo.Check.Warning.UnsafeRepoUsage, []},
+          {Credo.Check.Warning.SafeCallsOutsideDBModule, []},
+          {Credo.Check.Warning.MissingDBAlias, []},
+          {Credo.Check.Warning.CrossModuleDBCall, []},
           {Credo.Check.Readability.AliasOrder, []},
 
           #

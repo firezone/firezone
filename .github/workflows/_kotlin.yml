@@ -16,10 +16,8 @@ jobs:
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: ./.github/actions/setup-android
-        with:
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Run linter
         run: ./gradlew spotlessCheck
 
@@ -30,7 +28,7 @@ jobs:
       contents: write # for updating the release draft
     env:
       # mark:next-android-version
-      RELEASE_NAME: android-client-1.5.7
+      RELEASE_NAME: android-client-1.5.9
     steps:
       - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
@@ -64,13 +62,10 @@ jobs:
             build-command: "./gradlew assembleRelease"
             output-path: app/build/outputs/apk/release/app-release.apk
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
-      - uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
       - uses: ./.github/actions/setup-android
-        with:
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Build the release package
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
@@ -95,7 +90,7 @@ jobs:
         run: |
           ./gradlew testReleaseUnitTest
       - name: Upload package artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: Android ${{ matrix.package-type }}
           path: |
@@ -105,7 +100,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mark:next-android-version
-          RELEASE_NAME: android-client-1.5.7
+          RELEASE_NAME: android-client-1.5.9
         run: |
           export ARTIFACT_PATH="$RUNNER_TEMP/firezone-${RELEASE_NAME}.${{ matrix.package-type }}"
           cp "${{ matrix.output-path }}" "$ARTIFACT_PATH"
@@ -125,15 +120,13 @@ jobs:
     runs-on: ubuntu-24.04
     name: build-debug
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: ./.github/actions/setup-android
-        with:
-          sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Build debug APK
         run: |
           ./gradlew assembleDebug
       - name: Upload debug APK
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: Android debug APK
           path: |

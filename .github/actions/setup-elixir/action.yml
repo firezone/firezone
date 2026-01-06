@@ -17,40 +17,62 @@ runs:
     - name: Tool Versions
       id: versions
       uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
+      with:
+        path: elixir/.tool-versions
+
     - uses: erlef/setup-beam@e6d7c94229049569db56a7ad5a540c051a010af9 # v1.20.4
       id: setup-beam
       with:
         otp-version: ${{ steps.versions.outputs.erlang }}
         elixir-version: ${{ steps.versions.outputs.elixir }}
+
     - name: Setup Hex and Rebar
       shell: bash
       working-directory: ./elixir
       run: |
         mix local.hex --force
         mix local.rebar --force
-    - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+
+    # Dependencies cache - keyed by mix.lock only (stable across source changes)
+    - uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
       name: Restore Elixir Deps Cache
-      id: cache
+      id: deps-cache
       with:
-        path: |
-          elixir/deps
-          elixir/_build/${{ inputs.mix_env }}
-        key: elixir-deps-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
+        path: elixir/deps
+        key: v2-elixir-deps-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
+
     - name: Install Dependencies
-      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      if: ${{ steps.deps-cache.outputs.cache-hit != 'true' }}
       shell: bash
       working-directory: ./elixir
       run: mix deps.get --only ${{ inputs.mix_env }}
+
+    # Build cache - keyed by source files for incremental compilation
+    - uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
+      name: Restore Elixir Build Cache
+      id: build-cache
+      with:
+        path: elixir/_build/${{ inputs.mix_env }}
+        key: v2-elixir-build-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}-${{ hashFiles('elixir/lib/**/*.ex', 'elixir/config/**/*.exs', 'elixir/mix.exs') }}
+        restore-keys: |
+          v2-elixir-build-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}-
+
     - name: Compile Dependencies
-      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      if: ${{ steps.deps-cache.outputs.cache-hit != 'true' }}
       shell: bash
       working-directory: ./elixir
       run: mix deps.compile --skip-umbrella-children
-    - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+
+    - uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
       name: Save Elixir Deps Cache
+      if: ${{ github.ref_name == 'main' && steps.deps-cache.outputs.cache-hit != 'true' }}
+      with:
+        path: elixir/deps
+        key: ${{ steps.deps-cache.outputs.cache-primary-key }}
+
+    - uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
+      name: Save Elixir Build Cache
       if: ${{ github.ref_name == 'main' }}
       with:
-        path: |
-          elixir/deps
-          elixir/_build/${{ inputs.mix_env }}
-        key: ${{ steps.cache.outputs.cache-primary-key }}
+        path: elixir/_build/${{ inputs.mix_env }}
+        key: ${{ steps.build-cache.outputs.cache-primary-key }}

@@ -15,7 +15,7 @@ client sh -c \
 
 DOWNLOAD_PID=$!
 
-sleep 3 # Download a bit
+sleep 5 # Download a bit
 
 docker network disconnect firezone_client-internal firezone-client-1 # Disconnect the client
 sleep 3
@@ -49,34 +49,15 @@ readarray -t flows < <(get_flow_logs "tcp")
 
 assert_gteq "${#flows[@]}" 2
 
-declare -A unique_src_tuples
-declare -i num_ipv4_tuples=0
+declare -i non_standard_ports=0
 
 for flow in "${flows[@]}"; do
     # All flows should have same inner_dst_ip
     assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
 
-    outer_dst_ip=$(get_flow_field "$flow" "outer_dst_ip")
-    src_tuple="$(get_flow_field "${flow}" "outer_src_ip") $(get_flow_field "${flow}" "outer_src_port")"
-
-    case $outer_dst_ip in
-    "172.31.0.100")
-        unique_src_tuples["$src_tuple"]=1
-        num_ipv4_tuples+=1
-        ;;
-    "172:31::100")
-        unique_src_tuples["$src_tuple"]=1
-        ;;
-    *)
-        echo "Unexpected 'outer_src_ip': ${outer_dst_ip}"
-        exit 1
-        ;;
-    esac
+    if [ "$(get_flow_field "$flow" "outer_src_port")" != "52625" ]; then
+        non_standard_ports+=1
+    fi
 done
 
-# If we only ever connected via IPv6, two unique source tuples are enough, otherwise we want three.
-if [[ $num_ipv4_tuples == 0 ]]; then
-    assert_gteq "${#unique_src_tuples[@]}" 2
-else
-    assert_gteq "${#unique_src_tuples[@]}" 3
-fi
+assert_gteq "$non_standard_ports" 1

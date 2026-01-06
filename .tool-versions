@@ -1,9 +1,3 @@
-# These are used for the dev environment.
-# This should match the versions used in the built product.
-nodejs 22.20.0
-elixir 1.18.4-otp-27
-erlang 27.3.4.1
-
 # Used for static analysis
 python 3.11.14
 shfmt 3.9.0
@@ -11,9 +5,11 @@ shfmt 3.9.0
 # Used to lint Bash scripts
 shellcheck 0.9.0
 
-# GUI client
-pnpm 10.18.3
+# Formatting
+prettier 3.6.2
 
-# Android app
-java openjdk-17
-ktlint 1.7.1
+# Bash unit testing
+bats 1.13.0
+
+# GitHub Actions linting
+actionlint 1.7.9

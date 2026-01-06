@@ -11,9 +11,6 @@
 ---
 
 <p align="center">
-  <a href="https://github.com/firezone/firezone/releases">
-    <img src="https://img.shields.io/github/v/release/firezone/firezone?color=%23999">
-  </a>
   <a href="https://discourse.firez.one/?utm_source=readme">
     <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=support%20forum&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
   </a>
@@ -21,14 +18,11 @@
     <img src="https://img.shields.io/discord/1228082899023298741?logo=discord&logoColor=959DA5&label=discord&labelColor=333a41&color=5865F2" alt="firezone Discord" />
   </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
-  <a href="https://coveralls.io/github/firezone/firezone?branch=legacy">
-    <img src="https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=legacy" alt="Coverage Status" />
-  </a>
+  <!--<a href="https://coveralls.io/github/firezone/firezone?branch=main">
+    <img src="https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=main" alt="Coverage Status" />
+  </a>-->
   <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/firezone/firezone"/>
   <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed/firezone/firezone"/>
-  <a href="https://cloudsmith.com">
-    <img src="https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith" alt="Cloudsmith">
-  </a>
   <a href="https://twitter.com/intent/follow?screen_name=firezonehq">
     <img src="https://img.shields.io/twitter/follow/firezonehq?style=social&logo=twitter" alt="follow on Twitter">
   </a>
@@ -84,9 +78,7 @@ Firezone is **not:**
 This is a monorepo containing the full Firezone product, marketing website, and
 product documentation, organized as follows:
 
-- [elixir](../elixir): Control plane and internal Elixir libraries:
-  - [elixir/apps/web](../elixir/apps/web): Admin UI
-  - [elixir/apps/api](../elixir/apps/api): API for Clients, Relays and Gateways.
+- [elixir](../elixir): Admin portal and control plane
 - [rust/](../rust): Data plane and internal Rust libraries:
   - [rust/gateway](../rust/gateway): Gateway - Tunnel server based on WireGuard
     and deployed to your infrastructure.

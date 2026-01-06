@@ -2,7 +2,7 @@
 
 use super::TOKEN_ENV_KEY;
 use anyhow::{Result, bail};
-use firezone_bin_shared::BUNDLE_ID;
+use bin_shared::BUNDLE_ID;
 use nix::fcntl::AT_FDCWD;
 use std::path::{Path, PathBuf};
 

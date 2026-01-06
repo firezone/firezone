@@ -1,0 +1,6 @@
+REST API Beta Request
+
+Request details:
+----------------
+Account ID: <%= @account.id %>
+Actor ID:   <%= @subject.actor.id %>

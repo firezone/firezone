@@ -21,10 +21,38 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11595">
+          Passes the authentication token in the x-authorization header instead
+          of in the URL, improving rate limiting for users behind shared IPs.
+        </ChangeItem>
+        <ChangeItem pull="11594">
+          Implements retry with exponential backoff on 429 (Too Many Requests)
+          responses from the portal.
+        </ChangeItem>
+      </Unreleased>
+      <Entry version="1.5.8" date={new Date("2025-12-23")}>
+        <ChangeItem pull="11077">
+          Fixes an issue where the authentication link would not open in the
+          correct app.
+        </ChangeItem>
+        <ChangeItem pull="11115">
+          Fixes an issue where Firezone would not connect if an IPv6 interface
+          is present but not routable.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.5.7" date={new Date("2025-12-05")}>
         <ChangeItem pull="10752">
           Fixes an issue where the reported client version was out of date.
         </ChangeItem>
-      </Unreleased>
+        <ChangeItem pull="10773">
+          Fixes an issue where the order of upstream / system DNS resolvers was
+          not respected.
+        </ChangeItem>
+        <ChangeItem pull="10914">
+          Fixes an issue where concurrent DNS queries with the same ID would be
+          dropped.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.5.6" date={new Date("2025-10-28")}>
         <ChangeItem pull="10667">
           Fixes an issue where the Tunnel service would crash when trying to

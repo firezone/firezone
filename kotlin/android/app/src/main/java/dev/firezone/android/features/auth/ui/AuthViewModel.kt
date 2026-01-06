@@ -1,4 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
+// Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.auth.ui
 
 import androidx.lifecycle.LiveData
@@ -45,10 +45,6 @@ internal class AuthViewModel
             data class LaunchAuthFlow(
                 val url: String,
             ) : ViewAction()
-
-            object NavigateToSignIn : ViewAction()
-
-            object ShowError : ViewAction()
         }
 
         internal companion object {

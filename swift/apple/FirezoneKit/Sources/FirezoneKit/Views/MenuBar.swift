@@ -27,6 +27,7 @@ import SwiftUI
     var cancellables: Set<AnyCancellable> = []
     var updateChecker: UpdateChecker
     var updateMenuDisplayed: Bool = false
+    var hideResourceList: Bool
     var signedOutIcon: NSImage?
     var signedInConnectedIcon: NSImage?
     var signedOutIconNotification: NSImage?
@@ -164,10 +165,7 @@ import SwiftUI
       return menuItem
     }()
 
-    private let configuration: Configuration
-
-    public init(store: Store, configuration: Configuration? = nil) {
-      self.configuration = configuration ?? Configuration.shared
+    public init(store: Store) {
       statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
       self.store = store
       self.updateChecker = UpdateChecker()
@@ -182,6 +180,7 @@ import SwiftUI
       self.connectingAnimationImages[.first] = NSImage(named: "MenuBarIconConnecting1")
       self.connectingAnimationImages[.second] = NSImage(named: "MenuBarIconConnecting2")
       self.connectingAnimationImages[.last] = NSImage(named: "MenuBarIconConnecting3")
+      self.hideResourceList = self.store.configuration.publishedHideResourceList
 
       super.init()
 
@@ -215,21 +214,29 @@ import SwiftUI
           self.handleStatusChanged()
         }).store(in: &cancellables)
 
-      configuration.$publishedInternetResourceEnabled
+      store.configuration.$publishedInternetResourceEnabled
         .receive(on: DispatchQueue.main)
         .sink(receiveValue: { [weak self] newEnabled in
           guard let self = self else { return }
 
-          if configuration.internetResourceEnabled != newEnabled {
+          if store.configuration.internetResourceEnabled != newEnabled {
             handleResourceListChanged()
           }
         })
         .store(in: &cancellables)
 
-      configuration.$publishedHideAdminPortalMenuItem
+      store.configuration.$publishedHideAdminPortalMenuItem
         .receive(on: DispatchQueue.main)
         .sink(receiveValue: { [weak self] newValue in
           self?.updateConfigurableMenuItems(hideAdminPortalMenuItem: newValue)
+        })
+        .store(in: &cancellables)
+
+      store.configuration.$publishedHideResourceList
+        .receive(on: DispatchQueue.main)
+        .sink(receiveValue: { [weak self] newValue in
+          self?.hideResourceList = newValue
+          self?.handleResourceListChanged()
         })
         .store(in: &cancellables)
 
@@ -273,23 +280,28 @@ import SwiftUI
     }
 
     func populateResourceMenus(_ newResources: [Resource]) {
-      // If we have no favorites, then everything is a favorite
-      let hasAnyFavorites = newResources.contains { store.favorites.contains($0.id) }
-      let newFavorites =
-        if hasAnyFavorites {
-          newResources.filter { store.favorites.contains($0.id) || $0.isInternetResource() }
-        } else {
-          newResources
-        }
-      let newOthers: [Resource] =
-        if hasAnyFavorites {
-          newResources.filter { !store.favorites.contains($0.id) && !$0.isInternetResource() }
-        } else {
-          []
-        }
+      if self.hideResourceList {
+        populateFavoriteResourcesMenu([])
+        populateOtherResourcesMenu([])
+      } else {
+        // If we have no favorites, then everything is a favorite
+        let hasAnyFavorites = newResources.contains { store.favorites.contains($0.id) }
+        let newFavorites =
+          if hasAnyFavorites {
+            newResources.filter { store.favorites.contains($0.id) || $0.isInternetResource() }
+          } else {
+            newResources
+          }
+        let newOthers: [Resource] =
+          if hasAnyFavorites {
+            newResources.filter { !store.favorites.contains($0.id) && !$0.isInternetResource() }
+          } else {
+            []
+          }
 
-      populateFavoriteResourcesMenu(newFavorites)
-      populateOtherResourcesMenu(newOthers)
+        populateFavoriteResourcesMenu(newFavorites)
+        populateOtherResourcesMenu(newOthers)
+      }
     }
 
     func populateFavoriteResourcesMenu(_ newFavorites: [Resource]) {
@@ -310,7 +322,7 @@ import SwiftUI
         }
       }
       lastShownFavorites = newFavorites
-      wasInternetResourceEnabled = configuration.internetResourceEnabled
+      wasInternetResourceEnabled = store.configuration.internetResourceEnabled
     }
 
     func populateOtherResourcesMenu(_ newOthers: [Resource]) {
@@ -338,7 +350,7 @@ import SwiftUI
         }
       }
       lastShownOthers = newOthers
-      wasInternetResourceEnabled = configuration.internetResourceEnabled
+      wasInternetResourceEnabled = store.configuration.internetResourceEnabled
     }
 
     func updateStatusItemIcon() {
@@ -386,47 +398,55 @@ import SwiftUI
       }
     }
 
+    // Update resources "header" menu items. An administrator can choose to set a configuration to
+    // hide the Resource List at which point we avoid displaying it.
     func updateResourcesMenuItems() {
-      // Update resources "header" menu items
-      switch store.vpnStatus {
-      case .connecting:
-        resourcesTitleMenuItem.isHidden = true
-        resourcesUnavailableMenuItem.isHidden = false
-        resourcesUnavailableReasonMenuItem.isHidden = false
-        resourcesUnavailableReasonMenuItem.target = nil
-        resourcesUnavailableReasonMenuItem.title = "Connecting…"
-        resourcesSeparatorMenuItem.isHidden = false
-      case .connected:
-        resourcesTitleMenuItem.isHidden = false
-        resourcesUnavailableMenuItem.isHidden = true
-        resourcesUnavailableReasonMenuItem.isHidden = true
-        resourcesTitleMenuItem.title = resourceMenuTitle(store.resourceList)
-        resourcesSeparatorMenuItem.isHidden = false
-      case .reasserting:
-        resourcesTitleMenuItem.isHidden = true
-        resourcesUnavailableMenuItem.isHidden = false
-        resourcesUnavailableReasonMenuItem.isHidden = false
-        resourcesUnavailableReasonMenuItem.target = nil
-        resourcesUnavailableReasonMenuItem.title = "No network connectivity"
-        resourcesSeparatorMenuItem.isHidden = false
-      case .disconnecting:
-        resourcesTitleMenuItem.isHidden = true
-        resourcesUnavailableMenuItem.isHidden = false
-        resourcesUnavailableReasonMenuItem.isHidden = false
-        resourcesUnavailableReasonMenuItem.target = nil
-        resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
-        resourcesSeparatorMenuItem.isHidden = false
-      case nil, .disconnected, .invalid:
-        // We should never be in a state where the tunnel is
-        // down but the user is signed in, but we have
-        // code to handle it just for the sake of completion.
+      if self.hideResourceList {
         resourcesTitleMenuItem.isHidden = true
         resourcesUnavailableMenuItem.isHidden = true
         resourcesUnavailableReasonMenuItem.isHidden = true
-        resourcesUnavailableReasonMenuItem.title = "Disconnected"
         resourcesSeparatorMenuItem.isHidden = true
-      @unknown default:
-        break
+      } else {
+        switch store.vpnStatus {
+        case .connecting:
+          resourcesTitleMenuItem.isHidden = true
+          resourcesUnavailableMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.target = nil
+          resourcesUnavailableReasonMenuItem.title = "Connecting…"
+          resourcesSeparatorMenuItem.isHidden = false
+        case .connected:
+          resourcesTitleMenuItem.isHidden = false
+          resourcesUnavailableMenuItem.isHidden = true
+          resourcesUnavailableReasonMenuItem.isHidden = true
+          resourcesTitleMenuItem.title = resourceMenuTitle(store.resourceList)
+          resourcesSeparatorMenuItem.isHidden = false
+        case .reasserting:
+          resourcesTitleMenuItem.isHidden = true
+          resourcesUnavailableMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.target = nil
+          resourcesUnavailableReasonMenuItem.title = "No network connectivity"
+          resourcesSeparatorMenuItem.isHidden = false
+        case .disconnecting:
+          resourcesTitleMenuItem.isHidden = true
+          resourcesUnavailableMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.isHidden = false
+          resourcesUnavailableReasonMenuItem.target = nil
+          resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
+          resourcesSeparatorMenuItem.isHidden = false
+        case nil, .disconnected, .invalid:
+          // We should never be in a state where the tunnel is
+          // down but the user is signed in, but we have
+          // code to handle it just for the sake of completion.
+          resourcesTitleMenuItem.isHidden = true
+          resourcesUnavailableMenuItem.isHidden = true
+          resourcesUnavailableReasonMenuItem.isHidden = true
+          resourcesUnavailableReasonMenuItem.title = "Disconnected"
+          resourcesSeparatorMenuItem.isHidden = true
+        @unknown default:
+          break
+        }
       }
     }
 
@@ -503,7 +523,7 @@ import SwiftUI
         return false
       }
 
-      return wasInternetResourceEnabled != configuration.internetResourceEnabled
+      return wasInternetResourceEnabled != store.configuration.internetResourceEnabled
     }
 
     func refreshUpdateItem() {
@@ -540,7 +560,7 @@ import SwiftUI
 
     func internetResourceTitle(resource: Resource) -> String {
       let status =
-        configuration.internetResourceEnabled ? StatusSymbol.enabled : StatusSymbol.disabled
+        store.configuration.internetResourceEnabled ? StatusSymbol.enabled : StatusSymbol.disabled
 
       return status + " " + resource.name
     }
@@ -564,7 +584,7 @@ import SwiftUI
     }
 
     func internetResourceToggleTitle() -> String {
-      let isEnabled = configuration.internetResourceEnabled
+      let isEnabled = store.configuration.internetResourceEnabled
 
       return isEnabled ? "Disable this resource" : "Enable this resource"
     }
@@ -767,13 +787,13 @@ import SwiftUI
     }
 
     @objc func adminPortalButtonTapped() {
-      guard let baseURL = URL(string: configuration.authURL)
+      guard let baseURL = URL(string: store.configuration.authURL)
       else {
-        Log.warning("Admin portal URL invalid: \(configuration.authURL)")
+        Log.warning("Admin portal URL invalid: \(store.configuration.authURL)")
         return
       }
 
-      let accountSlug = configuration.accountSlug
+      let accountSlug = store.configuration.accountSlug
       let authURL = baseURL.appendingPathComponent(accountSlug)
 
       Task { await NSWorkspace.shared.openAsync(authURL) }
@@ -791,7 +811,7 @@ import SwiftUI
 
     @objc func supportButtonTapped() {
       let url =
-        URL(string: configuration.supportURL) ?? URL(string: Configuration.defaultSupportURL)!
+        URL(string: store.configuration.supportURL) ?? URL(string: Configuration.defaultSupportURL)!
 
       Task { await NSWorkspace.shared.openAsync(url) }
     }
@@ -812,7 +832,7 @@ import SwiftUI
     }
 
     @objc func internetResourceToggle(_ sender: NSMenuItem) {
-      configuration.internetResourceEnabled = !configuration.internetResourceEnabled
+      store.configuration.internetResourceEnabled = !store.configuration.internetResourceEnabled
 
       sender.title = internetResourceToggleTitle()
     }

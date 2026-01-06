@@ -45,10 +45,6 @@ export default function AdvancedSettingsPage({
 
   return (
     <div className="container p-4">
-      <div className="pb-2">
-        <h2 className="text-xl font-semibold">Advanced Settings</h2>
-      </div>
-
       <p className="text-neutral-900 mb-6">
         <strong>WARNING</strong>: These settings are intended for internal debug
         purposes <strong>only</strong>. Changing these is not supported and will

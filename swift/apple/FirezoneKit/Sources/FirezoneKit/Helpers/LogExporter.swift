@@ -6,6 +6,7 @@
 
 import AppleArchive
 import Foundation
+@preconcurrency import NetworkExtension
 import System
 
 /// Convenience module for smoothing over the differences between exporting logs on macOS and iOS.
@@ -26,9 +27,10 @@ import System
       case invalidFileHandle
     }
 
+    @MainActor
     static func export(
       to archiveURL: URL,
-      with ipcClient: IPCClient
+      session: NETunnelProviderSession
     ) async throws {
       guard let logFolderURL = SharedAccess.logFolderURL
       else {
@@ -51,32 +53,10 @@ import System
         .appendingPathComponent("tunnel.zip")
       fileManager.createFile(atPath: tunnelLogURL.path, contents: nil)
       let fileHandle = try FileHandle(forWritingTo: tunnelLogURL)
+      defer { try? fileHandle.close() }
 
       // 3. Await tunnel log export from tunnel process
-      try await withCheckedThrowingContinuation { continuation in
-        ipcClient.exportLogs(
-          appender: { chunk in
-            do {
-              // Append each chunk to the archive
-              try fileHandle.seekToEnd()
-              fileHandle.write(chunk.data)
-
-              if chunk.done {
-                try fileHandle.close()
-                continuation.resume()
-              }
-
-            } catch {
-              try? fileHandle.close()
-
-              continuation.resume(throwing: error)
-            }
-          },
-          errorHandler: { error in
-            continuation.resume(throwing: error)
-          }
-        )
-      }
+      try await IPCClient.exportLogs(session: session, fileHandle: fileHandle)
 
       // 4. Create app log archive
       let appLogURL = sharedLogFolderURL.appendingPathComponent("app.zip")
@@ -154,7 +134,9 @@ import System
 #endif
 
 extension LogExporter {
-  private static let fileManager = FileManager.default
+  /// Thread-safe: FileManager.default is documented as thread-safe by Apple.
+  /// Reference: https://developer.apple.com/documentation/foundation/filemanager
+  private nonisolated(unsafe) static let fileManager = FileManager.default
 
   static func now() -> String {
     let dateFormatter = ISO8601DateFormatter()

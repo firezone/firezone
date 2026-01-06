@@ -19,8 +19,8 @@ use crate::{
     },
 };
 use anyhow::{Context, Result, bail};
-use firezone_logging::err_with_src;
 use futures::SinkExt as _;
+use logging::err_with_src;
 use std::time::Duration;
 use tauri::Manager;
 use tauri_specta::Event;
@@ -240,18 +240,11 @@ pub fn run(
     config: RunConfig,
     mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettingsLegacy,
-    reloader: firezone_logging::FilterReloadHandle,
+    reloader: logging::FilterReloadHandle,
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 
-    let gui_ipc = match rt.block_on(create_gui_ipc_server()) {
-        Ok(gui_ipc) => gui_ipc,
-        Err(e) => {
-            tracing::debug!("{e:#}");
-
-            return Err(anyhow::Error::new(AlreadyRunning));
-        }
-    };
+    let gui_ipc = rt.block_on(create_gui_ipc_server())?;
 
     let (general_settings, advanced_settings) =
         rt.block_on(settings::migrate_legacy_settings(advanced_settings));
@@ -333,7 +326,7 @@ pub fn run(
         }
 
         assert_eq!(
-            firezone_bin_shared::BUNDLE_ID,
+            bin_shared::BUNDLE_ID,
             app_handle.config().identifier,
             "BUNDLE_ID should match bundle ID in tauri.conf.json"
         );
@@ -600,7 +593,7 @@ async fn create_gui_ipc_server() -> Result<ipc::Server> {
 
     // If we managed to send the IPC message then another instance of Firezone is already running.
 
-    bail!("Successfully handshaked with existing instance of Firezone GUI")
+    bail!(AlreadyRunning)
 }
 
 async fn new_instance_handshake(

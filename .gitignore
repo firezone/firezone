@@ -14,7 +14,8 @@ npm-debug.log
 *.sw?
 
 # Development environment configuration
-.env
+**/.env
+**/.envrc
 .oidc_env.json
 
 # Built packages

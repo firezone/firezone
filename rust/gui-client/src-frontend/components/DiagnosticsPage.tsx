@@ -21,10 +21,6 @@ export default function Diagnostics({
 
   return (
     <div className="container mx-auto p-4">
-      <div className="mb-4 pb-2">
-        <h2 className="text-xl font-semibold mb-4">Diagnostic Logs</h2>
-      </div>
-
       <div className="p-4 rounded-lg">
         <div className="mt-8 flex justify-center">
           <p className="mr-1">Log directory size:</p>

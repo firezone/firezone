@@ -1,28 +1,28 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, ErrorExt, Result, bail};
 use backoff::ExponentialBackoffBuilder;
-use clap::Parser;
-use firezone_bin_shared::{
+use bin_shared::{
     TunDeviceManager, device_id, http_health_check,
     platform::{UdpSocketFactory, tcp_socket_factory},
 };
+use clap::Parser;
 
-use firezone_telemetry::{
-    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
-};
-use firezone_tunnel::GatewayTunnel;
 use hickory_resolver::config::ResolveHosts;
 use ip_packet::IpPacket;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
+use telemetry::{
+    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
+};
+use tunnel::GatewayTunnel;
 
 use phoenix_channel::PhoenixChannel;
-use secrecy::{ExposeSecret, SecretBox, SecretString};
-use std::{collections::BTreeSet, fmt, path::Path};
+use secrecy::{ExposeSecret, SecretString};
+use std::{collections::BTreeSet, fmt};
 use std::{path::PathBuf, process::ExitCode};
 use std::{sync::Arc, time::Duration};
 use tracing_subscriber::layer;
@@ -31,7 +31,6 @@ use url::Url;
 
 mod eventloop;
 
-const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
 fn main() -> ExitCode {
@@ -57,15 +56,18 @@ fn main() -> ExitCode {
         .build()
         .expect("Failed to create tokio runtime");
 
-    match runtime
-        .block_on(try_main(cli, &mut telemetry))
-        .context("Failed to start Gateway")
-    {
+    match runtime.block_on(try_main(cli, &mut telemetry)) {
         Ok(()) => {
             tracing::info!("Goodbye!");
             runtime.block_on(telemetry.stop());
 
             ExitCode::SUCCESS
+        }
+        Err(e) if e.any_is::<EventloopFailed>() => {
+            tracing::error!("{e:#}");
+            runtime.block_on(telemetry.stop_on_crash());
+
+            ExitCode::FAILURE
         }
         Err(e) => {
             tracing::info!("{e:#}");
@@ -91,7 +93,7 @@ fn has_necessary_permissions() -> bool {
 }
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
-    firezone_logging::setup_global_subscriber(
+    logging::setup_global_subscriber(
         layer::Identity::default(),
         match cli.log_format {
             LogFormat::Json => true,
@@ -104,7 +106,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
-        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
         "`gateway` started logging"
     );
 
@@ -124,7 +126,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         };
     }
 
-    let firezone_id = get_firezone_id(cli.firezone_id.clone()).await
+    let firezone_id = get_firezone_id(cli.firezone_id.clone())
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
 
     let token = match cli.token.clone() {
@@ -139,7 +141,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
             .start(
                 cli.api_url.as_str(),
                 RELEASE,
-                firezone_telemetry::GATEWAY_DSN,
+                telemetry::GATEWAY_DSN,
                 firezone_id.clone(),
             )
             .await;
@@ -177,7 +179,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         opentelemetry::global::set_meter_provider(provider);
     }
 
-    let login = LoginUrl::gateway(cli.api_url, &token, firezone_id, cli.firezone_name)
+    let login = LoginUrl::gateway(cli.api_url, firezone_id, cli.firezone_name)
         .context("Failed to construct URL for logging into portal")?;
 
     let resolv_conf = resolv_conf::Config::parse(
@@ -196,8 +198,9 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         nameservers,
     );
     let portal = PhoenixChannel::disconnected(
-        SecretBox::init_with(|| login),
-        get_user_agent(None, "gateway", env!("CARGO_PKG_VERSION")),
+        login,
+        token,
+        get_user_agent("gateway", env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),
         || {
@@ -234,10 +237,15 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 
     Eventloop::new(tunnel, portal, tun_device_manager, resolver)?
         .run()
-        .await?;
+        .await
+        .context(EventloopFailed)?;
 
     Ok(())
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("Eventloop failed")]
+struct EventloopFailed;
 
 fn tonic_otlp_exporter(
     endpoint: String,
@@ -251,20 +259,14 @@ fn tonic_otlp_exporter(
     Ok(metric_exporter)
 }
 
-async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
+fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     if let Some(id) = env_id
         && !id.is_empty()
     {
         return Ok(id);
     }
 
-    if let Ok(id) = tokio::fs::read_to_string(ID_PATH).await
-        && !id.is_empty()
-    {
-        return Ok(id);
-    }
-
-    let device_id = device_id::get_or_create_at(Path::new(ID_PATH))?;
+    let device_id = device_id::get_or_create_gateway()?;
 
     Ok(device_id.id)
 }

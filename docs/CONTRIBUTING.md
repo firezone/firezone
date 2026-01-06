@@ -13,7 +13,7 @@ started.
   - [Ensure Everything Works](#ensure-everything-works)
 - [Developer Environment Setup](#developer-environment-setup)
   - [Git Commit Signing](#git-commit-signing)
-  - [asdf-vm](#asdf-vm-setup)
+  - [Developer tools](#developer-tools)
   - [Pre-commit](#pre-commit)
   - [Elixir Development](#elixir-development)
   - [Rust Development](#rust-development)
@@ -75,14 +75,14 @@ To start the local Firezone cluster, follow these steps:
 
 ```sh
 docker compose build
-docker compose run --rm elixir /bin/sh -c "cd apps/domain && mix ecto.create && mix ecto.migrate && mix ecto.seed"
+docker compose run --rm elixir /bin/sh -c "mix ecto.create && mix ecto.migrate && mix ecto.seed"
 
 # Before moving to the next step, copy the Firezone account UUID from the seed step
 # Here's an example of the output
     Created accounts:
     c89bcc8c-9392-4dae-a40d-888aef6d28e0: Firezone Account
 
-docker compose up -d api web vault gateway client relay-1 relay-2
+docker compose up -d portal vault gateway client relay-1 relay-2
 ```
 
 You should now be able to connect to `http://localhost:8080/<account-uuid-here>`
@@ -137,11 +137,13 @@ environment setup. If you have not read the Docker Setup instructions we
 recommend following the directions listed there to get your Docker environment
 setup properly.
 
-### asdf-vm Setup
+### Developer tools
 
-We use [asdf-vm](https://asdf-vm.com) to manage language versions for Firezone.
-Install the language runtimes defined in the [.tool-versions](../.tool-versions)
-file by running `asdf install` from the project root.
+The versions for most tools and SDKs required for working on Firezone are managed
+via `.tool-versions` files in the respective directories, i.e. Elixir tools in
+[elixir/.tool-versions](../elixir/.tool-versions) etc.
+
+You can use any `.tool-versions`-compatible version manager for installing them.
 
 - Note: For a fresh install of `asdf` you will need to install some
   [asdf-plugins](https://asdf-vm.com/manage/plugins.html). e.g. `asdf plugin add nodejs && asdf install nodejs` to set up the NodeJS plugin and package.
@@ -154,9 +156,8 @@ for any local, non-Docker development or testing.
 We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
 before code is committed.
 
-- Install pre-commit and other Python packages with `pip install -r .github/requirements.txt`
+- Install [Mise](https://mise.jdx.dev/) which will automatically install pre-commit and other required tools (see `mise.toml`)
 - Install the repo-specific checks with `pre-commit install --config .github/pre-commit-config.yaml`
-  (As in `.github/workflows/_static-analysis.yml`)
 
 ### Elixir Development
 
@@ -259,7 +260,7 @@ git commit -m "$COMMIT_MSG"
 This should run automatically when you run `git commit`, but in case it doesn't:
 
 ```bash
-pre-commit run --all-files
+mise run lint
 ```
 
 ## Logging and sensitive info

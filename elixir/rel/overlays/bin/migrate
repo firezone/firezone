@@ -1,4 +1,4 @@
 #!/bin/sh
 set -e
 . "$(dirname -- "$0")/bootstrap"
-exec ./"$APPLICATION_NAME" eval Domain.Release.migrate
+exec ./"$APPLICATION_NAME" eval Portal.Release.migrate

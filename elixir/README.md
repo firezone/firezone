@@ -25,9 +25,10 @@ Inside the `/elixir` directory run the following commands:
 # --------------------
 > mix deps.get
 
-# Install npm packages and build assets
+# Generate dev cert, install npm packages and build assets
 # -------------------------------------
 > cd apps/web/
+> mix phx.gen.cert
 > mix setup
 
 # Setup and seed the DB
@@ -42,8 +43,8 @@ Inside the `/elixir` directory run the following commands:
 
 The web and api applications should now be running:
 
-- Web -> http://localhost:13000/
-- API -> http://localhost:13001/
+- Web -> https://localhost:13443/
+- API -> ws://localhost:13001/
 
 ### Stripe integration for local development
 
@@ -54,10 +55,10 @@ Prerequisites:
 
 Steps:
 
-- Use static seeds to provision account ID that corresponds to staging setup on Stripe:
+- Reset and seed the database (seeds use static IDs that correspond to staging setup on Stripe):
 
   ```
-  STATIC_SEEDS=true mix do ecto.reset, ecto.seed
+  mix do ecto.reset, ecto.seed
   ```
 
 - Start Stripe CLI webhook proxy:
@@ -73,25 +74,6 @@ Steps:
   ```
 
 When updating the billing plan in stripe, use the Stripe Testing Docs for how to add test payment info
-
-### WorkOS integration for local development
-
-Prerequisites:
-
-- WorkOS account
-
-WorkOS is currently being used for JumpCloud directory sync integration. This allows JumpCloud users to use SCIM on the JumpCloud side, rather than having to give Firezone an admin JumpCloud API token.
-
-#### Connecting WorkOS in dev mode for manual testing
-
-If you are not planning to use the JumpCloud provider in your local development setup, then no additional setup is needed.
-However, if you need to use the JumpCloud provider locally, you will need to obtain an API Key and Client ID from the [WorkOS Dashboard](https://dashboard.workos.com/api-keys).
-
-After obtaining WorkOS API credentials, you will need to make sure they are set in the environment ENVs when starting your local dev instance of Firezone. As an example:
-
-```
-WORKOS_API_KEY="..." WORKOS_CLIENT_ID="..." mix phx.server
-```
 
 ### Acceptance tests
 

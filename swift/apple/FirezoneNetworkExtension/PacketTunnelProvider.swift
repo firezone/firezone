@@ -13,7 +13,6 @@ enum PacketTunnelProviderError: Error {
   case tunnelConfigurationIsInvalid
   case firezoneIdIsInvalid
   case tokenNotFoundInKeychain
-  case dryStartStopCycle
 }
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
@@ -54,12 +53,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   override func startTunnel(
     options: [String: NSObject]?,
-    completionHandler: @escaping (Error?) -> Void
+    completionHandler: @escaping @Sendable (Error?) -> Void
   ) {
-    // Dummy start to get the extension running on macOS after upgrade
-    if options?["dryRun"] as? Bool == true {
-      Log.info("Dry run startup requested - extension awakened but not starting tunnel")
-      return completionHandler(PacketTunnelProviderError.dryStartStopCycle)
+    // Dummy start to attach a utun for cleanup later
+    if options?["cycleStart"] as? Bool == true {
+      Log.info("Cycle start requested - extension awakened and temporarily starting tunnel")
+      return completionHandler(nil)
     }
 
     // Log version on actual tunnel start
@@ -67,20 +66,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
     Log.info("Starting tunnel - Version: \(version), Build: \(build)")
-
-    // Try to load configuration from options first (passed from client at startup)
-    if let configData = options?["configuration"] as? Data {
-      do {
-        let decoder = PropertyListDecoder()
-        let configFromOptions = try decoder.decode(TunnelConfiguration.self, from: configData)
-        Log.info("Loaded configuration from startTunnel options")
-        // Save it for future fallback (e.g., system-initiated restarts)
-        configFromOptions.save()
-        self.tunnelConfiguration = configFromOptions
-      } catch {
-        Log.error(error)
-      }
-    }
 
     // If the tunnel starts up before the GUI after an upgrade crossing the 1.4.15 version boundary,
     // the old system settings-based config will still be present and the new configuration will be empty.
@@ -93,11 +78,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       // If we don't have a token, we can't continue.
       guard let token = loadAndSaveToken(from: options)
       else {
-        throw PacketTunnelProviderError.tokenNotFoundInKeychain
+        return completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
       }
 
       // Try to save the token back to the Keychain but continue if we can't
-      do { try token.save() } catch { Log.error(error) }
+      handleTokenSave(token)
 
       // The firezone id should be initialized by now
       guard let id = UserDefaults.standard.string(forKey: "firezoneId")
@@ -114,7 +99,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       // Configure telemetry
       Telemetry.setEnvironmentOrClose(apiURL)
-      Telemetry.accountSlug = accountSlug
+      Task { await Telemetry.setAccountSlug(accountSlug) }
 
       let enabled = legacyConfiguration?["internetResourceEnabled"]
       let internetResourceEnabled =
@@ -138,7 +123,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       self.adapter = adapter
 
     } catch {
-
       Log.error(error)
       completionHandler(error)
     }
@@ -152,7 +136,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   // When called by the system, we call Adapter.stop() from here.
   // When initiated by connlib, we've already called stop() there.
   override func stopTunnel(
-    with reason: NEProviderStopReason, completionHandler: @escaping () -> Void
+    with reason: NEProviderStopReason, completionHandler: @escaping @Sendable () -> Void
   ) {
     Log.log("stopTunnel: Reason: \(reason)")
 
@@ -164,8 +148,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update ProviderMessage to encode/decode Result to and from Data.
   // TODO: Move to a more abstract IPC protocol
-  @MainActor
-  override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
+  override func handleAppMessage(
+    _ message: Data, completionHandler: (@Sendable (Data?) -> Void)? = nil
+  ) {
     do {
       let providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
 
@@ -221,7 +206,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     return Token(passedToken) ?? keychainToken
   }
 
-  func clearLogs(_ completionHandler: ((Data?) -> Void)? = nil) {
+  func clearLogs(_ completionHandler: (@Sendable (Data?) -> Void)? = nil) {
     do {
       try Log.clear(in: SharedAccess.logFolderURL)
     } catch {
@@ -231,7 +216,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler?(nil)
   }
 
-  func getLogFolderSize(_ completionHandler: ((Data?) -> Void)? = nil) {
+  func getLogFolderSize(_ completionHandler: (@Sendable (Data?) -> Void)? = nil) {
     guard let logFolderURL = SharedAccess.logFolderURL
     else {
       completionHandler?(nil)
@@ -239,17 +224,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return
     }
 
-    getLogFolderSizeTask = Task {
+    let task = Task {
       let size = await Log.size(of: logFolderURL)
       let data = withUnsafeBytes(of: size) { Data($0) }
 
-      // Ensure completionHandler is called on the same actor as handleAppMessage and isn't cancelled by deinit
-      if getLogFolderSizeTask?.isCancelled ?? true { return }
-      await MainActor.run { completionHandler?(data) }
+      // Call completion handler with data if not cancelled
+      guard !Task.isCancelled else { return }
+      completionHandler?(data)
     }
+    getLogFolderSizeTask = task
   }
 
-  func exportLogs(_ completionHandler: @escaping (Data?) -> Void) {
+  func exportLogs(_ completionHandler: @escaping @Sendable (Data?) -> Void) {
     func sendChunk(_ tunnelLogArchive: TunnelLogArchive) {
       do {
         let (chunk, done) = try tunnelLogArchive.readChunk()
@@ -331,6 +317,30 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // 3. Generate and save new one
     defaults.set(UUID().uuidString, forKey: key)
   }
+
+  #if os(macOS)
+    private func handleTokenSave(_ token: Token) {
+      do {
+        try token.save()
+      } catch let error as KeychainError {
+        // macOS 13 and below have a bug that raises an error when a root proc (such as our system extension) tries
+        // to add an item to the system keychain. We can safely ignore this.
+        if #unavailable(macOS 14.0), case .appleSecError("SecItemAdd", 100001) = error {
+          // ignore
+        } else {
+          Log.error(error)
+        }
+      } catch {
+        Log.error(error)
+      }
+    }
+  #endif
+
+  #if os(iOS)
+    private func handleTokenSave(_ token: Token) {
+      do { try token.save() } catch { Log.error(error) }
+    }
+  #endif
 }
 
 // Increase usefulness of TunnelConfiguration now that we're over the IPC barrier

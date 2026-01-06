@@ -23,10 +23,37 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
+        <ChangeItem pull="11595">
+          Passes the authentication token in the x-authorization header instead
+          of in the URL, improving rate limiting for users behind shared IPs.
+        </ChangeItem>
+        <ChangeItem pull="11594">
+          Implements retry with exponential backoff on 429 (Too Many Requests)
+          responses from the portal.
+        </ChangeItem>
+      </Unreleased>
+      <Entry version="1.4.19" date={new Date("2025-12-23")}>
+        <ChangeItem pull="10972">
+          Fixes an issue where IPv6-only DNS resources could not be reached.
+        </ChangeItem>
+        <ChangeItem pull="11115">
+          Fixes an issue where Firezone would not connect if an IPv6 interface
+          is present but not routable.
+        </ChangeItem>
+        <ChangeItem pull="11208">
+          Fixes an issue where the Gateway would not boot up if IPv6 was
+          disabled on the system.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.4.18" date={new Date("2025-11-10")}>
         <ChangeItem pull="10620">
           Adds a `--log-format` CLI option to output logs as JSON.
         </ChangeItem>
-      </Unreleased>
+        <ChangeItem pull="10796">
+          Fixes an issue where packets for DNS resources would be routed to
+          stale IPs after DNS record changes.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.4.17" date={new Date("2025-10-16")}>
         <ChangeItem pull="10367">
           Fixes a rare CPU-spike issue in case a Client connected with many

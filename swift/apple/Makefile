@@ -15,7 +15,7 @@ CLIENT_FFI_SOURCES=$(shell find $(CLIENT_FFI_DIR)/src -name "*.rs" 2>/dev/null)
 
 # Set consistent environment to prevent Rust rebuilds
 # This must match the Xcode project setting
-export MACOSX_DEPLOYMENT_TARGET=12.4
+export MACOSX_DEPLOYMENT_TARGET=13.0
 
 # Map architecture names for Rust targets
 ifeq ($(ARCH),arm64)
@@ -55,12 +55,25 @@ uniffi-bindings: $(GENERATED_DIR)/connlib.swift $(GENERATED_DIR)/connlibFFI.h
 # Info for sourcekit-lsp (LSP server for other IDEs)
 .PHONY: lsp
 lsp:
-	@xcode-build-server config \
-        -project Firezone.xcodeproj \
-        -scheme Firezone
+	@if command -v xcode-build-server >/dev/null 2>&1; then \
+		xcode-build-server config \
+			-project Firezone.xcodeproj \
+			-scheme Firezone; \
+	else \
+		echo "xcode-build-server not installed, skipping LSP configuration"; \
+		echo "   Install with: brew install xcode-build-server"; \
+	fi
 
 .PHONY: build
 build: $(GENERATED_DIR)/connlib.swift $(GENERATED_DIR)/connlibFFI.h
+	@if [ ! -f buildServer.json ]; then \
+		echo "buildServer.json not found, generating LSP configuration..."; \
+		$(MAKE) lsp; \
+	fi
+	@# Ensure dynamic_build_number.xcconfig exists before Xcode parses the project
+	@if [ ! -f Firezone/xcconfig/dynamic_build_number.xcconfig ]; then \
+		echo "CURRENT_PROJECT_VERSION = $$(date +%s)" > Firezone/xcconfig/dynamic_build_number.xcconfig; \
+	fi
 	@echo "Building Xcode project for ${PLATFORM}, ${ARCH}"
 	@echo "Git SHA: ${GIT_SHA}"
 	@xcodebuild build \
@@ -83,10 +96,26 @@ install:
 	@-sudo systemextensionsctl uninstall 47R2M6779T dev.firezone.firezone.network-extension 2>/dev/null || true
 	@-sudo systemextensionsctl uninstall 47R2M6779T dev.firezone.firezone.network-extension-systemextension 2>/dev/null || true
 	@sleep 2
-	@echo "Copying app to /Applications..."
-	@sudo cp -R ~/Library/Developer/Xcode/DerivedData/Firezone-*/Build/Products/$(CONFIGURATION)/Firezone.app /Applications/
+	@echo "Finding build location..."
+	@PRODUCTS_DIR=$$(xcodebuild -project Firezone.xcodeproj -scheme Firezone -configuration $(CONFIGURATION) -showBuildSettings 2>/dev/null | grep ' BUILT_PRODUCTS_DIR = ' | sed 's/.*= //'); \
+	if [ -z "$$PRODUCTS_DIR" ]; then \
+		echo "Error: Could not determine build products directory"; \
+		exit 1; \
+	fi; \
+	if [ ! -d "$$PRODUCTS_DIR/Firezone.app" ]; then \
+		echo "Error: Firezone.app not found at $$PRODUCTS_DIR"; \
+		echo "Run 'make build' first"; \
+		exit 1; \
+	fi; \
+	echo "Copying app from $$PRODUCTS_DIR to /Applications..."; \
+	sudo cp -R "$$PRODUCTS_DIR/Firezone.app" /Applications/
 	@echo "Launching Firezone..."
 	@open /Applications/Firezone.app
+
+.PHONY: test
+test:
+	@echo "Running FirezoneKit tests..."
+	@cd FirezoneKit && swift test
 
 .PHONY: clean
 clean:
@@ -105,7 +134,10 @@ clean:
 format:
 	@echo "Formatting Swift code..."
 	@find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -not -path "./FirezoneKit/.build/*" | xargs swift format format --in-place --parallel
-	@echo "Linting Swift code..."
+
+.PHONY: format-check
+format-check:
+	@echo "Checking Swift formatting..."
 	@find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -not -path "./FirezoneKit/.build/*" | xargs swift format lint --parallel --strict
 
 .PHONY: setup

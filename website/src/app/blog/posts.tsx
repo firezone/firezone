@@ -12,6 +12,70 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
+      title: "November 2025 Devlog",
+      date: "November 30, 2025",
+      href: "/blog/devlog/2025-11",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Engineering",
+      description: (
+        <p className="mb-2">
+          DNS over HTTPS support, Swift 6.2 upgrade for Apple clients, Wayland
+          support for the Linux GUI client, and various Gateway reliability
+          improvements.
+        </p>
+      ),
+    },
+    {
+      title: "Nov 28 2025 Incident Post-Mortem",
+      date: "November 28, 2025",
+      href: "/blog/2025-11-28-incident-post-mortem",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Announcement",
+      description: (
+        <p className="mb-2">
+          On November 28, 2025, a PII leak incident occurred affecting a small
+          number of user names and email addresses. This post-mortem details the
+          incident, its impact, and the steps we&apos;re taking to prevent
+          future occurrences.
+        </p>
+      ),
+    },
+    {
+      title: "Scheduled Maintenance - December 6, 2025",
+      date: "November 22, 2025",
+      href: "/blog/2025-12-06-scheduled-maintenance",
+      authorName: "Firezone Team",
+      authorAvatarSrc: "/images/logo-main-light.svg",
+      type: "Announcement",
+      description: (
+        <p className="mb-2">
+          Firezone will undergo scheduled maintenance on Saturday, December 6,
+          2025 from 8:00 PM to 10:00 PM Pacific Time to roll out major
+          improvements to authentication, directory sync, and user and group
+          management. We expect only a few minutes of downtime.
+        </p>
+      ),
+    },
+    {
+      title: "October 2025 Devlog",
+      date: "October 31, 2025",
+      href: "/blog/devlog/2025-10",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Engineering",
+      description: (
+        <p className="mb-2">
+          October delivered substantial improvements to Gateway observability,
+          Linux networking stack refinements, and new deployment mechanisms.
+          This month&apos;s work focused on implementing comprehensive flow
+          logging, addressing routing conflicts through tiered routing tables,
+          and introducing native Debian packages for easier deployments.
+        </p>
+      ),
+    },
+    {
       title: "September 2025 Devlog",
       date: "September 30, 2025",
       href: "/blog/devlog/2025-09",
@@ -31,8 +95,8 @@ export default function Posts() {
     },
 
     {
-      title: "Migrate your Internet Resource by March 15, 2024",
-      date: "February 16, 2024",
+      title: "Migrate your Internet Resource by March 15, 2025",
+      date: "February 16, 2025",
       href: "/blog/migrate-your-internet-resource",
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
@@ -42,7 +106,7 @@ export default function Posts() {
         <p className="mb-2">
           We&apos;re making some changes to the way Internet Resources work to
           improve security and performance. Migrate your Internet Resources by
-          <strong>March 15, 2024</strong> to avoid any interruptions.
+          <strong>March 15, 2025</strong> to avoid any interruptions.
         </p>
       ),
     },

@@ -1,0 +1,13 @@
+name: "Setup AzureSignTool"
+description: "Installs the AzureSignTool"
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-dotnet@2016bd2012dba4e32de620c46fe006a3ac9f0602 # v5.0.1
+      if: ${{ runner.os == 'Windows' }}
+      with:
+        dotnet-version: "10.0.x"
+    - name: Install AzureSignTool
+      if: ${{ runner.os == 'Windows' }}
+      shell: bash
+      run: dotnet tool install --global AzureSignTool

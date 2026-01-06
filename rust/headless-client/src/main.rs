@@ -4,26 +4,26 @@
 
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
-use clap::Parser;
-use firezone_bin_shared::{
+use bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
     new_dns_notifier, new_network_notifier,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
-use firezone_telemetry::{
-    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, analytics, feature_flags, otel,
-};
+use clap::Parser;
 use opentelemetry_otlp::WithExportConfig as _;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::PhoenixChannel;
 use phoenix_channel::get_user_agent;
 use phoenix_channel::{DeviceInfo, LoginUrl};
-use secrecy::{SecretBox, SecretString};
+use secrecy::SecretString;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
+};
+use telemetry::{
+    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, analytics, feature_flags, otel,
 };
 use tokio::time::Instant;
 
@@ -213,9 +213,9 @@ fn try_main() -> Result<()> {
     let (layer, _handle) = cli
         .log_dir
         .as_deref()
-        .map(|dir| firezone_logging::file::layer(dir, "firezone-headless-client"))
+        .map(|dir| logging::file::layer(dir, "firezone-headless-client"))
         .unzip();
-    firezone_logging::setup_global_subscriber(layer, false).context("Failed to set up logging")?;
+    logging::setup_global_subscriber(layer, false).context("Failed to set up logging")?;
 
     // Deactivate DNS control before starting telemetry or connecting to the portal,
     // in case a previous run of Firezone left DNS control on and messed anything up.
@@ -246,7 +246,7 @@ fn try_main() -> Result<()> {
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id.clone() {
         Some(id) => id,
-        None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
+        None => device_id::get_or_create_client().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
     let mut telemetry = if cli.is_telemetry_allowed() {
@@ -255,7 +255,7 @@ fn try_main() -> Result<()> {
         rt.block_on(telemetry.start(
             cli.api_url.as_ref(),
             RELEASE,
-            firezone_telemetry::HEADLESS_DSN,
+            telemetry::HEADLESS_DSN,
             firezone_id.clone(),
         ));
 
@@ -279,7 +279,6 @@ fn try_main() -> Result<()> {
 
     let url = LoginUrl::client(
         cli.api_url.clone(),
-        &token,
         firezone_id.clone(),
         cli.firezone_name,
         DeviceInfo {
@@ -336,8 +335,9 @@ fn try_main() -> Result<()> {
         // for an Internet connection if it launches us at startup.
         // When running interactively, it is useful for the user to see that we can't reach the portal.
         let portal = PhoenixChannel::disconnected(
-            SecretBox::init_with(|| url),
-            get_user_agent(None, "headless-client", env!("CARGO_PKG_VERSION")),
+            url,
+            token,
+            get_user_agent("headless-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
             move || {
@@ -409,7 +409,7 @@ fn try_main() -> Result<()> {
                 }
                 client_shared::Event::TunInterfaceUpdated(config) => {
                     tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
-                    dns_controller.set_dns(config.dns_sentinel_ips(), config.search_domain).await?;
+                    dns_controller.set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain).await?;
                     tun_device.set_routes(config.ipv4_routes, config.ipv6_routes).await?;
 
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready

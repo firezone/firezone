@@ -1,27 +1,17 @@
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, ErrorExt as _, Result};
+use bin_shared::{TunDeviceManager, signals};
 use boringtun::x25519::PublicKey;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
-use firezone_bin_shared::{TunDeviceManager, signals};
-use firezone_telemetry::{Telemetry, analytics};
+use telemetry::{Telemetry, analytics};
 
-use firezone_tunnel::messages::gateway::{
-    AccessAuthorizationExpiryUpdated, AllowAccess, Authorization, ClientIceCandidates,
-    ClientsIceCandidates, ConnectionReady, EgressMessages, IngressMessages, InitGateway,
-    RejectAccess, RequestConnection,
-};
-use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
-use firezone_tunnel::{
-    DnsResourceNatEntry, GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig,
-    ResolveDnsRequest, TunnelError,
-};
 use futures::{FutureExt as _, TryFutureExt};
 use hickory_resolver::TokioResolver;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::{self, Future, poll_fn};
-use std::net::{IpAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
@@ -29,6 +19,16 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, iter, mem};
 use tokio::sync::mpsc;
+use tunnel::messages::gateway::{
+    AccessAuthorizationExpiryUpdated, AllowAccess, Authorization, ClientIceCandidates,
+    ClientsIceCandidates, ConnectionReady, EgressMessages, IngressMessages, InitGateway,
+    RejectAccess, RequestConnection,
+};
+use tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
+use tunnel::{
+    DnsResourceNatEntry, GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig,
+    ResolveDnsRequest, TunnelError,
+};
 
 use crate::RELEASE;
 
@@ -80,7 +80,7 @@ enum PortalCommand {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel,
-        mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
+        mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
     ) -> Result<Self> {
@@ -93,6 +93,7 @@ impl Eventloop {
             portal,
             portal_event_tx,
             portal_cmd_rx,
+            resolver.clone(),
         ));
 
         Ok(Self {
@@ -239,9 +240,9 @@ impl Eventloop {
         Ok(())
     }
 
-    async fn handle_tunnel_event(&mut self, event: firezone_tunnel::GatewayEvent) -> Result<()> {
+    async fn handle_tunnel_event(&mut self, event: tunnel::GatewayEvent) -> Result<()> {
         match event {
-            firezone_tunnel::GatewayEvent::AddedIceCandidates {
+            tunnel::GatewayEvent::AddedIceCandidates {
                 conn_id: client,
                 candidates,
             } => {
@@ -254,7 +255,7 @@ impl Eventloop {
                     )))
                     .await?;
             }
-            firezone_tunnel::GatewayEvent::RemovedIceCandidates {
+            tunnel::GatewayEvent::RemovedIceCandidates {
                 conn_id: client,
                 candidates,
             } => {
@@ -267,7 +268,7 @@ impl Eventloop {
                     ))
                     .await?;
             }
-            firezone_tunnel::GatewayEvent::ResolveDns(setup_nat) => {
+            tunnel::GatewayEvent::ResolveDns(setup_nat) => {
                 if self
                     .resolve_tasks
                     .try_push(
@@ -287,8 +288,7 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(is_unreachable)
             {
                 tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
@@ -296,16 +296,14 @@ impl Eventloop {
             }
 
             // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
             {
                 tracing::debug!("{e:#}");
                 continue;
             }
 
-            if e.root_cause()
-                .downcast_ref::<io::Error>()
+            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
             {
                 if !mem::replace(&mut self.logged_permission_denied, true) {
@@ -317,22 +315,18 @@ impl Eventloop {
                 continue;
             }
 
-            if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
+            if e.any_is::<ip_packet::ImpossibleTranslation>() {
                 // Some IP packets cannot be translated and should be dropped "silently".
                 // Do so by ignoring the error here.
                 continue;
             }
 
-            if e.downcast_ref::<snownet::UnknownConnection>()
-                .is_some_and(|e| e.recently_disconnected())
-            {
-                tracing::debug!("{e:#}");
+            if let Some(e) = e.any_downcast_ref::<tunnel::UnroutablePacket>() {
+                tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
                 continue;
             }
 
-            if e.root_cause()
-                .is::<firezone_tunnel::UdpSocketThreadStopped>()
-            {
+            if e.any_is::<tunnel::UdpSocketThreadStopped>() {
                 return Err(e);
             }
 
@@ -440,7 +434,7 @@ impl Eventloop {
                 connected,
             }) => tunnel.state_mut().update_relays(
                 BTreeSet::from_iter(disconnected_ids),
-                firezone_tunnel::turn(&connected),
+                tunnel::turn(&connected),
                 Instant::now(),
             ),
             IngressMessages::Init(InitGateway {
@@ -458,7 +452,7 @@ impl Eventloop {
 
                 tunnel.state_mut().update_relays(
                     BTreeSet::default(),
-                    firezone_tunnel::turn(&relays),
+                    tunnel::turn(&relays),
                     Instant::now(),
                 );
                 tunnel.state_mut().update_tun_device(IpConfig {
@@ -492,29 +486,46 @@ impl Eventloop {
                     }
                 }
 
-                self.tun_device_manager
+                let tun_ip_stack = self
+                    .tun_device_manager
                     .set_ips(interface.ipv4, interface.ipv6)
                     .await
                     .context("Failed to set TUN interface IPs")?;
+
+                tracing::debug!(stack = %tun_ip_stack, "Initialized TUN device");
+
                 self.tun_device_manager
                     .set_routes(vec![IPV4_TUNNEL], vec![IPV6_TUNNEL])
                     .await
                     .context("Failed to set TUN routes")?;
 
-                let ipv4_socket = SocketAddrV4::new(interface.ipv4, 53535);
-                let ipv6_socket = SocketAddrV6::new(interface.ipv6, 53535, 0, 0);
+                let ipv4_socket = SocketAddr::V4(SocketAddrV4::new(interface.ipv4, 53535));
+                let ipv6_socket = SocketAddr::V6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0));
 
-                let ipv4_result = tunnel
-                    .rebind_dns_ipv4(ipv4_socket)
-                    .with_context(|| format!("Failed to bind DNS server at {ipv4_socket}"))
-                    .inspect_err(|e| tracing::debug!("{e:#}"));
+                let addresses = match tun_ip_stack {
+                    bin_shared::TunIpStack::V4Only => vec![ipv4_socket],
+                    bin_shared::TunIpStack::V6Only => vec![ipv6_socket],
+                    bin_shared::TunIpStack::Dual => vec![ipv4_socket, ipv6_socket],
+                };
 
-                let ipv6_result = tunnel
-                    .rebind_dns_ipv6(ipv6_socket)
-                    .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
-                    .inspect_err(|e| tracing::debug!("{e:#}"));
+                let mut attempts = std::iter::repeat_n(addresses, 3);
 
-                ipv4_result.or(ipv6_result)?;
+                loop {
+                    let Some(attempt) = attempts.next() else {
+                        anyhow::bail!("Failed to bind DNS servers on TUN interface");
+                    };
+
+                    match tunnel.rebind_dns(attempt) {
+                        Ok(()) => break,
+                        Err(mut e) => {
+                            for e in e.drain() {
+                                tracing::debug!("Failed to bind DNS server: {e:#}")
+                            }
+                        }
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
             }
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
@@ -530,7 +541,7 @@ impl Eventloop {
                     .state_mut()
                     .update_access_authorization_expiry(cid, rid, expires_at)
                 {
-                    tracing::warn!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
+                    tracing::debug!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
                 };
             }
         }
@@ -657,7 +668,7 @@ impl Eventloop {
         &self,
         domain: DomainName,
     ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> + use<> {
-        if firezone_telemetry::feature_flags::gateway_userspace_dns_a_aaaa_records() {
+        if telemetry::feature_flags::gateway_userspace_dns_a_aaaa_records() {
             let resolver = self.resolver.clone();
 
             async move {
@@ -700,9 +711,10 @@ impl Eventloop {
 }
 
 async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
+    mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
+    resolver: TokioResolver,
 ) {
     use futures::future::Either;
     use futures::future::select;
@@ -747,11 +759,27 @@ async fn phoenix_channel_event_loop(
                     error,
                 }),
                 _,
-            )) => tracing::info!(
-                ?backoff,
-                ?max_elapsed_time,
-                "Hiccup in portal connection: {error:#}"
-            ),
+            )) => {
+                tracing::info!(
+                    ?backoff,
+                    ?max_elapsed_time,
+                    "Hiccup in portal connection: {error:#}"
+                );
+
+                let ips = match resolver
+                    .lookup_ip(portal.host())
+                    .await
+                    .context("Failed to lookup portal host")
+                {
+                    Ok(ips) => ips.into_iter().collect(),
+                    Err(e) => {
+                        tracing::debug!(host = %portal.host(), "{e:#}");
+                        continue;
+                    }
+                };
+
+                portal.update_ips(ips);
+            }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 

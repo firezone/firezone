@@ -1,0 +1,364 @@
+import Alert from "@/components/DocsAlert";
+import PlanBadge from "@/components/PlanBadge";
+import SupportOptions from "@/components/SupportOptions";
+import Image from "next/image";
+import Link from "next/link";
+
+<PlanBadge plans={["enterprise"]}>
+
+# Sync with Okta
+
+</PlanBadge>
+
+On Enterprise plans, Firezone can automatically synchronize users and groups
+from your Okta tenant. This eliminates the need to manually create and manage
+users in Firezone. You can add multiple Okta directories to sync from different
+Okta organizations.
+
+## Overview
+
+Users and groups assigned to your Okta authentication app will be automatically
+synced to Firezone.
+
+To enable directory sync, you'll create an API service app in Okta that allows
+Firezone to connect to the Okta APIs with read-only access to users, groups, and
+applications.
+
+<Alert color="info">
+  **Prerequisite:** Before proceeding, you must have completed [Okta
+  authentication setup](/kb/authenticate/okta). Directory sync requires an
+  existing Okta authentication provider to function.
+</Alert>
+
+## Setup
+
+<Alert color="info">
+  **Note on API rate limits:** Firezone intelligently throttles API requests to
+  stay within the rate limit you configure for your service app. In the
+  **Application Rate Limits** tab of your Okta service app, you can set a
+  percentage of your org's total rate limit capacity. To complete syncs faster,
+  we recommend setting this to the highest value that still allows your other
+  Okta integrations to function properly.
+</Alert>
+
+### Step 1: Create a custom role in Okta
+
+To ensure Firezone has only the minimum required permissions, you'll create a
+custom role in Okta with read-only access to users, groups, and a specific set
+of applications.
+
+#### Create a Resource Set
+
+First, create a Resource Set that defines which Okta resources the Firezone API
+service app can access.
+
+In your Okta admin portal, go to **Security → Administrators**, select the
+**Resources** tab and click **Create new resource set**.
+
+<Link href="/images/kb/directory-sync/okta/resources-tab.png" target="_blank">
+  <Image
+    src="/images/kb/directory-sync/okta/resources-tab.png"
+    alt="Okta Resource Set"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+Configure the Resource Set as follows:
+
+- **Name**: `Firezone Resources`
+- **Description**: `Resources for Firezone Directory Sync`
+- **Resources**:
+  - **Applications** → `Firezone OIDC app`
+  - **Users** → `All Users`
+  - **Groups** → `All Groups`
+
+Click **Create**.
+
+<Link
+  href="/images/kb/directory-sync/okta/resource-set-configuration.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/resource-set-configuration.png"
+    alt="Okta Resource Set Configuration"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+#### Create a Custom Role
+
+Now create a custom role that will be assigned to the Firezone API service app.
+
+In the **Administrators** page, select the **Roles** tab and click **Create new
+role**.
+
+Configure the role as follows:
+
+- **Role name**: `Firezone Sync Read Only`
+- **Role description**: `Read-only access for Firezone directory sync`
+
+Under **Permissions**, add the following:
+
+- **View users and their details**
+- **View groups and their details**
+- **View applications and their details**
+
+Click **Save role**.
+
+<Link href="/images/kb/directory-sync/okta/create-new-role.png" target="_blank">
+  <Image
+    src="/images/kb/directory-sync/okta/create-new-role.png"
+    alt="Okta create new role"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+### Step 2: Start the Directory Sync setup in Firezone
+
+In a new browser tab, open your Firezone admin portal, and go to **Settings →
+Directory Sync**.
+
+Click the **Add Directory** button and choose **Okta**.
+
+You should now see a setup form. Click the **Generate Keypair** button to create
+a public/private key pair that will be used for authentication during directory
+sync.
+
+Keep this page open as you'll need the public key and other values in the next
+step.
+
+### Step 3: Create an API service app in Okta
+
+In your Okta admin portal, go to **Applications → Applications** and click
+**Create App Integration**.
+
+<Link
+  href="/images/kb/directory-sync/okta/create-app-integration.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/create-app-integration.png"
+    alt="Okta create app integration"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+In the modal that appears, select **API Services** and click **Next**.
+
+<Link
+  href="/images/kb/directory-sync/okta/create-app-integration-modal.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/create-app-integration-modal.png"
+    alt="Okta create new role"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+Give the app a descriptive name such as **Firezone Directory Sync**.
+
+Click **Save** to create the application.
+
+<Link
+  href="/images/kb/directory-sync/okta/new-app-integration-name.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/new-app-integration-name.png"
+    alt="Okta name new app integration"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+#### Configure client authentication
+
+Once the app is created, you'll need to configure its authentication method.
+
+On the **General** tab, click **Edit** in the **Client Credentials** section.
+
+<Link
+  href="/images/kb/directory-sync/okta/new-app-integration-general-tab.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/new-app-integration-general-tab.png"
+    alt="Okta app integration general tab"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+Select **Public key / Private key** for the **Client authentication** method.
+
+Under the **PUBLIC KEYS** section, click **Add key**.
+
+<Link
+  href="/images/kb/directory-sync/okta/new-app-integration-general-edit.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/new-app-integration-general-edit.png"
+    alt="Okta app integration general tab edit"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+In the modal that appears, paste the public key from your Firezone setup form
+and click **Done**.
+
+<Link
+  href="/images/kb/directory-sync/okta/add-public-key-modal.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/add-public-key-modal.png"
+    alt="Okta add public key"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+Click **Save** to save your changes.
+
+<Link
+  href="/images/kb/directory-sync/okta/new-app-integration-with-pub-key.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/new-app-integration-with-pub-key.png"
+    alt="Okta new app integration save"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+#### Grant API scopes
+
+Navigate to the **Okta API Scopes** tab and grant the following scopes:
+
+- **okta.apps.read**
+- **okta.groups.read**
+- **okta.users.read**
+
+These scopes provide read-only access to applications, groups, and users.
+
+<Link
+  href="/images/kb/directory-sync/okta/new-app-integration-api-scopes.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/new-app-integration-api-scopes.png"
+    alt="Okta new app integration API scopes"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+#### Assign the custom role
+
+Navigate to the **Admin roles** tab and click **Edit Assignments**.
+
+<Link
+  href="/images/kb/directory-sync/okta/new-app-integration-admin-roles.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/new-app-integration-admin-roles.png"
+    alt="Okta new app integration assign role"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+Configure the role assignment as follows:
+
+- **Role**: Select **Firezone Sync Read Only** (the custom role you created in
+  Step 1)
+- **Resource set**: Select **Firezone Resources** (the resource set you created
+  in Step 1)
+
+Click **Save Changes**.
+
+<Link
+  href="/images/kb/directory-sync/okta/new-app-integration-role-assignment.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/directory-sync/okta/new-app-integration-role-assignment.png"
+    alt="Okta new app integration assign role"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+The Okta configuration is now complete.
+
+### Step 4: Complete the Firezone setup
+
+Return to the Firezone Directory Sync setup form and fill in the following
+values from your Okta environment:
+
+- **Okta Domain**: Click your username in the upper right corner of the Okta
+  dashboard to find your Okta domain (e.g., `your-company.okta.com`)
+- **Client ID**: Found on the **General** tab of your Firezone Directory Sync
+  API service app in Okta
+
+Once all fields are filled out, click **Verify Now**.
+
+Firezone will attempt to connect to Okta and verify the configuration. If
+successful, you'll see a confirmation message and can click **Create** to
+complete the setup.
+
+<Alert color="success">
+
+**Directory Sync is now active!**
+
+Users and groups assigned to your Okta authentication app will automatically
+sync to Firezone. You no longer need to manually create users in the Firezone
+portal.
+
+</Alert>
+
+## Sync timing
+
+Directory sync runs automatically every 2 hours. To trigger a sync immediately,
+click the **Sync Now** button on the directory card in
+`Settings -> Directory Sync`.
+
+## Troubleshooting
+
+### "Unauthorized" or "Forbidden" error
+
+This typically means the API service app is not configured correctly. Verify:
+
+1. The custom role has all three required permissions (view users, groups, and
+   applications).
+1. The resource set includes the Firezone OIDC app, All Users, and All Groups.
+1. The API service app has the custom role assigned with the correct resource
+   set.
+1. All three API scopes are granted (`okta.apps.read`, `okta.groups.read`,
+   `okta.users.read`).
+
+### Public key not working
+
+Ensure the public key from Firezone was pasted correctly into the Okta API
+service app. The key must be added before clicking **Verify Now** in Firezone.
+
+### Users or groups not syncing
+
+Only users and groups assigned to your Okta authentication app will sync. To add
+more users or groups:
+
+1. In Okta, go to **Applications → Applications**.
+1. Select your **Firezone** OIDC app.
+1. Go to the **Assignments** tab and add the users or groups you want to sync.
+
+<SupportOptions />

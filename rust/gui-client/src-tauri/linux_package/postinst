@@ -4,10 +4,51 @@ set -euo pipefail
 
 SERVICE_NAME="firezone-client-tunnel"
 
-# Creates the system group `firezone-client`
-sudo systemd-sysusers
+DISPLAY_USER=$(who | awk '{print $1}' | head -n 1)
 
-echo "Starting and enabling Firezone Tunnel service..."
-sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
+if [ -n "${PKEXEC_UID:-}" ]; then
+    INVOKING_USER=$(id -un "$PKEXEC_UID" 2>/dev/null) # Detect user from PolicyKit.
+
+    echo "Detected invoking user from PolicyKit: $INVOKING_USER"
+elif [ -n "${SUDO_USER:-}" ]; then
+    INVOKING_USER="$SUDO_USER" # Detect user from `sudo apt/dnf install`.
+
+    echo "Detected invoking user from SUDO_USER: $INVOKING_USER"
+elif [ -n "${DISPLAY_USER:-}" ]; then
+    INVOKING_USER="$DISPLAY_USER" # Detect user from display session.
+
+    echo "Detected invoking user from display session: $INVOKING_USER"
+fi
+
+# Creates the system group `firezone-client`.
+systemd-sysusers firezone-client-tunnel.conf
+
+# Fail if we couldn't detect an invoking user - this likely means there's no graphical
+# environment and the headless client should be used instead.
+if [ -z "${INVOKING_USER:-}" ]; then
+    echo ""
+    echo "****************************************************************************"
+    echo "ERROR: Could not detect a user to add to the firezone-client group."
+    echo "This likely means no graphical environment was detected."
+    echo "Consider using the headless client (firezone-headless-client) instead."
+    echo "****************************************************************************"
+    echo ""
+    exit 1
+fi
+
+# Add the invoking user to the firezone-client group.
+# We use usermod instead of sysusers.d because sysusers.d rejects usernames with dots.
+if ! id -nG "$INVOKING_USER" | grep -qw "firezone-client"; then
+    usermod -aG firezone-client "$INVOKING_USER"
+    echo ""
+    echo "****************************************************************************"
+    echo "IMPORTANT: User '$INVOKING_USER' was added to the firezone-client group."
+    echo "Please reboot your system for this change to take effect."
+    echo "Firezone will not work properly until you do."
+    echo "****************************************************************************"
+    echo ""
+fi
+
+systemctl daemon-reload
+systemctl enable "$SERVICE_NAME"
+systemctl restart "$SERVICE_NAME"

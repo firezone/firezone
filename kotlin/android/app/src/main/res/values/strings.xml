@@ -35,12 +35,12 @@
 	<string name="sign_out">Sign Out</string>
 
 	<!-- Auth -->
-	<string name="launching_auth_flow">Launching Chrome to sign in…</string>
+	<string name="launching_auth_flow">Launching Browser to sign in…</string>
 
 	<!-- Error Dialog -->
 	<string name="error_dialog_title">Error</string>
-	<string name="error_dialog_message">
-		Oops! Something went wrong. Contact your admin if this issue persists.
+	<string name="error_dialog_message_browser_required">
+		Please install a browser to sign in to Firezone.
 	</string>
 	<string name="error_dialog_button_text">Ok</string>
 	<string name="enable_vpn_permission">Enable VPN Permission</string>
@@ -51,7 +51,6 @@
 		the button below.
 	</string>
 	<string name="request_permission">Request Permission</string>
-	<string name="signing_in_requires_chrome_browser">Signing in requires Chrome browser</string>
 
 	<!-- Managed Configuration -->
 	<string name="config_token_title">Token</string>

@@ -1,10 +1,11 @@
-/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
+// Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.auth.ui
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -42,10 +43,6 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
                 is AuthViewModel.ViewAction.LaunchAuthFlow -> setupWebView(action.url)
-                is AuthViewModel.ViewAction.NavigateToSignIn -> {
-                    navigateToSignIn()
-                }
-                is AuthViewModel.ViewAction.ShowError -> showError()
                 else -> {}
             }
         }
@@ -53,22 +50,38 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
 
     private fun setupWebView(url: String) {
         hasLaunchedCustomTab = true
-        val customTabsIntent =
-            CustomTabsIntent
-                .Builder()
-                .setShowTitle(true)
-                .build()
+
         val url = Uri.parse(url)
 
         // Try to use Custom Tabs with the default browser first
         try {
-            customTabsIntent.launchUrl(this, url)
+            launchCustomTabsIntent(url)
+            return
         } catch (e: ActivityNotFoundException) {
-            // Fallback to default browser if Custom Tabs unavailable
-            val intent = Intent(Intent.ACTION_VIEW, url)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+            Log.d(TAG, "CustomTabs don't appear to be available, falling back to ACTION_VIEW intent")
         }
+
+        // Fallback to default browser if Custom Tabs unavailable
+        try {
+            launchActionViewIntent(url)
+        } catch (e: ActivityNotFoundException) {
+            showBrowserRequiredError()
+        }
+    }
+
+    private fun launchCustomTabsIntent(uri: Uri) {
+        CustomTabsIntent
+            .Builder()
+            .setShowTitle(true)
+            .build()
+            .launchUrl(this, uri)
+    }
+
+    private fun launchActionViewIntent(uri: Uri) {
+        val intent = Intent(Intent.ACTION_VIEW, uri)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.addCategory(Intent.CATEGORY_BROWSABLE)
+        startActivity(intent)
     }
 
     private fun navigateToSignIn() {
@@ -78,16 +91,20 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         finish()
     }
 
-    private fun showError() {
+    private fun showBrowserRequiredError() {
         AlertDialog
             .Builder(this)
             .setTitle(R.string.error_dialog_title)
-            .setMessage(R.string.error_dialog_message)
+            .setMessage(R.string.error_dialog_message_browser_required)
             .setPositiveButton(
                 R.string.error_dialog_button_text,
             ) { _, _ ->
                 this@AuthActivity.finish()
             }.setIcon(R.drawable.ic_firezone_logo)
             .show()
+    }
+
+    companion object {
+        private const val TAG = "AuthActivity"
     }
 }

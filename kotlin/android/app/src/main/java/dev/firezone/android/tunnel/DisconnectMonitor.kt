@@ -1,4 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
+// Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network

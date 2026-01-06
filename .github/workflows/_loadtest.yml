@@ -1,0 +1,122 @@
+name: Build and upload loadtest binaries
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  loadtest:
+    name: loadtest-${{ matrix.os }}-${{ matrix.artifact_name }}
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            binary: firezone-loadtest
+            artifact_name: x86_64
+          - os: windows
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            binary: firezone-loadtest.exe
+            artifact_name: x86_64.exe
+          - os: macos
+            runner: macos-26
+            target: aarch64-apple-darwin
+            binary: firezone-loadtest
+            artifact_name: aarch64
+
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
+
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: ./.github/actions/setup-rust-target-workspace-cache
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Install Azure CLI (macOS)
+        if: matrix.os == 'macos'
+        run: brew update && brew install azure-cli
+
+      - name: Register Event Log source (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          New-EventLog -LogName Application -Source "FirezoneLoadtest" -ErrorAction SilentlyContinue
+          Write-Host "Event Log source 'FirezoneLoadtest' registered (or already exists)"
+
+      - name: Build loadtest binary
+        shell: bash
+        run: |
+          set -e
+          cargo build \
+            --profile release \
+            --target ${{ matrix.target }} \
+            --package firezone-loadtest
+
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.binary }}
+
+      - name: Generate checksum (Linux/Windows)
+        if: matrix.os != 'macos'
+        shell: bash
+        run: sha256sum ${{ matrix.binary }} > ${{ matrix.binary }}.sha256sum.txt
+
+      - name: Generate checksum (macOS)
+        if: matrix.os == 'macos'
+        run: shasum -a 256 ${{ matrix.binary }} > ${{ matrix.binary }}.sha256sum.txt
+
+      - name: Upload artifact to GitHub
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: firezone-loadtest-${{ matrix.os }}-${{ matrix.artifact_name }}
+          path: |
+            rust/${{ matrix.binary }}
+            rust/${{ matrix.binary }}.sha256sum.txt
+
+      - name: Upload to Azure Storage
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -e
+          az storage blob upload \
+            --container-name binaries \
+            --name "loadtest/${{ matrix.os }}/${{ inputs.sha }}/${{ matrix.artifact_name }}" \
+            --file "${{ matrix.binary }}" \
+            --overwrite true \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+
+          az storage blob upload \
+            --container-name binaries \
+            --name "loadtest/${{ matrix.os }}/${{ inputs.sha }}/${{ matrix.artifact_name }}.sha256sum.txt" \
+            --file "${{ matrix.binary }}.sha256sum.txt" \
+            --overwrite true \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"

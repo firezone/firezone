@@ -115,7 +115,7 @@ systems languages, making it a great choice for a security-critical application
 like Firezone.
 
 And it has build targets for just about every platform under the sun. Our
-[core connectivity library](https://github.com/firezone/firezone/tree/main/rust/connlib),
+[core connectivity library](https://github.com/firezone/firezone/tree/main/rust/libs/connlib),
 for example, runs reliably on iOS, Android, Windows, Linux, and macOS.
 
 We'll be sharing more about our stack choices in future blog posts, but suffice
@@ -234,7 +234,7 @@ win-win.
 
 For the curious readers, you can find our implementation of ICE, aptly named
 "snownet", in our repository
-[here](https://github.com/firezone/firezone/tree/main/rust/connlib/snownet).
+[here](https://github.com/firezone/firezone/tree/main/rust/libs/connlib/snownet).
 
 #### Directory sync
 
@@ -256,13 +256,13 @@ easy?". Sadly, SCIM today is one of those standards that isn't. Entire
 inconsistencies in SCIM implementations across different identity providers.
 
 So Firezone doesn't use SCIM. Instead, we
-[built our very own directory sync engine](https://github.com/firezone/firezone/tree/main/elixir/apps/domain/lib/domain/auth)
+built our very own directory sync engine
 that can be extended to virtually any source of identity data, regardless of
 whether they support SCIM. If it has a REST API, we can probably sync with it.
 
 Directory sync is available only for the Enterprise plan so we can be sure it'll
 work reliably for your organization.
-[Read more](/kb/authenticate/directory-sync) about how it works or
+[Read more](/kb/directory-sync) about how it works or
 [contact sales](/contact/sales) if you'd like a first-hand demo.
 
 ### What's next?

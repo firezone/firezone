@@ -3,7 +3,7 @@
 
 use super::FZ_SCHEME;
 use anyhow::{Context, Result};
-use firezone_bin_shared::BUNDLE_ID;
+use bin_shared::BUNDLE_ID;
 use std::{
     io,
     path::{Path, PathBuf},

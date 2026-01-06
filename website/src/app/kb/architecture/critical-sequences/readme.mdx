@@ -13,6 +13,8 @@ especially critical to the integrity of the entire system:
   identity provider.
 - [Policy evaluation](#policy-evaluation): Deciding whether to allow or deny a
   connection request.
+- [Detailed Connection Setup](#detailed-connection-setup): How connections
+  between Clients and Gateways are established.
 - [DNS resolution](#dns-resolution): Resolving DNS-based Resources.
 - [High availability](#high-availability): How Firezone achieves high
   availability through load balancing and automatic failover.
@@ -126,6 +128,133 @@ with the Gateway until explicitly allowed by the Policy Engine.
 This means **Gateways remain invisible to the outside world**, helping to
 protect against classes of attacks that perimeter-based models may be
 susceptible to, such as DDoS attacks.
+
+## Detailed Connection Setup
+
+The above "Policy evaluation" section touches on this topic briefly in step 6.
+This section here describes in more detail, how this connection is established.
+
+Firezone supports NAT traversal which means that neither the Client nor the
+Gateway need to be exposed to the public Internet. Instead of having to open and
+forward a port on the NAT device, direct connections are established via a
+technique called "hole-punching". In case that fails, the connection falls back
+to using a TURN server. We operate TURN servers in every region offered by Azure
+to minimize the overhead, regardless of where you are in the world.
+
+To establish connections, Firezone implements the
+[Interactive Connectivity Establishment (ICE) RFC](https://datatracker.ietf.org/doc/html/rfc8445).
+ICE is essentially an algorithm where two peers that would like to connect to
+each other first perform what is called "candidate gathering". They then test
+these candidates and nominate the best one.
+
+Once ICE is finished, the nominated candidate pair is used to handshake a
+WireGuard session, which then allows encrypted packets to be sent back and
+forth.
+
+### Phase 1: Candidate gathering
+
+Candidates are socket addresses a peer can send data from and receive data on.
+
+- **host-candidates**: The most obvious kind of candidate. Directly corresponds
+  to the IP and port of the local network interface of a listening socket.
+- **server-reflexive candidates**: These correspond to the IP and port that a
+  remote (usually a STUN or TURN server) observes as the source address and port
+  for packets sent from a peer. In other words, the public IP of e.g. your home
+  router.
+- **relay candidates**: Relay candidates are sockets allocated on a TURN server.
+  Traffic received on such a socket is forwarded to the owner of that socket. In
+  Firezone, both Clients and Gateways immediately allocate such a socket with
+  the two geographically closest TURN servers once you sign in, even before you
+  establish any connections. This ensures we have our entire set of candidates
+  ready by the time we want to create a connection.
+
+### Phase 2: Testing candidates
+
+Once we have gathered all relevant candidates, connecting to another peer is as
+simple as exchanging and testing them. As we don't have a direct connection yet,
+this step is done via the Firezone control plane API. ICE then forms an NxM
+matrix of all candidates and starts testing them for connectivity. Testing a
+so-called candidate pair boils down to sending a UDP packet to the remote. If we
+receive an answer back for a certain candidate pair, the test is successful.
+After 12 attempts without a response, we consider the candidate pair failed. All
+successful candidate pairs are then ranked by priority such that direct
+connections are considered better than those involving a TURN server. The best
+candidate pair is then "nominated" and declared as the result of the ICE
+algorithm.
+
+### Phase 3: WireGuard handshake
+
+WireGuard itself does not establish any connections and instead just represents
+a state machine that manages key rotation, encryption, and decryption of
+packets.
+
+With the "nominated" candidate pair as the output of the ICE algorithm, we now
+have a pair of socket addresses for exchanging UDP packets between Client and
+Gateway. WireGuard's handshake requires prior knowledge of the remote's public
+key. Similar to the candidates, these keys have also been exchanged between
+Client and Gateway via the Firezone control protocol API. Using these public
+keys, Client and Gateway exchange secret session keys via Diffie-Hellman. These
+session keys are then used to encrypt packets and are rotated every 2 minutes.
+
+### Hole-punching
+
+The somewhat magical aspect of hole-punching actually happens entirely
+implicitly as part of this process. Most NAT devices are inherently stateful in
+that they remember the source port of an outgoing packet and allow packets
+arriving at the same port back-in. Both peers in the above algorithm are forming
+the same NxM matrix of candidates, and hence are sending packets **to** the same
+socket address the other one is sending **from**.
+
+For example, assume a Client's public IP is `35.10.10.10` and the Gateway's
+public IP is `40.10.10.10`. Locally, both Firezone Clients and Firezone Gateways
+are listening on port 52625 by default. As part of the candidate gathering, they
+will resolve their respective public IP. The NxM matrix will therefore include a
+pair of `35.10.10.10:52625 <> 40.10.10.10:52625` on both sides.
+
+1. Client sends a UDP packet from its local socket using source port `52625`
+   towards `40.10.10.10:52625`
+1. Gateway sends a UDP packet from its local socket using source port `52625`
+   towards `35.10.10.10.52625`
+1. NAT device on the Client's network rewrites the source of the outgoing packet
+   to `35.10.10.10:52625`. It also registers a new "connection" on this port.
+1. NAT device on the Gateways's network rewrites the source of the outgoing
+   packet to `40.10.10.10:52625`. It also registers a new "connection" on this
+   port.
+1. Packet from the Client arrives at the Gateway's NAT device. The lookup by
+   source address (`35.10.10.10:52625`) yields the connection created in step 4.
+1. Packet from the Gateway arrives at the Client's NAT device. The lookup by
+   source address (`40.10.10.10:52625`) yields the connection created in step 3.
+
+Due to differing latencies, the timing of these steps can vary in practice. That
+isn't an issue though as UDP is by design stateless and the next packet will
+simply be allowed through.
+
+### Relayed connections
+
+Relayed connections, i.e. those involving a TURN server work in a very similar
+way and are in fact transparent to the WireGuard handshake and the encrypted
+packets. For relayed connections, the output of ICE is still a candidate pair,
+except that the "local" side of the pair is the allocated socket on the TURN
+server. In other words, if a relayed candidate pair is nominated, then none of
+the candidate pairs involving host and server-reflexive candidates have been
+successful and thus a relay candidate turned out to be the one with the highest
+priority.
+
+To send data through a TURN server, the sender constructs a channel-data packet.
+This packet is a lightweight wrapper consisting of a 4-byte header that
+identifies a previously allocated channel. Channel allocation is handled as part
+of the TURN client–server protocol. Each channel is bound to a single remote
+peer, and all packets sent on that channel are forwarded to that peer. When the
+TURN server receives a channel-data packet, it removes the header and forwards
+the remaining payload to the designated peer. To improve their efficiency and
+throughput, Firezone's TURN servers make use of eBPF eXpress data path (XDP) and
+implement this routing of channel-data packets directly in the kernel.
+Specifically, in the network card driver even before the packet gets parsed.
+
+To the receiver of the packet, this process is transparent. They simply send and
+receive UDP traffic from an IP and port and outside of applying heuristics based
+on e.g. IP location, cannot differentiate between this socket being a relay or
+the remote peer directly.
 
 ## DNS resolution
 

@@ -1,0 +1,30 @@
+[package]
+name = "socket-factory"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+bufferpool = { workspace = true }
+bytes = { workspace = true }
+derive_more = { workspace = true, features = ["debug"] }
+gat-lending-iterator = { workspace = true }
+ip-packet = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
+quinn-udp = { workspace = true }
+socket2 = { workspace = true }
+tokio = { workspace = true, features = ["net", "time"] }
+tracing = { workspace = true }
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+derive_more = { workspace = true, features = ["deref"] }

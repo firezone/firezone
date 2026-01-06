@@ -10,12 +10,12 @@ use std::{
 
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
-use firezone_logging::sentry_layer;
-use firezone_telemetry::{Telemetry, analytics};
+use logging::sentry_layer;
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
-use secrecy::{SecretBox, SecretString};
+use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use telemetry::{Telemetry, analytics};
 use tokio::sync::Mutex;
 use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
@@ -161,7 +161,6 @@ impl Session {
         device_id: String,
         account_slug: String,
         device_name: String,
-        os_version: String,
         log_dir: String,
         log_filter: String,
         device_info: DeviceInfo,
@@ -177,7 +176,6 @@ impl Session {
             device_id,
             account_slug,
             Some(device_name),
-            Some(os_version),
             log_dir,
             log_filter,
             device_info,
@@ -202,7 +200,6 @@ impl Session {
         device_id: String,
         account_slug: String,
         device_name: Option<String>,
-        os_version: Option<String>,
         log_dir: String,
         log_filter: String,
         device_info: DeviceInfo,
@@ -218,7 +215,6 @@ impl Session {
             device_id,
             account_slug,
             device_name,
-            os_version,
             log_dir,
             log_filter,
             device_info,
@@ -249,7 +245,6 @@ impl Session {
         device_id: String,
         account_slug: String,
         device_name: Option<String>,
-        os_version: Option<String>,
         log_dir: String,
         log_filter: String,
         device_info: DeviceInfo,
@@ -264,7 +259,6 @@ impl Session {
             device_id,
             account_slug,
             device_name,
-            os_version,
             log_dir,
             log_filter,
             device_info,
@@ -379,9 +373,10 @@ impl Session {
     pub async fn next_event(&self) -> Option<Event> {
         match self.events.lock().await.next().await? {
             client_shared::Event::TunInterfaceUpdated(config) => {
-                let dns: Vec<String> = config
+                let dns = config
                     .dns_by_sentinel
-                    .left_values()
+                    .sentinel_ips()
+                    .into_iter()
                     .map(|ip| ip.to_string())
                     .collect();
 
@@ -450,7 +445,6 @@ fn connect(
     device_id: String,
     account_slug: String,
     device_name: Option<String>,
-    os_version: Option<String>,
     log_dir: String,
     log_filter: String,
     device_info: DeviceInfo,
@@ -485,7 +479,6 @@ fn connect(
 
     let url = LoginUrl::client(
         api_url.as_str(),
-        &secret,
         device_id.clone(),
         device_name,
         device_info,
@@ -495,8 +488,9 @@ fn connect(
     let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
     let portal = PhoenixChannel::disconnected(
-        SecretBox::init_with(|| url),
-        get_user_agent(os_version, platform::COMPONENT, platform::VERSION),
+        url,
+        secret,
+        get_user_agent(platform::COMPONENT, platform::VERSION),
         "client",
         (),
         || {
@@ -525,10 +519,8 @@ fn connect(
     })
 }
 
-static LOGGER_STATE: OnceLock<(
-    firezone_logging::file::Handle,
-    firezone_logging::FilterReloadHandle,
-)> = OnceLock::new();
+static LOGGER_STATE: OnceLock<(logging::file::Handle, logging::FilterReloadHandle)> =
+    OnceLock::new();
 
 fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     if let Some((_, reload_handle)) = LOGGER_STATE.get() {
@@ -538,20 +530,16 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
         return Ok(());
     }
 
-    let (file_log_filter, file_reload_handle) = firezone_logging::try_filter(&log_filter)?;
-    let (platform_log_filter, platform_reload_handle) = firezone_logging::try_filter(&log_filter)?;
-    let (file_layer, handle) = firezone_logging::file::layer(log_dir, "connlib");
+    let (file_log_filter, file_reload_handle) = logging::try_filter(&log_filter)?;
+    let (platform_log_filter, platform_reload_handle) = logging::try_filter(&log_filter)?;
+    let (file_layer, handle) = logging::file::layer(log_dir, "connlib");
 
     let subscriber = tracing_subscriber::registry()
         .with(file_layer.with_filter(file_log_filter))
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
-                .event_format(
-                    firezone_logging::Format::new()
-                        .without_timestamp()
-                        .without_level(),
-                )
+                .event_format(logging::Format::new().without_timestamp().without_level())
                 .with_writer(platform::MakeWriter::default())
                 .with_filter(platform_log_filter),
         )
@@ -559,7 +547,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
 
     let reload_handle = file_reload_handle.merge(platform_reload_handle);
 
-    firezone_logging::init(subscriber)?;
+    logging::init(subscriber)?;
 
     LOGGER_STATE
         .set((handle, reload_handle))

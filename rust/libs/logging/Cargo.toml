@@ -1,0 +1,33 @@
+[package]
+name = "logging"
+version = "0.1.0"
+edition = { workspace = true }
+authors = ["Firezone, Inc."]
+publish = false
+license = { workspace = true }
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = { workspace = true }
+nu-ansi-term = { workspace = true }
+output_vt100 = { workspace = true }
+parking_lot = { workspace = true }
+sentry-tracing = { workspace = true }
+supports-color = { workspace = true }
+telemetry = { workspace = true }
+time = { workspace = true, features = ["formatting"] }
+tracing = { workspace = true }
+tracing-appender = { workspace = true }
+tracing-log = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+
+[target.'cfg(windows)'.dependencies]
+thiserror = { workspace = true }
+windows = { workspace = true, features = ["Win32_Foundation", "Win32_Security", "Win32_System_EventLog", "Win32_System_Registry"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

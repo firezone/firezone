@@ -1,14 +1,14 @@
 import Config
 
 if config_env() == :prod do
-  import Domain.Config, only: [env_var_to_config!: 1, env_var_to_config: 1]
+  import Portal.Config, only: [env_var_to_config!: 1, env_var_to_config: 1]
 
   ###############################
-  ##### Domain ##################
+  ##### Portal ##################
   ###############################
 
-  config :domain,
-         Domain.Repo,
+  config :portal,
+         Portal.Repo,
          [
            {:database, env_var_to_config!(:database_name)},
            {:username, env_var_to_config!(:database_user)},
@@ -29,7 +29,8 @@ if config_env() == :prod do
              else: [{:hostname, env_var_to_config!(:database_host)}]
            )
 
-  config :domain, Domain.ChangeLogs.ReplicationConnection,
+  config :portal, Portal.ChangeLogs.ReplicationConnection,
+    # TODO: Use a dedicated node for Change Log replication
     enabled: env_var_to_config!(:background_jobs_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
     publication_name: env_var_to_config!(:database_change_logs_publication_name),
@@ -51,7 +52,8 @@ if config_env() == :prod do
           else: [{:hostname, env_var_to_config!(:database_host)}]
         )
 
-  config :domain, Domain.Changes.ReplicationConnection,
+  config :portal, Portal.Changes.ReplicationConnection,
+    # TODO: Use a dedicated node for Change Data Capture replication
     enabled: env_var_to_config!(:background_jobs_enabled),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
     publication_name: env_var_to_config!(:database_changes_publication_name),
@@ -73,119 +75,167 @@ if config_env() == :prod do
           else: [{:hostname, env_var_to_config!(:database_host)}]
         )
 
-  config :domain, run_manual_migrations: env_var_to_config!(:run_manual_migrations)
-
-  config :domain, Domain.Tokens,
+  config :portal, Portal.Tokens,
     key_base: env_var_to_config!(:tokens_key_base),
     salt: env_var_to_config!(:tokens_salt)
 
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
-    finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
+  config :portal, Portal.Google.APIClient,
+    service_account_key: env_var_to_config!(:google_service_account_key),
+    token_endpoint: "https://oauth2.googleapis.com/token",
+    endpoint: "https://www.googleapis.com"
 
-  config :domain, Domain.Billing.Stripe.APIClient,
+  config :portal, Portal.Google.AuthProvider,
+    client_id: env_var_to_config!(:google_oidc_client_id),
+    client_secret: env_var_to_config!(:google_oidc_client_secret)
+
+  config :portal, Portal.Entra.AuthProvider,
+    client_id: env_var_to_config!(:entra_oidc_client_id),
+    client_secret: env_var_to_config!(:entra_oidc_client_secret)
+
+  config :portal, Portal.Entra.APIClient,
+    client_id: env_var_to_config!(:entra_sync_client_id),
+    client_secret: env_var_to_config!(:entra_sync_client_secret),
+    token_base_url: "https://login.microsoftonline.com",
+    endpoint: "https://graph.microsoft.com"
+
+  config :portal, Portal.Billing.Stripe.APIClient,
     endpoint: "https://api.stripe.com",
     finch_transport_opts: []
 
-  config :domain, Domain.Billing,
+  config :portal, Portal.Billing,
     enabled: env_var_to_config!(:billing_enabled),
     secret_key: env_var_to_config!(:stripe_secret_key),
     webhook_signing_secret: env_var_to_config!(:stripe_webhook_signing_secret),
     default_price_id: env_var_to_config!(:stripe_default_price_id)
 
-  config :domain, platform_adapter: env_var_to_config!(:platform_adapter)
+  config :portal, platform_adapter: env_var_to_config!(:platform_adapter)
 
   if platform_adapter = env_var_to_config!(:platform_adapter) do
-    config :domain, platform_adapter, env_var_to_config!(:platform_adapter_config)
+    config :portal, platform_adapter, env_var_to_config!(:platform_adapter_config)
   end
 
-  config :domain, Domain.Cluster,
+  config :portal, Portal.Cluster,
     adapter: env_var_to_config!(:erlang_cluster_adapter),
     adapter_config: env_var_to_config!(:erlang_cluster_adapter_config)
 
-  config :domain, Domain.Instrumentation,
-    client_logs_enabled: env_var_to_config!(:instrumentation_client_logs_enabled),
-    client_logs_bucket: env_var_to_config!(:instrumentation_client_logs_bucket)
-
-  config :domain, Domain.Analytics,
-    mixpanel_token: env_var_to_config!(:mixpanel_token),
-    hubspot_workspace_id: env_var_to_config!(:hubspot_workspace_id)
-
-  config :domain, :enabled_features,
+  config :portal, :enabled_features,
     idp_sync: env_var_to_config!(:feature_idp_sync_enabled),
     sign_up: env_var_to_config!(:feature_sign_up_enabled),
-    self_hosted_relays: env_var_to_config!(:feature_self_hosted_relays_enabled),
     policy_conditions: env_var_to_config!(:feature_policy_conditions_enabled),
     multi_site_resources: env_var_to_config!(:feature_multi_site_resources_enabled),
     rest_api: env_var_to_config!(:feature_rest_api_enabled),
     internet_resource: env_var_to_config!(:feature_internet_resource_enabled)
 
-  config :domain, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
+  config :portal, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
 
-  config :domain, docker_registry: env_var_to_config!(:docker_registry)
+  config :portal, docker_registry: env_var_to_config!(:docker_registry)
 
-  config :domain,
+  config :portal,
     outbound_email_adapter_configured?: !!env_var_to_config!(:outbound_email_adapter)
 
-  config :domain, web_external_url: env_var_to_config!(:web_external_url)
+  config :portal, web_external_url: env_var_to_config!(:web_external_url)
 
-  # Enable background jobs only on dedicated nodes
-  config :domain, Domain.Tokens.Jobs.DeleteExpiredTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
+  # Shared cookie and proxy config (used by both Web and API endpoints)
+  config :portal,
+    cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
+    cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
+    cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt)
 
-  config :domain, Domain.Billing.Jobs.CheckAccountLimits,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.Okta.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.Okta.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  # Enable the mock sync directory job in staging
-  config :domain, Domain.Auth.Adapters.Mock.Jobs.SyncDirectory,
-    enabled:
-      env_var_to_config!(:background_jobs_enabled) and
-        Enum.member?(env_var_to_config!(:auth_provider_adapters), :mock)
+  config :portal,
+    external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
+    private_clients: env_var_to_config!(:phoenix_private_clients)
 
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
-  config :domain, Oban,
+  config :portal, Oban,
     # Periodic jobs don't make sense in tests
     plugins: [
-      # Keep the last 90 days of completed, cancelled, and discarded jobs
-      {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90},
+      # Keep the last 7 days of completed, cancelled, and discarded jobs
+      {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
 
-      # Rescue jobs that may have failed due to transient errors like deploys
-      # or network issues. It's not guaranteed that the job won't be executed
-      # twice, so for now we disable it since all of our Oban jobs can be retried
-      # without loss.
-      # {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)}
+      # Rescue jobs that have been stuck in executing state due to node crashes,
+      # deploys, or other issues. Jobs will be moved back to available state
+      # after the timeout. This can happen after a deploy or if a node crashes.
+      {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(120)},
 
       # Periodic jobs
       {Oban.Plugins.Cron,
        crontab: [
-         # Delete expired flows every minute
-         {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+         # Delete expired policy_authorizations every minute
+         {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
+
+         # Schedule Entra directory sync every 2 hours
+         {"0 */2 * * *", Portal.Entra.Scheduler},
+
+         # Schedule Google directory sync every 2 hours
+         {"20 */2 * * *", Portal.Google.Scheduler},
+
+         # Schedule Okta directory sync every 2 hours
+         {"40 */2 * * *", Portal.Okta.Scheduler},
+
+         # Directory sync error notifications - daily check for low error count
+         {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+          args: %{provider: "entra", frequency: "daily"}},
+         {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+          args: %{provider: "google", frequency: "daily"}},
+         {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+          args: %{provider: "okta", frequency: "daily"}},
+
+         # Directory sync error notifications - every 3 days for medium error count
+         {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+          args: %{provider: "entra", frequency: "three_days"}},
+         {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+          args: %{provider: "google", frequency: "three_days"}},
+         {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+          args: %{provider: "okta", frequency: "three_days"}},
+
+         # Directory sync error notifications - weekly for high error count
+         {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+          args: %{provider: "entra", frequency: "weekly"}},
+         {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+          args: %{provider: "google", frequency: "weekly"}},
+         {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+          args: %{provider: "okta", frequency: "weekly"}},
+
+         # Check account limits every 30 minutes
+         {"*/30 * * * *", Portal.Workers.CheckAccountLimits},
+
+         # Check for outdated gateways - Sundays at 9am
+         {"0 9 * * 0", Portal.Workers.OutdatedGateways},
+
+         # Delete expired tokens every 5 minutes
+         {"*/5 * * * *", Portal.Workers.DeleteExpiredClientTokens},
+
+         # Delete expired API tokens every 5 minutes
+         {"*/5 * * * *", Portal.Workers.DeleteExpiredAPITokens},
+
+         # Delete expired one-time passcodes every 5 minutes
+         {"*/5 * * * *", Portal.Workers.DeleteExpiredOneTimePasscodes},
+
+         # Delete expired portal sessions every 5 minutes
+         {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions}
        ]}
     ],
-    queues: if(env_var_to_config!(:background_jobs_enabled), do: [default: 10], else: []),
+    queues:
+      if(env_var_to_config!(:background_jobs_enabled),
+        do: [
+          default: 10,
+          entra_scheduler: 1,
+          entra_sync: 5,
+          google_scheduler: 1,
+          google_sync: 5,
+          okta_scheduler: 1,
+          okta_sync: 5,
+          sync_error_notifications: 1
+        ],
+        else: []
+      ),
     engine: Oban.Engines.Basic,
-    repo: Domain.Repo
+    repo: Portal.Repo
+
+  ###############################
+  ##### PortalWeb Endpoint ######
+  ###############################
 
   if web_external_url = env_var_to_config!(:web_external_url) do
     %{
@@ -195,15 +245,11 @@ if config_env() == :prod do
       path: web_external_url_path
     } = URI.parse(web_external_url)
 
-    ###############################
-    ##### Web #####################
-    ###############################
-
-    config :web, Web.Endpoint,
+    config :portal, PortalWeb.Endpoint,
       http: [
         ip: env_var_to_config!(:phoenix_listen_address).address,
         port: env_var_to_config!(:phoenix_http_web_port),
-        protocol_options: env_var_to_config!(:phoenix_http_protocol_options)
+        http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
       ],
       url: [
         scheme: web_external_url_scheme,
@@ -222,17 +268,12 @@ if config_env() == :prod do
         signing_salt: env_var_to_config!(:live_view_signing_salt)
       ]
 
-    config :web,
-      external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
-      private_clients: env_var_to_config!(:phoenix_private_clients)
-
-    config :web,
-      cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
-      cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
-      cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt)
-
-    config :web, api_url_override: env_var_to_config!(:api_url_override)
+    config :portal, api_url_override: env_var_to_config!(:api_url_override)
   end
+
+  ###############################
+  ##### PortalAPI Endpoint ######
+  ###############################
 
   if api_external_url = env_var_to_config!(:api_external_url) do
     %{
@@ -242,15 +283,11 @@ if config_env() == :prod do
       path: api_external_url_path
     } = URI.parse(api_external_url)
 
-    ###############################
-    ##### API #####################
-    ###############################
-
-    config :api, API.Endpoint,
+    config :portal, PortalAPI.Endpoint,
       http: [
         ip: env_var_to_config!(:phoenix_listen_address).address,
         port: env_var_to_config!(:phoenix_http_api_port),
-        protocol_options: env_var_to_config!(:phoenix_http_protocol_options)
+        http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
       ],
       url: [
         scheme: api_external_url_scheme,
@@ -260,20 +297,11 @@ if config_env() == :prod do
       ],
       secret_key_base: env_var_to_config!(:secret_key_base)
 
-    config :api,
-      cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
-      cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
-      cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt)
-
-    config :api,
-      external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
-      private_clients: env_var_to_config!(:phoenix_private_clients)
-
-    config :api, API.RateLimit,
+    config :portal, PortalAPI.RateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
       capacity: env_var_to_config!(:api_capacity)
 
-    config :web,
+    config :portal,
       api_external_url: api_external_url
   end
 
@@ -304,32 +332,29 @@ if config_env() == :prod do
       otlp_endpoint: System.get_env("OTLP_ENDPOINT")
   end
 
-  config :domain, Domain.Telemetry,
-    healthz_port: env_var_to_config!(:healthz_port),
+  config :portal, Portal.Health, health_port: env_var_to_config!(:health_port)
+
+  config :portal, Portal.Telemetry,
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
 
   if telemetry_metrics_reporter = env_var_to_config!(:telemetry_metrics_reporter) do
-    config :domain,
+    config :portal,
            telemetry_metrics_reporter,
            env_var_to_config!(:telemetry_metrics_reporter_opts)
   end
 
-  config :domain,
+  config :portal,
     http_client_ssl_opts: env_var_to_config!(:http_client_ssl_opts)
 
   config :openid_connect,
     finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
 
-  config :domain,
-         Domain.Mailer,
+  config :portal,
+         Portal.Mailer,
          [
            adapter: env_var_to_config!(:outbound_email_adapter),
            from_email: env_var_to_config!(:outbound_email_from)
          ] ++ env_var_to_config!(:outbound_email_adapter_opts)
-
-  config :workos, WorkOS.Client,
-    api_key: env_var_to_config!(:workos_api_key),
-    client_id: env_var_to_config!(:workos_client_id)
 
   # Sentry
 

@@ -19,19 +19,22 @@ concurrency:
   group: "ci-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   planner:
     runs-on: ubuntu-latest
     outputs:
       jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - name: Plan jobs to run
         id: plan
         run: |
           set -e
 
-          jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,data-plane-perf";
+          jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,loadtest";
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
@@ -84,7 +87,7 @@ jobs:
           jobs="static-analysis" # Always run static-analysis
 
           if grep -q '^rust/' changed_files.txt; then
-            jobs="${jobs},rust,kotlin,swift,control-plane,data-plane,data-plane-perf"
+            jobs="${jobs},rust,kotlin,swift,control-plane,data-plane,loadtest"
           fi
           if grep -q '^rust/gui-client/' changed_files.txt; then
             jobs="${jobs},tauri"
@@ -105,7 +108,7 @@ jobs:
             jobs="${jobs},codeql"
           fi
           if grep -q '^scripts/tests/' changed_files.txt; then
-            jobs="${jobs},control-plane,data-plane,data-plane-perf"
+            jobs="${jobs},control-plane,data-plane"
           fi
 
           echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
@@ -123,18 +126,14 @@ jobs:
         codeql,
         control-plane,
         data-plane,
-        data-plane-perf,
         integration-tests,
         compatibility-tests,
-        perf-tests,
       ]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - name: Check if all jobs are successful
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
 
@@ -146,47 +145,128 @@ jobs:
             exit 1
           fi
 
+  shell:
+    name: shell-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: bats-core/bats-action@42fcc8700f773c075a16a90eb11674c0318ad507 # v3.0.1
+        id: setup-bats
+      - run: bats scripts/tests/bats
+        env:
+          BATS_LIB_PATH: ${{ steps.setup-bats.outputs.lib-path }}
+
   kotlin:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
+
+  monitor-kotlin:
+    needs: [kotlin]
+    if: "!cancelled() && needs.kotlin.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: gh run cancel ${{ github.run_id }}
+
   swift:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'swift')
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
+
+  monitor-swift:
+    needs: [swift]
+    if: "!cancelled() && needs.swift.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: gh run cancel ${{ github.run_id }}
+
   elixir:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
     uses: ./.github/workflows/_elixir.yml
     secrets: inherit
+
+  monitor-elixir:
+    needs: [elixir]
+    if: "!cancelled() && needs.elixir.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: gh run cancel ${{ github.run_id }}
+
   rust:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'rust')
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
+
+  monitor-rust:
+    needs: [rust]
+    if: "!cancelled() && needs.rust.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: gh run cancel ${{ github.run_id }}
+
   tauri:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
     uses: ./.github/workflows/_tauri.yml
     secrets: inherit
+
+  monitor-tauri:
+    needs: [tauri]
+    if: "!cancelled() && needs.tauri.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: gh run cancel ${{ github.run_id }}
+
   static-analysis:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'static-analysis')
     uses: ./.github/workflows/_static-analysis.yml
     secrets: inherit
+
+  monitor-static-analysis:
+    needs: [static-analysis]
+    if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: gh run cancel ${{ github.run_id }}
+
   codeql:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
+  monitor-codeql:
+    needs: [codeql]
+    if: "!cancelled() && needs.codeql.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: gh run cancel ${{ github.run_id }}
+
   control-plane:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'control-plane')
     uses: ./.github/workflows/_control-plane.yml
     secrets: inherit
+
+  monitor-control-plane:
+    needs: [control-plane]
+    if: "!cancelled() && needs.control-plane.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: gh run cancel ${{ github.run_id }}
 
   data-plane:
     needs: planner
@@ -199,16 +279,27 @@ jobs:
       profile: ${{ inputs.profile || 'debug' }}
       stage: ${{ inputs.stage || 'debug' }}
 
-  data-plane-perf:
+  monitor-data-plane:
+    needs: [data-plane]
+    if: "!cancelled() && needs.data-plane.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: gh run cancel ${{ github.run_id }}
+
+  loadtest:
     needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'data-plane-perf')
-    uses: ./.github/workflows/_data-plane.yml
+    if: contains(needs.planner.outputs.jobs_to_run, 'loadtest')
+    uses: ./.github/workflows/_loadtest.yml
     secrets: inherit
-    with:
-      sha: ${{ github.sha }}
-      image_prefix: "perf"
-      profile: "release"
-      stage: "debug" # Only the debug images have perf tooling
+
+  monitor-loadtest:
+    needs: [loadtest]
+    if: "!cancelled() && needs.loadtest.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: gh run cancel ${{ github.run_id }}
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
@@ -248,157 +339,16 @@ jobs:
       client_image: ${{ matrix.client.image }}
       client_tag: ${{ matrix.client.tag }}
 
-  perf-tests:
-    name: perf-tests
-    needs: [control-plane, data-plane-perf]
+  coverage-finish:
+    name: coverage-finish
+    needs: [elixir, rust]
+    if: needs.elixir.result != 'skipped' || needs.rust.result != 'skipped'
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: write
-    env:
-      API_IMAGE: "ghcr.io/firezone/api"
-      API_TAG: ${{ github.sha }}
-      WEB_IMAGE: "ghcr.io/firezone/web"
-      WEB_TAG: ${{ github.sha }}
-      ELIXIR_IMAGE: "ghcr.io/firezone/elixir"
-      ELIXIR_TAG: ${{ github.sha }}
-      GATEWAY_IMAGE: "ghcr.io/firezone/perf/gateway"
-      GATEWAY_TAG: ${{ github.sha }}
-      CLIENT_IMAGE: "ghcr.io/firezone/perf/client"
-      CLIENT_TAG: ${{ github.sha }}
-      RELAY_IMAGE: "ghcr.io/firezone/perf/relay"
-      RELAY_TAG: ${{ github.sha }}
-      FIREZONE_INC_BUF: true
-    strategy:
-      fail-fast: ${{ github.event_name == 'merge_group' }}
-      matrix:
-        test:
-          - tcp-client2server
-          - tcp-server2client
-          - udp-client2server
-          - udp-server2client
-        flavour:
-          - direct
-          - relayed
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: ./.github/actions/ghcr-docker-login
+      - name: Finalize coverage upload
+        uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-      # We need at least Docker v28.1 which is not yet available on GitHub actions runners
-      - uses: docker/setup-docker-action@b60f85385d03ac8acfca6d9996982511d8620a19 # v4.3.0
-      - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
-      - name: Increase max UDP buffer sizes
-        run: |
-          sudo sysctl -w net.core.wmem_max=16777216 # 16 MB
-          sudo sysctl -w net.core.rmem_max=134217728 # 128 MB
-      - name: Start docker compose in the background
-        run: |
-          if [ "${{ matrix.flavour }}" = "relayed" ]; then
-            echo "CLIENT_MASQUERADE=random" >> "$GITHUB_ENV"
-            echo "UDP_BITRATE=300M" >> "$GITHUB_ENV"
-          fi
-
-          docker compose build client-router gateway-router relay-1-router relay-2-router api-router
-
-          # Start services in the same order each time for the tests
-          docker compose up -d iperf3
-          docker compose up -d api web domain --no-build
-          docker compose up -d relay-1 relay-2 --no-build
-          docker compose up -d gateway --no-build
-          docker compose up -d client --no-build
-          docker compose up -d network-config
-      - name: "Performance test: ${{ matrix.flavour }}-${{ matrix.test }}"
-        timeout-minutes: 5
-        env:
-          TEST_NAME: ${{ matrix.flavour }}-${{ matrix.test }}
-        run: |
-          ./scripts/tests/perf/${{ matrix.test }}.sh
-          jq '{ "${{ matrix.flavour }}-${{ matrix.test }}": { "retransmits": { "value": (.end.sum_sent.retransmits // -1) }, "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.flavour }}-${{ matrix.test }}.json > ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
-      - name: "Save performance test results: ${{ matrix.flavour }}-${{ matrix.test }}"
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          overwrite: true
-          name: ${{ matrix.flavour }}-${{ matrix.test }}-${{ github.sha }}-iperf3results
-          path: ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
-      - name: Show Client logs
-        if: "!cancelled()"
-        run: docker compose logs client
-      - name: Show Relay-1 logs
-        if: "!cancelled()"
-        run: docker compose logs relay-1
-      - name: Show Relay-2 logs
-        if: "!cancelled()"
-        run: docker compose logs relay-2
-      - name: Show Gateway logs
-        if: "!cancelled()"
-        run: docker compose logs gateway
-      - name: Show API logs
-        if: "!cancelled()"
-        run: docker compose logs api
-      - name: Show iperf3 logs
-        if: "!cancelled()"
-        run: docker compose logs iperf3
-
-      - name: Ensure no warnings are logged
-        if: "!cancelled()"
-        run: |
-          docker compose logs client |
-            grep "WARN" && exit 1 || exit 0
-
-          docker compose logs gateway |
-            grep "WARN" && exit 1 || exit 0
-
-          # BTF doesn't load for veth interfaces
-          docker compose logs relay-1 | \
-            grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
-            grep "WARN" && exit 1 || exit 0
-          docker compose logs relay-2 | \
-            grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
-            grep "WARN" && exit 1 || exit 0
-
-      - name: Ensure no UDP socket errors
-        if: "!cancelled() && startsWith(matrix.test, 'tcp')"
-        run: |
-          docker compose exec client /bin/sh -c 'nstat -s' |
-            grep -i "error" && exit 1 || exit 0
-
-          docker compose exec gateway /bin/sh -c 'nstat -s' |
-            grep -i "error" && exit 1 || exit 0
-
-  upload-bencher:
-    continue-on-error: true
-    needs: perf-tests
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: write
-      checks: write
-    steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - uses: bencherdev/bencher@main
-      - name: Download performance test results
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
-        with:
-          pattern: "*-${{ github.sha }}-iperf3results"
-          merge-multiple: true
-          path: ./${{ github.sha }}
-      - name: Merge benchmarks results into one report
-        run: jq -s 'reduce .[] as $item ({}; . * $item)' ./${{ github.sha }}/*.bmf.json > bmf.json
-      - name: Report results to bencher
-        run: |
-          bencher run \
-            --project firezone-1l75jv1z \
-            --testbed github-actions \
-            --file bmf.json \
-            --adapter json \
-            --branch "${{ env.BRANCH }}" \
-            --branch-start-point "${{ github.base_ref }}" \
-            --github-actions ${{ secrets.GITHUB_TOKEN }} \
-            --ci-only-on-alert
-        env:
-          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
-          BRANCH: "${{ github.head_ref || github.ref_name }}"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel-finished: true
+          carryforward: portal,rust-tunnel-test,rust-test-Linux,rust-test-macOS,rust-test-Windows
+          fail-on-error: false # Make CI less flaky

@@ -1,0 +1,79 @@
+[package]
+name = "tunnel"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[features]
+proptest = ["dep:proptest"]
+divan = ["dep:divan"]
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true, features = ["std"] }
+bimap = { workspace = true }
+boringtun = { workspace = true }
+bufferpool = { workspace = true }
+bytes = { workspace = true, features = ["std"] }
+chrono = { workspace = true }
+connlib-model = { workspace = true }
+derive_more = { workspace = true, features = ["debug", "from", "display"] }
+divan = { workspace = true, optional = true }
+dns-over-tcp = { workspace = true }
+dns-types = { workspace = true }
+flume = { workspace = true, features = ["async"] }
+futures = { workspace = true }
+futures-bounded = { workspace = true, features = ["tokio"] }
+gat-lending-iterator = { workspace = true }
+glob = { workspace = true }
+hex = { workspace = true }
+http-client = { workspace = true }
+ip-packet = { workspace = true }
+ip_network = { workspace = true }
+ip_network_table = { workspace = true }
+itertools = { workspace = true, features = ["use_std"] }
+l3-udp-dns-client = { workspace = true }
+l4-tcp-dns-server = { workspace = true }
+l4-udp-dns-client = { workspace = true }
+l4-udp-dns-server = { workspace = true }
+logging = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
+proptest = { workspace = true, optional = true }
+rand = { workspace = true }
+rangemap = { workspace = true }
+ringbuffer = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+snownet = { workspace = true }
+socket-factory = { workspace = true }
+socket2 = { workspace = true }
+telemetry = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true, features = ["attributes"] }
+tun = { workspace = true }
+url = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["std", "v4"] }
+
+[dev-dependencies]
+firezone-relay = { workspace = true, features = ["proptest"] }
+ip-packet = { workspace = true, features = ["proptest"] }
+l3-tcp = { workspace = true }
+proptest-state-machine = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+test-case = { workspace = true }
+test-strategy = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[[bench]]
+name = "divan"
+harness = false
+required-features = ["divan"]
+
+[lints]
+workspace = true

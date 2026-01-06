@@ -1,7 +1,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use anyhow::Context as _;
-use firezone_logging::err_with_src;
+use logging::err_with_src;
 use serde::Serialize;
 use tauri_plugin_dialog::DialogExt as _;
 

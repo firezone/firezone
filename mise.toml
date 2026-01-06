@@ -1,0 +1,16 @@
+[tasks.lint-setup]
+description = "Install linting tools from version-pinned files (managed by Dependabot)"
+run = """
+pip install -r .github/requirements.txt
+pnpm i --frozen-lockfile --dir ./.github
+"""
+
+[tasks.lint]
+description = "Run pre-commit hooks on all files"
+depends = ["lint-setup"]
+run = "pre-commit run --all-files --config .github/pre-commit-config.yaml"
+
+[tasks.lint-staged]
+description = "Run pre-commit hooks on staged files only"
+depends = ["lint-setup"]
+run = "pre-commit run --config .github/pre-commit-config.yaml"

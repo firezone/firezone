@@ -1,0 +1,91 @@
+[package]
+name = "bin-shared"
+version = "0.1.0"
+edition = { workspace = true }
+description = "Firezone-specific modules shared between binaries."
+license = { workspace = true }
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = { workspace = true }
+atomicwrites = { workspace = true }
+axum = { workspace = true, features = ["http1", "tokio"] }
+clap = { workspace = true, features = ["derive", "env"] }
+dns-types = { workspace = true }
+futures = { workspace = true, features = ["std", "async-await"] }
+gat-lending-iterator = { workspace = true }
+hex = { workspace = true }
+hex-literal = { workspace = true }
+ip-packet = { workspace = true }
+ip_network = { workspace = true, features = ["serde"] }
+logging = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+smbios-lib = { workspace = true }
+socket-factory = { workspace = true }
+telemetry = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "process", "signal"] }
+tracing = { workspace = true }
+tun = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+atomicwrites = { workspace = true }
+dirs = { workspace = true }
+hmac = { workspace = true }
+libc = { workspace = true }
+netlink-packet-core = { workspace = true }
+netlink-packet-route = { workspace = true }
+nix = { workspace = true, features = ["socket"] }
+resolv-conf = { workspace = true }
+rtnetlink = { workspace = true }
+tokio-util = { workspace = true }
+zbus = { workspace = true } # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.
+
+[target.'cfg(windows)'.dependencies]
+dashmap = { workspace = true }
+ipconfig = "0.3.2"
+itertools = { workspace = true }
+known-folders = { workspace = true }
+ring = "0.17"
+tokio-util = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+windows-core = { workspace = true }
+windows-implement = { workspace = true }
+winreg = { workspace = true }
+wintun = "0.5.1"
+
+[target.'cfg(windows)'.dependencies.windows]
+workspace = true
+features = [
+    # For implementing COM interfaces
+    "Win32_Foundation",
+    # For listening for network change events
+    "Win32_Networking_NetworkListManager",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_Security",
+    "Win32_System_Com",
+    # Needed to listen for system DNS changes
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    # For uptime
+    "Win32_System_GroupPolicy", # For NRPT when GPO is used
+]
+
+[dev-dependencies]
+bufferpool = { workspace = true }
+bytes = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }
+
+[target.'cfg(windows)'.dev-dependencies]
+ip-packet = { workspace = true }
+tokio = { workspace = true, features = ["net", "time"] }
+
+[lints]
+workspace = true

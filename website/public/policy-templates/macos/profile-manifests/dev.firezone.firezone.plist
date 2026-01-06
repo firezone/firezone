@@ -177,6 +177,16 @@ A profile can consist of payloads with different version numbers. For example, c
 		</dict>
 		<dict>
 			<key>pfm_description</key>
+			<string>Hide the Resource List in the Firezone menu in the macOS menu bar. If unset, defaults to false.</string>
+			<key>pfm_name</key>
+			<string>hideResourceList</string>
+			<key>pfm_title</key>
+			<string>Hide resource list</string>
+			<key>pfm_type</key>
+			<string>boolean</string>
+		</dict>
+		<dict>
+			<key>pfm_description</key>
 			<string>Try to connect to Firezone using the saved token and configuration when the client application starts. If the authentication token is expired, the client will start in a disconnected state. Setting this field will override the user's setting. If unset, defaults to false.</string>
 			<key>pfm_name</key>
 			<string>connectOnStart</string>

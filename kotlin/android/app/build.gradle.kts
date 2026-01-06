@@ -6,7 +6,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
-    id("com.diffplug.spotless") version "8.0.0"
+    id("com.diffplug.spotless") version "8.1.0"
     id("com.google.firebase.appdistribution")
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
@@ -26,7 +26,7 @@ spotless {
         ktlint()
         target("**/*.kt")
         targetExclude("**/generated/*")
-        licenseHeader("/* Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc. */", "^(package |import |@file)")
+        licenseHeader("// Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc.", "^(package |import |@file)")
     }
     kotlinGradle {
         ktlint()
@@ -53,7 +53,7 @@ android {
         targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.5.7"
+        versionName = "1.5.9"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
 
@@ -168,14 +168,14 @@ dependencies {
     implementation("com.google.android.material:material:1.13.0")
 
     // Lifecycle
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
     implementation("androidx.lifecycle:lifecycle-extensions:2.2.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.4")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.9.4")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.10.0")
 
     // Navigation
-    implementation("androidx.navigation:navigation-fragment-ktx:2.9.5")
-    implementation("androidx.navigation:navigation-ui-ktx:2.9.5")
+    implementation("androidx.navigation:navigation-fragment-ktx:2.9.6")
+    implementation("androidx.navigation:navigation-ui-ktx:2.9.6")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.57.2")
@@ -188,7 +188,7 @@ dependencies {
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.57.2")
     kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.57.2")
     androidTestImplementation("androidx.test:runner:1.7.0")
-    androidTestImplementation("androidx.navigation:navigation-testing:2.9.5")
+    androidTestImplementation("androidx.navigation:navigation-testing:2.9.6")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
@@ -200,8 +200,8 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-moshi:3.0.0")
 
     // OkHttp
-    implementation("com.squareup.okhttp3:okhttp:5.2.1")
-    implementation("com.squareup.okhttp3:logging-interceptor:5.2.1")
+    implementation("com.squareup.okhttp3:okhttp:5.3.2")
+    implementation("com.squareup.okhttp3:logging-interceptor:5.3.2")
 
     // Moshi
     implementation("com.squareup.moshi:moshi-kotlin:1.15.2")
@@ -219,7 +219,7 @@ dependencies {
     androidTestImplementation("androidx.fragment:fragment-testing:1.8.9")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:34.4.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.7.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies

@@ -1,0 +1,85 @@
+import TimelineTable from "@/components/TimelineTable";
+
+In the early morning hours of November 28, 2025 (UTC), we experienced a limited PII exposure affecting a small number of users. The issue **has been resolved**, and this post-mortem explains what happened, what data was involved, how we responded, and what we're changing to make sure this can't happen again.
+
+We want to be upfront here: this was **not a product security breach or unauthorized access to our systems**. It was an email routing / mailing-list configuration mistake on our side — but even so, we understand that any exposure of personal information is serious, and we’re sorry this happened.
+
+## What happened
+
+Between **18:30 on November 27, 2025** and **06:15 on November 28, 2025 (UTC)**, an internal mailing-list misconfiguration caused three automated account deletion request emails to be delivered to administrators of other Firezone accounts.
+
+Those emails contained limited PII and account metadata: **user names, email addresses, account names, account slugs, and account IDs.**
+
+## Impact
+
+A total of **three (3) accounts** were affected. The information was visible only to unintended **account administrators** who received the emails during the brief window of misconfiguration — it was not publicly exposed.
+
+We have:
+
+- deleted all account data for the three affected users as per their deletion requests,
+- contacted each affected user directly to explain what happened,
+- asked all unintended recipients to permanently delete the emails, and
+- confirmed the alias is now routing only to the intended support recipients.
+
+## Detailed timeline
+
+<TimelineTable
+  entries={[
+    {
+      time: "18:30, Nov 27, 2025",
+      event:
+        "A member of the backend infrastructure team deploys a configuration change to the support email system. This change involved updating the mailing list configuration in our email service provider to prepare for a scheduled maintenance announcement which would be sent later this day.",
+    },
+    {
+      time: "06:06, Nov 28, 2025",
+      event:
+        "The first support email containing PII is sent by our backend automation system to the misconfigured mailing list.",
+    },
+    {
+      time: "06:08, Nov 28, 2025",
+      event:
+        "The infrastructure team notices unusual email activity and begins investigating.",
+    },
+    {
+      time: "06:13, Nov 28, 2025",
+      event:
+        "The second support email containing PII is sent by our backend system.",
+    },
+    {
+      time: "06:14, Nov 28, 2025",
+      event:
+        "The third and final support email containing PII is sent by our backend system.",
+    },
+    {
+      time: "06:15, Nov 28, 2025",
+      event:
+        "The infrastructure team identifies the misconfiguration and corrects it, stopping further emails from being sent.",
+    },
+  ]}
+/>
+
+## How this happened
+
+The issue was caused by a misconfiguration of our **admin-announce** mailing list in Mailgun. This list is used to send service-related emails to Firezone account administrators.
+
+The list was meant to:
+
+- send from `support@firezone.dev` so admins could reply directly to our support team, and
+- deliver only to the intended admin recipients for announcements.
+
+However, during the change, the mailing list’s **to/identifier address** was incorrectly set to `support@firezone.dev` as well. Because of how Mailgun mailing lists behave, authenticated system emails sent to that address were then broadcast to **all members of the admin-announce list**, rather than solely to support.
+
+This was a configuration error introduced during a manual step. We corrected it immediately after detection and verified normal routing.
+
+## Next steps
+
+We take privacy seriously, and we’re making the following concrete changes based on this incident.
+
+1. **Remove PII from automated support communications.**
+   We’re updating our backend automation so that deletion-request and other support-triggered emails contain **no PII**. Any personal details needed for support will be accessed only through authenticated internal tools.
+1. **Re-assess our email service provider safeguards.**
+   While the root cause was a Firezone-side configuration mistake, we’re evaluating whether other providers offer stronger guardrails for high-impact mailing lists and alias routing. If better safeguards exist, we want them.
+1. **Fully automate admin announcement workflows.**
+   This incident depended on a manual step during routine prep work. We’ll be reducing or eliminating manual alias/list edits in favor of automated, reviewed workflows, so we don’t rely on human memory for critical routing.
+
+If you have any questions or concerns regarding this incident, please do not hesitate to [reach out to our support team](/support) directly.

@@ -5,7 +5,7 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use anyhow::Result;
-use firezone_bin_shared::BUNDLE_ID;
+use bin_shared::BUNDLE_ID;
 use known_folders::{KnownFolder, get_known_folder_path};
 use std::path::{Path, PathBuf};
 

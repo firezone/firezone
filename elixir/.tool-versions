@@ -1,0 +1,5 @@
+# These are used for the dev environment.
+# This should match the versions used in the built product.
+nodejs 22.20.0
+elixir 1.19.4-otp-28
+erlang 28.3
