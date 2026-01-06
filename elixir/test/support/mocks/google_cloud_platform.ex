@@ -55,6 +55,16 @@ defmodule Portal.Mocks.GoogleCloudPlatform do
           nil
         end
 
+      {:capture_metrics, test_pid, pattern} ->
+        if method == "POST" and Regex.match?(pattern, path) do
+          {:ok, body, _conn} = Plug.Conn.read_body(conn)
+          decoded_body = JSON.decode!(body)
+          send(test_pid, {:metrics_request, conn, decoded_body})
+          {:ok, {200, %{}, []}}
+        else
+          nil
+        end
+
       {^method, %Regex{} = regex, status, response} ->
         if Regex.match?(regex, path), do: {:ok, {status, response, []}}, else: nil
 
@@ -229,5 +239,15 @@ defmodule Portal.Mocks.GoogleCloudPlatform do
 
   def mock_metrics_submit_endpoint do
     [{"POST", ~r|/v3/projects/.*/timeSeries|, 200, %{}}]
+  end
+
+  @doc """
+  Creates a metrics submit endpoint expectation that captures and sends the request body
+  back to the calling process.
+
+  The test can use `assert_receive {:metrics_request, conn, body}` to verify the request.
+  """
+  def mock_metrics_submit_endpoint_with_capture(test_pid) do
+    [{:capture_metrics, test_pid, ~r|/v3/projects/.*/timeSeries|}]
   end
 end
