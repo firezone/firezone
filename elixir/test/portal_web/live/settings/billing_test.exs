@@ -1,10 +1,11 @@
 defmodule PortalWeb.Settings.BillingTest do
-  use PortalWeb.ConnCase, async: false
+  use PortalWeb.ConnCase, async: true
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ClientFixtures
-  alias Portal.Mocks.Stripe
+  alias PortalWeb.Settings.Billing.DB
+  alias Portal.Billing.Stripe.APIClient
 
   setup do
     # Enable billing with test secret key
@@ -422,9 +423,20 @@ defmodule PortalWeb.Settings.BillingTest do
       actor: actor,
       conn: conn
     } do
-      # Mock Stripe
-      bypass = Bypass.open()
-      Stripe.mock_create_billing_session_endpoint(bypass, account)
+      # Mock Stripe billing portal session creation
+      Req.Test.stub(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert conn.request_path == "/v1/billing_portal/sessions"
+
+        response = %{
+          "id" => "bps_1MrSjzLkdIwHu7ixex0IvU9b",
+          "object" => "billing_portal.session",
+          "customer" => account.metadata.stripe.customer_id,
+          "url" => "https://billing.stripe.com/p/session/test_session_123"
+        }
+
+        Req.Test.json(conn, response)
+      end)
 
       {:ok, lv, _html} =
         conn
@@ -443,10 +455,15 @@ defmodule PortalWeb.Settings.BillingTest do
       actor: actor,
       conn: conn
     } do
-      # Mock Stripe to return error by not setting up any endpoints
-      bypass = Bypass.open()
-      Bypass.down(bypass)
-      Stripe.override_endpoint_url("http://localhost:#{bypass.port}")
+      # Mock Stripe to return a server error
+      Req.Test.stub(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert conn.request_path == "/v1/billing_portal/sessions"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(500, JSON.encode!(%{"error" => "server_error"}))
+      end)
 
       {:ok, lv, _html} =
         conn
@@ -468,9 +485,14 @@ defmodule PortalWeb.Settings.BillingTest do
       import ExUnit.CaptureLog
 
       # Mock Stripe to return error
-      bypass = Bypass.open()
-      Bypass.down(bypass)
-      Stripe.override_endpoint_url("http://localhost:#{bypass.port}")
+      Req.Test.stub(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert conn.request_path == "/v1/billing_portal/sessions"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(503, JSON.encode!(%{"error" => "service_unavailable"}))
+      end)
 
       {:ok, lv, _html} =
         conn
@@ -488,8 +510,6 @@ defmodule PortalWeb.Settings.BillingTest do
   end
 
   describe "DB.count_account_admin_users_for_account/1" do
-    alias PortalWeb.Settings.Billing.DB
-
     test "counts only account admin users", %{account: account} do
       # Create various actor types
       _admin1 = admin_actor_fixture(account: account)
@@ -514,8 +534,6 @@ defmodule PortalWeb.Settings.BillingTest do
   end
 
   describe "DB.count_service_accounts_for_account/1" do
-    alias PortalWeb.Settings.Billing.DB
-
     test "counts only service accounts", %{account: account} do
       _sa1 = service_account_fixture(account: account)
       _sa2 = service_account_fixture(account: account)
@@ -536,8 +554,6 @@ defmodule PortalWeb.Settings.BillingTest do
   end
 
   describe "DB.count_users_for_account/1" do
-    alias PortalWeb.Settings.Billing.DB
-
     test "counts both account_admin_user and account_user types", %{account: account} do
       _admin = admin_actor_fixture(account: account)
       _user1 = actor_fixture(account: account, type: :account_user)
@@ -561,8 +577,6 @@ defmodule PortalWeb.Settings.BillingTest do
   end
 
   describe "DB.count_1m_active_users_for_account/1" do
-    alias PortalWeb.Settings.Billing.DB
-
     test "counts users with recent client activity", %{account: account, actor: actor} do
       # Create a client with recent activity
       _client = client_fixture(account: account, actor: actor, last_seen_at: DateTime.utc_now())
@@ -604,8 +618,6 @@ defmodule PortalWeb.Settings.BillingTest do
   end
 
   describe "DB.count_groups_for_account/1" do
-    alias PortalWeb.Settings.Billing.DB
-
     test "counts only account-managed sites", %{account: account} do
       # Create account-managed sites
       Portal.SiteFixtures.site_fixture(account: account, managed_by: :account)
