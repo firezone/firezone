@@ -8,9 +8,6 @@ defmodule Portal.Billing.EventHandlerTest do
 
   describe "handle_event/1 with customer.updated" do
     setup do
-      bypass = Bypass.open()
-      Stripe.override_endpoint_url("http://localhost:#{bypass.port}")
-
       account =
         account_fixture(%{
           metadata: %{
@@ -20,10 +17,10 @@ defmodule Portal.Billing.EventHandlerTest do
           }
         })
 
-      %{bypass: bypass, account: account}
+      %{account: account}
     end
 
-    test "updates account with legal_name from customer name", %{bypass: bypass, account: account} do
+    test "updates account with legal_name from customer name", %{account: account} do
       customer =
         Stripe.build_customer(
           id: account.metadata.stripe.customer_id,
@@ -37,7 +34,7 @@ defmodule Portal.Billing.EventHandlerTest do
       event = Stripe.build_event("customer.updated", customer)
 
       # Mock the fetch customer endpoint (called to get account_id from metadata)
-      Stripe.fetch_customer_endpoint(bypass, customer)
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
@@ -46,7 +43,6 @@ defmodule Portal.Billing.EventHandlerTest do
     end
 
     test "uses account_name from metadata for name but legal_name from customer name", %{
-      bypass: bypass,
       account: account
     } do
       customer =
@@ -63,7 +59,7 @@ defmodule Portal.Billing.EventHandlerTest do
       event = Stripe.build_event("customer.updated", customer)
 
       # Mock the fetch customer endpoint (called to get account_id from metadata)
-      Stripe.fetch_customer_endpoint(bypass, customer)
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
@@ -72,7 +68,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated_account.legal_name == "Legal Corp Inc"
     end
 
-    test "updates account slug from metadata", %{bypass: bypass, account: account} do
+    test "updates account slug from metadata", %{account: account} do
       original_slug = account.slug
 
       customer =
@@ -88,7 +84,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       event = Stripe.build_event("customer.updated", customer)
 
-      Stripe.fetch_customer_endpoint(bypass, customer)
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
@@ -100,9 +96,6 @@ defmodule Portal.Billing.EventHandlerTest do
 
   describe "handle_event/1 with customer.subscription.deleted" do
     setup do
-      bypass = Bypass.open()
-      Stripe.override_endpoint_url("http://localhost:#{bypass.port}")
-
       account =
         account_fixture(%{
           metadata: %{
@@ -112,10 +105,10 @@ defmodule Portal.Billing.EventHandlerTest do
           }
         })
 
-      %{bypass: bypass, account: account}
+      %{account: account}
     end
 
-    test "disables account when subscription is deleted", %{bypass: bypass, account: account} do
+    test "disables account when subscription is deleted", %{account: account} do
       subscription = Stripe.subscription_object(account.metadata.stripe.customer_id, %{}, %{}, 1)
       subscription = Map.put(subscription, "status", "canceled")
 
@@ -127,7 +120,7 @@ defmodule Portal.Billing.EventHandlerTest do
           metadata: %{"account_id" => account.id}
         )
 
-      Stripe.fetch_customer_endpoint(bypass, customer)
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
@@ -138,13 +131,6 @@ defmodule Portal.Billing.EventHandlerTest do
   end
 
   describe "handle_event/1 with customer.created" do
-    setup do
-      bypass = Bypass.open()
-      Stripe.override_endpoint_url("http://localhost:#{bypass.port}")
-
-      %{bypass: bypass}
-    end
-
     test "returns error when required metadata is missing" do
       customer_id = "cus_" <> Stripe.random_id()
 
@@ -187,7 +173,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert account == nil
     end
 
-    test "creates account with all defaults when metadata is complete", %{bypass: bypass} do
+    test "creates account with all defaults when metadata is complete" do
       customer_id = "cus_" <> Stripe.random_id()
 
       customer =
@@ -205,11 +191,12 @@ defmodule Portal.Billing.EventHandlerTest do
       event = Stripe.build_event("customer.created", customer)
 
       # Mock the update customer endpoint (called to set account_id in Stripe metadata)
-      Bypass.expect(bypass, "POST", "v1/customers/#{customer_id}", fn conn ->
-        Plug.Conn.send_resp(conn, 200, JSON.encode!(customer))
-      end)
+      # and the create subscription endpoint
+      expectations =
+        [{"POST", "/v1/customers/#{customer_id}", 200, customer}] ++
+          Stripe.mock_create_subscription_endpoint()
 
-      Stripe.mock_create_subscription_endpoint(bypass)
+      Stripe.stub(expectations)
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 

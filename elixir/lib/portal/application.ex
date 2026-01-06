@@ -30,7 +30,6 @@ defmodule Portal.Application do
 
       # Application services
       Portal.Presence,
-      Portal.Billing,
       Portal.Mailer.RateLimiter,
       Portal.ComponentVersions,
 

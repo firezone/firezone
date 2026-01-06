@@ -1,29 +1,9 @@
 defmodule Portal.Billing do
-  use Supervisor
   alias Portal.Auth
   alias Portal.Billing.EventHandler
   alias Portal.Billing.Stripe.APIClient
   alias __MODULE__.DB
   require Logger
-
-  # Supervisor
-
-  def start_link(opts) do
-    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
-  end
-
-  def init(_opts) do
-    children = [
-      # TODO: Use Req and remove this Supervisor
-      APIClient
-    ]
-
-    if enabled?() do
-      Supervisor.init(children, strategy: :one_for_one)
-    else
-      :ignore
-    end
-  end
 
   # Configuration helpers
 

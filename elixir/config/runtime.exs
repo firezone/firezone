@@ -98,9 +98,7 @@ if config_env() == :prod do
     token_base_url: "https://login.microsoftonline.com",
     endpoint: "https://graph.microsoft.com"
 
-  config :portal, Portal.Billing.Stripe.APIClient,
-    endpoint: "https://api.stripe.com",
-    finch_transport_opts: []
+  config :portal, Portal.Billing.Stripe.APIClient, endpoint: "https://api.stripe.com"
 
   config :portal, Portal.Billing,
     enabled: env_var_to_config!(:billing_enabled),
