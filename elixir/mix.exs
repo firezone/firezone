@@ -75,7 +75,7 @@ defmodule Portal.MixProject do
       {:plug_crypto, "~> 2.0"},
       {:jose, "~> 1.11"},
       {:openid_connect,
-       github: "firezone/openid_connect", ref: "78d8650bc75a462a2ff193dd1bffb70e1cafe839"},
+       github: "firezone/openid_connect", ref: "b6c58cb2d49c54631004a58f756f7dc120f8eb9f"},
       {:argon2_elixir, "~> 4.0"},
 
       # Background jobs
