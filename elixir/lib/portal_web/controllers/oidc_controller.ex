@@ -14,6 +14,8 @@ defmodule PortalWeb.OIDCController do
 
   action_fallback PortalWeb.FallbackController
 
+  @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     account = DB.get_account_by_id_or_slug!(account_id_or_slug)
     provider = get_provider!(account, params)
@@ -238,16 +240,13 @@ defmodule PortalWeb.OIDCController do
       "Failed to fetch discovery document (HTTP #{status}). Please verify your provider configuration."
 
   defp discovery_error_message({:unexpected_end, _}),
-    do:
-      "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+    do: @invalid_json_error_message
 
   defp discovery_error_message({:invalid_byte, _, _}),
-    do:
-      "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+    do: @invalid_json_error_message
 
   defp discovery_error_message({:unexpected_sequence, _, _}),
-    do:
-      "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+    do: @invalid_json_error_message
 
   defp discovery_error_message(:invalid_discovery_document_uri),
     do: "The Discovery Document URI is invalid. Please check your provider configuration."
@@ -573,7 +572,7 @@ defmodule PortalWeb.OIDCController do
           "Identity provider returned an error: #{error_code}. Please try again."
 
         {status, _} when status in 500..599 ->
-          "Identity provider returned a server error (#{status}). Please try again later."
+          "Identity provider returned a server error (HTTP #{status}). Please try again later."
 
         {status, _} ->
           "Identity provider returned an error (HTTP #{status}). Please try again."

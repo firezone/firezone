@@ -44,6 +44,8 @@ defmodule PortalWeb.Settings.Authentication do
       @common_fields ++ ~w[discovery_document_uri client_id client_secret is_verified is_legacy]a
   }
 
+  @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the URI returns valid OpenID Connect configuration."
+
   def mount(_params, _session, socket) do
     socket = assign(socket, page_title: "Authentication")
 
@@ -1247,17 +1249,11 @@ defmodule PortalWeb.Settings.Authentication do
 
   # JSON decode errors
   defp handle_verification_setup_error({:error, {:unexpected_end, _offset}}, field, socket) do
-    msg =
-      "Discovery document contains invalid JSON. Please verify the URI returns valid OpenID Connect configuration."
-
-    add_verification_error(msg, field, socket)
+    add_verification_error(@invalid_json_error_message, field, socket)
   end
 
   defp handle_verification_setup_error({:error, {:invalid_byte, _offset, _byte}}, field, socket) do
-    msg =
-      "Discovery document contains invalid JSON. Please verify the URI returns valid OpenID Connect configuration."
-
-    add_verification_error(msg, field, socket)
+    add_verification_error(@invalid_json_error_message, field, socket)
   end
 
   defp handle_verification_setup_error(
@@ -1265,10 +1261,7 @@ defmodule PortalWeb.Settings.Authentication do
          field,
          socket
        ) do
-    msg =
-      "Discovery document contains invalid JSON. Please verify the URI returns valid OpenID Connect configuration."
-
-    add_verification_error(msg, field, socket)
+    add_verification_error(@invalid_json_error_message, field, socket)
   end
 
   # Invalid URI

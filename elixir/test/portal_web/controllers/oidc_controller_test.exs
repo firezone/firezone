@@ -392,7 +392,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) == "/#{account.slug}"
 
       assert flash(conn, :error) ==
-               "Identity provider returned a server error (500). Please try again later."
+               "Identity provider returned a server error (HTTP 500). Please try again later."
     end
 
     test "redirects with descriptive error when JWT verification fails", %{
@@ -458,6 +458,27 @@ defmodule PortalWeb.OIDCControllerTest do
         end)
 
       assert log =~ "OIDC sign-in error"
+    end
+
+    test "redirects with descriptive error when token exchange returns generic 400 error", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      Bypass.expect_once(bypass, "POST", "/oauth/token", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(400, JSON.encode!(%{"error" => "invalid_request"}))
+      end)
+
+      cookie = build_oidc_cookie(account, provider)
+      conn = perform_callback(conn, cookie)
+
+      assert redirected_to(conn) == "/#{account.slug}"
+
+      assert flash(conn, :error) ==
+               "Identity provider returned an error: invalid_request. Please try again."
     end
   end
 
