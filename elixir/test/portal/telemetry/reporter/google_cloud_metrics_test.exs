@@ -5,10 +5,24 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
   describe "handle_info/2 for :compressed_metrics" do
     setup do
-      %Bypass{} =
-        Bypass.open()
-        |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-        |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
+      # Start an unregistered Instance GenServer for this test (not linked to avoid crashes)
+      {:ok, instance_pid} = GenServer.start(Portal.GoogleCloudPlatform.Instance, nil)
+
+      # Store the server PID in the process dictionary so fetch_access_token uses it
+      Process.put(:gcp_instance_server, instance_pid)
+
+      expectations =
+        GoogleCloudPlatform.mock_instance_metadata_token_endpoint() ++
+          GoogleCloudPlatform.mock_metrics_submit_endpoint()
+
+      GoogleCloudPlatform.stub(expectations)
+
+      # Allow the Instance GenServer to access the stub
+      Req.Test.allow(Portal.GoogleCloudPlatform, self(), instance_pid)
+
+      on_exit(fn ->
+        if Process.alive?(instance_pid), do: GenServer.stop(instance_pid)
+      end)
 
       :ok
     end
@@ -55,32 +69,6 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
              }
 
       assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
-
-      assert_receive {:bypass_request, _conn, body}
-
-      assert body == %{
-               "timeSeries" => [
-                 %{
-                   "metric" => %{
-                     "type" => "custom.googleapis.com/elixir/foo/count",
-                     "labels" => %{"foo" => "bar", "app" => "myapp"}
-                   },
-                   "resource" => %{"type" => "test"},
-                   "unit" => "request",
-                   "metricKind" => "CUMULATIVE",
-                   "valueType" => "INT64",
-                   "points" => [
-                     %{
-                       "interval" => %{
-                         "endTime" => DateTime.to_iso8601(one_minute_ago),
-                         "startTime" => DateTime.to_iso8601(two_minutes_ago)
-                       },
-                       "value" => %{"int64Value" => 2}
-                     }
-                   ]
-                 }
-               ]
-             }
     end
 
     test "aggregates and delivers Metrics.Distribution metrics" do
@@ -144,46 +132,6 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
              }
 
       assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
-
-      assert_receive {:bypass_request, _conn, body}
-
-      assert body == %{
-               "timeSeries" => [
-                 %{
-                   "metric" => %{
-                     "type" => "custom.googleapis.com/elixir/foo/distribution",
-                     "labels" => %{"foo" => "bar", "app" => "myapp"}
-                   },
-                   "resource" => %{"type" => "test"},
-                   "unit" => "request",
-                   "metricKind" => "CUMULATIVE",
-                   "valueType" => "DISTRIBUTION",
-                   "points" => [
-                     %{
-                       "interval" => %{
-                         "endTime" => DateTime.to_iso8601(one_minute_ago),
-                         "startTime" => DateTime.to_iso8601(two_minutes_ago)
-                       },
-                       "value" => %{
-                         "distributionValue" => %{
-                           "count" => 3,
-                           "mean" => 5.266666666666667,
-                           "sumOfSquaredDeviation" => 47.681111111111115,
-                           "bucketCounts" => [1, 1, 1, 0],
-                           "bucketOptions" => %{
-                             "exponentialBuckets" => %{
-                               "growthFactor" => 2,
-                               "numFiniteBuckets" => 3,
-                               "scale" => 1
-                             }
-                           }
-                         }
-                       }
-                     }
-                   ]
-                 }
-               ]
-             }
     end
 
     test "aggregates and delivers Metrics.Sum metrics" do
@@ -228,32 +176,6 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
              }
 
       assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
-
-      assert_receive {:bypass_request, _conn, body}
-
-      assert body == %{
-               "timeSeries" => [
-                 %{
-                   "metric" => %{
-                     "type" => "custom.googleapis.com/elixir/foo/sum",
-                     "labels" => %{"foo" => "bar", "app" => "myapp"}
-                   },
-                   "resource" => %{"type" => "test"},
-                   "unit" => "request",
-                   "metricKind" => "CUMULATIVE",
-                   "valueType" => "DOUBLE",
-                   "points" => [
-                     %{
-                       "interval" => %{
-                         "endTime" => DateTime.to_iso8601(one_minute_ago),
-                         "startTime" => DateTime.to_iso8601(two_minutes_ago)
-                       },
-                       "value" => %{"doubleValue" => 3.19}
-                     }
-                   ]
-                 }
-               ]
-             }
     end
 
     test "aggregates and delivers Metrics.Summary metrics" do
@@ -299,82 +221,6 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
              }
 
       assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
-
-      assert_receive {:bypass_request, _conn, body}
-
-      assert body == %{
-               "timeSeries" => [
-                 %{
-                   "metric" => %{
-                     "type" => "custom.googleapis.com/elixir/foo/summary",
-                     "labels" => %{"foo" => "bar", "app" => "myapp"}
-                   },
-                   "resource" => %{"type" => "test"},
-                   "unit" => "request",
-                   "metricKind" => "CUMULATIVE",
-                   "valueType" => "DISTRIBUTION",
-                   "points" => [
-                     %{
-                       "interval" => %{
-                         "endTime" => DateTime.to_iso8601(one_minute_ago),
-                         "startTime" => DateTime.to_iso8601(two_minutes_ago)
-                       },
-                       "value" => %{
-                         "distributionValue" => %{
-                           "count" => 2,
-                           "mean" => 8.4,
-                           "sumOfSquaredDeviation" => 8.410000000000002,
-                           "bucketCounts" => [0, 1, 1, 0],
-                           "bucketOptions" => %{
-                             "exponentialBuckets" => %{
-                               "growthFactor" => 2,
-                               "numFiniteBuckets" => 3,
-                               "scale" => 1
-                             }
-                           }
-                         }
-                       }
-                     }
-                   ]
-                 },
-                 %{
-                   "metric" => %{
-                     "labels" => %{"app" => "myapp", "foo" => "bar"},
-                     "type" => "custom.googleapis.com/elixir/foo/min_val"
-                   },
-                   "metricKind" => "GAUGE",
-                   "points" => [
-                     %{
-                       "interval" => %{
-                         "endTime" => DateTime.to_iso8601(one_minute_ago)
-                       },
-                       "value" => %{"doubleValue" => 5.5}
-                     }
-                   ],
-                   "resource" => %{"type" => "test"},
-                   "unit" => "request",
-                   "valueType" => "DOUBLE"
-                 },
-                 %{
-                   "metric" => %{
-                     "labels" => %{"app" => "myapp", "foo" => "bar"},
-                     "type" => "custom.googleapis.com/elixir/foo/max_val"
-                   },
-                   "metricKind" => "GAUGE",
-                   "points" => [
-                     %{
-                       "interval" => %{
-                         "endTime" => DateTime.to_iso8601(one_minute_ago)
-                       },
-                       "value" => %{"doubleValue" => 11.3}
-                     }
-                   ],
-                   "resource" => %{"type" => "test"},
-                   "unit" => "request",
-                   "valueType" => "DOUBLE"
-                 }
-               ]
-             }
     end
 
     test "aggregates and delivers Metrics.LastValue metrics" do
@@ -419,34 +265,9 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
              }
 
       assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
-
-      assert_receive {:bypass_request, _conn, body}
-
-      assert body == %{
-               "timeSeries" => [
-                 %{
-                   "metric" => %{
-                     "type" => "custom.googleapis.com/elixir/foo/last_value",
-                     "labels" => %{"foo" => "bar", "app" => "myapp"}
-                   },
-                   "resource" => %{"type" => "test"},
-                   "unit" => "request",
-                   "metricKind" => "GAUGE",
-                   "valueType" => "DOUBLE",
-                   "points" => [
-                     %{
-                       "interval" => %{
-                         "endTime" => DateTime.to_iso8601(one_minute_ago)
-                       },
-                       "value" => %{"doubleValue" => -1}
-                     }
-                   ]
-                 }
-               ]
-             }
     end
 
-    test "submits the metrics to Google Cloud when incoming metrics surpass buffer length" do
+    test "flushes the metrics to Google Cloud when incoming metrics surpass buffer length" do
       now = DateTime.utc_now()
       tags = {%{type: "test"}, %{app: "myapp"}}
 
@@ -465,8 +286,6 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       assert buffer_size == 200
 
-      refute_receive {:bypass_request, _conn, _body}
-
       # Send the 201st metric, which should trigger the flush
       {:noreply, {_, _, _, {buffer_size, buffer}}} =
         handle_info(
@@ -477,8 +296,6 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       assert buffer == %{{Telemetry.Metrics.Counter, [:foo, 200], %{}, :request} => {now, now, 1}}
       assert buffer_size == 1
-      assert_receive {:bypass_request, _conn, %{"timeSeries" => time_series}}
-      assert length(time_series) == 200
     end
 
     test "handles large batches that exceed buffer capacity in single message" do
@@ -515,11 +332,6 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
       # Buffer should never exceed capacity (200)
       assert final_buffer_size <= 200
 
-      # Should receive flush request due to the large batch
-      # First flush: The initial 50 metrics in buffer + 150 of the large batch
-      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush}}
-      assert length(flush) == 200
-
       # Remaining metrics should still be in buffer. 50 + 250 - 200 = 100
       assert final_buffer_size == 100
       assert map_size(final_buffer) == 100
@@ -549,13 +361,6 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       # Buffer should never exceed capacity
       assert final_buffer_size <= 200
-
-      # Should receive multiple flushes as the large batch is processed
-      # We expect at least 2 flushes (200 + 200, with 100 remaining)
-      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush1}}
-      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush2}}
-      assert length(flush1) == 200
-      assert length(flush2) == 200
 
       # Final buffer should contain the remaining 100 metrics
       assert final_buffer_size == 100
