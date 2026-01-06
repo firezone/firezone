@@ -10,6 +10,10 @@ export default function Headless({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11584">
+          Improves connection reliability on systems where certain UDP socket
+          features are unavailable.
+        </ChangeItem>
         <ChangeItem pull="11627">
           Fixes an issue where reconnections would fail if the portal host is an
           IP address.
