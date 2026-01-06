@@ -1,21 +1,8 @@
 defmodule Portal.Mailer do
-  use Supervisor
   alias Swoosh.Mailer
   alias Swoosh.Email
   alias Portal.Mailer.RateLimiter
   require Logger
-
-  def start_link(arg) do
-    Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
-  end
-
-  def init(_arg) do
-    children = [
-      {Finch, name: Swoosh.Finch}
-    ]
-
-    Supervisor.init(children, strategy: :one_for_one)
-  end
 
   def deliver_with_rate_limit(email, config \\ []) do
     {key, config} = Keyword.pop(config, :rate_limit_key, {email.to, email.subject})

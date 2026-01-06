@@ -358,7 +358,7 @@ config :logger, :default_formatter,
 
 config :phoenix, :json_library, JSON
 
-config :swoosh, :api_client, Swoosh.ApiClient.Finch
+config :swoosh, :api_client, Swoosh.ApiClient.Req
 
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,
