@@ -38,9 +38,14 @@ defmodule Portal.Google.APIClient do
         "assertion" => jwt
       })
 
-    Req.post(token_endpoint,
-      headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
-      body: payload
+    req_options = config[:req_options] || []
+
+    Req.post(
+      token_endpoint,
+      [
+        headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
+        body: payload
+      ] ++ req_options
     )
   end
 
@@ -90,10 +95,11 @@ defmodule Portal.Google.APIClient do
 
   defp test_endpoint(path, access_token, params) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    req_options = config[:req_options] || []
     query = URI.encode_query(params)
     url = "#{config[:endpoint]}#{path}?#{query}"
 
-    case Req.get(url, headers: [Authorization: "Bearer #{access_token}"]) do
+    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ req_options) do
       {:ok, %Req.Response{status: 200}} -> :ok
       other -> other
     end
@@ -164,9 +170,10 @@ defmodule Portal.Google.APIClient do
 
   defp get(path, access_token) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    req_options = config[:req_options] || []
 
     (config[:endpoint] <> path)
-    |> Req.get(headers: [Authorization: "Bearer #{access_token}"])
+    |> Req.get([headers: [Authorization: "Bearer #{access_token}"]] ++ req_options)
   end
 
   defp stream_pages(path, query, access_token, result_key) do
@@ -188,9 +195,10 @@ defmodule Portal.Google.APIClient do
 
   defp fetch_page(current_path, current_query, access_token, result_key) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    req_options = config[:req_options] || []
     url = "#{config[:endpoint]}#{current_path}?#{current_query}"
 
-    case Req.get(url, headers: [Authorization: "Bearer #{access_token}"]) do
+    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ req_options) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         parse_page_response(body, current_path, current_query, result_key)
 

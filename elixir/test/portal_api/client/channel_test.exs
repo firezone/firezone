@@ -655,12 +655,12 @@ defmodule PortalAPI.Client.ChannelTest do
           site: site
         )
 
-      # Create a policy that becomes valid in one second
+      # Create a policy that becomes valid in 1 second
       now = DateTime.utc_now()
-      one_second_later = DateTime.add(now, 1, :second)
+      shortly_later = DateTime.add(now, 1, :second)
 
       day_letter =
-        case Date.day_of_week(one_second_later) do
+        case Date.day_of_week(shortly_later) do
           # Monday
           1 -> "M"
           # Tuesday
@@ -678,7 +678,7 @@ defmodule PortalAPI.Client.ChannelTest do
         end
 
       start_time =
-        one_second_later
+        shortly_later
         |> DateTime.to_time()
         |> Time.to_string()
 
@@ -713,7 +713,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "resource_created_or_updated", _payload
       refute_push "resource_deleted", _payload
 
-      Process.sleep(2000)
+      Process.sleep(1100)
 
       send(socket.channel_pid, :recompute_authorized_resources)
 
