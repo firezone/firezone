@@ -580,7 +580,10 @@ defmodule PortalWeb.Settings.BillingTest do
       assert count == 0
     end
 
-    test "counts each actor only once even with multiple clients", %{account: account, actor: actor} do
+    test "counts each actor only once even with multiple clients", %{
+      account: account,
+      actor: actor
+    } do
       # Create multiple clients for the same actor
       _client1 = client_fixture(account: account, actor: actor, last_seen_at: DateTime.utc_now())
       _client2 = client_fixture(account: account, actor: actor, last_seen_at: DateTime.utc_now())
@@ -592,7 +595,8 @@ defmodule PortalWeb.Settings.BillingTest do
     test "excludes disabled actors", %{account: account} do
       disabled_actor = disabled_actor_fixture(account: account, type: :account_user)
 
-      _client = client_fixture(account: account, actor: disabled_actor, last_seen_at: DateTime.utc_now())
+      _client =
+        client_fixture(account: account, actor: disabled_actor, last_seen_at: DateTime.utc_now())
 
       count = DB.count_1m_active_users_for_account(account)
       assert count == 0
