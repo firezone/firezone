@@ -96,11 +96,11 @@ defmodule Portal.Replication.ConnectionTest do
     end
 
     test "init/1 schedules flush when flush_interval > 0" do
-      initial_state = %TestReplicationConnection{flush_interval: 1000}
+      initial_state = %TestReplicationConnection{flush_interval: 10}
       {:ok, _state} = TestReplicationConnection.init(initial_state)
 
       # Should receive flush message after interval
-      assert_receive :flush, 1100
+      assert_receive :flush, 50
     end
 
     test "init/1 does not schedule flush when flush_interval is 0" do
@@ -108,7 +108,7 @@ defmodule Portal.Replication.ConnectionTest do
       {:ok, _state} = TestReplicationConnection.init(initial_state)
 
       # Should not receive flush message
-      refute_receive :flush, 100
+      refute_receive :flush, 10
     end
   end
 
@@ -152,7 +152,7 @@ defmodule Portal.Replication.ConnectionTest do
     test "handles :flush message when flush_interval > 0" do
       state =
         %TestReplicationConnection{
-          flush_interval: 1000,
+          flush_interval: 10,
           flush_buffer: %{1 => %{data: "test"}}
         }
         |> Map.put(:operations, [])
@@ -165,11 +165,11 @@ defmodule Portal.Replication.ConnectionTest do
       assert new_state.flush_buffer == %{}
 
       # Should schedule next flush
-      assert_receive :flush, 1100
+      assert_receive :flush, 50
     end
 
     test "handles :interval_logger message" do
-      state = %TestReplicationConnection{counter: 456, status_log_interval: 100}
+      state = %TestReplicationConnection{counter: 456, status_log_interval: 10}
 
       log =
         capture_log(fn ->
@@ -179,7 +179,7 @@ defmodule Portal.Replication.ConnectionTest do
       assert log =~ "Processed 456 write messages from the WAL stream"
 
       # Should schedule next log
-      assert_receive :interval_logger, 150
+      assert_receive :interval_logger, 50
     end
 
     test "handles warning threshold checks" do

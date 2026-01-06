@@ -88,6 +88,14 @@ config :portal, Portal.ComponentVersions,
     headless: "1.0.0"
   ]
 
+config :portal, Portal.Google.APIClient,
+  endpoint: "https://admin.googleapis.com",
+  token_endpoint: "https://oauth2.googleapis.com/token",
+  req_options: [
+    retry: false,
+    plug: {Req.Test, Portal.Google.APIClient}
+  ]
+
 config :portal, Portal.Telemetry.Reporter.GoogleCloudMetrics, project_id: "fz-test"
 
 config :portal, web_external_url: "http://localhost:13100"

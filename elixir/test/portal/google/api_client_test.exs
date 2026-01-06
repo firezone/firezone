@@ -36,31 +36,29 @@ defmodule Portal.Google.APIClientTest do
   """
 
   setup do
-    bypass = Bypass.open()
-    override_endpoint_url("http://localhost:#{bypass.port}")
-    %{bypass: bypass}
+    Req.Test.stub(APIClient, fn conn ->
+      Req.Test.json(conn, %{"error" => "not mocked"})
+    end)
+
+    :ok
   end
 
   describe "get_access_token/2" do
-    test "exchanges JWT for access token", %{bypass: bypass} do
-      override_token_endpoint("http://localhost:#{bypass.port}/token")
-
+    test "exchanges JWT for access token" do
       test_pid = self()
 
-      Bypass.expect_once(bypass, "POST", "/token", fn conn ->
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert conn.request_path == "/token"
+
         {:ok, body, conn} = Plug.Conn.read_body(conn)
         send(test_pid, {:token_request, body, conn})
 
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          200,
-          JSON.encode!(%{
-            "access_token" => "returned_access_token",
-            "expires_in" => 3600,
-            "token_type" => "Bearer"
-          })
-        )
+        Req.Test.json(conn, %{
+          "access_token" => "returned_access_token",
+          "expires_in" => 3600,
+          "token_type" => "Bearer"
+        })
       end)
 
       key = %{
@@ -81,9 +79,10 @@ defmodule Portal.Google.APIClientTest do
       assert params["assertion"]
     end
 
-    test "returns error on network failure", %{bypass: bypass} do
-      override_token_endpoint("http://localhost:#{bypass.port}/token")
-      Bypass.down(bypass)
+    test "returns error on network failure" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.transport_error(conn, :econnrefused)
+      end)
 
       key = %{
         "client_email" => "test@project.iam.gserviceaccount.com",
@@ -96,22 +95,19 @@ defmodule Portal.Google.APIClientTest do
   end
 
   describe "get_customer/1" do
-    test "fetches customer information", %{bypass: bypass} do
+    test "fetches customer information" do
       test_pid = self()
 
-      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/customers/my_customer", fn conn ->
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "GET"
+        assert conn.request_path == "/admin/directory/v1/customers/my_customer"
         send(test_pid, {:customer_request, conn})
 
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          200,
-          JSON.encode!(%{
-            "kind" => "admin#directory#customer",
-            "id" => "C12345678",
-            "customerDomain" => "example.com"
-          })
-        )
+        Req.Test.json(conn, %{
+          "kind" => "admin#directory#customer",
+          "id" => "C12345678",
+          "customerDomain" => "example.com"
+        })
       end)
 
       assert {:ok, %Req.Response{status: 200, body: body}} =
@@ -125,57 +121,78 @@ defmodule Portal.Google.APIClientTest do
   end
 
   describe "test_connection/2" do
-    test "returns :ok when all endpoints are accessible", %{bypass: bypass} do
-      mock_test_endpoint(bypass, "/admin/directory/v1/users", 200)
-      mock_test_endpoint(bypass, "/admin/directory/v1/groups", 200)
-      mock_test_endpoint(bypass, "/admin/directory/v1/customer/my_customer/orgunits", 200)
+    test "returns :ok when all endpoints are accessible" do
+      Req.Test.expect(APIClient, 3, fn conn ->
+        Req.Test.json(conn, %{})
+      end)
 
       assert :ok = APIClient.test_connection(@test_access_token, @test_domain)
     end
 
-    test "returns error when users endpoint fails", %{bypass: bypass} do
-      mock_test_endpoint(bypass, "/admin/directory/v1/users", 403)
+    test "returns error when users endpoint fails" do
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => "Forbidden"})
+      end)
 
       assert {:ok, %Req.Response{status: 403}} =
                APIClient.test_connection(@test_access_token, @test_domain)
     end
 
-    test "returns error when groups endpoint fails", %{bypass: bypass} do
-      mock_test_endpoint(bypass, "/admin/directory/v1/users", 200)
-      mock_test_endpoint(bypass, "/admin/directory/v1/groups", 403)
+    test "returns error when groups endpoint fails" do
+      # First call (users) succeeds
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{})
+      end)
+
+      # Second call (groups) fails
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => "Forbidden"})
+      end)
 
       assert {:ok, %Req.Response{status: 403}} =
                APIClient.test_connection(@test_access_token, @test_domain)
     end
 
-    test "returns error when org_units endpoint fails", %{bypass: bypass} do
-      mock_test_endpoint(bypass, "/admin/directory/v1/users", 200)
-      mock_test_endpoint(bypass, "/admin/directory/v1/groups", 200)
-      mock_test_endpoint(bypass, "/admin/directory/v1/customer/my_customer/orgunits", 403)
+    test "returns error when org_units endpoint fails" do
+      # First two calls succeed
+      Req.Test.expect(APIClient, 2, fn conn ->
+        Req.Test.json(conn, %{})
+      end)
+
+      # Third call (org_units) fails
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => "Forbidden"})
+      end)
 
       assert {:ok, %Req.Response{status: 403}} =
                APIClient.test_connection(@test_access_token, @test_domain)
     end
 
-    test "verifies correct query parameters are sent", %{bypass: bypass} do
+    test "verifies correct query parameters are sent" do
       test_pid = self()
 
-      Bypass.expect(bypass, "GET", "/admin/directory/v1/users", fn conn ->
+      Req.Test.expect(APIClient, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         send(test_pid, {:users_query, conn.query_params})
-        Plug.Conn.send_resp(conn, 200, "{}")
+        Req.Test.json(conn, %{})
       end)
 
-      Bypass.expect(bypass, "GET", "/admin/directory/v1/groups", fn conn ->
+      Req.Test.expect(APIClient, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         send(test_pid, {:groups_query, conn.query_params})
-        Plug.Conn.send_resp(conn, 200, "{}")
+        Req.Test.json(conn, %{})
       end)
 
-      Bypass.expect(bypass, "GET", "/admin/directory/v1/customer/my_customer/orgunits", fn conn ->
+      Req.Test.expect(APIClient, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         send(test_pid, {:orgunits_query, conn.query_params})
-        Plug.Conn.send_resp(conn, 200, "{}")
+        Req.Test.json(conn, %{})
       end)
 
       APIClient.test_connection(@test_access_token, @test_domain)
@@ -196,25 +213,20 @@ defmodule Portal.Google.APIClientTest do
   end
 
   describe "stream_users/2" do
-    test "streams a single page of users", %{bypass: bypass} do
+    test "streams a single page of users" do
       test_pid = self()
 
-      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/users", fn conn ->
+      Req.Test.expect(APIClient, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         send(test_pid, {:users_request, conn})
 
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          200,
-          JSON.encode!(%{
-            "kind" => "admin#directory#users",
-            "users" => [
-              %{"id" => "user1", "primaryEmail" => "user1@example.com"},
-              %{"id" => "user2", "primaryEmail" => "user2@example.com"}
-            ]
-          })
-        )
+        Req.Test.json(conn, %{
+          "kind" => "admin#directory#users",
+          "users" => [
+            %{"id" => "user1", "primaryEmail" => "user1@example.com"},
+            %{"id" => "user2", "primaryEmail" => "user2@example.com"}
+          ]
+        })
       end)
 
       result =
@@ -231,11 +243,11 @@ defmodule Portal.Google.APIClientTest do
       assert conn.query_params["projection"] == "full"
     end
 
-    test "streams multiple pages using nextPageToken", %{bypass: bypass} do
+    test "streams multiple pages using nextPageToken" do
       test_pid = self()
       page_count = :counters.new(1, [:atomics])
 
-      Bypass.expect(bypass, "GET", "/admin/directory/v1/users", fn conn ->
+      Req.Test.expect(APIClient, 3, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         current_page = :counters.get(page_count, 1)
         :counters.add(page_count, 1, 1)
@@ -259,9 +271,7 @@ defmodule Portal.Google.APIClientTest do
               %{"users" => [%{"id" => "user3"}]}
           end
 
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, JSON.encode!(response))
+        Req.Test.json(conn, response)
       end)
 
       result =
@@ -284,12 +294,11 @@ defmodule Portal.Google.APIClientTest do
       assert page3_params["pageToken"] == "page3_token"
     end
 
-    test "returns error on non-200 response", %{bypass: bypass} do
-      # Use stub instead of expect_once since Req may retry on certain status codes
-      Bypass.stub(bypass, "GET", "/admin/directory/v1/users", fn conn ->
+    test "returns error on non-200 response" do
+      Req.Test.expect(APIClient, fn conn ->
         conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(403, JSON.encode!(%{"error" => "Forbidden"}))
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => "Forbidden"})
       end)
 
       result =
@@ -299,11 +308,9 @@ defmodule Portal.Google.APIClientTest do
       assert [{:error, %Req.Response{status: 403}}] = result
     end
 
-    test "returns error when users key is missing", %{bypass: bypass} do
-      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/users", fn conn ->
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, JSON.encode!(%{"kind" => "admin#directory#users"}))
+    test "returns error when users key is missing" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"kind" => "admin#directory#users"})
       end)
 
       result =
@@ -314,11 +321,9 @@ defmodule Portal.Google.APIClientTest do
       assert message =~ "users"
     end
 
-    test "returns error when users key is not a list", %{bypass: bypass} do
-      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/users", fn conn ->
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, JSON.encode!(%{"users" => "not_a_list"}))
+    test "returns error when users key is not a list" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"users" => "not_a_list"})
       end)
 
       result =
@@ -329,8 +334,10 @@ defmodule Portal.Google.APIClientTest do
       assert message =~ "users is not a list"
     end
 
-    test "returns error on network failure", %{bypass: bypass} do
-      Bypass.down(bypass)
+    test "returns error on network failure" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.transport_error(conn, :econnrefused)
+      end)
 
       result =
         APIClient.stream_users(@test_access_token, @test_domain)
@@ -341,25 +348,20 @@ defmodule Portal.Google.APIClientTest do
   end
 
   describe "stream_groups/2" do
-    test "streams a single page of groups", %{bypass: bypass} do
+    test "streams a single page of groups" do
       test_pid = self()
 
-      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/groups", fn conn ->
+      Req.Test.expect(APIClient, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         send(test_pid, {:groups_request, conn})
 
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          200,
-          JSON.encode!(%{
-            "kind" => "admin#directory#groups",
-            "groups" => [
-              %{"id" => "group1", "name" => "Engineering"},
-              %{"id" => "group2", "name" => "Sales"}
-            ]
-          })
-        )
+        Req.Test.json(conn, %{
+          "kind" => "admin#directory#groups",
+          "groups" => [
+            %{"id" => "group1", "name" => "Engineering"},
+            %{"id" => "group2", "name" => "Sales"}
+          ]
+        })
       end)
 
       result =
@@ -375,10 +377,10 @@ defmodule Portal.Google.APIClientTest do
       assert conn.query_params["maxResults"] == "200"
     end
 
-    test "streams multiple pages using nextPageToken", %{bypass: bypass} do
+    test "streams multiple pages using nextPageToken" do
       page_count = :counters.new(1, [:atomics])
 
-      Bypass.expect(bypass, "GET", "/admin/directory/v1/groups", fn conn ->
+      Req.Test.expect(APIClient, 2, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         current_page = :counters.get(page_count, 1)
         :counters.add(page_count, 1, 1)
@@ -389,9 +391,7 @@ defmodule Portal.Google.APIClientTest do
             1 -> %{"groups" => [%{"id" => "group2"}]}
           end
 
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, JSON.encode!(response))
+        Req.Test.json(conn, response)
       end)
 
       result =
@@ -401,11 +401,9 @@ defmodule Portal.Google.APIClientTest do
       assert [[%{"id" => "group1"}], [%{"id" => "group2"}]] = result
     end
 
-    test "returns error when groups key is missing", %{bypass: bypass} do
-      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/groups", fn conn ->
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, JSON.encode!(%{}))
+    test "returns error when groups key is missing" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{})
       end)
 
       result =
@@ -418,33 +416,23 @@ defmodule Portal.Google.APIClientTest do
   end
 
   describe "stream_group_members/2" do
-    test "streams a single page of members with includeDerivedMembership", %{bypass: bypass} do
+    test "streams a single page of members with includeDerivedMembership" do
       test_pid = self()
       group_key = "group123"
 
-      Bypass.expect_once(
-        bypass,
-        "GET",
-        "/admin/directory/v1/groups/#{group_key}/members",
-        fn conn ->
-          conn = Plug.Conn.fetch_query_params(conn)
-          send(test_pid, {:members_request, conn})
+      Req.Test.expect(APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        send(test_pid, {:members_request, conn})
 
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(
-            200,
-            JSON.encode!(%{
-              "kind" => "admin#directory#members",
-              "members" => [
-                %{"id" => "user1", "email" => "user1@example.com", "type" => "USER"},
-                %{"id" => "user2", "email" => "user2@example.com", "type" => "USER"},
-                %{"id" => "nested_group", "email" => "nested@example.com", "type" => "GROUP"}
-              ]
-            })
-          )
-        end
-      )
+        Req.Test.json(conn, %{
+          "kind" => "admin#directory#members",
+          "members" => [
+            %{"id" => "user1", "email" => "user1@example.com", "type" => "USER"},
+            %{"id" => "user2", "email" => "user2@example.com", "type" => "USER"},
+            %{"id" => "nested_group", "email" => "nested@example.com", "type" => "GROUP"}
+          ]
+        })
+      end)
 
       result =
         APIClient.stream_group_members(@test_access_token, group_key)
@@ -458,12 +446,12 @@ defmodule Portal.Google.APIClientTest do
       assert conn.query_params["includeDerivedMembership"] == "true"
     end
 
-    test "streams multiple pages of members", %{bypass: bypass} do
+    test "streams multiple pages of members" do
       test_pid = self()
       group_key = "group123"
       page_count = :counters.new(1, [:atomics])
 
-      Bypass.expect(bypass, "GET", "/admin/directory/v1/groups/#{group_key}/members", fn conn ->
+      Req.Test.expect(APIClient, 2, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         current_page = :counters.get(page_count, 1)
         :counters.add(page_count, 1, 1)
@@ -478,9 +466,7 @@ defmodule Portal.Google.APIClientTest do
               %{"members" => [%{"id" => "user2", "type" => "USER"}]}
           end
 
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, JSON.encode!(response))
+        Req.Test.json(conn, response)
       end)
 
       result =
@@ -498,19 +484,12 @@ defmodule Portal.Google.APIClientTest do
       assert page2_params["pageToken"] == "page2"
     end
 
-    test "returns empty list when members key is omitted (empty group)", %{bypass: bypass} do
+    test "returns empty list when members key is omitted (empty group)" do
       group_key = "empty_group"
 
-      Bypass.expect_once(
-        bypass,
-        "GET",
-        "/admin/directory/v1/groups/#{group_key}/members",
-        fn conn ->
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, JSON.encode!(%{"kind" => "admin#directory#members"}))
-        end
-      )
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"kind" => "admin#directory#members"})
+      end)
 
       result =
         APIClient.stream_group_members(@test_access_token, group_key)
@@ -519,14 +498,13 @@ defmodule Portal.Google.APIClientTest do
       assert [[]] = result
     end
 
-    test "returns error on non-200 response", %{bypass: bypass} do
+    test "returns error on non-200 response" do
       group_key = "group123"
 
-      # Use stub instead of expect_once since Req may retry on certain status codes
-      Bypass.stub(bypass, "GET", "/admin/directory/v1/groups/#{group_key}/members", fn conn ->
+      Req.Test.expect(APIClient, fn conn ->
         conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(404, JSON.encode!(%{"error" => "Group not found"}))
+        |> Plug.Conn.put_status(404)
+        |> Req.Test.json(%{"error" => "Group not found"})
       end)
 
       result =
@@ -538,31 +516,21 @@ defmodule Portal.Google.APIClientTest do
   end
 
   describe "stream_organization_units/1" do
-    test "streams a single page of organization units", %{bypass: bypass} do
+    test "streams a single page of organization units" do
       test_pid = self()
 
-      Bypass.expect_once(
-        bypass,
-        "GET",
-        "/admin/directory/v1/customer/my_customer/orgunits",
-        fn conn ->
-          conn = Plug.Conn.fetch_query_params(conn)
-          send(test_pid, {:orgunits_request, conn})
+      Req.Test.expect(APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        send(test_pid, {:orgunits_request, conn})
 
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(
-            200,
-            JSON.encode!(%{
-              "kind" => "admin#directory#org_units",
-              "organizationUnits" => [
-                %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"},
-                %{"orgUnitId" => "ou2", "name" => "Sales", "orgUnitPath" => "/Sales"}
-              ]
-            })
-          )
-        end
-      )
+        Req.Test.json(conn, %{
+          "kind" => "admin#directory#org_units",
+          "organizationUnits" => [
+            %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"},
+            %{"orgUnitId" => "ou2", "name" => "Sales", "orgUnitPath" => "/Sales"}
+          ]
+        })
+      end)
 
       result =
         APIClient.stream_organization_units(@test_access_token)
@@ -575,10 +543,10 @@ defmodule Portal.Google.APIClientTest do
       assert conn.query_params["type"] == "all"
     end
 
-    test "streams multiple pages of organization units", %{bypass: bypass} do
+    test "streams multiple pages of organization units" do
       page_count = :counters.new(1, [:atomics])
 
-      Bypass.expect(bypass, "GET", "/admin/directory/v1/customer/my_customer/orgunits", fn conn ->
+      Req.Test.expect(APIClient, 2, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         current_page = :counters.get(page_count, 1)
         :counters.add(page_count, 1, 1)
@@ -595,9 +563,7 @@ defmodule Portal.Google.APIClientTest do
               %{"organizationUnits" => [%{"orgUnitId" => "ou2", "name" => "Sales"}]}
           end
 
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, JSON.encode!(response))
+        Req.Test.json(conn, response)
       end)
 
       result =
@@ -607,19 +573,10 @@ defmodule Portal.Google.APIClientTest do
       assert [[%{"orgUnitId" => "ou1"}], [%{"orgUnitId" => "ou2"}]] = result
     end
 
-    test "returns empty list when organizationUnits key is omitted (no org units)", %{
-      bypass: bypass
-    } do
-      Bypass.expect_once(
-        bypass,
-        "GET",
-        "/admin/directory/v1/customer/my_customer/orgunits",
-        fn conn ->
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, JSON.encode!(%{"kind" => "admin#directory#org_units"}))
-        end
-      )
+    test "returns empty list when organizationUnits key is omitted (no org units)" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"kind" => "admin#directory#org_units"})
+      end)
 
       result =
         APIClient.stream_organization_units(@test_access_token)
@@ -628,12 +585,11 @@ defmodule Portal.Google.APIClientTest do
       assert [[]] = result
     end
 
-    test "returns error on non-200 response", %{bypass: bypass} do
-      # Use stub instead of expect_once since Req may retry on 5xx status codes
-      Bypass.stub(bypass, "GET", "/admin/directory/v1/customer/my_customer/orgunits", fn conn ->
+    test "returns error on non-200 response" do
+      Req.Test.expect(APIClient, fn conn ->
         conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(500, JSON.encode!(%{"error" => "Internal error"}))
+        |> Plug.Conn.put_status(500)
+        |> Req.Test.json(%{"error" => "Internal error"})
       end)
 
       result =
@@ -645,11 +601,9 @@ defmodule Portal.Google.APIClientTest do
   end
 
   describe "pagination edge cases" do
-    test "handles empty result list correctly for users", %{bypass: bypass} do
-      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/users", fn conn ->
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, JSON.encode!(%{"users" => []}))
+    test "handles empty result list correctly for users" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"users" => []})
       end)
 
       result =
@@ -659,29 +613,25 @@ defmodule Portal.Google.APIClientTest do
       assert [[]] = result
     end
 
-    test "stops pagination when error occurs mid-stream", %{bypass: bypass} do
-      # Use stub to handle Req's automatic retries on 5xx errors
-      Bypass.stub(bypass, "GET", "/admin/directory/v1/users", fn conn ->
+    test "stops pagination when error occurs mid-stream" do
+      page_count = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
+        current_page = :counters.get(page_count, 1)
+        :counters.add(page_count, 1, 1)
 
-        # First request (no pageToken) returns success with nextPageToken
-        # Subsequent requests (with pageToken) return 500 error
-        case conn.query_params["pageToken"] do
-          nil ->
-            conn
-            |> Plug.Conn.put_resp_content_type("application/json")
-            |> Plug.Conn.send_resp(
-              200,
-              JSON.encode!(%{
-                "users" => [%{"id" => "user1"}],
-                "nextPageToken" => "page2"
-              })
-            )
+        case current_page do
+          0 ->
+            Req.Test.json(conn, %{
+              "users" => [%{"id" => "user1"}],
+              "nextPageToken" => "page2"
+            })
 
-          _page_token ->
+          1 ->
             conn
-            |> Plug.Conn.put_resp_content_type("application/json")
-            |> Plug.Conn.send_resp(500, JSON.encode!(%{"error" => "Server error"}))
+            |> Plug.Conn.put_status(500)
+            |> Req.Test.json(%{"error" => "Server error"})
         end
       end)
 
@@ -692,11 +642,11 @@ defmodule Portal.Google.APIClientTest do
       assert [[%{"id" => "user1"}], {:error, %Req.Response{status: 500}}] = result
     end
 
-    test "preserves original query parameters when paginating", %{bypass: bypass} do
+    test "preserves original query parameters when paginating" do
       test_pid = self()
       page_count = :counters.new(1, [:atomics])
 
-      Bypass.expect(bypass, "GET", "/admin/directory/v1/users", fn conn ->
+      Req.Test.expect(APIClient, 2, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         current_page = :counters.get(page_count, 1)
         :counters.add(page_count, 1, 1)
@@ -708,9 +658,7 @@ defmodule Portal.Google.APIClientTest do
             1 -> %{"users" => [%{"id" => "user2"}]}
           end
 
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, JSON.encode!(response))
+        Req.Test.json(conn, response)
       end)
 
       APIClient.stream_users(@test_access_token, @test_domain)
@@ -734,14 +682,6 @@ defmodule Portal.Google.APIClientTest do
 
   # Helper functions
 
-  defp mock_test_endpoint(bypass, path, status) do
-    Bypass.expect(bypass, "GET", path, fn conn ->
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(status, "{}")
-    end)
-  end
-
   defp assert_authorization_header(conn, expected_token) do
     auth_header =
       Enum.find(conn.req_headers, fn {key, _} -> key == "authorization" end)
@@ -749,17 +689,5 @@ defmodule Portal.Google.APIClientTest do
     assert auth_header, "Expected authorization header to be present"
     {_, value} = auth_header
     assert value == "Bearer #{expected_token}"
-  end
-
-  defp override_endpoint_url(url) do
-    config = Portal.Config.fetch_env!(:portal, APIClient)
-    config = Keyword.put(config, :endpoint, url)
-    Portal.Config.put_env_override(:portal, APIClient, config)
-  end
-
-  defp override_token_endpoint(url) do
-    config = Portal.Config.fetch_env!(:portal, APIClient)
-    config = Keyword.put(config, :token_endpoint, url)
-    Portal.Config.put_env_override(:portal, APIClient, config)
   end
 end
