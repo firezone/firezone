@@ -23,6 +23,10 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
+        <ChangeItem pull="11584">
+          Improves connection reliability on systems where certain UDP socket
+          features are unavailable.
+        </ChangeItem>
         <ChangeItem pull="11627">
           Fixes an issue where reconnections would fail if the portal host is an
           IP address.
