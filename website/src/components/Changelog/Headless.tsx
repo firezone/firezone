@@ -14,6 +14,8 @@ export default function Headless({ os }: { os: OS }) {
           Improves connection reliability on systems where certain UDP socket
           features are unavailable.
         </ChangeItem>
+      </Unreleased>
+      <Entry version="1.5.6" date={new Date("2026-01-06")}>
         <ChangeItem pull="11627">
           Fixes an issue where reconnections would fail if the portal host is an
           IP address.
@@ -30,7 +32,7 @@ export default function Headless({ os }: { os: OS }) {
           Implements retry with exponential backoff on 429 (Too Many Requests)
           responses from the portal.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.5" date={new Date("2025-12-23")}>
         {os == OS.Linux && (
           <ChangeItem pull="10742">

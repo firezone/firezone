@@ -179,8 +179,8 @@ function gui() {
 # 3. Run `scripts/bump-versions.sh headless` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function headless() {
-    current_headless_client_version="1.5.5"
-    next_headless_client_version="1.5.6"
+    current_headless_client_version="1.5.6"
+    next_headless_client_version="1.5.7"
 
     update_changelog "website/src/components/Changelog/Headless.tsx" "$current_headless_client_version"
     update_version_marker "mark:current-headless-version" "$current_headless_client_version"
