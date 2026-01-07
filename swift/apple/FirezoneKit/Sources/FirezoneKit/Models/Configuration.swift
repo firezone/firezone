@@ -206,7 +206,7 @@ public struct TunnelConfiguration: Codable, Sendable {
 
   public init(
     apiURL: String, accountSlug: String, logFilter: String, internetResourceEnabled: Bool,
-    logSizeCap: Int
+    logSizeCap: Int = 100
   ) {
     self.apiURL = apiURL
     self.accountSlug = accountSlug
