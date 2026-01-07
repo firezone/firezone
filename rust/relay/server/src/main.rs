@@ -665,7 +665,12 @@ where
                         anyhow::Error::new(e).context("Portal connection failed")
                     ));
                 }
-                Poll::Pending | Poll::Ready(None) => {}
+                Poll::Ready(None) => {
+                    return Poll::Ready(Err(anyhow::Error::msg(
+                        "Portal connection task terminated",
+                    )));
+                }
+                Poll::Pending => {}
             }
 
             match self.sigterm.poll_recv(cx) {
@@ -753,9 +758,7 @@ async fn phoenix_channel_event_loop(
                     break;
                 }
             }
-            Ok(Event::Closed) => {
-                break;
-            }
+            Ok(Event::Closed) => break,
             Ok(Event::Hiccup {
                 backoff,
                 max_elapsed_time,
