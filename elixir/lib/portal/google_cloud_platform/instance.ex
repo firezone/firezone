@@ -8,6 +8,8 @@ defmodule Portal.GoogleCloudPlatform.Instance do
   use GenServer
   alias Portal.GoogleCloudPlatform
 
+  @mix_env Mix.env()
+
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   end
@@ -23,7 +25,7 @@ defmodule Portal.GoogleCloudPlatform.Instance do
   In test mode, this bypasses caching and calls fetch_access_token directly.
   """
   def fetch_access_token do
-    if Mix.env() == :test do
+    if @mix_env == :test do
       # In tests, bypass caching entirely
       case GoogleCloudPlatform.fetch_access_token() do
         {:ok, access_token, _expires_at} -> {:ok, access_token}
