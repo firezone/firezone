@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_handles_nonexistent_directories() {
-        let nonexistent = Path::new("/nonexistent/path/that/doesnt/exist");
+        let nonexistent = Path::new("/nonexistent/path/that/does/not/exist");
 
         let deleted = enforce_size_cap(&[nonexistent], 100);
         assert_eq!(deleted, 0);
