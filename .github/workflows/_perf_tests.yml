@@ -15,10 +15,8 @@ jobs:
       id-token: write
       pull-requests: write
     env:
-      API_IMAGE: "ghcr.io/firezone/api"
-      API_TAG: ${{ github.sha }}
-      WEB_IMAGE: "ghcr.io/firezone/web"
-      WEB_TAG: ${{ github.sha }}
+      PORTAL_IMAGE: "ghcr.io/firezone/portal"
+      PORTAL_TAG: ${{ github.sha }}
       ELIXIR_IMAGE: "ghcr.io/firezone/elixir"
       ELIXIR_TAG: ${{ github.sha }}
       GATEWAY_IMAGE: "ghcr.io/firezone/perf/gateway"
@@ -44,8 +42,9 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-docker
+      - uses: ./.github/actions/setup-scripts
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
+        run: docker compose run elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Increase max UDP buffer sizes
         run: |
           sudo sysctl -w net.core.wmem_max=16777216 # 16 MB
@@ -57,15 +56,16 @@ jobs:
             echo "UDP_BITRATE=300M" >> "$GITHUB_ENV"
           fi
 
-          docker compose build client-router gateway-router relay-1-router relay-2-router api-router
+          docker compose build client-router gateway-router relay-1-router relay-2-router portal-router
 
           # Start services in the same order each time for the tests
-          docker compose up -d iperf3
-          docker compose up -d api web domain --no-build
-          docker compose up -d relay-1 relay-2 --no-build
-          docker compose up -d gateway --no-build
-          docker compose up -d client --no-build
-          docker compose up -d network-config
+          # Retries are used because network I/O is flaky in GitHub Actions runners
+          retry docker compose up -d iperf3
+          retry docker compose up -d portal --no-build
+          retry docker compose up -d relay-1 relay-2 --no-build
+          retry docker compose up -d gateway --no-build
+          retry docker compose up -d client --no-build
+          retry docker compose up -d network-config
       - name: "Performance test: ${{ matrix.flavour }}-${{ matrix.test }}"
         timeout-minutes: 5
         env:
@@ -91,9 +91,9 @@ jobs:
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway
-      - name: Show API logs
+      - name: Show Portal logs
         if: "!cancelled()"
-        run: docker compose logs api
+        run: docker compose logs portal
       - name: Show iperf3 logs
         if: "!cancelled()"
         run: docker compose logs iperf3
@@ -135,7 +135,7 @@ jobs:
       checks: write
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-      - uses: bencherdev/bencher@main
+      - uses: bencherdev/bencher@2f1532643adc0e69e52acaec936d227ff14da24f # v0.5.9
       - name: Download performance test results
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:

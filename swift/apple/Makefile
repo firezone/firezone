@@ -15,7 +15,7 @@ CLIENT_FFI_SOURCES=$(shell find $(CLIENT_FFI_DIR)/src -name "*.rs" 2>/dev/null)
 
 # Set consistent environment to prevent Rust rebuilds
 # This must match the Xcode project setting
-export MACOSX_DEPLOYMENT_TARGET=12.4
+export MACOSX_DEPLOYMENT_TARGET=13.0
 
 # Map architecture names for Rust targets
 ifeq ($(ARCH),arm64)
@@ -134,7 +134,10 @@ clean:
 format:
 	@echo "Formatting Swift code..."
 	@find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -not -path "./FirezoneKit/.build/*" | xargs swift format format --in-place --parallel
-	@echo "Linting Swift code..."
+
+.PHONY: format-check
+format-check:
+	@echo "Checking Swift formatting..."
 	@find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -not -path "./FirezoneKit/.build/*" | xargs swift format lint --parallel --strict
 
 .PHONY: setup

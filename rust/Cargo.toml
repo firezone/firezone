@@ -51,7 +51,7 @@ arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
 async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
-axum = { version = "0.8.7", default-features = false }
+axum = { version = "0.8.8", default-features = false }
 aya = { git = "https://github.com/aya-rs/aya" }
 aya-build = { git = "https://github.com/aya-rs/aya" }
 aya-ebpf = { git = "https://github.com/aya-rs/aya" }
@@ -146,14 +146,14 @@ quote = "1.0"
 rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.7.1"
-reqwest = { version = "0.12.26", default-features = false }
+reqwest = { version = "0.12.28", default-features = false }
 resolv-conf = "0.7.6"
 ringbuffer = "0.16.0"
 roxmltree = "0.21"
 rpassword = "7.4.0"
 rtnetlink = { version = "0.19.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.34", default-features = false, features = ["ring"] }
-rustls-pki-types = "1.13.0"
+rustls-pki-types = "1.13.2"
 sadness-generator = "0.6.0"
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.10"
@@ -177,7 +177,7 @@ static_assertions = "1.1.0"
 str0m = { version = "0.9.0", default-features = false, features = ["sha1"] }
 strum = { version = "0.27.2", features = ["derive"] }
 stun_codec = "0.4.0"
-subprocess = "0.2.9"
+subprocess = "0.2.11"
 subtle = "2.5.0"
 supports-color = "3.0.2"
 swift-bridge = "0.1.57"
@@ -205,9 +205,9 @@ tokio-tungstenite = "0.28.0"
 tokio-util = "0.7.17"
 toml = "0.9"
 tracing = { version = "0.1.40" }
-tracing-appender = "0.2.3"
+tracing-appender = "0.2.4"
 tracing-core = "0.1.34"
-tracing-journald = "0.3.1"
+tracing-journald = "0.3.2"
 tracing-log = "0.2.0"
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "v0.1.x" } # Contains `dbg!` but for `tracing`.
 tracing-opentelemetry = "0.31.0"
@@ -218,7 +218,7 @@ tun = { path = "libs/connlib/tun" }
 tunnel = { path = "libs/connlib/tunnel" }
 uniffi = "0.30.0"
 url = "2.5.2"
-uuid = "1.18.1"
+uuid = "1.19.0"
 webpki-roots = "1.0.4"
 which = "4.4.2"
 windows = "0.61.3"

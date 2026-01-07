@@ -1,4 +1,4 @@
 #!/bin/sh
 set -e
 . "$(dirname -- "$0")/bootstrap"
-exec ./"$APPLICATION_NAME" eval Domain.Release.seed
+exec ./"$APPLICATION_NAME" eval Portal.Release.seed

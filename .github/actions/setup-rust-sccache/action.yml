@@ -7,7 +7,7 @@ runs:
     - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
     - name: Cache registry
-      uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
       with:
         workspaces: rust
         cache-targets: false
@@ -20,25 +20,8 @@ runs:
         echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> "$GITHUB_ENV"
 
     - name: Start sccache
-      run: $SCCACHE_PATH --start-server
+      run: ./scripts/retry.sh $SCCACHE_PATH --start-server
       continue-on-error: true
-      id: sccache-1
-      shell: bash
-      env:
-        SCCACHE_CONF: ".github/actions/setup-rust-sccache/sccache.toml"
-
-    - name: Start sccache
-      continue-on-error: true
-      run: $SCCACHE_PATH --start-server
-      if: ${{ steps.sccache-1.outcome == 'failure' }}
-      id: sccache-2
-      shell: bash
-      env:
-        SCCACHE_CONF: ".github/actions/setup-rust-sccache/sccache.toml"
-
-    - name: Start sccache
-      run: $SCCACHE_PATH --start-server
-      if: ${{ steps.sccache-2.outcome == 'failure' }}
       shell: bash
       env:
         SCCACHE_CONF: ".github/actions/setup-rust-sccache/sccache.toml"

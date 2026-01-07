@@ -4,7 +4,7 @@ services:
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
-      FIREZONE_API_URL: ws://api:8081
+      FIREZONE_API_URL: ws://portal:8081
       OTLP_GRPC_ENDPOINT: otel:4317
       EBPF_OFFLOADING: eth0
     privileged: true
@@ -26,8 +26,8 @@ services:
       retries: 5
       timeout: 5s
     depends_on:
-      api:
+      portal:
         condition: "service_healthy"
     extra_hosts:
-      - "api:203.0.113.10"
-      - "api:203:0:113::10"
+      - "portal:203.0.113.10"
+      - "portal:203:0:113::10"

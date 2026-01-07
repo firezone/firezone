@@ -1,0 +1,53 @@
+defmodule PortalWeb.Live.Sites.NewTokenTest do
+  use PortalWeb.ConnCase, async: true
+
+  setup do
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    site = Fixtures.Sites.create_site(account: account)
+
+    %{
+      account: account,
+      actor: actor,
+      identity: identity,
+      site: site
+    }
+  end
+
+  test "creates a new site on valid attrs and redirects when gateway is connected", %{
+    account: account,
+    identity: identity,
+    site: site,
+    conn: conn
+  } do
+    {:ok, lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/sites/#{site}/new_token")
+
+    assert html =~ "Select deployment method"
+    assert html =~ "FIREZONE_TOKEN="
+    assert html =~ "docker run"
+    assert html =~ "Waiting for connection..."
+
+    token =
+      Regex.run(~r/FIREZONE_TOKEN=([^&\n ]+)/, html)
+      |> List.last()
+      |> String.trim("&quot;")
+
+    :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
+    context = Fixtures.Auth.build_context(type: :site)
+    assert {:ok, site, token} = Portal.Gateways.authenticate(token, context)
+    gateway = Fixtures.Gateways.create_gateway(account: account, site: site, token: token)
+    :ok = Portal.Presence.Gateways.connect(gateway, token.id)
+
+    expected_topic = "presences:sites:#{site.id}"
+    assert_receive %Phoenix.Socket.Broadcast{topic: ^expected_topic}
+
+    wait_for(fn ->
+      assert element(lv, "#connection-status")
+             |> render() =~ "Connected, click to continue"
+    end)
+  end
+end

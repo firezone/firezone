@@ -2,8 +2,8 @@ use crate::otel;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use futures::{SinkExt, ready};
 use gat_lending_iterator::LendingIterator;
-use socket_factory::DatagramOut;
 use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
+use socket_factory::{DatagramOut, PerfUdpSocket};
 use std::env::VarError;
 use std::time::{Duration, Instant};
 use std::{
@@ -398,11 +398,11 @@ impl Drop for ThreadedUdpSocket {
 fn listen(
     sf: Arc<dyn SocketFactory<UdpSocket>>,
     addresses: &[SocketAddr],
-) -> io::Result<UdpSocket> {
+) -> io::Result<PerfUdpSocket> {
     let mut last_err = None;
 
     for addr in addresses {
-        match sf.bind(*addr) {
+        match sf.bind(*addr).and_then(|s| s.into_perf()) {
             Ok(s) => return Ok(s),
             Err(e) => {
                 tracing::debug!(%addr, "Failed to listen on UDP socket: {e}");

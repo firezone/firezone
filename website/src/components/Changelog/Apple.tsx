@@ -25,6 +25,32 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11634">
+          Bumps minimum macOS version from 12.4 to 13.0 (Ventura) to enable
+          SwiftUI MenuBarExtra API.
+        </ChangeItem>
+        <ChangeItem pull="11584">
+          Improves connection reliability on systems where certain UDP socket
+          features are unavailable.
+        </ChangeItem>
+        <ChangeItem pull="11627">
+          Fixes an issue where reconnections would fail if the portal host is an
+          IP address.
+        </ChangeItem>
+        <ChangeItem pull="11626">
+          Fixes an issue where reconnecting to the portal would fail if the DNS
+          resolver list was empty due to a network reset or other edge case.
+        </ChangeItem>
+        <ChangeItem pull="11595">
+          Passes the authentication token in the x-authorization header instead
+          of in the URL, improving rate limiting for users behind shared IPs.
+        </ChangeItem>
+        <ChangeItem pull="11594">
+          Implements retry with exponential backoff on 429 (Too Many Requests)
+          responses from the portal.
+        </ChangeItem>
+      </Unreleased>
+      <Entry version="1.5.11" date={new Date("2025-12-23")}>
         <ChangeItem pull="11141">
           Fixes an issue where spurious resource updates would result in
           perceived network interruptions resulting in errors like{" "}
@@ -34,7 +60,7 @@ export default function Apple() {
           Fixes an issue where Firezone would not connect if an IPv6 interface
           is present but not routable.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.10" date={new Date("2025-12-04")}>
         <ChangeItem pull="10986">
           Fixes a minor race condition that could arise on sign out.

@@ -90,13 +90,14 @@ jobs:
           - identifier: Firezone.Client.Headless
             tag_prefix: headless-client
     steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - id: get-version
         run: |
           version=${{ inputs.release_name || github.event.release.name }}
           version=${version#${{ matrix.tag_prefix }}-}
           echo "version=$version" >> "$GITHUB_OUTPUT"
         shell: bash
-      - uses: vedantmgoyal9/winget-releaser@19e706d4c9121098010096f9c495a70a7518b30f # main
+      - uses: ./.github/actions/winget-releaser
         if: ${{ startsWith((inputs.release_name || github.event.release.name), matrix.tag_prefix) }}
         with:
           identifier: ${{ matrix.identifier }}

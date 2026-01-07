@@ -18,7 +18,7 @@ jobs:
         uses: lycheeverse/lychee-action@a8c4c7cb88f0c7386610c35eb25108e448569cb0 # v2.7.0
         with:
           fail: false
-          args: --verbose --no-progress --exclude-all-private --max-concurrency 1 --retry-wait-time 60 --base https://firezone.dev --accept 100..=103,200..=299,429 .
+          args: --verbose --no-progress --exclude-all-private --max-concurrency 1 --retry-wait-time 60 --base https://firezone.dev --accept 100..=103,200..=399,429 .
           workingDirectory: website
 
       - name: Create Issue From File

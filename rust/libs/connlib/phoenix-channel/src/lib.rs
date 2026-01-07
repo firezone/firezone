@@ -20,7 +20,7 @@ use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
 use logging::err_with_src;
 use rand_core::{OsRng, RngCore};
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::{ExposeSecret as _, SecretString};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
@@ -34,6 +34,7 @@ use url::Url;
 pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
 pub use tokio_tungstenite::tungstenite::http::StatusCode;
+use tokio_tungstenite::tungstenite::http::header::RETRY_AFTER;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
@@ -53,9 +54,11 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     pending_join_requests: BTreeMap<OutboundRequestId, Instant>,
 
     // Stored here to allow re-connecting.
-    url_prototype: SecretBox<LoginUrl<TFinish>>,
+    url_prototype: LoginUrl<TFinish>,
     last_url: Option<Url>,
     user_agent: String,
+    /// The authentication token, sent via X-Authorization header.
+    token: SecretString,
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     reconnect_backoff: Option<ExponentialBackoff>,
 
@@ -83,10 +86,12 @@ impl State {
         addresses: Vec<SocketAddr>,
         host: String,
         user_agent: String,
+        token: SecretString,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
         Self::Connecting(
-            create_and_connect_websocket(url, addresses, host, user_agent, socket_factory).boxed(),
+            create_and_connect_websocket(url, addresses, host, user_agent, token, socket_factory)
+                .boxed(),
         )
     }
 }
@@ -96,6 +101,7 @@ async fn create_and_connect_websocket(
     addresses: Vec<SocketAddr>,
     host: String,
     user_agent: String,
+    token: SecretString,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
     tracing::debug!(%host, ?addresses, %user_agent, "Connecting to portal");
@@ -105,7 +111,7 @@ async fn create_and_connect_websocket(
         .await
         .map_err(|_| InternalError::Timeout { duration })??;
 
-    let (stream, _) = client_async_tls(make_request(url, host, user_agent), socket)
+    let (stream, _) = client_async_tls(make_request(url, host, user_agent, &token), socket)
         .await
         .map_err(InternalError::WebSocket)?;
 
@@ -269,16 +275,16 @@ where
     /// You must explicitly call [`PhoenixChannel::connect`] to establish a connection.
     ///
     /// The provided URL must contain a host.
-    /// Additionally, you must already provide any query parameters required for authentication.
     pub fn disconnected(
-        url: SecretBox<LoginUrl<TFinish>>,
+        url: LoginUrl<TFinish>,
+        token: SecretString,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
         make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Result<Self> {
-        let host_and_port = url.expose_secret().host_and_port();
+        let host_and_port = url.host_and_port();
 
         // Statically resolve the host in the URL to a set of addresses.
         // We use these when connecting the socket to avoid a dependency on DNS resolution later on.
@@ -293,6 +299,7 @@ where
             reconnect_backoff: None,
             url_prototype: url,
             user_agent,
+            token,
             state: State::Closed,
             socket_factory,
             waker: None,
@@ -354,7 +361,7 @@ where
 
     /// Establishes a new connection, dropping the current one if any exists.
     pub fn connect(&mut self, params: TFinish) {
-        let url = self.url_prototype.expose_secret().to_url(params);
+        let url = self.url_prototype.to_url(params);
 
         if matches!(self.state, State::Connecting(_)) && Some(&url) == self.last_url.as_ref() {
             tracing::debug!("We are already connecting");
@@ -366,11 +373,13 @@ where
 
         // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
+        let token = self.token.clone();
         self.state = State::connect(
             url.clone(),
             self.socket_addresses(),
             self.host(),
             user_agent,
+            token,
             self.socket_factory.clone(),
         );
         self.last_url = Some(url);
@@ -382,15 +391,11 @@ where
     }
 
     pub fn url(&self) -> String {
-        self.url_prototype.expose_secret().base_url()
+        self.url_prototype.base_url()
     }
 
     pub fn host(&self) -> String {
-        self.url_prototype
-            .expose_secret()
-            .host_and_port()
-            .0
-            .to_owned()
+        self.url_prototype.host_and_port().0.to_owned()
     }
 
     pub fn update_ips(&mut self, ips: Vec<IpAddr>) {
@@ -446,6 +451,7 @@ where
                         .expect("should have last URL if we receive connection error")
                         .clone();
                     let user_agent = self.user_agent.clone();
+                    let token = self.token.clone();
                     let socket_factory = self.socket_factory.clone();
 
                     self.state = State::Connecting(Box::pin(async move {
@@ -455,6 +461,7 @@ where
                             socket_addresses,
                             host,
                             user_agent,
+                            token,
                             socket_factory,
                         )
                         .await
@@ -473,12 +480,47 @@ where
                         self.pending_joins.clear();
                         self.pending_join_requests.clear();
 
-                        let (host, _) = self.url_prototype.expose_secret().host_and_port();
+                        let (host, _) = self.url_prototype.host_and_port();
 
                         tracing::info!(%host, "Connected to portal");
                         self.join(self.login, self.init_req.clone());
 
                         continue;
+                    }
+                    // Handle 408, 429 and 503 with Retry-After header, falling back to exponential backoff
+                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
+                        if r.status() == StatusCode::REQUEST_TIMEOUT
+                            || r.status() == StatusCode::TOO_MANY_REQUESTS
+                            || r.status() == StatusCode::SERVICE_UNAVAILABLE =>
+                    {
+                        let backoff = match parse_retry_after(&r) {
+                            Some(duration) => duration,
+                            None => {
+                                let reconnect_backoff = self
+                                    .reconnect_backoff
+                                    .get_or_insert_with(&self.make_reconnect_backoff);
+
+                                reconnect_backoff.next_backoff().ok_or_else(|| {
+                                    Error::MaxRetriesReached {
+                                        final_error: r.status().to_string(),
+                                    }
+                                })?
+                            }
+                        };
+
+                        self.state = State::Reconnect { backoff };
+
+                        return Poll::Ready(Ok(Event::Hiccup {
+                            backoff,
+                            max_elapsed_time: self
+                                .reconnect_backoff
+                                .as_ref()
+                                .and_then(|b| b.max_elapsed_time),
+                            error: anyhow::Error::new(InternalError::WebSocket(
+                                tungstenite::Error::Http(r),
+                            ))
+                            .context("Reconnecting to portal on transient error"),
+                        }));
                     }
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
                         if r.status().is_client_error() =>
@@ -757,13 +799,47 @@ where
     }
 
     fn socket_addresses(&self) -> Vec<SocketAddr> {
-        let port = self.url_prototype.expose_secret().host_and_port().1;
+        let port = self.url_prototype.host_and_port().1;
 
         self.resolved_addresses
             .iter()
             .map(|ip| SocketAddr::new(*ip, port))
             .collect()
     }
+}
+
+/// Parses a Retry-After header value into a Duration.
+///
+/// The header can be either:
+/// - A number of seconds (e.g., "120")
+/// - An HTTP date in IMF-fixdate format (e.g., "Wed, 21 Oct 2015 07:28:00 GMT")
+fn parse_retry_after(response: &tungstenite::http::Response<Option<Vec<u8>>>) -> Option<Duration> {
+    let header = response.headers().get(RETRY_AFTER)?;
+    let value = header.to_str().ok()?;
+    let duration = parse_retry_after_value(value)?;
+
+    Some(duration)
+}
+
+fn parse_retry_after_value(value: &str) -> Option<Duration> {
+    // Try parsing as seconds first (most common for 429 responses)
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    // Try parsing as HTTP date (IMF-fixdate format: "Wed, 21 Oct 2015 07:28:00 GMT")
+    if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
+        let now = chrono::Utc::now();
+        let retry_at = date.to_utc();
+        let duration = retry_at
+            .signed_duration_since(now)
+            .to_std()
+            .unwrap_or(Duration::ZERO);
+
+        return Some(duration);
+    }
+
+    None
 }
 
 #[derive(Debug)]
@@ -905,7 +981,7 @@ impl<T> PhoenixMessage<T> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(url: Url, host: String, user_agent: String) -> Request {
+fn make_request(url: Url, host: String, user_agent: String, token: &SecretString) -> Request {
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
@@ -920,6 +996,10 @@ fn make_request(url: Url, host: String, user_agent: String) -> Request {
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
         .header("User-Agent", user_agent)
+        .header(
+            "X-Authorization",
+            format!("Bearer {}", token.expose_secret()),
+        )
         .uri(url.to_string())
         .body(())
         .expect("should always be able to build a request if we only pass strings to it")
@@ -1113,5 +1193,53 @@ mod tests {
         .await
         .unwrap()
         .unwrap();
+    }
+
+    #[test]
+    fn parse_retry_after_seconds() {
+        assert_eq!(
+            parse_retry_after_value("120"),
+            Some(Duration::from_secs(120))
+        );
+        assert_eq!(parse_retry_after_value("0"), Some(Duration::from_secs(0)));
+        assert_eq!(
+            parse_retry_after_value("3600"),
+            Some(Duration::from_secs(3600))
+        );
+    }
+
+    #[test]
+    fn parse_retry_after_http_date_in_future() {
+        // Create a date 60 seconds in the future
+        let future_date = chrono::Utc::now() + chrono::Duration::seconds(60);
+        let date_str = future_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+        let result = parse_retry_after_value(&date_str);
+        assert!(result.is_some(), "should parse future HTTP date");
+
+        let duration = result.unwrap();
+        // Allow some tolerance for test execution time
+        assert!(
+            duration >= Duration::from_secs(58) && duration <= Duration::from_secs(62),
+            "duration should be approximately 60 seconds, got {duration:?}"
+        );
+    }
+
+    #[test]
+    fn parse_retry_after_http_date_in_past() {
+        // Create a date 60 seconds in the past
+        let past_date = chrono::Utc::now() - chrono::Duration::seconds(60);
+        let date_str = past_date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+        let result = parse_retry_after_value(&date_str);
+        assert_eq!(result, Some(Duration::ZERO), "past date should return zero");
+    }
+
+    #[test]
+    fn parse_retry_after_invalid() {
+        assert_eq!(parse_retry_after_value("invalid"), None);
+        assert_eq!(parse_retry_after_value(""), None);
+        assert_eq!(parse_retry_after_value("-1"), None);
+        assert_eq!(parse_retry_after_value("12.5"), None);
     }
 }

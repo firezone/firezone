@@ -21,7 +21,7 @@ use futures::{
 };
 use logging::{FilterReloadHandle, err_with_src};
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use std::{
     io::{self, Write},
     mem,
@@ -636,7 +636,6 @@ impl<'a> Handler<'a> {
 
         let url = LoginUrl::client(
             Url::parse(api_url).context("Failed to parse URL")?,
-            &token,
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -649,7 +648,8 @@ impl<'a> Handler<'a> {
 
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
-            SecretBox::init_with(|| url),
+            url,
+            token,
             get_user_agent("gui-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
