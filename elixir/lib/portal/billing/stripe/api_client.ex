@@ -86,7 +86,7 @@ defmodule Portal.Billing.Stripe.APIClient do
     ]
 
     req_options =
-      [method: method, url: url, headers: headers, body: body, retry: false]
+      [method: method, url: url, headers: headers, body: body]
       |> Keyword.merge(fetch_config(:req_options) || [])
 
     case Req.request(req_options) do
