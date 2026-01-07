@@ -5,10 +5,13 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
   describe "handle_info/2 for :compressed_metrics" do
     setup do
-      %Bypass{} =
-        Bypass.open()
-        |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-        |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
+      test_pid = self()
+
+      expectations =
+        GoogleCloudPlatform.mock_instance_metadata_token_endpoint() ++
+          GoogleCloudPlatform.mock_metrics_submit_endpoint_with_capture(test_pid)
+
+      GoogleCloudPlatform.stub(expectations)
 
       :ok
     end
@@ -56,7 +59,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
 
-      assert_receive {:bypass_request, _conn, body}
+      assert_receive {:metrics_request, _conn, body}
 
       assert body == %{
                "timeSeries" => [
@@ -145,7 +148,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
 
-      assert_receive {:bypass_request, _conn, body}
+      assert_receive {:metrics_request, _conn, body}
 
       assert body == %{
                "timeSeries" => [
@@ -229,7 +232,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
 
-      assert_receive {:bypass_request, _conn, body}
+      assert_receive {:metrics_request, _conn, body}
 
       assert body == %{
                "timeSeries" => [
@@ -300,7 +303,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
 
-      assert_receive {:bypass_request, _conn, body}
+      assert_receive {:metrics_request, _conn, body}
 
       assert body == %{
                "timeSeries" => [
@@ -420,7 +423,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
 
-      assert_receive {:bypass_request, _conn, body}
+      assert_receive {:metrics_request, _conn, body}
 
       assert body == %{
                "timeSeries" => [
@@ -446,7 +449,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
              }
     end
 
-    test "submits the metrics to Google Cloud when incoming metrics surpass buffer length" do
+    test "flushes the metrics to Google Cloud when incoming metrics surpass buffer length" do
       now = DateTime.utc_now()
       tags = {%{type: "test"}, %{app: "myapp"}}
 
@@ -465,7 +468,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       assert buffer_size == 200
 
-      refute_receive {:bypass_request, _conn, _body}
+      refute_receive {:metrics_request, _conn, _body}
 
       # Send the 201st metric, which should trigger the flush
       {:noreply, {_, _, _, {buffer_size, buffer}}} =
@@ -477,7 +480,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       assert buffer == %{{Telemetry.Metrics.Counter, [:foo, 200], %{}, :request} => {now, now, 1}}
       assert buffer_size == 1
-      assert_receive {:bypass_request, _conn, %{"timeSeries" => time_series}}
+      assert_receive {:metrics_request, _conn, %{"timeSeries" => time_series}}
       assert length(time_series) == 200
     end
 
@@ -517,7 +520,7 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       # Should receive flush request due to the large batch
       # First flush: The initial 50 metrics in buffer + 150 of the large batch
-      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush}}
+      assert_receive {:metrics_request, _conn, %{"timeSeries" => flush}}
       assert length(flush) == 200
 
       # Remaining metrics should still be in buffer. 50 + 250 - 200 = 100
@@ -552,8 +555,8 @@ defmodule Portal.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       # Should receive multiple flushes as the large batch is processed
       # We expect at least 2 flushes (200 + 200, with 100 remaining)
-      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush1}}
-      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush2}}
+      assert_receive {:metrics_request, _conn, %{"timeSeries" => flush1}}
+      assert_receive {:metrics_request, _conn, %{"timeSeries" => flush2}}
       assert length(flush1) == 200
       assert length(flush2) == 200
 
