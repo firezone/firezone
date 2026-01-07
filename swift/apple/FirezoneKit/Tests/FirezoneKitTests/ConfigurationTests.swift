@@ -44,6 +44,25 @@ struct ConfigurationTests {
     #expect(config.hideResourceList == false)
   }
 
+  @Test("String defaults use fallback when key is missing")
+  @MainActor
+  func stringDefaultsFallback() async {
+    let defaults = makeTestDefaults()
+    let config = Configuration(userDefaults: defaults)
+
+    // Verify the fallback logic works - string(forKey:) returns nil, so ?? kicks in
+    // These assertions verify the actual values, not just self-comparison
+    #expect(config.authURL.starts(with: "https://app.fire"))
+    #expect(config.apiURL.starts(with: "wss://api.fire"))
+    #expect(config.supportURL == "https://firezone.dev/support")
+    #expect(config.accountSlug == "")
+
+    // Confirm nothing was written to UserDefaults (defaults are computed, not stored)
+    #expect(defaults.string(forKey: "authURL") == nil)
+    #expect(defaults.string(forKey: "apiURL") == nil)
+    #expect(defaults.string(forKey: "supportURL") == nil)
+  }
+
   // MARK: - Read/Write Properties
 
   @Test("String properties persist to UserDefaults")
@@ -167,6 +186,71 @@ struct ConfigurationTests {
     #expect(config.publishedInternetResourceEnabled == true)
     #expect(config.publishedHideAdminPortalMenuItem == true)
     #expect(config.publishedHideResourceList == true)
+  }
+
+  // MARK: - Reactive Published Property Updates
+
+  @Test("Published properties update when regular properties change")
+  @MainActor
+  func publishedPropertiesUpdateReactively() async throws {
+    let defaults = makeTestDefaults()
+    let config = Configuration(userDefaults: defaults)
+
+    // Initially false
+    #expect(config.publishedInternetResourceEnabled == false)
+
+    // Trigger the change
+    config.internetResourceEnabled = true
+
+    // Poll for the update with timeout - the notification is async via Combine
+    let deadline = Date().addingTimeInterval(1.0)
+    while config.publishedInternetResourceEnabled == false && Date() < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+
+    #expect(config.publishedInternetResourceEnabled == true)
+  }
+
+  @Test("Published properties update when UserDefaults changes externally")
+  @MainActor
+  func publishedPropertiesUpdateFromExternalChanges() async throws {
+    let defaults = makeTestDefaults()
+    let config = Configuration(userDefaults: defaults)
+
+    // Initially false
+    #expect(config.publishedInternetResourceEnabled == false)
+
+    // Simulate an external change (e.g., from MDM or another process)
+    defaults.set(true, forKey: "internetResourceEnabled")
+
+    // Wait for notification to propagate
+    try await Task.sleep(for: .milliseconds(50))
+
+    // Published property should reflect the external change
+    #expect(config.publishedInternetResourceEnabled == true)
+  }
+
+  @Test("objectWillChange emits when properties change")
+  @MainActor
+  func objectWillChangeEmits() async throws {
+    let defaults = makeTestDefaults()
+    let config = Configuration(userDefaults: defaults)
+
+    var emissionCount = 0
+    let cancellable = config.objectWillChange.sink { _ in
+      emissionCount += 1
+    }
+
+    // Trigger a change
+    config.internetResourceEnabled = true
+
+    // Wait for notification to propagate
+    try await Task.sleep(for: .milliseconds(50))
+
+    #expect(emissionCount >= 1, "objectWillChange should have emitted at least once")
+
+    // Keep cancellable alive until end of test
+    _ = cancellable
   }
 
   // MARK: - Reading Pre-existing Values
