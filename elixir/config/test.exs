@@ -68,6 +68,11 @@ config :portal, Portal.Billing.Stripe.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Okta.APIClient,
+  req_options: [
+    plug: {Req.Test, Portal.Okta.APIClient}
+  ]
+
 config :portal, Portal.Telemetry, enabled: false
 
 config :portal, Portal.ConnectivityChecks, enabled: false
