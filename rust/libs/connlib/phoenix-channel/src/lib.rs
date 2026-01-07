@@ -39,24 +39,8 @@ use tokio_tungstenite::tungstenite::http::header::RETRY_AFTER;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
-/// Maximum time to retry initial connection attempts before giving up.
 const INITIAL_CONNECT_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
-
-/// Fixed interval between initial connection attempts.
 const INITIAL_CONNECT_INTERVAL: Duration = Duration::from_secs(1);
-
-/// Creates a backoff strategy for initial connection attempts (before ever connecting successfully).
-///
-/// Uses a fixed 1s interval with 15s max elapsed time to fail fast.
-fn make_initial_backoff() -> ExponentialBackoff {
-    ExponentialBackoffBuilder::default()
-        .with_initial_interval(INITIAL_CONNECT_INTERVAL)
-        .with_max_interval(INITIAL_CONNECT_INTERVAL)
-        .with_multiplier(1.0) // No exponential increase, fixed interval
-        .with_randomization_factor(0.0) // No jitter, predictable intervals
-        .with_max_elapsed_time(Some(INITIAL_CONNECT_MAX_ELAPSED_TIME))
-        .build()
-}
 
 pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     state: State,
@@ -81,16 +65,7 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     token: SecretString,
     make_initial_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
-    /// The current backoff state, if any.
-    ///
-    /// When `was_connected` is false, uses `make_initial_backoff` (fixed 5s interval, 30s max).
-    /// When `was_connected` is true, uses `make_reconnect_backoff` (caller-provided, longer timeout).
     backoff: Option<ExponentialBackoff>,
-    /// Whether we have ever successfully connected to the portal.
-    ///
-    /// Used to determine which backoff strategy to use:
-    /// - Initial connection: shorter timeout (e.g. 30s) to fail fast
-    /// - Reconnection: longer timeout to survive longer partitions
     was_connected: bool,
 
     resolved_addresses: Vec<IpAddr>,
@@ -301,17 +276,6 @@ where
     TInboundMsg: DeserializeOwned,
     TFinish: IntoIterator<Item = (&'static str, String)>,
 {
-    /// Creates a new [PhoenixChannel] to the given endpoint in the `disconnected` state.
-    ///
-    /// You must explicitly call [`PhoenixChannel::connect`] to establish a connection.
-    ///
-    /// The provided URL must contain a host.
-    ///
-    /// # Arguments
-    ///
-    /// * `make_reconnect_backoff` - Backoff strategy for reconnection attempts (after a successful connection).
-    ///   Should have a longer max elapsed time to survive network partitions.
-    ///   For initial connection attempts (before ever connecting), a fixed 1s interval with 15s max is used.
     pub fn disconnected(
         url: LoginUrl<TFinish>,
         token: SecretString,
@@ -536,15 +500,15 @@ where
                         let backoff = match parse_retry_after(&r) {
                             Some(duration) => duration,
                             None => {
-                                let reconnect_backoff = self
-                                    .reconnect_backoff
+                                let backoff = self
+                                    .backoff
                                     .get_or_insert_with(&self.make_reconnect_backoff);
 
-                                reconnect_backoff.next_backoff().ok_or_else(|| {
-                                    Error::MaxRetriesReached {
+                                backoff
+                                    .next_backoff()
+                                    .ok_or_else(|| Error::MaxRetriesReached {
                                         final_error: r.status().to_string(),
-                                    }
-                                })?
+                                    })?
                             }
                         };
 
@@ -553,7 +517,7 @@ where
                         return Poll::Ready(Ok(Event::Hiccup {
                             backoff,
                             max_elapsed_time: self
-                                .reconnect_backoff
+                                .backoff
                                 .as_ref()
                                 .and_then(|b| b.max_elapsed_time),
                             error: anyhow::Error::new(InternalError::WebSocket(
@@ -582,9 +546,6 @@ where
                                     }
                                 })?,
                                 None => {
-                                    // Create a new backoff based on whether we've ever connected.
-                                    // - Initial connection: fixed 1s interval, 15s max
-                                    // - Reconnection: caller-provided backoff (longer timeout)
                                     let new_backoff = if self.was_connected {
                                         (self.make_reconnect_backoff)()
                                     } else {
@@ -857,6 +818,16 @@ where
             .map(|ip| SocketAddr::new(*ip, port))
             .collect()
     }
+}
+
+fn make_initial_backoff() -> ExponentialBackoff {
+    ExponentialBackoffBuilder::default()
+        .with_initial_interval(INITIAL_CONNECT_INTERVAL)
+        .with_max_interval(INITIAL_CONNECT_INTERVAL)
+        .with_multiplier(1.0)
+        .with_randomization_factor(0.0)
+        .with_max_elapsed_time(Some(INITIAL_CONNECT_MAX_ELAPSED_TIME))
+        .build()
 }
 
 /// Parses a Retry-After header value into a Duration.
