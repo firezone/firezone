@@ -13,13 +13,12 @@ import Testing
 @Suite("Configuration Tests")
 struct ConfigurationTests {
 
-  // Use a unique suite name for test isolation
-  private static let testSuiteName = "dev.firezone.firezone.tests.\(UUID().uuidString)"
-
+  // Each call creates a unique suite for proper test isolation
   private func makeTestDefaults() -> UserDefaults {
-    let defaults = UserDefaults(suiteName: Self.testSuiteName)!
-    // Clear any existing values
-    defaults.removePersistentDomain(forName: Self.testSuiteName)
+    let suiteName = "dev.firezone.firezone.tests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    // Clear any existing values (shouldn't be any with UUID-based name)
+    defaults.removePersistentDomain(forName: suiteName)
     return defaults
   }
 
@@ -192,65 +191,79 @@ struct ConfigurationTests {
 
   @Test("Published properties update when regular properties change")
   @MainActor
-  func publishedPropertiesUpdateReactively() async throws {
+  func publishedPropertiesUpdateReactively() async {
     let defaults = makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
     // Initially false
     #expect(config.publishedInternetResourceEnabled == false)
 
-    // Trigger the change
-    config.internetResourceEnabled = true
+    // Wait for the published property to update to the expected value
+    await confirmation { confirm in
+      let cancellable = config.$publishedInternetResourceEnabled
+        .sink { value in
+          if value { confirm() }  // only confirm when true
+        }
 
-    // Poll for the update with timeout - the notification is async via Combine
-    let deadline = Date().addingTimeInterval(1.0)
-    while config.publishedInternetResourceEnabled == false && Date() < deadline {
-      try await Task.sleep(for: .milliseconds(10))
+      config.internetResourceEnabled = true
+
+      // Give async notification time to propagate
+      try? await Task.sleep(for: .milliseconds(100))
+
+      _ = cancellable
     }
-
-    #expect(config.publishedInternetResourceEnabled == true)
   }
 
   @Test("Published properties update when UserDefaults changes externally")
   @MainActor
-  func publishedPropertiesUpdateFromExternalChanges() async throws {
+  func publishedPropertiesUpdateFromExternalChanges() async {
     let defaults = makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
     // Initially false
     #expect(config.publishedInternetResourceEnabled == false)
 
-    // Simulate an external change (e.g., from MDM or another process)
-    defaults.set(true, forKey: "internetResourceEnabled")
+    // Wait for the published property to update to the expected value
+    await confirmation { confirm in
+      let cancellable = config.$publishedInternetResourceEnabled
+        .sink { value in
+          if value { confirm() }  // only confirm when true
+        }
 
-    // Wait for notification to propagate
-    try await Task.sleep(for: .milliseconds(50))
+      // Simulate an external change (e.g., from MDM or another process)
+      defaults.set(true, forKey: "internetResourceEnabled")
 
-    // Published property should reflect the external change
-    #expect(config.publishedInternetResourceEnabled == true)
+      // Give async notification time to propagate
+      try? await Task.sleep(for: .milliseconds(100))
+
+      _ = cancellable
+    }
   }
 
   @Test("objectWillChange emits when properties change")
   @MainActor
-  func objectWillChangeEmits() async throws {
+  func objectWillChangeEmits() async {
     let defaults = makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
-    var emissionCount = 0
-    let cancellable = config.objectWillChange.sink { _ in
-      emissionCount += 1
+    // Wait for objectWillChange to emit and verify state changed correctly
+    var confirmed = false
+    await confirmation { confirm in
+      let cancellable = config.objectWillChange.sink { [weak config] _ in
+        // Verify the state is correct when objectWillChange fires (only confirm once)
+        if !confirmed && config?.publishedInternetResourceEnabled == true {
+          confirmed = true
+          confirm()
+        }
+      }
+
+      config.internetResourceEnabled = true
+
+      // Give async notification time to propagate
+      try? await Task.sleep(for: .milliseconds(100))
+
+      _ = cancellable
     }
-
-    // Trigger a change
-    config.internetResourceEnabled = true
-
-    // Wait for notification to propagate
-    try await Task.sleep(for: .milliseconds(50))
-
-    #expect(emissionCount >= 1, "objectWillChange should have emitted at least once")
-
-    // Keep cancellable alive until end of test
-    _ = cancellable
   }
 
   // MARK: - Reading Pre-existing Values
