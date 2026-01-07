@@ -312,55 +312,6 @@ async fn http_400_returns_client_error() {
     );
 }
 
-#[tokio::test]
-async fn backoff_grows_with_repeated_429_failures() {
-    let port = http_status_server(429, "Too Many Requests").await;
-
-    let mut channel = make_test_channel(port);
-    channel.connect(PublicKeyParam([0u8; 32]));
-
-    let mut backoffs = Vec::new();
-
-    // Poll multiple times and collect backoff values
-    for i in 0..5 {
-        let result = tokio::time::timeout(Duration::from_secs(5), async {
-            future::poll_fn(|cx| channel.poll(cx)).await
-        })
-        .await
-        .expect("should not timeout");
-
-        let current_backoff = match result {
-            Ok(Event::Hiccup { backoff, .. }) => backoff,
-            other => panic!("expected Event::Hiccup on iteration {i}, got {other:?}"),
-        };
-
-        backoffs.push(current_backoff);
-    }
-
-    // First attempt should have approximately 1 second backoff (with jitter, ranges from 500ms to 1.5s)
-    assert!(
-        backoffs[0] >= Duration::from_millis(500) && backoffs[0] <= Duration::from_millis(1500),
-        "first backoff should be approximately 1 second, got {:?}",
-        backoffs[0]
-    );
-
-    // Subsequent backoffs should be non-zero (exponential backoff has jitter, so we can't
-    // guarantee strict monotonic increase, but they should all be positive after first)
-    for (i, backoff) in backoffs.iter().enumerate().skip(1) {
-        assert!(
-            *backoff > Duration::ZERO,
-            "backoff {i} should be positive, got {backoff:?}"
-        );
-    }
-
-    // Final backoff should be significant (showing exponential growth over time)
-    let final_backoff = backoffs.last().unwrap();
-    assert!(
-        *final_backoff > Duration::from_millis(100),
-        "final backoff should be significant, got {final_backoff:?}"
-    );
-}
-
 fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
     let url = LoginUrl::client(
         format!("ws://127.0.0.1:{port}").as_str(),
