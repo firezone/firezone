@@ -3,7 +3,11 @@ defmodule Portal.GoogleCloudPlatform do
   alias Portal.GoogleCloudPlatform.Instance
   require Logger
 
-  @mix_env Mix.env()
+  if Mix.env() == :test do
+    defp test_env?, do: true
+  else
+    defp test_env?, do: false
+  end
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__.Supervisor)
@@ -11,7 +15,7 @@ defmodule Portal.GoogleCloudPlatform do
 
   @impl true
   def init(_opts) do
-    if enabled?() and @mix_env != :test do
+    if enabled?() and not test_env?() do
       children = [
         Instance
       ]
