@@ -3,9 +3,7 @@
 
 use std::{future, sync::Arc, time::Duration};
 
-use phoenix_channel::{
-    DeviceInfo, Error, Event, LoginUrl, PhoenixChannel, PublicKeyParam, StatusCode,
-};
+use phoenix_channel::{DeviceInfo, Event, LoginUrl, PhoenixChannel, PublicKeyParam};
 use secrecy::SecretString;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -305,10 +303,28 @@ async fn http_400_returns_client_error() {
     .await
     .expect("should not timeout");
 
-    // 400 should return Error::Client (fatal, no retry)
     assert!(
-        matches!(result, Err(Error::Client(StatusCode::BAD_REQUEST))),
-        "expected Error::Client(400) for 400, got {result:?}"
+        matches!(result, Ok(Event::Hiccup { .. })),
+        "expected Event::Hiccup for 400, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn http_401_returns_invalid_token() {
+    let port = http_status_server(401, "Unauthorized").await;
+
+    let mut channel = make_test_channel(port);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    assert!(
+        matches!(result, Err(phoenix_channel::Error::InvalidToken)),
+        "expected Error::InvalidToken for 401, got {result:?}"
     );
 }
 

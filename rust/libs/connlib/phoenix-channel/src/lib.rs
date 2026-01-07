@@ -153,10 +153,8 @@ async fn connect(
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Failed to establish WebSocket connection: {0}")]
-    Client(StatusCode),
-    #[error("Authentication token expired")]
-    TokenExpired,
+    #[error("Authentication token invalid")]
+    InvalidToken,
     #[error(
         "Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}"
     )]
@@ -170,8 +168,7 @@ pub enum Error {
 impl Error {
     pub fn is_authentication_error(&self) -> bool {
         match self {
-            Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
-            Error::TokenExpired => true,
+            Error::InvalidToken => true,
             Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
             Error::FatalIo(_) => false,
@@ -496,6 +493,11 @@ where
 
                         continue;
                     }
+                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
+                        if r.status() == StatusCode::UNAUTHORIZED =>
+                    {
+                        return Poll::Ready(Err(Error::InvalidToken));
+                    }
                     // Handle 408, 429 and 503 with Retry-After header, falling back to exponential backoff
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
                         if r.status() == StatusCode::REQUEST_TIMEOUT
@@ -530,11 +532,6 @@ where
                             ))
                             .context("Reconnecting to portal on transient error"),
                         }));
-                    }
-                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
-                        if r.status().is_client_error() =>
-                    {
-                        return Poll::Ready(Err(Error::Client(r.status())));
                     }
                     // Unfortunately, the underlying error gets stringified by tungstenite so we cannot match on anything other than the string.
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Io(io))))
@@ -746,7 +743,7 @@ where
                             },
                             _,
                         ) => {
-                            return Poll::Ready(Err(Error::TokenExpired));
+                            return Poll::Ready(Err(Error::InvalidToken));
                         }
                     }
                 }
