@@ -276,6 +276,11 @@ where
     TInboundMsg: DeserializeOwned,
     TFinish: IntoIterator<Item = (&'static str, String)>,
 {
+    /// Creates a new [PhoenixChannel] to the given endpoint in the `disconnected` state.
+    ///
+    /// You must explicitly call [`PhoenixChannel::connect`] to establish a connection.
+    ///
+    /// The provided URL must contain a host.
     pub fn disconnected(
         url: LoginUrl<TFinish>,
         token: SecretString,
