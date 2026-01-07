@@ -84,6 +84,7 @@ ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1"
 etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
+filetime = "0.2"
 firezone-headless-client = { path = "headless-client" }
 firezone-relay = { path = "relay/server" }
 flume = { version = "0.11.1", features = ["async"] }

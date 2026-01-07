@@ -26,6 +26,7 @@ thiserror = { workspace = true }
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_Security", "Win32_System_EventLog", "Win32_System_Registry"] }
 
 [dev-dependencies]
+filetime = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 

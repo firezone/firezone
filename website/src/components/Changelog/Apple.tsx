@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11659">
+          Prevents unbounded log growth on macOS by enforcing a configurable log
+          size cap (default 100 MB) with automatic cleanup of oldest files.
+        </ChangeItem>
         <ChangeItem pull="11634">
           Bumps minimum macOS version from 12.4 to 13.0 (Ventura) to enable
           SwiftUI MenuBarExtra API.
