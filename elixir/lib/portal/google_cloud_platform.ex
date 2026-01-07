@@ -9,11 +9,8 @@ defmodule Portal.GoogleCloudPlatform do
 
   @impl true
   def init(_opts) do
-    if enabled?() do
-      pool_opts = Portal.Config.fetch_env!(:portal, :http_client_ssl_opts)
-
+    if enabled?() and Mix.env() != :test do
       children = [
-        {Finch, name: __MODULE__.Finch, pools: %{default: pool_opts}},
         Instance
       ]
 
@@ -38,14 +35,18 @@ defmodule Portal.GoogleCloudPlatform do
     config = fetch_config!()
     metadata_endpoint_url = Keyword.fetch!(config, :metadata_endpoint_url)
 
-    request =
-      Finch.build(:get, metadata_endpoint_url <> "/instance/service-accounts/default/token", [
-        {"Metadata-Flavor", "Google"}
-      ])
+    req_options =
+      Keyword.merge(
+        [
+          url: metadata_endpoint_url <> "/instance/service-accounts/default/token",
+          headers: [{"metadata-flavor", "Google"}]
+        ],
+        Keyword.get(config, :req_options, [])
+      )
 
-    case Finch.request(request, __MODULE__.Finch) do
-      {:ok, %Finch.Response{status: 200, body: response}} ->
-        %{"access_token" => access_token, "expires_in" => expires_in} = JSON.decode!(response)
+    case Req.get(req_options) do
+      {:ok, %Req.Response{status: 200, body: response}} ->
+        %{"access_token" => access_token, "expires_in" => expires_in} = response
         access_token_expires_at = DateTime.utc_now() |> DateTime.add(expires_in - 1, :second)
         {:ok, access_token, access_token_expires_at}
 
@@ -63,13 +64,18 @@ defmodule Portal.GoogleCloudPlatform do
     config = fetch_config!()
     metadata_endpoint_url = Keyword.fetch!(config, :metadata_endpoint_url)
 
-    request =
-      Finch.build(:get, metadata_endpoint_url <> "/instance/id", [
-        {"Metadata-Flavor", "Google"}
-      ])
+    req_options =
+      Keyword.merge(
+        [
+          url: metadata_endpoint_url <> "/instance/id",
+          headers: [{"metadata-flavor", "Google"}],
+          decode_body: false
+        ],
+        Keyword.get(config, :req_options, [])
+      )
 
-    case Finch.request(request, __MODULE__.Finch) do
-      {:ok, %Finch.Response{status: 200, body: instance_id}} ->
+    case Req.get(req_options) do
+      {:ok, %Req.Response{status: 200, body: instance_id}} ->
         {:ok, instance_id}
 
       {:ok, response} ->
@@ -86,13 +92,18 @@ defmodule Portal.GoogleCloudPlatform do
     config = fetch_config!()
     metadata_endpoint_url = Keyword.fetch!(config, :metadata_endpoint_url)
 
-    request =
-      Finch.build(:get, metadata_endpoint_url <> "/instance/zone", [
-        {"Metadata-Flavor", "Google"}
-      ])
+    req_options =
+      Keyword.merge(
+        [
+          url: metadata_endpoint_url <> "/instance/zone",
+          headers: [{"metadata-flavor", "Google"}],
+          decode_body: false
+        ],
+        Keyword.get(config, :req_options, [])
+      )
 
-    case Finch.request(request, __MODULE__.Finch) do
-      {:ok, %Finch.Response{status: 200, body: zone}} ->
+    case Req.get(req_options) do
+      {:ok, %Req.Response{status: 200, body: zone}} ->
         {:ok, zone |> String.split("/") |> List.last()}
 
       {:ok, response} ->
@@ -106,8 +117,10 @@ defmodule Portal.GoogleCloudPlatform do
   end
 
   def list_google_cloud_instances_by_labels(project_id, label_values) do
+    config = fetch_config!()
+
     aggregated_list_endpoint_url =
-      fetch_config!()
+      config
       |> Keyword.fetch!(:aggregated_list_endpoint_url)
       |> String.replace("${project_id}", project_id)
 
@@ -116,33 +129,36 @@ defmodule Portal.GoogleCloudPlatform do
 
     filter = "#{filter} AND status=RUNNING"
 
-    query = URI.encode_query(%{"filter" => filter})
-    url = aggregated_list_endpoint_url <> "?" <> query
+    with {:ok, access_token} <- fetch_and_cache_access_token() do
+      req_options =
+        Keyword.merge(
+          [
+            url: aggregated_list_endpoint_url,
+            params: [filter: filter],
+            headers: [{"authorization", "Bearer #{access_token}"}]
+          ],
+          Keyword.get(config, :req_options, [])
+        )
 
-    with {:ok, access_token} <- fetch_and_cache_access_token(),
-         request = Finch.build(:get, url, [{"Authorization", "Bearer #{access_token}"}]),
-         {:ok, %Finch.Response{status: 200, body: response}} <-
-           Finch.request(request, __MODULE__.Finch),
-         {:ok, %{"items" => items}} <- JSON.decode(response) do
-      instances =
-        Enum.flat_map(items, fn
-          {_zone, %{"instances" => instances}} ->
-            instances
+      case Req.get(req_options) do
+        {:ok, %Req.Response{status: 200, body: %{"items" => items}}} ->
+          instances =
+            Enum.flat_map(items, fn
+              {_zone, %{"instances" => instances}} ->
+                instances
 
-          {_zone, %{"warning" => %{"code" => "NO_RESULTS_ON_PAGE"}}} ->
-            []
-        end)
+              {_zone, %{"warning" => %{"code" => "NO_RESULTS_ON_PAGE"}}} ->
+                []
+            end)
 
-      {:ok, instances}
-    else
-      {:ok, %Finch.Response{status: status, body: body}} ->
-        {:error, {status, body}}
+          {:ok, instances}
 
-      {:ok, map} ->
-        {:error, map}
+        {:ok, %Req.Response{status: status, body: body}} ->
+          {:error, {status, body}}
 
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -150,32 +166,34 @@ defmodule Portal.GoogleCloudPlatform do
   Sends metrics to Google Cloud Monitoring PortalAPI.
   """
   def send_metrics(project_id, time_series) do
+    config = fetch_config!()
+
     cloud_metrics_endpoint_url =
-      fetch_config!()
+      config
       |> Keyword.fetch!(:cloud_metrics_endpoint_url)
       |> String.replace("${project_id}", project_id)
 
-    body = JSON.encode!(%{"timeSeries" => time_series})
+    with {:ok, access_token} <- fetch_and_cache_access_token() do
+      req_options =
+        Keyword.merge(
+          [
+            url: cloud_metrics_endpoint_url,
+            headers: [{"authorization", "Bearer #{access_token}"}],
+            json: %{"timeSeries" => time_series}
+          ],
+          Keyword.get(config, :req_options, [])
+        )
 
-    with {:ok, access_token} <- fetch_and_cache_access_token(),
-         request =
-           Finch.build(
-             :post,
-             cloud_metrics_endpoint_url,
-             [
-               {"Content-Type", "application/json"},
-               {"Authorization", "Bearer #{access_token}"}
-             ],
-             body
-           ),
-         {:ok, %{status: 200}} <- Finch.request(request, __MODULE__.Finch) do
-      :ok
-    else
-      {:ok, %{status: status, body: body}} ->
-        {:error, {status, body}}
+      case Req.post(req_options) do
+        {:ok, %Req.Response{status: 200}} ->
+          :ok
 
-      {:error, reason} ->
-        {:error, reason}
+        {:ok, %Req.Response{status: status, body: body}} ->
+          {:error, {status, body}}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 

@@ -1,99 +1,139 @@
 defmodule Portal.Mocks.GoogleCloudPlatform do
-  def override_endpoint_url(endpoint, url) do
-    config = Portal.Config.fetch_env!(:portal, Portal.GoogleCloudPlatform)
-    config = Keyword.put(config, endpoint, url)
-    Portal.Config.put_env_override(:portal, Portal.GoogleCloudPlatform, config)
-  end
+  @moduledoc """
+  Test helpers for mocking Google Cloud Platform API responses using Req.Test.
+  """
 
-  def mock_instance_metadata_id_endpoint(bypass, id \\ Ecto.UUID.generate()) do
-    token_endpoint_path = "/instance/id"
+  alias Portal.GoogleCloudPlatform
 
-    test_pid = self()
+  @doc """
+  Sets up a Req.Test stub with the given expectations.
 
-    Bypass.stub(bypass, "GET", token_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, id)
+  Expectations are a list of tuples: `{method, path_pattern, status, response, opts}`
+  where opts can include `:decode_json` (default true) to control JSON encoding.
+
+  ## Example
+
+      GoogleCloudPlatform.stub([
+        {"GET", ~r|/instance/service-accounts/default/token|, 200, token_response()},
+        {"GET", ~r|/compute/v1/projects/.*/aggregated/instances|, 200, instances_response()}
+      ])
+  """
+  def stub(expectations) when is_list(expectations) do
+    Req.Test.stub(GoogleCloudPlatform, fn conn ->
+      method = conn.method
+      path = conn.request_path
+
+      case find_expectation(expectations, method, path, conn) do
+        {:ok, {status, response, opts}} ->
+          send_response(conn, status, response, opts)
+
+        :not_found ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(
+            404,
+            JSON.encode!(%{"error" => "No mock expectation for #{method} #{path}"})
+          )
+      end
     end)
-
-    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}/")
-
-    bypass
   end
 
-  def mock_instance_metadata_zone_endpoint(bypass, zone \\ "projects/001001/zones/us-east-1") do
-    token_endpoint_path = "/instance/zone"
+  defp find_expectation(expectations, method, path, conn) do
+    Enum.find_value(expectations, :not_found, fn
+      {:dynamic_sign_blob, service_account_email, pattern} ->
+        if method == "POST" and Regex.match?(pattern, path) do
+          {:ok, body, _conn} = Plug.Conn.read_body(conn)
+          %{"payload" => payload} = JSON.decode!(body)
 
-    test_pid = self()
-
-    Bypass.stub(bypass, "GET", token_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, zone)
-    end)
-
-    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}/")
-
-    bypass
-  end
-
-  def mock_instance_metadata_token_endpoint(bypass, resp \\ nil) do
-    token_endpoint_path = "/instance/service-accounts/default/token"
-
-    resp =
-      resp ||
-        %{
-          "access_token" => "GCP_ACCESS_TOKEN",
-          "expires_in" => 3595,
-          "token_type" => "Bearer"
-        }
-
-    test_pid = self()
-
-    Bypass.stub(bypass, "GET", token_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
-    end)
-
-    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}/")
-
-    bypass
-  end
-
-  def mock_sign_blob_endpoint(bypass, service_account_email, resp \\ nil) do
-    token_endpoint_path = "service_accounts/#{service_account_email}:signBlob"
-
-    test_pid = self()
-
-    Bypass.expect(bypass, "POST", token_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      {:ok, binary, conn} = Plug.Conn.read_body(conn)
-      %{"payload" => payload} = JSON.decode!(binary)
-
-      resp =
-        resp ||
-          %{
+          resp = %{
             "keyId" => Ecto.UUID.generate(),
             "signedBlob" => Portal.Crypto.hash(:md5, service_account_email <> payload)
           }
 
-      Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
+          {:ok, {200, resp, []}}
+        else
+          nil
+        end
+
+      {:capture_metrics, test_pid, pattern} ->
+        if method == "POST" and Regex.match?(pattern, path) do
+          {:ok, body, _conn} = Plug.Conn.read_body(conn)
+          decoded_body = JSON.decode!(body)
+          send(test_pid, {:metrics_request, conn, decoded_body})
+          {:ok, {200, %{}, []}}
+        else
+          nil
+        end
+
+      {^method, %Regex{} = regex, status, response} ->
+        if Regex.match?(regex, path), do: {:ok, {status, response, []}}, else: nil
+
+      {^method, %Regex{} = regex, status, response, opts} ->
+        if Regex.match?(regex, path), do: {:ok, {status, response, opts}}, else: nil
+
+      {^method, expected_path, status, response} when expected_path == path ->
+        {:ok, {status, response, []}}
+
+      {^method, expected_path, status, response, opts} when expected_path == path ->
+        {:ok, {status, response, opts}}
+
+      _ ->
+        nil
     end)
-
-    override_endpoint_url(
-      :sign_endpoint_url,
-      "http://localhost:#{bypass.port}/service_accounts/"
-    )
-
-    bypass
   end
 
-  def mock_instances_list_endpoint(bypass, resp \\ nil) do
-    aggregated_instances_endpoint_path =
-      "compute/v1/projects/firezone-staging/aggregated/instances"
+  defp send_response(conn, status, response, opts) do
+    if Keyword.get(opts, :raw, false) do
+      conn
+      |> Plug.Conn.send_resp(status, response)
+    else
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(status, JSON.encode!(response))
+    end
+  end
 
+  # Convenience functions for building expectations
+
+  def mock_instance_metadata_token_endpoint(resp \\ nil) do
+    resp =
+      resp ||
+        %{
+          "access_token" => "GCP_ACCESS_TOKEN",
+          "expires_in" => 3600,
+          "token_type" => "Bearer"
+        }
+
+    [{"GET", ~r|/instance/service-accounts/default/token|, 200, resp}]
+  end
+
+  def mock_instance_metadata_id_endpoint(id \\ Ecto.UUID.generate()) do
+    [{"GET", ~r|/instance/id|, 200, id, raw: true}]
+  end
+
+  def mock_instance_metadata_zone_endpoint(zone \\ "projects/001001/zones/us-east-1") do
+    [{"GET", ~r|/instance/zone|, 200, zone, raw: true}]
+  end
+
+  @doc """
+  Creates a sign blob endpoint expectation.
+
+  Note: When `resp` is nil, the signed blob is computed dynamically from the
+  request body's payload. This requires using `stub_sign_blob/2` instead of
+  the standard `stub/1` to properly capture the request body.
+  """
+  def mock_sign_blob_endpoint(service_account_email, resp \\ nil) do
+    pattern = ~r|service_accounts/#{Regex.escape(service_account_email)}:signBlob|
+
+    if resp do
+      [{"POST", pattern, 200, resp}]
+    else
+      # Return a special marker that stub/1 will handle to read request body
+      [{:dynamic_sign_blob, service_account_email, pattern}]
+    end
+  end
+
+  def mock_instances_list_endpoint(resp \\ nil) do
     project_endpoint = "https://www.googleapis.com/compute/v1/projects/firezone-staging"
 
     resp =
@@ -194,40 +234,20 @@ defmodule Portal.Mocks.GoogleCloudPlatform do
           }
         }
 
-    test_pid = self()
-
-    Bypass.expect(bypass, "GET", aggregated_instances_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
-    end)
-
-    override_endpoint_url(
-      :aggregated_list_endpoint_url,
-      "http://localhost:#{bypass.port}/#{aggregated_instances_endpoint_path}"
-    )
-
-    bypass
+    [{"GET", ~r|/compute/v1/projects/.*/aggregated/instances|, 200, resp}]
   end
 
-  def mock_metrics_submit_endpoint(bypass) do
-    metrics_endpoint_path = "v3/projects/firezone-staging/timeSeries"
+  def mock_metrics_submit_endpoint do
+    [{"POST", ~r|/v3/projects/.*/timeSeries|, 200, %{}}]
+  end
 
-    test_pid = self()
+  @doc """
+  Creates a metrics submit endpoint expectation that captures and sends the request body
+  back to the calling process.
 
-    Bypass.expect(bypass, "POST", metrics_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      {:ok, binary, conn} = Plug.Conn.read_body(conn)
-      body = JSON.decode!(binary)
-      send(test_pid, {:bypass_request, conn, body})
-      Plug.Conn.send_resp(conn, 200, JSON.encode!(%{}))
-    end)
-
-    override_endpoint_url(
-      :cloud_metrics_endpoint_url,
-      "http://localhost:#{bypass.port}/#{metrics_endpoint_path}"
-    )
-
-    bypass
+  The test can use `assert_receive {:metrics_request, conn, body}` to verify the request.
+  """
+  def mock_metrics_submit_endpoint_with_capture(test_pid) do
+    [{:capture_metrics, test_pid, ~r|/v3/projects/.*/timeSeries|}]
   end
 end
