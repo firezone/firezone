@@ -7,6 +7,7 @@ use phoenix_channel::{DeviceInfo, Event, LoginUrl, PhoenixChannel, PublicKeyPara
 use secrecy::SecretString;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
+use tokio_tungstenite::tungstenite::http;
 
 #[tokio::test]
 async fn client_does_not_pipeline_messages() {
@@ -252,7 +253,7 @@ enum OutboundMsg {
 
 #[tokio::test]
 async fn http_429_triggers_retry() {
-    let port = http_status_server(429, "Too Many Requests").await;
+    let port = http_status_server(http::StatusCode::TOO_MANY_REQUESTS).await;
 
     let mut channel = make_test_channel(port);
     channel.connect(PublicKeyParam([0u8; 32]));
@@ -272,7 +273,7 @@ async fn http_429_triggers_retry() {
 
 #[tokio::test]
 async fn http_408_triggers_retry() {
-    let port = http_status_server(408, "Request Timeout").await;
+    let port = http_status_server(http::StatusCode::REQUEST_TIMEOUT).await;
 
     let mut channel = make_test_channel(port);
     channel.connect(PublicKeyParam([0u8; 32]));
@@ -292,7 +293,7 @@ async fn http_408_triggers_retry() {
 
 #[tokio::test]
 async fn http_400_returns_client_error() {
-    let port = http_status_server(400, "Bad Request").await;
+    let port = http_status_server(http::StatusCode::BAD_REQUEST).await;
 
     let mut channel = make_test_channel(port);
     channel.connect(PublicKeyParam([0u8; 32]));
@@ -311,7 +312,7 @@ async fn http_400_returns_client_error() {
 
 #[tokio::test]
 async fn http_401_returns_invalid_token() {
-    let port = http_status_server(401, "Unauthorized").await;
+    let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
 
     let mut channel = make_test_channel(port);
     channel.connect(PublicKeyParam([0u8; 32]));
@@ -354,12 +355,14 @@ fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
     .unwrap()
 }
 
-async fn http_status_server(status: u16, reason: &str) -> u16 {
+async fn http_status_server(code: http::StatusCode) -> u16 {
     http_response_server(format!(
         "HTTP/1.1 {status} {reason}\r\n\
          Connection: close\r\n\
          Content-Type: text/plain\r\n\
-         Content-Length: 0\r\n\r\n"
+         Content-Length: 0\r\n\r\n",
+        status = code.as_u16(),
+        reason = code.as_str()
     ))
     .await
 }
@@ -415,7 +418,7 @@ async fn http_response_server(response: String) -> u16 {
 
 #[tokio::test]
 async fn http_503_triggers_retry() {
-    let port = http_status_server(503, "Service Unavailable").await;
+    let port = http_status_server(http::StatusCode::SERVICE_UNAVAILABLE).await;
 
     let mut channel = make_test_channel(port);
     channel.connect(PublicKeyParam([0u8; 32]));
