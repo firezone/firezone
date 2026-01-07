@@ -24,7 +24,12 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="11659">
+          Prevents unbounded log growth on macOS by enforcing a configurable log
+          size cap (default 100 MB) with automatic cleanup of oldest files.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.12" date={new Date("2026-01-20")}>
         <ChangeItem pull="11735">
           Fixes an issue on iOS where the system resolvers could not be reliably

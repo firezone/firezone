@@ -28,6 +28,7 @@ public class Configuration: ObservableObject {
   var isAccountSlugForced: Bool { defaults.objectIsForced(forKey: Keys.accountSlug) }
   var isConnectOnStartForced: Bool { defaults.objectIsForced(forKey: Keys.connectOnStart) }
   var isStartOnLoginForced: Bool { defaults.objectIsForced(forKey: Keys.startOnLogin) }
+  var isLogSizeCapForced: Bool { defaults.objectIsForced(forKey: Keys.logSizeCap) }
 
   var authURL: String {
     get { defaults.string(forKey: Keys.authURL) ?? Self.defaultAuthURL }
@@ -79,6 +80,20 @@ public class Configuration: ObservableObject {
     set { defaults.set(newValue, forKey: Keys.supportURL) }
   }
 
+  var logSizeCap: Int {
+    get {
+      let value = defaults.integer(forKey: Keys.logSizeCap)
+      if value == 0 {
+        return Self.defaultLogSizeCap
+      }
+      return max(10, min(1000, value))
+    }
+    set {
+      let clampedValue = max(10, min(1000, newValue))
+      defaults.set(clampedValue, forKey: Keys.logSizeCap)
+    }
+  }
+
   // User-configurable only
   var internetResourceEnabled: Bool {
     get { defaults.bool(forKey: Keys.internetResourceEnabled) }
@@ -97,6 +112,7 @@ public class Configuration: ObservableObject {
 
   static let defaultAccountSlug = ""
   static let defaultSupportURL = "https://firezone.dev/support"
+  static let defaultLogSizeCap = 100
 
   // Bools are always default false
   static let defaultConnectOnStart = false
@@ -115,6 +131,7 @@ public class Configuration: ObservableObject {
     static let startOnLogin = "startOnLogin"
     static let disableUpdateCheck = "disableUpdateCheck"
     static let supportURL = "supportURL"
+    static let logSizeCap = "logSizeCap"
   }
 
   private var defaults: UserDefaults
@@ -139,7 +156,8 @@ public class Configuration: ObservableObject {
       apiURL: apiURL,
       accountSlug: accountSlug,
       logFilter: logFilter,
-      internetResourceEnabled: internetResourceEnabled
+      internetResourceEnabled: internetResourceEnabled,
+      logSizeCap: logSizeCap
     )
   }
 
@@ -184,13 +202,17 @@ public struct TunnelConfiguration: Codable, Sendable {
   public let accountSlug: String
   public let logFilter: String
   public let internetResourceEnabled: Bool
+  public let logSizeCap: Int
 
-  public init(apiURL: String, accountSlug: String, logFilter: String, internetResourceEnabled: Bool)
-  {
+  public init(
+    apiURL: String, accountSlug: String, logFilter: String, internetResourceEnabled: Bool,
+    logSizeCap: Int
+  ) {
     self.apiURL = apiURL
     self.accountSlug = accountSlug
     self.logFilter = logFilter
     self.internetResourceEnabled = internetResourceEnabled
+    self.logSizeCap = logSizeCap
   }
 }
 
@@ -199,5 +221,6 @@ extension TunnelConfiguration: Equatable {
     return lhs.apiURL == rhs.apiURL && lhs.accountSlug == rhs.accountSlug
       && lhs.logFilter == rhs.logFilter
       && lhs.internetResourceEnabled == rhs.internetResourceEnabled
+      && lhs.logSizeCap == rhs.logSizeCap
   }
 }
