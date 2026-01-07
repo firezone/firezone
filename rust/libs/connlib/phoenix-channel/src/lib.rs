@@ -498,12 +498,7 @@ where
                     {
                         return Poll::Ready(Err(Error::InvalidToken));
                     }
-                    // Handle 408, 429 and 503 with Retry-After header, falling back to exponential backoff
-                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
-                        if r.status() == StatusCode::REQUEST_TIMEOUT
-                            || r.status() == StatusCode::TOO_MANY_REQUESTS
-                            || r.status() == StatusCode::SERVICE_UNAVAILABLE =>
-                    {
+                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r)))) => {
                         let backoff = match parse_retry_after(&r) {
                             Some(duration) => duration,
                             None => {
