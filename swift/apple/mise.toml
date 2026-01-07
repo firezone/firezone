@@ -7,6 +7,9 @@
 # Requires: MISE_EXPERIMENTAL=1 for monorepo task discovery
 
 # Disable auto-discovery to avoid duplicates
+# FIXME: mise monorepo feature does not support auto-discovery of child tasks from the root level,
+# so we had to make them available explicitly. When it does, we can re-enable
+# auto-discovery and remove the explicit tasks definitions
 [task_config]
 includes = []
 
