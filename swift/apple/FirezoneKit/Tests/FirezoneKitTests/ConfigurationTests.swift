@@ -336,7 +336,8 @@ struct TunnelConfigurationCodableTests {
         "apiURL": "wss://test.api",
         "accountSlug": "test-slug",
         "logFilter": "info",
-        "internetResourceEnabled": false
+        "internetResourceEnabled": false,
+        "logSizeCap": 50
       }
       """
 
