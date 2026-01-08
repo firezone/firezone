@@ -496,4 +496,92 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Sign In"
     end
   end
+
+  describe "Stripe API resilience" do
+    setup do
+      # Enable retry for these tests
+      Portal.Config.put_env_override(Portal.Billing.Stripe.APIClient,
+        endpoint: "https://api.stripe.com",
+        req_options: [
+          plug: {Req.Test, Portal.Billing.Stripe.APIClient},
+          retry: :transient,
+          max_retries: 1
+        ]
+      )
+
+      :ok
+    end
+
+    test "retries and succeeds on transient Stripe API failure", %{conn: conn} do
+      # Track number of calls to create_customer endpoint
+      {:ok, agent} = Agent.start_link(fn -> 0 end)
+
+      Req.Test.stub(APIClient, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"POST", "/v1/customers"} ->
+            call_count = Agent.get_and_update(agent, fn count -> {count, count + 1} end)
+
+            case call_count do
+              0 ->
+                # First call fails with 500
+                conn
+                |> Plug.Conn.put_resp_content_type("application/json")
+                |> Plug.Conn.send_resp(
+                  500,
+                  JSON.encode!(%{"error" => %{"message" => "Internal server error"}})
+                )
+
+              _ ->
+                # Second call succeeds
+                response = %{
+                  "id" => "cus_test_#{System.unique_integer([:positive])}",
+                  "email" => "billing@example.com",
+                  "name" => "Test Company"
+                }
+
+                Req.Test.json(conn, response)
+            end
+
+          {"POST", "/v1/subscriptions"} ->
+            response = %{
+              "id" => "sub_test_#{System.unique_integer([:positive])}",
+              "customer" => "cus_test_123",
+              "status" => "active"
+            }
+
+            Req.Test.json(conn, response)
+
+          _ ->
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(404, JSON.encode!(%{"error" => "not_found"}))
+        end
+      end)
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      unique_name = "Test Company #{System.unique_integer([:positive])}"
+
+      attrs = %{
+        email: "newuser-#{System.unique_integer([:positive])}@example.com",
+        account: %{name: unique_name},
+        actor: %{name: "John Doe"}
+      }
+
+      lv
+      |> element("form[phx-submit=submit]")
+      |> render_submit(%{registration: attrs})
+
+      # Verify account was created
+      assert account = Portal.Repo.get_by(Portal.Account, name: unique_name)
+
+      # Verify that we eventually succeeded with Stripe
+      assert account.metadata.stripe.customer_id =~ "cus_test_"
+
+      # Verify we made 2 calls (first failed, second succeeded)
+      assert Agent.get(agent, & &1) == 2
+
+      Agent.stop(agent)
+    end
+  end
 end
