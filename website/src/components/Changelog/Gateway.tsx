@@ -23,6 +23,10 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
+        <ChangeItem pull="11625">
+          Fails faster when the initial connection to the control plane cannot
+          be established, allowing faster restarts by the process manager.
+        </ChangeItem>
         <ChangeItem pull="11584">
           Improves connection reliability on systems where certain UDP socket
           features are unavailable.

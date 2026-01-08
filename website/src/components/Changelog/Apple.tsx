@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11625">
+          Fails faster when the initial connection to the control plane cannot
+          be established, allowing the user to retry sooner.
+        </ChangeItem>
         <ChangeItem pull="11634">
           Bumps minimum macOS version from 12.4 to 13.0 (Ventura) to enable
           SwiftUI MenuBarExtra API.

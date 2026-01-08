@@ -240,7 +240,7 @@ async fn client_deduplicates_messages() {
     assert_eq!(num_responses, 1);
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum InboundMsg {
     Foo,
@@ -465,6 +465,73 @@ async fn http_503_with_retry_after_uses_header_value() {
             panic!(
                 "expected Event::Hiccup with 60s backoff for 503 with Retry-After, got {other:?}"
             )
+        }
+    }
+}
+
+#[tokio::test]
+async fn initial_connection_uses_constant_1s_backoff() {
+    use std::{str::FromStr, sync::Arc, time::Duration};
+
+    use phoenix_channel::{DeviceInfo, Error, LoginUrl, PhoenixChannel, PublicKeyParam};
+    use secrecy::SecretString;
+    use url::Url;
+
+    let _guard = logging::test("debug");
+
+    let login_url = LoginUrl::client(
+        Url::from_str("ws://127.0.0.1:1").unwrap(),
+        String::new(),
+        None,
+        DeviceInfo::default(),
+    )
+    .unwrap();
+
+    let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
+        login_url,
+        SecretString::from("secret"),
+        "test/1.0.0".to_owned(),
+        "test",
+        (),
+        || {
+            backoff::ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(Some(Duration::from_secs(3600)))
+                .build()
+        },
+        Arc::new(socket_factory::tcp),
+    )
+    .unwrap();
+
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let mut hiccups = Vec::new();
+    let start = std::time::Instant::now();
+
+    loop {
+        match std::future::poll_fn(|cx| channel.poll(cx)).await {
+            Ok(phoenix_channel::Event::Hiccup {
+                backoff,
+                max_elapsed_time,
+                ..
+            }) => {
+                hiccups.push((backoff, max_elapsed_time));
+            }
+            Err(Error::MaxRetriesReached { .. }) => break,
+            other => panic!("Unexpected event: {other:?}"),
+        }
+    }
+
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed < Duration::from_secs(20),
+        "Expected to complete within 20s, but took {elapsed:?}"
+    );
+
+    for (i, (backoff, max_elapsed_time)) in hiccups.iter().enumerate() {
+        assert_eq!(*max_elapsed_time, Some(Duration::from_secs(15)));
+        if i > 0 {
+            assert_eq!(*backoff, Duration::from_secs(1));
         }
     }
 }
