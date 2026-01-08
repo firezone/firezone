@@ -5,29 +5,37 @@ defmodule PortalWeb.SignUpTest do
   import Portal.AccountFixtures
   alias Portal.Billing.Stripe.APIClient
 
-  setup do
-    :ok
-  end
-
   describe "mount/3" do
-    test "initializes socket with sign_up enabled", %{conn: conn} do
+    test "initializes socket assigns when sign_up enabled", %{conn: conn} do
       Portal.Config.put_env_override(:enabled_features, sign_up: true)
 
-      {:ok, _lv, html} = live(conn, ~p"/sign_up")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
-      assert html =~ "Sign up for a new account"
-      assert html =~ "Work Email"
-      assert html =~ "Company Name"
-      assert html =~ "Your Name"
+      state = :sys.get_state(lv.pid)
+      assigns = state.socket.assigns
+
+      assert assigns.page_title == "Sign Up"
+      assert assigns.sign_up_enabled? == true
+      assert assigns.form != nil
+      assert assigns.account == nil
+      assert assigns.provider == nil
+      assert assigns.user_agent != nil
+      assert assigns.real_ip != nil
     end
 
-    test "shows sign up disabled message when feature is disabled", %{conn: conn} do
+    test "initializes socket assigns when sign_up disabled", %{conn: conn} do
       Portal.Config.put_env_override(:enabled_features, sign_up: false)
 
-      {:ok, _lv, html} = live(conn, ~p"/sign_up")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
-      assert html =~ "Sign-ups are currently disabled"
-      assert html =~ "sales@firezone.dev"
+      state = :sys.get_state(lv.pid)
+      assigns = state.socket.assigns
+
+      assert assigns.page_title == "Sign Up"
+      assert assigns.sign_up_enabled? == false
+      assert assigns.form != nil
+      assert assigns.account == nil
+      assert assigns.provider == nil
     end
   end
 
