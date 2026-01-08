@@ -32,7 +32,7 @@ use url::Url;
 
 const STATS_LOG_INTERVAL: Duration = Duration::from_secs(10);
 
-const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 15);
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
 
 #[derive(Parser, Debug)]
 struct Args {
