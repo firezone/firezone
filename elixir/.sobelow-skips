@@ -28,3 +28,8 @@ Config.Secrets: Hardcoded Secret,config/config.exs:209,8DFEA3
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/mailer.ex:49,2064866
 Config.Secrets: Hardcoded Secret,config/config.exs:201,3CFE1A
 Config.Secrets: Hardcoded Secret,config/config.exs:202,43A0604
+
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:375,2E0A7AD
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:217,3560D02
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:371,46EE6C5
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:212,5B50F1B

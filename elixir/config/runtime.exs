@@ -114,7 +114,9 @@ if config_env() == :prod do
 
   config :portal, Portal.Cluster,
     adapter: env_var_to_config!(:erlang_cluster_adapter),
-    adapter_config: env_var_to_config!(:erlang_cluster_adapter_config)
+    adapter_config: env_var_to_config!(:erlang_cluster_adapter_config),
+    secondary_adapter: env_var_to_config!(:erlang_cluster_adapter_secondary),
+    secondary_adapter_config: env_var_to_config!(:erlang_cluster_adapter_secondary_config)
 
   config :portal, :enabled_features,
     idp_sync: env_var_to_config!(:feature_idp_sync_enabled),

@@ -315,7 +315,8 @@ defmodule Portal.Config.Definitions do
         Elixir.Cluster.Strategy.Gossip,
         Elixir.Cluster.Strategy.Kubernetes,
         Elixir.Cluster.Strategy.DNSPoll,
-        Elixir.Portal.Cluster.GoogleComputeLabelsStrategy
+        Elixir.Portal.Cluster.GoogleComputeLabelsStrategy,
+        Elixir.Portal.Cluster.PostgresStrategy
       ]
     ),
     default: nil
@@ -327,23 +328,64 @@ defmodule Portal.Config.Definitions do
   defconfig(:erlang_cluster_adapter_config, :map,
     default: %{},
     dump: fn map ->
-      keyword = Dumper.keyword(map)
-
-      cond do
-        env_var_to_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Epmd ->
-          Keyword.update!(keyword, :hosts, fn hosts -> Enum.map(hosts, &String.to_atom/1) end)
-
-        env_var_to_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Kubernetes ->
-          Keyword.new(keyword, fn
-            {k, v} when k in [:mode, :kubernetes_ip_lookup_mode] -> {k, String.to_atom(v)}
-            {k, v} -> {k, v}
-          end)
-
-        true ->
-          keyword
-      end
+      dump_cluster_adapter_config(map, env_var_to_config!(:erlang_cluster_adapter))
     end
   )
+
+  @doc """
+  A secondary adapter for cluster discovery, useful during rolling deploys when migrating
+  between clustering strategies. Both adapters run simultaneously and nodes discovered
+  by either mechanism will be connected.
+  """
+  defconfig(
+    :erlang_cluster_adapter_secondary,
+    Ecto.ParameterizedType.init(Ecto.Enum,
+      values: [
+        Elixir.Cluster.Strategy.LocalEpmd,
+        Elixir.Cluster.Strategy.Epmd,
+        Elixir.Cluster.Strategy.Gossip,
+        Elixir.Cluster.Strategy.Kubernetes,
+        Elixir.Cluster.Strategy.DNSPoll,
+        Elixir.Portal.Cluster.GoogleComputeLabelsStrategy,
+        Elixir.Portal.Cluster.PostgresStrategy
+      ]
+    ),
+    default: nil
+  )
+
+  @doc """
+  Config for the secondary Erlang cluster adapter.
+  """
+  defconfig(:erlang_cluster_adapter_secondary_config, :map,
+    default: %{},
+    dump: fn map ->
+      dump_cluster_adapter_config(map, env_var_to_config!(:erlang_cluster_adapter_secondary))
+    end
+  )
+
+  defp dump_cluster_adapter_config(map, adapter) do
+    keyword = Dumper.keyword(map)
+
+    cond do
+      adapter == Elixir.Cluster.Strategy.Epmd ->
+        Keyword.update!(keyword, :hosts, fn hosts -> Enum.map(hosts, &String.to_atom/1) end)
+
+      adapter == Elixir.Cluster.Strategy.Kubernetes ->
+        Keyword.new(keyword, fn
+          {k, v} when k in [:mode, :kubernetes_ip_lookup_mode] -> {k, String.to_atom(v)}
+          {k, v} -> {k, v}
+        end)
+
+      adapter == Elixir.Portal.Cluster.PostgresStrategy ->
+        Keyword.new(keyword, fn
+          {:repo, v} -> {:repo, Module.concat([v])}
+          {k, v} -> {k, v}
+        end)
+
+      true ->
+        keyword
+    end
+  end
 
   ##############################################
   ## Secrets
