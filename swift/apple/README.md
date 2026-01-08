@@ -49,8 +49,9 @@ and configurations without risking your main machine.
 1. Build and run the `Firezone` target.
 
 `Firezone` target will orchestrate building `connlib` with Rust as an Xcode
-build phase. Xcode build can be triggered both from Xcode UI or via the
-`Makefile`.
+build phase. Xcode build can be triggered both from Xcode UI or via
+[mise](https://mise.jdx.dev/) tasks (see
+[Development with mise](#development-with-mise) below).
 
 **Note**: To test the iOS app, you'll need a physical iOS device such as an
 iPhone or iPad. Network Extensions can't be debugged in the iOS simulator.
@@ -115,12 +116,37 @@ In order to configure your IDE follow these steps:
 
 ```sh
 brew install xcode-build-server
-make lsp
-make build
+mise run lsp
+mise run build
 ```
 
 Note: Although Swift and sourcekit-lsp are technically cross-platform, this
 method still relies on Xcode to build the project.
+
+### Development with mise
+
+For developers who prefer command-line workflows, this project supports
+[mise](https://mise.jdx.dev/) tasks as an alternative to building directly in
+Xcode.
+
+**Setup:**
+
+Install mise: `brew install mise` or see
+[mise installation docs](https://mise.jdx.dev/getting-started.html)
+
+**Usage** (from `swift/apple/` directory):
+
+```sh
+mise tasks              # List all available tasks
+mise run <task>         # Run a task (e.g. mise run build)
+```
+
+From the repository root (requires `export MISE_EXPERIMENTAL=1` for monorepo
+syntax):
+
+```sh
+mise //swift/apple:<task>   # e.g. mise //swift/apple:build
+```
 
 ### Instruments
 
