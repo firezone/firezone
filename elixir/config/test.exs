@@ -61,6 +61,12 @@ config :portal, Portal.Changes.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
+config :portal, Portal.Billing,
+  enabled: true,
+  secret_key: "sk_test_123",
+  webhook_signing_secret: "whsec_test_123",
+  default_price_id: "price_test_123"
+
 config :portal, Portal.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
   req_options: [
