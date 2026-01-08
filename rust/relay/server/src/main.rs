@@ -854,12 +854,12 @@ mod tests {
     }
 
     #[test]
-    fn given_last_heartbeat_older_than_15_min_is_not_healthy() {
-        let now = Instant::now() + Duration::from_hours(1); // Advance to the future to avoid underflow.
+    fn given_last_heartbeat_older_than_24_hours_is_not_healthy() {
+        let now = Instant::now() + Duration::from_hours(48); // Advance to the future to avoid underflow.
 
         let is_healthy = is_healthy(
             now,
-            Arc::new(Mutex::new(Some(now - Duration::from_secs(60 * 15)))),
+            Arc::new(Mutex::new(Some(now - Duration::from_hours(24)))),
         );
 
         assert!(!is_healthy)
