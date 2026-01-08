@@ -33,6 +33,8 @@ mod eventloop;
 
 const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -207,7 +209,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         (),
         || {
             ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(Some(Duration::from_secs(60 * 15)))
+                .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
                 .build()
         },
         Arc::new(tcp_socket_factory),
