@@ -9,7 +9,8 @@ db_opts = [
   username: System.get_env("DATABASE_USER", "postgres"),
   hostname: System.get_env("DATABASE_HOST", "localhost"),
   port: String.to_integer(System.get_env("DATABASE_PORT", "5432")),
-  password: System.get_env("DATABASE_PASSWORD", "postgres")
+  password: System.get_env("DATABASE_PASSWORD", "postgres"),
+  ssl: System.get_env("DATABASE_SSL_ENABLED", "false") == "true"
 ]
 
 ###############################
