@@ -4,8 +4,8 @@
 [env]
 # Set a consistent macOS deployment target to prevent rebuilds
 # when switching between Xcode and command-line builds
-# This must match the Xcode project setting (12.4)
-MACOSX_DEPLOYMENT_TARGET = "12.4"
+# This must match the Xcode project setting (13.0)
+MACOSX_DEPLOYMENT_TARGET = "13.0"
 
 [build]
 # Use incremental compilation for faster rebuilds

@@ -144,23 +144,20 @@ public class Configuration: ObservableObject {
   }
 
   #if os(macOS)
-    // Register / unregister our launch service based on configuration. This is a major pain to do on macOS 12 and below,
-    // so this feature only enabled for macOS 13 and higher given the tiny Firezone installbase for macOS 12.
+    // Register / unregister our launch service based on configuration.
     func updateAppService() async throws {
-      if #available(macOS 13.0, *) {
-        // Getting the status initially appears to be blocking sometimes
-        SentrySDK.pauseAppHangTracking()
-        defer { SentrySDK.resumeAppHangTracking() }
-        let status = SMAppService.mainApp.status
+      // Getting the status initially appears to be blocking sometimes
+      SentrySDK.pauseAppHangTracking()
+      defer { SentrySDK.resumeAppHangTracking() }
+      let status = SMAppService.mainApp.status
 
-        if !startOnLogin, status == .enabled {
-          try await SMAppService.mainApp.unregister()
-          return
-        }
+      if !startOnLogin, status == .enabled {
+        try await SMAppService.mainApp.unregister()
+        return
+      }
 
-        if startOnLogin, status != .enabled {
-          try SMAppService.mainApp.register()
-        }
+      if startOnLogin, status != .enabled {
+        try SMAppService.mainApp.register()
       }
     }
   #endif

@@ -11,6 +11,6 @@ linker = "rust-lld"
 
 # Set consistent macOS deployment target to prevent rebuilds
 # when environment variables change between Xcode and CLI builds
-# This must match the Xcode project setting (12.4)
+# This must match the Xcode project setting (13.0)
 [env]
-MACOSX_DEPLOYMENT_TARGET = "12.4"
+MACOSX_DEPLOYMENT_TARGET = "13.0"
