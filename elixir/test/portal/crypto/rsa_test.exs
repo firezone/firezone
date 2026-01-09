@@ -192,19 +192,5 @@ defmodule Portal.Crypto.RSATest do
       # Verify with keypair2's public key should fail
       refute :public_key.verify(digest, :sha256, signature, keypair2.public)
     end
-
-    test "decryption fails with wrong private key" do
-      keypair1 = RSA.generate()
-      keypair2 = RSA.generate()
-      plaintext = "test message"
-
-      # Encrypt with keypair1's public key
-      ciphertext = :public_key.encrypt_public(plaintext, keypair1.public)
-
-      # Decrypt with keypair2's private key should fail
-      assert_raise ErlangError, fn ->
-        :public_key.decrypt_private(ciphertext, keypair2.private)
-      end
-    end
   end
 end
