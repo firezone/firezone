@@ -45,15 +45,9 @@ defmodule Portal.Crypto do
   end
 
   defp generate_random_token(length, :numeric) do
-    n =
-      :math.pow(10, length)
-      |> round()
-      |> :rand.uniform()
-      |> floor()
-      |> Kernel.-(1)
-
-    :io_lib.format("~#{length}..0B", [n])
-    |> List.to_string()
+    max = Integer.pow(10, length)
+    n = :crypto.strong_rand_range(max)
+    :io_lib.format("~#{length}..0B", [n]) |> List.to_string()
   end
 
   defp encode_random_token(binary, _length, :raw) do
