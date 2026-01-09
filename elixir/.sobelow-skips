@@ -33,3 +33,13 @@ DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:375,2
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:217,3560D02
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:371,46EE6C5
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:212,5B50F1B
+
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:31,135D3E7
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:72,3660523
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:41,4C6E35C
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:66,58F0C9B
+Config.Secrets: Hardcoded Secret,config/config.exs:206,611CC2E
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:51,68184B9
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,74777AB
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:75,780F62D
+Config.Secrets: Hardcoded Secret,config/config.exs:205,E9FD90

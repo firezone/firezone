@@ -1,15 +1,24 @@
 defmodule Portal.Health do
   @moduledoc """
-  Health check server that handles liveness and readiness probes.
+  Health check plug that handles liveness and readiness probes.
 
   - `/healthz` - Liveness check, always returns 200 OK
   - `/readyz` - Readiness check, returns 200 when endpoints are ready,
                 503 when draining or starting
-  """
-  use Plug.Router
 
-  plug :match
-  plug :dispatch
+  Can be used in two ways:
+
+  1. As a plug in Phoenix endpoints (passes through non-health routes):
+
+      plug Portal.Health
+
+  2. As a standalone server on a dedicated port (returns 404 for unknown routes):
+
+      children = [Portal.Health]
+  """
+  import Plug.Conn
+
+  @behaviour Plug
 
   def child_spec(_opts) do
     config = Portal.Config.fetch_env!(:portal, Portal.Health)
@@ -21,7 +30,7 @@ defmodule Portal.Health do
         {Bandit, :start_link,
          [
            [
-             plug: __MODULE__,
+             plug: Portal.Health.Server,
              scheme: :http,
              port: port,
              thousand_island_options: [num_acceptors: 2]
@@ -31,19 +40,33 @@ defmodule Portal.Health do
     }
   end
 
-  get "/healthz" do
+  @impl true
+  def init(opts), do: opts
+
+  @impl true
+  def call(%Plug.Conn{request_path: "/healthz", method: "GET"} = conn, _opts) do
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(200, JSON.encode!(%{status: :ok}))
+    |> halt()
   end
 
-  get "/readyz" do
-    conn = put_resp_content_type(conn, "application/json")
-    draining_file_path = draining_file_path()
+  def call(%Plug.Conn{request_path: "/readyz", method: "GET"} = conn, _opts) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_readyz_response()
+    |> halt()
+  end
 
+  def call(conn, _opts), do: conn
+
+  defp send_readyz_response(conn) do
     cond do
-      File.exists?(draining_file_path) ->
+      draining?() ->
         send_resp(conn, 503, JSON.encode!(%{status: :draining}))
+
+      not database_ready?() ->
+        send_resp(conn, 503, JSON.encode!(%{status: :database_unavailable}))
 
       not endpoints_ready?() ->
         send_resp(conn, 503, JSON.encode!(%{status: :starting}))
@@ -53,18 +76,38 @@ defmodule Portal.Health do
     end
   end
 
-  match _ do
-    send_resp(conn, 404, "Not found")
-  end
-
-  defp draining_file_path do
+  defp draining? do
     Portal.Config.fetch_env!(:portal, Portal.Health)[:draining_file_path]
+    |> File.exists?()
   end
 
   defp endpoints_ready? do
-    web_ready? = Process.whereis(PortalWeb.Endpoint) != nil
-    api_ready? = Process.whereis(PortalAPI.Endpoint) != nil
+    config = Portal.Config.fetch_env!(:portal, Portal.Health)
+    web_endpoint = Keyword.fetch!(config, :web_endpoint)
+    api_endpoint = Keyword.fetch!(config, :api_endpoint)
 
-    web_ready? and api_ready?
+    Process.whereis(web_endpoint) != nil and Process.whereis(api_endpoint) != nil
+  end
+
+  defp database_ready? do
+    repo = Portal.Config.fetch_env!(:portal, Portal.Health) |> Keyword.fetch!(:repo)
+
+    case repo.query("SELECT 1") do
+      {:ok, _result} -> true
+      {:error, _reason} -> false
+    end
+  end
+end
+
+defmodule Portal.Health.Server do
+  @moduledoc false
+  # Wrapper for standalone health server that returns 404 for unknown routes
+  use Plug.Builder
+
+  plug Portal.Health
+  plug :not_found
+
+  defp not_found(conn, _opts) do
+    Plug.Conn.send_resp(conn, 404, "Not found")
   end
 end

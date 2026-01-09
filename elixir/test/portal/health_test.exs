@@ -1,6 +1,10 @@
 defmodule Portal.HealthTest do
-  use ExUnit.Case, async: true
+  use Portal.DataCase, async: true
   import Plug.Test
+
+  defmodule FailingRepo do
+    def query(_sql), do: {:error, %DBConnection.ConnectionError{message: "connection refused"}}
+  end
 
   setup do
     draining_file_path =
@@ -30,7 +34,7 @@ defmodule Portal.HealthTest do
   end
 
   describe "GET /readyz" do
-    test "returns 200 with status ready when endpoints are up" do
+    test "returns 200 with status ready when endpoints and database are up" do
       conn =
         :get
         |> conn("/readyz")
@@ -53,14 +57,59 @@ defmodule Portal.HealthTest do
       assert conn.status == 503
       assert JSON.decode!(conn.resp_body) == %{"status" => "draining"}
     end
+
+    test "returns 503 with status starting when an endpoint is not ready", %{
+      draining_file_path: draining_file_path
+    } do
+      Portal.Config.put_env_override(:portal, Portal.Health,
+        draining_file_path: draining_file_path,
+        api_endpoint: :nonexistent_endpoint
+      )
+
+      conn =
+        :get
+        |> conn("/readyz")
+        |> Portal.Health.call([])
+
+      assert conn.status == 503
+      assert JSON.decode!(conn.resp_body) == %{"status" => "starting"}
+    end
+
+    test "returns 503 with status database_unavailable when database query fails", %{
+      draining_file_path: draining_file_path
+    } do
+      Portal.Config.put_env_override(:portal, Portal.Health,
+        draining_file_path: draining_file_path,
+        repo: Portal.HealthTest.FailingRepo
+      )
+
+      conn =
+        :get
+        |> conn("/readyz")
+        |> Portal.Health.call([])
+
+      assert conn.status == 503
+      assert JSON.decode!(conn.resp_body) == %{"status" => "database_unavailable"}
+    end
   end
 
   describe "unknown routes" do
-    test "returns 404" do
+    test "passes through when used as plug" do
       conn =
         :get
         |> conn("/unknown")
         |> Portal.Health.call([])
+
+      # Portal.Health passes through unknown routes (doesn't halt)
+      refute conn.halted
+      assert conn.status == nil
+    end
+
+    test "returns 404 when used as standalone server" do
+      conn =
+        :get
+        |> conn("/unknown")
+        |> Portal.Health.Server.call([])
 
       assert conn.status == 404
     end

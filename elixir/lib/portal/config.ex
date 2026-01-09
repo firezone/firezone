@@ -98,7 +98,15 @@ defmodule Portal.Config do
     defdelegate get_env(app, key, default \\ nil), to: Application
   else
     def put_env_override(app \\ :portal, key, value) do
-      Process.put(pdict_key_function(app, key), value)
+      merged_value =
+        if Keyword.keyword?(value) do
+          base = Application.fetch_env!(app, key)
+          Keyword.merge(base, value)
+        else
+          value
+        end
+
+      Process.put(pdict_key_function(app, key), merged_value)
       :ok
     end
 

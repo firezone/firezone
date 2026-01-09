@@ -84,7 +84,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
           Process.sleep(50)
         end)
 
-      assert log =~ "Error connecting to nodes"
+      assert log =~ "unable to connect to"
       assert Process.alive?(pid)
     end
 
