@@ -14,6 +14,9 @@ defmodule PortalWeb.Endpoint do
     signing_salt: {__MODULE__, :cookie_signing_salt, []}
   ]
 
+  # Health checks - early in pipeline for fast responses
+  plug Portal.Health
+
   if Application.compile_env(:portal, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
     plug PortalWeb.Plugs.AllowEctoSandbox
