@@ -163,9 +163,7 @@ public final class Store: ObservableObject {
     #if os(macOS)
       // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
       // from the tunnel process, because the UI process is not guaranteed to be alive.
-
-      // fetchLastDisconnectError is only available on macOS 13+
-      if #available(macOS 13, *), vpnStatus == .disconnected {
+      if vpnStatus == .disconnected {
         do {
           try manager().session()?.fetchLastDisconnectError { error in
             if let nsError = error as NSError?,
