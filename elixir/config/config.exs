@@ -154,6 +154,10 @@ config :portal, Portal.Telemetry,
 
 config :portal, Portal.Health,
   health_port: 4000,
+  repo: Portal.Repo,
+  web_endpoint: PortalWeb.Endpoint,
+  api_endpoint: PortalAPI.Endpoint,
+  # TODO: Remove draining_file_path after Azure migration is complete
   draining_file_path: "/var/run/firezone/draining"
 
 config :portal, Portal.Entra.APIClient,
