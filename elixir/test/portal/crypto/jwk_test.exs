@@ -208,18 +208,6 @@ defmodule Portal.Crypto.JWKTest do
   end
 
   describe "integration with JOSE libraries" do
-    # test "generated JWK can be used to sign JWT tokens" do
-    #  result = JWK.generate_jwk_and_jwks()
-
-    #  # Sign with JOSE
-    #  jwk = JOSE.JWK.from_map(result.jwk)
-    #  jws = %{"alg" => "RS256"}
-    #  {_jws, token} = JOSE.JWT.sign(jwk, jws, payload) |> JOSE.JWS.compact()
-
-    #  assert is_binary(token)
-    #  assert String.contains?(token, ".")
-    # end
-
     test "generated JWKS can be used to sign and verify JWT tokens" do
       result = JWK.generate_jwk_and_jwks()
       time = System.system_time(:second)
@@ -317,8 +305,7 @@ defmodule Portal.Crypto.JWKTest do
       qi = jwk["qi"] |> Base.url_decode64!(padding: false) |> :binary.decode_unsigned()
 
       # Verify q * qi ≡ 1 (mod p)
-      result = rem(q * qi, p)
-      assert result == 1
+      assert rem(q * qi, p) == 1
     end
   end
 
@@ -379,6 +366,5 @@ defmodule Portal.Crypto.JWKTest do
       assert e_pos < kty_pos, "Key 'e' must appear before 'kty'"
       assert kty_pos < n_pos, "Key 'kty' must appear before 'n'"
     end
-
   end
 end
