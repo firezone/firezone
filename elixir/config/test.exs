@@ -79,6 +79,16 @@ config :portal, Portal.Okta.APIClient,
     plug: {Req.Test, Portal.Okta.APIClient}
   ]
 
+config :portal, Portal.Entra.APIClient,
+  client_id: "test_client_id",
+  client_secret: "test_client_secret",
+  endpoint: "https://graph.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  req_options: [
+    plug: {Req.Test, Portal.Entra.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Telemetry, enabled: false
 
 config :portal, Portal.ConnectivityChecks, enabled: false
