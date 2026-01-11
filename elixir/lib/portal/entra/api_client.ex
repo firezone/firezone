@@ -24,9 +24,14 @@ defmodule Portal.Entra.APIClient do
         "grant_type" => "client_credentials"
       })
 
-    Req.post(token_endpoint,
-      headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
-      body: payload
+    req_options = fetch_config(:req_options) || []
+
+    Req.post(
+      token_endpoint,
+      [
+        headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
+        body: payload
+      ] ++ req_options
     )
   end
 
@@ -125,15 +130,19 @@ defmodule Portal.Entra.APIClient do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
     endpoint = config[:endpoint] || "https://graph.microsoft.com"
     url = "#{endpoint}/v1.0/$batch"
+    req_options = fetch_config(:req_options) || []
 
     require Logger
 
-    case Req.post(url,
-           headers: [
-             {"Authorization", "Bearer #{access_token}"},
-             {"Content-Type", "application/json"}
-           ],
-           json: batch_body
+    case Req.post(
+           url,
+           [
+             headers: [
+               {"Authorization", "Bearer #{access_token}"},
+               {"Content-Type", "application/json"}
+             ],
+             json: batch_body
+           ] ++ req_options
          ) do
       {:ok, %Req.Response{status: 200, body: %{"responses" => responses}}} ->
         Logger.debug("Batch API response",
@@ -244,9 +253,10 @@ defmodule Portal.Entra.APIClient do
   defp get(path, query, access_token) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
     endpoint = config[:endpoint] || "https://graph.microsoft.com"
+    req_options = fetch_config(:req_options) || []
 
     url = "#{endpoint}#{path}?#{query}"
-    Req.get(url, headers: [{"Authorization", "Bearer #{access_token}"}])
+    Req.get(url, [headers: [{"Authorization", "Bearer #{access_token}"}]] ++ req_options)
   end
 
   defp stream_pages(path, query, access_token) do
@@ -314,5 +324,9 @@ defmodule Portal.Entra.APIClient do
 
         {[error], nil}
     end
+  end
+
+  defp fetch_config(key) do
+    Portal.Config.fetch_env!(:portal, __MODULE__)[key]
   end
 end
