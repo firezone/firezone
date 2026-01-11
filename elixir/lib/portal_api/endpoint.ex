@@ -4,6 +4,9 @@ defmodule PortalAPI.Endpoint do
   # Health checks - early in pipeline for fast responses
   plug Portal.Health
 
+  # Azure Front Door ID validation - rejects requests not from our Front Door instance
+  plug Portal.Plugs.ValidateAzureFrontDoor
+
   if Application.compile_env(:portal, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
   end

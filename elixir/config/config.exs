@@ -205,7 +205,9 @@ config :portal, Portal.Billing,
   webhook_signing_secret: "whsec_test_1111",
   default_price_id: "price_1OkUIcADeNU9NGxvTNA4PPq6"
 
-config :portal, platform_adapter: nil
+config :portal,
+  platform_adapter: nil,
+  azure_front_door_id: nil
 
 config :portal, Portal.GoogleCloudPlatform,
   metadata_endpoint_url: "http://metadata.google.internal/computeMetadata/v1",
