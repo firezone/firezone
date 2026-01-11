@@ -43,3 +43,9 @@ Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:51,68184B
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,74777AB
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:75,780F62D
 Config.Secrets: Hardcoded Secret,config/config.exs:205,E9FD90
+
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:44,225E05A
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:383,2F1C9A0
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:34,304A525
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:54,42CDA04
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:379,63ED2C4
