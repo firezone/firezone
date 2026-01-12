@@ -252,7 +252,7 @@ async fn try_main(args: Args) -> Result<()> {
                 .build()
         },
         Arc::new(socket_factory::tcp),
-    )?;
+    );
     channel.connect(NoParams);
 
     let mut eventloop = Eventloop::new(server, ebpf, channel, public_addr, last_heartbeat_sent)?;

@@ -87,8 +87,7 @@ async fn client_does_not_pipeline_messages() {
                 .build()
         },
         Arc::new(socket_factory::tcp),
-    )
-    .unwrap();
+    );
 
     let client = async move {
         channel.connect(PublicKeyParam([0u8; 32]));
@@ -194,8 +193,7 @@ async fn client_deduplicates_messages() {
                 .build()
         },
         Arc::new(socket_factory::tcp),
-    )
-    .unwrap();
+    );
 
     let mut num_responses = 0;
 
@@ -352,7 +350,6 @@ fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
         },
         Arc::new(socket_factory::tcp),
     )
-    .unwrap()
 }
 
 async fn http_status_server(code: http::StatusCode) -> u16 {
@@ -518,8 +515,7 @@ async fn initial_connection_uses_constant_1s_backoff() {
                 .build()
         },
         Arc::new(socket_factory::tcp),
-    )
-    .unwrap();
+    );
 
     channel.connect(PublicKeyParam([0u8; 32]));
 

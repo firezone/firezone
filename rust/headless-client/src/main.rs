@@ -346,7 +346,7 @@ fn try_main() -> Result<()> {
                     .build()
             },
             Arc::new(tcp_socket_factory),
-        )?;
+        );
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),

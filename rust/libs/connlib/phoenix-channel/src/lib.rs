@@ -3,10 +3,10 @@
 mod get_user_agent;
 mod login_url;
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use futures::stream::FuturesUnordered;
 use std::collections::{BTreeMap, VecDeque};
-use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, future, marker::PhantomData};
@@ -326,18 +326,8 @@ where
         init_req: TInitReq,
         make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-    ) -> Result<Self> {
-        let host_and_port = url.host_and_port();
-
-        // Statically resolve the host in the URL to a set of addresses.
-        // We use these when connecting the socket to avoid a dependency on DNS resolution later on.
-        let resolved_addresses = host_and_port
-            .to_socket_addrs()
-            .with_context(|| format!("Failed to resolve '{}'", host_and_port.0))?
-            .map(|addr| addr.ip())
-            .collect();
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             make_initial_backoff: Box::new(make_initial_backoff),
             make_reconnect_backoff: Box::new(make_reconnect_backoff),
             backoff: None,
@@ -357,9 +347,9 @@ where
             pending_join_requests: Default::default(),
             login,
             init_req,
-            resolved_addresses,
+            resolved_addresses: Vec::default(),
             last_url: None,
-        })
+        }
     }
 
     /// Join the provided room.

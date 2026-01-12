@@ -646,7 +646,6 @@ impl<'a> Handler<'a> {
         )
         .context("Failed to create `LoginUrl`")?;
 
-        // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
             url,
             token,
@@ -659,7 +658,7 @@ impl<'a> Handler<'a> {
                     .build()
             },
             Arc::new(tcp_socket_factory),
-        )?;
+        );
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();

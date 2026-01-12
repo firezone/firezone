@@ -499,8 +499,7 @@ fn connect(
                 .build()
         },
         tcp_socket_factory.clone(),
-    )
-    .context("Failed to create `PhoenixChannel`")?;
+    );
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
         udp_socket_factory,
