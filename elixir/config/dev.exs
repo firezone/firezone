@@ -4,13 +4,21 @@ import Config
 web_port = System.get_env("PHOENIX_WEB_PORT", "13443") |> String.to_integer()
 api_port = System.get_env("PHOENIX_API_PORT", "13001") |> String.to_integer()
 
+# DATABASE_SSL can be "true", "false", or a JSON object with SSL options
+db_ssl =
+  case System.get_env("DATABASE_SSL", "false") do
+    "true" -> true
+    "false" -> false
+    json -> json |> JSON.decode!() |> Portal.Config.Dumper.dump_ssl_opts()
+  end
+
 db_opts = [
   database: System.get_env("DATABASE_NAME", "firezone_dev"),
   username: System.get_env("DATABASE_USER", "postgres"),
   hostname: System.get_env("DATABASE_HOST", "localhost"),
   port: String.to_integer(System.get_env("DATABASE_PORT", "5432")),
   password: System.get_env("DATABASE_PASSWORD", "postgres"),
-  ssl: System.get_env("DATABASE_SSL_ENABLED", "false") == "true"
+  ssl: db_ssl
 ]
 
 ###############################

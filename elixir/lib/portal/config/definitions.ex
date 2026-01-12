@@ -223,14 +223,6 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_queue_interval, :integer, default: 1000)
 
   @doc """
-  Whether to connect to the database over SSL.
-
-  If this field is set to `true`, the `database_ssl_opts` config must be set too
-  with at least `cacertfile` option present.
-  """
-  defconfig(:database_ssl_enabled, :boolean, default: false)
-
-  @doc """
   Name of the replication slot used by Firezone.
   """
   defconfig(:database_changes_replication_slot_name, :string, default: "changes_slot")
@@ -251,21 +243,24 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_change_logs_publication_name, :string, default: "change_logs")
 
   @doc """
-  SSL options for connecting to the PostgreSQL database.
+  SSL configuration for database connections.
 
-  Typically, to enabled SSL you want following options:
+  Accepts:
+  - `false` - SSL disabled
+  - `true` - SSL enabled with default options
+  - A JSON object with SSL options (e.g. `{"cacertfile": "/path/to/cert", "verify": "verify_peer"}`)
 
-    * `cacertfile` - path to the CA certificate file;
-    * `verify` - set to `verify_peer` to verify the server certificate;
-    * `fail_if_no_peer_cert` - set to `true` to require the server to present a certificate;
-    * `server_name_indication` - specify the hostname to be used in TLS Server Name Indication extension.
-
-  See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options).
-  For list of all supported options, see the [`ssl`](http://erlang.org/doc/man/ssl.html#type-tls_client_option) module documentation.
+  When a JSON object is provided, the options are passed directly to Postgrex's `:ssl` option.
+  Supported SSL options: `cacertfile`, `verify`, `depth`, `versions`, `server_name_indication`.
   """
-  defconfig(:database_ssl_opts, :map,
-    default: %{},
-    dump: &Dumper.dump_ssl_opts/1
+  defconfig(:database_ssl, :boolean_or_map,
+    default: false,
+    dump: fn
+      false -> false
+      true -> true
+      %{} = opts when map_size(opts) == 0 -> false
+      %{} = opts -> Dumper.dump_ssl_opts(opts)
+    end
   )
 
   defconfig(:database_parameters, :map,

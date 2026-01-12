@@ -183,7 +183,6 @@ defmodule Portal.Cluster.PostgresStrategy do
       :username,
       :password,
       :ssl,
-      :ssl_opts,
       :socket_options,
       :parameters
     ])
