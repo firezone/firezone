@@ -547,7 +547,7 @@ async fn phoenix_channel_event_loop(
                     .await
                     .context("Failed to lookup portal host")
                 {
-                    Ok(ips) => ips.into_iter().collect(),
+                    Ok(ips) => ips,
                     Err(e) => {
                         tracing::debug!(host = %portal.host(), "{e:#}");
                         continue;
