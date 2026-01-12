@@ -500,6 +500,8 @@ async fn phoenix_channel_event_loop(
 
     let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), dns_servers);
 
+    update_portal_host_ips(&mut portal, &udp_dns_client).await;
+
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
             Either::Left((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
@@ -543,19 +545,7 @@ async fn phoenix_channel_event_loop(
                 );
             }
             Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
-                let ips = match udp_dns_client
-                    .resolve(portal.host())
-                    .await
-                    .context("Failed to lookup portal host")
-                {
-                    Ok(ips) => ips,
-                    Err(e) => {
-                        tracing::debug!(host = %portal.host(), "{e:#}");
-                        continue;
-                    }
-                };
-
-                portal.update_ips(ips);
+                update_portal_host_ips(&mut portal, &udp_dns_client).await
             }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
@@ -578,6 +568,25 @@ async fn phoenix_channel_event_loop(
             }
         }
     }
+}
+
+async fn update_portal_host_ips(
+    portal: &mut PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    udp_dns_client: &UdpDnsClient,
+) {
+    let ips = match udp_dns_client
+        .resolve(portal.host())
+        .await
+        .context("Failed to lookup portal host")
+    {
+        Ok(ips) => ips,
+        Err(e) => {
+            tracing::debug!(host = %portal.host(), "{e:#}");
+            return;
+        }
+    };
+
+    portal.update_ips(ips);
 }
 
 fn is_unreachable(e: &io::Error) -> bool {

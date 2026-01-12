@@ -737,6 +737,8 @@ async fn phoenix_channel_event_loop(
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
 ) {
+    update_portal_host_ips(&mut portal).await;
+
     loop {
         match std::future::poll_fn(|cx| portal.poll(cx)).await {
             Ok(Event::SuccessResponse { .. }) => {}
@@ -759,22 +761,7 @@ async fn phoenix_channel_event_loop(
                 }
             }
             Ok(Event::Closed) => break,
-            Ok(Event::NoAddresses) => {
-                let host = portal.host();
-
-                let ips = match tokio::net::lookup_host(format!("{host}:0"))
-                    .await
-                    .context("Failed to lookup portal host")
-                {
-                    Ok(sockets) => sockets.map(|s| s.ip()).collect(),
-                    Err(e) => {
-                        tracing::warn!(%host, "{e:#}");
-                        continue;
-                    }
-                };
-
-                portal.update_ips(ips);
-            }
+            Ok(Event::NoAddresses) => update_portal_host_ips(&mut portal).await,
             Ok(Event::Hiccup {
                 backoff,
                 max_elapsed_time,
@@ -787,6 +774,25 @@ async fn phoenix_channel_event_loop(
             }
         }
     }
+}
+
+async fn update_portal_host_ips(
+    portal: &mut PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
+) {
+    let host = portal.host();
+
+    let ips = match tokio::net::lookup_host(format!("{host}:0"))
+        .await
+        .context("Failed to lookup portal host")
+    {
+        Ok(sockets) => sockets.map(|s| s.ip()).collect(),
+        Err(e) => {
+            tracing::warn!(%host, "{e:#}");
+            return;
+        }
+    };
+
+    portal.update_ips(ips);
 }
 
 fn fmt_human_throughput(mut throughput: f64) -> String {

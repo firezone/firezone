@@ -719,6 +719,8 @@ async fn phoenix_channel_event_loop(
     use futures::future::Either;
     use futures::future::select;
 
+    update_portal_host_ips(&mut portal, &resolver).await;
+
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
             Either::Left((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
@@ -767,19 +769,7 @@ async fn phoenix_channel_event_loop(
                 );
             }
             Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
-                let ips = match resolver
-                    .lookup_ip(portal.host())
-                    .await
-                    .context("Failed to lookup portal host")
-                {
-                    Ok(ips) => ips.into_iter().collect(),
-                    Err(e) => {
-                        tracing::debug!(host = %portal.host(), "{e:#}");
-                        continue;
-                    }
-                };
-
-                portal.update_ips(ips);
+                update_portal_host_ips(&mut portal, &resolver).await
             }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
@@ -801,6 +791,25 @@ async fn phoenix_channel_event_loop(
             }
         }
     }
+}
+
+async fn update_portal_host_ips(
+    portal: &mut PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    resolver: &TokioResolver,
+) {
+    let ips = match resolver
+        .lookup_ip(portal.host())
+        .await
+        .context("Failed to lookup portal host")
+    {
+        Ok(ips) => ips.into_iter().collect(),
+        Err(e) => {
+            tracing::debug!(host = %portal.host(), "{e:#}");
+            return;
+        }
+    };
+
+    portal.update_ips(ips);
 }
 
 async fn resolve(domain: DomainName) -> Result<Vec<IpAddr>> {
