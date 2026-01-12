@@ -35,6 +35,11 @@ export default function GUI({ os }: { os: OS }) {
           Implements retry with exponential backoff on 429 (Too Many Requests)
           responses from the portal.
         </ChangeItem>
+        <ChangeItem pull="11654">
+          Implements retry with exponential backoff for anything but 401
+          responses. For example, this allows Firezone to automatically sign-in
+          even if Internet Access is gated by a captive portal.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.9" date={new Date("2025-12-23")}>
         {os == OS.Linux && (
