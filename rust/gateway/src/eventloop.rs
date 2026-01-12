@@ -80,17 +80,16 @@ enum PortalCommand {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel,
-        mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+        portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
     ) -> Result<Self> {
-        portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
-
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
 
         tokio::spawn(phoenix_channel_event_loop(
             portal,
+            PublicKeyParam(tunnel.public_key().to_bytes()),
             portal_event_tx,
             portal_cmd_rx,
             resolver.clone(),
@@ -712,6 +711,7 @@ impl Eventloop {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    param: PublicKeyParam,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     resolver: TokioResolver,
@@ -720,6 +720,7 @@ async fn phoenix_channel_event_loop(
     use futures::future::select;
 
     update_portal_host_ips(&mut portal, &resolver).await;
+    portal.connect(param);
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {

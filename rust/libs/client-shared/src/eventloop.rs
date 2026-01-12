@@ -100,7 +100,7 @@ impl Eventloop {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
-        mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+        portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -115,10 +115,9 @@ impl Eventloop {
             is_internet_resource_active,
         );
 
-        portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
-
         tokio::spawn(phoenix_channel_event_loop(
             portal,
+            PublicKeyParam(tunnel.public_key().to_bytes()),
             portal_event_tx,
             portal_cmd_rx,
             udp_socket_factory.clone(),
@@ -489,6 +488,7 @@ impl Eventloop {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    param: PublicKeyParam,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -501,6 +501,7 @@ async fn phoenix_channel_event_loop(
     let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), dns_servers);
 
     update_portal_host_ips(&mut portal, &udp_dns_client).await;
+    portal.connect(param);
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {

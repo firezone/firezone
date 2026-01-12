@@ -441,9 +441,15 @@ where
     }
 
     pub fn update_ips(&mut self, ips: Vec<IpAddr>) {
-        tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, new = ?ips, "Updating resolved IPs");
+        let new = BTreeSet::from_iter(ips);
 
-        self.resolved_addresses = BTreeSet::from_iter(ips);
+        if new == self.resolved_addresses {
+            return;
+        }
+
+        tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, ?new, "Updating resolved IPs");
+
+        self.resolved_addresses = new;
     }
 
     /// Initiate a graceful close of the connection.

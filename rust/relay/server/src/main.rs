@@ -238,7 +238,7 @@ async fn try_main(args: Args) -> Result<()> {
         args.public_ip6_addr,
     )?;
 
-    let mut channel = PhoenixChannel::disconnected(
+    let channel = PhoenixChannel::disconnected(
         login,
         args.token.clone(),
         get_user_agent("relay", env!("CARGO_PKG_VERSION")),
@@ -253,7 +253,6 @@ async fn try_main(args: Args) -> Result<()> {
         },
         Arc::new(socket_factory::tcp),
     );
-    channel.connect(NoParams);
 
     let mut eventloop = Eventloop::new(server, ebpf, channel, public_addr, last_heartbeat_sent)?;
 
@@ -738,6 +737,7 @@ async fn phoenix_channel_event_loop(
     last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
 ) {
     update_portal_host_ips(&mut portal).await;
+    portal.connect(NoParams);
 
     loop {
         match std::future::poll_fn(|cx| portal.poll(cx)).await {
