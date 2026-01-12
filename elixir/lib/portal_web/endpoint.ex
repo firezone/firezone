@@ -1,5 +1,4 @@
 defmodule PortalWeb.Endpoint do
-  use Sentry.PlugCapture
   use Phoenix.Endpoint, otp_app: :portal
 
   # NOTE: This is only used for the LiveView session. We store per-account cookies to allow

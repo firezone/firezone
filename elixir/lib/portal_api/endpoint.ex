@@ -1,5 +1,4 @@
 defmodule PortalAPI.Endpoint do
-  use Sentry.PlugCapture
   use Phoenix.Endpoint, otp_app: :portal
 
   # Health checks - early in pipeline for fast responses

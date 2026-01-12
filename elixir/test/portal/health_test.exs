@@ -21,6 +21,46 @@ defmodule Portal.HealthTest do
     {:ok, draining_file_path: draining_file_path}
   end
 
+  describe "PortalWeb.Endpoint integration" do
+    test "GET /healthz returns 200" do
+      conn =
+        Plug.Test.conn(:get, "/healthz")
+        |> PortalWeb.Endpoint.call([])
+
+      assert conn.status == 200
+      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
+    end
+
+    test "GET /readyz returns 200 when ready" do
+      conn =
+        Plug.Test.conn(:get, "/readyz")
+        |> PortalWeb.Endpoint.call([])
+
+      assert conn.status == 200
+      assert JSON.decode!(conn.resp_body) == %{"status" => "ready"}
+    end
+  end
+
+  describe "PortalAPI.Endpoint integration" do
+    test "GET /healthz returns 200" do
+      conn =
+        Plug.Test.conn(:get, "/healthz")
+        |> PortalAPI.Endpoint.call([])
+
+      assert conn.status == 200
+      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
+    end
+
+    test "GET /readyz returns 200 when ready" do
+      conn =
+        Plug.Test.conn(:get, "/readyz")
+        |> PortalAPI.Endpoint.call([])
+
+      assert conn.status == 200
+      assert JSON.decode!(conn.resp_body) == %{"status" => "ready"}
+    end
+  end
+
   describe "GET /healthz" do
     test "returns 200 with status ok" do
       conn =

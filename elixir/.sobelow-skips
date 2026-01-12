@@ -51,3 +51,6 @@ DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.e
 Config.Secrets: Hardcoded Secret,config/config.exs:203,6ED2CC5
 Config.Secrets: Hardcoded Secret,config/config.exs:204,7F38DEB
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:370,7F8C06D
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:40,1D07B78
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:30,75F2F69
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:50,7DE9449
