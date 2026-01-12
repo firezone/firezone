@@ -47,7 +47,9 @@ impl UdpDnsClient {
             let domain =
                 DomainName::vec_from_str(host.as_ref()).context("Failed to parse domain name")?;
 
-            let ips: Vec<IpAddr> = servers
+            tracing::debug!(?servers, %domain, "Resolving host");
+
+            let ips = servers
                 .iter()
                 .flat_map(|socket| {
                     let socket = SocketAddr::new(*socket, 53);
@@ -80,6 +82,8 @@ impl UdpDnsClient {
                 .collect::<BTreeSet<_>>() // Make them unique.
                 .into_iter()
                 .collect();
+
+            tracing::debug!(?ips, %host, "Resolved host");
 
             Ok(ips)
         }
