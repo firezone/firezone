@@ -42,16 +42,6 @@ impl UdpDnsClient {
         let host = host.into();
 
         async move {
-            // If the host is already an IP address, return it directly without DNS resolution.
-            if let Ok(ip) = host.as_ref().parse::<IpAddr>() {
-                return Ok(vec![ip]);
-            }
-
-            // If no DNS servers are configured, fall back to the system resolver.
-            if servers.is_empty() {
-                return resolve_via_system(host.as_ref()).await;
-            }
-
             let domain =
                 DomainName::vec_from_str(host.as_ref()).context("Failed to parse domain name")?;
 
@@ -94,20 +84,6 @@ impl UdpDnsClient {
     }
 }
 
-/// Resolves a hostname using the system's default resolver.
-async fn resolve_via_system(host: &str) -> Result<Vec<IpAddr>> {
-    // Use port 0 as a placeholder; tokio::net::lookup_host requires host:port format
-    let host_with_port = format!("{host}:0");
-
-    let addrs = tokio::net::lookup_host(&host_with_port)
-        .await
-        .with_context(|| format!("System DNS lookup failed for {host}"))?;
-
-    let ips: Vec<IpAddr> = addrs.map(|addr| addr.ip()).collect();
-
-    Ok(ips)
-}
-
 async fn send_query(
     socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     server: SocketAddr,
@@ -142,30 +118,6 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-
-    #[tokio::test]
-    async fn ip_address_returns_directly() {
-        let client = UdpDnsClient::new(
-            Arc::new(socket_factory::udp),
-            vec![], // No DNS servers needed for IP address resolution
-        );
-
-        let ips = client.resolve("192.168.1.1").await.unwrap();
-
-        assert_eq!(ips, vec![IpAddr::from([192, 168, 1, 1])]);
-    }
-
-    #[tokio::test]
-    async fn ipv6_address_returns_directly() {
-        let client = UdpDnsClient::new(
-            Arc::new(socket_factory::udp),
-            vec![], // No DNS servers needed for IP address resolution
-        );
-
-        let ips = client.resolve("::1").await.unwrap();
-
-        assert_eq!(ips, vec![IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1])]);
-    }
 
     #[tokio::test]
     #[ignore = "Requires Internet"]
@@ -210,15 +162,5 @@ mod tests {
 
         assert!(!ips.is_empty());
         assert!(now.elapsed() >= UdpDnsClient::TIMEOUT) // Still need to wait for the unreachable server.
-    }
-
-    #[tokio::test]
-    #[ignore = "Requires Internet"]
-    async fn falls_back_to_system_resolver_when_no_servers_configured() {
-        let client = UdpDnsClient::new(Arc::new(socket_factory::udp), vec![]);
-
-        let ips = client.resolve("example.com").await.unwrap();
-
-        assert!(!ips.is_empty())
     }
 }
