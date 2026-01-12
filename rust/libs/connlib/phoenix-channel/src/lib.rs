@@ -544,9 +544,9 @@ where
                         continue;
                     }
                     Poll::Ready(Err(InternalError::NoAddresses)) => {
-                        // Reconnect immediately because we assume the caller updates us with new IPs before polling us again.
+                        // Fixed 1s interval to avoid busy-looping in case DNS resolution fails / is not possible.
                         self.state = State::Reconnect {
-                            backoff: Duration::ZERO,
+                            backoff: Duration::from_secs(1),
                         };
 
                         return Poll::Ready(Ok(Event::NoAddresses));
