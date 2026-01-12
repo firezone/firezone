@@ -153,10 +153,8 @@ async fn connect(
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Failed to establish WebSocket connection: {0}")]
-    Client(StatusCode),
-    #[error("Authentication token expired")]
-    TokenExpired,
+    #[error("Authentication token invalid")]
+    InvalidToken,
     #[error(
         "Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}"
     )]
@@ -170,8 +168,7 @@ pub enum Error {
 impl Error {
     pub fn is_authentication_error(&self) -> bool {
         match self {
-            Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
-            Error::TokenExpired => true,
+            Error::InvalidToken => true,
             Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
             Error::FatalIo(_) => false,
@@ -188,6 +185,46 @@ enum InternalError {
     RoomJoinTimedOut,
     SocketConnection(Vec<(SocketAddr, std::io::Error)>),
     Timeout { duration: Duration },
+}
+
+impl InternalError {
+    /// Parses a Retry-After header value into a Duration.
+    ///
+    /// The header can be either:
+    /// - A number of seconds (e.g., "120")
+    /// - An HTTP date in IMF-fixdate format (e.g., "Wed, 21 Oct 2015 07:28:00 GMT")
+    pub(crate) fn parse_retry_after_header(&self) -> Option<Duration> {
+        let Self::WebSocket(tungstenite::Error::Http(response)) = self else {
+            return None;
+        };
+
+        let header = response.headers().get(RETRY_AFTER)?;
+        let value = header.to_str().ok()?;
+        let duration = parse_retry_after_value(value)?;
+
+        Some(duration)
+    }
+}
+
+fn parse_retry_after_value(value: &str) -> Option<Duration> {
+    // Try parsing as seconds first (most common for 429 responses)
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    // Try parsing as HTTP date (IMF-fixdate format: "Wed, 21 Oct 2015 07:28:00 GMT")
+    if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
+        let now = chrono::Utc::now();
+        let retry_at = date.to_utc();
+        let duration = retry_at
+            .signed_duration_since(now)
+            .to_std()
+            .unwrap_or(Duration::ZERO);
+
+        return Some(duration);
+    }
+
+    None
 }
 
 impl fmt::Display for InternalError {
@@ -496,23 +533,26 @@ where
 
                         continue;
                     }
-                    // Handle 408, 429 and 503 with Retry-After header, falling back to exponential backoff
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
-                        if r.status() == StatusCode::REQUEST_TIMEOUT
-                            || r.status() == StatusCode::TOO_MANY_REQUESTS
-                            || r.status() == StatusCode::SERVICE_UNAVAILABLE =>
+                        if r.status() == StatusCode::UNAUTHORIZED =>
                     {
-                        let backoff = match parse_retry_after(&r) {
+                        return Poll::Ready(Err(Error::InvalidToken));
+                    }
+                    Poll::Ready(Err(e)) => {
+                        let backoff = match e.parse_retry_after_header() {
                             Some(duration) => duration,
                             None => {
-                                let backoff = self
-                                    .backoff
-                                    .get_or_insert_with(&self.make_reconnect_backoff);
+                                let backoff =
+                                    self.backoff.get_or_insert_with(if self.was_connected {
+                                        &self.make_reconnect_backoff
+                                    } else {
+                                        &self.make_initial_backoff
+                                    });
 
                                 backoff
                                     .next_backoff()
                                     .ok_or_else(|| Error::MaxRetriesReached {
-                                        final_error: r.status().to_string(),
+                                        final_error: e.to_string(),
                                     })?
                             }
                         };
@@ -521,53 +561,6 @@ where
 
                         return Poll::Ready(Ok(Event::Hiccup {
                             backoff,
-                            max_elapsed_time: self
-                                .backoff
-                                .as_ref()
-                                .and_then(|b| b.max_elapsed_time),
-                            error: anyhow::Error::new(InternalError::WebSocket(
-                                tungstenite::Error::Http(r),
-                            ))
-                            .context("Reconnecting to portal on transient error"),
-                        }));
-                    }
-                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
-                        if r.status().is_client_error() =>
-                    {
-                        return Poll::Ready(Err(Error::Client(r.status())));
-                    }
-                    // Unfortunately, the underlying error gets stringified by tungstenite so we cannot match on anything other than the string.
-                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Io(io))))
-                        if io.to_string().starts_with("invalid peer certificate") =>
-                    {
-                        return Poll::Ready(Err(Error::FatalIo(io)));
-                    }
-                    Poll::Ready(Err(e)) => {
-                        let backoff_duration =
-                            match self.backoff.as_mut() {
-                                Some(backoff) => backoff.next_backoff().ok_or_else(|| {
-                                    Error::MaxRetriesReached {
-                                        final_error: err_with_src(&e).to_string(),
-                                    }
-                                })?,
-                                None => {
-                                    let new_backoff = if self.was_connected {
-                                        (self.make_reconnect_backoff)()
-                                    } else {
-                                        (self.make_initial_backoff)()
-                                    };
-                                    self.backoff = Some(new_backoff);
-
-                                    Duration::ZERO
-                                }
-                            };
-
-                        self.state = State::Reconnect {
-                            backoff: backoff_duration,
-                        };
-
-                        return Poll::Ready(Ok(Event::Hiccup {
-                            backoff: backoff_duration,
                             max_elapsed_time: self
                                 .backoff
                                 .as_ref()
@@ -746,7 +739,7 @@ where
                             },
                             _,
                         ) => {
-                            return Poll::Ready(Err(Error::TokenExpired));
+                            return Poll::Ready(Err(Error::InvalidToken));
                         }
                     }
                 }
@@ -833,40 +826,6 @@ fn make_initial_backoff() -> ExponentialBackoff {
         .with_randomization_factor(0.0)
         .with_max_elapsed_time(Some(INITIAL_CONNECT_MAX_ELAPSED_TIME))
         .build()
-}
-
-/// Parses a Retry-After header value into a Duration.
-///
-/// The header can be either:
-/// - A number of seconds (e.g., "120")
-/// - An HTTP date in IMF-fixdate format (e.g., "Wed, 21 Oct 2015 07:28:00 GMT")
-fn parse_retry_after(response: &tungstenite::http::Response<Option<Vec<u8>>>) -> Option<Duration> {
-    let header = response.headers().get(RETRY_AFTER)?;
-    let value = header.to_str().ok()?;
-    let duration = parse_retry_after_value(value)?;
-
-    Some(duration)
-}
-
-fn parse_retry_after_value(value: &str) -> Option<Duration> {
-    // Try parsing as seconds first (most common for 429 responses)
-    if let Ok(seconds) = value.parse::<u64>() {
-        return Some(Duration::from_secs(seconds));
-    }
-
-    // Try parsing as HTTP date (IMF-fixdate format: "Wed, 21 Oct 2015 07:28:00 GMT")
-    if let Ok(date) = chrono::DateTime::parse_from_rfc2822(value) {
-        let now = chrono::Utc::now();
-        let retry_at = date.to_utc();
-        let duration = retry_at
-            .signed_duration_since(now)
-            .to_std()
-            .unwrap_or(Duration::ZERO);
-
-        return Some(duration);
-    }
-
-    None
 }
 
 #[derive(Debug)]
