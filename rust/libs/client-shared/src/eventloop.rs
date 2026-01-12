@@ -99,6 +99,7 @@ impl Eventloop {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         is_internet_resource_active: bool,
+        dns_servers: Vec<IpAddr>,
         mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
@@ -121,6 +122,7 @@ impl Eventloop {
             portal_event_tx,
             portal_cmd_rx,
             udp_socket_factory.clone(),
+            dns_servers,
         ));
 
         Self {
@@ -490,14 +492,13 @@ async fn phoenix_channel_event_loop(
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    dns_servers: Vec<IpAddr>,
 ) {
     use futures::future::Either;
     use futures::future::select;
     use std::future::poll_fn;
 
-    // Initialize with empty DNS servers; the UdpDnsClient will fall back to
-    // the system resolver if no servers are configured.
-    let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), vec![]);
+    let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), dns_servers);
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {

@@ -505,6 +505,7 @@ fn connect(
         udp_socket_factory,
         portal,
         is_internet_resource_active,
+        Vec::default(),
         runtime.handle().clone(),
     );
 

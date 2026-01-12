@@ -667,14 +667,11 @@ impl<'a> Handler<'a> {
             Arc::new(UdpSocketFactory::default()),
             portal,
             is_internet_resource_active,
+            dns,
             tokio::runtime::Handle::current(),
         );
 
         analytics::new_session(device_id.id, api_url.to_string());
-
-        // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
-        tracing::debug!(?dns, "Calling `set_dns`...");
-        connlib.set_dns(dns);
 
         let tun = self
             .tun_device
