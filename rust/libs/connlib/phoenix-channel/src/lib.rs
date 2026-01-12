@@ -128,6 +128,10 @@ async fn connect(
     addresses: Vec<SocketAddr>,
     socket_factory: &dyn SocketFactory<TcpSocket>,
 ) -> Result<TcpStream, InternalError> {
+    if addresses.is_empty() {
+        return Err(InternalError::NoAddresses);
+    }
+
     use futures::future::TryFutureExt;
 
     let mut sockets = addresses
@@ -184,6 +188,7 @@ enum InternalError {
     StreamClosed,
     RoomJoinTimedOut,
     SocketConnection(Vec<(SocketAddr, std::io::Error)>),
+    NoAddresses,
     Timeout { duration: Duration },
 }
 
@@ -258,6 +263,7 @@ impl fmt::Display for InternalError {
                 write!(f, "operation timed out after {duration:?}")
             }
             InternalError::RoomJoinTimedOut => write!(f, "room join timed out"),
+            InternalError::NoAddresses => write!(f, "no IP addresses available"),
         }
     }
 }
@@ -273,6 +279,7 @@ impl std::error::Error for InternalError {
             InternalError::StreamClosed => None,
             InternalError::Timeout { .. } => None,
             InternalError::RoomJoinTimedOut => None,
+            InternalError::NoAddresses => None,
         }
     }
 }
