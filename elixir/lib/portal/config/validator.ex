@@ -47,6 +47,12 @@ defmodule Portal.Config.Validator do
     end
   end
 
+  def validate(_key, value, :boolean_or_map, _opts) when is_boolean(value), do: {:ok, value}
+  def validate(_key, value, :boolean_or_map, _opts) when is_map(value), do: {:ok, value}
+
+  def validate(_key, value, :boolean_or_map, _opts),
+    do: {:error, {value, ["must be a boolean or a map of SSL options"]}}
+
   def validate(key, value, {:embed, type}, opts) do
     {callback_module, callback_fun, callback_args} =
       Keyword.get(opts, :changeset, {type, :changeset, []})

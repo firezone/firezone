@@ -43,3 +43,11 @@ Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:51,68184B
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,74777AB
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:75,780F62D
 Config.Secrets: Hardcoded Secret,config/config.exs:205,E9FD90
+
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:366,2BF900
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:211,52B9024
+Config.Secrets: Hardcoded Secret,config/config.exs:104,61C15AF
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:216,69DCAC0
+Config.Secrets: Hardcoded Secret,config/config.exs:203,6ED2CC5
+Config.Secrets: Hardcoded Secret,config/config.exs:204,7F38DEB
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:370,7F8C06D

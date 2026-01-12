@@ -35,6 +35,12 @@ defmodule Portal.Config.Caster do
   def cast("false", :boolean), do: {:ok, false}
   def cast("", :boolean), do: {:ok, nil}
 
+  # Special type for DATABASE_SSL that can be "true", "false", or a JSON object with SSL options
+  def cast("true", :boolean_or_map), do: {:ok, true}
+  def cast("false", :boolean_or_map), do: {:ok, false}
+  def cast("", :boolean_or_map), do: {:ok, false}
+  def cast(json, :boolean_or_map) when is_binary(json), do: JSON.decode(json)
+
   def cast(value, :integer) when is_binary(value) do
     case Integer.parse(value) do
       {value, ""} ->

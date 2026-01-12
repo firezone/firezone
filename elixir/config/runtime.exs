@@ -16,8 +16,7 @@ if config_env() == :prod do
            {:pool_size, env_var_to_config!(:database_pool_size)},
            {:queue_target, env_var_to_config!(:database_queue_target)},
            {:queue_interval, env_var_to_config!(:database_queue_interval)},
-           {:ssl, env_var_to_config!(:database_ssl_enabled)},
-           {:ssl_opts, env_var_to_config!(:database_ssl_opts)},
+           {:ssl, env_var_to_config!(:database_ssl)},
            {:parameters, env_var_to_config!(:database_parameters)}
          ] ++
            if(env_var_to_config(:database_password),
@@ -37,8 +36,7 @@ if config_env() == :prod do
     connection_opts:
       [
         port: env_var_to_config!(:database_port),
-        ssl: env_var_to_config!(:database_ssl_enabled),
-        ssl_opts: env_var_to_config!(:database_ssl_opts),
+        ssl: env_var_to_config!(:database_ssl),
         parameters: env_var_to_config!(:database_parameters),
         username: env_var_to_config!(:database_user),
         database: env_var_to_config!(:database_name)
@@ -60,8 +58,7 @@ if config_env() == :prod do
     connection_opts:
       [
         port: env_var_to_config!(:database_port),
-        ssl: env_var_to_config!(:database_ssl_enabled),
-        ssl_opts: env_var_to_config!(:database_ssl_opts),
+        ssl: env_var_to_config!(:database_ssl),
         parameters: env_var_to_config!(:database_parameters),
         username: env_var_to_config!(:database_user),
         database: env_var_to_config!(:database_name)
