@@ -530,6 +530,14 @@ where
 
                         continue;
                     }
+                    Poll::Ready(Err(InternalError::NoAddresses)) => {
+                        // Reconnect immediately because we assume the caller updates us with new IPs before polling us again.
+                        self.state = State::Reconnect {
+                            backoff: Duration::ZERO,
+                        };
+
+                        return Poll::Ready(Ok(Event::NoAddresses));
+                    }
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
                         if r.status() == StatusCode::UNAUTHORIZED =>
                     {
@@ -850,6 +858,11 @@ pub enum Event<TInboundMsg> {
         max_elapsed_time: Option<Duration>,
         error: anyhow::Error,
     },
+    /// We don't have any addresses to connect to.
+    ///
+    /// Upon receiving this event, you should re-resolve the [`host`](PhoenixChannel::host)
+    /// and provide new IPs for it via [`PhoenixChannel::update_ips`].
+    NoAddresses,
     /// The connection was closed successfully.
     Closed,
 }

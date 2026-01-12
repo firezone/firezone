@@ -759,6 +759,22 @@ async fn phoenix_channel_event_loop(
                 }
             }
             Ok(Event::Closed) => break,
+            Ok(Event::NoAddresses) => {
+                let host = portal.host();
+
+                let ips = match tokio::net::lookup_host(format!("{host}:0"))
+                    .await
+                    .context("Failed to lookup portal host")
+                {
+                    Ok(sockets) => sockets.map(|s| s.ip()).collect(),
+                    Err(e) => {
+                        tracing::warn!(%host, "{e:#}");
+                        continue;
+                    }
+                };
+
+                portal.update_ips(ips);
+            }
             Ok(Event::Hiccup {
                 backoff,
                 max_elapsed_time,

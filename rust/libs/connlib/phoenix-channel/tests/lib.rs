@@ -1,6 +1,7 @@
 #![cfg(not(windows))] // For some reason, Windows doesn't like this test.
 #![allow(clippy::unwrap_used)]
 
+use std::net::{IpAddr, Ipv4Addr};
 use std::{future, sync::Arc, time::Duration};
 
 use phoenix_channel::{DeviceInfo, Event, LoginUrl, PhoenixChannel, PublicKeyParam};
@@ -106,6 +107,9 @@ async fn client_does_not_pipeline_messages() {
                     ..
                 } => {
                     channel.close().unwrap();
+                }
+                phoenix_channel::Event::NoAddresses => {
+                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
                 }
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
@@ -221,6 +225,9 @@ async fn client_deduplicates_messages() {
                 }
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
+                }
+                phoenix_channel::Event::NoAddresses => {
+                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
                 }
                 phoenix_channel::Event::Closed => break,
             }

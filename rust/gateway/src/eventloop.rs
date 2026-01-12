@@ -765,7 +765,8 @@ async fn phoenix_channel_event_loop(
                     ?max_elapsed_time,
                     "Hiccup in portal connection: {error:#}"
                 );
-
+            }
+            Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
                 let ips = match resolver
                     .lookup_ip(portal.host())
                     .await
