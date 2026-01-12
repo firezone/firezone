@@ -202,7 +202,7 @@ tokio = "1.48.0"
 tokio-rustls = { version = "0.26.4", default-features = false }
 tokio-stream = "0.1.17"
 tokio-tungstenite = "0.28.0"
-tokio-util = "0.7.17"
+tokio-util = "0.7.18"
 toml = "0.9"
 tracing = { version = "0.1.40" }
 tracing-appender = "0.2.4"
