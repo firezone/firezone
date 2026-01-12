@@ -18,6 +18,11 @@ export default function Headless({ os }: { os: OS }) {
           Improves connection reliability on systems where certain UDP socket
           features are unavailable.
         </ChangeItem>
+        <ChangeItem pull="11654">
+          Implements retry with exponential backoff for anything but 401
+          responses. For example, this allows Firezone to automatically sign-in
+          even if Internet Access is gated by a captive portal.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.6" date={new Date("2026-01-06")}>
         <ChangeItem pull="11627">
