@@ -5,7 +5,7 @@ mod login_url;
 
 use anyhow::Result;
 use futures::stream::FuturesUnordered;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -68,7 +68,7 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     backoff: Option<ExponentialBackoff>,
     was_connected: bool,
 
-    resolved_addresses: Vec<IpAddr>,
+    resolved_addresses: BTreeSet<IpAddr>,
 
     login: &'static str,
     init_req: TInitReq,
@@ -347,7 +347,7 @@ where
             pending_join_requests: Default::default(),
             login,
             init_req,
-            resolved_addresses: Vec::default(),
+            resolved_addresses: Default::default(),
             last_url: None,
         }
     }
@@ -436,7 +436,7 @@ where
     pub fn update_ips(&mut self, ips: Vec<IpAddr>) {
         tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, new = ?ips, "Updating resolved IPs");
 
-        self.resolved_addresses = ips;
+        self.resolved_addresses = BTreeSet::from_iter(ips);
     }
 
     /// Initiate a graceful close of the connection.
