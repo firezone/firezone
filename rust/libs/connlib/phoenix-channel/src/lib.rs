@@ -528,12 +528,6 @@ where
                             .context("Reconnecting to portal on transient error"),
                         }));
                     }
-                    // Unfortunately, the underlying error gets stringified by tungstenite so we cannot match on anything other than the string.
-                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Io(io))))
-                        if io.to_string().starts_with("invalid peer certificate") =>
-                    {
-                        return Poll::Ready(Err(Error::FatalIo(io)));
-                    }
                     Poll::Ready(Err(e)) => {
                         let backoff_duration =
                             match self.backoff.as_mut() {
