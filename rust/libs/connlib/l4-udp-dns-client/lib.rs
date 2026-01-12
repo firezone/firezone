@@ -42,6 +42,8 @@ impl UdpDnsClient {
         let host = host.into();
 
         async move {
+            anyhow::ensure!(!servers.is_empty(), "No servers specified");
+
             let domain =
                 DomainName::vec_from_str(host.as_ref()).context("Failed to parse domain name")?;
 
@@ -162,5 +164,14 @@ mod tests {
 
         assert!(!ips.is_empty());
         assert!(now.elapsed() >= UdpDnsClient::TIMEOUT) // Still need to wait for the unreachable server.
+    }
+
+    #[tokio::test]
+    async fn fails_without_servers() {
+        let client = UdpDnsClient::new(Arc::new(socket_factory::udp), vec![]);
+
+        let ips = client.resolve("example.com").await;
+
+        assert_eq!(ips.unwrap_err().to_string(), "No servers specified")
     }
 }
