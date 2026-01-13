@@ -27,10 +27,13 @@ jobs:
     runs-on: macos-15
     env:
       XCODE_VERSION: "26.0"
+      MISE_EXPERIMENTAL: "1"
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
-      - name: Run tests with coverage
+      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3.5.1
+        with:
+          install_args: --cd swift/apple
         run: ./mise-tasks/test-coverage.sh
         working-directory: swift/apple
       - name: Upload coverage to Coveralls
@@ -46,6 +49,7 @@ jobs:
     runs-on: macos-15
     env:
       XCODE_VERSION: "26.0"
+      MISE_EXPERIMENTAL: "1"
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
@@ -53,7 +57,7 @@ jobs:
         with:
           install_args: --cd swift/apple
       - name: Check Swift formatting and linting
-        run: mise run check
+        run: mise run :check
         working-directory: swift/apple
 
   build:
@@ -64,6 +68,7 @@ jobs:
     runs-on: macos-15
     env:
       XCODE_VERSION: "26.0"
+      MISE_EXPERIMENTAL: "1"
     permissions:
       contents: write # for attaching the build artifacts to the release
       id-token: write
@@ -99,6 +104,9 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
+      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3.5.1
+        with:
+          install_args: --cd swift/apple
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.rust-targets }}
