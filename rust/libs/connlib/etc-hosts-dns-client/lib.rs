@@ -39,9 +39,14 @@ fn parse(content: &str, host: &str) -> Vec<IpAddr> {
                 .parse::<IpAddr>()
                 .inspect_err(|e| tracing::debug!(%ip, "Failed to parse IP address: {e}"))
                 .ok()?;
-            let candidate = tokens.next()?;
 
-            (candidate == host).then_some(ip)
+            for candidate in tokens {
+                if candidate == host {
+                    return Some(ip);
+                }
+            }
+
+            None
         })
         .collect()
 }
@@ -56,6 +61,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::net::Ipv6Addr;
+
     use super::*;
 
     #[cfg(unix)]
@@ -108,6 +115,17 @@ mod tests {
                 ]),
             ]
         );
+    }
+
+    #[test]
+    fn can_parse_additional_hostnames() {
+        let content = r#"127.0.0.1       localhost
+        ::1     localhost ip6-localhost ip6-loopback
+        "#;
+
+        let ips = parse(content, "ip6-loopback");
+
+        assert_eq!(ips, vec![IpAddr::from(Ipv6Addr::LOCALHOST),]);
     }
 
     #[test]
