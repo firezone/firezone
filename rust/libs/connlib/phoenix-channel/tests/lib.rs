@@ -373,6 +373,24 @@ async fn discards_failed_ips_on_hiccup() {
     );
 }
 
+#[tokio::test]
+async fn emits_no_addresses_when_no_ips() {
+    let mut channel = make_test_channel(443);
+    channel.update_ips(vec![]);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    assert!(
+        matches!(result, Ok(phoenix_channel::Event::NoAddresses)),
+        "expected Event::NoAddresses, got {result:?}"
+    );
+}
+
 fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
     let url = LoginUrl::client(
         format!("ws://127.0.0.1:{port}").as_str(),
