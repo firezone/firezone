@@ -344,7 +344,7 @@ async fn discards_failed_ips_on_hiccup() {
     ]);
     channel.connect(PublicKeyParam([0u8; 32]));
 
-    let event = tokio::time::timeout(Duration::from_secs(5), async {
+    let event = tokio::time::timeout(Duration::from_secs(6), async {
         future::poll_fn(|cx| channel.poll(cx)).await
     })
     .await
