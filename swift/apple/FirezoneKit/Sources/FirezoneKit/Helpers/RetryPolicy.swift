@@ -18,6 +18,9 @@ struct RetryPolicy: Sendable {
   /// Retries up to 5 times with delays: 100ms, 200ms, 400ms, 800ms, 1600ms
   static let resourceFetch = RetryPolicy(maxAttempts: 5, baseDelayMs: 100)
 
+  /// Policy that never retries - useful for testing where retries aren't desired.
+  static let noRetry = RetryPolicy(maxAttempts: 0, baseDelayMs: 0)
+
   /// Calculate the delay in nanoseconds for a given attempt number.
   /// Uses exponential backoff: baseDelayMs * 2^attempt
   func delay(forAttempt attempt: Int) -> UInt64 {

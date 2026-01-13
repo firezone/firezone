@@ -5,6 +5,7 @@
 //
 
 import Testing
+
 @testable import FirezoneKit
 
 @Suite("ConnectionWatchdog Tests")
@@ -64,14 +65,14 @@ struct ConnectionWatchdogTests {
   @Test("Watchdog is not active before start")
   @MainActor
   func notActiveBeforeStart() {
-    let watchdog = ConnectionWatchdog(timeoutNs: 100_000_000) { }
+    let watchdog = ConnectionWatchdog(timeoutNs: 100_000_000) {}
     #expect(watchdog.isActive == false)
   }
 
   @Test("Watchdog is not active after cancel")
   @MainActor
   func notActiveAfterCancel() {
-    let watchdog = ConnectionWatchdog(timeoutNs: 100_000_000) { }
+    let watchdog = ConnectionWatchdog(timeoutNs: 100_000_000) {}
     watchdog.start()
     watchdog.cancel()
     #expect(watchdog.isActive == false)
@@ -80,7 +81,7 @@ struct ConnectionWatchdogTests {
   @Test("Multiple cancels are safe")
   @MainActor
   func multipleCancelsAreSafe() {
-    let watchdog = ConnectionWatchdog(timeoutNs: 100_000_000) { }
+    let watchdog = ConnectionWatchdog(timeoutNs: 100_000_000) {}
     watchdog.cancel()  // Cancel before start
     watchdog.start()
     watchdog.cancel()

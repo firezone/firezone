@@ -5,6 +5,7 @@
 //
 
 import NetworkExtension
+
 @testable import FirezoneKit
 
 /// Mock tunnel controller for testing Store's VPN status handling.

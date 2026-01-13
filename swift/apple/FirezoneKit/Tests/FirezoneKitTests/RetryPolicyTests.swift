@@ -5,6 +5,7 @@
 //
 
 import Testing
+
 @testable import FirezoneKit
 
 @Suite("RetryPolicy Tests")
@@ -14,11 +15,11 @@ struct RetryPolicyTests {
   func exponentialBackoffNanoseconds() {
     let policy = RetryPolicy(maxAttempts: 5, baseDelayMs: 100)
 
-    #expect(policy.delay(forAttempt: 0) == 100_000_000)      // 100ms
-    #expect(policy.delay(forAttempt: 1) == 200_000_000)      // 200ms
-    #expect(policy.delay(forAttempt: 2) == 400_000_000)      // 400ms
-    #expect(policy.delay(forAttempt: 3) == 800_000_000)      // 800ms
-    #expect(policy.delay(forAttempt: 4) == 1_600_000_000)    // 1600ms
+    #expect(policy.delay(forAttempt: 0) == 100_000_000)  // 100ms
+    #expect(policy.delay(forAttempt: 1) == 200_000_000)  // 200ms
+    #expect(policy.delay(forAttempt: 2) == 400_000_000)  // 400ms
+    #expect(policy.delay(forAttempt: 3) == 800_000_000)  // 800ms
+    #expect(policy.delay(forAttempt: 4) == 1_600_000_000)  // 1600ms
   }
 
   @Test("Exponential backoff calculates correct delays in milliseconds")

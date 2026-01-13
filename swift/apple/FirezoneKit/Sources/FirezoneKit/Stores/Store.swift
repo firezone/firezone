@@ -97,10 +97,81 @@ public final class Store: ObservableObject {
       }
       .store(in: &cancellables)
 
-    // We monitor for any configuration changes and tell the tunnel service about them
+    // Monitor configuration changes and propagate to tunnel service
+    setupConfigurationObserver()
+
+    // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
+    // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
+    Task {
+      do {
+        await initNotifications()
+        try await initSystemExtension()
+        try await initVPNConfiguration()
+        try await setupTunnelObservers()
+        try await maybeAutoConnect()
+      } catch {
+        Log.error(error)
+      }
+    }
+  }
+
+  // MARK: - Test Initializer
+
+  /// UserDefaults instance for test access (nil in production).
+  private var testDefaults: UserDefaults?
+
+  /// Test-only initializer for dependency injection.
+  ///
+  /// Use this to inject mock tunnel controller and IPC client for unit testing.
+  /// The Store will use injected dependencies instead of real VPNConfigurationManager/IPCClient.
+  ///
+  /// - Parameters:
+  ///   - configuration: The Configuration instance to use
+  ///   - tunnelController: Mock tunnel controller for VPN operations
+  ///   - ipcClient: Mock IPC client for tunnel communication
+  ///   - retryPolicy: Retry policy for resource fetching
+  ///   - userDefaults: Optional UserDefaults for testing persisted state (actorName, shownAlertIds)
+  init(
+    configuration: Configuration,
+    tunnelController: TunnelControllerProtocol,
+    ipcClient: IPCClientProtocol,
+    retryPolicy: RetryPolicy = .resourceFetch,
+    userDefaults: UserDefaults? = nil
+  ) {
+    self.configuration = configuration
+    self.tunnelController = tunnelController
+    self._ipcClient = ipcClient
+    self.resourceRetryPolicy = retryPolicy
+    self.testDefaults = userDefaults
+
+    // Load from provided UserDefaults if available, otherwise use test defaults
+    if let defaults = userDefaults {
+      self.actorName = defaults.string(forKey: "actorName") ?? "Test User"
+      self.shownAlertIds = Set(defaults.stringArray(forKey: "shownAlertIds") ?? [])
+    } else {
+      self.actorName = "Test User"
+      self.shownAlertIds = []
+    }
+
+    // Subscribe to status updates from the injected controller
+    tunnelController.subscribeToStatusUpdates { [weak self] status in
+      try await self?.handleVPNStatusChange(newVPNStatus: status)
+    }
+
+    // Subscribe to configuration changes (same as production init)
+    setupConfigurationObserver()
+  }
+
+  // MARK: - Configuration Observer
+
+  /// Sets up the configuration change observer with debouncing.
+  ///
+  /// Called by both production and test initializers to ensure configuration
+  /// changes are propagated to the tunnel.
+  private func setupConfigurationObserver() {
     self.configuration.objectWillChange
       .receive(on: DispatchQueue.main)
-      .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)  // These happen quite frequently
+      .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
         let current = self.configuration.toTunnelConfiguration()
@@ -122,45 +193,6 @@ public final class Store: ObservableObject {
         }
       })
       .store(in: &cancellables)
-
-    // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
-    // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
-    Task {
-      do {
-        await initNotifications()
-        try await initSystemExtension()
-        try await initVPNConfiguration()
-        try await setupTunnelObservers()
-        try await maybeAutoConnect()
-      } catch {
-        Log.error(error)
-      }
-    }
-  }
-
-  // MARK: - Test Initializer
-
-  /// Test-only initializer for dependency injection.
-  ///
-  /// Use this to inject mock tunnel controller and IPC client for unit testing.
-  /// The Store will use injected dependencies instead of real VPNConfigurationManager/IPCClient.
-  init(
-    configuration: Configuration,
-    tunnelController: TunnelControllerProtocol,
-    ipcClient: IPCClientProtocol,
-    retryPolicy: RetryPolicy = .resourceFetch
-  ) {
-    self.configuration = configuration
-    self.tunnelController = tunnelController
-    self._ipcClient = ipcClient
-    self.resourceRetryPolicy = retryPolicy
-    self.actorName = "Test User"
-    self.shownAlertIds = []
-
-    // Subscribe to status updates from the injected controller
-    tunnelController.subscribeToStatusUpdates { [weak self] status in
-      try await self?.handleVPNStatusChange(newVPNStatus: status)
-    }
   }
 
   /// Set watchdog timeout for testing (shorter timeouts for faster tests).
@@ -171,6 +203,11 @@ public final class Store: ObservableObject {
   /// Directly trigger a resource fetch cycle for testing.
   func testFetchResources() async throws {
     try await fetchResourcesWithIPC(ipcClient: requireIPCClient())
+  }
+
+  /// Returns true if there are no shown alert IDs (for testing alert clearing).
+  func testShownAlertIdsIsEmpty() -> Bool {
+    shownAlertIds.isEmpty
   }
 
   #if os(macOS)
@@ -461,7 +498,8 @@ public final class Store: ObservableObject {
           "Resource fetch returned nil while loading, retrying in \(delayMs)ms (attempt \(attempt + 1)/\(retryPolicy.maxAttempts))"
         )
         try await Task.sleep(nanoseconds: retryPolicy.delay(forAttempt: attempt))
-        return try await fetchResources(session: session, attempt: attempt + 1, retryPolicy: retryPolicy)
+        return try await fetchResources(
+          session: session, attempt: attempt + 1, retryPolicy: retryPolicy)
       }
       return
     }
