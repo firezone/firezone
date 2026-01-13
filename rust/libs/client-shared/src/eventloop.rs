@@ -505,6 +505,8 @@ async fn phoenix_channel_event_loop(
     portal.connect(param);
 
     loop {
+        // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
+        // This allows `NoAddresses` events to use the updated `UdpDnsClient` to resolve the domain.
         match select(pin!(cmd_rx.recv()), poll_fn(|cx| portal.poll(cx))).await {
             Either::Left((Some(PortalCommand::Send(msg)), _)) => {
                 portal.send(PHOENIX_TOPIC, msg);
