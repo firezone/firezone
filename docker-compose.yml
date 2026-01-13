@@ -24,9 +24,6 @@ x-health-check: &health-check
 
 services:
   portal:
-    extends:
-      file: scripts/compose/portal.yml
-      service: common
     build:
       context: elixir
       args:
