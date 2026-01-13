@@ -65,9 +65,6 @@ defmodule Portal.Health do
       draining?() ->
         send_resp(conn, 503, JSON.encode!(%{status: :draining}))
 
-      not database_ready?() ->
-        send_resp(conn, 503, JSON.encode!(%{status: :database_unavailable}))
-
       not endpoints_ready?() ->
         send_resp(conn, 503, JSON.encode!(%{status: :starting}))
 
@@ -87,15 +84,6 @@ defmodule Portal.Health do
     api_endpoint = Keyword.fetch!(config, :api_endpoint)
 
     Process.whereis(web_endpoint) != nil and Process.whereis(api_endpoint) != nil
-  end
-
-  defp database_ready? do
-    repo = Portal.Config.fetch_env!(:portal, Portal.Health) |> Keyword.fetch!(:repo)
-
-    case repo.query("SELECT 1") do
-      {:ok, _result} -> true
-      {:error, _reason} -> false
-    end
   end
 end
 

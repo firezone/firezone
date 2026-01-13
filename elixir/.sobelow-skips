@@ -56,3 +56,6 @@ Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:30,75F2F6
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:50,7DE9449
 
 DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:171,3D848A0
+
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:72,476160D
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,696A7C1
