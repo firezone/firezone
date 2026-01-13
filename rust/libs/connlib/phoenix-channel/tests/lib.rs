@@ -5,6 +5,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::{future, sync::Arc, time::Duration};
 
 use phoenix_channel::{DeviceInfo, Event, LoginUrl, PhoenixChannel, PublicKeyParam};
+use regex::Regex;
 use secrecy::SecretString;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -331,6 +332,44 @@ async fn http_401_returns_invalid_token() {
     assert!(
         matches!(result, Err(phoenix_channel::Error::InvalidToken)),
         "expected Error::InvalidToken for 401, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn discards_failed_ips_on_hiccup() {
+    let mut channel = make_test_channel(443);
+    channel.update_ips(vec![
+        IpAddr::from(Ipv4Addr::from([127, 0, 0, 1])),
+        IpAddr::from(Ipv4Addr::from([127, 0, 0, 10])),
+        IpAddr::from(Ipv4Addr::from([127, 0, 0, 111])),
+    ]);
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    let event = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout")
+    .expect("should not error");
+
+    let phoenix_channel::Event::Hiccup { error, .. } = event else {
+        panic!("Expected `Hiccup`")
+    };
+
+    let regex = Regex::new(
+        r#"Reconnecting to portal on transient error: failed to connect socket: \[127\.0\.0\.1:443: (.*), 127\.0\.0\.10:443: (.*), 127\.0\.0\.111:443: (.*)\]"#,
+    ).unwrap();
+    assert!(regex.is_match(&format!("{error:#}")));
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    assert!(
+        matches!(result, Ok(phoenix_channel::Event::NoAddresses)),
+        "expected Event::NoAddresses, got {result:?}"
     );
 }
 

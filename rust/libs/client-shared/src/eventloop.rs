@@ -500,7 +500,8 @@ async fn phoenix_channel_event_loop(
 
     let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), dns_servers);
 
-    update_portal_host_ips(&mut portal, &udp_dns_client).await;
+    let ips = resolve_portal_host_ips(portal.host(), &udp_dns_client).await;
+    portal.update_ips(ips);
     portal.connect(param);
 
     loop {
@@ -546,7 +547,8 @@ async fn phoenix_channel_event_loop(
                 );
             }
             Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
-                update_portal_host_ips(&mut portal, &udp_dns_client).await
+                let ips = resolve_portal_host_ips(portal.host(), &udp_dns_client).await;
+                portal.update_ips(ips);
             }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
@@ -580,24 +582,24 @@ async fn phoenix_channel_event_loop(
 ///
 /// If any of these fail, we simply default to an empty list of IPs.
 /// This is fine as this routine will be triggered again if we ever run out of IPs to use.
-async fn update_portal_host_ips(
-    portal: &mut PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+async fn resolve_portal_host_ips(
+    host: String,
     udp_dns_client: &UdpDnsClient,
-) {
+) -> impl IntoIterator<Item = IpAddr> {
     let udp_ips = udp_dns_client
-        .resolve(portal.host())
+        .resolve(host.clone())
         .await
         .context("Failed to lookup portal host via UDP DNS")
-        .inspect_err(|e| tracing::debug!(host = %portal.host(), "{e:#}"))
+        .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();
 
-    let etc_hosts_ips = etc_hosts_dns_client::resolve(portal.host())
+    let etc_hosts_ips = etc_hosts_dns_client::resolve(host.clone())
         .await
         .context("Failed to lookup portal host from `/etc/hosts`")
-        .inspect_err(|e| tracing::debug!(host = %portal.host(), "{e:#}"))
+        .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();
 
-    portal.update_ips(udp_ips.into_iter().chain(etc_hosts_ips));
+    udp_ips.into_iter().chain(etc_hosts_ips)
 }
 
 fn is_unreachable(e: &io::Error) -> bool {

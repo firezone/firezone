@@ -209,6 +209,14 @@ impl InternalError {
 
         Some(duration)
     }
+
+    pub(crate) fn failed_ips(&self) -> Vec<(IpAddr, &std::io::Error)> {
+        let Self::SocketConnection(errors) = self else {
+            return Vec::default();
+        };
+
+        errors.iter().map(|(s, e)| (s.ip(), e)).collect()
+    }
 }
 
 fn parse_retry_after_value(value: &str) -> Option<Duration> {
@@ -574,6 +582,12 @@ where
                                     })?
                             }
                         };
+
+                        for (ip, error) in e.failed_ips() {
+                            if self.resolved_addresses.remove(&ip) {
+                                tracing::debug!(%ip, "Discarding failed IP: {error}");
+                            }
+                        }
 
                         self.state = State::Reconnect { backoff };
 
