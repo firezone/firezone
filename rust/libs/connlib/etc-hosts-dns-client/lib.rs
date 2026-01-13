@@ -33,6 +33,10 @@ fn parse(content: &str, host: &str) -> Vec<IpAddr> {
         .filter_map(|line| {
             tracing::trace!(%line, "Parsing entry");
 
+            if line.starts_with('#') {
+                return None;
+            }
+
             let mut tokens = line.split_ascii_whitespace();
             let ip = tokens.next()?;
             let ip = ip
@@ -139,5 +143,16 @@ mod tests {
         let ips = parse(content, "portal");
 
         assert_eq!(ips, vec![IpAddr::from([203, 0, 113, 10])]);
+    }
+
+    #[test]
+    fn ignores_lines_with_comments() {
+        let content = r#"
+            # 127.0.0.1       localhost
+        "#;
+
+        let ips = parse(content, "portal");
+
+        assert_eq!(ips, Vec::<IpAddr>::default());
     }
 }
