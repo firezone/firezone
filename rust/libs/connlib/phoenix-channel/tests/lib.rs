@@ -261,7 +261,7 @@ enum OutboundMsg {
 async fn http_429_triggers_retry() {
     let port = http_status_server(http::StatusCode::TOO_MANY_REQUESTS).await;
 
-    let mut channel = make_test_channel(port);
+    let mut channel = make_test_channel("127.0.0.1", port);
     channel.connect(PublicKeyParam([0u8; 32]));
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
@@ -281,7 +281,7 @@ async fn http_429_triggers_retry() {
 async fn http_408_triggers_retry() {
     let port = http_status_server(http::StatusCode::REQUEST_TIMEOUT).await;
 
-    let mut channel = make_test_channel(port);
+    let mut channel = make_test_channel("127.0.0.1", port);
     channel.connect(PublicKeyParam([0u8; 32]));
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
@@ -301,7 +301,7 @@ async fn http_408_triggers_retry() {
 async fn http_400_returns_client_error() {
     let port = http_status_server(http::StatusCode::BAD_REQUEST).await;
 
-    let mut channel = make_test_channel(port);
+    let mut channel = make_test_channel("127.0.0.1", port);
     channel.connect(PublicKeyParam([0u8; 32]));
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
@@ -320,7 +320,7 @@ async fn http_400_returns_client_error() {
 async fn http_401_returns_invalid_token() {
     let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
 
-    let mut channel = make_test_channel(port);
+    let mut channel = make_test_channel("127.0.0.1", port);
     channel.connect(PublicKeyParam([0u8; 32]));
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
@@ -337,7 +337,7 @@ async fn http_401_returns_invalid_token() {
 
 #[tokio::test]
 async fn discards_failed_ips_on_hiccup() {
-    let mut channel = make_test_channel(443);
+    let mut channel = make_test_channel("localhost", 443); // Use a hostname so we run out of IPs
     channel.update_ips(vec![
         IpAddr::from(Ipv4Addr::from([127, 0, 0, 1])),
         IpAddr::from(Ipv4Addr::from([127, 0, 0, 10])),
@@ -375,8 +375,7 @@ async fn discards_failed_ips_on_hiccup() {
 
 #[tokio::test]
 async fn emits_no_addresses_when_no_ips() {
-    let mut channel = make_test_channel(443);
-    channel.update_ips(vec![]);
+    let mut channel = make_test_channel("localhost", 443); // Use a hostname so we run out of IPs
     channel.connect(PublicKeyParam([0u8; 32]));
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
@@ -393,7 +392,7 @@ async fn emits_no_addresses_when_no_ips() {
 
 #[tokio::test]
 async fn does_not_clear_address_from_url_on_hiccup() {
-    let mut channel = make_test_channel(443); // `make_test_channel` uses an IP
+    let mut channel = make_test_channel("127.0.0.1", 443);
     channel.connect(PublicKeyParam([0u8; 32]));
 
     loop {
@@ -405,9 +404,9 @@ async fn does_not_clear_address_from_url_on_hiccup() {
     }
 }
 
-fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
+fn make_test_channel(host: &str, port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
     let url = LoginUrl::client(
-        format!("ws://127.0.0.1:{port}").as_str(),
+        format!("ws://{host}:{port}").as_str(),
         "test-device-id".to_string(),
         Some("test-device".to_string()),
         DeviceInfo::default(),
@@ -495,7 +494,7 @@ async fn http_response_server(response: String) -> u16 {
 async fn http_503_triggers_retry() {
     let port = http_status_server(http::StatusCode::SERVICE_UNAVAILABLE).await;
 
-    let mut channel = make_test_channel(port);
+    let mut channel = make_test_channel("127.0.0.1", port);
     channel.connect(PublicKeyParam([0u8; 32]));
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
@@ -515,7 +514,7 @@ async fn http_503_triggers_retry() {
 async fn http_429_with_retry_after_uses_header_value() {
     let port = http_status_server_with_retry_after(429, "Too Many Requests", 30).await;
 
-    let mut channel = make_test_channel(port);
+    let mut channel = make_test_channel("127.0.0.1", port);
     channel.connect(PublicKeyParam([0u8; 32]));
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
@@ -541,7 +540,7 @@ async fn http_429_with_retry_after_uses_header_value() {
 async fn http_503_with_retry_after_uses_header_value() {
     let port = http_status_server_with_retry_after(503, "Service Unavailable", 60).await;
 
-    let mut channel = make_test_channel(port);
+    let mut channel = make_test_channel("127.0.0.1", port);
     channel.connect(PublicKeyParam([0u8; 32]));
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
