@@ -23,8 +23,8 @@ public enum NotificationIndentifier: String {
 }
 
 @MainActor
-public class SessionNotification: NSObject {
-  public var signInHandler = {}
+public class SessionNotification: NSObject, SessionNotificationProtocol {
+  public var signInHandler: () -> Void = {}
   private let notificationCenter = UNUserNotificationCenter.current()
 
   override public init() {
@@ -54,7 +54,7 @@ public class SessionNotification: NSObject {
     #endif
   }
 
-  func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus {
+  public func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus {
     // Ask the user for permission.
     try await notificationCenter.requestAuthorization(options: [.sound, .alert])
 
@@ -62,7 +62,7 @@ public class SessionNotification: NSObject {
     return await loadAuthorizationStatus()
   }
 
-  func loadAuthorizationStatus() async -> UNAuthorizationStatus {
+  public func loadAuthorizationStatus() async -> UNAuthorizationStatus {
     let settings = await notificationCenter.notificationSettings()
 
     return settings.authorizationStatus
@@ -99,7 +99,7 @@ public class SessionNotification: NSObject {
     // In macOS, use a Cocoa alert.
     // This gets called from the app side.
     @MainActor
-    func showSignedOutAlertmacOS(_ message: String?) async {
+    public func showSignedOutAlertMacOS(_ message: String?) async {
       let alert = NSAlert()
       alert.messageText = "Your Firezone session has ended"
       alert.informativeText = """

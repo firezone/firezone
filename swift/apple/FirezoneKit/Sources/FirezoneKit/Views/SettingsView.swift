@@ -622,7 +622,7 @@ public struct SettingsView: View {
 
         Task {
           do {
-            guard let session = try store.manager().session() else {
+            guard let session = store.session else {
               throw VPNConfigurationManagerError.managerNotInitialized
             }
             try await LogExporter.export(
@@ -710,7 +710,7 @@ public struct SettingsView: View {
 
     do {
       #if os(macOS)
-        guard let session = try store.manager().session() else {
+        guard let session = store.session else {
           throw VPNConfigurationManagerError.managerNotInitialized
         }
         let providerLogFolderSize = try await IPCClient.getLogFolderSize(session: session)

@@ -6,3 +6,4 @@ xcuserdata/
 **/*.xcuserstate
 Firezone/xcconfig/dynamic_build_number.xcconfig
 FirezoneNetworkExtension/Connlib/Generated/
+coverage.lcov

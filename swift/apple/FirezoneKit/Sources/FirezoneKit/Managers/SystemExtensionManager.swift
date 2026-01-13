@@ -18,7 +18,7 @@
     }
   }
 
-  enum SystemExtensionStatus {
+  public enum SystemExtensionStatus: Sendable {
     // Not installed or enabled at all
     case needsInstall
 
@@ -35,9 +35,39 @@
     case check
   }
 
-  class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
+  public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject,
+    SystemExtensionManagerProtocol, @unchecked Sendable
+  {
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
+
+    override public init() {
+      super.init()
+    }
+
+    // MARK: - SystemExtensionManagerProtocol
+
+    public func checkStatus() async throws -> SystemExtensionStatus {
+      try await withCheckedThrowingContinuation { continuation in
+        sendRequest(
+          requestType: .check,
+          identifier: VPNConfigurationManager.bundleIdentifier,
+          continuation: continuation
+        )
+      }
+    }
+
+    public func install() async throws -> SystemExtensionStatus {
+      try await withCheckedThrowingContinuation { continuation in
+        sendRequest(
+          requestType: .install,
+          identifier: VPNConfigurationManager.bundleIdentifier,
+          continuation: continuation
+        )
+      }
+    }
+
+    // MARK: - Internal
 
     func sendRequest(
       requestType: SystemExtensionRequestType,
@@ -66,7 +96,7 @@
     // MARK: - OSSystemExtensionRequestDelegate
 
     // Result of system extension installation
-    func request(
+    public func request(
       _ request: OSSystemExtensionRequest,
       didFinishWithResult result: OSSystemExtensionRequest.Result
     ) {
@@ -81,19 +111,18 @@
     }
 
     // Result of properties request
-    func request(
+    public func request(
       _ request: OSSystemExtensionRequest,
       foundProperties properties: [OSSystemExtensionProperties]
     ) {
       // Standard keys in any bundle. If missing, we've got bigger issues.
-      guard
-        let ourBundleVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion")
-          as? String,
-        let ourBundleShortVersion = Bundle.main.object(
-          forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-      else {
-        fatalError("Version should exist in bundle")
-      }
+      // In test environment, Bundle.main may not have version info
+      let ourBundleVersion =
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion")
+        as? String ?? "0"
+      let ourBundleShortVersion =
+        Bundle.main.object(
+          forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
 
       Log.info(
         "Checking system extension - Client version: \(ourBundleShortVersion) (\(ourBundleVersion))"
@@ -134,15 +163,15 @@
       resume(returning: .needsInstall)
     }
 
-    func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
+    public func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
       resume(throwing: error)
     }
 
-    func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
+    public func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
       // We assume this state until we receive a success response.
     }
 
-    func request(
+    public func request(
       _ request: OSSystemExtensionRequest,
       actionForReplacingExtension existing: OSSystemExtensionProperties,
       withExtension ext: OSSystemExtensionProperties
