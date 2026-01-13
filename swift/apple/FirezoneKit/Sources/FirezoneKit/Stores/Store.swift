@@ -43,7 +43,7 @@ public final class Store: ObservableObject {
 
   private var resourcesTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
-  private var connectingWatchdog: Task<Void, Never>?
+  private var connectingWatchdog: ConnectionWatchdog?
   public let configuration: Configuration
   private var lastSavedConfiguration: TunnelConfiguration?
   private var vpnConfigurationManager: VPNConfigurationManager?
@@ -157,7 +157,6 @@ public final class Store: ObservableObject {
 
     // Cancel any existing connecting watchdog on status change
     connectingWatchdog?.cancel()
-    connectingWatchdog = nil
 
     if newVPNStatus == .connected {
       beginUpdatingResources()
@@ -166,18 +165,15 @@ public final class Store: ObservableObject {
 
       // Start watchdog - if still connecting after 10 seconds, auto-restart the tunnel.
       // This handles race conditions during extension startup (e.g., cycleStart causing "Adapter is nil").
-      connectingWatchdog = Task { [weak self] in
-        try? await Task.sleep(nanoseconds: 10_000_000_000)  // 10 seconds
-        guard !Task.isCancelled, let self else { return }
-
+      connectingWatchdog = ConnectionWatchdog { [weak self] in
         Log.warning("Connection timeout - stuck in connecting state, restarting...")
 
-        // Auto-restart: stop then start using existing session
-        guard let session = try? self.manager().session() else { return }
+        guard let self, let session = try? self.manager().session() else { return }
         session.stopTunnel()
         try? await Task.sleep(nanoseconds: 500_000_000)  // 500ms delay
         try? IPCClient.start(session: session)
       }
+      connectingWatchdog?.start()
     } else {
       endUpdatingResources()
     }
@@ -387,8 +383,13 @@ public final class Store: ObservableObject {
   ///
   /// - Parameter session: The tunnel provider session to communicate with
   /// - Parameter attempt: Current retry attempt (0-based), used for exponential backoff
+  /// - Parameter retryPolicy: Policy controlling retry behavior (default: .resourceFetch)
   /// - Throws: IPCClient.Error if IPC communication fails
-  private func fetchResources(session: NETunnelProviderSession, attempt: Int = 0) async throws {
+  private func fetchResources(
+    session: NETunnelProviderSession,
+    attempt: Int = 0,
+    retryPolicy: RetryPolicy = .resourceFetch
+  ) async throws {
     // Capture current hash before IPC call
     let currentHash = resourceListHash
 
@@ -397,11 +398,13 @@ public final class Store: ObservableObject {
     else {
       // If we're still in loading state and got nil, the adapter may not be ready yet.
       // Retry with exponential backoff to handle race conditions during extension startup.
-      if case .loading = resourceList, attempt < 5 {
-        let delayMs = 100 * (1 << attempt)  // 100ms, 200ms, 400ms, 800ms, 1600ms
-        Log.debug("Resource fetch returned nil while loading, retrying in \(delayMs)ms (attempt \(attempt + 1)/5)")
-        try await Task.sleep(nanoseconds: UInt64(delayMs * 1_000_000))
-        return try await fetchResources(session: session, attempt: attempt + 1)
+      if case .loading = resourceList, retryPolicy.shouldRetry(attempt: attempt) {
+        let delayMs = retryPolicy.delayMs(forAttempt: attempt)
+        Log.debug(
+          "Resource fetch returned nil while loading, retrying in \(delayMs)ms (attempt \(attempt + 1)/\(retryPolicy.maxAttempts))"
+        )
+        try await Task.sleep(nanoseconds: retryPolicy.delay(forAttempt: attempt))
+        return try await fetchResources(session: session, attempt: attempt + 1, retryPolicy: retryPolicy)
       }
       return
     }
