@@ -43,6 +43,7 @@ public final class Store: ObservableObject {
 
   private var resourcesTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
+  private var connectingWatchdog: Task<Void, Never>?
   public let configuration: Configuration
   private var lastSavedConfiguration: TunnelConfiguration?
   private var vpnConfigurationManager: VPNConfigurationManager?
@@ -154,8 +155,29 @@ public final class Store: ObservableObject {
   private func handleVPNStatusChange(newVPNStatus: NEVPNStatus) async throws {
     self.vpnStatus = newVPNStatus
 
+    // Cancel any existing connecting watchdog on status change
+    connectingWatchdog?.cancel()
+    connectingWatchdog = nil
+
     if newVPNStatus == .connected {
       beginUpdatingResources()
+    } else if newVPNStatus == .connecting {
+      endUpdatingResources()
+
+      // Start watchdog - if still connecting after 10 seconds, auto-restart the tunnel.
+      // This handles race conditions during extension startup (e.g., cycleStart causing "Adapter is nil").
+      connectingWatchdog = Task { [weak self] in
+        try? await Task.sleep(nanoseconds: 10_000_000_000)  // 10 seconds
+        guard !Task.isCancelled, let self else { return }
+
+        Log.warning("Connection timeout - stuck in connecting state, restarting...")
+
+        // Auto-restart: stop then start using existing session
+        guard let session = try? self.manager().session() else { return }
+        session.stopTunnel()
+        try? await Task.sleep(nanoseconds: 500_000_000)  // 500ms delay
+        try? IPCClient.start(session: session)
+      }
     } else {
       endUpdatingResources()
     }
@@ -364,14 +386,23 @@ public final class Store: ObservableObject {
   /// Otherwise, fetches and caches the new list.
   ///
   /// - Parameter session: The tunnel provider session to communicate with
+  /// - Parameter attempt: Current retry attempt (0-based), used for exponential backoff
   /// - Throws: IPCClient.Error if IPC communication fails
-  private func fetchResources(session: NETunnelProviderSession) async throws {
+  private func fetchResources(session: NETunnelProviderSession, attempt: Int = 0) async throws {
     // Capture current hash before IPC call
     let currentHash = resourceListHash
 
     // If no data returned, resources haven't changed - no update needed
     guard let data = try await IPCClient.fetchResources(session: session, currentHash: currentHash)
     else {
+      // If we're still in loading state and got nil, the adapter may not be ready yet.
+      // Retry with exponential backoff to handle race conditions during extension startup.
+      if case .loading = resourceList, attempt < 5 {
+        let delayMs = 100 * (1 << attempt)  // 100ms, 200ms, 400ms, 800ms, 1600ms
+        Log.debug("Resource fetch returned nil while loading, retrying in \(delayMs)ms (attempt \(attempt + 1)/5)")
+        try await Task.sleep(nanoseconds: UInt64(delayMs * 1_000_000))
+        return try await fetchResources(session: session, attempt: attempt + 1)
+      }
       return
     }
 
