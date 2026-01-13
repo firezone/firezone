@@ -391,6 +391,20 @@ async fn emits_no_addresses_when_no_ips() {
     );
 }
 
+#[tokio::test]
+async fn does_not_clear_address_from_url_on_hiccup() {
+    let mut channel = make_test_channel(443); // `make_test_channel` uses an IP
+    channel.connect(PublicKeyParam([0u8; 32]));
+
+    loop {
+        match std::future::poll_fn(|cx| channel.poll(cx)).await {
+            Ok(phoenix_channel::Event::Hiccup { .. }) => continue,
+            Err(phoenix_channel::Error::MaxRetriesReached { .. }) => break,
+            other => panic!("Unexpected event: {other:?}"), // This line ensures we never receive `Event::NoAddresses` which means we keep retrying.
+        }
+    }
+}
+
 fn make_test_channel(port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
     let url = LoginUrl::client(
         format!("ws://127.0.0.1:{port}").as_str(),

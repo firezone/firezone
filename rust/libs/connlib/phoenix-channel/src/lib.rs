@@ -342,13 +342,6 @@ where
         make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
-        let (host, _) = url.host_and_port();
-
-        let resolved_addresses = match host.parse::<IpAddr>() {
-            Ok(ip) => BTreeSet::from([ip]),
-            Err(_) => Default::default(),
-        };
-
         Self {
             make_initial_backoff: Box::new(make_initial_backoff),
             make_reconnect_backoff: Box::new(make_reconnect_backoff),
@@ -369,7 +362,7 @@ where
             pending_join_requests: Default::default(),
             login,
             init_req,
-            resolved_addresses,
+            resolved_addresses: Default::default(),
             last_url: None,
         }
     }
@@ -841,11 +834,13 @@ where
     }
 
     fn socket_addresses(&self) -> Vec<SocketAddr> {
-        let port = self.url_prototype.host_and_port().1;
+        let (host, port) = self.url_prototype.host_and_port();
 
         self.resolved_addresses
             .iter()
-            .map(|ip| SocketAddr::new(*ip, port))
+            .copied()
+            .chain(host.parse::<IpAddr>().ok())
+            .map(|ip| SocketAddr::new(ip, port))
             .collect()
     }
 }
