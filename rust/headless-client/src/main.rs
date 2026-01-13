@@ -346,12 +346,13 @@ fn try_main() -> Result<()> {
                     .build()
             },
             Arc::new(tcp_socket_factory),
-        )?;
+        );
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
             cli.activate_internet_resource,
+            dns_controller.system_resolvers(),
             rt.handle().clone(),
         );
 
@@ -372,7 +373,6 @@ fn try_main() -> Result<()> {
 
         let tun = tun_device.make_tun()?;
         session.set_tun(tun);
-        session.set_dns(dns_controller.system_resolvers());
 
         let result = loop {
             let event = tokio::select! {

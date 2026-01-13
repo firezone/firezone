@@ -209,8 +209,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
                 .build()
         },
         Arc::new(tcp_socket_factory),
-    )
-    .context("Failed to resolve portal URL")?;
+    );
 
     let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)
         .context("Failed to create TUN device manager")?;

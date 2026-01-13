@@ -238,7 +238,7 @@ async fn try_main(args: Args) -> Result<()> {
         args.public_ip6_addr,
     )?;
 
-    let mut channel = PhoenixChannel::disconnected(
+    let channel = PhoenixChannel::disconnected(
         login,
         args.token.clone(),
         get_user_agent("relay", env!("CARGO_PKG_VERSION")),
@@ -252,8 +252,7 @@ async fn try_main(args: Args) -> Result<()> {
                 .build()
         },
         Arc::new(socket_factory::tcp),
-    )?;
-    channel.connect(NoParams);
+    );
 
     let mut eventloop = Eventloop::new(server, ebpf, channel, public_addr, last_heartbeat_sent)?;
 
@@ -737,6 +736,9 @@ async fn phoenix_channel_event_loop(
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
 ) {
+    update_portal_host_ips(&mut portal).await;
+    portal.connect(NoParams);
+
     loop {
         match std::future::poll_fn(|cx| portal.poll(cx)).await {
             Ok(Event::SuccessResponse { .. }) => {}
@@ -759,6 +761,7 @@ async fn phoenix_channel_event_loop(
                 }
             }
             Ok(Event::Closed) => break,
+            Ok(Event::NoAddresses) => update_portal_host_ips(&mut portal).await,
             Ok(Event::Hiccup {
                 backoff,
                 max_elapsed_time,
@@ -771,6 +774,25 @@ async fn phoenix_channel_event_loop(
             }
         }
     }
+}
+
+async fn update_portal_host_ips(
+    portal: &mut PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
+) {
+    let host = portal.host();
+
+    let ips = match tokio::net::lookup_host(format!("{host}:0"))
+        .await
+        .context("Failed to lookup portal host")
+    {
+        Ok(sockets) => sockets.map(|s| s.ip()),
+        Err(e) => {
+            tracing::warn!(%host, "{e:#}");
+            return;
+        }
+    };
+
+    portal.update_ips(ips);
 }
 
 fn fmt_human_throughput(mut throughput: f64) -> String {
