@@ -575,19 +575,20 @@ async fn update_portal_host_ips(
     portal: &mut PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
     udp_dns_client: &UdpDnsClient,
 ) {
-    let ips = match udp_dns_client
+    let udp_ips = udp_dns_client
         .resolve(portal.host())
         .await
-        .context("Failed to lookup portal host")
-    {
-        Ok(ips) => ips,
-        Err(e) => {
-            tracing::debug!(host = %portal.host(), "{e:#}");
-            return;
-        }
-    };
+        .context("Failed to lookup portal host via UDP DNS")
+        .inspect_err(|e| tracing::debug!(host = %portal.host(), "{e:#}"))
+        .unwrap_or_default();
 
-    portal.update_ips(ips);
+    let etc_hosts_ips = etc_hosts_dns_client::resolve(portal.host())
+        .await
+        .context("Failed to lookup portal host from `/etc/hosts`")
+        .inspect_err(|e| tracing::debug!(host = %portal.host(), "{e:#}"))
+        .unwrap_or_default();
+
+    portal.update_ips(udp_ips.into_iter().chain(etc_hosts_ips));
 }
 
 fn is_unreachable(e: &io::Error) -> bool {

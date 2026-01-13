@@ -13,6 +13,7 @@ dns-types = { workspace = true }
 futures = { workspace = true }
 ip_network = { workspace = true }
 l4-udp-dns-client = { workspace = true }
+etc-hosts-dns-client = { workspace = true }
 libc = { workspace = true }
 logging = { workspace = true }
 parking_lot = { workspace = true }
