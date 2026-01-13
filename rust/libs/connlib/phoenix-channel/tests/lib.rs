@@ -359,7 +359,7 @@ async fn discards_failed_ips_on_hiccup() {
     let regex = Regex::new(
         r#"Reconnecting to portal on transient error: ([\w\s]+): \[127\.0\.0\.1:443: (.*), 127\.0\.0\.10:443: (.*), 127\.0\.0\.111:443: (.*)\]"#,
     ).unwrap();
-    assert!(regex.is_match(&format!("{error:#}")));
+    assert!(regex.is_match(&format!("{error:#}")), "{error:#}");
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
