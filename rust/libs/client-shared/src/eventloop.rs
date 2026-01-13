@@ -577,8 +577,8 @@ async fn phoenix_channel_event_loop(
 ///
 /// We combine the result of two sources here:
 ///
-/// - We read `/etc/hosts`.
 /// - We make UDP DNS queries to our configured system resolvers.
+/// - We read `/etc/hosts`.
 ///
 /// If any of these fail, we simply default to an empty list of IPs.
 /// This is fine as this routine will be triggered again if we ever run out of IPs to use.
