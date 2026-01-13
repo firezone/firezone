@@ -571,6 +571,15 @@ async fn phoenix_channel_event_loop(
     }
 }
 
+/// Re-resolves the IPs of the portal hostname.
+///
+/// We combine the result of two sources here:
+///
+/// - We read `/etc/hosts`.
+/// - We make UDP DNS queries to our configured system resolvers.
+///
+/// If any of these fail, we simply default to an empty list of IPs.
+/// This is fine as this routine will be triggered again if we ever run out of IPs to use.
 async fn update_portal_host_ips(
     portal: &mut PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
     udp_dns_client: &UdpDnsClient,
