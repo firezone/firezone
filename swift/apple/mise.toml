@@ -68,6 +68,10 @@ run = "./mise-tasks/check.sh"
 description = "Run FirezoneKit tests"
 run = "./mise-tasks/test.sh"
 
+[tasks.test-coverage]
+description = "Run FirezoneKit tests with coverage and generate lcov report"
+run = "./mise-tasks/test-coverage.sh"
+
 # =============================================================================
 # Log Tasks
 # =============================================================================
