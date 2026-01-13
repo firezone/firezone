@@ -1,5 +1,5 @@
 defmodule Portal.Google.SyncTest do
-  use Portal.DataCase, async: false
+  use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
