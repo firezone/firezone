@@ -447,7 +447,7 @@ where
         self.url_prototype.host_and_port().0.to_owned()
     }
 
-    pub fn update_ips(&mut self, ips: Vec<IpAddr>) {
+    pub fn update_ips(&mut self, ips: impl IntoIterator<Item = IpAddr>) {
         let new = BTreeSet::from_iter(ips);
 
         if new == self.resolved_addresses {

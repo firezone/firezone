@@ -803,7 +803,7 @@ async fn update_portal_host_ips(
         .await
         .context("Failed to lookup portal host")
     {
-        Ok(ips) => ips.into_iter().collect(),
+        Ok(ips) => ips,
         Err(e) => {
             tracing::debug!(host = %portal.host(), "{e:#}");
             return;

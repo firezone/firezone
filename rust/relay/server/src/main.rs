@@ -785,7 +785,7 @@ async fn update_portal_host_ips(
         .await
         .context("Failed to lookup portal host")
     {
-        Ok(sockets) => sockets.map(|s| s.ip()).collect(),
+        Ok(sockets) => sockets.map(|s| s.ip()),
         Err(e) => {
             tracing::warn!(%host, "{e:#}");
             return;
