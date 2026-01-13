@@ -154,7 +154,7 @@ ringbuffer = "0.16.0"
 roxmltree = "0.21"
 rpassword = "7.4.0"
 rtnetlink = { version = "0.19.0", default-features = false, features = ["tokio_socket"] }
-rustls = { version = "0.23.34", default-features = false, features = ["ring"] }
+rustls = { version = "0.23.36", default-features = false, features = ["ring"] }
 rustls-pki-types = "1.13.2"
 sadness-generator = "0.6.0"
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
