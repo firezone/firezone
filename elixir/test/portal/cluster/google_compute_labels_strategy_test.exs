@@ -45,7 +45,7 @@ defmodule Portal.Cluster.GoogleComputeLabelsStrategyTest do
       assert {:ok, nodes, _state} = fetch_nodes(state)
 
       assert nodes == [
-               :"portal@api-q3j6.us-east1-d.c.firezone-staging.internal"
+               :"portal@10.128.0.43"
              ]
     end
   end
