@@ -20,7 +20,7 @@ defmodule Portal.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
-      listeners: listeners(Mix.env()),
+      listeners: listeners(),
       docs: [
         logo: "assets/static/images/logo.svg",
         extras: ["docs/README.md", "docs/SECURITY.md", "docs/CONTRIBUTING.md"]
@@ -51,8 +51,14 @@ defmodule Portal.MixProject do
   defp elixirc_paths(:dev), do: ["lib", ".credo"]
   defp elixirc_paths(_), do: ["lib"]
 
-  defp listeners(:dev), do: [Phoenix.CodeReloader]
-  defp listeners(_), do: []
+  defp listeners do
+    System.get_env()
+    |> Enum.any?(fn {key, _val} -> String.starts_with?(key, "DEPENDABOT") end)
+    |> case do
+      true -> []
+      false -> [Phoenix.CodeReloader]
+    end
+  end
 
   defp deps do
     [
