@@ -39,7 +39,7 @@ public final class Store: ObservableObject {
 
   var firezoneId: String?
 
-  let sessionNotification = SessionNotification()
+  private(set) lazy var sessionNotification = SessionNotification()
 
   private var resourcesTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
@@ -52,8 +52,23 @@ public final class Store: ObservableObject {
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
 
+  // MARK: - Dependency Injection for Testing
+
+  /// Injected tunnel controller for testing (nil in production)
+  private let tunnelController: TunnelControllerProtocol?
+
+  /// Injected IPC client for testing (nil in production)
+  private var ipcClient: IPCClientProtocol?
+
+  /// Watchdog timeout in nanoseconds (configurable for tests)
+  private var watchdogTimeoutNs: UInt64 = 10_000_000_000  // 10 seconds default
+
+  /// Retry policy for resource fetching (configurable for tests)
+  private var resourceRetryPolicy: RetryPolicy = .resourceFetch
+
   public init(configuration: Configuration? = nil) {
     self.configuration = configuration ?? Configuration.shared
+    self.tunnelController = nil  // Production uses VPNConfigurationManager directly
 
     // Load GUI-only cached state
     self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
@@ -118,6 +133,42 @@ public final class Store: ObservableObject {
     }
   }
 
+  // MARK: - Test Initializer
+
+  /// Test-only initializer for dependency injection.
+  ///
+  /// Use this to inject mock tunnel controller and IPC client for unit testing.
+  /// The Store will use injected dependencies instead of real VPNConfigurationManager/IPCClient.
+  init(
+    configuration: Configuration,
+    tunnelController: TunnelControllerProtocol,
+    ipcClient: IPCClientProtocol,
+    retryPolicy: RetryPolicy = .resourceFetch
+  ) {
+    self.configuration = configuration
+    self.tunnelController = tunnelController
+    self.ipcClient = ipcClient
+    self.resourceRetryPolicy = retryPolicy
+    self.actorName = "Test User"
+    self.shownAlertIds = []
+
+    // Subscribe to status updates from the injected controller
+    tunnelController.subscribeToStatusUpdates { [weak self] status in
+      try await self?.handleVPNStatusChange(newVPNStatus: status)
+    }
+  }
+
+  /// Set watchdog timeout for testing (shorter timeouts for faster tests).
+  func setWatchdogTimeout(_ timeoutNs: UInt64) {
+    watchdogTimeoutNs = timeoutNs
+  }
+
+  /// Directly trigger a resource fetch cycle for testing.
+  func testFetchResources() async throws {
+    guard let ipcClient else { return }
+    try await fetchResourcesWithIPC(ipcClient: ipcClient)
+  }
+
   #if os(macOS)
     func systemExtensionRequest(_ requestType: SystemExtensionRequestType) async throws {
       let manager = SystemExtensionManager()
@@ -163,15 +214,22 @@ public final class Store: ObservableObject {
     } else if newVPNStatus == .connecting {
       endUpdatingResources()
 
-      // Start watchdog - if still connecting after 10 seconds, auto-restart the tunnel.
+      // Start watchdog - if still connecting after timeout, auto-restart the tunnel.
       // This handles race conditions during extension startup (e.g., cycleStart causing "Adapter is nil").
-      connectingWatchdog = ConnectionWatchdog { [weak self] in
+      connectingWatchdog = ConnectionWatchdog(timeoutNs: watchdogTimeoutNs) { [weak self] in
+        guard let self else { return }
         Log.warning("Connection timeout - stuck in connecting state, restarting...")
 
-        guard let self, let session = try? self.manager().session() else { return }
-        session.stopTunnel()
-        try? await Task.sleep(nanoseconds: 500_000_000)  // 500ms delay
-        try? IPCClient.start(session: session)
+        // Use injected controller if available (tests), otherwise use real manager
+        if let controller = self.tunnelController {
+          controller.session?.stopTunnel()
+          try? await Task.sleep(nanoseconds: 500_000_000)  // 500ms delay
+          try? controller.start()
+        } else if let session = try? self.manager().session() {
+          session.stopTunnel()
+          try? await Task.sleep(nanoseconds: 500_000_000)  // 500ms delay
+          try? IPCClient.start(session: session)
+        }
       }
       connectingWatchdog?.start()
     } else {
@@ -338,8 +396,13 @@ public final class Store: ObservableObject {
           self.resourceUpdateTask = Task {
             if !Task.isCancelled {
               do {
-                guard let session = try self.manager().session() else { return }
-                try await self.fetchResources(session: session)
+                // Use injected IPC client if available (tests), otherwise use real manager
+                if let client = self.ipcClient {
+                  try await self.fetchResourcesWithIPC(ipcClient: client)
+                } else {
+                  guard let session = try self.manager().session() else { return }
+                  try await self.fetchResources(session: session)
+                }
               } catch let error as NSError {
                 // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
                 if error.domain == "NEVPNErrorDomain" && error.code == 1 {
@@ -414,6 +477,36 @@ public final class Store: ObservableObject {
     let decoded = try decoder.decode([Resource].self, from: data)
 
     // Update both hash and resource list
+    resourceListHash = newHash
+    resourceList = ResourceList.loaded(decoded)
+  }
+
+  /// Fetches resources using an injected IPC client (for testing).
+  ///
+  /// Uses the same retry logic as fetchResources but with the protocol-based client.
+  private func fetchResourcesWithIPC(
+    ipcClient: IPCClientProtocol,
+    attempt: Int = 0
+  ) async throws {
+    let currentHash = resourceListHash
+    let retryPolicy = resourceRetryPolicy
+
+    guard let data = try await ipcClient.fetchResources(currentHash: currentHash)
+    else {
+      if case .loading = resourceList, retryPolicy.shouldRetry(attempt: attempt) {
+        let delayMs = retryPolicy.delayMs(forAttempt: attempt)
+        Log.debug(
+          "Resource fetch returned nil while loading, retrying in \(delayMs)ms (attempt \(attempt + 1)/\(retryPolicy.maxAttempts))"
+        )
+        try await Task.sleep(nanoseconds: retryPolicy.delay(forAttempt: attempt))
+        return try await fetchResourcesWithIPC(ipcClient: ipcClient, attempt: attempt + 1)
+      }
+      return
+    }
+
+    let newHash = Data(SHA256.hash(data: data))
+    let decoded = try decoder.decode([Resource].self, from: data)
+
     resourceListHash = newHash
     resourceList = ResourceList.loaded(decoded)
   }
