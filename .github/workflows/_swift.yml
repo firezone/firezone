@@ -49,8 +49,11 @@ jobs:
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3.5.1
+        with:
+          install_args: --cd swift/apple
       - name: Check Swift formatting and linting
-        run: ./mise-tasks/check.sh
+        run: mise run check
         working-directory: swift/apple
 
   build:
