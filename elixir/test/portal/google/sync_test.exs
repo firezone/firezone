@@ -175,7 +175,19 @@ defmodule Portal.Google.SyncTest do
 
         Req.Test.json(conn, %{
           "organizationUnits" => [
-            %{"orgUnitId" => "ou1", "name" => "Engineering"}
+            %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"}
+          ]
+        })
+      end)
+
+      # Mock org unit users API
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/users")
+        assert String.contains?(conn.query_string || "", "orgUnitPath")
+
+        Req.Test.json(conn, %{
+          "users" => [
+            %{"id" => "user1", "primaryEmail" => "user1@example.com"}
           ]
         })
       end)
@@ -207,9 +219,9 @@ defmodule Portal.Google.SyncTest do
       assert hd(group_by_type[:group]).name == "DevOps"
       assert hd(group_by_type[:org_unit]).name == "Engineering"
 
-      # Verify memberships were created
+      # Verify memberships were created (one for group, one for org unit)
       memberships = Repo.all(Portal.Membership)
-      assert length(memberships) == 1
+      assert length(memberships) == 2
     end
 
     test "raises SyncError when access token request fails" do
@@ -470,6 +482,39 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/Organization unit missing required 'name' field/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "raises SyncError when org unit is missing orgUnitPath field" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      # Mock successful access token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # Mock successful users API
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"users" => []})
+      end)
+
+      # Mock successful groups API
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"groups" => []})
+      end)
+
+      # Mock org units API with missing orgUnitPath
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "organizationUnits" => [
+            %{"orgUnitId" => "ou1", "name" => "Engineering"}
+          ]
+        })
+      end)
+
+      assert_raise SyncError, ~r/Organization unit missing required 'orgUnitPath' field/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
