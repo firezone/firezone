@@ -81,8 +81,6 @@ impl UdpDnsClient {
                 .into_iter()
                 .collect();
 
-            tracing::debug!(?servers, ?ips, %host, "Resolved host");
-
             Ok(ips)
         }
     }
