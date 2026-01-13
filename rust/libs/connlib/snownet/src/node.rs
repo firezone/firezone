@@ -1051,7 +1051,6 @@ where
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    #[must_use]
     #[deprecated]
     #[expect(deprecated)]
     pub fn new_connection(
@@ -1155,7 +1154,6 @@ where
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    #[must_use]
     #[deprecated]
     #[expect(deprecated)]
     pub fn accept_connection(
