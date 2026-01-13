@@ -2,10 +2,6 @@ defmodule Portal.HealthTest do
   use Portal.DataCase, async: true
   import Plug.Test
 
-  defmodule FailingRepo do
-    def query(_sql), do: {:error, %DBConnection.ConnectionError{message: "connection refused"}}
-  end
-
   setup do
     draining_file_path =
       Path.join(
@@ -74,7 +70,7 @@ defmodule Portal.HealthTest do
   end
 
   describe "GET /readyz" do
-    test "returns 200 with status ready when endpoints and database are up" do
+    test "returns 200 with status ready when endpoints are up" do
       conn =
         :get
         |> conn("/readyz")
@@ -113,23 +109,6 @@ defmodule Portal.HealthTest do
 
       assert conn.status == 503
       assert JSON.decode!(conn.resp_body) == %{"status" => "starting"}
-    end
-
-    test "returns 503 with status database_unavailable when database query fails", %{
-      draining_file_path: draining_file_path
-    } do
-      Portal.Config.put_env_override(:portal, Portal.Health,
-        draining_file_path: draining_file_path,
-        repo: Portal.HealthTest.FailingRepo
-      )
-
-      conn =
-        :get
-        |> conn("/readyz")
-        |> Portal.Health.call([])
-
-      assert conn.status == 503
-      assert JSON.decode!(conn.resp_body) == %{"status" => "database_unavailable"}
     end
   end
 
