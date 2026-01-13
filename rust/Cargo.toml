@@ -12,6 +12,7 @@ members = [
     "libs/connlib/bufferpool",
     "libs/connlib/dns-over-tcp",
     "libs/connlib/dns-types",
+    "libs/connlib/etc-hosts-dns-client",
     "libs/connlib/etherparse-ext",
     "libs/connlib/ip-packet",
     "libs/connlib/l3-tcp",
@@ -82,6 +83,7 @@ dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1"
+etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 firezone-headless-client = { path = "headless-client" }

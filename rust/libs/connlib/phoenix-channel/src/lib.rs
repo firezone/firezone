@@ -3,10 +3,10 @@
 mod get_user_agent;
 mod login_url;
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use futures::stream::FuturesUnordered;
-use std::collections::{BTreeMap, VecDeque};
-use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, future, marker::PhantomData};
@@ -68,7 +68,7 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     backoff: Option<ExponentialBackoff>,
     was_connected: bool,
 
-    resolved_addresses: Vec<IpAddr>,
+    resolved_addresses: BTreeSet<IpAddr>,
 
     login: &'static str,
     init_req: TInitReq,
@@ -113,9 +113,16 @@ async fn create_and_connect_websocket(
     tracing::debug!(%host, ?addresses, %user_agent, "Connecting to portal");
 
     let duration = Duration::from_secs(5);
-    let socket = tokio::time::timeout(duration, connect(addresses, &*socket_factory))
+    let socket = tokio::time::timeout(duration, connect(addresses.clone(), &*socket_factory))
         .await
-        .map_err(|_| InternalError::Timeout { duration })??;
+        .map_err(|_| {
+            InternalError::SocketConnection(
+                addresses
+                    .into_iter()
+                    .map(|addr| (addr, io::Error::from(io::ErrorKind::TimedOut)))
+                    .collect(),
+            )
+        })??;
 
     let (stream, _) = client_async_tls(make_request(url, host, user_agent, &token), socket)
         .await
@@ -128,6 +135,10 @@ async fn connect(
     addresses: Vec<SocketAddr>,
     socket_factory: &dyn SocketFactory<TcpSocket>,
 ) -> Result<TcpStream, InternalError> {
+    if addresses.is_empty() {
+        return Err(InternalError::NoAddresses);
+    }
+
     use futures::future::TryFutureExt;
 
     let mut sockets = addresses
@@ -183,8 +194,8 @@ enum InternalError {
     CloseMessage,
     StreamClosed,
     RoomJoinTimedOut,
-    SocketConnection(Vec<(SocketAddr, std::io::Error)>),
-    Timeout { duration: Duration },
+    SocketConnection(Vec<(SocketAddr, io::Error)>),
+    NoAddresses,
 }
 
 impl InternalError {
@@ -203,6 +214,14 @@ impl InternalError {
         let duration = parse_retry_after_value(value)?;
 
         Some(duration)
+    }
+
+    pub(crate) fn failed_ips(&self) -> Vec<(IpAddr, &io::Error)> {
+        let Self::SocketConnection(errors) = self else {
+            return Vec::default();
+        };
+
+        errors.iter().map(|(s, e)| (s.ip(), e)).collect()
     }
 }
 
@@ -254,10 +273,8 @@ impl fmt::Display for InternalError {
                         .join(", ")
                 )
             }
-            InternalError::Timeout { duration, .. } => {
-                write!(f, "operation timed out after {duration:?}")
-            }
             InternalError::RoomJoinTimedOut => write!(f, "room join timed out"),
+            InternalError::NoAddresses => write!(f, "no IP addresses available"),
         }
     }
 }
@@ -271,8 +288,8 @@ impl std::error::Error for InternalError {
             InternalError::SocketConnection(_) => None,
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
-            InternalError::Timeout { .. } => None,
             InternalError::RoomJoinTimedOut => None,
+            InternalError::NoAddresses => None,
         }
     }
 }
@@ -326,18 +343,8 @@ where
         init_req: TInitReq,
         make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-    ) -> Result<Self> {
-        let host_and_port = url.host_and_port();
-
-        // Statically resolve the host in the URL to a set of addresses.
-        // We use these when connecting the socket to avoid a dependency on DNS resolution later on.
-        let resolved_addresses = host_and_port
-            .to_socket_addrs()
-            .with_context(|| format!("Failed to resolve '{}'", host_and_port.0))?
-            .map(|addr| addr.ip())
-            .collect();
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             make_initial_backoff: Box::new(make_initial_backoff),
             make_reconnect_backoff: Box::new(make_reconnect_backoff),
             backoff: None,
@@ -357,9 +364,9 @@ where
             pending_join_requests: Default::default(),
             login,
             init_req,
-            resolved_addresses,
+            resolved_addresses: Default::default(),
             last_url: None,
-        })
+        }
     }
 
     /// Join the provided room.
@@ -443,10 +450,16 @@ where
         self.url_prototype.host_and_port().0.to_owned()
     }
 
-    pub fn update_ips(&mut self, ips: Vec<IpAddr>) {
-        tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, new = ?ips, "Updating resolved IPs");
+    pub fn update_ips(&mut self, ips: impl IntoIterator<Item = IpAddr>) {
+        let new = BTreeSet::from_iter(ips);
 
-        self.resolved_addresses = ips;
+        if new == self.resolved_addresses {
+            return;
+        }
+
+        tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, ?new, "Updating resolved IPs");
+
+        self.resolved_addresses = new;
     }
 
     /// Initiate a graceful close of the connection.
@@ -533,6 +546,14 @@ where
 
                         continue;
                     }
+                    Poll::Ready(Err(InternalError::NoAddresses)) => {
+                        // Fixed 1s interval to avoid busy-looping in case DNS resolution fails / is not possible.
+                        self.state = State::Reconnect {
+                            backoff: Duration::from_secs(1),
+                        };
+
+                        return Poll::Ready(Ok(Event::NoAddresses));
+                    }
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
                         if r.status() == StatusCode::UNAUTHORIZED =>
                     {
@@ -556,6 +577,12 @@ where
                                     })?
                             }
                         };
+
+                        for (ip, error) in e.failed_ips() {
+                            if self.resolved_addresses.remove(&ip) {
+                                tracing::debug!(%ip, "Discarding failed IP: {error}");
+                            }
+                        }
 
                         self.state = State::Reconnect { backoff };
 
@@ -809,11 +836,13 @@ where
     }
 
     fn socket_addresses(&self) -> Vec<SocketAddr> {
-        let port = self.url_prototype.host_and_port().1;
+        let (host, port) = self.url_prototype.host_and_port();
 
         self.resolved_addresses
             .iter()
-            .map(|ip| SocketAddr::new(*ip, port))
+            .copied()
+            .chain(host.parse::<IpAddr>().ok())
+            .map(|ip| SocketAddr::new(ip, port))
             .collect()
     }
 }
@@ -853,6 +882,11 @@ pub enum Event<TInboundMsg> {
         max_elapsed_time: Option<Duration>,
         error: anyhow::Error,
     },
+    /// We don't have any addresses to connect to.
+    ///
+    /// Upon receiving this event, you should re-resolve the [`host`](PhoenixChannel::host)
+    /// and provide new IPs for it via [`PhoenixChannel::update_ips`].
+    NoAddresses,
     /// The connection was closed successfully.
     Closed,
 }

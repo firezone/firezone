@@ -80,17 +80,16 @@ enum PortalCommand {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel,
-        mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+        portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
     ) -> Result<Self> {
-        portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
-
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
 
         tokio::spawn(phoenix_channel_event_loop(
             portal,
+            PublicKeyParam(tunnel.public_key().to_bytes()),
             portal_event_tx,
             portal_cmd_rx,
             resolver.clone(),
@@ -712,12 +711,16 @@ impl Eventloop {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    param: PublicKeyParam,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     resolver: TokioResolver,
 ) {
     use futures::future::Either;
     use futures::future::select;
+
+    update_portal_host_ips(&mut portal, &resolver).await;
+    portal.connect(param);
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
@@ -765,20 +768,9 @@ async fn phoenix_channel_event_loop(
                     ?max_elapsed_time,
                     "Hiccup in portal connection: {error:#}"
                 );
-
-                let ips = match resolver
-                    .lookup_ip(portal.host())
-                    .await
-                    .context("Failed to lookup portal host")
-                {
-                    Ok(ips) => ips.into_iter().collect(),
-                    Err(e) => {
-                        tracing::debug!(host = %portal.host(), "{e:#}");
-                        continue;
-                    }
-                };
-
-                portal.update_ips(ips);
+            }
+            Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
+                update_portal_host_ips(&mut portal, &resolver).await
             }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
@@ -800,6 +792,25 @@ async fn phoenix_channel_event_loop(
             }
         }
     }
+}
+
+async fn update_portal_host_ips(
+    portal: &mut PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+    resolver: &TokioResolver,
+) {
+    let ips = match resolver
+        .lookup_ip(portal.host())
+        .await
+        .context("Failed to lookup portal host")
+    {
+        Ok(ips) => ips,
+        Err(e) => {
+            tracing::debug!(host = %portal.host(), "{e:#}");
+            return;
+        }
+    };
+
+    portal.update_ips(ips);
 }
 
 async fn resolve(domain: DomainName) -> Result<Vec<IpAddr>> {

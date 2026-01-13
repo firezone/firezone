@@ -1409,6 +1409,7 @@ dependencies = [
  "chrono",
  "connlib-model",
  "dns-types",
+ "etc-hosts-dns-client",
  "futures",
  "ip_network",
  "l4-udp-dns-client",
@@ -2412,6 +2413,15 @@ name = "error-code"
 version = "3.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
+
+[[package]]
+name = "etc-hosts-dns-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "etherparse"
