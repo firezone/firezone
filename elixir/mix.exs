@@ -77,7 +77,7 @@ defmodule Portal.MixProject do
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:bandit, "~> 1.0"},
       {:plug, "~> 1.15"},
-      {:gettext, "~> 0.20"},
+      {:gettext, "~> 1.0"},
       {:remote_ip, "~> 1.1"},
 
       # Auth
