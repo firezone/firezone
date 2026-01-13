@@ -57,14 +57,24 @@ public final class Store: ObservableObject {
   /// Injected tunnel controller for testing (nil in production)
   private let tunnelController: TunnelControllerProtocol?
 
-  /// Injected IPC client for testing (nil in production)
-  private var ipcClient: IPCClientProtocol?
+  /// IPC client for tunnel communication. Set in setupTunnelObservers() for production,
+  /// or injected directly in test initializer.
+  private var _ipcClient: IPCClientProtocol?
 
   /// Watchdog timeout in nanoseconds (configurable for tests)
   private var watchdogTimeoutNs: UInt64 = 10_000_000_000  // 10 seconds default
 
   /// Retry policy for resource fetching (configurable for tests)
   private var resourceRetryPolicy: RetryPolicy = .resourceFetch
+
+  /// Returns the IPC client, throwing if not yet initialized.
+  /// Follows the same pattern as manager() for consistency.
+  private func requireIPCClient() throws -> IPCClientProtocol {
+    guard let client = _ipcClient else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+    return client
+  }
 
   public init(configuration: Configuration? = nil) {
     self.configuration = configuration ?? Configuration.shared
@@ -95,11 +105,6 @@ public final class Store: ObservableObject {
         guard let self = self else { return }
         let current = self.configuration.toTunnelConfiguration()
 
-        if self.vpnConfigurationManager == nil {
-          // No manager yet, nothing to update
-          return
-        }
-
         if self.lastSavedConfiguration == current {
           // No changes
           return
@@ -109,10 +114,10 @@ public final class Store: ObservableObject {
 
         Task {
           do {
-            guard let session = try self.manager().session() else { return }
-            try await IPCClient.setConfiguration(session: session, current)
+            try await self.requireIPCClient().setConfiguration(current)
           } catch {
-            Log.error(error)
+            // IPC client not ready yet - this is expected during startup
+            Log.debug("Config change ignored: \(error)")
           }
         }
       })
@@ -147,7 +152,7 @@ public final class Store: ObservableObject {
   ) {
     self.configuration = configuration
     self.tunnelController = tunnelController
-    self.ipcClient = ipcClient
+    self._ipcClient = ipcClient
     self.resourceRetryPolicy = retryPolicy
     self.actorName = "Test User"
     self.shownAlertIds = []
@@ -165,8 +170,7 @@ public final class Store: ObservableObject {
 
   /// Directly trigger a resource fetch cycle for testing.
   func testFetchResources() async throws {
-    guard let ipcClient else { return }
-    try await fetchResourcesWithIPC(ipcClient: ipcClient)
+    try await fetchResourcesWithIPC(ipcClient: requireIPCClient())
   }
 
   #if os(macOS)
@@ -194,6 +198,9 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
+
+    // Create the IPC client now that we have a valid session
+    self._ipcClient = RealIPCClient(session: session)
 
     IPCClient.subscribeToVPNStatusUpdates(session: session, handler: vpnStatusChangeHandler)
 
@@ -345,31 +352,24 @@ public final class Store: ObservableObject {
     configuration.accountSlug = accountSlug
     await Telemetry.setAccountSlug(accountSlug)
 
-    try await manager().enable()
-
     // Clear shown alerts when starting a new session so user can see new errors
     shownAlertIds.removeAll()
     UserDefaults.standard.removeObject(forKey: "shownAlertIds")
 
-    // Bring the tunnel up and send it a token and configuration to start
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
+    // In production, enable the manager first (tests skip this)
+    if tunnelController == nil {
+      try await manager().enable()
     }
-    try IPCClient.start(session: session, token: authResponse.token)
+
+    try requireIPCClient().start(token: authResponse.token)
   }
 
   func signOut() async throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try await IPCClient.signOut(session: session)
+    try await requireIPCClient().signOut()
   }
 
   func clearLogs() async throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try await IPCClient.clearLogs(session: session)
+    try await requireIPCClient().clearLogs()
   }
 
   // MARK: Private functions
@@ -396,13 +396,7 @@ public final class Store: ObservableObject {
           self.resourceUpdateTask = Task {
             if !Task.isCancelled {
               do {
-                // Use injected IPC client if available (tests), otherwise use real manager
-                if let client = self.ipcClient {
-                  try await self.fetchResourcesWithIPC(ipcClient: client)
-                } else {
-                  guard let session = try self.manager().session() else { return }
-                  try await self.fetchResources(session: session)
-                }
+                try await self.fetchResourcesWithIPC(ipcClient: self.requireIPCClient())
               } catch let error as NSError {
                 // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
                 if error.domain == "NEVPNErrorDomain" && error.code == 1 {
