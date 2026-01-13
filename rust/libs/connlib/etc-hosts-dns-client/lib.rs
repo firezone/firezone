@@ -18,6 +18,8 @@ where
 
         let ips = parse(&content, &host);
 
+        tracing::debug!(?ips, %host, "Resolved host");
+
         Ok(ips)
     }
 }

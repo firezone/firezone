@@ -47,8 +47,6 @@ impl UdpDnsClient {
             let domain =
                 DomainName::vec_from_str(host.as_ref()).context("Failed to parse domain name")?;
 
-            tracing::debug!(?servers, %domain, "Resolving host");
-
             let ips = servers
                 .iter()
                 .flat_map(|socket| {
@@ -83,7 +81,7 @@ impl UdpDnsClient {
                 .into_iter()
                 .collect();
 
-            tracing::debug!(?ips, %host, "Resolved host");
+            tracing::debug!(?servers, ?ips, %host, "Resolved host");
 
             Ok(ips)
         }
