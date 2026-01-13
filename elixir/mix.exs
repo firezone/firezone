@@ -20,7 +20,7 @@ defmodule Portal.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
-      listeners: [Phoenix.CodeReloader],
+      listeners: listeners(Mix.env()),
       docs: [
         logo: "assets/static/images/logo.svg",
         extras: ["docs/README.md", "docs/SECURITY.md", "docs/CONTRIBUTING.md"]
@@ -50,6 +50,9 @@ defmodule Portal.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support", ".credo"]
   defp elixirc_paths(:dev), do: ["lib", ".credo"]
   defp elixirc_paths(_), do: ["lib"]
+
+  defp listeners(:dev), do: [Phoenix.CodeReloader]
+  defp listeners(_), do: []
 
   defp deps do
     [
