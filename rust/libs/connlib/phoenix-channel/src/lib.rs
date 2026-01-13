@@ -113,9 +113,16 @@ async fn create_and_connect_websocket(
     tracing::debug!(%host, ?addresses, %user_agent, "Connecting to portal");
 
     let duration = Duration::from_secs(5);
-    let socket = tokio::time::timeout(duration, connect(addresses, &*socket_factory))
+    let socket = tokio::time::timeout(duration, connect(addresses.clone(), &*socket_factory))
         .await
-        .map_err(|_| InternalError::Timeout { duration })??;
+        .map_err(|_| {
+            InternalError::SocketConnection(
+                addresses
+                    .into_iter()
+                    .map(|addr| (addr, io::Error::from(io::ErrorKind::TimedOut)))
+                    .collect(),
+            )
+        })??;
 
     let (stream, _) = client_async_tls(make_request(url, host, user_agent, &token), socket)
         .await
@@ -187,9 +194,8 @@ enum InternalError {
     CloseMessage,
     StreamClosed,
     RoomJoinTimedOut,
-    SocketConnection(Vec<(SocketAddr, std::io::Error)>),
+    SocketConnection(Vec<(SocketAddr, io::Error)>),
     NoAddresses,
-    Timeout { duration: Duration },
 }
 
 impl InternalError {
@@ -210,7 +216,7 @@ impl InternalError {
         Some(duration)
     }
 
-    pub(crate) fn failed_ips(&self) -> Vec<(IpAddr, &std::io::Error)> {
+    pub(crate) fn failed_ips(&self) -> Vec<(IpAddr, &io::Error)> {
         let Self::SocketConnection(errors) = self else {
             return Vec::default();
         };
@@ -267,9 +273,6 @@ impl fmt::Display for InternalError {
                         .join(", ")
                 )
             }
-            InternalError::Timeout { duration, .. } => {
-                write!(f, "operation timed out after {duration:?}")
-            }
             InternalError::RoomJoinTimedOut => write!(f, "room join timed out"),
             InternalError::NoAddresses => write!(f, "no IP addresses available"),
         }
@@ -285,7 +288,6 @@ impl std::error::Error for InternalError {
             InternalError::SocketConnection(_) => None,
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
-            InternalError::Timeout { .. } => None,
             InternalError::RoomJoinTimedOut => None,
             InternalError::NoAddresses => None,
         }
