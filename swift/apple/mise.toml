@@ -26,14 +26,17 @@ MACOSX_DEPLOYMENT_TARGET = "13.0"
 [tasks.setup]
 description = "Install required Rust targets for Apple development"
 run = "./mise-tasks/setup.sh"
+raw = true
 
 [tasks.uniffi-bindings]
 description = "Generate UniFFI bindings from Rust source"
 run = "./mise-tasks/uniffi-bindings.sh"
+raw = true
 
 [tasks.build-rust]
 description = "Build Rust library for Xcode (called by Xcode build phase)"
 run = "./mise-tasks/build-rust.sh"
+raw = true
 
 [tasks.lsp]
 description = "Configure xcode-build-server for LSP support in non-Xcode editors"
@@ -43,10 +46,12 @@ run = "./mise-tasks/lsp.sh"
 description = "Build Xcode project for macOS"
 depends = ["uniffi-bindings"]
 run = "./mise-tasks/build.sh"
+raw = true
 
 [tasks.install]
 description = "Stop running Firezone, copy to /Applications, and launch"
 run = "./mise-tasks/install.sh"
+raw = true
 
 [tasks.all]
 description = "Build and install (uniffi-bindings + build + install)"
@@ -55,18 +60,22 @@ depends = ["build", "install"]
 [tasks.clean]
 description = "Clean Xcode build, Rust artifacts, and generated bindings"
 run = "./mise-tasks/clean.sh"
+raw = true
 
 [tasks.format]
 description = "Format Swift code"
 run = "./mise-tasks/format.sh"
+raw = true
 
 [tasks.check]
 description = "Check Swift code formatting"
 run = "./mise-tasks/check.sh"
+raw = true
 
 [tasks.test]
 description = "Run FirezoneKit tests"
 run = "./mise-tasks/test.sh"
+raw = true
 
 # =============================================================================
 # Log Tasks
