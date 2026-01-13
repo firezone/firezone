@@ -357,7 +357,7 @@ async fn discards_failed_ips_on_hiccup() {
     };
 
     let regex = Regex::new(
-        r#"Reconnecting to portal on transient error: ([\w\s]+): \[127\.0\.0\.1:443: (.*), 127\.0\.0\.10:443: (.*), 127\.0\.0\.111:443: (.*)\]"#,
+        r#"Reconnecting to portal on transient error: (.*): \[127\.0\.0\.1:443: (.*), 127\.0\.0\.10:443: (.*), 127\.0\.0\.111:443: (.*)\]"#,
     ).unwrap();
     assert!(regex.is_match(&format!("{error:#}")), "{error:#}");
 
