@@ -505,34 +505,49 @@ async fn phoenix_channel_event_loop(
     portal.connect(param);
 
     loop {
-        match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
-            Either::Left((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
+        match select(pin!(cmd_rx.recv()), poll_fn(|cx| portal.poll(cx))).await {
+            Either::Left((Some(PortalCommand::Send(msg)), _)) => {
+                portal.send(PHOENIX_TOPIC, msg);
+            }
+            Either::Left((Some(PortalCommand::Connect(param)), _)) => {
+                portal.connect(param);
+            }
+            Either::Left((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
+                udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);
+            }
+            Either::Left((None, _)) => {
+                tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");
+
+                break;
+            }
+            Either::Right((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
                 if event_tx.send(Ok(msg)).await.is_err() {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
 
                     break;
                 }
             }
-            Either::Left((Ok(phoenix_channel::Event::SuccessResponse { .. }), _)) => {}
-            Either::Left((Ok(phoenix_channel::Event::ErrorResponse { res, req_id, topic }), _)) => {
-                match res {
-                    ErrorReply::Disabled => {
-                        tracing::debug!(%req_id, "Functionality is disabled");
-                    }
-                    ErrorReply::UnmatchedTopic => {
-                        portal.join(topic, ());
-                    }
-                    reason @ (ErrorReply::InvalidVersion | ErrorReply::Other) => {
-                        tracing::debug!(%req_id, %reason, "Request failed");
-                    }
+            Either::Right((Ok(phoenix_channel::Event::SuccessResponse { .. }), _)) => {}
+            Either::Right((
+                Ok(phoenix_channel::Event::ErrorResponse { res, req_id, topic }),
+                _,
+            )) => match res {
+                ErrorReply::Disabled => {
+                    tracing::debug!(%req_id, "Functionality is disabled");
                 }
-            }
-            Either::Left((Ok(phoenix_channel::Event::HeartbeatSent), _)) => {}
-            Either::Left((Ok(phoenix_channel::Event::JoinedRoom { .. }), _)) => {}
-            Either::Left((Ok(phoenix_channel::Event::Closed), _)) => {
+                ErrorReply::UnmatchedTopic => {
+                    portal.join(topic, ());
+                }
+                reason @ (ErrorReply::InvalidVersion | ErrorReply::Other) => {
+                    tracing::debug!(%req_id, %reason, "Request failed");
+                }
+            },
+            Either::Right((Ok(phoenix_channel::Event::HeartbeatSent), _)) => {}
+            Either::Right((Ok(phoenix_channel::Event::JoinedRoom { .. }), _)) => {}
+            Either::Right((Ok(phoenix_channel::Event::Closed), _)) => {
                 unimplemented!("Client never actively closes the portal connection")
             }
-            Either::Left((
+            Either::Right((
                 Ok(phoenix_channel::Event::Hiccup {
                     backoff,
                     max_elapsed_time,
@@ -546,26 +561,12 @@ async fn phoenix_channel_event_loop(
                     "Hiccup in portal connection: {error:#}"
                 );
             }
-            Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
+            Either::Right((Ok(phoenix_channel::Event::NoAddresses), _)) => {
                 let ips = resolve_portal_host_ips(portal.host(), &udp_dns_client).await;
                 portal.update_ips(ips);
             }
-            Either::Left((Err(e), _)) => {
+            Either::Right((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
-
-                break;
-            }
-            Either::Right((Some(PortalCommand::Send(msg)), _)) => {
-                portal.send(PHOENIX_TOPIC, msg);
-            }
-            Either::Right((Some(PortalCommand::Connect(param)), _)) => {
-                portal.connect(param);
-            }
-            Either::Right((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
-                udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);
-            }
-            Either::Right((None, _)) => {
-                tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");
 
                 break;
             }
