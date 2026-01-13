@@ -2,13 +2,15 @@
 
 use std::{borrow::Cow, net::IpAddr};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 #[cfg(unix)]
 pub fn resolve<H>(host: H) -> impl Future<Output = Result<Vec<IpAddr>>> + use<H>
 where
     H: Into<Cow<'static, str>>,
 {
+    use anyhow::Context as _;
+
     let host = host.into();
 
     async move {
@@ -24,6 +26,7 @@ where
     }
 }
 
+#[cfg(any(unix, test))]
 fn parse(content: &str, host: &str) -> Vec<IpAddr> {
     content
         .lines()
@@ -44,7 +47,7 @@ fn parse(content: &str, host: &str) -> Vec<IpAddr> {
 }
 
 #[cfg(not(unix))]
-pub fn resolve<H>(host: H) -> impl Future<Output = Result<Vec<IpAddr>>> + use<H>
+pub fn resolve<H>(_: H) -> impl Future<Output = Result<Vec<IpAddr>>> + use<H>
 where
     H: Into<Cow<'static, str>>,
 {

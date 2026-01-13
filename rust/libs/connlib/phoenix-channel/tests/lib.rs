@@ -595,6 +595,9 @@ async fn initial_connection_uses_constant_1s_backoff() {
             }) => {
                 hiccups.push((backoff, max_elapsed_time));
             }
+            Ok(phoenix_channel::Event::NoAddresses) => {
+                channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
+            }
             Err(Error::MaxRetriesReached { .. }) => break,
             other => panic!("Unexpected event: {other:?}"),
         }
