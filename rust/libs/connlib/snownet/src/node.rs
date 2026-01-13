@@ -427,34 +427,48 @@ where
             return;
         };
 
-        tracing::debug!(?candidate, "Received candidate from remote");
+        let candidate_kind = candidate.kind();
+        let has_state = maybe_state.is_some();
+
+        // Temporarily using info! for debugging the ICE nomination race condition
+        tracing::info!(
+            ?candidate,
+            ?candidate_kind,
+            has_state,
+            "Received candidate from remote"
+        );
 
         agent.add_remote_candidate(candidate.clone());
 
         generate_optimistic_candidates(agent);
 
-        match candidate.kind() {
+        // Bind TURN channels for non-host candidates to optimize relay traffic.
+        // Host candidates don't need TURN channels - they're only useful for
+        // circumventing restrictive NATs where we talk to relay or server-reflexive addresses.
+        match candidate_kind {
             CandidateKind::Host => {
-                // Binding a TURN channel for host candidates does not make sense.
-                // They are only useful to circumvent restrictive NATs in which case we are either talking to another relay candidate or a server-reflexive address.
-                return;
+                tracing::info!("Host candidate - skipping TURN channel binding");
             }
             CandidateKind::Relayed
             | CandidateKind::ServerReflexive
-            | CandidateKind::PeerReflexive => {}
+            | CandidateKind::PeerReflexive => {
+                if let Some(allocation) = self.allocations.get_mut_by_id(&relay) {
+                    allocation.bind_channel(candidate.addr(), now);
+                } else {
+                    tracing::debug!(rid = %relay, "Unknown relay");
+                }
+            }
         }
-
-        let Some(allocation) = self.allocations.get_mut_by_id(&relay) else {
-            tracing::debug!(rid = %relay, "Unknown relay");
-            return;
-        };
-
-        allocation.bind_channel(candidate.addr(), now);
 
         if let Some(state) = maybe_state {
             // Make sure we move out of idle mode when we add new candidates.
+            // Also triggers re-evaluation if we're connected via relay and a
+            // potentially better (host) candidate arrives.
+            tracing::info!(%state, "Calling on_candidate for established connection");
             state.on_candidate(cid, agent, now);
-        };
+        } else {
+            tracing::info!("Connection is initial (not established) - no state to notify");
+        }
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
@@ -1619,13 +1633,52 @@ impl ConnectionState {
     where
         TId: fmt::Display,
     {
+        // Temporarily using info! for debugging the ICE nomination race condition
+        tracing::info!(%cid, state = %self, "on_candidate called");
+
         let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
-            Self::Connected { last_activity, .. } => {
+            Self::Idle { peer_socket } => {
+                tracing::info!(%cid, socket = %peer_socket.kind(), "State is Idle, will transition to Connected");
+                *peer_socket
+            }
+            Self::Connected {
+                last_activity,
+                peer_socket,
+            } => {
                 *last_activity = now;
+
+                // When connected via relay and new candidates arrive, apply more
+                // aggressive STUN timings and immediately trigger connectivity checks
+                // to see if a direct path is now available.
+                // This handles the race where relay nomination happens before host
+                // candidates are exchanged.
+                if peer_socket.uses_relay() {
+                    tracing::info!(
+                        %cid,
+                        socket = %peer_socket.kind(),
+                        "New candidate while connected via relay, triggering connectivity checks"
+                    );
+                    apply_default_stun_timings(agent);
+                    // Immediately drive the ICE agent to process new candidate pairs
+                    agent.handle_timeout(now);
+                } else {
+                    tracing::info!(
+                        %cid,
+                        socket = %peer_socket.kind(),
+                        "Already connected peer-to-peer, no re-check needed"
+                    );
+                }
+
                 return;
             }
-            Self::Failed | Self::Connecting { .. } => return,
+            Self::Failed => {
+                tracing::info!(%cid, "State is Failed, ignoring candidate");
+                return;
+            }
+            Self::Connecting { .. } => {
+                tracing::info!(%cid, "State is Connecting, ignoring candidate");
+                return;
+            }
         };
 
         self.transition_to_connected(cid, peer_socket, agent, "candidates changed", now);
@@ -1733,6 +1786,11 @@ enum PeerSocket {
 impl PeerSocket {
     fn send_from_relay(&self) -> bool {
         matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
+    }
+
+    /// Returns true if either direction uses relay.
+    fn uses_relay(&self) -> bool {
+        !matches!(self, Self::PeerToPeer { .. })
     }
 
     fn fmt<RId>(&self, relay: RId) -> String
@@ -1879,6 +1937,14 @@ where
                     source,
                     ..
                 } => {
+                    // Temporarily using info! for debugging the ICE nomination race condition
+                    tracing::info!(
+                        %source,
+                        %destination,
+                        current_state = %self.state,
+                        "Received NominatedSend event from ICE agent"
+                    );
+
                     let source_relay = allocations.get_mut_by_allocation(source).map(|(r, _)| r);
 
                     if source_relay.is_some_and(|r| self.relay.id != r) {
@@ -2561,5 +2627,225 @@ mod tests {
         assert!(agent.remote_candidates().contains(&expected_candidate1));
         assert!(agent.remote_candidates().contains(&expected_candidate2));
         assert!(!agent.remote_candidates().contains(&unexpected_candidate3));
+    }
+
+    #[test]
+    fn on_candidate_triggers_aggressive_checks_when_connected_via_relay() {
+        let now = Instant::now();
+        let dest = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(1, 2, 3, 4), 12345));
+
+        // Start with RelayToPeer socket (we send via relay, peer receives directly)
+        let mut state = ConnectionState::Connected {
+            peer_socket: PeerSocket::RelayToPeer { dest },
+            last_activity: now,
+        };
+
+        // Set up agent with idle timings (longer timeout)
+        let mut agent = new_client_agent();
+        apply_idle_stun_timings(&mut agent);
+        let idle_timeout = agent.ice_timeout();
+
+        // Call on_candidate (simulating a new host candidate arriving)
+        state.on_candidate("test-cid", &mut agent, now + Duration::from_secs(1));
+
+        // Verify aggressive timings are applied (shorter timeout)
+        let new_timeout = agent.ice_timeout();
+        assert!(
+            new_timeout < idle_timeout,
+            "Expected aggressive timeout ({new_timeout:?}) < idle timeout ({idle_timeout:?})"
+        );
+
+        // Verify last_activity was updated
+        match state {
+            ConnectionState::Connected { last_activity, .. } => {
+                assert_eq!(last_activity, now + Duration::from_secs(1));
+            }
+            _ => panic!("Expected Connected state"),
+        }
+    }
+
+    #[test]
+    fn on_candidate_does_not_change_timings_when_connected_peer_to_peer() {
+        let now = Instant::now();
+        let source = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 54321));
+        let dest = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(1, 2, 3, 4), 12345));
+
+        // Start with PeerToPeer socket (direct connection)
+        let mut state = ConnectionState::Connected {
+            peer_socket: PeerSocket::PeerToPeer { source, dest },
+            last_activity: now,
+        };
+
+        // Set up agent with idle timings
+        let mut agent = new_client_agent();
+        apply_idle_stun_timings(&mut agent);
+        let idle_timeout = agent.ice_timeout();
+
+        // Call on_candidate
+        state.on_candidate("test-cid", &mut agent, now + Duration::from_secs(1));
+
+        // Verify timings are unchanged (no need to re-check when already peer-to-peer)
+        let new_timeout = agent.ice_timeout();
+        assert_eq!(
+            new_timeout, idle_timeout,
+            "Expected timeout to remain unchanged for peer-to-peer connection"
+        );
+    }
+
+    #[test]
+    fn on_candidate_triggers_aggressive_checks_for_relay_to_relay() {
+        let now = Instant::now();
+        let dest = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(1, 2, 3, 4), 12345));
+
+        // Start with RelayToRelay socket (both sides using relay)
+        let mut state = ConnectionState::Connected {
+            peer_socket: PeerSocket::RelayToRelay { dest },
+            last_activity: now,
+        };
+
+        // Set up agent with idle timings
+        let mut agent = new_client_agent();
+        apply_idle_stun_timings(&mut agent);
+        let idle_timeout = agent.ice_timeout();
+
+        // Call on_candidate
+        state.on_candidate("test-cid", &mut agent, now + Duration::from_secs(1));
+
+        // Verify aggressive timings are applied
+        let new_timeout = agent.ice_timeout();
+        assert!(
+            new_timeout < idle_timeout,
+            "Expected aggressive timeout ({new_timeout:?}) < idle timeout ({idle_timeout:?})"
+        );
+    }
+
+    #[test]
+    fn on_candidate_triggers_aggressive_checks_for_peer_to_relay() {
+        let now = Instant::now();
+        let source = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 54321));
+        let dest = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(1, 2, 3, 4), 12345));
+
+        // Start with PeerToRelay socket (we send directly, peer's relay receives)
+        let mut state = ConnectionState::Connected {
+            peer_socket: PeerSocket::PeerToRelay { source, dest },
+            last_activity: now,
+        };
+
+        // Set up agent with idle timings
+        let mut agent = new_client_agent();
+        apply_idle_stun_timings(&mut agent);
+        let idle_timeout = agent.ice_timeout();
+
+        // Call on_candidate
+        state.on_candidate("test-cid", &mut agent, now + Duration::from_secs(1));
+
+        // Verify aggressive timings are applied
+        let new_timeout = agent.ice_timeout();
+        assert!(
+            new_timeout < idle_timeout,
+            "Expected aggressive timeout ({new_timeout:?}) < idle timeout ({idle_timeout:?})"
+        );
+    }
+
+    #[test]
+    fn on_candidate_does_nothing_when_connecting() {
+        let now = Instant::now();
+
+        // State is Connecting (before any nomination)
+        let mut state = ConnectionState::Connecting {
+            wg_buffer: AllocRingBuffer::new(128),
+            ip_buffer: AllocRingBuffer::new(128),
+        };
+
+        // Set up agent with idle timings
+        let mut agent = new_client_agent();
+        apply_idle_stun_timings(&mut agent);
+        let idle_timeout = agent.ice_timeout();
+
+        // Call on_candidate - should return early without changing anything
+        state.on_candidate("test-cid", &mut agent, now + Duration::from_secs(1));
+
+        // Verify timings are unchanged
+        let new_timeout = agent.ice_timeout();
+        assert_eq!(
+            new_timeout, idle_timeout,
+            "Expected timeout to remain unchanged for Connecting state"
+        );
+
+        // Verify state is unchanged
+        assert!(
+            matches!(state, ConnectionState::Connecting { .. }),
+            "Expected state to remain Connecting"
+        );
+    }
+
+    #[test]
+    fn on_candidate_does_nothing_when_failed() {
+        let now = Instant::now();
+
+        // State is Failed
+        let mut state = ConnectionState::Failed;
+
+        // Set up agent with idle timings
+        let mut agent = new_client_agent();
+        apply_idle_stun_timings(&mut agent);
+        let idle_timeout = agent.ice_timeout();
+
+        // Call on_candidate - should return early
+        state.on_candidate("test-cid", &mut agent, now + Duration::from_secs(1));
+
+        // Verify timings are unchanged
+        let new_timeout = agent.ice_timeout();
+        assert_eq!(
+            new_timeout, idle_timeout,
+            "Expected timeout to remain unchanged for Failed state"
+        );
+
+        // Verify state is unchanged
+        assert!(
+            matches!(state, ConnectionState::Failed),
+            "Expected state to remain Failed"
+        );
+    }
+
+    #[test]
+    fn on_candidate_transitions_idle_to_connected() {
+        let now = Instant::now();
+        let dest = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(1, 2, 3, 4), 12345));
+
+        // State is Idle with a relay socket
+        let mut state = ConnectionState::Idle {
+            peer_socket: PeerSocket::RelayToPeer { dest },
+        };
+
+        // Set up agent with idle timings
+        let mut agent = new_client_agent();
+        apply_idle_stun_timings(&mut agent);
+        let idle_timeout = agent.ice_timeout();
+
+        // Call on_candidate - should transition to Connected
+        state.on_candidate("test-cid", &mut agent, now + Duration::from_secs(1));
+
+        // Verify aggressive timings are applied (transition_to_connected calls apply_default_stun_timings)
+        let new_timeout = agent.ice_timeout();
+        assert!(
+            new_timeout < idle_timeout,
+            "Expected aggressive timeout ({new_timeout:?}) < idle timeout ({idle_timeout:?})"
+        );
+
+        // Verify state transitioned to Connected
+        match state {
+            ConnectionState::Connected {
+                peer_socket,
+                last_activity,
+            } => {
+                assert!(
+                    matches!(peer_socket, PeerSocket::RelayToPeer { .. }),
+                    "Expected RelayToPeer socket"
+                );
+                assert_eq!(last_activity, now + Duration::from_secs(1));
+            }
+            _ => panic!("Expected Connected state, got {state}"),
+        }
     }
 }
