@@ -12,11 +12,11 @@ members = [
     "libs/connlib/bufferpool",
     "libs/connlib/dns-over-tcp",
     "libs/connlib/dns-types",
+    "libs/connlib/etc-hosts-dns-client",
     "libs/connlib/etherparse-ext",
     "libs/connlib/ip-packet",
     "libs/connlib/l3-tcp",
     "libs/connlib/l3-udp-dns-client",
-    "libs/connlib/etc-hosts-dns-client",
     "libs/connlib/l4-tcp-dns-server",
     "libs/connlib/l4-udp-dns-client",
     "libs/connlib/l4-udp-dns-server",
@@ -83,6 +83,7 @@ dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1"
+etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 firezone-headless-client = { path = "headless-client" }
@@ -111,7 +112,6 @@ jni = "0.21.1"
 keyring = "3.6.3"
 known-folders = "1.4.0"
 l3-tcp = { path = "libs/connlib/l3-tcp" }
-etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-client = { path = "libs/connlib/l4-udp-dns-client" }
