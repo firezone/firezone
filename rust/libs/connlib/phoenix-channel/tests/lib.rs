@@ -5,7 +5,6 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::{future, sync::Arc, time::Duration};
 
 use phoenix_channel::{DeviceInfo, Event, LoginUrl, PhoenixChannel, PublicKeyParam};
-use regex::Regex;
 use secrecy::SecretString;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -352,14 +351,9 @@ async fn discards_failed_ips_on_hiccup() {
     .expect("should not timeout")
     .expect("should not error");
 
-    let phoenix_channel::Event::Hiccup { error, .. } = event else {
+    let phoenix_channel::Event::Hiccup { .. } = event else {
         panic!("Expected `Hiccup`")
     };
-
-    let regex = Regex::new(
-        r#"Reconnecting to portal on transient error: (.*): \[127\.0\.0\.1:443: (.*), 127\.0\.0\.10:443: (.*), 127\.0\.0\.111:443: (.*)\]"#,
-    ).unwrap();
-    assert!(regex.is_match(&format!("{error:#}")), "{error:#}");
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await

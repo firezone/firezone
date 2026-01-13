@@ -38,7 +38,6 @@ tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
 hostname = "0.4.2"
 
 [dev-dependencies]
-regex = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "tracing"] }
 
 [lints]
