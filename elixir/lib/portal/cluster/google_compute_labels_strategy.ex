@@ -167,11 +167,8 @@ defmodule Portal.Cluster.GoogleComputeLabelsStrategy do
            ) do
       nodes =
         instances
-        |> Enum.map(fn %{"zone" => zone, "name" => name} ->
-          zone = String.split(zone, "/") |> List.last()
-          node_name = :"#{release_name}@#{name}.#{zone}.c.#{project_id}.internal"
-
-          node_name
+        |> Enum.map(fn %{"networkInterfaces" => [%{"networkIP" => private_ip} | _]} ->
+          :"#{release_name}@#{private_ip}"
         end)
 
       count = length(nodes)
