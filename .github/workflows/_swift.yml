@@ -55,6 +55,8 @@ jobs:
 
   build:
     name: ${{ matrix.job_name }}
+    # Skip builds on CD (push to main) - only needed for PR validation and releases
+    if: github.event_name != 'push'
     needs: update-release-draft
     runs-on: macos-15
     env:
