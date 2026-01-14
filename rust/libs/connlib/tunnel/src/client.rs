@@ -34,7 +34,7 @@ use connlib_model::{
 use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
+use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, UdpSlice};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 
@@ -735,23 +735,19 @@ impl ClientState {
             return ControlFlow::Continue(packet); // Not for our DNS resolver.
         };
 
-        if let Some(port) = packet
-            .as_tcp()
-            .map(|t| t.destination_port())
-            .or(packet.as_udp().map(|u| u.destination_port()))
-            && port != dns::DNS_PORT
-        {
-            return ControlFlow::Continue(packet); // Not a DNS packet.
-        }
-
         if self.tcp_dns_server.accepts(&packet) {
             self.tcp_dns_server.handle_inbound(packet);
             return ControlFlow::Break(());
         }
 
-        self.handle_udp_dns_query(upstream, packet, now);
+        if let Some(udp) = packet.as_udp()
+            && udp.destination_port() == dns::DNS_PORT
+        {
+            self.handle_udp_dns_query(upstream, &packet, udp, now);
+            return ControlFlow::Break(());
+        }
 
-        ControlFlow::Break(())
+        ControlFlow::Continue(packet) // Not a DNS packet.
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -1184,13 +1180,13 @@ impl ClientState {
         }
     }
 
-    fn handle_udp_dns_query(&mut self, upstream: dns::Upstream, packet: IpPacket, now: Instant) {
-        let Some(datagram) = packet.as_udp() else {
-            tracing::debug!(?packet, "Not a UDP packet");
-
-            return;
-        };
-
+    fn handle_udp_dns_query(
+        &mut self,
+        upstream: dns::Upstream,
+        packet: &IpPacket,
+        datagram: UdpSlice,
+        now: Instant,
+    ) {
         let message = match dns_types::Query::parse(datagram.payload()) {
             Ok(message) => message,
             Err(e) => {
