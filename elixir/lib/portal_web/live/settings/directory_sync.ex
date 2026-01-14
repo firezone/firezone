@@ -1563,7 +1563,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp parse_okta_verification_error({:error, :empty, :groups}) do
-    "No groups found in your Okta account. Please ensure groups exist and the integration has the okta.groups.read scope granted."
+    "No groups found in your Okta account. Please ensure groups are assigned to the OIDC app and the API service integration app has the okta.groups.read scope granted."
   end
 
   defp parse_okta_verification_error(error) do
