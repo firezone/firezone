@@ -66,18 +66,11 @@ const LLMNR_PORT: u16 = 5355;
 const LLMNR_IPV4: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 252);
 const LLMNR_IPV6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 1, 0, 3);
 
-pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
+pub(crate) const DNS_SENTINELS: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24) {
         Ok(n) => n,
         Err(_) => unreachable!(),
     };
-pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
-    Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
-    120,
-) {
-    Ok(n) => n,
-    Err(_) => unreachable!(),
-};
 
 /// How many concurrent TCP DNS clients we can server _per_ sentinel DNS server IP.
 const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
@@ -868,8 +861,7 @@ impl ClientState {
             .chain(iter::once(IPV6_TUNNEL.into()))
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
-            .chain(iter::once(DNS_SENTINELS_V4.into()))
-            .chain(iter::once(DNS_SENTINELS_V6.into()))
+            .chain(iter::once(DNS_SENTINELS.into()))
             .chain(
                 self.active_internet_resource()
                     .map(|_| Ipv4Network::DEFAULT_ROUTE.into()),
@@ -880,8 +872,9 @@ impl ClientState {
             )
             .chain(
                 self.dns_config
-                    .internal_dns_servers() // TODO: Exclude sentinels here to avoid unnecessary route updates.
+                    .internal_dns_servers()
                     .into_iter()
+                    .filter(|server| !IpNetwork::V4(DNS_SENTINELS).contains(*server)) // Exclude DNS sentinels from routes. They are already added as a /24 block.
                     .map(IpNetwork::from),
             )
     }
@@ -1879,18 +1872,7 @@ impl IpProvider {
         IpProvider::new(
             IPV4_RESOURCES,
             IPV6_RESOURCES,
-            vec![
-                IpNetwork::V4(DNS_SENTINELS_V4),
-                IpNetwork::V6(DNS_SENTINELS_V6),
-            ],
-        )
-    }
-
-    pub fn for_stub_dns_servers(old_servers: Vec<IpAddr>) -> Self {
-        IpProvider::new(
-            DNS_SENTINELS_V4,
-            DNS_SENTINELS_V6,
-            old_servers.into_iter().map(IpNetwork::from).collect(),
+            vec![IpNetwork::V4(DNS_SENTINELS)],
         )
     }
 
@@ -1907,21 +1889,6 @@ impl IpProvider {
                     .filter(move |ip| !exclusions.iter().any(|e| e.contains(*ip)))
             }),
         }
-    }
-
-    pub fn get_proxy_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
-        let proxy_ip = match ip {
-            IpAddr::V4(_) => self.ipv4.next().map(Into::into),
-            IpAddr::V6(_) => self.ipv6.next().map(Into::into),
-        };
-
-        if proxy_ip.is_none() {
-            // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
-            // this might happen in ipv4 if tokens are too long lived.
-            tracing::error!("IP exhaustion: Please reset your client");
-        }
-
-        proxy_ip
     }
 
     pub fn get_n_ipv4(&mut self, n: usize) -> Vec<IpAddr> {
@@ -2305,8 +2272,7 @@ mod proptests {
                 .chain(iter::once(IPV6_TUNNEL.into()))
                 .chain(iter::once(IPV4_RESOURCES.into()))
                 .chain(iter::once(IPV6_RESOURCES.into()))
-                .chain(iter::once(DNS_SENTINELS_V4.into()))
-                .chain(iter::once(DNS_SENTINELS_V6.into())),
+                .chain(iter::once(DNS_SENTINELS.into())),
         )
     }
 

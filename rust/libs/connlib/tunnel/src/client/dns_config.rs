@@ -1,13 +1,13 @@
 use std::{
     collections::HashSet,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
 };
 
 use dns_types::DoHUrl;
 use ip_network::IpNetwork;
 
 use crate::{
-    client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
+    client::DNS_SENTINELS,
     dns::{self, DNS_PORT},
 };
 
@@ -194,7 +194,9 @@ fn effective_dns_servers(
 }
 
 fn sentinel_dns_mapping(dns: &[dns::Upstream], old_sentinels: Vec<IpAddr>) -> DnsMapping {
-    let mut ip_provider = IpProvider::for_stub_dns_servers(old_sentinels);
+    let mut doh_sentinels = DNS_SENTINELS
+        .hosts()
+        .filter(move |ip| !old_sentinels.iter().any(|e| e == ip));
 
     let mapping = dns
         .iter()
@@ -203,9 +205,10 @@ fn sentinel_dns_mapping(dns: &[dns::Upstream], old_sentinels: Vec<IpAddr>) -> Dn
                 dns::Upstream::LocalDo53 { server } | dns::Upstream::CustomDo53 { server } => {
                     server.ip()
                 }
-                dns::Upstream::DoH { .. } => ip_provider
-                    .get_proxy_ip_for(&IpAddr::V4(Ipv4Addr::UNSPECIFIED)) // DoH servers are always mapped to IPv4 servers.
-                    .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
+                dns::Upstream::DoH { .. } => doh_sentinels
+                    .next()
+                    .expect("Only 256 concurrent DoH servers are supported")
+                    .into(),
             };
 
             (ip, u.clone())
@@ -220,10 +223,9 @@ fn without_sentinel_ips(servers: &[IpAddr]) -> Vec<IpAddr> {
 }
 
 fn not_sentinel(srv: IpAddr) -> Option<IpAddr> {
-    let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv);
-    let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv);
+    let is_v4_dns = IpNetwork::V4(DNS_SENTINELS).contains(srv);
 
-    (!is_v4_dns && !is_v6_dns).then_some(srv)
+    (!is_v4_dns).then_some(srv)
 }
 
 #[cfg(test)]
