@@ -27,7 +27,7 @@ public class SessionNotification: NSObject {
   public var signInHandler = {}
   private let notificationCenter = UNUserNotificationCenter.current()
 
-  public override init() {
+  override public init() {
     super.init()
 
     #if os(iOS)

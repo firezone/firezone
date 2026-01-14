@@ -22,7 +22,9 @@ import SwiftUI
     var statusItem: NSStatusItem
     var lastShownFavorites: [Resource] = []
     var lastShownOthers: [Resource] = []
+    // swiftlint:disable:next discouraged_optional_boolean - nil indicates initial unknown state
     var wasInternetResourceEnabled: Bool?
+    // swiftlint:disable:next discouraged_optional_boolean - nil indicates initial unknown state
     var wasInternetResourceForced: Bool?
     var cancellables: Set<AnyCancellable> = []
     var updateChecker: UpdateChecker
@@ -616,7 +618,7 @@ import SwiftUI
       } else {
         // Show Address first if addressDescription is missing
         // Address is none only for internet resource
-        resourceAddressDescriptionItem.title = resource.address ?? ""
+        resourceAddressDescriptionItem.title = resource.address ?? "(no address)"
         resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
       }
       resourceAddressDescriptionItem.isEnabled = true
@@ -642,7 +644,7 @@ import SwiftUI
       // Resource address
       let resourceAddressItem = NSMenuItem()
       resourceAddressItem.action = #selector(resourceValueTapped(_:))
-      resourceAddressItem.title = resource.address!
+      resourceAddressItem.title = resource.address ?? "(no address)"
       resourceAddressItem.toolTip = "Resource address (click to copy)"
       resourceAddressItem.isEnabled = true
       resourceAddressItem.target = self
@@ -804,14 +806,18 @@ import SwiftUI
     }
 
     @objc func documentationButtonTapped() {
+      // Static URL literal is guaranteed valid
+      // swiftlint:disable:next force_unwrapping
       let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")!
 
       Task { await NSWorkspace.shared.openAsync(url) }
     }
 
     @objc func supportButtonTapped() {
+      // defaultSupportURL is a static constant guaranteed to be valid
       let url =
-        URL(string: store.configuration.supportURL) ?? URL(string: Configuration.defaultSupportURL)!
+        URL(string: store.configuration.supportURL)
+        ?? URL(string: Configuration.defaultSupportURL)!  // swiftlint:disable:this force_unwrapping
 
       Task { await NSWorkspace.shared.openAsync(url) }
     }
@@ -832,7 +838,7 @@ import SwiftUI
     }
 
     @objc func internetResourceToggle(_ sender: NSMenuItem) {
-      store.configuration.internetResourceEnabled = !store.configuration.internetResourceEnabled
+      store.configuration.internetResourceEnabled.toggle()
 
       sender.title = internetResourceToggleTitle()
     }
@@ -876,6 +882,7 @@ import SwiftUI
 
     func getStatusIcon(status: NEVPNStatus?, notification: Bool) -> NSImage? {
       if status == .connecting || status == .disconnecting || status == .reasserting {
+        // swiftlint:disable:next redundant_nil_coalescing
         return self.connectingAnimationImages[.last] ?? nil
       }
 
@@ -926,6 +933,7 @@ import SwiftUI
     func copyToClipboard(_ string: String) {
       let pasteBoard = NSPasteboard.general
       pasteBoard.clearContents()
+      // swiftlint:disable:next legacy_objc_type - NSPasteboard.writeObjects requires NSPasteboardWriting
       pasteBoard.writeObjects([string as NSString])
     }
 

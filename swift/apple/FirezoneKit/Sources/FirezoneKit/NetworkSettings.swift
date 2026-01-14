@@ -232,6 +232,7 @@ extension NetworkSettings {
         Log.warning("Invalid IPv6 prefix: \(prefix) for address: \(address)")
         return nil
       }
+      // swiftlint:disable:next legacy_objc_type - NEIPv6Route API requires NSNumber
       return NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(value: prefix))
     }
   }

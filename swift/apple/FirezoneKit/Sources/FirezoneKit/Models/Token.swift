@@ -29,6 +29,8 @@ public struct Token: CustomStringConvertible {
 
   private var data: Data
 
+  // TODO: refactor to avoid force unwrapping
+  // swiftlint:disable:next force_unwrapping
   public var description: String { String(data: data, encoding: .utf8)! }
 
   public init?(_ tokenString: String?) {
