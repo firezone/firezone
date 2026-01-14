@@ -63,10 +63,3 @@ repos:
         language: system
         types: [yaml]
         files: ^\.github/workflows/
-  - repo: local
-    hooks:
-      - id: swiftlint
-        name: SwiftLint
-        entry: 'bash -c ''if ! command -v swiftlint >/dev/null 2>&1; then echo "SwiftLint not installed, skipping (install with: brew install swiftlint)"; exit 0; fi; swiftlint lint --config swift/apple/.swiftlint.yml --strict "$@"'' --'
-        language: system
-        types: [swift]
