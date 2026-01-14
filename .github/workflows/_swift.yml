@@ -3,6 +3,9 @@ on:
   workflow_call:
   workflow_dispatch:
 
+env:
+  MISE_EXPERIMENTAL: "1"
+
 jobs:
   update-release-draft:
     name: update-release-draft
@@ -27,7 +30,6 @@ jobs:
     runs-on: macos-15
     env:
       XCODE_VERSION: "26.0"
-      MISE_EXPERIMENTAL: "1"
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
@@ -49,7 +51,6 @@ jobs:
     runs-on: macos-15
     env:
       XCODE_VERSION: "26.0"
-      MISE_EXPERIMENTAL: "1"
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
