@@ -735,6 +735,15 @@ impl ClientState {
             return ControlFlow::Continue(packet); // Not for our DNS resolver.
         };
 
+        if let Some(port) = packet
+            .as_tcp()
+            .map(|t| t.destination_port())
+            .or(packet.as_udp().map(|u| u.destination_port()))
+            && port != dns::DNS_PORT
+        {
+            return ControlFlow::Continue(packet); // Not a DNS packet.
+        }
+
         if self.tcp_dns_server.accepts(&packet) {
             self.tcp_dns_server.handle_inbound(packet);
             return ControlFlow::Break(());
@@ -1181,14 +1190,6 @@ impl ClientState {
 
             return;
         };
-
-        if datagram.destination_port() != DNS_PORT {
-            tracing::debug!(
-                ?packet,
-                "UDP DNS queries are only supported on port {DNS_PORT}"
-            );
-            return;
-        }
 
         let message = match dns_types::Query::parse(datagram.payload()) {
             Ok(message) => message,
