@@ -18,9 +18,9 @@ use netlink_packet_route::route::{
     RouteAddress, RouteAttribute, RouteMessage, RouteProtocol, RouteScope,
 };
 use netlink_packet_route::rule::RuleAction;
-use rtnetlink::sys::AsyncSocket;
 use rtnetlink::{Error::NetlinkError, Handle, RuleAddRequest, new_connection};
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
+use rtnetlink::{RuleDelRequest, sys::AsyncSocket};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{collections::BTreeSet, path::Path};
@@ -49,6 +49,7 @@ const TUN_DEV_MINOR: u32 = 200;
 
 const TUN_FILE: &CStr = c"/dev/net/tun";
 
+const LOCAL_TABLE: u8 = 255;
 const FIREZONE_TABLE_USER: u32 = 0x2021_fd00;
 const FIREZONE_TABLE_LINK_SCOPE: u32 = 0x2021_fd01;
 const FIREZONE_TABLE_INTERNET: u32 = 0x2021_fd02;
@@ -121,8 +122,12 @@ impl TunDeviceManager {
             let handle = self.connection.handle.clone();
 
             async move {
-                if let Err(e) = set_txqueue_length(handle, 10_000).await {
+                if let Err(e) = set_txqueue_length(&handle, 10_000).await {
                     tracing::warn!("Failed to set TX queue length: {e}")
+                }
+
+                if let Err(e) = drop_local_routing_rule_priority(&handle).await {
+                    tracing::warn!("Failed to adjust priority of `local` routing rule: {e}");
                 }
             }
         });
@@ -294,8 +299,8 @@ async fn sync_link_scope_routes_worker(
     }
 }
 
-async fn set_txqueue_length(handle: Handle, queue_len: u32) -> Result<()> {
-    let index = tun_device_index(&handle).await?;
+async fn set_txqueue_length(handle: &Handle, queue_len: u32) -> Result<()> {
+    let index = tun_device_index(handle).await?;
 
     handle
         .link()
@@ -333,8 +338,8 @@ fn make_rule(handle: &Handle, table: u32, priority: u32) -> RuleAddRequest {
     rule
 }
 
-async fn install_rules<const N: usize, T>(
-    requests: [RuleAddRequest<T>; N],
+async fn install_rules<T>(
+    requests: impl IntoIterator<Item = RuleAddRequest<T>>,
 ) -> Result<(), rtnetlink::Error> {
     for req in requests {
         match req.execute().await {
@@ -343,6 +348,56 @@ async fn install_rules<const N: usize, T>(
             Ok(()) => {}
         }
     }
+
+    Ok(())
+}
+
+async fn delete_rules(
+    requests: impl IntoIterator<Item = RuleDelRequest>,
+) -> Result<(), rtnetlink::Error> {
+    for req in requests {
+        req.execute().await?;
+    }
+
+    Ok(())
+}
+
+async fn drop_local_routing_rule_priority(handle: &Handle) -> Result<()> {
+    let current_localhost_rules = futures::stream::empty()
+        .chain(handle.rule().get(rtnetlink::IpVersion::V4).execute())
+        .chain(handle.rule().get(rtnetlink::IpVersion::V6).execute())
+        .try_collect::<Vec<_>>()
+        .await
+        .context("Failed to get all rules")?
+        .into_iter()
+        .filter(|r| r.header.table == LOCAL_TABLE)
+        .collect::<Vec<_>>();
+
+    let add_new_rules_requests = current_localhost_rules
+        .iter()
+        .cloned()
+        .map(|mut r| {
+            r.attributes
+                .push(netlink_packet_route::rule::RuleAttribute::Priority(150));
+
+            let mut req = handle.rule().add();
+            *req.message_mut() = r;
+
+            req
+        })
+        .collect::<Vec<_>>();
+
+    let delete_old_rules_requests = current_localhost_rules
+        .into_iter()
+        .map(|r| handle.rule().del(r))
+        .collect::<Vec<_>>();
+
+    install_rules(add_new_rules_requests)
+        .await
+        .context("Failed to install new rules")?;
+    delete_rules(delete_old_rules_requests)
+        .await
+        .context("Failed to delete old rules")?;
 
     Ok(())
 }
