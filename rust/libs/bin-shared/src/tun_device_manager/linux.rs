@@ -399,6 +399,8 @@ async fn drop_local_routing_rule_priority(handle: &Handle) -> Result<()> {
         .await
         .context("Failed to delete old rules")?;
 
+    tracing::debug!("Moved routing rules for localhost to priority 150");
+
     Ok(())
 }
 
