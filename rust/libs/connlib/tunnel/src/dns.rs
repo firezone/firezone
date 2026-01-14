@@ -15,7 +15,7 @@ use std::{
     net::SocketAddr,
 };
 
-const DNS_TTL: u32 = 1;
+const TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
 const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
@@ -355,7 +355,7 @@ impl StubResolver {
         tracing::trace!(%qtype, %domain, records = ?records, "Forming DNS response");
 
         let response = ResponseBuilder::for_query(query, ResponseCode::NOERROR)
-            .with_records(records.into_iter().map(|r| (domain.clone(), DNS_TTL, r)))
+            .with_records(records.into_iter().map(|r| (domain.clone(), TTL, r)))
             .build();
 
         ResolveStrategy::LocalResponse(response)
