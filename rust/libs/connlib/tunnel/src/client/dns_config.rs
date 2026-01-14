@@ -86,6 +86,14 @@ impl DnsConfig {
 
         tracing::debug!(?servers, ?sanitized, "Received system-defined DNS servers");
 
+        if sanitized == self.upstream_do53 {
+            tracing::debug!(
+                ?servers,
+                "Ignoring system resolvers equal to custom upstreams"
+            );
+            return false;
+        }
+
         self.system_resolvers = sanitized;
 
         self.update_dns_mapping()
@@ -292,6 +300,24 @@ mod tests {
             vec![local_do53("1.1.1.1:53"),]
         );
         assert_eq!(config.system_dns_resolvers(), vec![ip("1.1.1.1")]);
+    }
+
+    // When we set custom upstream servers, those will be reported as the system resolvers.
+    // We have to ignore those and retain the old ones.
+    #[test]
+    fn filters_custom_upstream_ips_from_system() {
+        let mut config = DnsConfig::default();
+
+        let _ = config.update_system_resolvers(vec![ip("192.168.0.1")]);
+        let _ = config.update_upstream_do53_resolvers(vec![ip("1.1.1.1")]);
+        let _ = config.update_system_resolvers(vec![ip("1.1.1.1")]);
+
+        assert_eq!(config.internal_dns_servers().len(), 1);
+        assert_eq!(
+            config.mapping().upstream_servers(),
+            vec![local_do53("1.1.1.1:53"),]
+        );
+        assert_eq!(config.system_dns_resolvers(), vec![ip("192.168.0.1")]);
     }
 
     #[test]
