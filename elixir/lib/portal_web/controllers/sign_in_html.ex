@@ -22,13 +22,13 @@ defmodule PortalWeb.SignInHTML do
         <link
           phx-track-static
           rel="stylesheet"
-          nonce={@conn.private.csp_nonce}
+          nonce={@conn.private[:csp_nonce]}
           href={~p"/assets/app.css"}
         />
         <link
           phx-track-static
           rel="stylesheet"
-          nonce={@conn.private.csp_nonce}
+          nonce={@conn.private[:csp_nonce]}
           href={~p"/assets/main.css"}
         />
       </head>
