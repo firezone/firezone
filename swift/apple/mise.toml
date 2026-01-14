@@ -44,7 +44,6 @@ run = "./mise-tasks/lsp.sh"
 
 [tasks.build]
 description = "Build Xcode project for macOS"
-depends = ["uniffi-bindings"]
 run = "./mise-tasks/build.sh"
 raw = true
 
