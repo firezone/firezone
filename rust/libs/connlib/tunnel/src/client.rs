@@ -60,8 +60,6 @@ pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
     Err(_) => unreachable!(),
 };
 
-const DNS_PORT: u16 = 53;
-
 const LLMNR_PORT: u16 = 5355;
 const LLMNR_IPV4: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 252);
 const LLMNR_IPV6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 1, 0, 3);
@@ -812,7 +810,7 @@ impl ClientState {
             .dns_config
             .internal_dns_servers()
             .into_iter()
-            .map(|ip| SocketAddr::new(ip, DNS_PORT))
+            .map(|ip| SocketAddr::new(ip, dns::PORT))
             .collect();
 
         self.tcp_dns_server
