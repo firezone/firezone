@@ -24,8 +24,7 @@ struct StoreResourceFetchTests {
 
     try await fixture.store.fetchResources()
 
-    #expect(fixture.controller.fetchResourcesCallCount == 1)
-
+    // Verify resources were decoded and stored (implies fetch was called)
     if case .loaded(let loadedResources) = fixture.store.resourceList {
       #expect(loadedResources.count == 1)
       #expect(loadedResources[0].id == "res-1")
@@ -77,7 +76,6 @@ struct StoreResourceFetchTests {
     }
 
     try await fixture.store.fetchResources()
-    #expect(fixture.controller.fetchResourcesCallCount == 1)
 
     if case .loaded(let loaded) = fixture.store.resourceList {
       #expect(loaded.count == 1)
@@ -86,9 +84,11 @@ struct StoreResourceFetchTests {
       Issue.record("Expected .loaded after first fetch")
     }
 
-    // Second fetch: hash matches, returns nil
+    // Second fetch: hash matches, returns nil - verify fetch was actually called
     try await fixture.store.fetchResources()
-    #expect(fixture.controller.fetchResourcesCallCount == 2)
+    #expect(
+      fixture.controller.fetchResourcesCallCount == 2,
+      "Fetch should be called even when hash matches")
 
     if case .loaded(let loaded) = fixture.store.resourceList {
       #expect(loaded.count == 1)
@@ -125,8 +125,7 @@ struct StoreResourceFetchTests {
 
     try await fixture.store.fetchResources()
 
-    #expect(fixture.controller.fetchResourcesCallCount == 2)
-
+    // Verify resources were updated (proves fetch detected hash change)
     if case .loaded(let loaded) = fixture.store.resourceList {
       #expect(loaded.count == 2)
       #expect(loaded[0].name == "Updated Resource")

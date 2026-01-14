@@ -41,32 +41,20 @@ struct StoreObservabilityTests {
   }
 
   #if os(macOS)
-    @Test("MockSystemExtensionManager returns configured status")
+    @Test("Store reflects system extension status from injected manager")
     @MainActor
-    func mockSystemExtensionReturnsConfiguredStatus() async throws {
-      let mockSysExt = MockSystemExtensionManager()
-      mockSysExt.checkStatusResult = .needsInstall
-
-      let status = try await mockSysExt.checkStatus()
-
-      #expect(status == .needsInstall)
-      #expect(mockSysExt.checkStatusCallCount == 1)
-    }
-
-    @Test("Store uses injected SystemExtensionManager")
-    @MainActor
-    func storeUsesInjectedSystemExtensionManager() async throws {
+    func storeReflectsSystemExtensionStatus() async throws {
+      // Mock defaults to .installed
       let fixture = makeMockStore()
-      fixture.systemExtension.checkStatusResult = .installed
 
-      // Store init calls checkStatus automatically
-      // Give time for the async init to complete
+      // Wait for async initialization to complete
       try await Task.sleep(for: .milliseconds(100))
 
-      // The mock was called during Store initialization
+      // Verify Store's observable state reflects what the manager returned
+      // If Store didn't use the injected mock, status would be nil
       #expect(
-        fixture.systemExtension.checkStatusCallCount >= 1,
-        "Store should check system extension status on init"
+        fixture.store.systemExtensionStatus == .installed,
+        "Store should expose system extension status for UI binding"
       )
     }
   #endif
