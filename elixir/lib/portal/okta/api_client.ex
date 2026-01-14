@@ -398,7 +398,7 @@ defmodule Portal.Okta.APIClient do
     end
   end
 
-  defp test_endpoint(client, token, endpoint, opts) do
+  defp test_endpoint(client, token, endpoint, resource, opts) do
     headers = Keyword.get(opts, :headers, [])
     params = Keyword.get(opts, :params, [])
 
@@ -408,6 +408,9 @@ defmodule Portal.Okta.APIClient do
     |> case do
       %{status: 200, body: [_result]} ->
         :ok
+
+      %{status: 200, body: []} ->
+        {:error, :empty, resource}
 
       resp ->
         Logger.warning(
@@ -423,11 +426,11 @@ defmodule Portal.Okta.APIClient do
   end
 
   defp test_apps(client, token) do
-    test_endpoint(client, token, @apps_path, params: [limit: 1])
+    test_endpoint(client, token, @apps_path, :apps, params: [limit: 1])
   end
 
   defp test_users(client, token) do
-    test_endpoint(client, token, @users_path,
+    test_endpoint(client, token, @users_path, :users,
       headers: [
         {"Content-Type", "application/json; okta-response=omitCredentials,omitCredentialsLinks"}
       ],
@@ -436,7 +439,7 @@ defmodule Portal.Okta.APIClient do
   end
 
   defp test_groups(client, token) do
-    test_endpoint(client, token, @groups_path, params: [limit: 1])
+    test_endpoint(client, token, @groups_path, :groups, params: [limit: 1])
   end
 
   defp fetch_config(key) do

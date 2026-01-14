@@ -1554,6 +1554,18 @@ defmodule PortalWeb.Settings.DirectorySync do
     "Okta service is currently unavailable (HTTP #{status}). Please try again later."
   end
 
+  defp parse_okta_verification_error({:error, :empty, :apps}) do
+    "No apps found in your Okta account. Please ensure the service app is created and the integration has the okta.apps.read scope granted."
+  end
+
+  defp parse_okta_verification_error({:error, :empty, :users}) do
+    "No users found in your Okta account. Please ensure users exist and the integration has the okta.users.read scope granted."
+  end
+
+  defp parse_okta_verification_error({:error, :empty, :groups}) do
+    "No groups found in your Okta account. Please ensure groups exist and the integration has the okta.groups.read scope granted."
+  end
+
   defp parse_okta_verification_error(error) do
     Logger.error("Unknown Okta verification error", error: inspect(error))
 
