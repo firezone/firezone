@@ -36,7 +36,7 @@ jobs:
       - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3.5.1
         with:
           install_args: --cd swift/apple
-        run: mise run //swift/apple:test-coverage
+      - run: mise run //swift/apple:test-coverage
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
