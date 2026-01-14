@@ -279,6 +279,15 @@ defmodule Portal.Geo do
   end
 
   def location_from_headers(headers) do
+    # Azure Front Door only provides country via {geo_country}.
+    # GCP provides country, city, and coordinates.
+    case get_header(headers, "x-azure-geo-country") do
+      nil -> location_from_gcp_headers(headers)
+      country -> {country, nil, maybe_put_default_coordinates(country, {nil, nil})}
+    end
+  end
+
+  defp location_from_gcp_headers(headers) do
     region = get_header(headers, "x-geo-location-region")
     city = get_header(headers, "x-geo-location-city")
 
