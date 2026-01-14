@@ -170,6 +170,42 @@ defmodule Portal.Okta.APIClientTest do
       assert {:error, %Req.Response{status: 403}} =
                APIClient.test_connection(client, "test_token")
     end
+
+    test "returns error when apps endpoint returns empty list", %{client: client} do
+      Req.Test.stub(APIClient, fn conn ->
+        case conn.request_path do
+          "/api/v1/apps" -> Req.Test.json(conn, [])
+          "/api/v1/users" -> Req.Test.json(conn, [%{"id" => "user1"}])
+          "/api/v1/groups" -> Req.Test.json(conn, [%{"id" => "group1"}])
+        end
+      end)
+
+      assert {:error, :empty, :apps} = APIClient.test_connection(client, "test_token")
+    end
+
+    test "returns error when users endpoint returns empty list", %{client: client} do
+      Req.Test.stub(APIClient, fn conn ->
+        case conn.request_path do
+          "/api/v1/apps" -> Req.Test.json(conn, [%{"id" => "app1"}])
+          "/api/v1/users" -> Req.Test.json(conn, [])
+          "/api/v1/groups" -> Req.Test.json(conn, [%{"id" => "group1"}])
+        end
+      end)
+
+      assert {:error, :empty, :users} = APIClient.test_connection(client, "test_token")
+    end
+
+    test "returns error when groups endpoint returns empty list", %{client: client} do
+      Req.Test.stub(APIClient, fn conn ->
+        case conn.request_path do
+          "/api/v1/apps" -> Req.Test.json(conn, [%{"id" => "app1"}])
+          "/api/v1/users" -> Req.Test.json(conn, [%{"id" => "user1"}])
+          "/api/v1/groups" -> Req.Test.json(conn, [])
+        end
+      end)
+
+      assert {:error, :empty, :groups} = APIClient.test_connection(client, "test_token")
+    end
   end
 
   describe "introspect_token/2" do

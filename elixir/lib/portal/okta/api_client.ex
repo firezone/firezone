@@ -110,7 +110,8 @@ defmodule Portal.Okta.APIClient do
   @doc """
   Makes test API calls to verify the access token works.
   """
-  @spec test_connection(t(), String.t()) :: :ok | {:error, Req.Response.t()}
+  @spec test_connection(t(), String.t()) ::
+          :ok | {:error, Req.Response.t()} | {:error, :empty, :apps | :users | :groups}
   def test_connection(client, access_token) do
     with :ok <- test_apps(client, access_token),
          :ok <- test_users(client, access_token),
@@ -398,7 +399,7 @@ defmodule Portal.Okta.APIClient do
     end
   end
 
-  defp test_endpoint(client, token, endpoint, opts) do
+  defp test_endpoint(client, token, endpoint, resource, opts) do
     headers = Keyword.get(opts, :headers, [])
     params = Keyword.get(opts, :params, [])
 
@@ -408,6 +409,9 @@ defmodule Portal.Okta.APIClient do
     |> case do
       %{status: 200, body: [_result]} ->
         :ok
+
+      %{status: 200, body: []} ->
+        {:error, :empty, resource}
 
       resp ->
         Logger.warning(
@@ -423,11 +427,11 @@ defmodule Portal.Okta.APIClient do
   end
 
   defp test_apps(client, token) do
-    test_endpoint(client, token, @apps_path, params: [limit: 1])
+    test_endpoint(client, token, @apps_path, :apps, params: [limit: 1])
   end
 
   defp test_users(client, token) do
-    test_endpoint(client, token, @users_path,
+    test_endpoint(client, token, @users_path, :users,
       headers: [
         {"Content-Type", "application/json; okta-response=omitCredentials,omitCredentialsLinks"}
       ],
@@ -436,7 +440,7 @@ defmodule Portal.Okta.APIClient do
   end
 
   defp test_groups(client, token) do
-    test_endpoint(client, token, @groups_path, params: [limit: 1])
+    test_endpoint(client, token, @groups_path, :groups, params: [limit: 1])
   end
 
   defp fetch_config(key) do
