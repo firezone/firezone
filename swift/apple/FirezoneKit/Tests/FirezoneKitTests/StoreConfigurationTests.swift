@@ -18,91 +18,58 @@ struct StoreConfigurationTests {
   @MainActor
   func configChangeTriggerSetConfiguration() async throws {
     // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
+    #expect(fixture.controller.setConfigurationCallCount == 0)
 
-    // Initial call count should be 0
-    #expect(mockController.setConfigurationCallCount == 0)
-
-    // Act: Change a configuration property
-    config.logFilter = "trace"
-
-    // Wait for debounce (0.3s) + processing time + scheduling overhead
+    // Act
+    fixture.config.logFilter = "trace"
     try await Task.sleep(nanoseconds: 800_000_000)
 
-    // Assert: setConfiguration was called
-    #expect(mockController.setConfigurationCallCount == 1)
-    #expect(mockController.lastConfiguration?.logFilter == "trace")
+    // Assert
+    #expect(fixture.controller.setConfigurationCallCount == 1)
+    #expect(fixture.controller.lastConfiguration?.logFilter == "trace")
 
-    withExtendedLifetime(store) {}
+    withExtendedLifetime(fixture.store) {}
   }
 
   @Test("Different config properties trigger setConfiguration")
   @MainActor
   func differentConfigPropertiesTriggerSetConfiguration() async throws {
     // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
 
-    // Act: Change apiURL
-    config.apiURL = "wss://test.example.com"
-
-    // Wait for debounce + processing
+    // Act & Assert: Change apiURL
+    fixture.config.apiURL = "wss://test.example.com"
     try await Task.sleep(nanoseconds: 800_000_000)
 
-    // Assert
-    #expect(mockController.setConfigurationCallCount == 1)
-    #expect(mockController.lastConfiguration?.apiURL == "wss://test.example.com")
+    #expect(fixture.controller.setConfigurationCallCount == 1)
+    #expect(fixture.controller.lastConfiguration?.apiURL == "wss://test.example.com")
 
-    // Act: Change accountSlug
-    config.accountSlug = "test-account"
-
-    // Wait for debounce + processing
+    // Act & Assert: Change accountSlug
+    fixture.config.accountSlug = "test-account"
     try await Task.sleep(nanoseconds: 800_000_000)
 
-    // Assert: Second call was made
-    #expect(mockController.setConfigurationCallCount == 2)
-    #expect(mockController.lastConfiguration?.accountSlug == "test-account")
+    #expect(fixture.controller.setConfigurationCallCount == 2)
+    #expect(fixture.controller.lastConfiguration?.accountSlug == "test-account")
 
-    withExtendedLifetime(store) {}
+    withExtendedLifetime(fixture.store) {}
   }
 
   @Test("InternetResourceEnabled change triggers setConfiguration")
   @MainActor
   func internetResourceEnabledChangeTriggers() async throws {
     // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
 
-    // Act: Enable internet resource
-    config.internetResourceEnabled = true
-
-    // Wait for debounce + processing
+    // Act
+    fixture.config.internetResourceEnabled = true
     try await Task.sleep(nanoseconds: 800_000_000)
 
     // Assert
-    #expect(mockController.setConfigurationCallCount == 1)
-    #expect(mockController.lastConfiguration?.internetResourceEnabled == true)
+    #expect(fixture.controller.setConfigurationCallCount == 1)
+    #expect(fixture.controller.lastConfiguration?.internetResourceEnabled == true)
 
-    withExtendedLifetime(store) {}
+    withExtendedLifetime(fixture.store) {}
   }
 
   // MARK: - Unchanged Config Doesn't Trigger IPC
@@ -111,79 +78,49 @@ struct StoreConfigurationTests {
   @MainActor
   func unchangedConfigNoRedundantIPC() async throws {
     // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
 
-    // Act: Change config to trigger first call
-    config.logFilter = "warn"
-
-    // Wait for debounce + processing
+    // Act: First change
+    fixture.config.logFilter = "warn"
     try await Task.sleep(nanoseconds: 800_000_000)
+    #expect(fixture.controller.setConfigurationCallCount == 1)
+    let countAfterFirst = fixture.controller.setConfigurationCallCount
 
-    // Assert: First call made
-    #expect(mockController.setConfigurationCallCount == 1)
-    let countAfterFirst = mockController.setConfigurationCallCount
-
-    // Act: Set the same value again (this triggers objectWillChange but same TunnelConfiguration)
-    config.logFilter = "warn"
-
-    // Wait for debounce + processing
+    // Act: Set the same value again
+    fixture.config.logFilter = "warn"
     try await Task.sleep(nanoseconds: 800_000_000)
 
     // Assert: No additional call (config unchanged)
-    #expect(mockController.setConfigurationCallCount == countAfterFirst)
+    #expect(fixture.controller.setConfigurationCallCount == countAfterFirst)
 
-    withExtendedLifetime(store) {}
+    withExtendedLifetime(fixture.store) {}
   }
 
   @Test("Setting default values doesn't trigger IPC when already default")
   @MainActor
   func settingDefaultValuesNoIPC() async throws {
     // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
-
-    // Get the current default logFilter
-    let defaultLogFilter = config.logFilter
+    let fixture = makeMockStore()
+    let defaultLogFilter = fixture.config.logFilter
 
     // Act: Set to a different value first
-    config.logFilter = "error"
-
-    // Wait for debounce + processing
+    fixture.config.logFilter = "error"
     try await Task.sleep(nanoseconds: 800_000_000)
-    #expect(mockController.setConfigurationCallCount == 1)
+    #expect(fixture.controller.setConfigurationCallCount == 1)
 
     // Act: Set back to default
-    config.logFilter = defaultLogFilter
+    fixture.config.logFilter = defaultLogFilter
+    try await Task.sleep(nanoseconds: 800_000_000)
+    #expect(fixture.controller.setConfigurationCallCount == 2)
 
-    // Wait for debounce + processing
+    // Act: Set to default again (same value) - no new call
+    fixture.config.logFilter = defaultLogFilter
     try await Task.sleep(nanoseconds: 800_000_000)
 
-    // Assert: Second call was made (because value changed back)
-    #expect(mockController.setConfigurationCallCount == 2)
+    // Assert
+    #expect(fixture.controller.setConfigurationCallCount == 2)
 
-    // Act: Set to default again (same value)
-    config.logFilter = defaultLogFilter
-
-    // Wait for debounce + processing
-    try await Task.sleep(nanoseconds: 800_000_000)
-
-    // Assert: No third call (config unchanged)
-    #expect(mockController.setConfigurationCallCount == 2)
-
-    withExtendedLifetime(store) {}
+    withExtendedLifetime(fixture.store) {}
   }
 
   // MARK: - Debouncing Tests
@@ -192,101 +129,69 @@ struct StoreConfigurationTests {
   @MainActor
   func rapidChangesDebounced() async throws {
     // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
 
     // Act: Make multiple rapid changes within the debounce window (0.3s)
-    config.logFilter = "debug"
-    try await Task.sleep(nanoseconds: 50_000_000)  // 50ms
-    config.logFilter = "info"
-    try await Task.sleep(nanoseconds: 50_000_000)  // 50ms
-    config.logFilter = "warn"
-    try await Task.sleep(nanoseconds: 50_000_000)  // 50ms
-    config.logFilter = "error"
+    fixture.config.logFilter = "debug"
+    try await Task.sleep(nanoseconds: 50_000_000)
+    fixture.config.logFilter = "info"
+    try await Task.sleep(nanoseconds: 50_000_000)
+    fixture.config.logFilter = "warn"
+    try await Task.sleep(nanoseconds: 50_000_000)
+    fixture.config.logFilter = "error"
 
-    // Wait for debounce to settle (0.3s) + processing time
     try await Task.sleep(nanoseconds: 800_000_000)
 
-    // Assert: Only one IPC call was made (debounced)
-    #expect(mockController.setConfigurationCallCount == 1)
-    // The final value should be used
-    #expect(mockController.lastConfiguration?.logFilter == "error")
+    // Assert: Only one IPC call was made (debounced), using final value
+    #expect(fixture.controller.setConfigurationCallCount == 1)
+    #expect(fixture.controller.lastConfiguration?.logFilter == "error")
 
-    withExtendedLifetime(store) {}
+    withExtendedLifetime(fixture.store) {}
   }
 
   @Test("Changes separated by debounce window trigger multiple calls")
   @MainActor
   func separatedChangesNotDebounced() async throws {
     // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
 
-    // Act: Make a change
-    config.logFilter = "debug"
-
-    // Wait longer than debounce window (0.3s)
+    // Act & Assert: First change
+    fixture.config.logFilter = "debug"
     try await Task.sleep(nanoseconds: 800_000_000)
+    #expect(fixture.controller.setConfigurationCallCount == 1)
+    #expect(fixture.controller.lastConfiguration?.logFilter == "debug")
 
-    // Assert: First call made
-    #expect(mockController.setConfigurationCallCount == 1)
-    #expect(mockController.lastConfiguration?.logFilter == "debug")
-
-    // Act: Make another change after the debounce window
-    config.logFilter = "error"
-
-    // Wait for second debounce + processing
+    // Act & Assert: Second change after debounce window
+    fixture.config.logFilter = "error"
     try await Task.sleep(nanoseconds: 800_000_000)
+    #expect(fixture.controller.setConfigurationCallCount == 2)
+    #expect(fixture.controller.lastConfiguration?.logFilter == "error")
 
-    // Assert: Second call made
-    #expect(mockController.setConfigurationCallCount == 2)
-    #expect(mockController.lastConfiguration?.logFilter == "error")
-
-    withExtendedLifetime(store) {}
+    withExtendedLifetime(fixture.store) {}
   }
 
   @Test("Burst of different property changes debounced together")
   @MainActor
   func burstDifferentPropertiesDebounced() async throws {
     // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
 
     // Act: Change multiple different properties rapidly
-    config.logFilter = "trace"
-    try await Task.sleep(nanoseconds: 50_000_000)  // 50ms
-    config.accountSlug = "new-account"
-    try await Task.sleep(nanoseconds: 50_000_000)  // 50ms
-    config.internetResourceEnabled = true
+    fixture.config.logFilter = "trace"
+    try await Task.sleep(nanoseconds: 50_000_000)
+    fixture.config.accountSlug = "new-account"
+    try await Task.sleep(nanoseconds: 50_000_000)
+    fixture.config.internetResourceEnabled = true
 
-    // Wait for debounce to settle
     try await Task.sleep(nanoseconds: 800_000_000)
 
     // Assert: Only one IPC call was made containing all changes
-    #expect(mockController.setConfigurationCallCount == 1)
-    #expect(mockController.lastConfiguration?.logFilter == "trace")
-    #expect(mockController.lastConfiguration?.accountSlug == "new-account")
-    #expect(mockController.lastConfiguration?.internetResourceEnabled == true)
+    #expect(fixture.controller.setConfigurationCallCount == 1)
+    #expect(fixture.controller.lastConfiguration?.logFilter == "trace")
+    #expect(fixture.controller.lastConfiguration?.accountSlug == "new-account")
+    #expect(fixture.controller.lastConfiguration?.internetResourceEnabled == true)
 
-    withExtendedLifetime(store) {}
+    withExtendedLifetime(fixture.store) {}
   }
 
   // MARK: - Edge Cases
@@ -299,38 +204,26 @@ struct StoreConfigurationTests {
     // The Store should handle this gracefully without crashing.
 
     // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    // Simulate tunnel not ready by making setConfiguration throw
-    mockController.setConfigurationError = TestError.simulatedFailure
-
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore { controller, _ in
+      controller.setConfigurationError = TestError.simulatedFailure
+    }
 
     // Act: Change config (should not crash despite setConfiguration throwing)
-    config.logFilter = "trace"
-
-    // Wait for debounce + processing
+    fixture.config.logFilter = "trace"
     try await Task.sleep(nanoseconds: 800_000_000)
 
     // Assert: Call was attempted but error was silently handled
-    #expect(mockController.setConfigurationCallCount == 1)
+    #expect(fixture.controller.setConfigurationCallCount == 1)
 
-    // The Store should still be functional - verify by making another change
-    // after "fixing" the tunnel controller
-    mockController.setConfigurationError = nil
-    config.logFilter = "debug"
-
+    // Act: Fix the error and verify Store still works
+    fixture.controller.setConfigurationError = nil
+    fixture.config.logFilter = "debug"
     try await Task.sleep(nanoseconds: 800_000_000)
 
     // Assert: Second call succeeded
-    #expect(mockController.setConfigurationCallCount == 2)
-    #expect(mockController.lastConfiguration?.logFilter == "debug")
+    #expect(fixture.controller.setConfigurationCallCount == 2)
+    #expect(fixture.controller.lastConfiguration?.logFilter == "debug")
 
-    withExtendedLifetime(store) {}
+    withExtendedLifetime(fixture.store) {}
   }
 }

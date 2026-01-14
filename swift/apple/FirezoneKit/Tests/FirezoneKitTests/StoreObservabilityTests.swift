@@ -19,34 +19,12 @@ struct StoreObservabilityTests {
   @Test("Store with mocked dependencies is observable")
   @MainActor
   func storeIsObservable() async throws {
-    // Arrange - create Store with all mocked dependencies
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let mockNotification = MockSessionNotification()
+    let fixture = makeMockStore()
 
-    #if os(macOS)
-      let mockSysExt = MockSystemExtensionManager()
-      let store = Store(
-        configuration: config,
-        tunnelController: mockController,
-        sessionNotification: mockNotification,
-        systemExtensionManager: mockSysExt,
-        userDefaults: defaults
-      )
-    #else
-      let store = Store(
-        configuration: config,
-        tunnelController: mockController,
-        sessionNotification: mockNotification,
-        userDefaults: defaults
-      )
-    #endif
-
-    // Act - subscribe to objectWillChange
+    // Subscribe to objectWillChange
     var changeCount = 0
     var cancellables = Set<AnyCancellable>()
-    store.objectWillChange
+    fixture.store.objectWillChange
       .sink { _ in changeCount += 1 }
       .store(in: &cancellables)
 
@@ -56,9 +34,9 @@ struct StoreObservabilityTests {
       accountSlug: "test-slug",
       token: "test-token"
     )
-    try await store.signIn(authResponse: authResponse)
+    try await fixture.store.signIn(authResponse: authResponse)
 
-    // Assert - Store emits objectWillChange when state changes
+    // Store emits objectWillChange when state changes
     #expect(changeCount > 0, "Store should emit objectWillChange when signing in")
   }
 
@@ -66,14 +44,11 @@ struct StoreObservabilityTests {
     @Test("MockSystemExtensionManager returns configured status")
     @MainActor
     func mockSystemExtensionReturnsConfiguredStatus() async throws {
-      // Arrange
       let mockSysExt = MockSystemExtensionManager()
       mockSysExt.checkStatusResult = .needsInstall
 
-      // Act
       let status = try await mockSysExt.checkStatus()
 
-      // Assert
       #expect(status == .needsInstall)
       #expect(mockSysExt.checkStatusCallCount == 1)
     }
@@ -81,28 +56,18 @@ struct StoreObservabilityTests {
     @Test("Store uses injected SystemExtensionManager")
     @MainActor
     func storeUsesInjectedSystemExtensionManager() async throws {
-      // Arrange
-      let defaults = makeTestDefaults()
-      let config = Configuration(userDefaults: defaults)
-      let mockController = MockTunnelController()
-      let mockSysExt = MockSystemExtensionManager()
-      mockSysExt.checkStatusResult = .installed
-
-      _ = Store(
-        configuration: config,
-        tunnelController: mockController,
-        sessionNotification: MockSessionNotification(),
-        systemExtensionManager: mockSysExt,
-        userDefaults: defaults
-      )
+      let fixture = makeMockStore()
+      fixture.systemExtension.checkStatusResult = .installed
 
       // Store init calls checkStatus automatically
       // Give time for the async init to complete
       try await Task.sleep(for: .milliseconds(100))
 
-      // Assert - the mock was called during Store initialization
+      // The mock was called during Store initialization
       #expect(
-        mockSysExt.checkStatusCallCount >= 1, "Store should check system extension status on init")
+        fixture.systemExtension.checkStatusCallCount >= 1,
+        "Store should check system extension status on init"
+      )
     }
   #endif
 }

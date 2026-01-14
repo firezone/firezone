@@ -15,15 +15,7 @@ struct StoreSignInTests {
   @Test("Token is passed to tunnel controller when signing in")
   @MainActor
   func tokenPassedToTunnelController() async throws {
-    // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
 
     let authResponse = AuthResponse(
       actorName: "Test Actor",
@@ -31,30 +23,19 @@ struct StoreSignInTests {
       token: "secret-auth-token-12345"
     )
 
-    // Act
-    try await store.signIn(authResponse: authResponse)
+    try await fixture.store.signIn(authResponse: authResponse)
 
-    // Assert
-    #expect(mockController.startCallCount == 1)
-    #expect(mockController.lastStartToken == "secret-auth-token-12345")
+    #expect(fixture.controller.startCallCount == 1)
+    #expect(fixture.controller.lastStartToken == "secret-auth-token-12345")
   }
 
   @Test("Actor name is saved after sign-in")
   @MainActor
   func actorNameSaved() async throws {
-    // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification(),
-      userDefaults: defaults
-    )
+    let fixture = makeMockStore()
 
     // Initial state
-    #expect(store.actorName == "Unknown user")
+    #expect(fixture.store.actorName == "Unknown user")
 
     let authResponse = AuthResponse(
       actorName: "Alice Smith",
@@ -62,28 +43,39 @@ struct StoreSignInTests {
       token: "token-xyz"
     )
 
-    // Act
-    try await store.signIn(authResponse: authResponse)
+    try await fixture.store.signIn(authResponse: authResponse)
 
-    // Assert
-    #expect(store.actorName == "Alice Smith")
+    #expect(fixture.store.actorName == "Alice Smith")
   }
 
   @Test("Shown alert IDs are cleared on sign-in")
   @MainActor
   func alertIdsClearedOnSignIn() async throws {
-    // Arrange: Pre-populate shown alert IDs in UserDefaults
+    // Pre-populate shown alert IDs in UserDefaults before creating fixture
     let defaults = makeTestDefaults()
     defaults.set(["alert-1", "alert-2", "alert-3"], forKey: "shownAlertIds")
 
     let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification(),
-      userDefaults: defaults
-    )
+    let controller = MockTunnelController()
+    let notification = MockSessionNotification()
+
+    #if os(macOS)
+      let systemExtension = MockSystemExtensionManager()
+      let store = Store(
+        configuration: config,
+        tunnelController: controller,
+        sessionNotification: notification,
+        systemExtensionManager: systemExtension,
+        userDefaults: defaults
+      )
+    #else
+      let store = Store(
+        configuration: config,
+        tunnelController: controller,
+        sessionNotification: notification,
+        userDefaults: defaults
+      )
+    #endif
 
     // Verify initial state has pre-populated alerts
     #expect(store.shownAlertIds.isEmpty == false)
@@ -94,28 +86,19 @@ struct StoreSignInTests {
       token: "token-abc"
     )
 
-    // Act
     try await store.signIn(authResponse: authResponse)
 
-    // Assert: Alert IDs should be cleared for fresh session
+    // Alert IDs should be cleared for fresh session
     #expect(store.shownAlertIds.isEmpty == true)
   }
 
   @Test("Account slug is saved to configuration on sign-in")
   @MainActor
   func accountSlugSaved() async throws {
-    // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
 
     // Initial state
-    #expect(config.accountSlug == "")
+    #expect(fixture.config.accountSlug == "")
 
     let authResponse = AuthResponse(
       actorName: "Charlie Brown",
@@ -123,25 +106,15 @@ struct StoreSignInTests {
       token: "token-123"
     )
 
-    // Act
-    try await store.signIn(authResponse: authResponse)
+    try await fixture.store.signIn(authResponse: authResponse)
 
-    // Assert
-    #expect(config.accountSlug == "peanuts-inc")
+    #expect(fixture.config.accountSlug == "peanuts-inc")
   }
 
   @Test("Enable is called before start on sign-in")
   @MainActor
   func enableCalledBeforeStart() async throws {
-    // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
 
     let authResponse = AuthResponse(
       actorName: "Test User",
@@ -149,16 +122,15 @@ struct StoreSignInTests {
       token: "token-123"
     )
 
-    // Act
-    try await store.signIn(authResponse: authResponse)
+    try await fixture.store.signIn(authResponse: authResponse)
 
-    // Assert: Both enable and start were called in correct order
-    #expect(mockController.enableCallCount == 1)
-    #expect(mockController.startCallCount == 1)
+    // Both enable and start were called in correct order
+    #expect(fixture.controller.enableCallCount == 1)
+    #expect(fixture.controller.startCallCount == 1)
 
     // Verify enable comes before start in the call log
-    let enableIndex = mockController.callLog.firstIndex(of: .enable)
-    let startIndex = mockController.callLog.firstIndex(where: {
+    let enableIndex = fixture.controller.callLog.firstIndex(of: .enable)
+    let startIndex = fixture.controller.callLog.firstIndex(where: {
       if case .startWithToken = $0 { return true }
       return false
     })
@@ -174,17 +146,9 @@ struct StoreSignInTests {
   @Test("Sign-in throws when enable fails")
   @MainActor
   func signInThrowsWhenEnableFails() async throws {
-    // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    mockController.enableError = TestError.simulatedFailure
-
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore { controller, _ in
+      controller.enableError = TestError.simulatedFailure
+    }
 
     let authResponse = AuthResponse(
       actorName: "Test User",
@@ -192,30 +156,21 @@ struct StoreSignInTests {
       token: "token-123"
     )
 
-    // Act & Assert
     await #expect(throws: TestError.self) {
-      try await store.signIn(authResponse: authResponse)
+      try await fixture.store.signIn(authResponse: authResponse)
     }
 
-    // Assert: enable was called but start was not (failed before start)
-    #expect(mockController.enableCallCount == 1)
-    #expect(mockController.startCallCount == 0)
+    // enable was called but start was not (failed before start)
+    #expect(fixture.controller.enableCallCount == 1)
+    #expect(fixture.controller.startCallCount == 0)
   }
 
   @Test("Sign-in throws when start fails")
   @MainActor
   func signInThrowsWhenStartFails() async throws {
-    // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    mockController.startError = TestError.simulatedFailure
-
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore { controller, _ in
+      controller.startError = TestError.simulatedFailure
+    }
 
     let authResponse = AuthResponse(
       actorName: "Test User",
@@ -223,14 +178,13 @@ struct StoreSignInTests {
       token: "token-123"
     )
 
-    // Act & Assert
     await #expect(throws: TestError.self) {
-      try await store.signIn(authResponse: authResponse)
+      try await fixture.store.signIn(authResponse: authResponse)
     }
 
-    // Assert: both enable and start were called (failed during start)
-    #expect(mockController.enableCallCount == 1)
-    #expect(mockController.startCallCount == 1)
+    // both enable and start were called (failed during start)
+    #expect(fixture.controller.enableCallCount == 1)
+    #expect(fixture.controller.startCallCount == 1)
   }
 
   // MARK: - Sign-Out Tests
@@ -238,44 +192,25 @@ struct StoreSignInTests {
   @Test("Sign-out calls tunnel controller signOut")
   @MainActor
   func signOutCallsTunnelController() async throws {
-    // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
+    let fixture = makeMockStore()
 
-    // Act
-    try await store.signOut()
+    try await fixture.store.signOut()
 
-    // Assert
-    #expect(mockController.signOutCallCount == 1)
+    #expect(fixture.controller.signOutCallCount == 1)
   }
 
   @Test("Sign-out throws when tunnel controller fails")
   @MainActor
   func signOutThrowsOnFailure() async throws {
-    // Arrange
-    let defaults = makeTestDefaults()
-    let config = Configuration(userDefaults: defaults)
-    let mockController = MockTunnelController()
-    mockController.signOutError = TestError.simulatedFailure
-
-    let store = Store(
-      configuration: config,
-      tunnelController: mockController,
-      sessionNotification: MockSessionNotification()
-    )
-
-    // Act & Assert
-    await #expect(throws: TestError.self) {
-      try await store.signOut()
+    let fixture = makeMockStore { controller, _ in
+      controller.signOutError = TestError.simulatedFailure
     }
 
-    // Assert: signOut was attempted
-    #expect(mockController.signOutCallCount == 1)
+    await #expect(throws: TestError.self) {
+      try await fixture.store.signOut()
+    }
+
+    // signOut was attempted
+    #expect(fixture.controller.signOutCallCount == 1)
   }
 }
