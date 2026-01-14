@@ -89,7 +89,7 @@ jobs:
           restore-keys: dialyzer-ubuntu-24.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-
 
       - name: Create PLTs
-        if: ${{ steps.plt_cache.outputs.cache-hit != 'true' }}
+        # Always run to incrementally update PLT if restored from cache with different mix.lock
         run: mix dialyzer --plt
 
       - name: Save PLT cache
