@@ -1559,7 +1559,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp parse_okta_verification_error({:error, :empty, :users}) do
-    "No users found in your Okta account. Please ensure users exist and the integration has the okta.users.read scope granted."
+    "No users found in your Okta account. Please ensure users are assigned to the OIDC app and the API service integration app has the okta.users.read scope granted."
   end
 
   defp parse_okta_verification_error({:error, :empty, :groups}) do
