@@ -546,13 +546,19 @@ impl Io {
         };
 
         match (query.transport, query.server) {
-            (dns::Transport::Udp, dns::Upstream::Do53 { server }) => {
+            (
+                dns::Transport::Udp,
+                dns::Upstream::LocalDo53 { server } | dns::Upstream::CustomDo53 { server },
+            ) => {
                 self.queue_dns_query(
                     udp_dns::send(self.udp_socket_factory.clone(), server, query.message),
                     meta,
                 );
             }
-            (dns::Transport::Tcp, dns::Upstream::Do53 { server }) => {
+            (
+                dns::Transport::Tcp,
+                dns::Upstream::LocalDo53 { server } | dns::Upstream::CustomDo53 { server },
+            ) => {
                 self.queue_dns_query(
                     tcp_dns::send(self.tcp_socket_factory.clone(), server, query.message),
                     meta,

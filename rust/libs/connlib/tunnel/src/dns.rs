@@ -101,8 +101,10 @@ pub(crate) enum Transport {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, derive_more::Display)]
 pub enum Upstream {
-    #[display("Do53({server})")]
-    Do53 { server: SocketAddr },
+    #[display("CustomDo53({server})")]
+    CustomDo53 { server: SocketAddr },
+    #[display("LocalDo53({server})")]
+    LocalDo53 { server: SocketAddr },
     #[display("DoH({server})")]
     DoH { server: DoHUrl },
 }

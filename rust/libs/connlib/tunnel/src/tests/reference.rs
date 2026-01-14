@@ -757,7 +757,8 @@ impl ReferenceState {
             Transition::UpdateUpstreamSearchDomain(_) => true,
             Transition::SendDnsQueries(queries) => queries.iter().all(|query| {
                 let has_socket_for_server = match query.dns_server {
-                    crate::dns::Upstream::Do53 { server } => {
+                    crate::dns::Upstream::LocalDo53 { server }
+                    | crate::dns::Upstream::CustomDo53 { server } => {
                         state.client.sending_socket_for(server.ip()).is_some()
                     }
                     crate::dns::Upstream::DoH { .. } => true,
@@ -927,10 +928,16 @@ impl ReferenceState {
             .expected_dns_servers()
             .into_iter()
             .filter(|s| match s {
-                crate::dns::Upstream::Do53 {
+                crate::dns::Upstream::LocalDo53 {
+                    server: SocketAddr::V4(_),
+                }
+                | crate::dns::Upstream::CustomDo53 {
                     server: SocketAddr::V4(_),
                 } => self.client.ip4.is_some(),
-                crate::dns::Upstream::Do53 {
+                crate::dns::Upstream::LocalDo53 {
+                    server: SocketAddr::V6(_),
+                }
+                | crate::dns::Upstream::CustomDo53 {
                     server: SocketAddr::V6(_),
                 } => self.client.ip6.is_some(),
                 crate::dns::Upstream::DoH { .. } => true,

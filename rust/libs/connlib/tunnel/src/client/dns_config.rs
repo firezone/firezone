@@ -145,7 +145,7 @@ fn effective_dns_servers(
     if !upstream_do53.is_empty() {
         return upstream_do53
             .into_iter()
-            .map(|ip| dns::Upstream::Do53 {
+            .map(|ip| dns::Upstream::CustomDo53 {
                 server: SocketAddr::new(ip, DNS_PORT),
             })
             .collect();
@@ -167,7 +167,7 @@ fn effective_dns_servers(
 
     default_resolvers
         .into_iter()
-        .map(|ip| dns::Upstream::Do53 {
+        .map(|ip| dns::Upstream::LocalDo53 {
             server: SocketAddr::new(ip, DNS_PORT),
         })
         .collect()
@@ -180,7 +180,8 @@ fn sentinel_dns_mapping(dns: &[dns::Upstream], old_sentinels: Vec<IpAddr>) -> Dn
         .iter()
         .map(|u| {
             let ip_addr = match u {
-                dns::Upstream::Do53 { server } => server.ip(),
+                dns::Upstream::CustomDo53 { server } => server.ip(),
+                dns::Upstream::LocalDo53 { server } => server.ip(),
                 dns::Upstream::DoH { .. } => IpAddr::V4(Ipv4Addr::UNSPECIFIED), // DoH servers are always mapped to IPv4 servers.
             };
 
@@ -283,7 +284,7 @@ mod tests {
     }
 
     fn do53(socket: &str) -> dns::Upstream {
-        dns::Upstream::Do53 {
+        dns::Upstream::LocalDo53 {
             server: socket.parse().unwrap(),
         }
     }

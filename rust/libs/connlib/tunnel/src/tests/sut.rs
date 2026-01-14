@@ -946,7 +946,8 @@ impl TunnelTest {
                             .upstream_servers()
                             .into_iter()
                             .filter_map(|u| match u {
-                                dns::Upstream::Do53 { server } => Some(server),
+                                dns::Upstream::LocalDo53 { server }
+                                | dns::Upstream::CustomDo53 { server } => Some(server),
                                 dns::Upstream::DoH { .. } => None,
                             });
 

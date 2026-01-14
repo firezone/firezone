@@ -1083,7 +1083,7 @@ impl RefClient {
             return self
                 .upstream_do53_resolvers
                 .iter()
-                .map(|u| dns::Upstream::Do53 {
+                .map(|u| dns::Upstream::LocalDo53 {
                     server: SocketAddr::new(u.ip, 53),
                 })
                 .collect();
@@ -1101,7 +1101,7 @@ impl RefClient {
 
         self.system_dns_resolvers
             .iter()
-            .map(|ip| dns::Upstream::Do53 {
+            .map(|ip| dns::Upstream::LocalDo53 {
                 server: SocketAddr::new(*ip, 53),
             })
             .collect()
@@ -1198,7 +1198,7 @@ impl RefClient {
         }
 
         let server = match query.dns_server {
-            dns::Upstream::Do53 { server } => server,
+            dns::Upstream::LocalDo53 { server } | dns::Upstream::CustomDo53 { server } => server,
             dns::Upstream::DoH { .. } => return None,
         };
 

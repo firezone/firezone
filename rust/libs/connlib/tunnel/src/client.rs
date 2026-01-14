@@ -715,7 +715,7 @@ impl ClientState {
         }
 
         let server = match dns_server {
-            dns::Upstream::Do53 { server } => server,
+            dns::Upstream::LocalDo53 { server } | dns::Upstream::CustomDo53 { server } => server,
             dns::Upstream::DoH { .. } => return None, // If DoH upstreams are in effect, we never forward queries to upstreams.
         };
 
@@ -1119,7 +1119,7 @@ impl ClientState {
 
                 self.handle_dns_response(
                     dns::RecursiveResponse {
-                        server: dns::Upstream::Do53 { server },
+                        server: dns::Upstream::LocalDo53 { server },
                         local,
                         remote,
                         query: query_result.query,
@@ -1147,7 +1147,7 @@ impl ClientState {
 
                 self.handle_dns_response(
                     dns::RecursiveResponse {
-                        server: dns::Upstream::Do53 { server },
+                        server: dns::Upstream::LocalDo53 { server },
                         local,
                         remote,
                         query: query_result.query,
