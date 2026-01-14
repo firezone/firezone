@@ -151,7 +151,7 @@ config :portal,
 
 config :phoenix_live_reload, :dirs, [File.cwd!()]
 
-config :portal, PortalWeb.Plugs.SecureHeaders,
+config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
