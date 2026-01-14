@@ -87,3 +87,4 @@ jobs:
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:staging
