@@ -77,6 +77,10 @@ description = "Run FirezoneKit tests"
 run = "./mise-tasks/test.sh"
 raw = true
 
+[tasks.test-coverage]
+description = "Run FirezoneKit tests with coverage and generate lcov report"
+run = "./mise-tasks/test-coverage.sh"
+
 # =============================================================================
 # Log Tasks
 # =============================================================================
