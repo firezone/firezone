@@ -496,7 +496,10 @@ impl<'a> Handler<'a> {
 
                 self.tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
                 self.dns_controller
-                    .set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain)
+                    .set_dns(
+                        config.dns_by_sentinel.custom_dns_servers(),
+                        config.search_domain,
+                    )
                     .await?;
                 self.tun_device
                     .set_routes(config.ipv4_routes, config.ipv6_routes)

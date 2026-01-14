@@ -35,8 +35,19 @@ pub struct DnsMapping {
 }
 
 impl DnsMapping {
-    pub fn sentinel_ips(&self) -> Vec<IpAddr> {
-        self.inner.iter().map(|(ip, _)| ip).copied().collect()
+    /// Returns the custom DNS servers operated by connlib.
+    ///
+    /// This is only relevant if DoH is active or there are account-wide custom DNS servers.
+    /// When the system-defined DNS servers are used, this returns an empty list.
+    pub fn custom_dns_servers(&self) -> Vec<IpAddr> {
+        self.inner
+            .iter()
+            .filter_map(|(ip, u)| match u {
+                dns::Upstream::CustomDo53 { .. } | dns::Upstream::DoH { .. } => Some(ip),
+                dns::Upstream::LocalDo53 { .. } => None,
+            })
+            .copied()
+            .collect()
     }
 
     pub fn upstream_servers(&self) -> Vec<dns::Upstream> {
@@ -108,6 +119,15 @@ impl DnsConfig {
         !self.upstream_do53.is_empty() || !self.upstream_doh.is_empty()
     }
 
+    pub fn internal_dns_servers(&self) -> Vec<IpAddr> {
+        self.mapping
+            .inner
+            .iter()
+            .map(|(ip, _)| ip)
+            .copied()
+            .collect()
+    }
+
     pub(crate) fn mapping(&mut self) -> DnsMapping {
         self.mapping.clone()
     }
@@ -131,7 +151,7 @@ impl DnsConfig {
             return false;
         }
 
-        self.mapping = sentinel_dns_mapping(&effective_dns_servers, self.mapping.sentinel_ips());
+        self.mapping = sentinel_dns_mapping(&effective_dns_servers, self.internal_dns_servers());
 
         true
     }
@@ -179,18 +199,16 @@ fn sentinel_dns_mapping(dns: &[dns::Upstream], old_sentinels: Vec<IpAddr>) -> Dn
     let mapping = dns
         .iter()
         .map(|u| {
-            let ip_addr = match u {
-                dns::Upstream::CustomDo53 { server } => server.ip(),
-                dns::Upstream::LocalDo53 { server } => server.ip(),
-                dns::Upstream::DoH { .. } => IpAddr::V4(Ipv4Addr::UNSPECIFIED), // DoH servers are always mapped to IPv4 servers.
+            let ip = match u {
+                dns::Upstream::LocalDo53 { server } | dns::Upstream::CustomDo53 { server } => {
+                    server.ip()
+                }
+                dns::Upstream::DoH { .. } => ip_provider
+                    .get_proxy_ip_for(&IpAddr::V4(Ipv4Addr::UNSPECIFIED)) // DoH servers are always mapped to IPv4 servers.
+                    .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
             };
 
-            (
-                ip_provider
-                    .get_proxy_ip_for(&ip_addr)
-                    .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
-                u.clone(),
-            )
+            (ip, u.clone())
         })
         .collect();
 
@@ -213,7 +231,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn maps_system_resolvers_to_sentinel_ips() {
+    fn system_resolvers() {
         let mut config = DnsConfig::default();
 
         let changed = config.update_system_resolvers(vec![
@@ -223,14 +241,23 @@ mod tests {
         ]);
         assert!(changed);
 
-        assert_eq!(config.mapping().sentinel_ips().len(), 3);
+        assert_eq!(
+            config.internal_dns_servers().len(),
+            3,
+            "all IPs should be listed as internal resolvers"
+        );
         assert_eq!(
             config.mapping().upstream_servers(),
             vec![
-                do53("1.1.1.1:53"),
-                do53("1.0.0.1:53"),
-                do53("[2606:4700:4700::1111]:53"),
-            ]
+                local_do53("1.1.1.1:53"),
+                local_do53("1.0.0.1:53"),
+                local_do53("[2606:4700:4700::1111]:53")
+            ],
+            "all IPs should be upstream servers"
+        );
+        assert_eq!(
+            config.system_dns_resolvers(),
+            vec![ip("1.1.1.1"), ip("1.0.0.1"), ip("2606:4700:4700::1111")]
         );
     }
 
@@ -243,10 +270,10 @@ mod tests {
         let changed = config.update_upstream_do53_resolvers(vec![ip("1.0.0.1")]);
         assert!(changed);
 
-        assert_eq!(config.mapping().sentinel_ips().len(), 1);
+        assert_eq!(config.internal_dns_servers().len(), 1);
         assert_eq!(
             config.mapping().upstream_servers(),
-            vec![do53("1.0.0.1:53"),]
+            vec![custom_do53("1.0.0.1:53"),]
         );
     }
 
@@ -257,11 +284,12 @@ mod tests {
         let changed = config.update_system_resolvers(vec![ip("1.1.1.1"), ip("100.100.111.1")]);
         assert!(changed);
 
-        assert_eq!(config.mapping().sentinel_ips().len(), 1);
+        assert_eq!(config.internal_dns_servers().len(), 1);
         assert_eq!(
             config.mapping().upstream_servers(),
-            vec![do53("1.1.1.1:53"),]
+            vec![local_do53("1.1.1.1:53"),]
         );
+        assert_eq!(config.system_dns_resolvers(), vec![ip("1.1.1.1")]);
     }
 
     #[test]
@@ -272,10 +300,10 @@ mod tests {
             config.update_upstream_do53_resolvers(vec![ip("1.1.1.1"), ip("100.100.111.1")]);
         assert!(changed);
 
-        assert_eq!(config.mapping().sentinel_ips().len(), 1);
+        assert_eq!(config.internal_dns_servers().len(), 1);
         assert_eq!(
             config.mapping().upstream_servers(),
-            vec![do53("1.1.1.1:53"),]
+            vec![custom_do53("1.1.1.1:53"),]
         );
     }
 
@@ -283,8 +311,14 @@ mod tests {
         address.parse().unwrap()
     }
 
-    fn do53(socket: &str) -> dns::Upstream {
+    fn local_do53(socket: &str) -> dns::Upstream {
         dns::Upstream::LocalDo53 {
+            server: socket.parse().unwrap(),
+        }
+    }
+
+    fn custom_do53(socket: &str) -> dns::Upstream {
+        dns::Upstream::CustomDo53 {
             server: socket.parse().unwrap(),
         }
     }

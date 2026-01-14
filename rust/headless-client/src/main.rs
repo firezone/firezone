@@ -409,7 +409,7 @@ fn try_main() -> Result<()> {
                 }
                 client_shared::Event::TunInterfaceUpdated(config) => {
                     tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
-                    dns_controller.set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain).await?;
+                    dns_controller.set_dns(config.dns_by_sentinel.custom_dns_servers(), config.search_domain).await?;
                     tun_device.set_routes(config.ipv4_routes, config.ipv6_routes).await?;
 
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready

@@ -375,7 +375,7 @@ impl Session {
             client_shared::Event::TunInterfaceUpdated(config) => {
                 let dns = config
                     .dns_by_sentinel
-                    .sentinel_ips()
+                    .custom_dns_servers()
                     .into_iter()
                     .map(|ip| ip.to_string())
                     .collect();

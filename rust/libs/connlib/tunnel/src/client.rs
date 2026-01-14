@@ -812,8 +812,7 @@ impl ClientState {
     fn initialise_tcp_dns_server(&mut self) {
         let sentinel_sockets = self
             .dns_config
-            .mapping()
-            .sentinel_ips()
+            .internal_dns_servers()
             .into_iter()
             .map(|ip| SocketAddr::new(ip, DNS_PORT))
             .collect();
@@ -878,6 +877,12 @@ impl ClientState {
             .chain(
                 self.active_internet_resource()
                     .map(|_| Ipv6Network::DEFAULT_ROUTE.into()),
+            )
+            .chain(
+                self.dns_config
+                    .internal_dns_servers() // TODO: Exclude sentinels here to avoid unnecessary route updates.
+                    .into_iter()
+                    .map(IpNetwork::from),
             )
     }
 
