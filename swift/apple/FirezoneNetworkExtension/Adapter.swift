@@ -160,7 +160,7 @@ class Adapter: @unchecked Sendable {
   private var internetResourceEnabled: Bool
 
   /// Keep track of resources for UI
-  private var resources: [Resource]?
+  private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
 
   /// Starting parameters
   private let apiURL: String

@@ -44,7 +44,6 @@ run = "./mise-tasks/lsp.sh"
 
 [tasks.build]
 description = "Build Xcode project for macOS"
-depends = ["uniffi-bindings"]
 run = "./mise-tasks/build.sh"
 raw = true
 
@@ -68,7 +67,7 @@ run = "./mise-tasks/format.sh"
 raw = true
 
 [tasks.check]
-description = "Check Swift code formatting"
+description = "Check Swift code formatting and linting"
 run = "./mise-tasks/check.sh"
 raw = true
 

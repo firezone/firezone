@@ -103,6 +103,10 @@ import SwiftUI
     var resource: Resource
     @Environment(\.openURL) var openURL
 
+    private var displayAddress: String {
+      resource.addressDescription ?? resource.address ?? "(no address)"
+    }
+
     var body: some View {
       Section(header: Text("Resource")) {
         HStack {
@@ -131,22 +135,20 @@ import SwiftUI
             .font(.system(size: 14))
             .foregroundColor(.secondary)
             .frame(width: 80, alignment: .leading)
-          if let url = URL(string: resource.addressDescription ?? resource.address!),
-            url.host != nil
-          {
+          if let url = URL(string: displayAddress), url.host != nil {
             Button(
               action: {
                 openURL(url)
               },
               label: {
-                Text(resource.addressDescription ?? resource.address!)
+                Text(displayAddress)
                   .foregroundColor(.blue)
                   .underline()
                   .font(.system(size: 16))
                   .contextMenu {
                     Button(
                       action: {
-                        copyToClipboard(resource.addressDescription ?? resource.address!)
+                        copyToClipboard(displayAddress)
                       },
                       label: {
                         Text("Copy address")
@@ -157,11 +159,11 @@ import SwiftUI
               }
             )
           } else {
-            Text(resource.addressDescription ?? resource.address!)
+            Text(displayAddress)
               .contextMenu {
                 Button(
                   action: {
-                    copyToClipboard(resource.addressDescription ?? resource.address!)
+                    copyToClipboard(displayAddress)
                   },
                   label: {
                     Text("Copy address")
@@ -252,7 +254,7 @@ import SwiftUI
     }
 
     func toggleInternetResource() {
-      configuration.internetResourceEnabled = !configuration.internetResourceEnabled
+      configuration.internetResourceEnabled.toggle()
     }
 
     func toggleResourceEnabledText() -> String {

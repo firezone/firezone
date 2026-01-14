@@ -50,7 +50,7 @@ enum IPCClient {
   @MainActor
   static func signOut(session: NETunnelProviderSession) async throws {
     let message = ProviderMessage.signOut
-    let _ = try await sendProviderMessage(session: session, message: message)
+    _ = try await sendProviderMessage(session: session, message: message)
 
     session.stopTunnel()
   }
@@ -70,7 +70,7 @@ enum IPCClient {
     session: NETunnelProviderSession, _ configuration: TunnelConfiguration
   ) async throws {
     let message = ProviderMessage.setConfiguration(configuration)
-    let _ = try await sendProviderMessage(session: session, message: message)
+    _ = try await sendProviderMessage(session: session, message: message)
   }
 
   // MARK: - Low-level IPC operations
@@ -78,7 +78,7 @@ enum IPCClient {
   @MainActor
   static func clearLogs(session: NETunnelProviderSession) async throws {
     let message = ProviderMessage.clearLogs
-    let _ = try await sendProviderMessage(session: session, message: message)
+    _ = try await sendProviderMessage(session: session, message: message)
   }
 
   @MainActor

@@ -110,11 +110,7 @@ extension URL {
       return self
     }
 
-    if components.queryItems == nil {
-      components.queryItems = []
-    }
-
-    components.queryItems!.append(queryItem)
+    components.queryItems = (components.queryItems ?? []) + [queryItem]
     return components.url ?? self
   }
 }

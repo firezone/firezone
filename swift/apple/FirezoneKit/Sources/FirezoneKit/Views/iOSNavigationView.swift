@@ -93,6 +93,8 @@ import SwiftUI
         )
         Button(
           action: {
+            // Static URL literal is guaranteed valid
+            // swiftlint:disable:next force_unwrapping
             openURL(URL(string: "https://www.firezone.dev/kb?utm_source=ios=client")!)
           },
           label: {
@@ -139,8 +141,10 @@ import SwiftUI
     }
 
     private func supportButtonTapped() {
+      // defaultSupportURL is a static constant guaranteed to be valid
       let url =
-        URL(string: configuration.supportURL) ?? URL(string: Configuration.defaultSupportURL)!
+        URL(string: configuration.supportURL)
+        ?? URL(string: Configuration.defaultSupportURL)!  // swiftlint:disable:this force_unwrapping
       openURL(url)
     }
   }

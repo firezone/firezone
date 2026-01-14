@@ -16,7 +16,9 @@ struct ConfigurationTests {
   // Each call creates a unique suite for proper test isolation
   private func makeTestDefaults() -> UserDefaults {
     let suiteName = "dev.firezone.firezone.tests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+      fatalError("Failed to create UserDefaults with suite: \(suiteName)")
+    }
     // Clear any existing values (shouldn't be any with UUID-based name)
     defaults.removePersistentDomain(forName: suiteName)
     return defaults
@@ -54,7 +56,7 @@ struct ConfigurationTests {
     #expect(config.authURL.starts(with: "https://app.fire"))
     #expect(config.apiURL.starts(with: "wss://api.fire"))
     #expect(config.supportURL == "https://firezone.dev/support")
-    #expect(config.accountSlug == "")
+    #expect(config.accountSlug.isEmpty)
 
     // Confirm nothing was written to UserDefaults (defaults are computed, not stored)
     #expect(defaults.string(forKey: "authURL") == nil)
@@ -340,8 +342,9 @@ struct TunnelConfigurationCodableTests {
       }
       """
 
+    let jsonData = try #require(json.data(using: .utf8))
     let decoder = JSONDecoder()
-    let config = try decoder.decode(TunnelConfiguration.self, from: json.data(using: .utf8)!)
+    let config = try decoder.decode(TunnelConfiguration.self, from: jsonData)
 
     #expect(config.apiURL == "wss://test.api")
     #expect(config.accountSlug == "test-slug")

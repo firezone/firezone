@@ -41,7 +41,7 @@ struct CancellableTaskTests {
     let wasCancelled = Flag()
 
     do {
-      let _ = CancellableTask {
+      _ = CancellableTask {
         do {
           try await Task.sleep(for: .seconds(10))
         } catch is CancellationError {

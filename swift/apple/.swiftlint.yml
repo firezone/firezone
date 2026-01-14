@@ -1,0 +1,152 @@
+# SwiftLint config for Firezone Apple clients
+# Prioritises crash prevention and code quality over style
+
+excluded:
+  - FirezoneNetworkExtension/Connlib/Generated
+  - FirezoneKit/.build
+  - DerivedData
+
+# ============================================================================
+# DISABLED RULES (formatting handled by swift-format, or too noisy)
+# ============================================================================
+disabled_rules:
+  # Formatting - handled by swift-format
+  - closing_brace
+  - closure_parameter_position
+  - colon
+  - comma
+  - leading_whitespace
+  - opening_brace
+  - operator_usage_whitespace
+  - return_arrow_whitespace
+  - statement_position
+  - trailing_comma
+  - trailing_newline
+  - trailing_semicolon
+  - trailing_whitespace
+  - vertical_whitespace
+  # Other
+  - todo
+  - line_length
+  - file_length
+  - type_body_length
+  - function_body_length
+
+# ============================================================================
+# SAFETY-CRITICAL RULES
+# ============================================================================
+opt_in_rules:
+  # --- Force unwrap/cast/try prevention ---
+  - force_unwrapping
+  - force_try
+  - implicitly_unwrapped_optional
+  - discouraged_optional_boolean
+  - discouraged_optional_collection
+  - fatal_error_message
+
+  # --- Memory & concurrency safety ---
+  - weak_delegate
+  - unowned_variable_capture
+
+  # --- Defensive coding ---
+  - fallthrough
+  - unavailable_condition
+  - legacy_multiple
+  - legacy_objc_type
+  - redundant_nil_coalescing
+  - toggle_bool
+
+  # --- Dangerous patterns ---
+  - discarded_notification_center_observer
+  - overridden_super_call
+  - private_action
+  - private_outlet
+
+  # --- Code quality ---
+  - array_init
+  - explicit_init
+  - modifier_order
+  - prefer_zero_over_explicit_init
+  - unused_closure_parameter
+  - yoda_condition
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - contains_over_first_not_nil
+  - contains_over_range_nil_comparison
+  - empty_collection_literal
+  - empty_count
+  - empty_string
+  - first_where
+  - last_where
+  - flatmap_over_map_reduce
+  - joined_default_parameter
+  - reduce_boolean
+  - reduce_into
+  - sorted_first_last
+
+# ============================================================================
+# RULE CONFIGURATION
+# ============================================================================
+
+cyclomatic_complexity:
+  warning: 15
+  error: 25
+  ignores_case_statements: true
+
+function_parameter_count:
+  warning: 6
+  error: 8
+
+nesting:
+  type_level:
+    warning: 2
+    error: 3
+  function_level:
+    warning: 4
+    error: 6
+
+large_tuple:
+  warning: 3
+  error: 4
+
+identifier_name:
+  min_length:
+    warning: 2
+    error: 1
+  max_length:
+    warning: 50
+    error: 60
+  excluded:
+    - id
+    - ok
+    - i
+    - j
+    - x
+    - y
+    - z
+    - to
+    - at
+    - os
+    - ip
+    - fd
+    - k
+
+type_name:
+  min_length:
+    warning: 3
+    error: 2
+  max_length:
+    warning: 50
+    error: 60
+
+# ============================================================================
+# CUSTOM RULES
+# ============================================================================
+custom_rules:
+  avoid_dispatchqueue_main_sync:
+    name: "DispatchQueue.main.sync is dangerous"
+    regex: 'DispatchQueue\.main\.sync'
+    message: "DispatchQueue.main.sync can deadlock - use async or MainActor"
+    severity: error
+
+reporter: xcode

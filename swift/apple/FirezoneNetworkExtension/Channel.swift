@@ -69,6 +69,8 @@ final class Receiver<T: Sendable>: Sendable {
 struct Channel {
   /// Creates a sender/receiver pair for type-safe unidirectional communication.
   static func create<T: Sendable>() -> (Sender<T>, Receiver<T>) {
+    // Required pattern for AsyncStream continuation capture
+    // swiftlint:disable:next implicitly_unwrapped_optional
     var continuation: AsyncStream<T>.Continuation!
     let stream = AsyncStream<T> { cont in
       continuation = cont

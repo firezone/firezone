@@ -71,7 +71,7 @@ struct NetworkSettingsTests {
   func setsDnsServersWithoutResources() async throws {
     var settings = NetworkSettings()
 
-    let _ = settings.updateDnsResources(newDnsResources: [])
+    _ = settings.updateDnsResources(newDnsResources: [])
     let result = settings.updateTunInterface(
       ipv4: "10.0.0.1",
       ipv6: "fd00::1",

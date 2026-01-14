@@ -100,12 +100,10 @@
       )
 
       // Log all found extensions for debugging
-      for sysex in properties {
-        if sysex.isEnabled {
-          Log.info(
-            "Found enabled extension - Version: \(sysex.bundleShortVersion) (\(sysex.bundleVersion))"
-          )
-        }
+      for sysex in properties where sysex.isEnabled {
+        Log.info(
+          "Found enabled extension - Version: \(sysex.bundleShortVersion) (\(sysex.bundleVersion))"
+        )
       }
 
       // Up to date if version and build number match
