@@ -1555,7 +1555,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp parse_okta_verification_error({:error, :empty, :apps}) do
-    "No apps found in your Okta account. Please ensure the service app is created and the integration has the okta.apps.read scope granted."
+    "No apps found in your Okta account. Please ensure the OIDC app is created and that the API service integration app has the okta.apps.read scope granted."
   end
 
   defp parse_okta_verification_error({:error, :empty, :users}) do
