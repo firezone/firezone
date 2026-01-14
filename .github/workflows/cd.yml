@@ -84,9 +84,13 @@ jobs:
     uses: ./.github/workflows/_elixir.yml
     secrets: inherit
 
+  swift:
+    uses: ./.github/workflows/_swift.yml
+    secrets: inherit
+
   coverage-finish:
     name: coverage-finish
-    needs: [elixir, rust]
+    needs: [elixir, rust, swift]
     runs-on: ubuntu-24.04
     steps:
       - name: Finalize coverage upload

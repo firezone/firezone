@@ -341,8 +341,8 @@ jobs:
 
   coverage-finish:
     name: coverage-finish
-    needs: [elixir, rust]
-    if: needs.elixir.result != 'skipped' || needs.rust.result != 'skipped'
+    needs: [elixir, rust, swift]
+    if: needs.elixir.result != 'skipped' || needs.rust.result != 'skipped' || needs.swift.result != 'skipped'
     runs-on: ubuntu-24.04
     steps:
       - name: Finalize coverage upload
@@ -350,5 +350,5 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           parallel-finished: true
-          carryforward: portal,rust-tunnel-test,rust-test-Linux,rust-test-macOS,rust-test-Windows
+          carryforward: portal,rust-tunnel-test,rust-test-Linux,rust-test-macOS,rust-test-Windows,swift-test
           fail-on-error: false # Make CI less flaky
