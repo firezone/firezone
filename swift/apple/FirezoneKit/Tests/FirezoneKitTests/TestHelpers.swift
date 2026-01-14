@@ -61,12 +61,15 @@ struct MockStoreFixture {
 
 /// Creates a fully mocked Store with all dependencies.
 ///
-/// - Parameter configureController: Optional closure to configure the mock controller before Store init.
+/// Waits for Store initialization to complete before returning,
+/// ensuring status handlers and Combine pipelines are ready.
+///
+/// - Parameter configure: Optional closure to configure the mock controller before Store init.
 /// - Returns: A fixture containing the Store and all its mock dependencies.
 @MainActor
 func makeMockStore(
   configure: ((MockTunnelController, Configuration) -> Void)? = nil
-) -> MockStoreFixture {
+) async throws -> MockStoreFixture {
   let defaults = makeTestDefaults()
   let config = Configuration(userDefaults: defaults)
   let controller = MockTunnelController()
@@ -83,7 +86,7 @@ func makeMockStore(
       systemExtensionManager: systemExtension,
       userDefaults: defaults
     )
-    return MockStoreFixture(
+    let fixture = MockStoreFixture(
       store: store,
       controller: controller,
       config: config,
@@ -98,7 +101,7 @@ func makeMockStore(
       sessionNotification: notification,
       userDefaults: defaults
     )
-    return MockStoreFixture(
+    let fixture = MockStoreFixture(
       store: store,
       controller: controller,
       config: config,
@@ -106,4 +109,17 @@ func makeMockStore(
       notification: notification
     )
   #endif
+
+  // Wait for Store's async initialization to complete
+  try await controller.waitForStatusSubscription()
+
+  // Wait longer than the debounce window (0.3s) to ensure any
+  // initialization-triggered config changes have settled
+  try await Task.sleep(nanoseconds: 400_000_000)
+
+  // Reset the call count so tests start from a clean state
+  controller.setConfigurationCallCount = 0
+  controller.lastConfiguration = nil
+
+  return fixture
 }

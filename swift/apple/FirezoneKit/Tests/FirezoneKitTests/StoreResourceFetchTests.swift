@@ -18,7 +18,7 @@ struct StoreResourceFetchTests {
   @MainActor
   func immediateSuccessPopulatesResources() async throws {
     let resources = [makeResource(id: "res-1", name: "My Resource")]
-    let fixture = makeMockStore { controller, _ in
+    let fixture = try await makeMockStore { controller, _ in
       controller.fetchResourcesResponse = try! encodeResources(resources)
     }
 
@@ -43,7 +43,7 @@ struct StoreResourceFetchTests {
       makeResource(id: "1", name: "Resource One", address: "one.example.com"),
       makeResource(id: "2", name: "Resource Two", address: "two.example.com"),
     ]
-    let fixture = makeMockStore { controller, _ in
+    let fixture = try await makeMockStore { controller, _ in
       controller.fetchResourcesResponse = try! encodeResources(resources)
     }
 
@@ -70,7 +70,7 @@ struct StoreResourceFetchTests {
   @MainActor
   func unchangedResourcesReturnNil() async throws {
     let resources = [makeResource(id: "1", name: "Original Resource")]
-    let fixture = makeMockStore { controller, _ in
+    let fixture = try await makeMockStore { controller, _ in
       controller.simulateHashBehavior = true
       controller.fetchResourcesResponse = try! encodeResources(resources)
     }
@@ -102,7 +102,7 @@ struct StoreResourceFetchTests {
   @MainActor
   func changedResourcesDetectedViaHash() async throws {
     let initialResources = [makeResource(id: "1", name: "Initial Resource")]
-    let fixture = makeMockStore { controller, _ in
+    let fixture = try await makeMockStore { controller, _ in
       controller.simulateHashBehavior = true
       controller.fetchResourcesResponse = try! encodeResources(initialResources)
     }
@@ -139,7 +139,7 @@ struct StoreResourceFetchTests {
   @MainActor
   func resourcesResetOnDisconnect() async throws {
     let resources = [makeResource(id: "1", name: "Test Resource")]
-    let fixture = makeMockStore { controller, _ in
+    let fixture = try await makeMockStore { controller, _ in
       controller.fetchResourcesResponse = try! encodeResources(resources)
     }
 

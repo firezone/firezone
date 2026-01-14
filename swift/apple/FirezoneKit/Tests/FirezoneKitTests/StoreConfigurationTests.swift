@@ -18,7 +18,7 @@ struct StoreConfigurationTests {
   @MainActor
   func configChangeTriggerSetConfiguration() async throws {
     // Arrange
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
     #expect(fixture.controller.setConfigurationCallCount == 0)
 
     // Act
@@ -36,7 +36,7 @@ struct StoreConfigurationTests {
   @MainActor
   func differentConfigPropertiesTriggerSetConfiguration() async throws {
     // Arrange
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     // Act & Assert: Change apiURL
     fixture.config.apiURL = "wss://test.example.com"
@@ -59,7 +59,7 @@ struct StoreConfigurationTests {
   @MainActor
   func internetResourceEnabledChangeTriggers() async throws {
     // Arrange
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     // Act
     fixture.config.internetResourceEnabled = true
@@ -78,7 +78,7 @@ struct StoreConfigurationTests {
   @MainActor
   func unchangedConfigNoRedundantIPC() async throws {
     // Arrange
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     // Act: First change
     fixture.config.logFilter = "warn"
@@ -100,7 +100,7 @@ struct StoreConfigurationTests {
   @MainActor
   func settingDefaultValuesNoIPC() async throws {
     // Arrange
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
     let defaultLogFilter = fixture.config.logFilter
 
     // Act: Set to a different value first
@@ -129,7 +129,7 @@ struct StoreConfigurationTests {
   @MainActor
   func rapidChangesDebounced() async throws {
     // Arrange
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     // Act: Make multiple rapid changes within the debounce window (0.3s)
     fixture.config.logFilter = "debug"
@@ -153,7 +153,7 @@ struct StoreConfigurationTests {
   @MainActor
   func separatedChangesNotDebounced() async throws {
     // Arrange
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     // Act & Assert: First change
     fixture.config.logFilter = "debug"
@@ -174,7 +174,7 @@ struct StoreConfigurationTests {
   @MainActor
   func burstDifferentPropertiesDebounced() async throws {
     // Arrange
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     // Act: Change multiple different properties rapidly
     fixture.config.logFilter = "trace"
@@ -204,7 +204,7 @@ struct StoreConfigurationTests {
     // The Store should handle this gracefully without crashing.
 
     // Arrange
-    let fixture = makeMockStore { controller, _ in
+    let fixture = try await makeMockStore { controller, _ in
       controller.setConfigurationError = TestError.simulatedFailure
     }
 

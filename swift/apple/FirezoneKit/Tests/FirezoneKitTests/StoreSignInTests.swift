@@ -15,7 +15,7 @@ struct StoreSignInTests {
   @Test("Token is passed to tunnel controller when signing in")
   @MainActor
   func tokenPassedToTunnelController() async throws {
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     let authResponse = AuthResponse(
       actorName: "Test Actor",
@@ -32,7 +32,7 @@ struct StoreSignInTests {
   @Test("Actor name is saved after sign-in")
   @MainActor
   func actorNameSaved() async throws {
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     // Initial state
     #expect(fixture.store.actorName == "Unknown user")
@@ -95,7 +95,7 @@ struct StoreSignInTests {
   @Test("Account slug is saved to configuration on sign-in")
   @MainActor
   func accountSlugSaved() async throws {
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     // Initial state
     #expect(fixture.config.accountSlug == "")
@@ -114,7 +114,7 @@ struct StoreSignInTests {
   @Test("Enable is called before start on sign-in")
   @MainActor
   func enableCalledBeforeStart() async throws {
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     let authResponse = AuthResponse(
       actorName: "Test User",
@@ -146,7 +146,7 @@ struct StoreSignInTests {
   @Test("Sign-in throws when enable fails")
   @MainActor
   func signInThrowsWhenEnableFails() async throws {
-    let fixture = makeMockStore { controller, _ in
+    let fixture = try await makeMockStore { controller, _ in
       controller.enableError = TestError.simulatedFailure
     }
 
@@ -168,7 +168,7 @@ struct StoreSignInTests {
   @Test("Sign-in throws when start fails")
   @MainActor
   func signInThrowsWhenStartFails() async throws {
-    let fixture = makeMockStore { controller, _ in
+    let fixture = try await makeMockStore { controller, _ in
       controller.startError = TestError.simulatedFailure
     }
 
@@ -192,7 +192,7 @@ struct StoreSignInTests {
   @Test("Sign-out throws when tunnel controller fails")
   @MainActor
   func signOutThrowsOnFailure() async throws {
-    let fixture = makeMockStore { controller, _ in
+    let fixture = try await makeMockStore { controller, _ in
       controller.signOutError = TestError.simulatedFailure
     }
 

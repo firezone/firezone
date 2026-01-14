@@ -14,6 +14,7 @@ import NetworkExtension
 
 enum TestError: Error {
   case simulatedFailure
+  case initializationTimeout
 }
 
 /// Mock tunnel controller for testing Store.
@@ -26,19 +27,24 @@ final class MockTunnelController: TunnelControllerProtocol {
 
   // MARK: - State
 
-  var session: TunnelSessionProtocol? { mockSession }
+  /// Returns the session only if load succeeded (matches real behavior)
+  var session: TunnelSessionProtocol? {
+    loadResult ? mockSession : nil
+  }
   var isLoaded: Bool = true
 
   // MARK: - Call Order Tracking
 
   /// Records the order of method calls for verifying sequences.
   enum CallType: Equatable {
+    case load
     case enable
     case start
     case startWithToken(String)
     case signOut
     case setConfiguration
     case fetchResources
+    case subscribeToStatusUpdates
   }
   private(set) var callLog: [CallType] = []
 
@@ -87,6 +93,7 @@ final class MockTunnelController: TunnelControllerProtocol {
 
   func load() async throws -> Bool {
     loadCallCount += 1
+    callLog.append(.load)
     return loadResult
   }
 
@@ -162,6 +169,7 @@ final class MockTunnelController: TunnelControllerProtocol {
   }
 
   func subscribeToStatusUpdates(handler: @escaping @Sendable (NEVPNStatus) async throws -> Void) {
+    callLog.append(.subscribeToStatusUpdates)
     statusHandler = handler
   }
 
@@ -176,6 +184,20 @@ final class MockTunnelController: TunnelControllerProtocol {
   /// Reset the fetch resources sequence index (useful between test phases).
   func resetFetchSequence() {
     sequenceIndex = 0
+  }
+
+  /// Waits for Store initialization to complete (status handler registered).
+  ///
+  /// Call this after creating a Store via `makeMockStore()` before testing
+  /// status-dependent behavior like `simulateStatusChange()`.
+  func waitForStatusSubscription(timeout: TimeInterval = 1.0) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while statusHandler == nil && Date() < deadline {
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    guard statusHandler != nil else {
+      throw TestError.initializationTimeout
+    }
   }
 }
 

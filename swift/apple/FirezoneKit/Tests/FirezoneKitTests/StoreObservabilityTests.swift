@@ -19,7 +19,7 @@ struct StoreObservabilityTests {
   @Test("Store with mocked dependencies is observable")
   @MainActor
   func storeIsObservable() async throws {
-    let fixture = makeMockStore()
+    let fixture = try await makeMockStore()
 
     // Subscribe to objectWillChange
     var changeCount = 0
@@ -45,10 +45,7 @@ struct StoreObservabilityTests {
     @MainActor
     func storeReflectsSystemExtensionStatus() async throws {
       // Mock defaults to .installed
-      let fixture = makeMockStore()
-
-      // Wait for async initialization to complete
-      try await Task.sleep(for: .milliseconds(100))
+      let fixture = try await makeMockStore()
 
       // Verify Store's observable state reflects what the manager returned
       // If Store didn't use the injected mock, status would be nil

@@ -139,11 +139,6 @@ public final class Store: ObservableObject {
       }
       .store(in: &cancellables)
 
-    // Subscribe to status updates from the tunnel controller
-    tunnelController.subscribeToStatusUpdates { [weak self] status in
-      try await self?.handleVPNStatusChange(newVPNStatus: status)
-    }
-
     // Monitor configuration changes and propagate to tunnel service
     setupConfigurationObserver()
 
@@ -154,6 +149,7 @@ public final class Store: ObservableObject {
         await initNotifications()
         try await initSystemExtension()
         try await initVPNConfiguration()
+        try await setupTunnelObservers()
         try await maybeAutoConnect()
       } catch {
         Log.error(error)
@@ -267,6 +263,18 @@ public final class Store: ObservableObject {
     let loaded = try await tunnelController.load()
     if !loaded {
       self.vpnStatus = .invalid
+    }
+  }
+
+  private func setupTunnelObservers() async throws {
+    // Subscribe to status updates - must be called after load() so the session exists
+    tunnelController.subscribeToStatusUpdates { [weak self] status in
+      try await self?.handleVPNStatusChange(newVPNStatus: status)
+    }
+
+    // Handle initial status to ensure resources start loading if already connected
+    if let initialStatus = tunnelController.session?.status {
+      try await handleVPNStatusChange(newVPNStatus: initialStatus)
     }
   }
 
