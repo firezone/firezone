@@ -6,10 +6,7 @@ use std::{
 use dns_types::DoHUrl;
 use ip_network::IpNetwork;
 
-use crate::{
-    client::DNS_SENTINELS,
-    dns::{self, DNS_PORT},
-};
+use crate::{client::DNS_SENTINELS, dns};
 
 #[derive(Debug, Default)]
 pub(crate) struct DnsConfig {
@@ -174,7 +171,7 @@ fn effective_dns_servers(
         return upstream_do53
             .into_iter()
             .map(|ip| dns::Upstream::CustomDo53 {
-                server: SocketAddr::new(ip, DNS_PORT),
+                server: SocketAddr::new(ip, dns::PORT),
             })
             .collect();
     }
@@ -196,7 +193,7 @@ fn effective_dns_servers(
     default_resolvers
         .into_iter()
         .map(|ip| dns::Upstream::LocalDo53 {
-            server: SocketAddr::new(ip, DNS_PORT),
+            server: SocketAddr::new(ip, dns::PORT),
         })
         .collect()
 }

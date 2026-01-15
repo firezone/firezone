@@ -500,7 +500,7 @@ impl GatewayTunnel {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
                         self.io.send_dns_query(dns::RecursiveQuery {
                             server: dns::Upstream::LocalDo53 {
-                                server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                                server: SocketAddr::new(nameserver, dns::PORT),
                             },
                             local: query.local,
                             remote: query.remote,
@@ -526,7 +526,7 @@ impl GatewayTunnel {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
                         self.io.send_dns_query(dns::RecursiveQuery {
                             server: dns::Upstream::LocalDo53 {
-                                server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                                server: SocketAddr::new(nameserver, dns::PORT),
                             },
                             local: query.local,
                             remote: query.remote,

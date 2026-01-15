@@ -738,10 +738,21 @@ impl ClientState {
             return ControlFlow::Break(());
         }
 
-        if let Some(udp) = packet.as_udp()
-            && udp.destination_port() == dns::DNS_PORT
+        if let Some(datagram) = packet.as_udp()
+            && datagram.destination_port() == dns::PORT
         {
-            self.handle_udp_dns_query(upstream, &packet, udp, now);
+            self.handle_udp_dns_query(upstream, &packet, datagram, now);
+            return ControlFlow::Break(());
+        }
+
+        // Within docker containers, DNS queries are sent on non-standard ports but to a fixed IP.
+        // We therefore check the IP first to short-circuit this operation and only perform the
+        // more expensive parsing in those edgecases.
+        if packet.destination() == dns::DOCKER_DNS_SERVER_IP
+            && let Some(datagram) = packet.as_udp()
+            && dns_types::Query::parse(datagram.payload()).is_ok()
+        {
+            self.handle_udp_dns_query(upstream, &packet, datagram, now);
             return ControlFlow::Break(());
         }
 

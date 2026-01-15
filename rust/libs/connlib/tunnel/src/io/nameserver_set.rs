@@ -11,7 +11,7 @@ use dns_types::{DomainNameRef, Query, RecordType, ResponseCode, prelude::*};
 use futures_bounded::FuturesTupleSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 
-use crate::io::udp_dns;
+use crate::{dns, io::udp_dns};
 
 use super::tcp_dns;
 
@@ -68,7 +68,7 @@ impl NameserverSet {
                 .try_push(
                     udp_dns::send(
                         self.udp_socket_factory.clone(),
-                        SocketAddr::new(nameserver, crate::dns::DNS_PORT),
+                        SocketAddr::new(nameserver, dns::PORT),
                         Query::new(FIREZONE_DEV.to_vec(), RecordType::A),
                     ),
                     QueryMetaData { nameserver, start },
@@ -83,7 +83,7 @@ impl NameserverSet {
                 .try_push(
                     tcp_dns::send(
                         self.tcp_socket_factory.clone(),
-                        SocketAddr::new(nameserver, crate::dns::DNS_PORT),
+                        SocketAddr::new(nameserver, dns::PORT),
                         Query::new(FIREZONE_DEV.to_vec(), RecordType::A),
                     ),
                     QueryMetaData { nameserver, start },

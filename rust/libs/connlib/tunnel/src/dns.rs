@@ -19,7 +19,8 @@ const TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
 const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
-pub(crate) const DNS_PORT: u16 = 53;
+pub(crate) const DOCKER_DNS_SERVER_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 11));
+pub(crate) const PORT: u16 = 53;
 
 /// The DNS over HTTPS canary domain used by Firefox to check whether DoH can be enabled by default.
 ///
