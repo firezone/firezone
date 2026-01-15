@@ -37,6 +37,7 @@ defmodule PortalAPI.Client.Views.Interface do
     %{
       search_domain: client.account.config.search_domain,
       upstream_do53: upstream_do53,
+      fallback_do53: [{ip: "9.9.9.9"}],
       upstream_doh: upstream_doh,
       ipv4: client.ipv4_address.address,
       ipv6: client.ipv6_address.address,
