@@ -168,6 +168,32 @@ defmodule Portal.Google.APIClient do
     stream_pages(path, query, access_token, "organizationUnits")
   end
 
+  @doc """
+  Streams users from a specific organization unit.
+  Returns a stream that yields pages of users in the given org unit.
+  """
+  def stream_organization_unit_members(access_token, org_unit_path) do
+    query =
+      URI.encode_query(%{
+        "customer" => "my_customer",
+        "query" => "orgUnitPath='#{org_unit_path}'",
+        "maxResults" => "500",
+        "projection" => "full"
+      })
+
+    path = "/admin/directory/v1/users"
+
+    stream_pages(path, query, access_token, "users")
+    |> Stream.map(fn
+      # Org Unit with no members
+      {:error, {:missing_key, _msg, _body}} ->
+        []
+
+      other ->
+        other
+    end)
+  end
+
   defp get(path, access_token) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
     req_options = config[:req_options] || []
