@@ -181,6 +181,8 @@ config :portal, Portal.Okta.AuthProvider,
   response_type: "code",
   scope: "openid email profile"
 
+config :portal, Portal.Okta.APIClient, req_opts: [receive_timeout: 60_000, pool_timeout: 5_000]
+
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
   client_id: System.get_env("ENTRA_OIDC_CLIENT_ID"),
