@@ -1110,7 +1110,7 @@ defmodule PortalAPI.Client.ChannelTest do
                  fallback_do53: [
                    %{ip: "9.9.9.9"}
                  ],
-                 upstream_doh: [],
+                 upstream_doh: []
                }
              }
     end
