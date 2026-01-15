@@ -1,17 +1,13 @@
 # Firezone Apple Client - mise configuration
 # Usage: mise run <task> (from this directory) or mise //swift/apple:<task> (from repo root)
 #
-# Scripts are in mise-tasks/ for shellcheck/shfmt linting
-# Task definitions here enable monorepo discovery with //swift/apple: prefix
+# Tasks are auto-discovered from mise-tasks/ directory.
+# Task names match filenames (e.g., mise-tasks/build.sh -> //swift/apple:build.sh)
 #
 # Requires: MISE_EXPERIMENTAL=1 for monorepo task discovery
 
-# Disable auto-discovery to avoid duplicates
-# FIXME: mise monorepo feature does not support auto-discovery of child tasks from the root level,
-# so we had to make them available explicitly. When it does, we can re-enable
-# auto-discovery and remove the explicit tasks definitions
 [task_config]
-includes = []
+includes = ["mise-tasks"]
 
 [env]
 PLATFORM = "macOS"
@@ -20,120 +16,9 @@ CONFIGURATION = "Debug"
 MACOSX_DEPLOYMENT_TARGET = "13.0"
 
 # =============================================================================
-# Build Tasks
+# Composite Tasks (can't be auto-discovered)
 # =============================================================================
-
-[tasks.setup]
-description = "Install required Rust targets for Apple development"
-run = "./mise-tasks/setup.sh"
-raw = true
-
-[tasks.uniffi-bindings]
-description = "Generate UniFFI bindings from Rust source"
-run = "./mise-tasks/uniffi-bindings.sh"
-raw = true
-
-[tasks.build-rust]
-description = "Build Rust library for Xcode (called by Xcode build phase)"
-run = "./mise-tasks/build-rust.sh"
-raw = true
-
-[tasks.lsp]
-description = "Configure xcode-build-server for LSP support in non-Xcode editors"
-run = "./mise-tasks/lsp.sh"
-
-[tasks.build]
-description = "Build Xcode project for macOS"
-run = "./mise-tasks/build.sh"
-raw = true
-
-[tasks.install]
-description = "Stop running Firezone, copy to /Applications, and launch"
-run = "./mise-tasks/install.sh"
-raw = true
 
 [tasks.all]
-description = "Build and install (uniffi-bindings + build + install)"
+description = "Build and install (build + install)"
 depends = ["build", "install"]
-
-[tasks.clean]
-description = "Clean Xcode build, Rust artifacts, and generated bindings"
-run = "./mise-tasks/clean.sh"
-raw = true
-
-[tasks.format]
-description = "Format Swift code"
-run = "./mise-tasks/format.sh"
-raw = true
-
-[tasks.lint]
-description = "Run SwiftLint on Swift code"
-run = "./mise-tasks/lint.sh"
-raw = true
-
-[tasks.check]
-description = "Check Swift code formatting and linting"
-run = "./mise-tasks/check.sh"
-raw = true
-
-[tasks.test]
-description = "Run FirezoneKit tests"
-run = "./mise-tasks/test.sh"
-raw = true
-
-[tasks.test-coverage]
-description = "Run FirezoneKit tests with coverage and generate lcov report"
-run = "./mise-tasks/test-coverage.sh"
-
-# =============================================================================
-# Log Tasks
-# =============================================================================
-
-[tasks."log:client-show"]
-description = "View latest client log"
-run = "./mise-tasks/log/client-show.sh"
-
-[tasks."log:client-tail"]
-description = "Follow latest client log"
-run = "./mise-tasks/log/client-tail.sh"
-raw = true
-
-[tasks."log:client-pretty"]
-description = "View latest client log (formatted with jq)"
-run = "./mise-tasks/log/client-pretty.sh"
-
-[tasks."log:ext-show"]
-description = "View network extension logs (last 30 min)"
-run = "./mise-tasks/log/ext-show.sh"
-
-[tasks."log:ext-tail"]
-description = "Follow network extension logs"
-run = "./mise-tasks/log/ext-tail.sh"
-raw = true
-
-[tasks."log:connlib-show"]
-description = "View connlib log (requires sudo)"
-run = "./mise-tasks/log/connlib-show.sh"
-
-[tasks."log:connlib-tail"]
-description = "Follow connlib log (requires sudo)"
-run = "./mise-tasks/log/connlib-tail.sh"
-raw = true
-
-[tasks."log:tunnel-show"]
-description = "View latest tunnel log (requires sudo)"
-run = "./mise-tasks/log/tunnel-show.sh"
-
-[tasks."log:tunnel-tail"]
-description = "Follow latest tunnel log (requires sudo)"
-run = "./mise-tasks/log/tunnel-tail.sh"
-raw = true
-
-[tasks."log:all-show"]
-description = "View all Firezone logs (last 30 min)"
-run = "./mise-tasks/log/all-show.sh"
-
-[tasks."log:all-tail"]
-description = "Follow all Firezone logs"
-run = "./mise-tasks/log/all-tail.sh"
-raw = true
