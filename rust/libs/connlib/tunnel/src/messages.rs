@@ -176,6 +176,9 @@ pub struct Interface {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub upstream_doh: Vec<UpstreamDoH>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub fallback_do53: Vec<UpstreamDo53>,
     #[serde(default)]
     pub search_domain: Option<DomainName>,
 }
@@ -197,6 +200,10 @@ impl Interface {
 
     pub fn upstream_doh(&self) -> Vec<DoHUrl> {
         self.upstream_doh.iter().map(|u| u.url.clone()).collect()
+    }
+
+    pub fn fallback_do53(&self) -> Vec<IpAddr> {
+        self.fallback_do53.iter().map(|u| u.ip).collect()
     }
 }
 

@@ -24,6 +24,8 @@ pub(crate) struct DnsConfig {
     ///
     /// Has priority over system-configured DNS servers.
     upstream_doh: Vec<DoHUrl>,
+    /// The Do53 fallback resolvers in case nothing else is available.
+    fallback_do53: Vec<IpAddr>,
 
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     mapping: DnsMapping,
@@ -75,6 +77,10 @@ impl DnsConfig {
 
         tracing::debug!(?servers, ?sanitized, "Received system-defined DNS servers");
 
+        if servers == self.fallback_do53 {
+            return false;
+        }
+
         self.system_resolvers = sanitized;
 
         self.update_dns_mapping()
@@ -104,6 +110,15 @@ impl DnsConfig {
         self.update_dns_mapping()
     }
 
+    #[must_use = "Check if the DNS mapping has changed"]
+    pub(crate) fn update_fallback_do53_resolvers(&mut self, servers: Vec<IpAddr>) -> bool {
+        tracing::debug!(?servers, "Received fallback DNS servers");
+
+        self.fallback_do53 = servers;
+
+        self.update_dns_mapping()
+    }
+
     pub(crate) fn has_custom_upstream(&self) -> bool {
         !self.upstream_do53.is_empty() || !self.upstream_doh.is_empty()
     }
@@ -121,6 +136,7 @@ impl DnsConfig {
             self.upstream_do53.clone(),
             self.upstream_doh.clone(),
             self.system_resolvers.clone(),
+            self.fallback_do53.clone(),
         );
 
         if HashSet::<dns::Upstream>::from_iter(effective_dns_servers.clone())
@@ -140,7 +156,8 @@ impl DnsConfig {
 fn effective_dns_servers(
     upstream_do53: Vec<IpAddr>,
     upstream_doh: Vec<DoHUrl>,
-    default_resolvers: Vec<IpAddr>,
+    system_resolvers: Vec<IpAddr>,
+    fallback_resolvers: Vec<IpAddr>,
 ) -> Vec<dns::Upstream> {
     if !upstream_do53.is_empty() {
         return upstream_do53
@@ -158,14 +175,16 @@ fn effective_dns_servers(
             .collect();
     }
 
-    if default_resolvers.is_empty() {
-        tracing::info!(
-            "No system default DNS servers available! Can't initialize resolver. DNS resources won't work."
-        );
-        return Vec::new();
+    if !system_resolvers.is_empty() {
+        return system_resolvers
+            .into_iter()
+            .map(|ip| dns::Upstream::Do53 {
+                server: SocketAddr::new(ip, DNS_PORT),
+            })
+            .collect();
     }
 
-    default_resolvers
+    fallback_resolvers
         .into_iter()
         .map(|ip| dns::Upstream::Do53 {
             server: SocketAddr::new(ip, DNS_PORT),
@@ -255,6 +274,49 @@ mod tests {
 
         let changed = config.update_system_resolvers(vec![ip("1.1.1.1"), ip("100.100.111.1")]);
         assert!(changed);
+
+        assert_eq!(config.mapping().sentinel_ips().len(), 1);
+        assert_eq!(
+            config.mapping().upstream_servers(),
+            vec![do53("1.1.1.1:53"),]
+        );
+    }
+
+    #[test]
+    fn filters_fallback_ips_from_system() {
+        let mut config = DnsConfig::default();
+
+        let _ = config.update_fallback_do53_resolvers(vec![ip("9.9.9.9")]);
+        let _ = config.update_system_resolvers(vec![ip("9.9.9.9")]);
+
+        assert_eq!(config.mapping().sentinel_ips().len(), 1);
+        assert_eq!(
+            config.mapping().upstream_servers(),
+            vec![do53("9.9.9.9:53"),]
+        );
+        assert_eq!(config.system_dns_resolvers(), Vec::<IpAddr>::default());
+    }
+
+    #[test]
+    fn prefers_system_over_fallback() {
+        let mut config = DnsConfig::default();
+
+        let _ = config.update_system_resolvers(vec![ip("1.1.1.1")]);
+        let _ = config.update_fallback_do53_resolvers(vec![ip("9.9.9.9")]);
+
+        assert_eq!(config.mapping().sentinel_ips().len(), 1);
+        assert_eq!(
+            config.mapping().upstream_servers(),
+            vec![do53("1.1.1.1:53"),]
+        );
+    }
+
+    #[test]
+    fn prefers_upstream_over_fallback() {
+        let mut config = DnsConfig::default();
+
+        let _ = config.update_upstream_do53_resolvers(vec![ip("1.1.1.1")]);
+        let _ = config.update_fallback_do53_resolvers(vec![ip("9.9.9.9")]);
 
         assert_eq!(config.mapping().sentinel_ips().len(), 1);
         assert_eq!(
