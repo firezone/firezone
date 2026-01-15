@@ -167,7 +167,7 @@ public class SystemConfigurationResolvers {
   private static func interfaceName(for index: UInt32) -> String? {
     var buf = [CChar](repeating: 0, count: Int(IFNAMSIZ))
     guard if_indextoname(index, &buf) != nil else { return nil }
-    return String(cString: buf)
+    return stringFromCCharArray(buf)
   }
 
   private static func stringFromSockaddr(_ sa: UnsafePointer<sockaddr>) -> String? {
@@ -184,7 +184,15 @@ public class SystemConfigurationResolvers {
     guard getnameinfo(sa, len, &buf, socklen_t(buf.count), nil, 0, NI_NUMERICHOST) == 0 else {
       return nil
     }
-    return String(cString: buf)
+    return stringFromCCharArray(buf)
+  }
+
+  private static func stringFromCCharArray(_ array: [CChar]) -> String {
+    // Use withCString to safely convert null-terminated C string to Swift String
+    return array.withUnsafeBufferPointer { buffer in
+      // swiftlint:disable:next optional_data_string_conversion
+      String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    }
   }
 
   #if os(macOS)
