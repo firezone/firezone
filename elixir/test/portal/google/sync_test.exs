@@ -59,7 +59,7 @@ defmodule Portal.Google.SyncTest do
             "auth_provider_x509_cert_url" => "https://www.googleapis.com/oauth2/v1/certs"
           }
           |> JSON.encode!(),
-        req_options: [plug: {Req.Test, APIClient}]
+        req_options: [plug: {Req.Test, APIClient}, retry: false]
       ]
 
       Application.put_env(:portal, APIClient, test_config)
@@ -782,6 +782,63 @@ defmodule Portal.Google.SyncTest do
       # Verify only USER type member created a membership
       memberships = Repo.all(Portal.Membership)
       assert length(memberships) == 1
+    end
+
+    test "syncs org unit with no members when users key is missing in response" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      # Mock access token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # Mock users API
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "users" => [
+            %{
+              "id" => "user1",
+              "primaryEmail" => "user1@example.com",
+              "name" => %{"fullName" => "User One"}
+            }
+          ]
+        })
+      end)
+
+      # Mock groups API
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"groups" => []})
+      end)
+
+      # Mock org units API - return one org unit
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "organizationUnits" => [
+            %{"orgUnitId" => "ou1", "name" => "Empty Dept", "orgUnitPath" => "/EmptyDept"}
+          ]
+        })
+      end)
+
+      # Mock org unit members API - return response WITHOUT "users" key (empty org unit)
+      # Google omits the "users" key entirely when no users match the query
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.query_string || "", "orgUnitPath")
+        Req.Test.json(conn, %{"etag" => "\"p9q284efnuVA987\"", "kind" => "admin#directory#users"})
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      # Verify org unit was created
+      groups = Repo.all(Portal.Group)
+      assert length(groups) == 1
+      org_unit = hd(groups)
+      assert org_unit.entity_type == :org_unit
+      assert org_unit.name == "Empty Dept"
+
+      # Verify no memberships were created for the empty org unit
+      memberships = Repo.all(Portal.Membership)
+      assert length(memberships) == 0
     end
   end
 end

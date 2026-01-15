@@ -663,8 +663,13 @@ defmodule Portal.Google.APIClientTest do
     end
 
     test "returns empty list when no users in org unit" do
+      # Google omits the "users" key entirely when no users match the query
       Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => []})
+        Req.Test.json(conn, %{
+          "etag" =>
+            "\"a38212e01d6f419c9bd303b304a99e9b-R4oCxwN6CJX5V4YS861KQ8/qMN0tU6EFQXmCVIrUh8pyH16GNQ\"",
+          "kind" => "admin#directory#users"
+        })
       end)
 
       result =
