@@ -77,7 +77,8 @@ impl DnsConfig {
 
         tracing::debug!(?servers, ?sanitized, "Received system-defined DNS servers");
 
-        if servers == self.fallback_do53 {
+        // Ignore setting system resolvers equal to fallback unless they are empty.
+        if sanitized == self.fallback_do53 && !sanitized.is_empty() {
             return false;
         }
 
