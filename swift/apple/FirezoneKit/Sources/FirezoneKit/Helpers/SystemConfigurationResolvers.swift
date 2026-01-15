@@ -72,16 +72,16 @@ public class SystemConfigurationResolvers {
     guard nScopedResolver > 0 else { return [] }
 
     let scopedResolverArrayAddr: UInt = Self.readUnaligned(from: config, offset: 16)
-    guard scopedResolverArrayAddr != 0 else { return [] }
-
-    let resolverPtrArray = UnsafeRawPointer(bitPattern: scopedResolverArrayAddr)!
+    guard scopedResolverArrayAddr != 0,
+      let resolverPtrArray = UnsafeRawPointer(bitPattern: scopedResolverArrayAddr)
+    else { return [] }
 
     for i in 0..<Int(nScopedResolver) {
       let resolverAddr: UInt = Self.readUnaligned(
         from: resolverPtrArray, offset: i * MemoryLayout<UInt>.size)
-      guard resolverAddr != 0 else { continue }
-
-      let resolver = UnsafeRawPointer(bitPattern: resolverAddr)!
+      guard resolverAddr != 0,
+        let resolver = UnsafeRawPointer(bitPattern: resolverAddr)
+      else { continue }
 
       // dns_resolver layout (pack(4)):
       //   0: domain (uint64_t union)
@@ -107,17 +107,20 @@ public class SystemConfigurationResolvers {
       let nNameserver: Int32 = Self.readUnaligned(from: resolver, offset: 8)
       let nameserverArrayAddr: UInt = Self.readUnaligned(from: resolver, offset: 12)
 
-      guard nNameserver > 0, nameserverArrayAddr != 0 else { continue }
+      guard nNameserver > 0, nameserverArrayAddr != 0,
+        let nameserverArray = UnsafeRawPointer(bitPattern: nameserverArrayAddr)
+      else { continue }
 
-      let nameserverArray = UnsafeRawPointer(bitPattern: nameserverArrayAddr)!
       var servers: [String] = []
 
       for j in 0..<Int(nNameserver) {
         let saAddr: UInt = Self.readUnaligned(
           from: nameserverArray, offset: j * MemoryLayout<UInt>.size)
-        guard saAddr != 0 else { continue }
+        guard saAddr != 0,
+          let saPtr = UnsafeRawPointer(bitPattern: saAddr)
+        else { continue }
 
-        let sa = UnsafeRawPointer(bitPattern: saAddr)!.assumingMemoryBound(to: sockaddr.self)
+        let sa = saPtr.assumingMemoryBound(to: sockaddr.self)
         if let ip = Self.stringFromSockaddr(sa) {
           servers.append(ip)
         }
@@ -160,10 +163,7 @@ public class SystemConfigurationResolvers {
   private static func interfaceName(for index: UInt32) -> String? {
     var buf = [CChar](repeating: 0, count: Int(IFNAMSIZ))
     guard if_indextoname(index, &buf) != nil else { return nil }
-    return buf.withUnsafeBufferPointer { ptr in
-      String(
-        decoding: ptr.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
-    }
+    return String(cString: buf)
   }
 
   private static func stringFromSockaddr(_ sa: UnsafePointer<sockaddr>) -> String? {
@@ -180,10 +180,7 @@ public class SystemConfigurationResolvers {
     guard getnameinfo(sa, len, &buf, socklen_t(buf.count), nil, 0, NI_NUMERICHOST) == 0 else {
       return nil
     }
-    return buf.withUnsafeBufferPointer { ptr in
-      String(
-        decoding: ptr.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
-    }
+    return String(cString: buf)
   }
 
   #if os(macOS)
