@@ -344,6 +344,14 @@ defmodule Portal.Google.Sync do
                 step: :process_org_unit
             end
 
+            unless org_unit["orgUnitPath"] do
+              raise Google.SyncError,
+                reason: "Organization unit missing required 'orgUnitPath' field",
+                cause: org_unit,
+                directory_id: directory.id,
+                step: :process_org_unit
+            end
+
             %{
               idp_id: org_unit["orgUnitId"],
               name: org_unit["name"]
@@ -353,8 +361,74 @@ defmodule Portal.Google.Sync do
         unless Enum.empty?(org_unit_attrs) do
           batch_upsert_org_units(directory, synced_at, org_unit_attrs)
         end
+
+        # For each org unit, stream and sync members
+        Enum.each(org_units, fn org_unit ->
+          sync_org_unit_members(directory, access_token, synced_at, org_unit)
+        end)
     end)
     |> Stream.run()
+  end
+
+  defp sync_org_unit_members(directory, access_token, synced_at, org_unit) do
+    org_unit_id = org_unit["orgUnitId"]
+    org_unit_name = org_unit["name"]
+    org_unit_path = org_unit["orgUnitPath"]
+
+    Logger.debug("Streaming members for organization unit",
+      google_directory_id: directory.id,
+      org_unit_id: org_unit_id,
+      org_unit_name: org_unit_name,
+      org_unit_path: org_unit_path
+    )
+
+    Google.APIClient.stream_organization_unit_members(access_token, org_unit_path)
+    |> Stream.each(fn
+      {:error, error} ->
+        Logger.error("Failed to fetch users for organization unit",
+          org_unit_id: org_unit_id,
+          org_unit_name: org_unit_name,
+          org_unit_path: org_unit_path,
+          error: inspect(error),
+          google_directory_id: directory.id
+        )
+
+        raise Google.SyncError,
+          reason: "Failed to stream org unit users for #{org_unit_name}",
+          cause: error,
+          directory_id: directory.id,
+          step: :stream_org_unit_members
+
+      users when is_list(users) ->
+        process_org_unit_members_page(directory, synced_at, org_unit_id, org_unit_name, users)
+    end)
+    |> Stream.run()
+  end
+
+  defp process_org_unit_members_page(directory, synced_at, org_unit_id, org_unit_name, users) do
+    Logger.debug("Received users page for organization unit",
+      google_directory_id: directory.id,
+      org_unit_id: org_unit_id,
+      count: length(users)
+    )
+
+    # Build memberships (org_unit_idp_id, user_idp_id) - validate required fields
+    memberships =
+      Enum.map(users, fn user ->
+        unless user["id"] do
+          raise Google.SyncError,
+            reason: "User missing required 'id' field in organization unit #{org_unit_name}",
+            cause: user,
+            directory_id: directory.id,
+            step: :process_org_unit_member
+        end
+
+        {org_unit_id, user["id"]}
+      end)
+
+    unless Enum.empty?(memberships) do
+      batch_upsert_memberships(directory, synced_at, memberships)
+    end
   end
 
   defp batch_upsert_identities(directory, synced_at, identities) do

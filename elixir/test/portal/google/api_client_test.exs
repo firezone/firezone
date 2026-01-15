@@ -600,6 +600,100 @@ defmodule Portal.Google.APIClientTest do
     end
   end
 
+  describe "stream_organization_unit_members/2" do
+    test "streams users from a specific org unit" do
+      test_pid = self()
+      org_unit_path = "/Engineering"
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        send(test_pid, {:org_unit_users_request, conn})
+
+        Req.Test.json(conn, %{
+          "kind" => "admin#directory#users",
+          "users" => [
+            %{"id" => "user1", "primaryEmail" => "user1@example.com"},
+            %{"id" => "user2", "primaryEmail" => "user2@example.com"}
+          ]
+        })
+      end)
+
+      result =
+        APIClient.stream_organization_unit_members(@test_access_token, org_unit_path)
+        |> Enum.to_list()
+
+      assert [[%{"id" => "user1"}, %{"id" => "user2"}]] = result
+
+      assert_receive {:org_unit_users_request, conn}
+      assert_authorization_header(conn, @test_access_token)
+      assert conn.query_params["customer"] == "my_customer"
+      assert conn.query_params["query"] == "orgUnitPath='/Engineering'"
+      assert conn.query_params["maxResults"] == "500"
+      assert conn.query_params["projection"] == "full"
+    end
+
+    test "streams multiple pages of org unit users" do
+      page_count = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        current_page = :counters.get(page_count, 1)
+        :counters.add(page_count, 1, 1)
+
+        response =
+          case current_page do
+            0 ->
+              %{
+                "users" => [%{"id" => "user1"}],
+                "nextPageToken" => "next_page"
+              }
+
+            1 ->
+              %{"users" => [%{"id" => "user2"}]}
+          end
+
+        Req.Test.json(conn, response)
+      end)
+
+      result =
+        APIClient.stream_organization_unit_members(@test_access_token, "/Sales")
+        |> Enum.to_list()
+
+      assert [[%{"id" => "user1"}], [%{"id" => "user2"}]] = result
+    end
+
+    test "returns empty list when no users in org unit" do
+      # Google omits the "users" key entirely when no users match the query
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "etag" =>
+            "\"a38212e01d6f419c9bd303b304a99e9b-R4oCxwN6CJX5V4YS861KQ8/qMN0tU6EFQXmCVIrUh8pyH16GNQ\"",
+          "kind" => "admin#directory#users"
+        })
+      end)
+
+      result =
+        APIClient.stream_organization_unit_members(@test_access_token, "/EmptyOrgUnit")
+        |> Enum.to_list()
+
+      assert [[]] = result
+    end
+
+    test "returns error on non-200 response" do
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => "Permission denied"})
+      end)
+
+      result =
+        APIClient.stream_organization_unit_members(@test_access_token, "/Engineering")
+        |> Enum.to_list()
+
+      assert [{:error, %Req.Response{status: 403}}] = result
+    end
+  end
+
   describe "pagination edge cases" do
     test "handles empty result list correctly for users" do
       Req.Test.expect(APIClient, fn conn ->
