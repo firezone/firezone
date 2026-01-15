@@ -47,6 +47,9 @@ npm-debug.log
 # Dialyxir output
 /priv/plts/
 
+# MaxMind DB files
+/priv/geoip/
+
 # Test screenshots
 /screenshots/
 

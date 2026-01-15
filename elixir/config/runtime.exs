@@ -306,6 +306,17 @@ if config_env() == :prod do
   ##### Third-party configs #####
   ###############################
 
+  if maxmind_city_db_path = env_var_to_config!(:maxmind_city_db_path) do
+    config :geolix,
+      databases: [
+        %{
+          id: :city,
+          adapter: Geolix.Adapter.MMDB2,
+          source: maxmind_city_db_path
+        }
+      ]
+  end
+
   if System.get_env("OTLP_ENDPOINT") do
     config :opentelemetry,
       resource_detectors: [:otel_resource_env_var, :otel_resource_app_env],

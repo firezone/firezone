@@ -168,6 +168,11 @@ config :logger, level: :info
 
 config :argon2_elixir, t_cost: 1, m_cost: 8
 
+config :geolix,
+  databases: [
+    %{id: :city, adapter: Geolix.Adapter.Fake, data: %{}}
+  ]
+
 config :wallaby,
   driver: Wallaby.Chrome,
   screenshot_on_failure: true,
