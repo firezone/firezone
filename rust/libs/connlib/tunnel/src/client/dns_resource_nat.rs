@@ -207,7 +207,7 @@ impl DnsResourceNat {
         &mut self,
         gid: GatewayId,
         res: p2p_control::dns_resource_nat::DomainStatus,
-    ) -> impl IntoIterator<Item = IpPacket> {
+    ) -> impl IntoIterator<Item = IpPacket> + use<> {
         let Entry::Occupied(mut nat_entry) = self.inner.entry((gid, res.domain.clone())) else {
             tracing::debug!(%gid, domain = %res.domain, "No DNS resource NAT state, ignoring response");
             return into_iter(None);

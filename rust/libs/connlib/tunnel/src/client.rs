@@ -369,7 +369,7 @@ impl ClientState {
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
-        self.encapsulate(non_dns_packet, now)
+        self.route_through_tunnel(non_dns_packet, now)
     }
 
     /// Handles UDP packets received on the network interface.
@@ -414,13 +414,8 @@ impl ClientState {
                     let buffered_packets = self.dns_resource_nat.on_domain_status(gid, res);
 
                     for packet in buffered_packets {
-                        encapsulate_and_buffer(
-                            packet,
-                            gid,
-                            now,
-                            &mut self.node,
-                            &mut self.buffered_transmits,
-                        );
+                        let maybe_transmit = self.encapsulate(packet, gid, now);
+                        self.buffered_transmits.extend(maybe_transmit);
                     }
                 }
                 p2p_control::GOODBYE_EVENT => {
@@ -519,7 +514,11 @@ impl ClientState {
         }
     }
 
-    fn encapsulate(&mut self, mut packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
+    fn route_through_tunnel(
+        &mut self,
+        mut packet: IpPacket,
+        now: Instant,
+    ) -> Option<snownet::Transmit> {
         let dst = packet.destination();
 
         let peer = if is_peer(dst) {
@@ -555,12 +554,7 @@ impl ClientState {
         }
 
         let gid = peer.id();
-
-        let transmit = self
-            .node
-            .encapsulate(gid, &packet, now)
-            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e:#}"))
-            .ok()??;
+        let transmit = self.encapsulate(packet, gid, now)?;
 
         Some(transmit)
     }
@@ -657,13 +651,8 @@ impl ClientState {
 
                 // For CIDR and Internet resources, we can directly queue the buffered packets.
                 for packet in buffered_resource_packets {
-                    encapsulate_and_buffer(
-                        packet,
-                        gid,
-                        now,
-                        &mut self.node,
-                        &mut self.buffered_transmits,
-                    );
+                    let maybe_transmit = self.encapsulate(packet, gid, now);
+                    self.buffered_transmits.extend(maybe_transmit);
                 }
             }
             Resource::Dns(_) => {
@@ -1095,7 +1084,7 @@ impl ClientState {
                 .or_else(|| self.udp_dns_client.poll_outbound())
             {
                 // All packets from the DNS clients _should_ go through the tunnel.
-                let Some(transmit) = self.encapsulate(packet, now) else {
+                let Some(transmit) = self.route_through_tunnel(packet, now) else {
                     continue;
                 };
 
@@ -1167,13 +1156,8 @@ impl ClientState {
         while let Some((gid, domain, packet)) = self.dns_resource_nat.poll_packet() {
             tracing::debug!(%gid, %domain, "Setting up DNS resource NAT");
 
-            encapsulate_and_buffer(
-                packet,
-                gid,
-                now,
-                &mut self.node,
-                &mut self.buffered_transmits,
-            );
+            let maybe_transmit = self.encapsulate(packet, gid, now);
+            self.buffered_transmits.extend(maybe_transmit);
         }
     }
 
@@ -1785,6 +1769,14 @@ impl ClientState {
         self.pending_flows
             .on_not_connected_resource(resource, trigger, &self.resources_by_id, now);
     }
+
+    fn encapsulate(&mut self, packet: IpPacket, gid: GatewayId, now: Instant) -> Option<Transmit> {
+        self.node
+            .encapsulate(gid, &packet, now)
+            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
+            .ok()
+            .flatten()
+    }
 }
 
 fn is_llmnr(dst: IpAddr) -> bool {
@@ -1792,25 +1784,6 @@ fn is_llmnr(dst: IpAddr) -> bool {
         IpAddr::V4(ip) => ip == LLMNR_IPV4,
         IpAddr::V6(ip) => ip == LLMNR_IPV6,
     }
-}
-
-fn encapsulate_and_buffer(
-    packet: IpPacket,
-    gid: GatewayId,
-    now: Instant,
-    node: &mut ClientNode<GatewayId, RelayId>,
-    buffered_transmits: &mut VecDeque<Transmit>,
-) {
-    let Some(transmit) = node
-        .encapsulate(gid, &packet, now)
-        .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
-        .ok()
-        .flatten()
-    else {
-        return;
-    };
-
-    buffered_transmits.push_back(transmit);
 }
 
 fn peer_by_resource_mut<'p>(
