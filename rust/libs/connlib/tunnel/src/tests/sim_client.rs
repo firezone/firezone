@@ -515,6 +515,7 @@ impl RefClient {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
             upstream_dns: Vec::new(),
+            fallback_do53: Vec::new(),
             upstream_do53: self.upstream_do53_resolvers.clone(),
             upstream_doh: self.upstream_doh_resolvers,
             search_domain: self.search_domain.clone(),

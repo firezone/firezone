@@ -393,6 +393,9 @@ defmodule PortalAPI.Client.ChannelTest do
                  %{ip: "1.1.1.1"},
                  %{ip: "8.8.8.8"}
                ],
+               fallback_do53: [
+                 %{ip: "9.9.9.9"}
+               ],
                upstream_doh: [],
                search_domain: "example.com"
              }
@@ -1103,6 +1106,9 @@ defmodule PortalAPI.Client.ChannelTest do
                    %{ip: "1:2:3:4:5:6:7:8"},
                    %{ip: "1.1.1.1"},
                    %{ip: "8.8.8.8"}
+                 ],
+                 fallback_do53: [
+                   %{ip: "9.9.9.9"}
                  ],
                  upstream_doh: []
                }

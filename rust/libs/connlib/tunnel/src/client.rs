@@ -959,8 +959,11 @@ impl ClientState {
     }
 
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
-        tracing::trace!(upstream_do53 = ?config.upstream_do53(), upstream_doh = ?config.upstream_doh(), search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
+        tracing::trace!(upstream_do53 = ?config.upstream_do53(), upstream_doh = ?config.upstream_doh(), fallback_do53 = ?config.fallback_do53(), search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 
+        let changed_fallback = self
+            .dns_config
+            .update_fallback_do53_resolvers(config.fallback_do53());
         let changed_do53 = self
             .dns_config
             .update_upstream_do53_resolvers(config.upstream_do53());
@@ -968,7 +971,7 @@ impl ClientState {
             .dns_config
             .update_upstream_doh_resolvers(config.upstream_doh());
 
-        if changed_do53 || changed_doh {
+        if changed_do53 || changed_doh || changed_fallback {
             self.dns_cache.flush("DNS servers changed");
         }
 
