@@ -47,7 +47,7 @@ public class SystemConfigurationResolvers {
   /// - Parameter interfaceName: The network interface name (e.g., "en0", "pdp_ip0")
   /// - Returns: Array of DNS server IP addresses, or empty array if unavailable
   public func getDefaultDNSServersViaScopedResolvers(interfaceName: String?) -> [String] {
-    guard let interfaceName = interfaceName else {
+    guard let interfaceName = interfaceName, !interfaceName.isEmpty else {
       return []
     }
 
@@ -148,6 +148,10 @@ public class SystemConfigurationResolvers {
   private typealias DnsConfigurationCopyFn = @convention(c) () -> UnsafeMutableRawPointer?
   private typealias DnsConfigurationFreeFn = @convention(c) (UnsafeMutableRawPointer) -> Void
 
+  // Note: dlopen(nil, RTLD_LAZY) returns a handle to the main program itself.
+  // This handle should not be closed with dlclose() as it doesn't represent a
+  // separately loaded library. The handle is intentionally stored in static
+  // properties for the lifetime of the process.
   private static let dnsConfigurationCopy: DnsConfigurationCopyFn? = {
     dlsym(dlopen(nil, RTLD_LAZY), "dns_configuration_copy")
       .map { unsafeBitCast($0, to: DnsConfigurationCopyFn.self) }
@@ -242,7 +246,8 @@ public class SystemConfigurationResolvers {
     ///    so return those if found. Otherwise, return the DHCP ones.
     public func getDefaultDNSServersViaSystemConfiguration(interfaceName: String?) -> [String] {
       guard let dynamicStore = dynamicStore,
-        let interfaceName = interfaceName
+        let interfaceName = interfaceName,
+        !interfaceName.isEmpty
       else {
         return []
       }
@@ -261,8 +266,10 @@ public class SystemConfigurationResolvers {
           configInterfaceName == interfaceName
         else { continue }
 
-        // Extract our serviceId
-        let serviceId = service.split(separator: "/")[3]
+        // Extract our serviceId from path like "Setup:/Network/Service/<id>/Interface"
+        let components = service.split(separator: "/")
+        guard components.count > 3 else { continue }
+        let serviceId = components[3]
 
         // Try to get any manually-assigned DNS servers
         let manualDnsPath = "Setup:/Network/Service/\(serviceId)/DNS"

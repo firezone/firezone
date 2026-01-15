@@ -15,10 +15,10 @@ public final class Log {
     case "dev.firezone.firezone.network-extension":
       return Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
     default:
-      // Test environment or unknown bundle - use generic logger
+      // Test environment or unknown bundle - use generic logger with "unknown" category
       let bundleId = Bundle.main.bundleIdentifier ?? "nil"
       Logger(subsystem: "dev.firezone.firezone", category: "unknown")
-        .warning("Unknown bundle identifier: \(bundleId). Logging will be disabled.")
+        .warning("Unknown bundle identifier: \(bundleId). Using generic logger.")
       return Logger(subsystem: "dev.firezone.firezone", category: "unknown")
     }
   }()
