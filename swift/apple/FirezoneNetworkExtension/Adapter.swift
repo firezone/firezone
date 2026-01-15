@@ -76,10 +76,8 @@ class Adapter: @unchecked Sendable {
   /// Start completion handler, used to signal to the system the interface is ready to use.
   private var startCompletionHandler: (Error?) -> Void
 
-  #if os(macOS)
-    /// Used for finding system DNS resolvers on macOS when network conditions have changed.
-    private let systemConfigurationResolvers = SystemConfigurationResolvers()
-  #endif
+  /// Used for finding system DNS resolvers when network conditions have changed.
+  private let systemConfigurationResolvers = SystemConfigurationResolvers()
 
   /// Remembers the last _relevant_ path update.
   /// A path update is considered relevant if certain properties change that require us to reset connlib's
@@ -100,31 +98,12 @@ class Adapter: @unchecked Sendable {
   /// Apple doesn't give us very much info in this callback, so we don't know which of the
   /// events above triggered the callback.
   ///
-  /// On iOS this creates a problem:
+  /// On macOS, we use the SystemConfiguration framework to read the system's DNS resolvers directly.
   ///
-  /// We have no good way to get the System's default resolvers. We use a workaround which
-  /// involves reading the resolvers from Bind (i.e. /etc/resolv.conf) but this will be set to connlib's
-  /// DNS sentinel while the tunnel is active, which isn't helpful to us. To get around this, we can
-  /// very briefly update the Tunnel's matchDomains config to *not* be the catch-all [""], which
-  /// causes iOS to write the actual system resolvers into /etc/resolv.conf, which we can then read.
-  /// The issue is that this in itself causes a path update callback, which makes it hard to
-  /// differentiate between us changing the DNS configuration and the system actually receiving new
-  /// default resolvers.
+  /// On iOS, we use dlsym to access the `dns_configuration_copy` function which
+  /// returns scoped resolvers that aren't shadowed by our tunnel's DNS settings.
   ///
-  /// So we solve this problem by only doing this DNS dance if the gateways available to the path have
-  /// changed. This means we only call setDns when the physical network has changed, and therefore
-  /// we're blind to path updates where only the DNS resolvers have changed. That will happen in two
-  /// cases most commonly:
-  /// - New DNS servers were set by DHCP
-  /// - The user manually changed the DNS servers in the system settings
-  ///
-  /// For now, this will break DNS if the old servers connlib is using are no longer valid, and
-  /// can only be fixed with a sign out and sign back in which restarts the NetworkExtension.
-  ///
-  /// On macOS, Apple has exposed the SystemConfiguration framework which makes this easy and
-  /// doesn't suffer from this issue.
-  ///
-  /// See the following issues for discussion around the above issue:
+  /// See the following issues for background:
   /// - https://github.com/firezone/firezone/issues/3302
   /// - https://github.com/firezone/firezone/issues/3343
   /// - https://github.com/firezone/firezone/issues/3235
@@ -514,23 +493,8 @@ class Adapter: @unchecked Sendable {
 
   private func setSystemDefaultResolvers(_ path: Network.NWPath) {
     // Step 1: Get system default resolvers
-    #if os(macOS)
-      let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
-        interfaceName: path.availableInterfaces.first?.name)
-    #elseif os(iOS)
-
-      // DNS server updates don't necessarily trigger a connectivity change, but we'll get a path update callback
-      // nevertheless. Unfortunately there's no visible difference in instance properties between the two path
-      // objects. On macOS this isn't an issue because setting new resolvers here doesn't trigger a change.
-      // On iOS, however, we need to prevent path update loops by not reacting to path updates that we ourselves
-      // triggered by the network settings apply.
-
-      // TODO: Find a hackier hack to avoid this on iOS
-      if !path.connectivityDifferentFrom(path: lastPath) {
-        return
-      }
-      let resolvers = resetToSystemDNSGettingBindResolvers()
-    #endif
+    let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
+      interfaceName: path.availableInterfaces.first?.name)
 
     // Step 2: Validate and strip scope suffixes
     var parsedResolvers: [String] = []
@@ -626,77 +590,6 @@ class Adapter: @unchecked Sendable {
   }
 
 }
-
-// MARK: Getting System Resolvers on iOS
-#if os(iOS)
-  extension Adapter {
-    // When the tunnel is up, we can only get the system's default resolvers
-    // by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
-    // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
-    // sentinel, which isn't helpful to us.
-    private func resetToSystemDNSGettingBindResolvers() -> [String] {
-      guard let provider = packetTunnelProvider,
-        hasAppliedSettings
-      else {
-        // Network Settings hasn't been applied yet, so our sentinel isn't
-        // the system's resolver and we can grab the system resolvers directly.
-        // If we try to continue below without valid tunnel addresses assigned
-        // to the interface, we'll crash.
-        return BindResolvers.getServers()
-      }
-
-      // Use a class box to safely capture result across @Sendable closure boundary
-      final class ResolversBox: @unchecked Sendable {
-        var value: [String] = []
-      }
-      let resolversBox = ResolversBox()
-
-      // The caller is in an async context, so it's ok to block this thread here.
-      let semaphore = DispatchSemaphore(value: 0)
-
-      // Set tunnel's matchDomains to a dummy string that will never match any name
-      guard let tunnelNetworkSettings = networkSettings.setDummyMatchDomain()
-      else {
-        // This should not be possible as we have checked on `hasAppliedSettings` above.
-        // If we do hit this, it means we don't have tunnel IP addresses yet so no `networkSettings` have been applied yet.
-        semaphore.signal()
-        return BindResolvers.getServers()
-      }
-
-      // Call apply to populate /etc/resolv.conf with the system's default resolvers
-      provider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
-        if let error = error {
-          Log.error(error)
-        }
-        guard let provider = self.packetTunnelProvider else {
-          semaphore.signal()
-          return
-        }
-
-        // Only now can we get the system resolvers
-        resolversBox.value = BindResolvers.getServers()
-
-        // Restore connlib's DNS resolvers
-        guard
-          let tunnelNetworkSettings = self.networkSettings.clearDummyMatchDomain()
-        else {
-          // This should not be possible as we have applied network settings above if we get here.
-          semaphore.signal()
-          return
-        }
-        provider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
-          if let error = error {
-            Log.error(error)
-          }
-          semaphore.signal()
-        }
-      }
-
-      semaphore.wait()
-      return resolversBox.value
-    }
-  }
-#endif
 
 extension Network.NWPath {
   func connectivityDifferentFrom(path: Network.NWPath? = nil) -> Bool {
