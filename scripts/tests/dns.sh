@@ -24,10 +24,10 @@ echo "# Access httpbin by DNS"
 client_curl_resource "$HTTPBIN/get"
 
 echo "# Make sure it's going through the tunnel"
-client_nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
+client_nslookup "$HTTPBIN" | grep "19\\.0\\.0\\."
 
 echo "# Make sure a non-resource doesn't go through the tunnel"
-(client_nslookup "github.com" | grep "100\\.96.\\0\\.") && exit 1
+(client_nslookup "github.com" | grep "19\\.0\\.0\\.") && exit 1
 
 echo "# Stop the gateway and make sure the resource is inaccessible"
 docker compose stop gateway

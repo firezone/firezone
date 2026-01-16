@@ -9,7 +9,7 @@ function run_test() {
     client_curl_resource "$HTTPBIN/get"
 
     echo "# Make sure it's going through the tunnel"
-    client_nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
+    client_nslookup "$HTTPBIN" | grep "19\\.0\\.0\\."
 }
 
 run_test
