@@ -278,7 +278,40 @@ defmodule Portal.Geo do
     @radius_of_earth_km * c
   end
 
-  def location_from_headers(headers) do
+  @doc """
+  Returns geolocation data for an IP address.
+  Tries Geolix (MaxMind database) first, falls back to load balancer headers.
+  Returns {region, city, {lat, lon}}.
+  """
+  def locate(ip, headers) do
+    case lookup_ip(ip) do
+      {:ok, location} -> location
+      :error -> location_from_headers(headers)
+    end
+  end
+
+  defp lookup_ip(ip) do
+    case Geolix.lookup(ip, where: :city) do
+      %{country: %{iso_code: region}, city: %{names: %{en: city}}, location: location} ->
+        lat = Map.get(location, :latitude)
+        lon = Map.get(location, :longitude)
+        {:ok, {region, city, {lat, lon}}}
+
+      %{country: %{iso_code: region}, location: location} ->
+        lat = Map.get(location, :latitude)
+        lon = Map.get(location, :longitude)
+        {:ok, {region, nil, {lat, lon}}}
+
+      %{country: %{iso_code: region}} ->
+        {lat, lon} = maybe_put_default_coordinates(region, {nil, nil})
+        {:ok, {region, nil, {lat, lon}}}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp location_from_headers(headers) do
     # Azure Front Door only provides country via {geo_country}.
     # GCP provides country, city, and coordinates.
     case get_header(headers, "x-azure-geo-country") do

@@ -564,6 +564,18 @@ defmodule Portal.Config.Definitions do
   )
 
   ##############################################
+  ## Geolocation
+  ##############################################
+
+  @doc """
+  Path to the MaxMind GeoLite2-City database file (MMDB format).
+
+  Used for IP geolocation lookups. Download from https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+  (requires free account).
+  """
+  defconfig(:maxmind_city_db_path, :string, default: nil)
+
+  ##############################################
   ## Outbound Email Settings
   ##############################################
 
