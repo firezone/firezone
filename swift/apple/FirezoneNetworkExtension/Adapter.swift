@@ -77,7 +77,7 @@ class Adapter: @unchecked Sendable {
   private var startCompletionHandler: (Error?) -> Void
 
   /// Used for finding system DNS resolvers when network conditions have changed.
-  private let systemConfigurationResolvers = SystemConfigurationResolvers()
+  private let systemConfigurationResolvers: SystemConfigurationResolvers
 
   /// Remembers the last _relevant_ path update.
   /// A path update is considered relevant if certain properties change that require us to reset connlib's
@@ -156,7 +156,7 @@ class Adapter: @unchecked Sendable {
     internetResourceEnabled: Bool,
     packetTunnelProvider: PacketTunnelProvider,
     startCompletionHandler: @escaping (Error?) -> Void
-  ) {
+  ) throws {
     self.apiURL = apiURL
     self.token = token
     self.deviceId = deviceId
@@ -166,6 +166,7 @@ class Adapter: @unchecked Sendable {
     self.packetTunnelProvider = packetTunnelProvider
     self.startCompletionHandler = startCompletionHandler
     self.networkSettings = NetworkSettings()
+    self.systemConfigurationResolvers = try SystemConfigurationResolvers()
   }
 
   // Could happen abruptly if the process is killed.

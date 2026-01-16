@@ -20,7 +20,20 @@ import Foundation
 /// scoped resolvers that aren't shadowed by our tunnel's DNS settings.
 public class SystemConfigurationResolvers {
 
-  public init() {}
+  #if os(macOS)
+    // Arbitrary name for the connection to the store
+    private let storeName = "dev.firezone.firezone.dns" as CFString
+    private let dynamicStore: SCDynamicStore
+  #endif
+
+  public init() throws {
+    #if os(macOS)
+      guard let store = SCDynamicStoreCreate(nil, storeName, nil, nil) else {
+        throw SystemConfigurationError.failedToCreateDynamicStore(code: SCError())
+      }
+      self.dynamicStore = store
+    #endif
+  }
 
   /// Returns the DNS servers configured for the given interface using the
   /// platform-appropriate method.
@@ -215,27 +228,6 @@ public class SystemConfigurationResolvers {
       }
     }
 
-    /// We use a computed property to memoize the creation of SC Dynamic Store, since this
-    /// can fail in some circumstances to initialize, like because of allocation failures.
-    private var _dynamicStore: SCDynamicStore?
-    private var dynamicStore: SCDynamicStore? {
-      if self._dynamicStore == nil {
-        guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
-        else {
-          let code = SCError()
-          Log.error(SystemConfigurationError.failedToCreateDynamicStore(code: code))
-          return nil
-        }
-
-        self._dynamicStore = dynamicStore
-      }
-
-      return self._dynamicStore
-    }
-
-    // Arbitrary name for the connection to the store
-    private let storeName = "dev.firezone.firezone.dns" as CFString
-
     /// Returns the DNS servers configured for the given interface using the
     /// SystemConfiguration framework.
     ///
@@ -253,8 +245,7 @@ public class SystemConfigurationResolvers {
     /// 4. We assume manually-set DNS servers take precedence over DHCP ones,
     ///    so return those if found. Otherwise, return the DHCP ones.
     public func getDefaultDNSServersViaSystemConfiguration(interfaceName: String?) -> [String] {
-      guard let dynamicStore = dynamicStore,
-        let interfaceName = interfaceName,
+      guard let interfaceName = interfaceName,
         !interfaceName.isEmpty
       else {
         return []
@@ -297,9 +288,6 @@ public class SystemConfigurationResolvers {
     }
 
     private func fetch(path: String, key: String) -> Any? {
-      guard let dynamicStore = dynamicStore
-      else { return nil }
-
       guard let result = SCDynamicStoreCopyValue(dynamicStore, path as CFString)
       else {
         let code = SCError()

@@ -107,7 +107,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         enabled != nil ? enabled == "true" : (tunnelConfiguration?.internetResourceEnabled ?? false)
 
       // Create the adapter with all configuration
-      let adapter = Adapter(
+      let adapter = try Adapter(
         apiURL: apiURL,
         token: token,
         deviceId: id,

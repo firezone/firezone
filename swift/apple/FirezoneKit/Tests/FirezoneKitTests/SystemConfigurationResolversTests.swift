@@ -17,26 +17,26 @@ struct SystemConfigurationResolversTests {
   @Test("Can instantiate SystemConfigurationResolvers")
   func canInstantiate() async throws {
     // Just verify instantiation doesn't crash
-    _ = SystemConfigurationResolvers()
+    _ = try SystemConfigurationResolvers()
   }
 
   @Test("Returns empty array for nil interface name")
   func returnsEmptyForNilInterface() async throws {
-    let resolvers = SystemConfigurationResolvers()
+    let resolvers = try SystemConfigurationResolvers()
     let result = resolvers.getDefaultDNSServers(interfaceName: nil)
     #expect(result.isEmpty)
   }
 
   @Test("Returns empty array for non-existent interface")
   func returnsEmptyForNonExistentInterface() async throws {
-    let resolvers = SystemConfigurationResolvers()
+    let resolvers = try SystemConfigurationResolvers()
     let result = resolvers.getDefaultDNSServers(interfaceName: "nonexistent99")
     #expect(result.isEmpty)
   }
 
   @Test("Returns empty array for empty interface name")
   func returnsEmptyForEmptyInterface() async throws {
-    let resolvers = SystemConfigurationResolvers()
+    let resolvers = try SystemConfigurationResolvers()
     let result = resolvers.getDefaultDNSServers(interfaceName: "")
     #expect(result.isEmpty)
   }
@@ -45,21 +45,21 @@ struct SystemConfigurationResolversTests {
 
   @Test("Scoped resolvers returns empty for nil interface")
   func scopedResolversReturnsEmptyForNil() async throws {
-    let resolvers = SystemConfigurationResolvers()
+    let resolvers = try SystemConfigurationResolvers()
     let result = resolvers.getDefaultDNSServersViaScopedResolvers(interfaceName: nil)
     #expect(result.isEmpty)
   }
 
   @Test("Scoped resolvers returns empty for non-existent interface")
   func scopedResolversReturnsEmptyForNonExistent() async throws {
-    let resolvers = SystemConfigurationResolvers()
+    let resolvers = try SystemConfigurationResolvers()
     let result = resolvers.getDefaultDNSServersViaScopedResolvers(interfaceName: "nonexistent99")
     #expect(result.isEmpty)
   }
 
   @Test("Scoped resolvers can query real interface")
   func scopedResolversCanQueryRealInterface() async throws {
-    let resolvers = SystemConfigurationResolvers()
+    let resolvers = try SystemConfigurationResolvers()
 
     // en0 is typically the primary interface on macOS
     // This test verifies the dlsym/dns_configuration_copy path works without crashing
@@ -75,7 +75,7 @@ struct SystemConfigurationResolversTests {
 
   @Test("Scoped resolvers multiple calls return consistent results")
   func scopedResolversMultipleCallsConsistent() async throws {
-    let resolvers = SystemConfigurationResolvers()
+    let resolvers = try SystemConfigurationResolvers()
 
     let result1 = resolvers.getDefaultDNSServersViaScopedResolvers(interfaceName: "en0")
     let result2 = resolvers.getDefaultDNSServersViaScopedResolvers(interfaceName: "en0")
@@ -85,8 +85,8 @@ struct SystemConfigurationResolversTests {
 
   @Test("Scoped resolvers different instances return same results")
   func scopedResolversDifferentInstancesSameResults() async throws {
-    let resolvers1 = SystemConfigurationResolvers()
-    let resolvers2 = SystemConfigurationResolvers()
+    let resolvers1 = try SystemConfigurationResolvers()
+    let resolvers2 = try SystemConfigurationResolvers()
 
     let result1 = resolvers1.getDefaultDNSServersViaScopedResolvers(interfaceName: "en0")
     let result2 = resolvers2.getDefaultDNSServersViaScopedResolvers(interfaceName: "en0")
@@ -99,14 +99,14 @@ struct SystemConfigurationResolversTests {
 
     @Test("SystemConfiguration returns empty for nil interface")
     func sysConfigReturnsEmptyForNil() async throws {
-      let resolvers = SystemConfigurationResolvers()
+      let resolvers = try SystemConfigurationResolvers()
       let result = resolvers.getDefaultDNSServersViaSystemConfiguration(interfaceName: nil)
       #expect(result.isEmpty)
     }
 
     @Test("SystemConfiguration returns empty for non-existent interface")
     func sysConfigReturnsEmptyForNonExistent() async throws {
-      let resolvers = SystemConfigurationResolvers()
+      let resolvers = try SystemConfigurationResolvers()
       let result = resolvers.getDefaultDNSServersViaSystemConfiguration(
         interfaceName: "nonexistent99")
       #expect(result.isEmpty)
@@ -114,7 +114,7 @@ struct SystemConfigurationResolversTests {
 
     @Test("SystemConfiguration can query real interface")
     func sysConfigCanQueryRealInterface() async throws {
-      let resolvers = SystemConfigurationResolvers()
+      let resolvers = try SystemConfigurationResolvers()
 
       // en0 is typically the primary interface on macOS
       let result = resolvers.getDefaultDNSServersViaSystemConfiguration(interfaceName: "en0")
@@ -129,7 +129,7 @@ struct SystemConfigurationResolversTests {
 
     @Test("SystemConfiguration multiple calls return consistent results")
     func sysConfigMultipleCallsConsistent() async throws {
-      let resolvers = SystemConfigurationResolvers()
+      let resolvers = try SystemConfigurationResolvers()
 
       let result1 = resolvers.getDefaultDNSServersViaSystemConfiguration(interfaceName: "en0")
       let result2 = resolvers.getDefaultDNSServersViaSystemConfiguration(interfaceName: "en0")
@@ -139,7 +139,7 @@ struct SystemConfigurationResolversTests {
 
     @Test("Both implementations return results for active interface")
     func bothImplementationsReturnResults() async throws {
-      let resolvers = SystemConfigurationResolvers()
+      let resolvers = try SystemConfigurationResolvers()
 
       // Both should return arrays (possibly empty if en0 has no DNS configured)
       // but importantly, neither should crash
