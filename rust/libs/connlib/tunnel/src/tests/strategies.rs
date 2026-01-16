@@ -2,8 +2,8 @@ use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{
-    CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
-    InternetResource,
+    CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, EXTERNAL_IPV4_RESOURCES,
+    IPV6_RESOURCES, InternetResource,
 };
 use crate::messages::{UpstreamDo53, UpstreamDoH};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
@@ -227,7 +227,7 @@ fn non_reserved_ipv4() -> impl Strategy<Value = Ipv4Addr> {
         Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 32).unwrap(),
         Ipv4Network::new(Ipv4Addr::new(224, 0, 0, 0), 4).unwrap(), // Multicast
         DNS_SENTINELS_V4,
-        IPV4_RESOURCES,
+        EXTERNAL_IPV4_RESOURCES,
         IPV4_TUNNEL,
     ];
 

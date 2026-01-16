@@ -626,6 +626,13 @@ impl IpPacket {
             .ok()
     }
 
+    pub fn icmpv4_payload_mut(&mut self) -> Option<&mut [u8]> {
+        let icmpv4_header_len = self.as_icmpv4()?.header_len();
+        let (_, payload) = self.payload_mut().split_at_mut_checked(icmpv4_header_len)?;
+
+        Some(payload)
+    }
+
     /// In case the packet is an ICMP error with a failed packet, parses the failed packet from the ICMP payload.
     pub fn icmp_error(&self) -> Result<Option<(FailedPacket, IcmpError)>> {
         if let Some(icmpv4) = self.as_icmpv4() {

@@ -1,4 +1,5 @@
 use crate::client::IpProvider;
+use crate::client::dns_resource_nat::map_inbound_proxy_ip;
 use anyhow::Result;
 use connlib_model::{IpStack, ResourceId};
 use dns_types::{
@@ -14,6 +15,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
 };
+use tap::TapOptional;
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -352,8 +354,31 @@ impl StubResolver {
 
         tracing::trace!(%qtype, %domain, records = ?records, "Forming DNS response");
 
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "We only want to handle the A record case."
+        )]
+        let records = records
+            .into_iter()
+            .filter_map(|r| {
+                let r = match r {
+                    OwnedRecordData::A(a) => {
+                        let ip = a.addr();
+
+                        OwnedRecordData::A(
+                            map_inbound_proxy_ip(ip)
+                                .tap_none(|| tracing::warn!(%ip, "Proxy IP not in CGNAT range"))?
+                                .into(),
+                        )
+                    }
+                    r => r,
+                };
+
+                Some(r)
+            })
+            .map(|r| (domain.clone(), DNS_TTL, r));
         let response = ResponseBuilder::for_query(query, ResponseCode::NOERROR)
-            .with_records(records.into_iter().map(|r| (domain.clone(), DNS_TTL, r)))
+            .with_records(records)
             .build();
 
         ResolveStrategy::LocalResponse(response)
@@ -629,7 +654,10 @@ mod pattern {
 
 #[cfg(test)]
 mod tests {
+    use crate::client::{EXTERNAL_IPV4_RESOURCES, INTERNAL_IPV4_RESOURCES, IPV6_RESOURCES};
+
     use super::*;
+    use dns_types::RecordData;
     use std::str::FromStr as _;
     use test_case::test_case;
 
@@ -878,6 +906,49 @@ mod tests {
         };
 
         assert!(resolver.poll_event().is_none());
+    }
+
+    #[test]
+    fn maps_records_to_external_ips_in_dns_response() {
+        let mut resolver = StubResolver::default();
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Dual,
+        );
+
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(&Query::new(
+            "example.com".parse::<dns_types::DomainName>().unwrap(),
+            RecordType::A,
+        )) else {
+            panic!("Unexpected result")
+        };
+
+        for record in response.records() {
+            let RecordData::A(a) = record.data() else {
+                panic!("Unexpected record")
+            };
+
+            assert!(
+                EXTERNAL_IPV4_RESOURCES.contains(a.addr()),
+                "IPs in DNS response should be from the external range"
+            );
+        }
+
+        let (_, _, ips) = resolver
+            .resolved_resources()
+            .find(|(_, id, _)| *id == &ResourceId::from_u128(1))
+            .unwrap();
+        for ip in ips {
+            match ip {
+                IpAddr::V4(v4) => assert!(
+                    INTERNAL_IPV4_RESOURCES.contains(*v4),
+                    "IPs stored internally should be in CGNAT range"
+                ),
+                IpAddr::V6(v6) => assert!(IPV6_RESOURCES.contains(*v6)),
+            };
+        }
     }
 }
 

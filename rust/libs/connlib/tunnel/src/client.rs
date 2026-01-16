@@ -1,6 +1,6 @@
 mod dns_cache;
 pub(crate) mod dns_config;
-mod dns_resource_nat;
+pub(crate) mod dns_resource_nat;
 mod gateway_on_client;
 mod pending_flows;
 mod resource;
@@ -47,11 +47,23 @@ use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
 
-pub(crate) const IPV4_RESOURCES: Ipv4Network =
-    match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
+pub(crate) const EXTERNAL_IPV4_RESOURCES: Ipv4Network =
+    match Ipv4Network::new(EXTERNAL_IPV4_RESOURCE_ADDR, 8) {
         Ok(n) => n,
         Err(_) => unreachable!(),
     };
+const EXTERNAL_IPV4_RESOURCE_ADDR: Ipv4Addr = Ipv4Addr::new(19, 0, 0, 0);
+
+pub(crate) const INTERNAL_IPV4_RESOURCES: Ipv4Network =
+    match Ipv4Network::new(INTERNAL_IPV4_RESOURCE_ADDR, 11) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
+const INTERNAL_IPV4_RESOURCE_ADDR: Ipv4Addr = Ipv4Addr::new(100, 96, 0, 0);
+
+pub(crate) const IPV4_RESOURCE_DIFF: u32 =
+    INTERNAL_IPV4_RESOURCE_ADDR.to_bits() - EXTERNAL_IPV4_RESOURCE_ADDR.to_bits();
+
 pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
     Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
     107,
@@ -345,9 +357,20 @@ impl ClientState {
     /// In that case, this function will return `None` and you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
     pub(crate) fn handle_tun_input(
         &mut self,
-        packet: IpPacket,
+        mut packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit> {
+        // First step before any processing, map the destination IP in case it is for a DNS resource.
+        if let IpAddr::V4(v4) = packet.destination()
+            && let Some(new_dst) = dns_resource_nat::map_outbound_proxy_ip(v4)
+        {
+            packet
+                .set_dst(new_dst.into())
+                .inspect_err(|e| tracing::error!("Failed to set new destination IP: {e}"))
+                .ok()?;
+            packet.update_checksum();
+        }
+
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
@@ -452,6 +475,21 @@ impl ClientState {
                 ConnectionTrigger::IcmpDestinationUnreachableProhibited,
                 now,
             );
+        }
+
+        // Final step before emitting the packet, map the source IP in case it is for a DNS resource.
+        if let IpAddr::V4(v4) = packet.source()
+            && let Some(new_src) = dns_resource_nat::map_inbound_proxy_ip(v4)
+        {
+            let mut packet = mangle_icmp_error_for_dns_resource(packet);
+            packet
+                .set_src(new_src.into())
+                .inspect_err(|e| tracing::error!("Failed to set new source IP: {e}"))
+                .ok()?;
+
+            packet.update_checksum();
+
+            return Some(packet);
         }
 
         Some(packet)
@@ -856,7 +894,7 @@ impl ClientState {
             .map(|(ip, _)| ip)
             .chain(iter::once(IPV4_TUNNEL.into()))
             .chain(iter::once(IPV6_TUNNEL.into()))
-            .chain(iter::once(IPV4_RESOURCES.into()))
+            .chain(iter::once(EXTERNAL_IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
             .chain(iter::once(DNS_SENTINELS_V4.into()))
             .chain(iter::once(DNS_SENTINELS_V6.into()))
@@ -1837,6 +1875,31 @@ fn into_udp_dns_packet(
     .ok()
 }
 
+fn mangle_icmp_error_for_dns_resource(mut packet: IpPacket) -> IpPacket {
+    let Some(payload) = packet.icmpv4_payload_mut() else {
+        return packet;
+    };
+
+    if payload.len() < 20 {
+        return packet;
+    }
+
+    let (_, rest) = payload.split_at_mut(16);
+    let (dst_addr, _) = rest
+        .split_first_chunk_mut::<4>()
+        .expect("should have 4 bytes if len > 16 and we only removed 12");
+
+    let dst = Ipv4Addr::from_octets(*dst_addr);
+
+    let Some(new_dst) = dns_resource_nat::map_inbound_proxy_ip(dst) else {
+        return packet;
+    };
+
+    *dst_addr = new_dst.octets();
+
+    packet
+}
+
 pub struct IpProvider {
     ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
     ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
@@ -1845,7 +1908,7 @@ pub struct IpProvider {
 impl IpProvider {
     pub fn for_resources() -> Self {
         IpProvider::new(
-            IPV4_RESOURCES,
+            INTERNAL_IPV4_RESOURCES,
             IPV6_RESOURCES,
             vec![
                 IpNetwork::V4(DNS_SENTINELS_V4),
@@ -1969,6 +2032,20 @@ mod tests {
                 GatewayId::from_u128(40)
             ]
         );
+    }
+
+    #[test]
+    fn mangles_icmp_error() {
+        let packet_for_dns_resource =
+            ip_packet::make::udp_packet(ip("127.0.0.1"), ip("100.96.0.1"), 0, 0, Vec::default())
+                .unwrap();
+        let icmp_error =
+            ip_packet::make::icmp_dest_unreachable_network(&packet_for_dns_resource).unwrap();
+
+        let mangled_icmp_error = mangle_icmp_error_for_dns_resource(icmp_error);
+        let (failed_packet, _) = mangled_icmp_error.icmp_error().unwrap().unwrap();
+
+        assert_eq!(failed_packet.dst(), ip("19.0.0.1"));
     }
 
     impl ClientState {
@@ -2271,7 +2348,7 @@ mod proptests {
                 .into_iter()
                 .chain(iter::once(IPV4_TUNNEL.into()))
                 .chain(iter::once(IPV6_TUNNEL.into()))
-                .chain(iter::once(IPV4_RESOURCES.into()))
+                .chain(iter::once(EXTERNAL_IPV4_RESOURCES.into()))
                 .chain(iter::once(IPV6_RESOURCES.into()))
                 .chain(iter::once(DNS_SENTINELS_V4.into()))
                 .chain(iter::once(DNS_SENTINELS_V6.into())),

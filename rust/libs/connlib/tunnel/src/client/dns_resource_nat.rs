@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, VecDeque, btree_map::Entry},
-    net::IpAddr,
+    net::{IpAddr, Ipv4Addr},
     time::{Duration, Instant},
 };
 
@@ -9,7 +9,11 @@ use connlib_model::{GatewayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
 
-use crate::{p2p_control, unique_packet_buffer::UniquePacketBuffer};
+use crate::{
+    client::{EXTERNAL_IPV4_RESOURCES, INTERNAL_IPV4_RESOURCES},
+    p2p_control,
+    unique_packet_buffer::UniquePacketBuffer,
+};
 
 /// Tracks the domains for which we have set up a NAT per gateway.
 ///
@@ -229,6 +233,26 @@ impl DnsResourceNat {
     pub fn poll_packet(&mut self) -> Option<(GatewayId, DomainName, IpPacket)> {
         self.assigned_ips_packets.pop_front()
     }
+}
+
+pub fn map_outbound_proxy_ip(ip: Ipv4Addr) -> Option<Ipv4Addr> {
+    if !EXTERNAL_IPV4_RESOURCES.contains(ip) {
+        return None;
+    }
+
+    Some(Ipv4Addr::from_bits(
+        ip.to_bits() + crate::client::IPV4_RESOURCE_DIFF,
+    ))
+}
+
+pub fn map_inbound_proxy_ip(ip: Ipv4Addr) -> Option<Ipv4Addr> {
+    if !INTERNAL_IPV4_RESOURCES.contains(ip) {
+        return None;
+    }
+
+    Some(Ipv4Addr::from_bits(
+        ip.to_bits() - crate::client::IPV4_RESOURCE_DIFF,
+    ))
 }
 
 fn should_send_assigned_ips_packet(now: Instant, sent_at: Instant) -> bool {

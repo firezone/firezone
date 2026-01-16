@@ -49,6 +49,7 @@ serde_with = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
+tap = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
