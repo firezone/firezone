@@ -50,6 +50,12 @@ export default function Android() {
           responses. For example, this allows Firezone to automatically sign-in
           even if Internet Access is gated by a captive portal.
         </ChangeItem>
+        <ChangeItem pull="11742">
+          Changes the DNS resource IP range from <code>100.96.0.0/11</code> to{" "}
+          <code>19.0.0.0/8</code> to fix a CORS error in Chrome when assets like
+          fonts were loaded from a DNS resource when the website itself isn't a
+          resource.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-12-23")}>
         <ChangeItem pull="11077">
