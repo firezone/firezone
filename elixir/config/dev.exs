@@ -179,6 +179,16 @@ config :portal, PortalAPI.Endpoint,
 ##### Third-party configs #####
 ###############################
 
+config :geolix,
+  # Download from maxmind.com (requires free account)
+  databases: [
+    %{
+      id: :city,
+      adapter: Geolix.Adapter.MMDB2,
+      source: Path.expand("../priv/geoip/GeoLite2-City.mmdb", __DIR__)
+    }
+  ]
+
 # Include only message and custom metadata in development logs
 # This filters out Phoenix's automatic metadata like pid, request_id, etc.
 config :logger, :default_formatter,

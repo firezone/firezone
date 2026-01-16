@@ -105,6 +105,10 @@ defmodule Portal.MixProject do
       {:multipart, "~> 0.4.0"},
       {:phoenix_swoosh, "~> 1.0"},
 
+      # IP Geolocation
+      {:geolix, "~> 2.0"},
+      {:geolix_adapter_mmdb2, "~> 0.6"},
+
       # API / OpenAPI
       {:open_api_spex, "~> 3.22.0"},
       {:ymlr, "~> 5.0"},
