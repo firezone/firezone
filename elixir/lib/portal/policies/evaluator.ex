@@ -34,6 +34,15 @@ defmodule Portal.Policies.Evaluator do
   defp min_expires_at(expires_at, min_expires_at),
     do: Enum.min([expires_at, min_expires_at], DateTime)
 
+  # When region is unknown (nil), geo-based policies should fail conservatively
+  def fetch_conformation_expiration(
+        %{property: :remote_ip_location_region},
+        %Client{last_seen_remote_ip_location_region: nil},
+        _auth_provider_id
+      ) do
+    :error
+  end
+
   def fetch_conformation_expiration(
         %{property: :remote_ip_location_region, operator: :is_in, values: values},
         %Client{} = client,
