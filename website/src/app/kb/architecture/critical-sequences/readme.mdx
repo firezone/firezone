@@ -273,7 +273,7 @@ or [configured upstream resolvers](/kb/deploy/dns) in your account.
 
 If the query matches a Resource, however, the following happens:
 
-1. The resolver generates a special, internal IP from the range `19.0.0.0/8`
+1. The resolver generates a special, internal IP from the range `19.0.0.0/11`
    or `fd00:2021:1111:8000::/107` and stores an internal mapping of this IP to
    the DNS name originally queried. The IP is returned to the application that
    made the query.

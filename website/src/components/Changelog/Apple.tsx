@@ -64,9 +64,9 @@ export default function Apple() {
         </ChangeItem>
         <ChangeItem pull="11742">
           Changes the DNS resource IP range from <code>100.96.0.0/11</code> to{" "}
-          <code>19.0.0.0/8</code> to fix a CORS error in Chrome when assets like
-          fonts were loaded from a DNS resource when the website itself isn't a
-          resource.
+          <code>19.0.0.0/11</code> to fix a CORS error in Chrome when assets
+          like fonts were loaded from a DNS resource when the website itself
+          isn't a resource.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.11" date={new Date("2025-12-23")}>
