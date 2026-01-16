@@ -1,9 +1,12 @@
 defmodule Portal.Application do
   use Application
 
+  require Logger
+
   @impl true
   def start(_type, _args) do
     configure_logger()
+    verify_geolix_databases()
 
     # Attach Oban Sentry reporter
     Portal.Telemetry.Reporter.Oban.attach()
@@ -109,5 +112,17 @@ defmodule Portal.Application do
         enabled
       end
     end)
+  end
+
+  defp verify_geolix_databases do
+    for %{id: id, source: source} <- Portal.Config.get_env(:geolix, :databases, []) do
+      case Geolix.metadata(where: id) do
+        nil ->
+          Logger.error("Geolix database #{inspect(id)} failed to load from #{source}")
+
+        _metadata ->
+          :ok
+      end
+    end
   end
 end
