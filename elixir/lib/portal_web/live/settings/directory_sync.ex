@@ -270,7 +270,12 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     case Oban.insert(sync_module.new(%{"directory_id" => id})) do
       {:ok, _job} ->
-        {:noreply, put_flash(socket, :success, "Directory sync has been queued successfully.")}
+        socket =
+          socket
+          |> init()
+          |> put_flash(:success, "Directory sync has been queued successfully.")
+
+        {:noreply, socket}
 
       {:error, reason} ->
         Logger.info("Failed to enqueue #{type} sync job", id: id, reason: inspect(reason))
@@ -358,6 +363,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   directory={directory}
                   subject={@subject}
                   is_legacy={directory.is_legacy}
+                  most_recent_job={directory.most_recent_job}
                 />
               <% end %>
             </div>
@@ -574,6 +580,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   attr :directory, :any, required: true
   attr :subject, :any, required: true
   attr :is_legacy, :boolean, default: false
+  attr :most_recent_job, :map, default: nil
 
   defp directory_card(assigns) do
     # Determine if toggle should be disabled (when directory is disabled and account lacks feature)
@@ -740,76 +747,86 @@ defmodule PortalWeb.Settings.DirectorySync do
           </.link>
         <% end %>
 
-        <%= if @directory.has_active_job do %>
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <.icon
-                name="hero-arrow-path"
-                class="w-5 h-5 flex-shrink-0 text-accent-600 animate-spin"
-                title="Sync in Progress"
-              />
-              <span class="font-medium text-accent-600">
-                Sync in progress...
-              </span>
-            </div>
-            <%!-- Invisible spacer to match button height and prevent vertical jump --%>
-            <div class="h-6"></div>
-          </div>
-        <% else %>
-          <%= if @directory.synced_at do %>
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <.icon name="hero-arrow-path" class="w-5 h-5 flex-shrink-0" title="Last Synced" />
-                <span class="font-medium">
-                  synced <.relative_datetime datetime={@directory.synced_at} />
-                </span>
-              </div>
-              <.button
-                size="xs"
-                style="primary"
-                phx-click="sync_directory"
-                phx-value-id={@directory.id}
-                phx-value-type={@type}
-                disabled={@directory.is_disabled}
-              >
-                Sync Now
-              </.button>
-            </div>
-          <% else %>
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <.icon
-                  name="hero-arrow-path"
-                  class="w-5 h-5 flex-shrink-0 text-neutral-400"
-                  title="Never Synced"
-                />
-                <span class="font-medium text-neutral-400">
-                  Never synced
-                </span>
-              </div>
-              <.button
-                size="xs"
-                style="primary"
-                phx-click="sync_directory"
-                phx-value-id={@directory.id}
-                phx-value-type={@type}
-                disabled={@directory.is_disabled}
-              >
-                Sync Now
-              </.button>
-            </div>
-          <% end %>
-        <% end %>
-
         <div class="flex items-center gap-2">
           <.icon name="hero-clock" class="w-5 h-5 flex-shrink-0" title="Updated" />
           <span class="font-medium">
             updated <.relative_datetime datetime={@directory.updated_at} />
           </span>
         </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <%= case @most_recent_job do %>
+              <% %{state: "executing"} = job -> %>
+                <.icon
+                  name="hero-arrow-path"
+                  class="w-5 h-5 flex-shrink-0 text-accent-600 animate-spin"
+                  title="Syncing"
+                />
+                <span class="font-medium text-accent-600">
+                  syncing ({format_duration(job.elapsed_seconds)} elapsed)
+                </span>
+              <% %{state: state} when state in ["available", "scheduled"] -> %>
+                <.icon
+                  name="hero-clock"
+                  class="w-5 h-5 flex-shrink-0 text-neutral-400"
+                  title="Queued"
+                />
+                <span class="font-medium text-neutral-500">
+                  sync queued
+                </span>
+              <% %{state: "completed"} = job -> %>
+                <.icon name="hero-arrow-path" class="w-5 h-5 flex-shrink-0" title="Last Synced" />
+                <span class="font-medium">
+                  synced <.relative_datetime datetime={job.completed_at} />
+                  in {format_duration(job.duration_seconds)}
+                </span>
+              <% _ -> %>
+                <%= if @directory.synced_at do %>
+                  <.icon name="hero-arrow-path" class="w-5 h-5 flex-shrink-0" title="Last Synced" />
+                  <span class="font-medium">
+                    synced <.relative_datetime datetime={@directory.synced_at} />
+                  </span>
+                <% else %>
+                  <.icon
+                    name="hero-arrow-path"
+                    class="w-5 h-5 flex-shrink-0 text-neutral-400"
+                    title="Never Synced"
+                  />
+                  <span class="font-medium text-neutral-400">
+                    Never synced
+                  </span>
+                <% end %>
+            <% end %>
+          </div>
+          <.button
+            size="xs"
+            style="primary"
+            phx-click="sync_directory"
+            phx-value-id={@directory.id}
+            phx-value-type={@type}
+            disabled={@directory.is_disabled or @directory.has_active_job}
+          >
+            Sync Now
+          </.button>
+        </div>
       </div>
     </div>
     """
+  end
+
+  defp format_duration(nil), do: "-"
+  defp format_duration(seconds) when seconds < 60, do: "#{seconds}s"
+
+  defp format_duration(seconds) do
+    minutes = div(seconds, 60)
+    remaining_seconds = rem(seconds, 60)
+
+    if remaining_seconds > 0 do
+      "#{minutes}m #{remaining_seconds}s"
+    else
+      "#{minutes}m"
+    end
   end
 
   attr :directory, :any, required: true
@@ -1304,13 +1321,18 @@ defmodule PortalWeb.Settings.DirectorySync do
          {:ok, %Req.Response{status: 200, body: body}} <-
            Google.APIClient.get_customer(access_token),
          :ok <- Google.APIClient.test_connection(access_token, body["customerDomain"]) do
+      # Merge existing changes with new verification data and re-run validation
+      # This preserves form changes (like name, impersonation_email) while adding domain
+      attrs =
+        changeset.changes
+        |> Map.put(:domain, body["customerDomain"])
+        |> Map.put(:is_verified, true)
+        |> Map.new(fn {k, v} -> {to_string(k), v} end)
+
       changeset =
         changeset
         |> apply_changes()
-        |> changeset(%{
-          "domain" => body["customerDomain"],
-          "is_verified" => true
-        })
+        |> changeset(attrs)
 
       {:noreply,
        assign(socket, form: to_form(changeset), verification_error: nil, verifying: false)}
@@ -1374,10 +1396,8 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     with {:ok, access_token} <- Okta.APIClient.fetch_access_token(client),
          :ok <- Okta.APIClient.test_connection(client, access_token) do
-      changeset =
-        changeset
-        |> apply_changes()
-        |> changeset(%{"is_verified" => true})
+      # Use put_change to preserve existing changes (like client_id) in the changeset
+      changeset = put_change(changeset, :is_verified, true)
 
       {:noreply,
        assign(socket, form: to_form(changeset), verification_error: nil, verifying: false)}
@@ -1729,22 +1749,79 @@ defmodule PortalWeb.Settings.DirectorySync do
         from(j in Oban.Job,
           where: j.worker in ["Portal.Entra.Sync", "Portal.Google.Sync", "Portal.Okta.Sync"],
           where: j.state in ["available", "executing", "scheduled"],
-          where: fragment("?->>'directory_id'", j.args) in ^directory_ids
+          where: fragment("?->>'directory_id'", j.args) in ^directory_ids,
+          order_by: [desc: j.inserted_at]
         )
         |> Safe.unscoped()
         |> Safe.all()
-        |> Enum.map(fn job ->
-          directory_id = job.args["directory_id"]
-          {directory_id, job.id}
-        end)
+        |> Enum.map(fn job -> {job.args["directory_id"], job} end)
         |> Map.new()
 
-      # Add has_active_job and is_legacy fields to each directory
+      # Query for most recent completed job per directory
+      completed_jobs =
+        from(j in Oban.Job,
+          where: j.worker in ["Portal.Entra.Sync", "Portal.Google.Sync", "Portal.Okta.Sync"],
+          where: j.state in ["completed", "discarded", "cancelled", "retryable"],
+          where: fragment("?->>'directory_id'", j.args) in ^directory_ids,
+          order_by: [desc: j.completed_at]
+        )
+        |> Safe.unscoped()
+        |> Safe.all()
+        |> Enum.uniq_by(& &1.args["directory_id"])
+        |> Enum.map(fn job -> {job.args["directory_id"], job} end)
+        |> Map.new()
+
+      # Add has_active_job, is_legacy, and most_recent_job fields
+      # most_recent_job is the active job if one exists, otherwise the last completed job
       Enum.map(directories, fn dir ->
+        active_job = Map.get(active_jobs, dir.id)
+        completed_job = Map.get(completed_jobs, dir.id)
+        most_recent_job = active_job || completed_job
+
         dir
-        |> Map.put(:has_active_job, Map.has_key?(active_jobs, dir.id))
+        |> Map.put(:has_active_job, active_job != nil)
         |> Map.put(:is_legacy, Map.get(dir, :legacy_service_account_key) != nil)
+        |> Map.put(:most_recent_job, job_to_map(most_recent_job))
       end)
+    end
+
+    defp job_to_map(nil), do: nil
+
+    defp job_to_map(job) do
+      now = DateTime.utc_now()
+
+      {elapsed_seconds, duration_seconds} =
+        case job.state do
+          state when state in ["available", "scheduled"] ->
+            # Job hasn't started yet, show time since inserted
+            {DateTime.diff(now, job.inserted_at, :second), nil}
+
+          "executing" ->
+            # Job is running, show elapsed time since it started
+            elapsed =
+              if job.attempted_at, do: DateTime.diff(now, job.attempted_at, :second), else: 0
+
+            {elapsed, nil}
+
+          _ ->
+            # Completed job, show duration
+            duration =
+              if job.attempted_at && job.completed_at do
+                DateTime.diff(job.completed_at, job.attempted_at, :second)
+              end
+
+            {nil, duration}
+        end
+
+      %{
+        directory_id: job.args["directory_id"],
+        state: job.state,
+        completed_at: job.completed_at,
+        inserted_at: job.inserted_at,
+        elapsed_seconds: elapsed_seconds,
+        duration_seconds: duration_seconds,
+        errors: job.errors
+      }
     end
 
     defp enrich_with_sync_stats(directories, subject) do

@@ -360,7 +360,18 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp clear_verification_if_trigger_fields_changed(changeset) do
-    fields = [:client_id, :client_secret, :discovery_document_uri, :okta_domain]
+    schema = changeset.data.__struct__
+
+    # Provider-specific trigger fields:
+    # - Okta: okta_domain is user-editable, discovery_document_uri is computed from it
+    # - OIDC: discovery_document_uri is user-editable
+    # - Google/Entra: no user-editable OIDC config fields
+    fields =
+      case schema do
+        Okta.AuthProvider -> [:client_id, :client_secret, :okta_domain]
+        OIDC.AuthProvider -> [:client_id, :client_secret, :discovery_document_uri]
+        _ -> []
+      end
 
     if Enum.any?(fields, &get_change(changeset, &1)) do
       put_change(changeset, :is_verified, false)
@@ -1133,8 +1144,6 @@ defmodule PortalWeb.Settings.Authentication do
   defp titleize("entra"), do: "Microsoft Entra"
   defp titleize("okta"), do: "Okta"
   defp titleize("oidc"), do: "OpenID Connect"
-  defp titleize("email_otp"), do: "Email OTP"
-  defp titleize("userpass"), do: "Username & Password"
 
   defp maybe_initialize_with_parent(changeset, account_id) do
     if is_nil(get_field(changeset, :id)) do
