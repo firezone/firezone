@@ -140,24 +140,22 @@ defmodule Portal.AuthProviderFixtures do
   end
 
   @doc """
-  Generate an OIDC auth provider with a Bypass mock server.
+  Generate an OIDC auth provider configured to use the Req.Test mock endpoint.
 
-  This variant accepts a Bypass instance and configures the provider's
-  discovery_document_uri and issuer based on the bypass port.
+  This variant sets up the provider to work with PortalWeb.Mocks.OIDC stubs.
 
   ## Examples
 
-      bypass = PortalWeb.Mocks.OIDC.discovery_document_server()
-      provider = oidc_provider_fixture(bypass, account: account)
+      Mocks.OIDC.stub_discovery_document()
+      provider = oidc_provider_fixture(:mock, account: account)
 
   """
-  def oidc_provider_fixture(%Bypass{} = bypass, attrs) do
-    discovery_url = "http://localhost:#{bypass.port}/.well-known/openid-configuration"
-    issuer = "http://localhost:#{bypass.port}/"
+  def oidc_provider_fixture(:mock, attrs) do
+    mock_endpoint = PortalWeb.Mocks.OIDC.mock_endpoint()
 
     attrs
-    |> Keyword.put(:discovery_document_uri, discovery_url)
-    |> Keyword.put_new(:issuer, issuer)
+    |> Keyword.put(:discovery_document_uri, PortalWeb.Mocks.OIDC.discovery_document_uri())
+    |> Keyword.put_new(:issuer, "#{mock_endpoint}/")
     |> oidc_provider_fixture()
   end
 
@@ -217,7 +215,8 @@ defmodule Portal.AuthProviderFixtures do
         :issuer,
         :is_verified,
         :is_default,
-        :is_disabled
+        :is_disabled,
+        :is_legacy
       ])
       |> Ecto.Changeset.put_change(:id, auth_provider.id)
       |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)
@@ -235,15 +234,6 @@ defmodule Portal.AuthProviderFixtures do
       issuer: "https://accounts.google.com",
       is_verified: true
     }
-  end
-
-  def google_provider_fixture(%Bypass{} = bypass, attrs) do
-    issuer = "http://localhost:#{bypass.port}"
-
-    attrs
-    |> Enum.into(%{})
-    |> Map.put_new(:issuer, issuer)
-    |> google_provider_fixture()
   end
 
   def google_provider_fixture(attrs \\ %{}) do
@@ -269,15 +259,6 @@ defmodule Portal.AuthProviderFixtures do
       issuer: "https://login.microsoftonline.com/tenant-id/v2.0",
       is_verified: true
     }
-  end
-
-  def entra_provider_fixture(%Bypass{} = bypass, attrs) do
-    issuer = "http://localhost:#{bypass.port}"
-
-    attrs
-    |> Enum.into(%{})
-    |> Map.put_new(:issuer, issuer)
-    |> entra_provider_fixture()
   end
 
   def entra_provider_fixture(attrs \\ %{}) do
@@ -309,17 +290,6 @@ defmodule Portal.AuthProviderFixtures do
       client_secret: "okta-client-secret-#{unique_num}",
       is_verified: true
     }
-  end
-
-  def okta_provider_fixture(%Bypass{} = bypass, attrs) do
-    okta_domain = "localhost:#{bypass.port}"
-    issuer = "https://#{okta_domain}"
-
-    attrs
-    |> Enum.into(%{})
-    |> Map.put_new(:okta_domain, okta_domain)
-    |> Map.put_new(:issuer, issuer)
-    |> okta_provider_fixture()
   end
 
   def okta_provider_fixture(attrs \\ %{}) do
