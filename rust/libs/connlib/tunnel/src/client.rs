@@ -1887,7 +1887,7 @@ fn mangle_icmp_error_for_dns_resource(mut packet: IpPacket) -> IpPacket {
     let (_, rest) = payload.split_at_mut(16);
     let (dst_addr, _) = rest
         .split_first_chunk_mut::<4>()
-        .expect("should have 4 bytes if len > 16 and we only removed 12");
+        .expect("should have 4 bytes if len > 20 and we only removed 16");
 
     let dst = Ipv4Addr::from_octets(*dst_addr);
 
