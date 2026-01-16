@@ -158,6 +158,7 @@ struct SystemConfigurationResolversTests {
         let isValidIPv6 = IPv6Address(server) != nil
         #expect(isValidIPv4 || isValidIPv6, "'\(server)' should be a valid IPv4 or IPv6 address")
       }
+      #expect(scopedResult == sysConfigResult, "should return same result")
     }
   #endif
 }
