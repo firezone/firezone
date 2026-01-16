@@ -1400,7 +1400,7 @@ fn listening_port() -> impl Strategy<Value = u16> {
 fn default_routes_v4() -> Vec<Ipv4Network> {
     vec![
         Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11).unwrap(),
-        Ipv4Network::new(Ipv4Addr::new(19, 0, 0, 0), 8).unwrap(),
+        Ipv4Network::new(Ipv4Addr::new(19, 0, 0, 0), 11).unwrap(),
         Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap(),
     ]
 }
