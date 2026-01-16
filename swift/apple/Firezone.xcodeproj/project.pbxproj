@@ -9,8 +9,6 @@
 /* Begin PBXBuildFile section */
 		05CF1CF1290B1CEE00CF4755 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
 		05CF1D17290B1FE700CF4755 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */; };
-		A1B2C3D4E5F6A78901234568 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */; };
-		A1B2C3D4E5F6A78901234569 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */; };
 		05D3BB2128FDE9C000BC3727 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
 		146C8E809FF744D18C053A79 /* Channel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C09DC14A4A04715A37BC04C /* Channel.swift */; };
 		6571861AB9324D6A9395BDB3 /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
@@ -24,8 +22,6 @@
 		8D5047F82CE6AA22009802E9 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8D5047F72CE6AA22009802E9 /* FirezoneKit */; };
 		8D5047FB2CE6AA37009802E9 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */ = {isa = PBXBuildFile; fileRef = 6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */; };
 		8D5047FE2CE6AA54009802E9 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */; };
-		8D5048002CE6AA60009802E9 /* SystemConfigurationResolvers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D6939312BA2521A00AF4396 /* SystemConfigurationResolvers.swift */; };
-		8D69392C2BA24FE600AF4396 /* BindResolvers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D69392B2BA24FE600AF4396 /* BindResolvers.swift */; };
 		8DC08BD72B297DB400675F46 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */ = {isa = PBXBuildFile; fileRef = 6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */; };
 		8DC1699D2CFF77D1006801B5 /* dev.firezone.firezone.network-extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8DC169A02CFF77D1006801B5 /* dev.firezone.firezone.network-extension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -38,6 +34,8 @@
 		8DCC022A28D512AE007E12D2 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022928D512AE007E12D2 /* Preview Assets.xcassets */; };
 		8DE452A82CE6C194004CEDF9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D5047E82CE6A8F4009802E9 /* main.swift */; };
 		8DFDEAC72D2CEBA500615095 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */; };
+		A1B2C3D4E5F6A78901234568 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */; };
+		A1B2C3D4E5F6A78901234569 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */; };
 		C1892134991C462C8E137DE3 /* Channel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C09DC14A4A04715A37BC04C /* Channel.swift */; };
 		C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
 		CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2847ACC9D73EA6F356F2DEE1 /* connlib.swift */; };
@@ -87,7 +85,6 @@
 
 /* Begin PBXFileReference section */
 		05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathUpdates.swift; sourceTree = "<group>"; };
 		05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "dev.firezone.firezone.network-extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		05CF1CF6290B1CEE00CF4755 /* FirezoneNetworkExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FirezoneNetworkExtension.entitlements; sourceTree = "<group>"; };
 		05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
@@ -102,8 +99,6 @@
 		8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelLogArchive.swift; sourceTree = "<group>"; };
 		8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = "dev.firezone.firezone.network-extension.systemextension"; sourceTree = BUILT_PRODUCTS_DIR; };
 		8D5047E82CE6A8F4009802E9 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
-		8D69392B2BA24FE600AF4396 /* BindResolvers.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BindResolvers.swift; sourceTree = "<group>"; };
-		8D6939312BA2521A00AF4396 /* SystemConfigurationResolvers.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SystemConfigurationResolvers.swift; sourceTree = "<group>"; };
 		8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		8DC08BCC2B296C5900675F46 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = usr/lib/libresolv.9.tbd; sourceTree = SDKROOT; };
 		8DC08BD12B297B7B00675F46 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
@@ -117,6 +112,7 @@
 		8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = config.xcconfig; path = xcconfig/config.xcconfig; sourceTree = "<group>"; };
 		8DE1077A2D2313EB00DB5A45 /* Info.iOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.iOS.plist; sourceTree = "<group>"; };
 		8DE1077B2D2313EB00DB5A45 /* Info.macOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.macOS.plist; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathUpdates.swift; sourceTree = "<group>"; };
 		E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SessionEventLoop.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -159,8 +155,6 @@
 			children = (
 				8DE1077A2D2313EB00DB5A45 /* Info.iOS.plist */,
 				8DE1077B2D2313EB00DB5A45 /* Info.macOS.plist */,
-				8D6939312BA2521A00AF4396 /* SystemConfigurationResolvers.swift */,
-				8D69392B2BA24FE600AF4396 /* BindResolvers.swift */,
 				6C09DC14A4A04715A37BC04C /* Channel.swift */,
 				E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */,
 				05CF1CF6290B1CEE00CF4755 /* FirezoneNetworkExtension.entitlements */,
@@ -453,7 +447,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "./mise-tasks/format.sh";
+			shellScript = "./mise-tasks/format.sh\n";
 		};
 		8D8555822D0A796100A1EA09 /* Build Connlib */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -507,7 +501,6 @@
 				8DC08BD72B297DB400675F46 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */,
 				8D41B9A52D15DD6800D16065 /* TunnelLogArchive.swift in Sources */,
 				05CF1D17290B1FE700CF4755 /* PacketTunnelProvider.swift in Sources */,
-				8D69392C2BA24FE600AF4396 /* BindResolvers.swift in Sources */,
 				146C8E809FF744D18C053A79 /* Channel.swift in Sources */,
 				C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */,
 				A1B2C3D4E5F6A78901234568 /* NetworkPathUpdates.swift in Sources */,
@@ -522,7 +515,6 @@
 				8DE452A82CE6C194004CEDF9 /* main.swift in Sources */,
 				8D5047FB2CE6AA37009802E9 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */,
 				8D5047FE2CE6AA54009802E9 /* PacketTunnelProvider.swift in Sources */,
-				8D5048002CE6AA60009802E9 /* SystemConfigurationResolvers.swift in Sources */,
 				C1892134991C462C8E137DE3 /* Channel.swift in Sources */,
 				6571861AB9324D6A9395BDB3 /* SessionEventLoop.swift in Sources */,
 				858AA13A09A55E3B1DD5DEDA /* Adapter.swift in Sources */,
