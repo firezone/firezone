@@ -136,7 +136,7 @@ config :portal, PortalWeb.Endpoint,
   url: [port: 13_100],
   server: true
 
-config :portal, PortalWeb.Plugs.SecureHeaders,
+config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
