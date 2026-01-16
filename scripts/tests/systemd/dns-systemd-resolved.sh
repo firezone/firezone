@@ -56,7 +56,7 @@ sudo resolvectl dns "$DOCKER_IFACE" ""
 curl -v $HTTPBIN/get || debug_exit
 
 # Make sure it's going through the tunnel
-nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
+nslookup "$HTTPBIN" | grep "19\\.0\\.0\\."
 
 # Print some debug info
 resolvectl status

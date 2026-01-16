@@ -1,5 +1,5 @@
 use crate::{
-    client::{CidrResource, IPV4_RESOURCES, IPV6_RESOURCES, Resource},
+    client::{CidrResource, EXTERNAL_IPV4_RESOURCES, IPV6_RESOURCES, Resource},
     dns,
     messages::{UpstreamDo53, UpstreamDoH},
     proptest::{host_v4, host_v6},
@@ -409,7 +409,7 @@ pub(crate) fn dns_queries(
 
 fn ptr_query_ip() -> impl Strategy<Value = IpAddr> {
     prop_oneof![
-        host_v4(IPV4_RESOURCES).prop_map_into(),
+        host_v4(EXTERNAL_IPV4_RESOURCES).prop_map_into(),
         host_v6(IPV6_RESOURCES).prop_map_into(),
         any::<IpAddr>(),
     ]

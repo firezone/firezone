@@ -11,7 +11,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
-use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::client::{INTERNAL_IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::gateway::filter_engine::FilterEngine;
 use crate::gateway::flow_tracker;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
@@ -666,7 +666,8 @@ impl TranslationState {
 }
 
 fn is_dns_addr(addr: IpAddr) -> bool {
-    IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
+    IpNetwork::from(INTERNAL_IPV4_RESOURCES).contains(addr)
+        || IpNetwork::from(IPV6_RESOURCES).contains(addr)
 }
 
 fn insert_filters<'a>(
