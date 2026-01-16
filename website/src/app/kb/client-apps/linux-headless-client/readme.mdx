@@ -252,10 +252,10 @@ Resource:
 
 ```text
 > curl --silent --output /dev/null --write-out %{remote_ip}\\n https://example.com
-100.96.0.2
+19.0.0.2
 ```
 
-Firezone resources use the ranges `100.96.0.0/11` and
+Firezone resources use the ranges `19.0.0.0/8` and
 `fd00:2021:1111:8000::/107`.
 
 ### Revert `/etc/resolv.conf` DNS control

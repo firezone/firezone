@@ -48,7 +48,7 @@ for Firezone Resources, and never sees the actual IP addresses of DNS Resources
 in your account, ensuring your DNS data remains private and secure.
 
 For example, if `github.com` was added as a Resource, an `nslookup` might return
-`100.96.0.1` as its IPv4 address:
+`19.0.0.1` as its IPv4 address:
 
 ```text
 > nslookup github.com
@@ -57,7 +57,7 @@ Address: 100.100.111.1#53
 
 Non-authoritative answer:
 Name:	github.com
-Address: 100.96.0.1
+Address: 19.0.0.1
 ```
 
 If the query doesn't match a Resource, the resolver forwards the query to one of

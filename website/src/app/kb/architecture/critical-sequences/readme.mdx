@@ -273,7 +273,7 @@ or [configured upstream resolvers](/kb/deploy/dns) in your account.
 
 If the query matches a Resource, however, the following happens:
 
-1. The resolver generates a special, internal IP from the range `100.96.0.0/11`
+1. The resolver generates a special, internal IP from the range `19.0.0.0/8`
    or `fd00:2021:1111:8000::/107` and stores an internal mapping of this IP to
    the DNS name originally queried. The IP is returned to the application that
    made the query.
@@ -292,7 +292,7 @@ If the query matches a Resource, however, the following happens:
    IP back to the actual IP address of the Resource, forwarding the traffic
    accordingly.
 
-This is why you'll see DNS-based Resources resolve to IPs such as `100.96.0.1`
+This is why you'll see DNS-based Resources resolve to IPs such as `19.0.0.1`
 while the Client is signed in:
 
 ```text
@@ -304,7 +304,7 @@ Address: 100.100.111.1#53
 Non-authoritative answer:
 
 Name: github.com
-Address: 100.96.0.1
+Address: 19.0.0.1
 ```
 
 Notice in the above process that at no point does the Client's system resolver
