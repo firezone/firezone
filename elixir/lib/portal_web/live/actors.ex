@@ -1167,29 +1167,30 @@ defmodule PortalWeb.Actors do
                         name={client_os_icon_name(token.last_seen_user_agent)}
                         class="w-6 h-6 flex-shrink-0"
                       />
-                      <div class="flex-1 grid grid-cols-3 gap-x-4 text-sm">
-                        <div>
+                      <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
+                        <div class="w-28">
                           <span class="text-xs uppercase text-neutral-500">Last connected</span>
                           <div class="text-neutral-900">
                             <.relative_datetime datetime={token.last_seen_at} />
                           </div>
                         </div>
-                        <div>
-                          <span class="text-xs uppercase text-neutral-500">Location</span>
-                          <div class="text-neutral-900">
-                            <%= if token_location(token) do %>
-                              <span class="truncate" title={token_location(token)}>
-                                {token_location(token)}
-                              </span>
-                            <% else %>
-                              -
-                            <% end %>
-                          </div>
-                        </div>
-                        <div>
+                        <div class="w-20">
                           <span class="text-xs uppercase text-neutral-500">Expires</span>
                           <div class="text-neutral-900">
                             <.relative_datetime datetime={token.expires_at} />
+                          </div>
+                        </div>
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Location</span>
+                          <div class="text-neutral-900">
+                            <%= if token_location(token) || token.last_seen_remote_ip do %>
+                              <div :if={token_location(token)}>{token_location(token)}</div>
+                              <div :if={token.last_seen_remote_ip}>
+                                {token.last_seen_remote_ip}
+                              </div>
+                            <% else %>
+                              -
+                            <% end %>
                           </div>
                         </div>
                       </div>
@@ -1227,29 +1228,30 @@ defmodule PortalWeb.Actors do
                         name={client_os_icon_name(token.last_seen_user_agent)}
                         class="w-6 h-6 flex-shrink-0"
                       />
-                      <div class="flex-1 grid grid-cols-3 gap-x-4 text-sm">
-                        <div>
+                      <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
+                        <div class="w-28">
                           <span class="text-xs uppercase text-neutral-500">Last used</span>
                           <div class="text-neutral-900">
                             <.relative_datetime datetime={token.last_seen_at} />
                           </div>
                         </div>
-                        <div>
-                          <span class="text-xs uppercase text-neutral-500">Location</span>
-                          <div class="text-neutral-900">
-                            <%= if token_location(token) do %>
-                              <span class="truncate" title={token_location(token)}>
-                                {token_location(token)}
-                              </span>
-                            <% else %>
-                              -
-                            <% end %>
-                          </div>
-                        </div>
-                        <div>
+                        <div class="w-20">
                           <span class="text-xs uppercase text-neutral-500">Expires</span>
                           <div class="text-neutral-900">
                             <.relative_datetime datetime={token.expires_at} />
+                          </div>
+                        </div>
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Location</span>
+                          <div class="text-neutral-900">
+                            <%= if token_location(token) || token.last_seen_remote_ip do %>
+                              <div :if={token_location(token)}>{token_location(token)}</div>
+                              <div :if={token.last_seen_remote_ip}>
+                                {token.last_seen_remote_ip}
+                              </div>
+                            <% else %>
+                              -
+                            <% end %>
                           </div>
                         </div>
                       </div>
@@ -1287,29 +1289,30 @@ defmodule PortalWeb.Actors do
                         name={session_user_agent_icon(session.user_agent)}
                         class="w-6 h-6 flex-shrink-0"
                       />
-                      <div class="flex-1 grid grid-cols-3 gap-x-4 text-sm">
-                        <div>
+                      <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
+                        <div class="w-28">
                           <span class="text-xs uppercase text-neutral-500">Signed in</span>
                           <div class="text-neutral-900">
                             <.relative_datetime datetime={session.inserted_at} />
                           </div>
                         </div>
-                        <div>
-                          <span class="text-xs uppercase text-neutral-500">Location</span>
-                          <div class="text-neutral-900">
-                            <%= if session_location(session) do %>
-                              <span class="truncate" title={session_location(session)}>
-                                {session_location(session)}
-                              </span>
-                            <% else %>
-                              -
-                            <% end %>
-                          </div>
-                        </div>
-                        <div>
+                        <div class="w-20">
                           <span class="text-xs uppercase text-neutral-500">Expires</span>
                           <div class="text-neutral-900">
                             <.relative_datetime datetime={session.expires_at} />
+                          </div>
+                        </div>
+                        <div>
+                          <span class="text-xs uppercase text-neutral-500">Location</span>
+                          <div class="text-neutral-900">
+                            <%= if session_location(session) || session.remote_ip do %>
+                              <div :if={session_location(session)}>{session_location(session)}</div>
+                              <div :if={session.remote_ip}>
+                                {session.remote_ip}
+                              </div>
+                            <% else %>
+                              -
+                            <% end %>
                           </div>
                         </div>
                       </div>
@@ -1705,9 +1708,6 @@ defmodule PortalWeb.Actors do
       token.last_seen_remote_ip_location_region ->
         token.last_seen_remote_ip_location_region
 
-      token.last_seen_remote_ip ->
-        to_string(token.last_seen_remote_ip)
-
       true ->
         nil
     end
@@ -1721,25 +1721,15 @@ defmodule PortalWeb.Actors do
   defp session_user_agent_icon(_), do: "hero-computer-desktop"
 
   defp session_location(session) do
-    location =
-      cond do
-        session.remote_ip_location_city && session.remote_ip_location_region ->
-          "#{session.remote_ip_location_city}, #{session.remote_ip_location_region}"
+    cond do
+      session.remote_ip_location_city && session.remote_ip_location_region ->
+        "#{session.remote_ip_location_city}, #{session.remote_ip_location_region}"
 
-        session.remote_ip_location_region ->
-          session.remote_ip_location_region
+      session.remote_ip_location_region ->
+        session.remote_ip_location_region
 
-        true ->
-          nil
-      end
-
-    ip = if session.remote_ip, do: to_string(session.remote_ip)
-
-    case {location, ip} do
-      {nil, nil} -> nil
-      {nil, ip} -> ip
-      {location, nil} -> location
-      {location, ip} -> "#{location} (#{ip})"
+      true ->
+        nil
     end
   end
 
