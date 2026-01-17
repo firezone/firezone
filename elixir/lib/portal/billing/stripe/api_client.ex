@@ -85,11 +85,11 @@ defmodule Portal.Billing.Stripe.APIClient do
       {"stripe-version", "2023-10-16"}
     ]
 
-    req_options =
+    req_opts =
       [method: method, url: url, headers: headers, body: body]
-      |> Keyword.merge(fetch_config(:req_options) || [])
+      |> Keyword.merge(fetch_config(:req_opts) || [])
 
-    case Req.request(req_options) do
+    case Req.request(req_opts) do
       {:ok, %Req.Response{status: status, body: response}} when status in 200..299 ->
         {:ok, response}
 

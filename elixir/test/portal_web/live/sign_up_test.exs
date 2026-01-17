@@ -510,7 +510,7 @@ defmodule PortalWeb.SignUpTest do
       # Enable retry for these tests
       Portal.Config.put_env_override(Portal.Billing.Stripe.APIClient,
         endpoint: "https://api.stripe.com",
-        req_options: [
+        req_opts: [
           plug: {Req.Test, Portal.Billing.Stripe.APIClient},
           retry: :transient,
           max_retries: 1

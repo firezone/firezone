@@ -59,7 +59,7 @@ defmodule Portal.Google.SyncTest do
             "auth_provider_x509_cert_url" => "https://www.googleapis.com/oauth2/v1/certs"
           }
           |> JSON.encode!(),
-        req_options: [plug: {Req.Test, APIClient}, retry: false]
+        req_opts: [plug: {Req.Test, APIClient}, retry: false]
       ]
 
       Application.put_env(:portal, APIClient, test_config)
