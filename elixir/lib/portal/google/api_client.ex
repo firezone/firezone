@@ -38,14 +38,14 @@ defmodule Portal.Google.APIClient do
         "assertion" => jwt
       })
 
-    req_options = config[:req_options] || []
+    req_opts = config[:req_opts] || []
 
     Req.post(
       token_endpoint,
       [
         headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
         body: payload
-      ] ++ req_options
+      ] ++ req_opts
     )
   end
 
@@ -95,11 +95,11 @@ defmodule Portal.Google.APIClient do
 
   defp test_endpoint(path, access_token, params) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_options = config[:req_options] || []
+    req_opts = config[:req_opts] || []
     query = URI.encode_query(params)
     url = "#{config[:endpoint]}#{path}?#{query}"
 
-    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ req_options) do
+    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ req_opts) do
       {:ok, %Req.Response{status: 200}} -> :ok
       other -> other
     end
@@ -196,10 +196,10 @@ defmodule Portal.Google.APIClient do
 
   defp get(path, access_token) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_options = config[:req_options] || []
+    req_opts = config[:req_opts] || []
 
     (config[:endpoint] <> path)
-    |> Req.get([headers: [Authorization: "Bearer #{access_token}"]] ++ req_options)
+    |> Req.get([headers: [Authorization: "Bearer #{access_token}"]] ++ req_opts)
   end
 
   defp stream_pages(path, query, access_token, result_key) do
@@ -221,10 +221,10 @@ defmodule Portal.Google.APIClient do
 
   defp fetch_page(current_path, current_query, access_token, result_key) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_options = config[:req_options] || []
+    req_opts = config[:req_opts] || []
     url = "#{config[:endpoint]}#{current_path}?#{current_query}"
 
-    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ req_options) do
+    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ req_opts) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         parse_page_response(body, current_path, current_query, result_key)
 

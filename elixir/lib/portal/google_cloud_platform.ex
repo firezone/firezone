@@ -41,16 +41,16 @@ defmodule Portal.GoogleCloudPlatform do
     config = fetch_config!()
     metadata_endpoint_url = Keyword.fetch!(config, :metadata_endpoint_url)
 
-    req_options =
+    req_opts =
       Keyword.merge(
         [
           url: metadata_endpoint_url <> "/instance/service-accounts/default/token",
           headers: [{"metadata-flavor", "Google"}]
         ],
-        Keyword.get(config, :req_options, [])
+        Keyword.get(config, :req_opts, [])
       )
 
-    case Req.get(req_options) do
+    case Req.get(req_opts) do
       {:ok, %Req.Response{status: 200, body: response}} ->
         %{"access_token" => access_token, "expires_in" => expires_in} = response
         access_token_expires_at = DateTime.utc_now() |> DateTime.add(expires_in - 1, :second)
@@ -70,17 +70,17 @@ defmodule Portal.GoogleCloudPlatform do
     config = fetch_config!()
     metadata_endpoint_url = Keyword.fetch!(config, :metadata_endpoint_url)
 
-    req_options =
+    req_opts =
       Keyword.merge(
         [
           url: metadata_endpoint_url <> "/instance/id",
           headers: [{"metadata-flavor", "Google"}],
           decode_body: false
         ],
-        Keyword.get(config, :req_options, [])
+        Keyword.get(config, :req_opts, [])
       )
 
-    case Req.get(req_options) do
+    case Req.get(req_opts) do
       {:ok, %Req.Response{status: 200, body: instance_id}} ->
         {:ok, instance_id}
 
@@ -98,17 +98,17 @@ defmodule Portal.GoogleCloudPlatform do
     config = fetch_config!()
     metadata_endpoint_url = Keyword.fetch!(config, :metadata_endpoint_url)
 
-    req_options =
+    req_opts =
       Keyword.merge(
         [
           url: metadata_endpoint_url <> "/instance/zone",
           headers: [{"metadata-flavor", "Google"}],
           decode_body: false
         ],
-        Keyword.get(config, :req_options, [])
+        Keyword.get(config, :req_opts, [])
       )
 
-    case Req.get(req_options) do
+    case Req.get(req_opts) do
       {:ok, %Req.Response{status: 200, body: zone}} ->
         {:ok, zone |> String.split("/") |> List.last()}
 
@@ -136,17 +136,17 @@ defmodule Portal.GoogleCloudPlatform do
     filter = "#{filter} AND status=RUNNING"
 
     with {:ok, access_token} <- fetch_and_cache_access_token() do
-      req_options =
+      req_opts =
         Keyword.merge(
           [
             url: aggregated_list_endpoint_url,
             params: [filter: filter],
             headers: [{"authorization", "Bearer #{access_token}"}]
           ],
-          Keyword.get(config, :req_options, [])
+          Keyword.get(config, :req_opts, [])
         )
 
-      case Req.get(req_options) do
+      case Req.get(req_opts) do
         {:ok, %Req.Response{status: 200, body: %{"items" => items}}} ->
           instances =
             Enum.flat_map(items, fn
@@ -180,17 +180,17 @@ defmodule Portal.GoogleCloudPlatform do
       |> String.replace("${project_id}", project_id)
 
     with {:ok, access_token} <- fetch_and_cache_access_token() do
-      req_options =
+      req_opts =
         Keyword.merge(
           [
             url: cloud_metrics_endpoint_url,
             headers: [{"authorization", "Bearer #{access_token}"}],
             json: %{"timeSeries" => time_series}
           ],
-          Keyword.get(config, :req_options, [])
+          Keyword.get(config, :req_opts, [])
         )
 
-      case Req.post(req_options) do
+      case Req.post(req_opts) do
         {:ok, %Req.Response{status: 200}} ->
           :ok
 

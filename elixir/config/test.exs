@@ -69,7 +69,7 @@ config :portal, Portal.Billing,
 
 config :portal, Portal.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
-  req_options: [
+  req_opts: [
     plug: {Req.Test, Portal.Billing.Stripe.APIClient},
     retry: false
   ]
@@ -84,7 +84,7 @@ config :portal, Portal.Entra.APIClient,
   client_secret: "test_client_secret",
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
-  req_options: [
+  req_opts: [
     plug: {Req.Test, Portal.Entra.APIClient},
     retry: false
   ]
@@ -97,7 +97,7 @@ config :portal, platform_adapter: Portal.GoogleCloudPlatform
 
 config :portal, Portal.GoogleCloudPlatform,
   service_account_email: "foo@iam.example.com",
-  req_options: [
+  req_opts: [
     plug: {Req.Test, Portal.GoogleCloudPlatform},
     retry: false
   ]
@@ -115,7 +115,7 @@ config :portal, Portal.ComponentVersions,
 config :portal, Portal.Google.APIClient,
   endpoint: "https://admin.googleapis.com",
   token_endpoint: "https://oauth2.googleapis.com/token",
-  req_options: [
+  req_opts: [
     retry: false,
     plug: {Req.Test, Portal.Google.APIClient}
   ]

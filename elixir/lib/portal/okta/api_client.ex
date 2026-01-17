@@ -137,11 +137,11 @@ defmodule Portal.Okta.APIClient do
       "client_assertion" => client_assertion
     }
 
-    req_options =
+    req_opts =
       [base_url: client.base_url]
       |> Keyword.merge(req_opts())
 
-    Req.new(req_options)
+    Req.new(req_opts)
     |> Req.merge(url: "/oauth2/v1/introspect")
     |> Req.Request.put_header("content-type", "application/x-www-form-urlencoded")
     |> Req.post(form: form_data)
@@ -267,11 +267,11 @@ defmodule Portal.Okta.APIClient do
   end
 
   defp new_request(%APIClient{} = client, access_token, nonce \\ nil) do
-    req_options =
+    req_opts =
       [base_url: client.base_url]
       |> Keyword.merge(req_opts())
 
-    Req.new(req_options)
+    Req.new(req_opts)
     |> ReqDPoP.attach(
       sign_fun: &dpop_sign(&1, client.private_key, client.kid),
       access_token: access_token,
