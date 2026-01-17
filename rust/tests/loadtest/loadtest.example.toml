@@ -55,18 +55,8 @@ addresses = [
 concurrent = "5..50"
 # How long to hold connections (seconds)
 duration_secs = "30..300"
-# Connection timeout (seconds)
-timeout_secs = "5..30"
-# Ping interval (seconds) - ignored if echo_mode is true
-ping_interval_secs = "5..15"
-# Enable echo mode for round-trip verification
-echo_mode = false
-# Payload size for echo messages (bytes)
-echo_payload_size = "64..64"
-# Interval between echo messages (seconds)
-echo_interval_secs = "1..1"
-# Timeout for echo responses (seconds)
-echo_read_timeout_secs = "5..5"
+# How long to at most wait between messages. Zero means we won't send any messages.
+max_echo_interval_secs = 10
 
 # ICMP ping testing
 # Note: Requires elevated privileges on Linux/macOS (root or CAP_NET_RAW)
