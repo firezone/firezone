@@ -319,10 +319,12 @@ impl GatewayTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
+        flow_logs: bool,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
             role_state: GatewayState::new(
+                flow_logs,
                 rand::random(),
                 Instant::now(),
                 SystemTime::now()
