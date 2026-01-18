@@ -94,6 +94,7 @@ fn has_necessary_permissions() -> bool {
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     logging::setup_global_subscriber(
+        make_directives(std::env::var("RUST_LOG").ok(), cli.flow_logs),
         layer::Identity::default(),
         match cli.log_format {
             LogFormat::Json => true,
@@ -196,6 +197,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
         nameservers,
+        cli.flow_logs,
     );
     let portal = PhoenixChannel::disconnected(
         login,
@@ -454,6 +456,16 @@ impl ValidateChecksumAdapter {
     }
 }
 
+fn make_directives(rust_log: Option<String>, flow_logs: bool) -> String {
+    let rust_log = rust_log.unwrap_or_else(|| "info".to_string());
+
+    if flow_logs {
+        return format!("{rust_log},flow_logs=trace");
+    }
+
+    rust_log
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -480,5 +492,19 @@ mod tests {
         unsafe {
             std::env::remove_var("CREDENTIALS_DIRECTORY");
         }
+    }
+
+    #[test]
+    fn adds_flow_logs_directive_to_default() {
+        let directives = make_directives(None, true);
+
+        assert_eq!(directives, "info,flow_logs=trace");
+    }
+
+    #[test]
+    fn adds_flow_logs_directive_to_custom() {
+        let directives = make_directives(Some("info,tunnel=trace".to_owned()), true);
+
+        assert_eq!(directives, "info,tunnel=trace,flow_logs=trace");
     }
 }

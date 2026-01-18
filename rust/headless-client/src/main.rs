@@ -215,7 +215,12 @@ fn try_main() -> Result<()> {
         .as_deref()
         .map(|dir| logging::file::layer(dir, "firezone-headless-client"))
         .unzip();
-    logging::setup_global_subscriber(layer, false).context("Failed to set up logging")?;
+    logging::setup_global_subscriber(
+        std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
+        layer,
+        false,
+    )
+    .context("Failed to set up logging")?;
 
     // Deactivate DNS control before starting telemetry or connecting to the portal,
     // in case a previous run of Firezone left DNS control on and messed anything up.
