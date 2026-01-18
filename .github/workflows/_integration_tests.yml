@@ -102,7 +102,7 @@ jobs:
             # Setting both client and gateway to random masquerade will force relay-relay candidate pair
             client_masquerade: random
             gateway_masquerade: random
-            rust_log: debug,flow_logs=trace
+            rust_log: debug
             single_relay: true # Force single relay
             min_gateway_version: 1.4.18
           - name: download-ipv4-only
@@ -113,7 +113,7 @@ jobs:
             rust_log: debug
           - script: download-roaming-network
             min_gateway_version: 1.4.18
-            rust_log: debug,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
+            rust_log: debug # Too noisy can cause flaky tests due to the amount of data
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: ./.github/actions/ghcr-docker-login
