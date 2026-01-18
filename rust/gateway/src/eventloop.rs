@@ -1,6 +1,5 @@
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bin_shared::{TunDeviceManager, signals};
-use boringtun::x25519::PublicKey;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
@@ -19,15 +18,13 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, iter, mem};
 use tokio::sync::mpsc;
+use tunnel::messages::RelaysPresence;
 use tunnel::messages::gateway::{
-    AccessAuthorizationExpiryUpdated, AllowAccess, Authorization, ClientIceCandidates,
-    ClientsIceCandidates, ConnectionReady, EgressMessages, IngressMessages, InitGateway,
-    RejectAccess, RequestConnection,
+    AccessAuthorizationExpiryUpdated, Authorization, ClientIceCandidates, ClientsIceCandidates,
+    EgressMessages, IngressMessages, InitGateway, RejectAccess,
 };
-use tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
 use tunnel::{
-    DnsResourceNatEntry, GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig,
-    ResolveDnsRequest, TunnelError,
+    GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
 };
 
 use crate::RELEASE;
@@ -46,21 +43,16 @@ static_assertions::const_assert!(
     DNS_RESOLUTION_TIMEOUT.as_secs() < snownet::HANDSHAKE_TIMEOUT.as_secs()
 );
 
-#[derive(Debug)]
-enum ResolveTrigger {
-    RequestConnection(RequestConnection), // Deprecated
-    AllowAccess(AllowAccess),             // Deprecated
-    SetupNat(ResolveDnsRequest),
-}
-
 pub struct Eventloop {
     // Tunnel is `Option` because we need to take ownership on shutdown.
     tunnel: Option<GatewayTunnel>,
     tun_device_manager: TunDeviceManager,
     resolver: TokioResolver,
 
-    resolve_tasks:
-        futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger>,
+    resolve_tasks: futures_bounded::FuturesTupleSet<
+        Result<Vec<IpAddr>, Arc<anyhow::Error>>,
+        ResolveDnsRequest,
+    >,
     portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
@@ -122,7 +114,7 @@ enum CombinedEvent {
     SigIntTerm,
     Tunnel(GatewayEvent),
     Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
-    DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger)),
+    DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
 }
 
 impl Eventloop {
@@ -161,17 +153,7 @@ impl Eventloop {
                 "phoenix channel task stopped unexpectedly",
             )),
             CombinedEvent::Portal(Some(Err(e))) => Err(e).context("Failed to login to portal"),
-            CombinedEvent::DomainResolved((result, ResolveTrigger::RequestConnection(req))) => {
-                self.accept_connection(result, req).await?;
-
-                Ok(ControlFlow::Continue(()))
-            }
-            CombinedEvent::DomainResolved((result, ResolveTrigger::AllowAccess(req))) => {
-                self.allow_access(result, req);
-
-                Ok(ControlFlow::Continue(()))
-            }
-            CombinedEvent::DomainResolved((result, ResolveTrigger::SetupNat(req))) => {
+            CombinedEvent::DomainResolved((result, req)) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
                     tracing::debug!("Ignoring DNS resolution result during shutdown");
 
@@ -270,10 +252,7 @@ impl Eventloop {
             tunnel::GatewayEvent::ResolveDns(setup_nat) => {
                 if self
                     .resolve_tasks
-                    .try_push(
-                        self.resolve(setup_nat.domain().clone()),
-                        ResolveTrigger::SetupNat(setup_nat),
-                    )
+                    .try_push(self.resolve(setup_nat.domain().clone()), setup_nat)
                     .is_err()
                 {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
@@ -370,35 +349,6 @@ impl Eventloop {
                         reference: msg.reference,
                     }))
                     .await?;
-            }
-            IngressMessages::RequestConnection(req) => {
-                let Some(domain) = req.client.payload.domain.as_ref().map(|r| r.name.clone())
-                else {
-                    self.accept_connection(Ok(vec![]), req).await?;
-                    return Ok(());
-                };
-
-                if self
-                    .resolve_tasks
-                    .try_push(self.resolve(domain), ResolveTrigger::RequestConnection(req))
-                    .is_err()
-                {
-                    tracing::warn!("Too many connections requests, dropping existing one");
-                };
-            }
-            IngressMessages::AllowAccess(req) => {
-                let Some(domain) = req.payload.as_ref().map(|r| r.name.clone()) else {
-                    self.allow_access(Ok(vec![]), req);
-                    return Ok(());
-                };
-
-                if self
-                    .resolve_tasks
-                    .try_push(self.resolve(domain), ResolveTrigger::AllowAccess(req))
-                    .is_err()
-                {
-                    tracing::warn!("Too many allow access requests, dropping existing one");
-                };
             }
             IngressMessages::IceCandidates(ClientIceCandidates {
                 client_id,
@@ -546,121 +496,6 @@ impl Eventloop {
         }
 
         Ok(())
-    }
-
-    pub async fn accept_connection(
-        &mut self,
-        result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
-        req: RequestConnection,
-    ) -> Result<()> {
-        let Some(tunnel) = self.tunnel.as_mut() else {
-            tracing::debug!(?req, "Ignoring incoming connection during shutdown");
-
-            return Ok(());
-        };
-
-        let addresses = match result {
-            Ok(addresses) => addresses,
-            Err(e) => {
-                tracing::debug!(cid = %req.client.id, reference = %req.reference, "DNS resolution failed as part of connection request: {e:#}");
-
-                return Ok(()); // Fail the connection so the client runs into a timeout.
-            }
-        };
-
-        let answer = match tunnel.state_mut().accept(
-            req.client.id,
-            req.client
-                .payload
-                .ice_parameters
-                .into_snownet_offer(req.client.peer.preshared_key),
-            PublicKey::from(req.client.peer.public_key.0),
-            Instant::now(),
-        ) {
-            Ok(a) => a,
-            Err(snownet::NoTurnServers {}) => {
-                tracing::debug!("Failed to accept new connection: No TURN servers available");
-
-                // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
-                self.portal_cmd_tx
-                    .send(PortalCommand::Connect(PublicKeyParam(
-                        tunnel.public_key().to_bytes(),
-                    )))
-                    .await?;
-
-                return Ok(());
-            }
-        };
-
-        if let Err(e) = tunnel.state_mut().allow_access(
-            req.client.id,
-            IpConfig {
-                v4: req.client.peer.ipv4,
-                v6: req.client.peer.ipv6,
-            },
-            Default::default(), // Additional client properties are not supported for 1.3.x Clients and will just be empty.
-            req.expires_at,
-            req.resource,
-            req.client
-                .payload
-                .domain
-                .map(|r| DnsResourceNatEntry::new(r, addresses)),
-        ) {
-            let cid = req.client.id;
-
-            tunnel.state_mut().cleanup_connection(&cid, Instant::now());
-            tracing::debug!(%cid, "Connection request failed: {e:#}");
-
-            return Ok(());
-        }
-
-        self.portal_cmd_tx
-            .send(PortalCommand::Send(EgressMessages::ConnectionReady(
-                ConnectionReady {
-                    reference: req.reference,
-                    gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
-                        ice_parameters: answer,
-                    }),
-                },
-            )))
-            .await?;
-
-        Ok(())
-    }
-
-    pub fn allow_access(
-        &mut self,
-        result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
-        req: AllowAccess,
-    ) {
-        let Some(tunnel) = self.tunnel.as_mut() else {
-            return;
-        };
-
-        // "allow access" doesn't have a response so we can't tell the client that things failed.
-        // It is legacy code so don't bother ...
-        let addresses = match result {
-            Ok(addresses) => addresses,
-            Err(e) => {
-                tracing::debug!(cid = %req.client_id, reference = %req.reference, "DNS resolution failed as part of allow access request: {e:#}");
-
-                vec![]
-            }
-        };
-
-        if let Err(e) = tunnel.state_mut().allow_access(
-            req.client_id,
-            IpConfig {
-                v4: req.client_ipv4,
-                v6: req.client_ipv6,
-            },
-            Default::default(), // Additional client properties are not supported for 1.3.x Clients and will just be empty.
-            req.expires_at,
-            req.resource,
-            req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
-        ) {
-            tracing::warn!(cid = %req.client_id, "Allow access request failed: {e:#}");
-        };
     }
 
     fn resolve(
