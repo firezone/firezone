@@ -451,7 +451,6 @@ fn try_main() -> Result<()> {
             };
 
             match event {
-                // TODO: Headless Client shouldn't be using messages labelled `Ipc`
                 client_shared::Event::Disconnected(error) => break Err(anyhow!(error).context("Firezone disconnected")),
                 client_shared::Event::ResourcesUpdated(_) => {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
@@ -477,6 +476,7 @@ fn try_main() -> Result<()> {
                         break Ok(());
                     }
                 }
+                client_shared::Event::GatewayVersionMismatch { .. } => {},
             }
         };
 

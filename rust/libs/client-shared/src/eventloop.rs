@@ -1,6 +1,6 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, ErrorExt as _, Result};
-use connlib_model::{PublicKey, ResourceView};
+use connlib_model::{PublicKey, ResourceId, ResourceView};
 use l4_udp_dns_client::UdpDnsClient;
 use parking_lot::Mutex;
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
@@ -51,6 +51,7 @@ pub struct Eventloop {
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<Vec<ResourceView>>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
+    user_notification_sender: mpsc::Sender<UserNotification>,
 
     portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
@@ -65,6 +66,10 @@ pub enum Command {
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
     SetInternetResourceState(bool),
+}
+
+pub enum UserNotification {
+    GatewayVersionMismatch { resource_id: ResourceId },
 }
 
 enum PortalCommand {
@@ -104,6 +109,7 @@ impl Eventloop {
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
+        user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -133,6 +139,7 @@ impl Eventloop {
             portal_cmd_tx,
             resource_list_sender,
             tun_config_sender,
+            user_notification_sender,
         }
     }
 }
@@ -442,14 +449,24 @@ impl Eventloop {
                 };
             }
             IngressMessages::FlowCreationFailed(FlowCreationFailed {
+                reason,
                 resource_id,
-                reason: FailReason::Offline,
                 ..
             }) => {
-                tunnel.state_mut().set_resource_offline(resource_id);
-            }
-            IngressMessages::FlowCreationFailed(FlowCreationFailed { reason, .. }) => {
-                tracing::debug!("Failed to create flow: {reason:?}")
+                tracing::debug!("Failed to create flow: {reason:?}");
+
+                match reason {
+                    FailReason::Offline => {
+                        tunnel.state_mut().set_resource_offline(resource_id);
+                    }
+                    FailReason::VersionMismatch => {
+                        let _ = self
+                            .user_notification_sender
+                            .send(UserNotification::GatewayVersionMismatch { resource_id })
+                            .await;
+                    }
+                    FailReason::NotFound | FailReason::Forbidden | FailReason::Unknown => {}
+                }
             }
         }
 

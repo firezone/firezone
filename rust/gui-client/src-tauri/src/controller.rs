@@ -9,14 +9,14 @@ use crate::{
     view::{GeneralSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
-use connlib_model::ResourceView;
+use connlib_model::{ResourceId, ResourceView};
 use futures::{
     SinkExt, StreamExt,
     stream::{self, BoxStream},
 };
 use logging::FilterReloadHandle;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
+use std::{collections::HashSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
 use telemetry::Telemetry;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
@@ -42,6 +42,9 @@ pub struct Controller<I: GuiIntegration> {
     status: Status,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
+
+    /// Resources we have tried to access, failed and showed a notification as a result.
+    unreachable_resource: HashSet<ResourceId>,
 
     gui_ipc_clients: BoxStream<
         'static,
@@ -215,6 +218,7 @@ impl<I: GuiIntegration> Controller<I> {
                 Some((result, gui_ipc))
             })
             .boxed(),
+            unreachable_resource: Default::default(),
         };
 
         controller.main_loop().await?;
@@ -666,6 +670,37 @@ impl<I: GuiIntegration> Controller<I> {
                 return Ok(ControlFlow::Break(()));
             }
             service::ServerMsg::Hello => {}
+            service::ServerMsg::GatewayVersionMismatch { resource_id } => {
+                let is_first = self.unreachable_resource.insert(resource_id);
+
+                if !is_first {
+                    return Ok(ControlFlow::Continue(()));
+                }
+
+                let Status::TunnelReady { resources } = &self.status else {
+                    tracing::debug!(
+                        "No resource list available, cannot show notification about unreachable resource"
+                    );
+
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                let Some(resource) = resources.iter().find(|r| r.id() == resource_id) else {
+                    tracing::debug!(id = %resource_id, "Unknown resource");
+
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                let name = resource.name();
+                let Some(site) = resource.sites().first().map(|s| &s.name) else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                self.integration.show_notification(
+                    &format!("Failed to connect to '{name}'"),
+                    "Your Firezone Client is incompatible with all Gateways in the site '{site}'. Please update your Client to the latest version and contact your administrator if the issue persists.",
+                )?;
+            }
         }
         Ok(ControlFlow::Continue(()))
     }

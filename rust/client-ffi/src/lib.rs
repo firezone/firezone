@@ -128,6 +128,9 @@ pub enum Event {
     ResourcesUpdated {
         resources: Vec<Resource>,
     },
+    GatewayVersionMismatch {
+        resource_id: String,
+    },
     Disconnected {
         error: Arc<DisconnectError>,
     },
@@ -410,6 +413,11 @@ impl Session {
                 let resources: Vec<Resource> = resources.into_iter().map(Into::into).collect();
 
                 Some(Event::ResourcesUpdated { resources })
+            }
+            client_shared::Event::GatewayVersionMismatch { resource_id } => {
+                Some(Event::GatewayVersionMismatch {
+                    resource_id: resource_id.to_string(),
+                })
             }
             client_shared::Event::Disconnected(error) => Some(Event::Disconnected {
                 error: Arc::new(DisconnectError(error)),

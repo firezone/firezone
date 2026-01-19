@@ -8,7 +8,7 @@ use tunnel::messages::client::EgressMessages;
 pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
 
 use anyhow::Result;
-use connlib_model::ResourceView;
+use connlib_model::{ResourceId, ResourceView};
 use eventloop::{Command, Eventloop};
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
@@ -23,6 +23,8 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::WatchStream;
 use tun::Tun;
+
+use crate::eventloop::UserNotification;
 
 mod eventloop;
 
@@ -42,12 +44,19 @@ pub struct EventStream {
     eventloop: Fuse<JoinHandle<Result<(), DisconnectError>>>,
     resource_list_receiver: WatchStream<Vec<ResourceView>>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
+    user_notification_receiver: mpsc::Receiver<UserNotification>,
 }
 
+/// Events the Client application should use to update the state of the operating system / app.
 #[derive(Debug)]
 pub enum Event {
+    /// The TUN device configuration has been updated.
     TunInterfaceUpdated(TunConfig),
+    /// The resource list has been updated.
     ResourcesUpdated(Vec<ResourceView>),
+    /// Establishing a tunnel for a resource failed because there are no version-compatible Gateways in the corresponding site.
+    GatewayVersionMismatch { resource_id: ResourceId },
+    /// Connlib has been permanently disconnected from the portal and the tunnel has been shut down.
     Disconnected(DisconnectError),
 }
 
@@ -65,6 +74,7 @@ impl Session {
         // Use `watch` channels for resource list and TUN config because we are only ever interested in the last value and don't care about intermediate updates.
         let (tun_config_sender, tun_config_receiver) = watch::channel(None);
         let (resource_list_sender, resource_list_receiver) = watch::channel(Vec::default());
+        let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
 
         let eventloop = handle.spawn(
             Eventloop::new(
@@ -76,6 +86,7 @@ impl Session {
                 cmd_rx,
                 resource_list_sender,
                 tun_config_sender,
+                user_notification_sender,
             )
             .run(),
         );
@@ -86,6 +97,7 @@ impl Session {
                 eventloop: eventloop.fuse(),
                 resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
                 tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
+                user_notification_receiver,
             },
         )
     }
@@ -144,6 +156,13 @@ impl EventStream {
 
         if let Poll::Ready(Some(Some(config))) = self.tun_config_receiver.poll_next_unpin(cx) {
             return Poll::Ready(Some(Event::TunInterfaceUpdated(config)));
+        }
+
+        match self.user_notification_receiver.poll_recv(cx) {
+            Poll::Ready(Some(UserNotification::GatewayVersionMismatch { resource_id })) => {
+                return Poll::Ready(Some(Event::GatewayVersionMismatch { resource_id }));
+            }
+            Poll::Ready(None) | Poll::Pending => {}
         }
 
         Poll::Pending
