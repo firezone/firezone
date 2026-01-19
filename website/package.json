@@ -26,7 +26,7 @@
     "asciinema-player": "^3.14.0",
     "autoprefixer": "10.4.23",
     "fast-xml-parser": "^5.3.3",
-    "flowbite-react": "^0.12.15",
+    "flowbite-react": "^0.12.16",
     "framer-motion": "^12.25.0",
     "highlight.js": "^11.11.1",
     "md5": "^2.3.0",
