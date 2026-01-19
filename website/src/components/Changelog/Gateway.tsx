@@ -27,6 +27,12 @@ export default function Gateway() {
           Enables detailed flow logs for tunneled TCP and UDP connections. Set
           `FIREZONE_FLOW_LOGS=true` or `--flow-logs` to enable.
         </ChangeItem>
+        <ChangeItem pull="11664">
+          Adds a <code>FIREZONE_MAX_PARTITION_TIME</code> environment variable
+          to configure how long the Gateway will retry connecting to the portal
+          before exiting. Accepts human-readable durations like <code>5m</code>,{" "}
+          <code>1h</code>, or <code>30d</code>. Defaults to 24 hours.
+        </ChangeItem>
         <ChangeItem pull="11625">
           Fails faster when the initial connection to the control plane cannot
           be established, allowing faster restarts by the process manager.
