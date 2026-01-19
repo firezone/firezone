@@ -73,14 +73,14 @@ impl DnsResourceNatEntry {
 }
 
 impl GatewayState {
-    pub(crate) fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
+    pub(crate) fn new(flow_logs: bool, seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         Self {
             peers: Default::default(),
             node: ServerNode::new(seed, now, unix_ts),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
-            flow_tracker: FlowTracker::new(now),
+            flow_tracker: FlowTracker::new(flow_logs, now),
             tun_ip_config: None,
         }
     }
