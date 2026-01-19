@@ -76,6 +76,16 @@ defmodule PortalWeb.ConnCase do
   end
 
   def authorize_conn(conn, %Portal.Actor{} = actor) do
+    # Fetch the real account from the database
+    account = Portal.Repo.get!(Portal.Account, actor.account_id)
+
+    # Create an auth provider for this account if needed
+    auth_provider = Portal.AuthProviderFixtures.email_otp_provider_fixture(account: account)
+
+    authorize_conn_with_provider(conn, actor, auth_provider)
+  end
+
+  def authorize_conn_with_provider(conn, %Portal.Actor{} = actor, provider) do
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0, "FooBar 1.1")
 
     context = %Portal.Auth.Context{
@@ -88,18 +98,12 @@ defmodule PortalWeb.ConnCase do
       remote_ip: conn.remote_ip
     }
 
-    # Fetch the real account from the database
-    account = Portal.Repo.get!(Portal.Account, actor.account_id)
-
-    # Create an auth provider for this account if needed
-    auth_provider = Portal.AuthProviderFixtures.email_otp_provider_fixture(account: account)
-
     expires_at = DateTime.add(DateTime.utc_now(), 300, :second)
 
     {:ok, session} =
       Portal.Auth.create_portal_session(
         actor,
-        auth_provider.id,
+        provider.id,
         context,
         expires_at
       )
