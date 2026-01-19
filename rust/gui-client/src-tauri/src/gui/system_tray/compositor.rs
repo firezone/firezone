@@ -9,6 +9,8 @@
 //! and the math for compositing RGBA images in a mostly-gamma-correct way
 //! is simple enough to just replicate it here.
 
+use std::io;
+
 use anyhow::{Context as _, Result, ensure};
 
 pub struct Image {
@@ -33,15 +35,19 @@ pub fn compose<'a, I: IntoIterator<Item = &'a [u8]>>(layers: I) -> Result<Image>
 
     for layer in layers {
         // Decode the metadata for this PNG layer
-        let decoder = png::Decoder::new(layer);
+        let decoder = png::Decoder::new(io::Cursor::new(layer));
         let mut reader = decoder.read_info()?;
         let info = reader.info();
+
+        let size = reader
+            .output_buffer_size()
+            .context("Failed to get output buffer size")?;
 
         // Create the output buffer if needed
         let dst = dst.get_or_insert_with(|| Image {
             width: info.width,
             height: info.height,
-            rgba: vec![0; reader.output_buffer_size()],
+            rgba: vec![0; size],
         });
 
         ensure!(info.width == dst.width);
