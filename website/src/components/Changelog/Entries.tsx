@@ -7,6 +7,20 @@ export type DownloadLink = {
   href: string;
 };
 
+function formatCompatibleVersion(title: string, version: string) {
+  const minor = parseInt(version.split(".")[1]);
+
+  if (title.toLowerCase().includes("gateway")) {
+    // gateway
+    const compatibleMinor = minor - 1;
+    return `Clients >= 1.${compatibleMinor}.0`;
+  } else {
+    // client
+    const compatibleMinor = minor + 1;
+    return `Gateways <= 1.${compatibleMinor}.x`;
+  }
+}
+
 function Latest({
   downloadLinks,
   title,
@@ -35,10 +49,16 @@ function Latest({
         <p>
           Version: <span className="font-semibold">{version}</span>
         </p>
-        <p className="mb-4 md:mb-6 xl:mb-8">
+        <p>
           Released:{" "}
           <span className="font-semibold">
             <time dateTime={date.toDateString()}>{utcDateString}</time>
+          </span>
+        </p>
+        <p className="mb-4 md:mb-6 xl:mb-8">
+          Compatible with:{" "}
+          <span className="font-semibold">
+            {formatCompatibleVersion(title, version)}
           </span>
         </p>
         <ul className="mb-4 md:mb-6 xl:mb-8">
