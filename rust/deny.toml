@@ -238,6 +238,7 @@ deny = [
 
 skip = [
     "base64",
+    "which",                  # native-dialog uses 4.x, ebpf-turn-router build uses 8.x
     "bitflags",
     "convert_case",
     "dispatch2",          # rfd (tauri) uses 0.2.0, other deps use 0.3.0
