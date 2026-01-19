@@ -49,45 +49,6 @@ services:
       retries: 10
       start_period: 5s
 
-  common:
-    image: alpine:latest # Dummy, will always be overridden.
-    environment:
-      # Database
-      RUN_MANUAL_MIGRATIONS: "true"
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: firezone_dev
-      DATABASE_USER: postgres
-      DATABASE_PASSWORD: postgres
-      # Feature flags
-      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
-      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
-      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
-      FEATURE_IDP_SYNC_ENABLED: "true"
-      FEATURE_REST_API_ENABLED: "true"
-      FEATURE_INTERNET_RESOURCE_ENABLED: "true"
-      ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
-      ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
-      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
-      # Secrets
-      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      # Erlang
-      ERLANG_DISTRIBUTION_PORT: 9000
-      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
-      # Emails
-      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
-      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
-      # Color nodes
-      PORTAL_API_ENABLED: true
-      PORTAL_WEB_ENABLED: true
-    networks:
-      - app-internal
-
 volumes:
   postgres-data:
   elixir-build-cache:
