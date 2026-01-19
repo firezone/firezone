@@ -23,6 +23,10 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
+        <ChangeItem pull="11770">
+          Enables detailed flow logs for tunneled TCP and UDP connections. Set
+          `FIREZONE_FLOW_LOGS=true` or `--flow-logs` to enable.
+        </ChangeItem>
         <ChangeItem pull="11625">
           Fails faster when the initial connection to the control plane cannot
           be established, allowing faster restarts by the process manager.

@@ -318,6 +318,7 @@ impl RefGateway {
         utc_now: DateTime<Utc>,
     ) -> SimGateway {
         let mut sut = GatewayState::new(
+            false,
             self.key.0,
             now,
             utc_now
