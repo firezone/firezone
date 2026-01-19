@@ -23,6 +23,9 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
+        <ChangeItem pull="11771">
+          BREAKING: Remove support for Firezone 1.3.x Clients and lower.
+        </ChangeItem>
         <ChangeItem pull="11770">
           Enables detailed flow logs for tunneled TCP and UDP connections. Set
           `FIREZONE_FLOW_LOGS=true` or `--flow-logs` to enable.
