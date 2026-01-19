@@ -2540,6 +2540,7 @@ dependencies = [
  "futures",
  "futures-bounded",
  "hickory-resolver",
+ "humantime",
  "ip-packet",
  "ip_network",
  "libc",
