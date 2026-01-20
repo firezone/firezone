@@ -63,8 +63,8 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
 /// Firefox doesn't have this problem. Maybe they're using a different API.
 pub(crate) fn show_notification(
     _app: &AppHandle,
-    title: &str,
-    body: &str,
+    title: String,
+    body: String,
 ) -> Result<impl Future<Output = ()>> {
     let (tx, rx) = futures::future::oneshot::channel();
 
@@ -72,8 +72,8 @@ pub(crate) fn show_notification(
     let mut req = Some(tx);
 
     tauri_winrt_notification::Toast::new(BUNDLE_ID)
-        .title(title)
-        .text1(body)
+        .title(&title)
+        .text1(&body)
         .scenario(tauri_winrt_notification::Scenario::Reminder)
         .on_activated(move |_| {
             let Some(tx) = tx.take() else { return Ok(()) };

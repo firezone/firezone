@@ -69,7 +69,11 @@ pub trait GuiIntegration {
 
     fn set_tray_icon(&mut self, icon: system_tray::Icon);
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
-    fn show_notification(&self, title: &str, body: &str) -> Result<impl Future<Item = ()>>;
+    fn show_notification(
+        &self,
+        title: impl Into<String>,
+        body: impl Into<String>,
+    ) -> Result<impl Future<Item = ()>>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
@@ -408,7 +412,7 @@ impl<I: GuiIntegration> Controller<I> {
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_ui_state();
 
-                self.integration.show_notification("Settings saved", "")?
+                self.integration.show_notification("Settings saved", "")?;
             }
             ApplyGeneralSettings(settings) => {
                 let account_slug = settings.account_slug.trim();
@@ -736,7 +740,7 @@ impl<I: GuiIntegration> Controller<I> {
             let body = "Click here to download the new version";
 
             let on_click = self.integration.show_notification(
-                &format!("Firezone {} available for download", release.version),
+                format!("Firezone {} available for download", release.version),
                 body,
             )?;
             let ctrl_tx = self.ctlr_tx.clone();

@@ -34,13 +34,13 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
 
 pub(crate) fn show_notification(
     app: &AppHandle,
-    title: &str,
-    body: &str,
+    title: String,
+    body: String,
 ) -> Result<impl Future<Output = ()>> {
     app.notification()
         .builder()
-        .title(title)
-        .body(body)
+        .title(&title)
+        .body(&body)
         .show()?;
 
     Ok(futures::future::pending()) // TODO: Make clickable notifications work on Linux.

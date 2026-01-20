@@ -8,8 +8,8 @@ pub async fn set_autostart(_enabled: bool) -> Result<()> {
 
 pub(crate) fn show_notification(
     _app: &AppHandle,
-    _title: &str,
-    _body: &str,
+    _title: String,
+    _body: String,
 ) -> Result<impl Future<Output = ()>> {
     bail!("Not implemented")
 }
