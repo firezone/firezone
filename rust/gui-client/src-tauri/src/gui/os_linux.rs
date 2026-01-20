@@ -32,24 +32,16 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
     Ok(())
 }
 
-/// Since clickable notifications don't work on Linux yet, the update text
-/// must be different on different platforms
-pub(crate) fn show_update_notification(
+pub(crate) fn show_notification(
     app: &AppHandle,
-    _ctlr_tx: super::CtlrTx,
     title: &str,
-    download_url: url::Url,
-) -> Result<()> {
-    show_notification(app, title, download_url.to_string().as_ref())?;
-    Ok(())
-}
-
-/// Show a notification in the bottom right of the screen
-pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str) -> Result<()> {
+    body: &str,
+) -> Result<impl Future<Output = ()>> {
     app.notification()
         .builder()
         .title(title)
         .body(body)
         .show()?;
-    Ok(())
+
+    Ok(futures::future::pending()) // TODO: Make clickable notifications work on Linux.
 }

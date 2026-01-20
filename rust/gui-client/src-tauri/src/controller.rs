@@ -69,8 +69,7 @@ pub trait GuiIntegration {
 
     fn set_tray_icon(&mut self, icon: system_tray::Icon);
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
-    fn show_notification(&self, title: &str, body: &str) -> Result<()>;
-    fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
+    fn show_notification(&self, title: &str, body: &str) -> Result<impl Future<Item = ()>>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
@@ -729,16 +728,26 @@ impl<I: GuiIntegration> Controller<I> {
         self.refresh_ui_state();
 
         if notification.tell_user {
-            let title = format!("Firezone {} available for download", release.version);
+            #[cfg(target_os = "linux")]
+            let body = ""; // TODO: Clickable notifications don't work on Linux yet.
+            #[cfg(target_os = "macos")]
+            let body = "";
+            #[cfg(target_os = "windows")]
+            let body = "Click here to download the new version";
 
-            // We don't need to route through the controller here either, we could
-            // use the `open` crate directly instead of Tauri's wrapper
-            // `tauri::api::shell::open`
-            self.integration.show_update_notification(
-                self.ctlr_tx.clone(),
-                &title,
-                release.download_url,
+            let on_click = self.integration.show_notification(
+                &format!("Firezone {} available for download", release.version),
+                body,
             )?;
+            let ctrl_tx = self.ctlr_tx.clone();
+
+            tokio::spawn(async move {
+                on_click.await;
+
+                ctrl_tx.send(ControllerRequest::UpdateNotificationClicked(
+                    release.download_url,
+                ))
+            });
         }
         Ok(())
     }

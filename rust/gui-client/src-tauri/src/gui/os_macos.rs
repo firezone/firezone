@@ -6,15 +6,10 @@ pub async fn set_autostart(_enabled: bool) -> Result<()> {
     bail!("Not implemented")
 }
 
-pub(crate) fn show_notification(_app: &tauri::AppHandle, _title: &str, _body: &str) -> Result<()> {
-    bail!("Not implemented")
-}
-
-pub(crate) fn show_update_notification(
-    _app: &tauri::AppHandle,
-    _ctlr_tx: CtlrTx,
+pub(crate) fn show_notification(
+    _app: &AppHandle,
+    _title: &str,
     _body: &str,
-    _url: url::Url,
-) -> Result<()> {
+) -> Result<impl Future<Output = ()>> {
     bail!("Not implemented")
 }
