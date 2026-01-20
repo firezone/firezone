@@ -748,9 +748,11 @@ impl<I: GuiIntegration> Controller<I> {
             tokio::spawn(async move {
                 on_click.await;
 
-                ctrl_tx.send(ControllerRequest::UpdateNotificationClicked(
-                    release.download_url,
-                ))
+                let _ = ctrl_tx
+                    .send(ControllerRequest::UpdateNotificationClicked(
+                        release.download_url,
+                    ))
+                    .await;
             });
         }
         Ok(())
