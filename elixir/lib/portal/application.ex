@@ -53,7 +53,11 @@ defmodule Portal.Application do
     # Configure Logger severity at runtime
     :ok = LoggerJSON.configure_log_level_from_env!("LOG_LEVEL")
 
-    if config = Application.get_env(:logger_json, :config) do
+    config = Application.get_env(:logger_json, :config)
+    platform_adapter = Application.get_env(:portal, :platform_adapter)
+
+    # TODO: Remove this after azure migration
+    if not is_nil(config) and platform_adapter == Portal.GoogleCloudPlatform do
       formatter = LoggerJSON.Formatters.GoogleCloud.new(config)
       :logger.update_handler_config(:default, :formatter, formatter)
     end
