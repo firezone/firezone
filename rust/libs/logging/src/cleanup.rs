@@ -171,13 +171,6 @@ mod tests {
     use std::time::Duration;
     use tempfile::TempDir;
 
-    fn create_log_file(dir: &Path, name: &str, size_bytes: usize) -> std::path::PathBuf {
-        let path = dir.join(name);
-        let mut file = File::create(&path).unwrap();
-        file.write_all(&vec![b'x'; size_bytes]).unwrap();
-        path
-    }
-
     #[test]
     fn test_no_deletion_when_under_threshold() {
         let dir = TempDir::new().unwrap();
@@ -359,4 +352,12 @@ mod tests {
             "Dir2 should keep at least one file"
         );
     }
+
+    fn create_log_file(dir: &Path, name: &str, size_bytes: usize) -> std::path::PathBuf {
+        let path = dir.join(name);
+        let mut file = File::create(&path).unwrap();
+        file.write_all(&vec![b'x'; size_bytes]).unwrap();
+        path
+    }
+
 }
