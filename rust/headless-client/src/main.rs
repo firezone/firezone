@@ -476,7 +476,7 @@ fn try_main() -> Result<()> {
                         break Ok(());
                     }
                 }
-                client_shared::Event::GatewayVersionMismatch { .. } => {},
+                client_shared::Event::GatewayVersionMismatch { .. } | client_shared::Event::AllGatewaysOffline { .. } => {},
             }
         };
 

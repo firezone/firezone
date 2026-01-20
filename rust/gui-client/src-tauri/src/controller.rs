@@ -677,34 +677,30 @@ impl<I: GuiIntegration> Controller<I> {
                     return Ok(ControlFlow::Continue(()));
                 }
 
-                let Status::TunnelReady { resources } = &self.status else {
-                    tracing::debug!(
-                        "No resource list available, cannot show notification about unreachable resource"
-                    );
-
-                    return Ok(ControlFlow::Continue(()));
-                };
-
-                let Some(resource) = resources.iter().find(|r| r.id() == resource_id) else {
-                    tracing::debug!(id = %resource_id, "Unknown resource");
-
-                    return Ok(ControlFlow::Continue(()));
-                };
-
-                let name = resource.name();
-                let Some(site) = resource.sites().first().map(|s| &s.name) else {
-                    return Ok(ControlFlow::Continue(()));
-                };
+                let (name, site) = self.name_and_site_of_resource(resource_id)?;
 
                 self.integration.show_notification(
                     &format!("Failed to connect to '{name}'"),
-                    "Your Firezone Client is incompatible with all Gateways in the site '{site}'. Please update your Client to the latest version and contact your administrator if the issue persists.",
+                    &format!("Your Firezone Client is incompatible with all Gateways in the site '{site}'. Please update your Client to the latest version and contact your administrator if the issue persists.")
+                )?;
+            }
+            service::ServerMsg::AllGatewaysOffline { resource_id } => {
+                let is_first = self.unreachable_resource.insert(resource_id);
+
+                if !is_first {
+                    return Ok(ControlFlow::Continue(()));
+                }
+
+                let (name, site) = self.name_and_site_of_resource(resource_id)?;
+
+                self.integration.show_notification(
+                    &format!("Failed to connect to '{name}'"),
+                    &format!("All Gateways in the site '{site}' are offline. Contact your administrator to resolve this issue."),
                 )?;
             }
         }
         Ok(ControlFlow::Continue(()))
     }
-
     async fn handle_gui_ipc_msg(
         &mut self,
         maybe_msg: Option<Result<gui::ClientMsg>>,
@@ -917,6 +913,24 @@ impl<I: GuiIntegration> Controller<I> {
         self.send_ipc(&service::ClientMsg::Disconnect).await?;
         self.refresh_ui_state();
         Ok(())
+    }
+
+    fn name_and_site_of_resource(&self, resource_id: ResourceId) -> Result<(String, String)> {
+        let Status::TunnelReady { resources } = &self.status else {
+            anyhow::bail!(
+                "No resource list available, cannot show notification about unreachable resource"
+            )
+        };
+
+        let resource = resources
+            .iter()
+            .find(|r| r.id() == resource_id)
+            .context("Unknown resource")?;
+
+        let name = resource.name();
+        let site = resource.sites().first().context("No site")?.name.clone();
+
+        Ok((name.to_owned(), site))
     }
 
     async fn send_ipc(&mut self, msg: &service::ClientMsg) -> Result<()> {

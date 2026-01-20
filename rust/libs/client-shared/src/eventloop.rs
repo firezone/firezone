@@ -69,6 +69,7 @@ pub enum Command {
 }
 
 pub enum UserNotification {
+    AllGatewaysOffline { resource_id: ResourceId },
     GatewayVersionMismatch { resource_id: ResourceId },
 }
 
@@ -458,6 +459,11 @@ impl Eventloop {
                 match reason {
                     FailReason::Offline => {
                         tunnel.state_mut().set_resource_offline(resource_id);
+
+                        let _ = self
+                            .user_notification_sender
+                            .send(UserNotification::AllGatewaysOffline { resource_id })
+                            .await;
                     }
                     FailReason::VersionMismatch => {
                         let _ = self
