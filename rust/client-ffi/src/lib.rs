@@ -126,6 +126,9 @@ pub enum Event {
     ResourcesUpdated {
         resources: Vec<Resource>,
     },
+    AllGatewaysOffline {
+        resource_id: String,
+    },
     GatewayVersionMismatch {
         resource_id: String,
     },
@@ -414,6 +417,11 @@ impl Session {
                 let resources: Vec<Resource> = resources.into_iter().map(Into::into).collect();
 
                 Some(Event::ResourcesUpdated { resources })
+            }
+            client_shared::Event::AllGatewaysOffline { resource_id } => {
+                Some(Event::AllGatewaysOffline {
+                    resource_id: resource_id.to_string(),
+                })
             }
             client_shared::Event::GatewayVersionMismatch { resource_id } => {
                 Some(Event::GatewayVersionMismatch {

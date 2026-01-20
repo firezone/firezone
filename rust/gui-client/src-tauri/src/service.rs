@@ -87,6 +87,9 @@ pub enum ServerMsg {
         error_msg: String,
         is_authentication_error: bool,
     },
+    AllGatewaysOffline {
+        resource_id: ResourceId,
+    },
     GatewayVersionMismatch {
         resource_id: ResourceId,
     },
@@ -505,6 +508,10 @@ impl<'a> Handler<'a> {
                     .set_routes(config.ipv4_routes, config.ipv6_routes)
                     .await?;
                 self.dns_controller.flush()?;
+            }
+            client_shared::Event::AllGatewaysOffline { resource_id } => {
+                self.send_ipc(ServerMsg::AllGatewaysOffline { resource_id })
+                    .await?;
             }
             client_shared::Event::GatewayVersionMismatch { resource_id } => {
                 self.send_ipc(ServerMsg::GatewayVersionMismatch { resource_id })

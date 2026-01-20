@@ -54,6 +54,8 @@ pub enum Event {
     TunInterfaceUpdated(TunConfig),
     /// The resource list has been updated.
     ResourcesUpdated(Vec<ResourceView>),
+    /// Establishing a tunnel for a resource failed because all Gateways are offline in the corresponding site.
+    AllGatewaysOffline { resource_id: ResourceId },
     /// Establishing a tunnel for a resource failed because there are no version-compatible Gateways in the corresponding site.
     GatewayVersionMismatch { resource_id: ResourceId },
     /// Connlib has been permanently disconnected from the portal and the tunnel has been shut down.
@@ -159,6 +161,9 @@ impl EventStream {
         }
 
         match self.user_notification_receiver.poll_recv(cx) {
+            Poll::Ready(Some(UserNotification::AllGatewaysOffline { resource_id })) => {
+                return Poll::Ready(Some(Event::AllGatewaysOffline { resource_id }));
+            }
             Poll::Ready(Some(UserNotification::GatewayVersionMismatch { resource_id })) => {
                 return Poll::Ready(Some(Event::GatewayVersionMismatch { resource_id }));
             }
