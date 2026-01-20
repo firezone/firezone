@@ -30,9 +30,9 @@ pub enum DnsControlMethod {
     ///
     /// We don't use an `Option<Method>` because leaving out the CLI arg should
     /// use NRPT, not disable DNS control.
-    #[default]
     Disabled,
     /// NRPT, the only DNS control method we use on Windows.
+    #[default]
     Nrpt,
 }
 
