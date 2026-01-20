@@ -104,7 +104,6 @@ public struct SettingsView: View {
   @State private var isExportingLogs = false
   @State private var isShowingConfirmationAlert = false
   @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
-  @State private var logSizeCapText: String = ""
 
   @State private var calculateLogSizeTask: Task<(), Never>?
 
@@ -489,27 +488,9 @@ public struct SettingsView: View {
             )
             .onAppear {
               self.refreshLogSize()
-              self.logSizeCapText = String(configuration.logSizeCap)
             }
             .onDisappear {
               self.cancelRefreshLogSize()
-            }
-            VStack(alignment: .leading, spacing: 2) {
-              Text("Max log size (MB):")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-              TextField(
-                "Max log size (MB)",
-                text: $logSizeCapText
-              )
-              .keyboardType(.numberPad)
-              .disabled(configuration.isLogSizeCapForced)
-              .onSubmit {
-                saveLogSizeCap()
-              }
-              .onChange(of: logSizeCapText) { _ in
-                saveLogSizeCap()
-              }
             }
             HStack {
               Spacer()
@@ -574,26 +555,9 @@ public struct SettingsView: View {
           )
           .onAppear {
             self.refreshLogSize()
-            self.logSizeCapText = String(configuration.logSizeCap)
           }
           .onDisappear {
             self.cancelRefreshLogSize()
-          }
-          HStack {
-            Text("Max log size (MB):")
-            TextField(
-              "",
-              text: $logSizeCapText
-            )
-            .frame(width: 60)
-            .textFieldStyle(.roundedBorder)
-            .disabled(configuration.isLogSizeCapForced)
-            .onSubmit {
-              saveLogSizeCap()
-            }
-            .onChange(of: logSizeCapText) { _ in
-              saveLogSizeCap()
-            }
           }
           HStack(spacing: 30) {
             ButtonWithProgress(
@@ -722,16 +686,6 @@ public struct SettingsView: View {
 
   private func saveSettings() async throws {
     try await viewModel.save()
-  }
-
-  private func saveLogSizeCap() {
-    guard let value = Int(logSizeCapText) else { return }
-    // Clamp it within reasonable bounds
-    let clamped = min(max(value, 10), 1000)
-    if clamped != value {
-      logSizeCapText = String(clamped)
-    }
-    configuration.logSizeCap = clamped
   }
 
   // Calculates the total size of our logs by summing the size of the

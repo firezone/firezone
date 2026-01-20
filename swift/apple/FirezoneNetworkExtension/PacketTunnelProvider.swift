@@ -309,8 +309,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   private func startLogCleanupTask() {
-    // Capture config value - Sendable, won't change during tunnel lifetime
-    let maxSizeMb = UInt32(tunnelConfiguration?.logSizeCap ?? 100)
+    // Hardcoded 100MB limit for log cleanup
+    let maxSizeMb: UInt32 = 100
 
     // Run cleanup immediately at startup
     Self.performLogCleanup(maxSizeMb: maxSizeMb)
@@ -399,7 +399,6 @@ extension TunnelConfiguration {
       "logFilter": logFilter,
       "accountSlug": accountSlug,
       "internetResourceEnabled": internetResourceEnabled,
-      "logSizeCap": logSizeCap,
     ]
 
     UserDefaults.standard.set(dict, forKey: key)
@@ -421,15 +420,11 @@ extension TunnelConfiguration {
       return nil
     }
 
-    // Default to 100 if not present (backwards compatibility)
-    let logSizeCap = dict["logSizeCap"] as? Int ?? 100
-
     return TunnelConfiguration(
       apiURL: apiURL,
       accountSlug: accountSlug,
       logFilter: logFilter,
-      internetResourceEnabled: internetResourceEnabled,
-      logSizeCap: logSizeCap
+      internetResourceEnabled: internetResourceEnabled
     )
   }
 }
