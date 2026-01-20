@@ -54,6 +54,7 @@ fn parse(content: &str, host: &str) -> Vec<IpAddr> {
 }
 
 #[cfg(not(unix))]
+#[expect(clippy::unused_async, reason = "Must match unix API.")]
 pub async fn resolve<H>(_: H) -> Result<Vec<IpAddr>>
 where
     H: Into<Cow<'static, str>>,
