@@ -947,11 +947,7 @@ mod tests {
         let mut test_controller = Controller::start_for_test("fails_without_receiving_hello");
 
         // Accept the IPC connection
-        let (_rx, _tx) = test_controller
-            .tunnel_server
-            .next_client_split::<service::ClientMsg, service::ServerMsg>()
-            .await
-            .unwrap();
+        let (_tunnel_rx, _tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
 
         let start_error = tokio::time::timeout(Duration::from_secs(6), test_controller.join_handle)
             .await
@@ -965,6 +961,54 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn launches_overview_page_on_startup() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test("launches_overview_page_on_startup");
+
+        let (_tunnel_rx, mut tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
+        tunnel_tx.send(&service::ServerMsg::Hello).await.unwrap();
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        assert_eq!(
+            test_controller
+                .integration
+                .lock()
+                .unwrap()
+                .shown_overview_page
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn shows_page_when_2nd_instance_launches() {
+        let _guard = logging::test("debug");
+        let mut test_controller =
+            Controller::start_for_test("shows_page_when_2nd_instance_launches");
+
+        let (_tunnel_rx, mut tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
+        tunnel_tx.send(&service::ServerMsg::Hello).await.unwrap();
+
+        let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
+        gui_tx.send(&gui::ClientMsg::NewInstance).await.unwrap();
+        let response = gui_rx.next().await.unwrap().unwrap();
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        assert_eq!(
+            test_controller
+                .integration
+                .lock()
+                .unwrap()
+                .shown_overview_page
+                .len(),
+            2
+        );
+        assert_eq!(response, gui::ServerMsg::Ack)
+    }
+
     #[expect(dead_code, reason = "It is a test.")]
     struct TestController {
         join_handle: tokio::task::JoinHandle<Result<()>>,
@@ -972,6 +1016,35 @@ mod tests {
         ctrl_tx: mpsc::Sender<ControllerRequest>,
         updates_tx: mpsc::Sender<Option<updates::Notification>>,
         integration: Arc<Mutex<TestIntegration>>,
+        gui_id: &'static str,
+    }
+
+    impl TestController {
+        async fn tunnel_service_ipc_accept(
+            &mut self,
+        ) -> (
+            ipc::ServerRead<service::ClientMsg>,
+            ipc::ServerWrite<service::ServerMsg>,
+        ) {
+            self.tunnel_server
+                .next_client_split::<service::ClientMsg, service::ServerMsg>()
+                .await
+                .unwrap()
+        }
+
+        async fn gui_ipc_connect(
+            &mut self,
+        ) -> (
+            ipc::ClientRead<gui::ServerMsg>,
+            ipc::ClientWrite<gui::ClientMsg>,
+        ) {
+            ipc::connect(
+                SocketId::Test(self.gui_id),
+                ipc::ConnectOptions { num_attempts: 1 },
+            )
+            .await
+            .unwrap()
+        }
     }
 
     #[derive(Default)]
@@ -1121,6 +1194,7 @@ mod tests {
                 tunnel_server: tunnel_ipc_server,
                 ctrl_tx,
                 updates_tx,
+                gui_id,
             }
         }
     }
