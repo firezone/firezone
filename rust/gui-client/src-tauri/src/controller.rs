@@ -412,7 +412,7 @@ impl<I: GuiIntegration> Controller<I> {
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_ui_state();
 
-                self.integration.show_notification("Settings saved", "")?;
+                let _ = self.integration.show_notification("Settings saved", "")?;
             }
             ApplyGeneralSettings(settings) => {
                 let account_slug = settings.account_slug.trim();
@@ -575,7 +575,7 @@ impl<I: GuiIntegration> Controller<I> {
         gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
 
         self.notify_settings_changed()?;
-        self.integration.show_notification("Settings saved", "")?;
+        let _ = self.integration.show_notification("Settings saved", "")?;
 
         Ok(())
     }
@@ -609,7 +609,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.sign_out().await?;
                 if is_authentication_error {
                     tracing::info!(?error_msg, "Auth error");
-                    self.integration.show_notification(
+                    let _ = self.integration.show_notification(
                         "Firezone disconnected",
                         "To access resources, sign in again.",
                     )?;
@@ -630,7 +630,7 @@ impl<I: GuiIntegration> Controller<I> {
 
                 // If this is the first time we receive resources, show the notification that we are connected.
                 if let &Status::WaitingForTunnel = &self.status {
-                    self.integration.show_notification(
+                    let _ = self.integration.show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
                     )?;
@@ -647,7 +647,7 @@ impl<I: GuiIntegration> Controller<I> {
                 tracing::info!("Tunnel service exited gracefully");
                 self.integration
                     .set_tray_icon(system_tray::icon_terminating());
-                self.integration.show_notification(
+                let _ = self.integration.show_notification(
                     "Firezone disconnected",
                     "The Firezone Tunnel service was shut down, quitting GUI process.",
                 )?;
