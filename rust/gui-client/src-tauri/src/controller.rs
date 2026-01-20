@@ -936,15 +936,16 @@ async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Resu
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, MutexGuard};
+
+    use uuid::Uuid;
 
     use super::*;
 
     #[tokio::test]
     async fn fails_without_receiving_hello() {
         let _guard = logging::test("debug");
-
-        let mut test_controller = Controller::start_for_test("fails_without_receiving_hello");
+        let mut test_controller = Controller::start_for_test();
 
         // Accept the IPC connection
         let (_tunnel_rx, _tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
@@ -964,29 +965,20 @@ mod tests {
     #[tokio::test]
     async fn launches_overview_page_on_startup() {
         let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test("launches_overview_page_on_startup");
+        let mut test_controller = Controller::start_for_test();
 
         let (_tunnel_rx, mut tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
         tunnel_tx.send(&service::ServerMsg::Hello).await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        assert_eq!(
-            test_controller
-                .integration
-                .lock()
-                .unwrap()
-                .shown_overview_page
-                .len(),
-            1
-        );
+        assert_eq!(test_controller.integration().shown_overview_page.len(), 1);
     }
 
     #[tokio::test]
     async fn shows_page_when_2nd_instance_launches() {
         let _guard = logging::test("debug");
-        let mut test_controller =
-            Controller::start_for_test("shows_page_when_2nd_instance_launches");
+        let mut test_controller = Controller::start_for_test();
 
         let (_tunnel_rx, mut tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
         tunnel_tx.send(&service::ServerMsg::Hello).await.unwrap();
@@ -997,15 +989,7 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        assert_eq!(
-            test_controller
-                .integration
-                .lock()
-                .unwrap()
-                .shown_overview_page
-                .len(),
-            2
-        );
+        assert_eq!(test_controller.integration().shown_overview_page.len(), 2);
         assert_eq!(response, gui::ServerMsg::Ack)
     }
 
@@ -1044,6 +1028,10 @@ mod tests {
             )
             .await
             .unwrap()
+        }
+
+        fn integration(&self) -> MutexGuard<'_, TestIntegration> {
+            self.integration.lock().unwrap()
         }
     }
 
@@ -1162,7 +1150,9 @@ mod tests {
     }
 
     impl Controller<Arc<Mutex<TestIntegration>>> {
-        fn start_for_test(id: &'static str) -> TestController {
+        fn start_for_test() -> TestController {
+            let id = Uuid::new_v4().to_string().leak();
+
             // Leaking memory here is fine because we are in a test and the process is terminated at the end.
             let tunnel_id = format!("{id}_tunnel").leak();
             let gui_id = format!("{id}_gui").leak();
