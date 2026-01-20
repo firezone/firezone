@@ -71,7 +71,7 @@ pub trait GuiIntegration {
         &self,
         title: impl Into<String>,
         body: impl Into<String>,
-    ) -> Result<impl Future<Item = ()>>;
+    ) -> Result<impl Future<Output = ()>>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
