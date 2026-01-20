@@ -10,6 +10,6 @@ pub(crate) fn show_notification(
     _app: &AppHandle,
     _title: String,
     _body: String,
-) -> Result<impl Future<Output = ()>> {
+) -> Result<impl Future<Output = Result<(), ()>> + Send + 'static> {
     bail!("Not implemented")
 }

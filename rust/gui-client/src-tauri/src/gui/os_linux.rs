@@ -36,7 +36,7 @@ pub(crate) fn show_notification(
     app: &AppHandle,
     title: String,
     body: String,
-) -> Result<impl Future<Output = ()>> {
+) -> Result<impl Future<Output = Result<(), ()>> + Send + 'static> {
     app.notification()
         .builder()
         .title(&title)

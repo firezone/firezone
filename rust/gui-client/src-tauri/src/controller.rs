@@ -71,7 +71,7 @@ pub trait GuiIntegration {
         &self,
         title: impl Into<String>,
         body: impl Into<String>,
-    ) -> Result<impl Future<Output = ()>>;
+    ) -> Result<impl Future<Output = Result<(), ()>> + Send + 'static>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
@@ -744,7 +744,9 @@ impl<I: GuiIntegration> Controller<I> {
             let ctrl_tx = self.ctrl_tx.clone();
 
             tokio::spawn(async move {
-                on_click.await;
+                if on_click.await.is_err() {
+                    return;
+                };
 
                 let _ = ctrl_tx
                     .send(ControllerRequest::UpdateNotificationClicked(

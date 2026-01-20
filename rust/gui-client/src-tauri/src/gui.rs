@@ -161,7 +161,7 @@ impl GuiIntegration for TauriIntegration {
         &self,
         title: impl Into<String>,
         body: impl Into<String>,
-    ) -> Result<impl Future<Output = ()>> {
+    ) -> Result<impl Future<Output = Result<(), ()>> + Send + 'static> {
         os::show_notification(&self.app, title.into(), body.into())
     }
 

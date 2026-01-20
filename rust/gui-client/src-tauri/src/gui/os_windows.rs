@@ -1,7 +1,6 @@
-use super::ControllerRequest;
 use anyhow::{Context, Result};
 use bin_shared::BUNDLE_ID;
-use logging::err_with_src;
+use futures::TryFutureExt;
 use std::env;
 use tauri::AppHandle;
 use winreg::RegKey;
@@ -65,11 +64,11 @@ pub(crate) fn show_notification(
     _app: &AppHandle,
     title: String,
     body: String,
-) -> Result<impl Future<Output = ()>> {
-    let (tx, rx) = futures::future::oneshot::channel();
+) -> Result<impl Future<Output = Result<(), ()>> + Send + 'static> {
+    let (tx, rx) = futures::channel::oneshot::channel();
 
     // For some reason `on_activated` is FnMut
-    let mut req = Some(tx);
+    let mut tx = Some(tx);
 
     tauri_winrt_notification::Toast::new(BUNDLE_ID)
         .title(&title)
@@ -85,5 +84,5 @@ pub(crate) fn show_notification(
         .show()
         .context("Couldn't show clickable URL notification")?;
 
-    Ok(rx)
+    Ok(rx.map_err(|_| ()))
 }
