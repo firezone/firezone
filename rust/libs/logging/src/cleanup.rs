@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 
 /// Minimum age in seconds for files to be eligible for deletion.
 /// Files modified more recently than this are protected.
-const MIN_AGE_SECS: u64 = 300;
+const MIN_AGE_SECS: Duration = Duration::from_secs(300);
 
 /// Enforces a size cap on log directories by deleting oldest files first.
 /// FFI-friendly interface.
@@ -23,7 +23,6 @@ const MIN_AGE_SECS: u64 = 300;
 /// - Logs debug/warning messages for errors encountered during cleanup
 pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
     let max_bytes = u64::from(max_size_mb) * 1024 * 1024;
-    let min_age = Duration::from_secs(MIN_AGE_SECS);
     let now = SystemTime::now();
 
     // Collect all log files with metadata: (path, size, mtime, parent_index)
@@ -34,6 +33,7 @@ pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
             tracing::debug!(dir = %dir.display(), "Log directory does not exist, skipping");
             continue;
         }
+
         let entries = match fs::read_dir(dir) {
             Ok(e) => e,
             Err(e) => {
@@ -112,7 +112,7 @@ pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
 
         // Skip if too recent
         if let Ok(age) = now.duration_since(*mtime) {
-            if age < min_age {
+            if age < MIN_AGE_SECS {
                 continue;
             }
         } else {
@@ -152,7 +152,7 @@ pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
     }
 
     if current_size > max_bytes {
-        tracing::warn!(
+        tracing::debug!(
             current_size_mb = current_size / 1024 / 1024,
             max_size_mb,
             "Log size still over threshold after cleanup (recent files protected)"
