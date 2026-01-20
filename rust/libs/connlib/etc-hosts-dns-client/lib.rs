@@ -58,7 +58,7 @@ pub async fn resolve<H>(_: H) -> Result<Vec<IpAddr>>
 where
     H: Into<Cow<'static, str>>,
 {
-    async { Ok(Vec::default()) }
+    Ok(Vec::default())
 }
 
 #[cfg(test)]
