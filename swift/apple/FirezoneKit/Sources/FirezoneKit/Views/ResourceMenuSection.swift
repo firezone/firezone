@@ -125,24 +125,36 @@
   struct ResourcesSection: View {
     @EnvironmentObject var store: Store
 
-    /// Partitioned resources (single-pass filtering for performance).
-    /// Separates resources into internet, favorites, and others in one iteration
-    /// instead of three separate filter passes over the resource list.
+    /// Partitioned resources for display.
+    /// If no resources are favorited, all resources show directly in the menu.
+    /// Otherwise, favorites show directly and others go in the "Other Resources" submenu.
     private var partitionedResources:
       (
         internetResource: Resource?,
-        favorites: [Resource],
+        directlyShown: [Resource],
         others: [Resource]
       )
     {
-      store.resourceList.asArray().reduce(
-        into: (internetResource: nil, favorites: [], others: [])
+      let allResources = store.resourceList.asArray()
+
+      // Check if user has favorited anything (excluding internet resource)
+      let hasAnyFavorites = allResources.contains {
+        !$0.isInternetResource() && store.favorites.contains($0.id)
+      }
+
+      return allResources.reduce(
+        into: (internetResource: nil, directlyShown: [], others: [])
       ) { result, resource in
         if resource.isInternetResource() {
           result.internetResource = resource
+        } else if !hasAnyFavorites {
+          // No favorites: show all resources directly
+          result.directlyShown.append(resource)
         } else if store.favorites.contains(resource.id) {
-          result.favorites.append(resource)
+          // Has favorites: show only favorites directly
+          result.directlyShown.append(resource)
         } else {
+          // Has favorites: non-favorites go to submenu
           result.others.append(resource)
         }
       }
@@ -162,14 +174,12 @@
           ResourceMenuItem(resource: internet)
         }
 
-        // Favorites (shown when not empty)
-        if !resources.favorites.isEmpty {
-          ForEach(resources.favorites) { resource in
-            ResourceMenuItem(resource: resource)
-          }
+        // Directly shown resources (favorites, or all if no favorites)
+        ForEach(resources.directlyShown) { resource in
+          ResourceMenuItem(resource: resource)
         }
 
-        // Other Resources submenu (only if there are non-favorites)
+        // Other Resources submenu (only when favorites exist and there are non-favorites)
         if !resources.others.isEmpty {
           Menu("Other Resources") {
             ForEach(resources.others) { resource in
