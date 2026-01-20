@@ -9,7 +9,7 @@ use crate::{
     view::{GeneralSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
-use connlib_model::{ResourceId, ResourceView};
+use connlib_model::{ResourceId, ResourceView, Site, SiteId};
 use futures::{
     SinkExt, StreamExt,
     stream::{self, BoxStream},
@@ -43,8 +43,8 @@ pub struct Controller<I: GuiIntegration> {
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
-    /// Resources we have tried to access, failed and showed a notification as a result.
-    unreachable_resource: HashSet<ResourceId>,
+    /// Sites we have tried to access, failed and showed a notification as a result.
+    unreachable_sites: HashSet<SiteId>,
 
     gui_ipc_clients: BoxStream<
         'static,
@@ -218,7 +218,7 @@ impl<I: GuiIntegration> Controller<I> {
                 Some((result, gui_ipc))
             })
             .boxed(),
-            unreachable_resource: Default::default(),
+            unreachable_sites: Default::default(),
         };
 
         controller.main_loop().await?;
@@ -671,31 +671,27 @@ impl<I: GuiIntegration> Controller<I> {
             }
             service::ServerMsg::Hello => {}
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
-                let is_first = self.unreachable_resource.insert(resource_id);
+                let (resource, site) = self.resource_by_id(resource_id)?;
 
-                if !is_first {
+                if !self.unreachable_sites.insert(site.id) {
                     return Ok(ControlFlow::Continue(()));
                 }
 
-                let (name, site) = self.name_and_site_of_resource(resource_id)?;
-
                 self.integration.show_notification(
-                    &format!("Failed to connect to '{name}'"),
-                    &format!("Your Firezone Client is incompatible with all Gateways in the site '{site}'. Please update your Client to the latest version and contact your administrator if the issue persists.")
+                    &format!("Failed to connect to '{}'", resource.name()),
+                    &format!("Your Firezone Client is incompatible with all Gateways in the site '{}'. Please update your Client to the latest version and contact your administrator if the issue persists.", site.name)
                 )?;
             }
             service::ServerMsg::AllGatewaysOffline { resource_id } => {
-                let is_first = self.unreachable_resource.insert(resource_id);
+                let (resource, site) = self.resource_by_id(resource_id)?;
 
-                if !is_first {
+                if !self.unreachable_sites.insert(site.id) {
                     return Ok(ControlFlow::Continue(()));
                 }
 
-                let (name, site) = self.name_and_site_of_resource(resource_id)?;
-
                 self.integration.show_notification(
-                    &format!("Failed to connect to '{name}'"),
-                    &format!("All Gateways in the site '{site}' are offline. Contact your administrator to resolve this issue."),
+                    &format!("Failed to connect to '{}'", resource.name()),
+                    &format!("All Gateways in the site '{}' are offline. Contact your administrator to resolve this issue.", site.name),
                 )?;
             }
         }
@@ -915,7 +911,7 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    fn name_and_site_of_resource(&self, resource_id: ResourceId) -> Result<(String, String)> {
+    fn resource_by_id(&self, resource_id: ResourceId) -> Result<(ResourceView, Site)> {
         let Status::TunnelReady { resources } = &self.status else {
             anyhow::bail!(
                 "No resource list available, cannot show notification about unreachable resource"
@@ -927,10 +923,9 @@ impl<I: GuiIntegration> Controller<I> {
             .find(|r| r.id() == resource_id)
             .context("Unknown resource")?;
 
-        let name = resource.name();
-        let site = resource.sites().first().context("No site")?.name.clone();
+        let site = resource.sites().first().context("No site")?;
 
-        Ok((name.to_owned(), site))
+        Ok((resource.clone(), site.clone()))
     }
 
     async fn send_ipc(&mut self, msg: &service::ClientMsg) -> Result<()> {
