@@ -91,9 +91,20 @@
             copyToClipboard(site.name)
           }
 
-          Button(resource.status.toSiteStatus()) {
+          Button {
             copyToClipboard(resource.status.toSiteStatus())
+          } label: {
+            if let icon = resource.status.statusIcon {
+              Label {
+                Text(resource.status.toSiteStatus())
+              } icon: {
+                Image(nsImage: icon)
+              }
+            } else {
+              Text(resource.status.toSiteStatus())
+            }
           }
+          .help(resource.status.toSiteStatusTooltip())
         }
       }
     }
