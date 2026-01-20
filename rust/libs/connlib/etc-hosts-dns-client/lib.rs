@@ -54,7 +54,7 @@ fn parse(content: &str, host: &str) -> Vec<IpAddr> {
 }
 
 #[cfg(not(unix))]
-pub fn resolve<H>(_: H) -> impl Future<Output = Result<Vec<IpAddr>>> + use<H>
+pub async fn resolve<H>(_: H) -> Result<Vec<IpAddr>>
 where
     H: Into<Cow<'static, str>>,
 {
