@@ -2,6 +2,8 @@
 use anyhow::{Result, bail};
 use tauri::AppHandle;
 
+use crate::controller::NotificationHandle;
+
 pub async fn set_autostart(_enabled: bool) -> Result<()> {
     bail!("Not implemented")
 }
@@ -10,6 +12,6 @@ pub(crate) fn show_notification(
     _app: &AppHandle,
     _title: String,
     _body: String,
-) -> Result<futures::future::Pending<Result<(), ()>>> {
+) -> Result<NotificationHandle> {
     bail!("Not implemented")
 }

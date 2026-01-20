@@ -6,6 +6,8 @@ use tauri::AppHandle;
 use winreg::RegKey;
 use winreg::enums::*;
 
+use crate::controller::NotificationHandle;
+
 pub async fn set_autostart(enabled: bool) -> Result<()> {
     // Get path to the current executable
     let exec_path = env::current_exe().context("Failed to get current executable path")?;
@@ -64,7 +66,7 @@ pub(crate) fn show_notification(
     _app: &AppHandle,
     title: String,
     body: String,
-) -> Result<impl Future<Output = Result<(), ()>> + Send + 'static> {
+) -> Result<NotificationHandle> {
     let (tx, rx) = futures::channel::oneshot::channel();
 
     // For some reason `on_activated` is FnMut
@@ -84,5 +86,5 @@ pub(crate) fn show_notification(
         .show()
         .context("Couldn't show clickable URL notification")?;
 
-    Ok(rx.map_err(|_| ()))
+    Ok(NotificationHandle { on_click: rx })
 }

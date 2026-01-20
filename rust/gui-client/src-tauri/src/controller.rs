@@ -71,7 +71,7 @@ pub trait GuiIntegration {
         &self,
         title: impl Into<String>,
         body: impl Into<String>,
-    ) -> Result<impl Future<Output = Result<(), ()>> + Send + 'static>;
+    ) -> Result<NotificationHandle>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
@@ -82,6 +82,10 @@ pub trait GuiIntegration {
         settings: AdvancedSettings,
     ) -> Result<()>;
     fn show_about_page(&self) -> Result<()>;
+}
+
+pub struct NotificationHandle {
+    pub on_click: futures::channel::oneshot::Receiver<()>,
 }
 
 #[derive(strum::Display)]
@@ -737,7 +741,7 @@ impl<I: GuiIntegration> Controller<I> {
             #[cfg(target_os = "windows")]
             let body = "Click here to download the new version";
 
-            let on_click = self.integration.show_notification(
+            let NotificationHandle { on_click } = self.integration.show_notification(
                 format!("Firezone {} available for download", release.version),
                 body,
             )?;

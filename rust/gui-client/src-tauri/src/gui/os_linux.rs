@@ -2,6 +2,8 @@ use anyhow::{Context as _, Result};
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt as _;
 
+use crate::controller::NotificationHandle;
+
 pub async fn set_autostart(enabled: bool) -> Result<()> {
     let dir = dirs::config_local_dir()
         .context("Can't compute `config_local_dir`")?
@@ -36,12 +38,14 @@ pub(crate) fn show_notification(
     app: &AppHandle,
     title: String,
     body: String,
-) -> Result<impl Future<Output = Result<(), ()>> + Send + 'static> {
+) -> Result<NotificationHandle> {
+    let (_, rx) = futures::channel::oneshot::channel();
+
     app.notification()
         .builder()
         .title(&title)
         .body(&body)
         .show()?;
 
-    Ok(futures::future::pending()) // TODO: Make clickable notifications work on Linux.
+    Ok(NotificationHandle { on_click: rx })
 }
