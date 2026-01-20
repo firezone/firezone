@@ -24,7 +24,8 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.12" date={new Date("2026-01-20")}>
         <ChangeItem pull="11735">
           Fixes an issue on iOS where the system resolvers could not be reliably
           read, causing DNS queries to fail system-wide.
@@ -62,7 +63,7 @@ export default function Apple() {
           responses. For example, this allows Firezone to automatically sign-in
           even if Internet Access is gated by a captive portal.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.11" date={new Date("2025-12-23")}>
         <ChangeItem pull="11141">
           Fixes an issue where spurious resource updates would result in
