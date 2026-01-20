@@ -24,21 +24,16 @@ use windows::Win32::System::GroupPolicy::{RP_FORCE, RefreshPolicyEx};
 // Copied from the deep link schema
 const FZ_MAGIC: &str = "firezone-fd0020211111";
 
-#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
 pub enum DnsControlMethod {
     /// Explicitly disable DNS control.
     ///
     /// We don't use an `Option<Method>` because leaving out the CLI arg should
     /// use NRPT, not disable DNS control.
+    #[default]
     Disabled,
     /// NRPT, the only DNS control method we use on Windows.
     Nrpt,
-}
-
-impl Default for DnsControlMethod {
-    fn default() -> Self {
-        Self::Nrpt
-    }
 }
 
 impl DnsController {
