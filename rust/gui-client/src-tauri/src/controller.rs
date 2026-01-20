@@ -933,3 +933,195 @@ async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Resu
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn fails_without_receiving_hello() {
+        let _guard = logging::test("debug");
+
+        let mut test_controller = Controller::start_for_test("fails_without_receiving_hello");
+
+        // Accept the IPC connection
+        let (_rx, _tx) = test_controller
+            .tunnel_server
+            .next_client_split::<service::ClientMsg, service::ServerMsg>()
+            .await
+            .unwrap();
+
+        let start_error = tokio::time::timeout(Duration::from_secs(6), test_controller.join_handle)
+            .await
+            .expect("should not timeout")
+            .unwrap()
+            .unwrap_err();
+
+        assert_eq!(
+            start_error.to_string(),
+            "Failed to receive hello: Timeout while waiting for message from tunnel service for 5s: deadline has elapsed"
+        );
+    }
+
+    #[expect(dead_code, reason = "It is a test.")]
+    struct TestController {
+        join_handle: tokio::task::JoinHandle<Result<()>>,
+        tunnel_server: ipc::Server,
+        ctrl_tx: mpsc::Sender<ControllerRequest>,
+        updates_tx: mpsc::Sender<Option<updates::Notification>>,
+        integration: Arc<Mutex<TestIntegration>>,
+    }
+
+    #[derive(Default)]
+    struct TestIntegration {
+        sessions: Vec<SessionViewModel>,
+        mdm_settings: Vec<MdmSettings>,
+        general_settings: Vec<GeneralSettings>,
+        advanced_settings: Vec<AdvancedSettings>,
+        file_counts: Vec<FileCount>,
+        opened_urls: Vec<String>,
+        tray_icons: Vec<system_tray::Icon>,
+        tray_states: Vec<system_tray::AppState>,
+        notifications: Vec<(String, String, futures::channel::oneshot::Sender<()>)>,
+        window_visibilities: Vec<bool>,
+        shown_overview_page: Vec<SessionViewModel>,
+        shown_settings_page: Vec<(MdmSettings, GeneralSettings, AdvancedSettings)>,
+        shown_about_page: Vec<()>,
+    }
+
+    impl GuiIntegration for Arc<Mutex<TestIntegration>> {
+        fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
+            self.lock().unwrap().sessions.push(session.clone());
+
+            Ok(())
+        }
+
+        fn notify_settings_changed(
+            &self,
+            mdm_settings: MdmSettings,
+            general_settings: GeneralSettings,
+            advanced_settings: AdvancedSettings,
+        ) -> Result<()> {
+            let mut guard = self.lock().unwrap();
+
+            guard.mdm_settings.push(mdm_settings);
+            guard.general_settings.push(general_settings);
+            guard.advanced_settings.push(advanced_settings);
+
+            Ok(())
+        }
+
+        fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
+            self.lock().unwrap().file_counts.push(file_count.clone());
+
+            Ok(())
+        }
+
+        fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
+            self.lock()
+                .unwrap()
+                .opened_urls
+                .push(url.as_ref().to_owned());
+
+            Ok(())
+        }
+
+        fn set_tray_icon(&mut self, icon: system_tray::Icon) {
+            self.lock().unwrap().tray_icons.push(icon);
+        }
+
+        fn set_tray_menu(&mut self, app_state: system_tray::AppState) {
+            self.lock().unwrap().tray_states.push(app_state);
+        }
+
+        fn show_notification(
+            &self,
+            title: impl Into<String>,
+            body: impl Into<String>,
+        ) -> Result<NotificationHandle> {
+            let (tx, rx) = futures::channel::oneshot::channel();
+
+            self.lock()
+                .unwrap()
+                .notifications
+                .push((title.into(), body.into(), tx));
+
+            Ok(NotificationHandle { on_click: rx })
+        }
+
+        fn set_window_visible(&self, visible: bool) -> Result<()> {
+            self.lock().unwrap().window_visibilities.push(visible);
+
+            Ok(())
+        }
+
+        fn show_overview_page(&self, session: &SessionViewModel) -> Result<()> {
+            self.lock()
+                .unwrap()
+                .shown_overview_page
+                .push(session.clone());
+
+            Ok(())
+        }
+
+        fn show_settings_page(
+            &self,
+            mdm_settings: MdmSettings,
+            general_settings: GeneralSettings,
+            settings: AdvancedSettings,
+        ) -> Result<()> {
+            self.lock().unwrap().shown_settings_page.push((
+                mdm_settings,
+                general_settings,
+                settings,
+            ));
+
+            Ok(())
+        }
+
+        fn show_about_page(&self) -> Result<()> {
+            self.lock().unwrap().shown_about_page.push(());
+
+            Ok(())
+        }
+    }
+
+    impl Controller<Arc<Mutex<TestIntegration>>> {
+        fn start_for_test(id: &'static str) -> TestController {
+            // Leaking memory here is fine because we are in a test and the process is terminated at the end.
+            let tunnel_id = format!("{id}_tunnel").leak();
+            let gui_id = format!("{id}_gui").leak();
+
+            let tunnel_ipc_server = ipc::Server::new(SocketId::Test(tunnel_id)).unwrap();
+            let gui_ipc_server = ipc::Server::new(SocketId::Test(gui_id)).unwrap();
+
+            let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
+            let (updates_tx, updates_rx) = mpsc::channel(16);
+            let (_, log_filter_reloader) = logging::try_filter::<()>("debug").unwrap();
+            let integration = Arc::new(Mutex::new(TestIntegration::default()));
+
+            let join_handle = tokio::spawn(Self::start(
+                SocketId::Test(tunnel_id),
+                integration.clone(),
+                ctrl_tx.clone(),
+                ctrl_rx,
+                GeneralSettings::default(),
+                MdmSettings::default(),
+                AdvancedSettings::default(),
+                log_filter_reloader,
+                updates_rx,
+                gui_ipc_server,
+            ));
+
+            TestController {
+                join_handle,
+                integration,
+                tunnel_server: tunnel_ipc_server,
+                ctrl_tx,
+                updates_tx,
+            }
+        }
+    }
+}
