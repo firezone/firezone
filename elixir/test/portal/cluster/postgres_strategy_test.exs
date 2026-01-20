@@ -88,11 +88,15 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       assert Process.alive?(pid)
     end
 
-    test "handles goodbye notification from other nodes" do
+    test "handles goodbye notification from connected nodes" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
       pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
       Process.sleep(100)
+
+      # First connect the node via heartbeat
+      send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
+      Process.sleep(50)
 
       log =
         capture_log(fn ->
@@ -101,6 +105,45 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         end)
 
       assert log =~ "Received goodbye from node"
+      assert Process.alive?(pid)
+    end
+
+    test "ignores goodbye from nodes that were never connected" do
+      channel_name = "test_#{System.unique_integer([:positive])}"
+
+      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
+      Process.sleep(100)
+
+      log =
+        capture_log(fn ->
+          send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:unknown@node"})
+          Process.sleep(50)
+        end)
+
+      refute log =~ "Received goodbye from node"
+      assert Process.alive?(pid)
+    end
+
+    test "only disconnects once when receiving duplicate goodbyes" do
+      channel_name = "test_#{System.unique_integer([:positive])}"
+
+      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
+      Process.sleep(100)
+
+      # First connect the node via heartbeat
+      send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
+      Process.sleep(50)
+
+      log =
+        capture_log(fn ->
+          # Send two goodbyes in quick succession
+          send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
+          send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
+          Process.sleep(50)
+        end)
+
+      # Should only log disconnect once
+      assert length(Regex.scan(~r/Received goodbye from node/, log)) == 1
       assert Process.alive?(pid)
     end
 
