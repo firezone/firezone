@@ -241,7 +241,7 @@ defmodule Portal.Cluster.PostgresStrategy do
   end
 
   defp handle_goodbye(node, state) do
-    Logger.info("Received goodbye from node, disconnecting", node: node)
+    was_connected = node in state.connected_nodes
 
     state = %{
       state
@@ -249,8 +249,15 @@ defmodule Portal.Cluster.PostgresStrategy do
         connected_nodes: List.delete(state.connected_nodes, node)
     }
 
-    Cluster.Strategy.disconnect_nodes(state.topology, state.disconnect, state.list_nodes, [node])
-    maybe_log_threshold_error(state, [node])
+    if was_connected do
+      Logger.info("Received goodbye from node, disconnecting", node: node)
+
+      Cluster.Strategy.disconnect_nodes(state.topology, state.disconnect, state.list_nodes, [node])
+
+      maybe_log_threshold_error(state, [node])
+    else
+      state
+    end
   end
 
   defp check_stale_nodes(state) do
@@ -269,14 +276,19 @@ defmodule Portal.Cluster.PostgresStrategy do
     if stale_nodes == [] do
       %{state | node_timestamps: active_timestamps}
     else
-      Logger.info("Disconnecting stale nodes", nodes: inspect(stale_nodes))
+      # Only disconnect nodes that are actually connected
+      nodes_to_disconnect = Enum.filter(stale_nodes, &(&1 in state.connected_nodes))
 
-      Cluster.Strategy.disconnect_nodes(
-        state.topology,
-        state.disconnect,
-        state.list_nodes,
-        stale_nodes
-      )
+      if nodes_to_disconnect != [] do
+        Logger.info("Disconnecting stale nodes", nodes: inspect(nodes_to_disconnect))
+
+        Cluster.Strategy.disconnect_nodes(
+          state.topology,
+          state.disconnect,
+          state.list_nodes,
+          nodes_to_disconnect
+        )
+      end
 
       state = %{
         state
