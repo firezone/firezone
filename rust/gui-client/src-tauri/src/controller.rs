@@ -33,7 +33,7 @@ pub struct Controller<I: GuiIntegration> {
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
-    ctlr_tx: CtlrTx,
+    ctrl_tx: CtlrTx,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
     ipc_rx: ipc::ClientRead<service::ServerMsg>,
     integration: I,
@@ -190,7 +190,7 @@ impl<I: GuiIntegration> Controller<I> {
             advanced_settings,
             auth: auth::Auth::new()?,
             clear_logs_callback: None,
-            ctlr_tx,
+            ctrl_tx: ctlr_tx,
             ipc_client,
             ipc_rx,
             integration,
@@ -743,7 +743,7 @@ impl<I: GuiIntegration> Controller<I> {
                 format!("Firezone {} available for download", release.version),
                 body,
             )?;
-            let ctrl_tx = self.ctlr_tx.clone();
+            let ctrl_tx = self.ctrl_tx.clone();
 
             tokio::spawn(async move {
                 on_click.await;
