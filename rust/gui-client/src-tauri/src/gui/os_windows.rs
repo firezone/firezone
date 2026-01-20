@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use bin_shared::BUNDLE_ID;
-use futures::TryFutureExt;
 use std::env;
 use tauri::AppHandle;
 use winreg::RegKey;
