@@ -167,6 +167,7 @@ pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
     pub(crate) async fn start(
+        socket: SocketId,
         ctrl_tx: mpsc::Sender<ControllerRequest>,
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
@@ -179,8 +180,7 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (mut ipc_rx, ipc_client) =
-            ipc::connect(SocketId::Tunnel, ipc::ConnectOptions::default()).await?;
+        let (mut ipc_rx, ipc_client) = ipc::connect(socket, ipc::ConnectOptions::default()).await?;
 
         receive_hello(&mut ipc_rx)
             .await

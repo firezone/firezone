@@ -344,6 +344,7 @@ pub fn run(
 
         // Spawn the controller
         let ctrl_task = tokio::spawn(Controller::start(
+            SocketId::Tunnel,
             ctlr_tx,
             integration,
             ctlr_rx,
