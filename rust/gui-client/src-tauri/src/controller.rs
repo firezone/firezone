@@ -38,7 +38,7 @@ pub struct Controller<I: GuiIntegration> {
     log_filter_reloader: FilterReloadHandle,
     /// A release that's ready to download
     release: Option<updates::Release>,
-    rx: ReceiverStream<ControllerRequest>,
+    ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
@@ -168,9 +168,9 @@ pub struct FailedToReceiveHello(anyhow::Error);
 impl<I: GuiIntegration> Controller<I> {
     pub(crate) async fn start(
         socket: SocketId,
-        ctrl_tx: mpsc::Sender<ControllerRequest>,
         integration: I,
-        rx: mpsc::Receiver<ControllerRequest>,
+        ctrl_tx: mpsc::Sender<ControllerRequest>,
+        ctrl_rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
         mdm_settings: MdmSettings,
         advanced_settings: AdvancedSettings,
@@ -198,7 +198,7 @@ impl<I: GuiIntegration> Controller<I> {
             integration,
             log_filter_reloader,
             release: None,
-            rx: ReceiverStream::new(rx),
+            ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
@@ -297,7 +297,7 @@ impl<I: GuiIntegration> Controller<I> {
                 return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
 
-            if let Poll::Ready(maybe_req) = self.rx.poll_next_unpin(cx) {
+            if let Poll::Ready(maybe_req) = self.ctrl_rx.poll_next_unpin(cx) {
                 return Poll::Ready(EventloopTick::ControllerRequest(maybe_req));
             }
 
