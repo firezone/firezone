@@ -56,9 +56,14 @@ defmodule Portal.Application do
     config = Application.get_env(:logger_json, :config)
     platform_adapter = Application.get_env(:portal, :platform_adapter)
 
-    # TODO: Remove this after azure migration
-    if not is_nil(config) and platform_adapter == Portal.GoogleCloudPlatform do
-      formatter = LoggerJSON.Formatters.GoogleCloud.new(config)
+    if not is_nil(config) do
+      formatter =
+        if platform_adapter == Portal.GoogleCloudPlatform do
+          LoggerJSON.Formatters.GoogleCloud.new(config)
+        else
+          LoggerJSON.Formatters.Basic.new(config)
+        end
+
       :logger.update_handler_config(:default, :formatter, formatter)
     end
 
