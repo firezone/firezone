@@ -1,5 +1,4 @@
 //! This file is a stub only to do Tauri UI dev natively on a Mac.
-use super::CtlrTx;
 use anyhow::{Result, bail};
 
 pub async fn set_autostart(_enabled: bool) -> Result<()> {

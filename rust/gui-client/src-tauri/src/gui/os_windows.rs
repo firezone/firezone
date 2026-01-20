@@ -1,4 +1,4 @@
-use super::{ControllerRequest, CtlrTx};
+use super::ControllerRequest;
 use anyhow::{Context, Result};
 use bin_shared::BUNDLE_ID;
 use logging::err_with_src;

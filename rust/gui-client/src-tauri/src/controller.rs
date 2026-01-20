@@ -24,8 +24,6 @@ use url::Url;
 
 mod ran_before;
 
-pub type CtlrTx = mpsc::Sender<ControllerRequest>;
-
 pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     mdm_settings: MdmSettings,
@@ -33,7 +31,7 @@ pub struct Controller<I: GuiIntegration> {
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
-    ctrl_tx: CtlrTx,
+    ctrl_tx: mpsc::Sender<ControllerRequest>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
     ipc_rx: ipc::ClientRead<service::ServerMsg>,
     integration: I,
@@ -165,7 +163,7 @@ pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
     pub(crate) async fn start(
-        ctlr_tx: CtlrTx,
+        ctrl_tx: mpsc::Sender<ControllerRequest>,
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
@@ -190,7 +188,7 @@ impl<I: GuiIntegration> Controller<I> {
             advanced_settings,
             auth: auth::Auth::new()?,
             clear_logs_callback: None,
-            ctrl_tx: ctlr_tx,
+            ctrl_tx,
             ipc_client,
             ipc_rx,
             integration,
