@@ -9,6 +9,22 @@
          <ExecutionAction
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
             <ActionContent
+               title = "Update LSP compile flags"
+               scriptText = "command -v xcode-build-server &gt;/dev/null 2&gt;&amp;1 &amp;&amp; xcode-build-server postaction | bash &amp;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "8DCC021828D512AC007E12D2"
+                     BuildableName = "Firezone.app"
+                     BlueprintName = "Firezone"
+                     ReferencedContainer = "container:Firezone.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
                title = "Deploy to Applications"
                scriptText = "rm -rf /Applications/Firezone.app; if ! cp -R &quot;${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}&quot; /Applications/; then osascript -e &apos;display alert &quot;Deploy Failed&quot; message &quot;Could not copy Firezone.app to /Applications. Check permissions.&quot; as critical&apos;; exit 1; fi">
                <EnvironmentBuildable>
