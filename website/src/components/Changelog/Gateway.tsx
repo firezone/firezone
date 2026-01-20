@@ -67,8 +67,8 @@ export default function Gateway() {
           is present but not routable.
         </ChangeItem>
         <ChangeItem pull="11208">
-          Fixes an issue where the Gateway would not boot up if IPv6 was
-          disabled on the system.
+          Fixes an issue where the Gateway could reboot when the WebSocket
+          connection to the portal got cut.
         </ChangeItem>
       </Entry>
       <Entry version="1.4.18" date={new Date("2025-11-10")}>
