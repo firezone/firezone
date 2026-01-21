@@ -96,6 +96,20 @@ iPhone or iPad. Network Extensions can't be debugged in the iOS simulator.
 
 ## Developing
 
+### Prerequisites
+
+It is highly recommended to temporarily
+[disable SIP](https://developer.apple.com/documentation/security/disabling-and-enabling-system-integrity-protection)
+in order to enable
+[system extension developer mode](https://developer.apple.com/documentation/driverkit/debugging-and-testing-system-extensions#Enable-activation-from-any-directory).
+
+This gives you the ability to run the whole AppBundle straight from the build
+directory (e.g. via "run" button in Xcode), without needing to deploy Firezone
+into /Applications directory.
+
+PS Don't forget to re-enable SIP afterwards, as it's only needed to change the
+setting, not for the developer mode itself.
+
 ### IDE
 
 The most obvious and encouraged IDE choice for Firezone macOS/iOS development is
