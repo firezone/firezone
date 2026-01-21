@@ -21,6 +21,7 @@ const MIN_AGE_SECS: Duration = Duration::from_secs(300);
 /// - Protects files modified within the last 5 minutes
 /// - Always keeps at least 1 file per directory
 /// - Logs debug/warning messages for errors encountered during cleanup
+#[allow(clippy::wildcard_enum_match_arm)] // Intentional catch-all for other IO errors
 pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
     let max_bytes = u64::from(max_size_mb) * 1024 * 1024;
     let now = SystemTime::now();
