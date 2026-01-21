@@ -109,7 +109,11 @@ impl Auth {
         let store = dbus_secret_service_keyring_store::Store::new()?;
 
         #[cfg(target_os = "windows")]
-        let store = windows_native_keyring_store::Store::new()?;
+        let store =
+            windows_native_keyring_store::Store::new_with_configuration(&HashMap::from([(
+                // We want to avoid an appended `.` at the end.
+                "divider", "",
+            )]))?;
 
         #[cfg(target_os = "macos")]
         let store = keyring_core::mock::Store::new()?;
