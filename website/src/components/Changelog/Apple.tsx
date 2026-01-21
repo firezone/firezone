@@ -49,6 +49,10 @@ export default function Apple() {
           for IPv4-only DNS resources if the setting was only changed after a
           DNS query had already been processed.
         </ChangeItem>
+        <ChangeItem pull="11779">
+          Notifies the user when a connection to a resource cannot be
+          established.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.12" date={new Date("2026-01-20")}>
         <ChangeItem pull="11735">
