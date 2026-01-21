@@ -8,7 +8,6 @@ use rand::{RngCore, thread_rng};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -109,11 +108,12 @@ impl Auth {
         let store = dbus_secret_service_keyring_store::Store::new()?;
 
         #[cfg(target_os = "windows")]
-        let store =
-            windows_native_keyring_store::Store::new_with_configuration(&HashMap::from([(
+        let store = windows_native_keyring_store::Store::new_with_configuration(
+            &std::collections::HashMap::from([(
                 // We want to avoid an appended `.` at the end.
                 "divider", "",
-            )]))?;
+            )]),
+        )?;
 
         #[cfg(target_os = "macos")]
         let store = keyring_core::mock::Store::new()?;
