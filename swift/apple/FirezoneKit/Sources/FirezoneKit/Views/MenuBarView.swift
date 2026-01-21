@@ -179,13 +179,16 @@
     }
 
     func openDocumentation() {
-      let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")!
+      guard let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")
+      else { return }
       Task { await NSWorkspace.shared.openAsync(url) }
     }
 
     func openSupport() {
-      let url =
-        URL(string: store.configuration.supportURL) ?? URL(string: Configuration.defaultSupportURL)!
+      guard
+        let url = URL(string: store.configuration.supportURL)
+          ?? URL(string: Configuration.defaultSupportURL)
+      else { return }
       Task { await NSWorkspace.shared.openAsync(url) }
     }
   }
