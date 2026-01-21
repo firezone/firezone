@@ -13,6 +13,9 @@ partition_suffix =
 
 config :portal, sql_sandbox: true
 
+# Use ephemeral port for health server to avoid conflicts between test runs
+config :portal, Portal.Health, health_port: 0
+
 config :portal, run_manual_migrations: true
 
 config :portal, Portal.Repo,
@@ -120,6 +123,31 @@ config :portal, Portal.Google.APIClient,
     plug: {Req.Test, Portal.Google.APIClient}
   ]
 
+# Auth provider configs with Req.Test for OIDC mocking
+config :portal, Portal.Google.AuthProvider,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.OIDC}
+  ]
+
+config :portal, Portal.Okta.AuthProvider,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.OIDC}
+  ]
+
+config :portal, Portal.Entra.AuthProvider,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.OIDC}
+  ]
+
+config :portal, Portal.OIDC.AuthProvider,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.OIDC}
+  ]
+
 config :portal, Portal.Telemetry.Reporter.GoogleCloudMetrics, project_id: "fz-test"
 
 config :portal, web_external_url: "http://localhost:13100"
@@ -131,8 +159,10 @@ config :portal, Oban, testing: :manual
 ##### PortalWeb Endpoint ######
 ###############################
 
+# Use ephemeral port for HTTP server to avoid conflicts between test runs
+# Keep url port for URL generation in tests
 config :portal, PortalWeb.Endpoint,
-  http: [port: 13_100],
+  http: [port: 0],
   url: [port: 13_100],
   server: true
 
@@ -150,8 +180,9 @@ config :portal, :constant_execution_time, 1
 ##### PortalAPI Endpoint ######
 ###############################
 
+# Use ephemeral port for HTTP server to avoid conflicts between test runs
 config :portal, PortalAPI.Endpoint,
-  http: [port: 13_101],
+  http: [port: 0],
   url: [port: 13_101],
   server: true
 
