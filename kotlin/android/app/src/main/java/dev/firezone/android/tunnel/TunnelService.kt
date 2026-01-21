@@ -72,6 +72,7 @@ class TunnelService : VpnService() {
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
     private var resourceState: ResourceState = ResourceState.UNSET
+    private val unreachableSites: MutableSet<String> = mutableSetOf()
 
     // For reacting to changes to the network
     private var networkCallback: NetworkMonitor? = null
@@ -323,6 +324,7 @@ class TunnelService : VpnService() {
                 } finally {
                     commandChannel = null
                     tunnelState = State.DOWN
+                    unreachableSites.clear();
 
                     stopNetworkMonitoring()
                     stopDisconnectMonitoring()
@@ -474,6 +476,23 @@ class TunnelService : VpnService() {
         data object Reset : TunnelCommand()
     }
 
+    private fun resourceById(resourceId: String): Pair<Resource, Site>? {
+        val resource = _tunnelResources.find { it.id == resourceId } ?: return null
+        val site = resource.sites?.firstOrNull() ?: return null
+        return Pair(resource, site)
+    }
+
+    private fun showErrorNotification(
+        title: String,
+        message: String,
+    ) {
+        val notification =
+            TunnelErrorNotification.create(this, title, message).build()
+        val notificationManager =
+            getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+        notificationManager.notify(TunnelErrorNotification.ID, notification)
+    }
+
     private suspend fun eventLoop(
         session: SessionInterface,
         commandChannel: Channel<TunnelCommand>,
@@ -555,6 +574,32 @@ class TunnelService : VpnService() {
                                     repo.clearActorName()
 
                                     running = false
+                                }
+
+                                is Event.GatewayVersionMismatch -> {
+                                    val (resource, site) = resourceById(event.resourceId) ?: return@use
+
+                                    if (!unreachableSites.add(site.id)) {
+                                        return@use
+                                    }
+
+                                    showErrorNotification(
+                                        "Failed to connect to '${resource.name}'",
+                                        "Your Firezone Client is incompatible with all Gateways in the site '${site.name}'. Please update your Client to the latest version and contact your administrator if the issue persists.",
+                                    )
+                                }
+
+                                is Event.AllGatewaysOffline -> {
+                                    val (resource, site) = resourceById(event.resourceId) ?: return@use
+
+                                    if (!unreachableSites.add(site.id)) {
+                                        return@use
+                                    }
+
+                                    showErrorNotification(
+                                        "Failed to connect to '${resource.name}'",
+                                        "All Gateways in the site '${site.name}' are offline. Contact your administrator to resolve this issue.",
+                                    )
                                 }
 
                                 null -> {
