@@ -62,6 +62,7 @@ defmodule Portal.Okta.Sync do
     apps = get_apps!(client, access_token, directory)
     sync_all_apps!(apps, client, access_token, directory, synced_at)
     sync_all_memberships!(client, access_token, directory, synced_at)
+    check_deletion_threshold!(directory, synced_at)
     delete_unsynced(directory, synced_at)
 
     # Clear error state on successful sync completion
@@ -190,7 +191,7 @@ defmodule Portal.Okta.Sync do
         account_id = directory.account_id
         issuer = issuer(directory)
         directory_id = directory.id
-        parsed_users = Enum.map(users, &parse_okta_user/1)
+        parsed_users = Enum.map(users, &parse_okta_user(&1, directory_id))
 
         # Map users to identity attributes
         identity_attrs =
@@ -391,12 +392,22 @@ defmodule Portal.Okta.Sync do
   defp issuer(directory), do: "https://#{directory.okta_domain}"
 
   # Parses an Okta user API response into a structured map
-  defp parse_okta_user(user) do
+  defp parse_okta_user(user, directory_id) do
     profile = user["profile"] || %{}
+
+    email = profile["email"]
+
+    unless email do
+      raise Okta.SyncError,
+        reason: "User missing required 'email' field",
+        cause: user,
+        directory_id: directory_id,
+        step: :process_user
+    end
 
     first_name = (profile["firstName"] || "") |> String.trim()
     last_name = (profile["lastName"] || "") |> String.trim()
-    email = profile["email"] |> String.downcase() |> String.trim()
+    email = email |> String.downcase() |> String.trim()
 
     %{
       okta_id: user["id"],
@@ -459,6 +470,92 @@ defmodule Portal.Okta.Sync do
     )
   end
 
+  # Circuit breaker protection against accidental mass deletion
+  # This can happen if someone misconfigures or removes the Okta app
+  @deletion_threshold 0.90
+  @min_records_for_threshold 10
+
+  defp check_deletion_threshold!(directory, synced_at) do
+    # Skip check on first sync - there's nothing to delete
+    if is_nil(directory.synced_at) do
+      Logger.debug("Skipping deletion threshold check - first sync",
+        okta_directory_id: directory.id
+      )
+    else
+      account_id = directory.account_id
+      directory_id = directory.id
+
+      # Get counts for identities
+      identity_counts = Database.count_identities(account_id, directory_id, synced_at)
+
+      # Get counts for groups
+      group_counts = Database.count_groups(account_id, directory_id, synced_at)
+
+      # Check identity deletion threshold
+      check_resource_threshold!(
+        identity_counts,
+        "identities",
+        directory
+      )
+
+      # Check group deletion threshold
+      check_resource_threshold!(
+        group_counts,
+        "groups",
+        directory
+      )
+    end
+  end
+
+  defp check_resource_threshold!(counts, resource_name, directory) do
+    %{total: total, to_delete: to_delete} = counts
+
+    # Only apply threshold check if we have enough records
+    if total >= @min_records_for_threshold do
+      deletion_percentage = to_delete / total
+
+      if deletion_percentage >= @deletion_threshold do
+        Logger.error(
+          "Deletion threshold exceeded for #{resource_name}",
+          okta_directory_id: directory.id,
+          total: total,
+          to_delete: to_delete,
+          percentage: Float.round(deletion_percentage * 100, 1)
+        )
+
+        raise Okta.SyncError,
+          reason:
+            "Sync would delete #{to_delete} of #{total} #{resource_name} " <>
+              "(#{Float.round(deletion_percentage * 100, 0)}%). " <>
+              "This may indicate the Okta application was misconfigured or removed. " <>
+              "Please verify your Okta configuration and re-verify the directory connection.",
+          cause: %{
+            resource: resource_name,
+            total: total,
+            to_delete: to_delete,
+            threshold: @deletion_threshold
+          },
+          directory_id: directory.id,
+          step: :check_deletion_threshold
+      else
+        Logger.debug(
+          "Deletion threshold check passed for #{resource_name}",
+          okta_directory_id: directory.id,
+          total: total,
+          to_delete: to_delete,
+          percentage: Float.round(deletion_percentage * 100, 1)
+        )
+      end
+    else
+      Logger.debug(
+        "Skipping deletion threshold check for #{resource_name} - too few records",
+        okta_directory_id: directory.id,
+        total: total,
+        min_required: @min_records_for_threshold
+      )
+    end
+  end
+
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
@@ -477,6 +574,53 @@ defmodule Portal.Okta.Sync do
 
     def update_directory(changeset) do
       changeset |> Safe.unscoped() |> Safe.update()
+    end
+
+    # Count functions for circuit breaker threshold checks
+    def count_identities(account_id, directory_id, synced_at) do
+      total =
+        from(i in Portal.ExternalIdentity,
+          where: i.account_id == ^account_id,
+          where: i.directory_id == ^directory_id,
+          select: count(i.id)
+        )
+        |> Safe.unscoped()
+        |> Safe.one!()
+
+      to_delete =
+        from(i in Portal.ExternalIdentity,
+          where: i.account_id == ^account_id,
+          where: i.directory_id == ^directory_id,
+          where: i.last_synced_at < ^synced_at or is_nil(i.last_synced_at),
+          select: count(i.id)
+        )
+        |> Safe.unscoped()
+        |> Safe.one!()
+
+      %{total: total, to_delete: to_delete}
+    end
+
+    def count_groups(account_id, directory_id, synced_at) do
+      total =
+        from(g in Portal.Group,
+          where: g.account_id == ^account_id,
+          where: g.directory_id == ^directory_id,
+          select: count(g.id)
+        )
+        |> Safe.unscoped()
+        |> Safe.one!()
+
+      to_delete =
+        from(g in Portal.Group,
+          where: g.account_id == ^account_id,
+          where: g.directory_id == ^directory_id,
+          where: g.last_synced_at < ^synced_at or is_nil(g.last_synced_at),
+          select: count(g.id)
+        )
+        |> Safe.unscoped()
+        |> Safe.one!()
+
+      %{total: total, to_delete: to_delete}
     end
 
     def get_synced_group_idp_ids(account_id, directory_id, synced_at) do

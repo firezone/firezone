@@ -405,15 +405,15 @@ defmodule Portal.Okta.APIClient do
 
     new_request(client, token)
     |> Req.merge(url: endpoint, headers: headers, params: params)
-    |> Req.get!()
+    |> Req.get()
     |> case do
-      %{status: 200, body: [_result]} ->
+      {:ok, %{status: 200, body: [_result]}} ->
         :ok
 
-      %{status: 200, body: []} ->
+      {:ok, %{status: 200, body: []}} ->
         {:error, :empty, resource}
 
-      resp ->
+      {:ok, resp} ->
         Logger.warning(
           "Error during Okta endpoint test",
           endpoint: endpoint,
@@ -423,6 +423,9 @@ defmodule Portal.Okta.APIClient do
         )
 
         {:error, resp}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
