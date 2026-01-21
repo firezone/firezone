@@ -239,6 +239,24 @@ defmodule PortalAPI.ResourceControllerTest do
       assert resp["data"]["name"] == attrs["name"]
       assert resp["data"]["ip_stack"] == attrs["ip_stack"]
     end
+
+    test "returns error when updating internet resource", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = internet_resource_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: %{"name" => "New Name"})
+
+      assert json_response(conn, 403) == %{
+               "error" => %{"reason" => "Internet Resource cannot be modified"}
+             }
+    end
   end
 
   describe "delete/2" do
@@ -269,6 +287,26 @@ defmodule PortalAPI.ResourceControllerTest do
              }
 
       refute Repo.get_by(Resource, id: resource.id, account_id: resource.account_id)
+    end
+
+    test "returns error when deleting internet resource", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = internet_resource_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/resources/#{resource.id}")
+
+      assert json_response(conn, 403) == %{
+               "error" => %{"reason" => "Internet Resource cannot be modified"}
+             }
+
+      assert Repo.get_by(Resource, id: resource.id, account_id: resource.account_id)
     end
   end
 end

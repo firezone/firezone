@@ -1,11 +1,8 @@
 defmodule PortalAPI.EntraAuthProviderController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Portal.{Entra, Safe}
+  alias PortalAPI.Error
   alias __MODULE__.DB
-  import Ecto.Query
-
-  action_fallback PortalAPI.FallbackController
 
   tags ["Entra Auth Providers"]
 
@@ -17,6 +14,7 @@ defmodule PortalAPI.EntraAuthProviderController do
          PortalAPI.Schemas.EntraAuthProvider.ListResponse}
     ]
 
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     providers = DB.list_providers(conn.assigns.subject)
     render(conn, :index, providers: providers)
@@ -38,9 +36,12 @@ defmodule PortalAPI.EntraAuthProviderController do
          PortalAPI.Schemas.EntraAuthProvider.Response}
     ]
 
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, provider} <- DB.fetch_provider(id, conn.assigns.subject) do
       render(conn, :show, provider: provider)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 

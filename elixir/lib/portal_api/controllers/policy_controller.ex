@@ -2,9 +2,8 @@ defmodule PortalAPI.PolicyController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.Error
   alias __MODULE__.DB
-
-  action_fallback PortalAPI.FallbackController
 
   tags ["Policies"]
 
@@ -18,12 +17,14 @@ defmodule PortalAPI.PolicyController do
       ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.ListResponse}
     ]
 
-  # List Policies
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, policies, metadata} <- DB.list_policies(conn.assigns.subject, list_opts) do
       render(conn, :index, policies: policies, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -41,10 +42,12 @@ defmodule PortalAPI.PolicyController do
       ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
 
-  # Show a specific Policy
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, policy} <- DB.fetch_policy(id, conn.assigns.subject) do
       render(conn, :show, policy: policy)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -57,22 +60,23 @@ defmodule PortalAPI.PolicyController do
       ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
 
-  # Create a new Policy
+  @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"policy" => params}) do
     subject = conn.assigns.subject
 
-    # Check if this is for an internet resource
     with :ok <- DB.validate_internet_resource_policy(params, subject),
          {:ok, policy} <- DB.create_policy(params, subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/policies/#{policy}")
       |> render(:show, policy: policy)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
-  def create(_conn, _params) do
-    {:error, :bad_request}
+  def create(conn, _params) do
+    Error.handle(conn, {:error, :bad_request})
   end
 
   operation :update,
@@ -91,7 +95,7 @@ defmodule PortalAPI.PolicyController do
       ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
 
-  # Update a Policy
+  @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "policy" => params}) do
     subject = conn.assigns.subject
 
@@ -99,11 +103,13 @@ defmodule PortalAPI.PolicyController do
          :ok <- DB.validate_internet_resource_policy(params, subject),
          {:ok, policy} <- DB.update_policy(policy, params, subject) do
       render(conn, :show, policy: policy)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
-  def update(_conn, _params) do
-    {:error, :bad_request}
+  def update(conn, _params) do
+    Error.handle(conn, {:error, :bad_request})
   end
 
   operation :delete,
@@ -120,13 +126,15 @@ defmodule PortalAPI.PolicyController do
       ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
 
-  # Delete a Policy
+  @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
     with {:ok, policy} <- DB.fetch_policy(id, subject),
          {:ok, policy} <- DB.delete_policy(policy, subject) do
       render(conn, :show, policy: policy)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -165,7 +173,6 @@ defmodule PortalAPI.PolicyController do
       resource_id = attrs["resource_id"]
 
       if resource_id do
-        # Fetch the resource to check its type
         resource =
           from(r in Portal.Resource, where: r.id == ^resource_id)
           |> Safe.scoped(subject)
@@ -176,11 +183,10 @@ defmodule PortalAPI.PolicyController do
             {:error, :not_found}
 
           %{type: :internet} ->
-            # Check if internet resource is enabled for the account
             if Portal.Account.internet_resource_enabled?(subject.account) do
               :ok
             else
-              {:error, {:forbidden, "Internet resource is not enabled for this account"}}
+              {:error, :forbidden, reason: "Internet resource is not enabled for this account"}
             end
 
           _ ->

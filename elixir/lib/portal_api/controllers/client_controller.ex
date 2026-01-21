@@ -2,12 +2,11 @@ defmodule PortalAPI.ClientController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.Error
   alias Portal.Presence.Clients
   alias __MODULE__.DB
   import Ecto.Changeset
   import Portal.Changeset
-
-  action_fallback(PortalAPI.FallbackController)
 
   tags(["Clients"])
 
@@ -27,7 +26,7 @@ defmodule PortalAPI.ClientController do
     ]
   )
 
-  # List Clients
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
     list_opts =
       params
@@ -36,6 +35,8 @@ defmodule PortalAPI.ClientController do
 
     with {:ok, clients, metadata} <- DB.list_clients(conn.assigns.subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -54,11 +55,13 @@ defmodule PortalAPI.ClientController do
     ]
   )
 
-  # Show a specific Client
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, client} <- DB.fetch_client(id, conn.assigns.subject) do
       client = Clients.preload_clients_presence([client]) |> List.first()
       render(conn, :show, client: client)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -79,7 +82,7 @@ defmodule PortalAPI.ClientController do
     ]
   )
 
-  # Update a Client
+  @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "client" => params}) do
     subject = conn.assigns.subject
 
@@ -87,11 +90,13 @@ defmodule PortalAPI.ClientController do
          changeset = update_changeset(client, params),
          {:ok, client} <- DB.update_client(changeset, subject) do
       render(conn, :show, client: client)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
-  def update(_conn, _params) do
-    {:error, :bad_request}
+  def update(conn, _params) do
+    Error.handle(conn, {:error, :bad_request})
   end
 
   defp update_changeset(client, attrs) do
@@ -120,7 +125,7 @@ defmodule PortalAPI.ClientController do
     ]
   )
 
-  # Verify a Client
+  @spec verify(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def verify(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
@@ -128,6 +133,8 @@ defmodule PortalAPI.ClientController do
          changeset = client |> change() |> put_default_value(:verified_at, DateTime.utc_now()),
          {:ok, client} <- DB.verify_client(changeset, subject) do
       render(conn, :show, client: client)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -146,15 +153,16 @@ defmodule PortalAPI.ClientController do
     ]
   )
 
-  # Unverify a Client
+  @spec unverify(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def unverify(conn, %{"id" => id}) do
-    import Ecto.Changeset
     subject = conn.assigns.subject
 
     with {:ok, client} <- DB.fetch_client(id, subject),
          changeset = client |> change() |> put_change(:verified_at, nil),
          {:ok, client} <- DB.remove_client_verification(changeset, subject) do
       render(conn, :show, client: client)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -173,13 +181,15 @@ defmodule PortalAPI.ClientController do
     ]
   )
 
-  # Delete a Client
+  @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
     with {:ok, client} <- DB.fetch_client(id, subject),
          {:ok, client} <- DB.delete_client(client, subject) do
       render(conn, :show, client: client)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 

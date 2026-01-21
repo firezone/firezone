@@ -2,11 +2,10 @@ defmodule PortalAPI.ActorController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
-  alias Portal.Safe
+  alias PortalAPI.Error
+  alias Portal.Billing
   alias __MODULE__.DB
   import Ecto.Changeset
-
-  action_fallback PortalAPI.FallbackController
 
   tags ["Actors"]
 
@@ -20,12 +19,14 @@ defmodule PortalAPI.ActorController do
       ok: {"ActorsResponse", "application/json", PortalAPI.Schemas.Actor.ListResponse}
     ]
 
-  # List Actors
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, actors, metadata} <- DB.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -43,10 +44,12 @@ defmodule PortalAPI.ActorController do
       ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
 
-  # Show a specific Actor
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, actor} <- DB.fetch_actor(id, conn.assigns.subject) do
       render(conn, :show, actor: actor)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -58,13 +61,12 @@ defmodule PortalAPI.ActorController do
       ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
 
-  # Create a new Actor
+  @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"actor" => params}) do
     subject = conn.assigns.subject
     account = subject.account
     actor_type = normalize_actor_type(params["type"])
 
-    # Check billing limits based on actor type
     with :ok <- check_billing_limits(account, actor_type),
          changeset <- create_actor_changeset(account, params),
          {:ok, actor} <- DB.insert_actor(changeset, subject) do
@@ -72,11 +74,13 @@ defmodule PortalAPI.ActorController do
       |> put_status(:created)
       |> put_resp_header("location", ~p"/actors/#{actor}")
       |> render(:show, actor: actor)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
-  def create(_conn, _params) do
-    {:error, :bad_request}
+  def create(conn, _params) do
+    Error.handle(conn, {:error, :bad_request})
   end
 
   defp normalize_actor_type("service_account"), do: :service_account
@@ -85,20 +89,20 @@ defmodule PortalAPI.ActorController do
   defp normalize_actor_type(_), do: nil
 
   defp check_billing_limits(account, :service_account) do
-    if Portal.Billing.can_create_service_accounts?(account) do
+    if Billing.can_create_service_accounts?(account) do
       :ok
     else
-      {:error, :service_accounts_limit_reached}
+      {:error, :forbidden, reason: "Service accounts limit reached"}
     end
   end
 
   defp check_billing_limits(account, :account_admin_user) do
     cond do
-      not Portal.Billing.can_create_users?(account) ->
-        {:error, :users_limit_reached}
+      not Billing.can_create_users?(account) ->
+        {:error, :forbidden, reason: "Users limit reached"}
 
-      not Portal.Billing.can_create_admin_users?(account) ->
-        {:error, :admins_limit_reached}
+      not Billing.can_create_admin_users?(account) ->
+        {:error, :forbidden, reason: "Admins limit reached"}
 
       true ->
         :ok
@@ -106,10 +110,10 @@ defmodule PortalAPI.ActorController do
   end
 
   defp check_billing_limits(account, :account_user) do
-    if Portal.Billing.can_create_users?(account) do
+    if Billing.can_create_users?(account) do
       :ok
     else
-      {:error, :users_limit_reached}
+      {:error, :forbidden, reason: "Users limit reached"}
     end
   end
 
@@ -131,7 +135,7 @@ defmodule PortalAPI.ActorController do
       ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
 
-  # Update an Actor
+  @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "actor" => params}) do
     subject = conn.assigns.subject
 
@@ -139,11 +143,13 @@ defmodule PortalAPI.ActorController do
          changeset <- actor_changeset(actor, params),
          {:ok, actor} <- DB.update_actor(changeset, subject) do
       render(conn, :show, actor: actor)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
-  def update(_conn, _params) do
-    {:error, :bad_request}
+  def update(conn, _params) do
+    Error.handle(conn, {:error, :bad_request})
   end
 
   operation :delete,
@@ -160,13 +166,15 @@ defmodule PortalAPI.ActorController do
       ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
 
-  # Delete an Actor
+  @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- DB.fetch_actor(id, subject),
          {:ok, actor} <- DB.delete_actor(actor, subject) do
       render(conn, :show, actor: actor)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 

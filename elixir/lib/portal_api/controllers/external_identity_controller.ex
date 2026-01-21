@@ -2,11 +2,8 @@ defmodule PortalAPI.ExternalIdentityController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
-  alias Portal.{ExternalIdentity, Safe}
+  alias PortalAPI.Error
   alias __MODULE__.DB
-  import Ecto.Query
-
-  action_fallback PortalAPI.FallbackController
 
   tags ["ExternalIdentities"]
 
@@ -23,13 +20,15 @@ defmodule PortalAPI.ExternalIdentityController do
          PortalAPI.Schemas.ExternalIdentity.ListResponse}
     ]
 
-  # List External Identities
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"actor_id" => actor_id} = params) do
     list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, external_identities, metadata} <-
            DB.list_external_identities(actor_id, conn.assigns.subject, list_opts) do
       render(conn, :index, external_identities: external_identities, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -55,10 +54,12 @@ defmodule PortalAPI.ExternalIdentityController do
          PortalAPI.Schemas.ExternalIdentity.Response}
     ]
 
-  # Show a specific External Identity
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, external_identity} <- DB.fetch_external_identity(id, conn.assigns.subject) do
       render(conn, :show, external_identity: external_identity)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -84,18 +85,21 @@ defmodule PortalAPI.ExternalIdentityController do
          PortalAPI.Schemas.ExternalIdentity.Response}
     ]
 
-  # Delete an External Identity
+  @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
     with {:ok, external_identity} <- DB.fetch_external_identity(id, conn.assigns.subject),
          {:ok, deleted_external_identity} <-
            DB.delete_external_identity(external_identity, conn.assigns.subject) do
       render(conn, :show, external_identity: deleted_external_identity)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
   defmodule DB do
     import Ecto.Query
-    alias Portal.{ExternalIdentity, Safe}
+    alias Portal.ExternalIdentity
+    alias Portal.Safe
 
     def list_external_identities(actor_id, subject, opts \\ []) do
       from(ei in ExternalIdentity,
