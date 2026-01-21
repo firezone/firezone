@@ -58,6 +58,9 @@ public final class Store: ObservableObject {
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
 
+  // Track which sites we've already shown notifications for
+  private var unreachableSites: Set<String> = []
+
   public init(configuration: Configuration? = nil) {
     self.configuration = configuration ?? Configuration.shared
     #if os(macOS)
@@ -333,6 +336,9 @@ public final class Store: ObservableObject {
     shownAlertIds.removeAll()
     UserDefaults.standard.removeObject(forKey: "shownAlertIds")
 
+    // Clear notified unreachable resources for fresh session
+    unreachableSites.removeAll()
+
     // Bring the tunnel up and send it a token and configuration to start
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
@@ -417,6 +423,7 @@ public final class Store: ObservableObject {
     resourcesTimer = nil
     resourceList = ResourceList.loading
     connlibStateHash = Data()
+    unreachableSites.removeAll()
   }
 
   /// Fetches state from the tunnel provider, using hash-based optimisation.
@@ -445,7 +452,57 @@ public final class Store: ObservableObject {
 
     if let resources = decoded.resources {
       resourceList = ResourceList.loaded(resources)
+    }
 
+    // Handle unreachable resources and show notifications
+    await handleUnreachableResources(
+      unreachableResources: decoded.unreachableResources,
+      resources: decoded.resources ?? []
+    )
+  }
+
+  /// Handles unreachable resources by showing notifications for new ones
+  ///
+  /// - Parameters:
+  ///   - unreachableResources: Set of currently unreachable resources from connlib
+  ///   - resources: List of all resources for looking up resource names
+  private func handleUnreachableResources(
+    unreachableResources: Set<UnreachableResource>,
+    resources: [FirezoneKit.Resource]
+  ) async {
+    for unreachableResource in unreachableResources {
+      // Find the resource and site to get names for the notification
+      guard let resource = resources.first(where: { $0.id == unreachableResource.resourceId }),
+        let site = resource.sites.first
+      else {
+        Log.debug("Unknown resource: \(unreachableResource.resourceId)")
+        continue
+      }
+
+      // Mark this as notified
+      let (inserted, _) = unreachableSites.insert(site.id)
+
+      if !inserted {
+        continue
+      }
+
+      // Show notification based on reason
+      let title: String
+      let body: String
+
+      switch unreachableResource.reason {
+      case .Offline:
+        title = "Failed to connect to '\(resource.name)'"
+        body =
+          "All Gateways in the site '\(site.name)' are offline. Contact your administrator to resolve this issue."
+      case .VersionMismatch:
+        title = "Failed to connect to '\(resource.name)'"
+        body =
+          "Your Firezone Client is incompatible with all Gateways in the site '\(site.name)'. Please update your Client to the latest version and contact your administrator if the issue persists."
+      }
+
+      await sessionNotification.showResourceNotification(title: title, body: body)
     }
   }
+
 }
