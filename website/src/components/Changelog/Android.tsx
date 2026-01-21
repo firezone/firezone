@@ -62,6 +62,10 @@ export default function Android() {
         <ChangeItem pull="12013">
           Asks for notification permissions on launch.
         </ChangeItem>
+        <ChangeItem pull="11779">
+          Notifies the user when a connection to a resource cannot be
+          established.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-12-23")}>
         <ChangeItem pull="11077">
