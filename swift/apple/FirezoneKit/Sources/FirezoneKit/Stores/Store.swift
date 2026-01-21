@@ -461,11 +461,6 @@ public final class Store: ObservableObject {
     )
   }
 
-  /// Handles unreachable resources by showing notifications for new ones
-  ///
-  /// - Parameters:
-  ///   - unreachableResources: Set of currently unreachable resources from connlib
-  ///   - resources: List of all resources for looking up resource names
   private func showNotificationsForUnreachableResources(
     unreachableResources: Set<UnreachableResource>,
     resources: [FirezoneKit.Resource]

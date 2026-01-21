@@ -495,43 +495,6 @@ actor Adapter {
     sendCommand(.setDns(parsedResolvers))
   }
 
-  private func resourceById(_ resourceId: String) -> (name: String, site: Site)? {
-    guard let resourceList = resources else {
-      return nil
-    }
-
-    guard
-      let resource = resourceList.first(where: { r in
-        switch r {
-        case .dns(let dnsResource):
-          return dnsResource.id == resourceId
-        case .cidr(let cidrResource):
-          return cidrResource.id == resourceId
-        case .internet(let internetResource):
-          return internetResource.id == resourceId
-        }
-      })
-    else {
-      return nil
-    }
-
-    let (name, sites): (String, [Site]) =
-      switch resource {
-      case .dns(let dnsResource):
-        (dnsResource.name, dnsResource.sites)
-      case .cidr(let cidrResource):
-        (cidrResource.name, cidrResource.sites)
-      case .internet(let internetResource):
-        (internetResource.name, internetResource.sites)
-      }
-
-    guard let site = sites.first else {
-      return nil
-    }
-
-    return (name: name, site: site)
-  }
-
   private func sendCommand(_ command: SessionCommand) {
     commandSender?.send(command)
   }
