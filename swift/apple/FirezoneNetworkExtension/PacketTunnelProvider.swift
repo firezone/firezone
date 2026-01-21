@@ -23,8 +23,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     case idle
   }
 
-  private var getLogFolderSizeTask: Task<Void, Never>?
-  private var logCleanupTask: Task<Void, Never>?
+  private var getLogFolderSizeTask: CancellableTask?
+  private var logCleanupTask: CancellableTask?
 
   private var logExportState: LogExportState = .idle
   private var tunnelConfiguration: TunnelConfiguration?
@@ -46,11 +46,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     migrateFirezoneId()
     self.tunnelConfiguration = TunnelConfiguration.tryLoad()
-  }
-
-  deinit {
-    getLogFolderSizeTask?.cancel()
-    logCleanupTask?.cancel()
   }
 
   override func startTunnel(
@@ -146,7 +141,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   ) {
     Log.log("stopTunnel: Reason: \(reason)")
 
-    logCleanupTask?.cancel()
     logCleanupTask = nil
 
     // handles both connlib-initiated and user-initiated stops
@@ -238,7 +232,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return
     }
 
-    let task = Task {
+    getLogFolderSizeTask = CancellableTask {
       let size = await Log.size(of: logFolderURL)
       let data = withUnsafeBytes(of: size) { Data($0) }
 
@@ -246,7 +240,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       guard !Task.isCancelled else { return }
       completionHandler?(data)
     }
-    getLogFolderSizeTask = task
   }
 
   func exportLogs(_ completionHandler: @escaping @Sendable (Data?) -> Void) {
@@ -315,8 +308,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Run cleanup immediately at startup
     Self.performLogCleanup(maxSizeMb: maxSizeMb)
 
-    // Schedule hourly cleanup - static method avoids capturing non-Sendable self
-    logCleanupTask = Task.detached { @Sendable in
+    // Schedule hourly cleanup
+    logCleanupTask = CancellableTask {
       while !Task.isCancelled {
         try? await Task.sleep(for: .seconds(3600))
         guard !Task.isCancelled else { break }
