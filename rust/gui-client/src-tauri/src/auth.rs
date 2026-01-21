@@ -8,6 +8,7 @@ use rand::{RngCore, thread_rng};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -46,8 +47,7 @@ pub enum Error {
 }
 
 pub struct Auth {
-    /// Implementation details in case we need to disable `keyring-rs`
-    token_store: keyring_core::Entry,
+    token_entry: keyring_core::Entry,
     state: State,
     session_dir: PathBuf,
 }
@@ -133,10 +133,8 @@ impl Auth {
         store: Arc<CredentialStore>,
         session_dir: PathBuf,
     ) -> Result<Self> {
-        let token_store = store.build("", keyring_key, None)?;
-
         let mut this = Self {
-            token_store,
+            token_entry: store.build("", keyring_key, None)?,
             state: State::SignedOut,
             session_dir,
         };
@@ -168,7 +166,7 @@ impl Auth {
     ///
     /// Performs I/O.
     pub fn sign_out(&mut self) -> Result<(), Error> {
-        match self.token_store.delete_credential() {
+        match self.token_entry.delete_credential() {
             Ok(()) | Err(keyring_core::Error::NoEntry) => {}
             Err(error) => {
                 tracing::warn!(
@@ -235,7 +233,7 @@ impl Auth {
         // This MUST be the only place the GUI can call `set_password`, since
         // the actor name is also saved here.
         if let Err(e) = self
-            .token_store
+            .token_entry
             .set_password(token.expose_secret())
             .context("Failed to save token in keyring")
         {
@@ -294,7 +292,7 @@ impl Auth {
 
         // This MUST be the only place the GUI can call `get_password`, since the
         // actor name is also loaded here.
-        let Ok(token) = self.token_store.get_password() else {
+        let Ok(token) = self.token_entry.get_password() else {
             return Ok(None);
         };
         let token = SecretString::from(token);
