@@ -26,8 +26,8 @@ export default function Apple() {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="11659">
-          Prevents unbounded log growth on macOS by enforcing a 100 MB log size
-          cap with automatic cleanup of oldest files.
+          Prevents unbounded log growth by enforcing a 100 MB log size cap with
+          automatic cleanup of oldest files.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.12" date={new Date("2026-01-20")}>
