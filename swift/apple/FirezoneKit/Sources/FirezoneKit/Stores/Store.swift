@@ -117,6 +117,17 @@ public final class Store: ObservableObject {
       }
       .store(in: &cancellables)
 
+    // Forward internet resource toggle changes for immediate UI feedback.
+    // The debounced configuration.objectWillChange subscription above handles
+    // tunnel sync but adds 0.3s latency. This provides instant menu updates.
+    self.configuration.$publishedInternetResourceEnabled
+      .dropFirst()  // Skip initial value
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        self?.objectWillChange.send()
+      }
+      .store(in: &cancellables)
+
     // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
     // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
     Task {
