@@ -24,7 +24,7 @@ outputs:
     description: Testable packages for the current OS
     value: ${{
       (runner.os == 'Linux' && '--workspace') ||
-      (runner.os == 'macOS' && '--workspace --exclude bin-shared --exclude firezone-gui-client') ||
+      (runner.os == 'macOS' && '--workspace --exclude bin-shared') ||
       (runner.os == 'Windows' && '--workspace --exclude client-ffi') }}
 
 runs:
