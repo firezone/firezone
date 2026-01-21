@@ -26,7 +26,7 @@ pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
     let now = SystemTime::now();
 
     // Collect all log files with metadata: (path, size, mtime, parent_index)
-    let mut files: Vec<(std::path::PathBuf, u64, SystemTime, usize)> = Vec::new();
+    let mut files = Vec::new();
 
     for (dir_idx, dir) in log_dirs.iter().enumerate() {
         if !dir.exists() {
@@ -45,7 +45,7 @@ pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
                         tracing::debug!(dir = %dir.display(), "Log directory not found (removed after exists check)");
                     }
                     _ => {
-                        tracing::warn!(dir = %dir.display(), error = %e, "Failed to read log directory");
+                        tracing::warn!(dir = %dir.display(), "Failed to read log directory: {e}");
                     }
                 }
                 continue;
@@ -89,14 +89,14 @@ pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
     files.sort_by_key(|(_, _, mtime, _)| *mtime);
 
     // Calculate total size
-    let total_size: u64 = files.iter().map(|(_, size, _, _)| size).sum();
+    let total_size = files.iter().map(|(_, size, _, _)| size).sum::<u64>();
 
     if total_size <= max_bytes {
         return 0;
     }
 
     // Count files per directory
-    let mut files_per_dir: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut files_per_dir = BTreeMap::new();
     for (_, _, _, dir_idx) in &files {
         *files_per_dir.entry(*dir_idx).or_insert(0) += 1;
     }
@@ -167,7 +167,7 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
-    use std::thread;
+    use std::path::PathBuf;
     use std::time::Duration;
     use tempfile::TempDir;
 
@@ -179,27 +179,15 @@ mod tests {
         let deleted = enforce_size_cap(&[dir.path()], 1); // 1 MB limit
         assert_eq!(deleted, 0);
 
-        // File should still exist
-        assert!(dir.path().join("test1.log").exists());
+        assert!(dir.path().join("test1.log").exists(), "File should still exist");
     }
 
     #[test]
     fn test_deletes_oldest_when_over_threshold() {
         let dir = TempDir::new().unwrap();
 
-        // Create old file first
-        let old_file = create_log_file(dir.path(), "old.log", 600 * 1024); // 600 KB
-
-        // Wait to ensure different mtime
-        thread::sleep(Duration::from_millis(50));
-
-        // Create newer file
+        let old_file = create_old_log_file(dir.path(), "old.log", 600 * 1024); // 600 KB
         let new_file = create_log_file(dir.path(), "new.log", 600 * 1024); // 600 KB
-
-        // Backdate the old file to make it eligible for deletion
-        let old_time = SystemTime::now() - Duration::from_secs(600);
-        filetime::set_file_mtime(&old_file, filetime::FileTime::from_system_time(old_time))
-            .unwrap();
 
         // Total: 1.2 MB, limit: 1 MB
         let deleted = enforce_size_cap(&[dir.path()], 1);
@@ -228,12 +216,7 @@ mod tests {
     fn test_keeps_at_least_one_file_per_directory() {
         let dir = TempDir::new().unwrap();
 
-        // Create single large file
-        let file = create_log_file(dir.path(), "only.log", 2 * 1024 * 1024); // 2 MB
-
-        // Backdate it
-        let old_time = SystemTime::now() - Duration::from_secs(600);
-        filetime::set_file_mtime(&file, filetime::FileTime::from_system_time(old_time)).unwrap();
+        let file = create_old_log_file(dir.path(), "only.log", 2 * 1024 * 1024); // 2 MB
 
         // Limit: 1 MB, but we should keep the only file
         let deleted = enforce_size_cap(&[dir.path()], 1);
@@ -263,17 +246,10 @@ mod tests {
         let dir1 = TempDir::new().unwrap();
         let dir2 = TempDir::new().unwrap();
 
-        // Create files in both directories
-        let old1 = create_log_file(dir1.path(), "old1.log", 400 * 1024);
-        let old2 = create_log_file(dir2.path(), "old2.log", 400 * 1024);
-        thread::sleep(Duration::from_millis(50));
+        let _old1 = create_old_log_file(dir1.path(), "old1.log", 400 * 1024);
+        let _old2 = create_old_log_file(dir2.path(), "old2.log", 400 * 1024);
         let new1 = create_log_file(dir1.path(), "new1.log", 400 * 1024);
         let new2 = create_log_file(dir2.path(), "new2.log", 400 * 1024);
-
-        // Backdate old files
-        let old_time = SystemTime::now() - Duration::from_secs(600);
-        filetime::set_file_mtime(&old1, filetime::FileTime::from_system_time(old_time)).unwrap();
-        filetime::set_file_mtime(&old2, filetime::FileTime::from_system_time(old_time)).unwrap();
 
         // Total: 1.6 MB, limit: 1 MB
         let deleted = enforce_size_cap(&[dir1.path(), dir2.path()], 1);
@@ -288,20 +264,8 @@ mod tests {
     fn test_skips_non_log_files() {
         let dir = TempDir::new().unwrap();
 
-        // Create .log file and non-.log file
-        let log_file = create_log_file(dir.path(), "test.log", 600 * 1024);
-        let txt_file = dir.path().join("test.txt");
-        File::create(&txt_file)
-            .unwrap()
-            .write_all(&vec![b'x'; 600 * 1024])
-            .unwrap();
-
-        // Backdate log file
-        let old_time = SystemTime::now() - Duration::from_secs(600);
-        filetime::set_file_mtime(&log_file, filetime::FileTime::from_system_time(old_time))
-            .unwrap();
-        filetime::set_file_mtime(&txt_file, filetime::FileTime::from_system_time(old_time))
-            .unwrap();
+        let _log_file = create_old_log_file(dir.path(), "test.log", 600 * 1024);
+        let txt_file = create_file(dir.path(), "test.txt", 600 * 1024, Some(Duration::from_secs(600)));
 
         // Non-.log files should be ignored in size calculation
         let deleted = enforce_size_cap(&[dir.path()], 1);
@@ -317,16 +281,10 @@ mod tests {
         let dir2 = TempDir::new().unwrap();
 
         // Create two large old files in each directory
-        let file1a = create_log_file(dir1.path(), "file1a.log", 500 * 1024);
-        let file1b = create_log_file(dir1.path(), "file1b.log", 500 * 1024);
-        let file2a = create_log_file(dir2.path(), "file2a.log", 500 * 1024);
-        let file2b = create_log_file(dir2.path(), "file2b.log", 500 * 1024);
-
-        // Backdate all files
-        let old_time = SystemTime::now() - Duration::from_secs(600);
-        for f in [&file1a, &file1b, &file2a, &file2b] {
-            filetime::set_file_mtime(f, filetime::FileTime::from_system_time(old_time)).unwrap();
-        }
+        create_old_log_file(dir1.path(), "file1a.log", 500 * 1024);
+        create_old_log_file(dir1.path(), "file1b.log", 500 * 1024);
+        create_old_log_file(dir2.path(), "file2a.log", 500 * 1024);
+        create_old_log_file(dir2.path(), "file2b.log", 500 * 1024);
 
         // Total: 2 MB, limit: 1 MB - aggressive cleanup
         let deleted = enforce_size_cap(&[dir1.path(), dir2.path()], 1);
@@ -353,11 +311,28 @@ mod tests {
         );
     }
 
-    fn create_log_file(dir: &Path, name: &str, size_bytes: usize) -> std::path::PathBuf {
+    fn create_log_file(dir: &Path, name: &str, size_bytes: usize) -> PathBuf {
+        create_file(dir, name, size_bytes, None)
+    }
+
+    fn create_old_log_file(dir: &Path, name: &str, size_bytes: usize) -> PathBuf {
+        create_file(dir, name, size_bytes, Some(Duration::from_secs(600)))
+    }
+
+    fn create_file(
+        dir: &Path,
+        name: &str,
+        size_bytes: usize,
+        age: Option<Duration>,
+    ) -> PathBuf {
         let path = dir.join(name);
         let mut file = File::create(&path).unwrap();
         file.write_all(&vec![b'x'; size_bytes]).unwrap();
+        if let Some(age) = age {
+            let old_time = SystemTime::now() - age;
+            filetime::set_file_mtime(&path, filetime::FileTime::from_system_time(old_time))
+                .unwrap();
+        }
         path
     }
-
 }
