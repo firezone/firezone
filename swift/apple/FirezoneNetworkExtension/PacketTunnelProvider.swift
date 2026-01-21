@@ -311,7 +311,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Schedule hourly cleanup
     logCleanupTask = CancellableTask {
       while !Task.isCancelled {
-        try? await Task.sleep(for: .seconds(3600))
+        try? await Task.sleep(nanoseconds: 3600 * 1_000_000_000)
         guard !Task.isCancelled else { break }
         Self.performLogCleanup(maxSizeMb: maxSizeMb)
       }
