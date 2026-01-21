@@ -26,7 +26,7 @@ public final class Store: ObservableObject {
   @Published public private(set) var vpnStatus: NEVPNStatus?
 
   // Hash for resource list optimisation
-  private var resourceListHash = Data()
+  private var connlibStateHash = Data()
   private let decoder = PropertyListDecoder()
 
   // User notifications
@@ -382,7 +382,7 @@ public final class Store: ObservableObject {
             if !Task.isCancelled {
               do {
                 guard let session = try self.manager().session() else { return }
-                try await self.fetchResources(session: session)
+                try await self.fetchState(session: session)
               } catch let error as NSError {
                 // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
                 if error.domain == "NEVPNErrorDomain" && error.code == 1 {
@@ -416,32 +416,36 @@ public final class Store: ObservableObject {
     resourcesTimer?.invalidate()
     resourcesTimer = nil
     resourceList = ResourceList.loading
-    resourceListHash = Data()
+    connlibStateHash = Data()
   }
 
-  /// Fetches resources from the tunnel provider, using hash-based optimisation.
+  /// Fetches state from the tunnel provider, using hash-based optimisation.
   ///
-  /// If the resource list hash matches what the provider has, resources are unchanged.
-  /// Otherwise, fetches and caches the new list.
+  /// If the hash matches what the provider has, state is unchanged.
+  /// Otherwise, fetches and caches the new state.
   ///
   /// - Parameter session: The tunnel provider session to communicate with
   /// - Throws: IPCClient.Error if IPC communication fails
-  private func fetchResources(session: NETunnelProviderSession) async throws {
+  private func fetchState(session: NETunnelProviderSession) async throws {
     // Capture current hash before IPC call
-    let currentHash = resourceListHash
+    let currentHash = connlibStateHash
 
-    // If no data returned, resources haven't changed - no update needed
-    guard let data = try await IPCClient.fetchResources(session: session, currentHash: currentHash)
+    // If no data returned, state hasn't changed - no update needed
+    guard let data = try await IPCClient.fetchState(session: session, currentHash: currentHash)
     else {
       return
     }
 
-    // Compute new hash and decode resources
+    // Compute new hash and decode state
     let newHash = Data(SHA256.hash(data: data))
-    let decoded = try decoder.decode([Resource].self, from: data)
+    let decoded = try decoder.decode(ConnlibState.self, from: data)
 
     // Update both hash and resource list
-    resourceListHash = newHash
-    resourceList = ResourceList.loaded(decoded)
+    connlibStateHash = newHash
+
+    if let resources = decoded.resources {
+      resourceList = ResourceList.loaded(resources)
+
+    }
   }
 }
