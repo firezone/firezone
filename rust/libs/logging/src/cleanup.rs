@@ -29,27 +29,18 @@ pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
     let mut files = Vec::new();
 
     for (dir_idx, dir) in log_dirs.iter().enumerate() {
-        if !dir.exists() {
-            tracing::debug!(dir = %dir.display(), "Log directory does not exist, skipping");
-            continue;
-        }
-
-        let entries = match fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(e) => {
-                match e.kind() {
-                    ErrorKind::PermissionDenied => {
-                        tracing::warn!(dir = %dir.display(), "Permission denied reading log directory");
-                    }
-                    ErrorKind::NotFound => {
-                        tracing::debug!(dir = %dir.display(), "Log directory not found (removed after exists check)");
-                    }
-                    _ => {
-                        tracing::warn!(dir = %dir.display(), "Failed to read log directory: {e}");
-                    }
-                }
-                continue;
+        let Ok(entries) = fs::read_dir(dir).inspect_err(|e| match e.kind() {
+            ErrorKind::PermissionDenied => {
+                tracing::debug!(dir = %dir.display(), "Permission denied reading log directory");
             }
+            ErrorKind::NotFound => {
+                tracing::debug!(dir = %dir.display(), "Log directory does not exist, skipping");
+            }
+            _ => {
+                tracing::warn!(dir = %dir.display(), "Failed to read log directory: {e}");
+            }
+        }) else {
+            continue;
         };
         for entry_result in entries {
             let entry = match entry_result {
