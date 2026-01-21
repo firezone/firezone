@@ -1024,7 +1024,7 @@ mod tests {
         ) {
             ipc::connect(
                 SocketId::Test(self.gui_id),
-                ipc::ConnectOptions { num_attempts: 1 },
+                ipc::ConnectOptions { num_attempts: 2 },
             )
             .await
             .unwrap()
