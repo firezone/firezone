@@ -455,7 +455,7 @@ public final class Store: ObservableObject {
     }
 
     // Handle unreachable resources and show notifications
-    await handleUnreachableResources(
+    await showNotificationsForUnreachableResources(
       unreachableResources: decoded.unreachableResources,
       resources: decoded.resources ?? []
     )
@@ -466,7 +466,7 @@ public final class Store: ObservableObject {
   /// - Parameters:
   ///   - unreachableResources: Set of currently unreachable resources from connlib
   ///   - resources: List of all resources for looking up resource names
-  private func handleUnreachableResources(
+  private func showNotificationsForUnreachableResources(
     unreachableResources: Set<UnreachableResource>,
     resources: [FirezoneKit.Resource]
   ) async {
@@ -479,9 +479,9 @@ public final class Store: ObservableObject {
         continue
       }
 
-      // Mark this as notified
       let (inserted, _) = unreachableSites.insert(site.id)
 
+      // Don't show duplicate notifications
       if !inserted {
         continue
       }
