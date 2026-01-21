@@ -257,7 +257,6 @@ ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.30" } # Waiting for release.
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
-moka = { git = "https://github.com/moka-rs/moka", branch = "main" } # Waiting for release.
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.

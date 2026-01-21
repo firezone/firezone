@@ -4627,8 +4627,9 @@ dependencies = [
 
 [[package]]
 name = "moka"
-version = "0.12.11"
-source = "git+https://github.com/moka-rs/moka?branch=main#8dbc8e5c6ee804470b1144960f4065959658232a"
+version = "0.12.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3dec6bd31b08944e08b58fd99373893a6c17054d6f3ea5006cc894f4f4eee2a"
 dependencies = [
  "async-lock",
  "crossbeam-channel",
@@ -4639,7 +4640,6 @@ dependencies = [
  "futures-util",
  "parking_lot",
  "portable-atomic",
- "rustc_version",
  "smallvec",
  "tagptr",
  "uuid",
