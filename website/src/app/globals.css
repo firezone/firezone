@@ -1,5 +1,66 @@
 @import "tailwindcss";
 
+@theme {
+  /* Font families */
+  --font-sans: var(--font-source-sans-3);
+
+  /* Custom color palette - heat-wave (primary/orange) */
+  --color-primary-50: #fff9f5;
+  --color-primary-100: #fff1e5;
+  --color-primary-200: #ffddc2;
+  --color-primary-300: #ffbc85;
+  --color-primary-400: #ff9a47;
+  --color-primary-450: #ff7300;
+  --color-primary-500: #ff7605;
+  --color-primary-600: #c25700;
+  --color-primary-700: #7f3900;
+  --color-primary-800: #5c2900;
+  --color-primary-900: #331700;
+
+  /* Custom color palette - electric-violet (accent/violet) */
+  --color-accent-50: #f8f5ff;
+  --color-accent-100: #ece5ff;
+  --color-accent-200: #d2c2ff;
+  --color-accent-300: #a585ff;
+  --color-accent-400: #7847ff;
+  --color-accent-450: #5e00d6;
+  --color-accent-500: #4805ff;
+  --color-accent-600: #3400c2;
+  --color-accent-700: #37007f;
+  --color-accent-800: #28005c;
+  --color-accent-900: #160033;
+
+  /* Custom color palette - night-rider (neutral) */
+  --color-neutral-50: #fcfcfc;
+  --color-neutral-100: #f8f7f7;
+  --color-neutral-200: #ebebea;
+  --color-neutral-300: #dfdedd;
+  --color-neutral-400: #c7c4c2;
+  --color-neutral-500: #a7a3a0;
+  --color-neutral-600: #90867f;
+  --color-neutral-700: #766a60;
+  --color-neutral-800: #4c3e33;
+  --color-neutral-900: #1b140e;
+  --color-neutral-950: #050505;
+
+  /* Custom color palette - cool-gray (grey) */
+  --color-grey-50: #F8FAFC;
+  --color-grey-100: #F1F5F9;
+  --color-grey-200: #E2E8F0;
+  --color-grey-300: #CBD5E1;
+  --color-grey-400: #94A3B8;
+  --color-grey-500: #64748B;
+  --color-grey-600: #475569;
+  --color-grey-700: #334155;
+  --color-grey-800: #1E293B;
+  --color-grey-900: #0F172A;
+  --color-grey-950: #020617;
+
+  /* Box shadows */
+  --shadow-drop: 0px 16px 32px -4px rgba(12, 12, 13, 0.1), 0px 4px 4px -4px rgba(12, 12, 13, 0.05);
+  --shadow-light: 0px 4px 8px 3px rgba(12, 12, 13, 0.08), 0px 1px 3px 0 rgba(12, 12, 13, 0.15);
+}
+
 html {
   font-family: var(--font-source-sans-3);
 }
