@@ -177,7 +177,6 @@
       Group {
         // Header text
         Text(resourcesHeaderText)
-          .font(.caption)
           .foregroundStyle(.secondary)
 
         // Internet resource (always first if present)
