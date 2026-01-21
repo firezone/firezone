@@ -903,6 +903,7 @@ impl<I: GuiIntegration> Controller<I> {
         }
         self.auth.sign_out()?;
         self.status = Status::Disconnected;
+        self.unreachable_sites.clear();
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
         // connlib already disconnected itself.
