@@ -20,6 +20,14 @@ defmodule Portal.Application do
     Supervisor.start_link(children(), strategy: :one_for_one, name: __MODULE__.Supervisor)
   end
 
+  @impl true
+  def stop(_state) do
+    # Remove the Sentry logger handler before Sentry.Supervisor terminates
+    # to avoid noproc errors during shutdown
+    _ = :logger.remove_handler(:sentry)
+    :ok
+  end
+
   defp children do
     [
       # Core services
