@@ -8,7 +8,7 @@
 import Foundation
 
 public enum ProviderMessage: Codable {
-  case getResourceList(Data)
+  case getState(Data)
   case setConfiguration(TunnelConfiguration)
   case signOut
   case clearLogs
@@ -21,7 +21,7 @@ public enum ProviderMessage: Codable {
   }
 
   enum MessageType: String, Codable {
-    case getResourceList
+    case getState
     case setConfiguration
     case signOut
     case clearLogs
@@ -33,9 +33,9 @@ public enum ProviderMessage: Codable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     let type = try container.decode(MessageType.self, forKey: .type)
     switch type {
-    case .getResourceList:
+    case .getState:
       let value = try container.decode(Data.self, forKey: .value)
-      self = .getResourceList(value)
+      self = .getState(value)
     case .setConfiguration:
       let value = try container.decode(TunnelConfiguration.self, forKey: .value)
       self = .setConfiguration(value)
@@ -53,8 +53,8 @@ public enum ProviderMessage: Codable {
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
     switch self {
-    case .getResourceList(let value):
-      try container.encode(MessageType.getResourceList, forKey: .type)
+    case .getState(let value):
+      try container.encode(MessageType.getState, forKey: .type)
       try container.encode(value, forKey: .value)
     case .setConfiguration(let value):
       try container.encode(MessageType.setConfiguration, forKey: .type)
