@@ -371,6 +371,14 @@ defmodule PortalAPI.Client.Channel do
         })
 
         {:noreply, socket}
+
+      {:error, :version_mismatch} ->
+        push(socket, "flow_creation_failed", %{
+          resource_id: resource_id,
+          reason: :version_mismatch
+        })
+
+        {:noreply, socket}
     end
   end
 
@@ -422,6 +430,9 @@ defmodule PortalAPI.Client.Channel do
 
       {:ok, []} ->
         {:reply, {:error, %{reason: :offline}}, socket}
+
+      {:error, :version_mismatch} ->
+        {:reply, {:error, %{reason: :version_mismatch}}, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
         {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
@@ -938,17 +949,31 @@ defmodule PortalAPI.Client.Channel do
         Presence.Gateways.Account.list(subject.account.id)
         |> Map.keys()
 
-      gateways =
+      online_gateways =
         from(g in Gateway, as: :gateways)
         |> where([gateways: g], g.id in ^connected_gateway_ids and g.site_id == ^resource_site_id)
         |> Safe.scoped(subject)
         |> Safe.all()
         |> case do
           {:error, :unauthorized} -> []
-          gateways -> filter_compatible_gateways(gateways, resource, client.last_seen_version)
+          gateways -> gateways
         end
 
-      {:ok, gateways}
+      compatible_gateways =
+        filter_compatible_gateways(online_gateways, resource, client.last_seen_version)
+
+      cond do
+        compatible_gateways != [] ->
+          {:ok, compatible_gateways}
+
+        online_gateways != [] ->
+          # Gateways are online but all were filtered out due to version incompatibility
+          {:error, :version_mismatch}
+
+        true ->
+          # No gateways online at all
+          {:ok, []}
+      end
     end
 
     # Filters gateways by the resource type, gateway version, and client version.
