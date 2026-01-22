@@ -1374,7 +1374,7 @@ dependencies = [
  "client-shared",
  "connlib-model",
  "dns-types",
- "flume",
+ "flume 0.12.0",
  "futures",
  "ip-packet",
  "ip_network",
@@ -2475,6 +2475,9 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+dependencies = [
+ "getrandom 0.2.16",
+]
 
 [[package]]
 name = "fdeflate"
@@ -2797,6 +2800,18 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "nanorand",
+ "spin",
+]
+
+[[package]]
+name = "flume"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e139bc46ca777eb5efaf62df0ab8cc5fd400866427e56c68b22e414e53bd3be"
+dependencies = [
+ "fastrand",
+ "futures-core",
+ "futures-sink",
  "spin",
 ]
 
@@ -3298,7 +3313,7 @@ dependencies = [
  "chrono",
  "ctrlc",
  "downcast-rs",
- "flume",
+ "flume 0.11.1",
  "futures",
  "gumdrop",
  "http 1.4.0",
@@ -8114,7 +8129,7 @@ name = "telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "flume",
+ "flume 0.12.0",
  "futures",
  "hex",
  "ip-packet",
@@ -8860,7 +8875,7 @@ dependencies = [
  "dns-over-tcp",
  "dns-types",
  "firezone-relay",
- "flume",
+ "flume 0.12.0",
  "futures",
  "futures-bounded",
  "gat-lending-iterator",
