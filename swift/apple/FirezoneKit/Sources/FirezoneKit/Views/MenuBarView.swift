@@ -21,8 +21,8 @@
 
       Divider()
 
-      // Resources (only when connected)
-      if store.vpnStatus == .connected {
+      // Resources (only when connected and not hidden by admin)
+      if store.vpnStatus == .connected && !store.configuration.publishedHideResourceList {
         ResourcesSection()
         Divider()
       }
