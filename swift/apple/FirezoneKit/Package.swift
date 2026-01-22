@@ -12,17 +12,13 @@ let package = Package(
     .library(name: "FirezoneKit", targets: ["FirezoneKit"])
   ],
   dependencies: [
-    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.1.0"),
-    .package(url: "https://github.com/orchetect/MenuBarExtraAccess", from: "1.2.0"),
+    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.1.0")
   ],
   targets: [
     .target(
       name: "FirezoneKit",
       dependencies: [
-        .product(name: "Sentry", package: "sentry-cocoa"),
-        .product(
-          name: "MenuBarExtraAccess", package: "MenuBarExtraAccess",
-          condition: .when(platforms: [.macOS])),
+        .product(name: "Sentry", package: "sentry-cocoa")
       ]
     ),
     .testTarget(

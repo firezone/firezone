@@ -9,15 +9,10 @@ import FirezoneKit
 import Sentry
 import SwiftUI
 
-#if os(macOS)
-  import MenuBarExtraAccess
-#endif
-
 @main
 struct FirezoneApp: App {
   #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var isMenuPresented = false
     @State private var connectingAnimationFrame: Int = 0
   #endif
 
@@ -81,9 +76,6 @@ struct FirezoneApp: App {
         }
       }
       .menuBarExtraStyle(.menu)
-      .menuBarExtraAccess(isPresented: $isMenuPresented) { statusItem in
-        store.menuBarStatusItem = statusItem
-      }
     #endif
   }
 
@@ -130,6 +122,11 @@ struct FirezoneApp: App {
     func applicationDidFinishLaunching(_: Notification) {
       if let store {
         AppView.subscribeToGlobalEvents(store: store)
+
+        // Capture the MenuBarExtra's NSStatusItem for programmatic control
+        StatusItemIntrospection.captureStatusItem { statusItem in
+          store.menuBarStatusItem = statusItem
+        }
       }
 
       // SwiftUI will show the first window group, so close it on launch

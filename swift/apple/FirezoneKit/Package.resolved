@@ -1,15 +1,6 @@
 {
-  "originHash" : "0037feb3b083ac207388f8646e8a46b67689bc04d902b82b021b315e922fe50c",
+  "originHash" : "f8ffd654777633ecc4f3cbc00d6bdd0e1de273559297de0b83ee1dbd91f8cc34",
   "pins" : [
-    {
-      "identity" : "menubarextraaccess",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/orchetect/MenuBarExtraAccess",
-      "state" : {
-        "revision" : "707dff6f55217b3ef5b6be84ced3e83511d4df5c",
-        "version" : "1.2.2"
-      }
-    },
     {
       "identity" : "sentry-cocoa",
       "kind" : "remoteSourceControl",

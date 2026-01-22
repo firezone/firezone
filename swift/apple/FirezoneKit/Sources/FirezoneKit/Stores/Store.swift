@@ -12,7 +12,6 @@ import UserNotifications
 
 #if os(macOS)
   import AppKit
-  import MenuBarExtraAccess
   import ServiceManagement
 #endif
 
