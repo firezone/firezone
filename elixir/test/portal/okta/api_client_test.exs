@@ -445,4 +445,79 @@ defmodule Portal.Okta.APIClientTest do
       assert reason =~ "Unexpected response with status 500"
     end
   end
+
+  describe "retry behavior" do
+    test "retries on 500 for GET requests and succeeds", %{client: client} do
+      # Enable retry for this test
+      Portal.Config.put_env_override(Portal.Okta.APIClient,
+        req_opts: [
+          plug: {Req.Test, Portal.Okta.APIClient},
+          retry_delay: fn _n -> 1 end,
+          max_retries: 1
+        ]
+      )
+
+      {:ok, agent} = Agent.start_link(fn -> 0 end)
+
+      Req.Test.stub(APIClient, fn conn ->
+        call_count = Agent.get_and_update(agent, fn count -> {count, count + 1} end)
+
+        case call_count do
+          0 ->
+            # First call fails with 500
+            Plug.Conn.send_resp(conn, 500, JSON.encode!(%{"error" => "server_error"}))
+
+          _ ->
+            # Second call succeeds
+            Req.Test.json(conn, [%{"id" => "group1", "name" => "Test Group"}])
+        end
+      end)
+
+      results =
+        APIClient.stream_groups(client, "test_token")
+        |> Enum.to_list()
+
+      assert [{:ok, %{"id" => "group1"}}] = results
+      # Verify retry happened
+      assert Agent.get(agent, & &1) == 2
+    end
+
+    test "retries on 429 rate limit with delay from headers", %{client: client} do
+      # Enable retry for this test - no retry_delay since custom retry returns {:delay, ms}
+      Portal.Config.put_env_override(Portal.Okta.APIClient,
+        req_opts: [
+          plug: {Req.Test, Portal.Okta.APIClient},
+          max_retries: 1
+        ]
+      )
+
+      {:ok, agent} = Agent.start_link(fn -> 0 end)
+      # Set reset time to now so the delay is 0
+      reset_time = System.system_time(:second)
+
+      Req.Test.stub(APIClient, fn conn ->
+        call_count = Agent.get_and_update(agent, fn count -> {count, count + 1} end)
+
+        case call_count do
+          0 ->
+            # First call gets rate limited
+            conn
+            |> Plug.Conn.put_resp_header("x-rate-limit-reset", Integer.to_string(reset_time))
+            |> Plug.Conn.send_resp(429, JSON.encode!(%{"error" => "rate_limit"}))
+
+          _ ->
+            # Second call succeeds
+            Req.Test.json(conn, [%{"id" => "group1", "name" => "Test Group"}])
+        end
+      end)
+
+      results =
+        APIClient.stream_groups(client, "test_token")
+        |> Enum.to_list()
+
+      assert [{:ok, %{"id" => "group1"}}] = results
+      # Verify retry happened
+      assert Agent.get(agent, & &1) == 2
+    end
+  end
 end
