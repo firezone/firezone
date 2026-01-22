@@ -20,7 +20,7 @@ pub struct GeneralSettingsForm {
     pub account_slug: String,
 }
 
-#[derive(Clone, serde::Serialize, specta::Type)]
+#[derive(Clone, Debug, serde::Serialize, specta::Type, PartialEq, Eq)]
 pub enum SessionViewModel {
     SignedIn {
         account_slug: String,

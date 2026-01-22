@@ -59,7 +59,7 @@ pub struct AdvancedSettings {
     pub log_filter: String,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, Default)]
 pub struct GeneralSettings {
     #[serde(default)]
     pub favorite_resources: HashSet<ResourceId>,

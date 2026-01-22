@@ -2620,6 +2620,7 @@ dependencies = [
  "native-dialog",
  "nix",
  "output_vt100",
+ "parking_lot",
  "phoenix-channel",
  "png",
  "rand 0.8.5",

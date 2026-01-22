@@ -37,6 +37,7 @@ keyring-core = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
 output_vt100 = { workspace = true }
+parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
 png = { workspace = true } # `png` is mostly free since we already need it for Tauri
 rand = { workspace = true }
