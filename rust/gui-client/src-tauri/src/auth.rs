@@ -102,12 +102,12 @@ struct SessionAndToken {
 impl Auth {
     /// Creates a new Auth struct using the "dev.firezone.client/token" keyring key. If the token is stored on disk, the struct is automatically signed in.
     ///
-    /// Performs I/O.
+    /// Performs I/O except on `cfg(test)`.
     pub fn new() -> Result<Self> {
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", not(test)))]
         let store = dbus_secret_service_keyring_store::Store::new()?;
 
-        #[cfg(target_os = "windows")]
+        #[cfg(all(target_os = "windows", not(test)))]
         let store = windows_native_keyring_store::Store::new_with_configuration(
             &std::collections::HashMap::from([(
                 // We want to avoid an appended `.` at the end.
@@ -115,7 +115,7 @@ impl Auth {
             )]),
         )?;
 
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", test))]
         let store = keyring_core::mock::Store::new()?;
 
         Self::new_with_key(
