@@ -4,7 +4,7 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::{
-    controller::{Controller, ControllerRequest, CtlrTx, Failure, GuiIntegration},
+    controller::{Controller, ControllerRequest, Failure, GuiIntegration, NotificationHandle},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
     logging::FileCount,
@@ -157,12 +157,12 @@ impl GuiIntegration for TauriIntegration {
         self.tray.update(app_state)
     }
 
-    fn show_notification(&self, title: &str, body: &str) -> Result<()> {
-        os::show_notification(&self.app, title, body)
-    }
-
-    fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()> {
-        os::show_update_notification(&self.app, ctlr_tx, title, url)
+    fn show_notification(
+        &self,
+        title: impl Into<String>,
+        body: impl Into<String>,
+    ) -> Result<NotificationHandle> {
+        os::show_notification(&self.app, title.into(), body.into())
     }
 
     fn set_window_visible(&self, visible: bool) -> Result<()> {
@@ -466,7 +466,7 @@ pub fn run(
 }
 
 #[cfg(not(debug_assertions))]
-async fn smoke_test(_: CtlrTx) -> Result<()> {
+async fn smoke_test(_: mpsc::Sender<ControllerRequest>) -> Result<()> {
     bail!("Smoke test is not built for release binaries.");
 }
 
@@ -475,7 +475,7 @@ async fn smoke_test(_: CtlrTx) -> Result<()> {
 /// You can purposely fail this test by deleting the exported zip file during
 /// the 10-second sleep.
 #[cfg(debug_assertions)]
-async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
+async fn smoke_test(ctrl_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
     let delay = 10;
     tracing::info!("Will quit on purpose in {delay} seconds as part of the smoke test.");
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
@@ -492,7 +492,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
             }
         }
     }
-    ctlr_tx
+    ctrl_tx
         .send(ControllerRequest::ExportLogs {
             path: path.clone(),
             stem,
@@ -500,7 +500,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .await
         .context("Failed to send `ExportLogs` request")?;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    ctlr_tx
+    ctrl_tx
         .send(ControllerRequest::ClearLogs(tx))
         .await
         .context("Failed to send `ClearLogs` request")?;
@@ -532,7 +532,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     anyhow::ensure!(tokio::fs::try_exists(settings::advanced_settings_path()?).await?);
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
-    ctlr_tx
+    ctrl_tx
         .send(ControllerRequest::SystemTrayMenu(system_tray::Event::Quit))
         .await
         .context("Failed to send Quit request")?;
