@@ -1,6 +1,73 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@config '../../tailwind.config.mjs';
+
+@variant dark (&:where(.dark, .dark *));
+
+@utility fade-side {
+  mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0) 0%,
+    rgb(0, 0, 0) 35%,
+    rgb(0, 0, 0) 65%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+@utility animate-left {
+  animation: 28s slide infinite linear;
+}
+
+@utility dark-scroll {
+  /* For WebKit browsers (Chrome, Safari) */
+  &::-webkit-scrollbar {
+    width: 12px; /* Adjust the width of the scrollbar */
+  }
+
+  &::-webkit-scrollbar-button {
+    height: 0;
+    width: 0;
+    display: none;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: #666; /* White color at 20% opacity */
+    border-radius: 10px; /* Optional: Rounds the corners of the scrollbar thumb */
+  }
+
+  &::-webkit-scrollbar-track {
+    background-color: #222; /* White color at 40% opacity */
+    border-radius: 10px; /* Optional: Rounds the corners of the scrollbar track */
+  }
+
+  /* For Firefox */
+  * & {
+    scrollbar-width: thin;
+    scrollbar-color: #666 #222;
+  }
+
+  &::-ms-scrollbar {
+    width: 12px; /* Adjust the width of the scrollbar */
+  }
+
+  &::-ms-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2); /* White color at 20% opacity */
+    border-radius: 10px; /* Optional: Rounds the corners of the scrollbar thumb */
+  }
+
+  &::-ms-scrollbar-track {
+    background-color: rgba(255, 255, 255, 0.4); /* White color at 40% opacity */
+    border-radius: 10px; /* Optional: Rounds the corners of the scrollbar track */
+  }
+
+  &::-ms-scrollbar-button {
+    display: none;
+  }
+}
+
+@utility bg-hero {
+  background-image: url("/images/ribbon.svg");
+}
 
 html {
   font-family: var(--font-source-sans-3);
@@ -15,103 +82,54 @@ h6 {
   font-family: var(--font-manrope);
 }
 
-@layer components {
-  /* Fix inline headings */
-  *:is(h1, h2, h3, h4, h5, h6) {
-    @apply flex items-center gap-1;
-  }
-
-  /* Fix anchor slug links and scroll position due to fixed navbar */
-  *:is(h1, h2, h3, h4, h5, h6, li[id^="user-content-"]) {
-    @apply scroll-mt-20;
-  }
-
-  /* Remove styling for anchors inside headings */
-  *:is(h1, h2, h3, h4, h5, h6) a {
-    text-decoration: none !important;
-    font-weight: 700 !important;
-    color: var(--color-neutral-800) !important;
-  }
-
-  *:is(h1, h2, h3, h4, h5, h6) a:hover {
-    text-decoration: underline !important;
-  }
-
-  *:is(code) {
-    @apply overflow-x-auto rounded text-sm;
-  }
-
-  .fade-side {
-    mask-image: linear-gradient(
-      to right,
-      rgba(0, 0, 0, 0) 0%,
-      rgb(0, 0, 0) 35%,
-      rgb(0, 0, 0) 65%,
-      rgba(0, 0, 0, 0) 100%
-    );
-  }
-
-  .animate-left {
-    animation: 28s slide infinite linear;
-  }
-
-  /* For WebKit browsers (Chrome, Safari) */
-  .dark-scroll::-webkit-scrollbar {
-    width: 12px; /* Adjust the width of the scrollbar */
-  }
-
-  .dark-scroll::-webkit-scrollbar-button {
-    height: 0;
-    width: 0;
-    display: none;
-  }
-
-  .dark-scroll::-webkit-scrollbar-thumb {
-    background-color: #666; /* White color at 20% opacity */
-    border-radius: 10px; /* Optional: Rounds the corners of the scrollbar thumb */
-  }
-
-  .dark-scroll::-webkit-scrollbar-track {
-    background-color: #222; /* White color at 40% opacity */
-    border-radius: 10px; /* Optional: Rounds the corners of the scrollbar track */
-  }
-
-  /* For Firefox */
-  * .dark-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: #666 #222;
-  }
-
-  .dark-scroll::-ms-scrollbar {
-    width: 12px; /* Adjust the width of the scrollbar */
-  }
-
-  .dark-scroll::-ms-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2); /* White color at 20% opacity */
-    border-radius: 10px; /* Optional: Rounds the corners of the scrollbar thumb */
-  }
-
-  .dark-scroll::-ms-scrollbar-track {
-    background-color: rgba(255, 255, 255, 0.4); /* White color at 40% opacity */
-    border-radius: 10px; /* Optional: Rounds the corners of the scrollbar track */
-  }
-
-  .dark-scroll::-ms-scrollbar-button {
-    display: none;
-  }
-
-  @keyframes slide {
-    from {
-      transform: translateX(0);
-    }
-    to {
-      transform: translateX(-100%);
-    }
-  }
+/* Fix inline headings */
+*:is(h1, h2, h3, h4, h5, h6) {
+  @apply flex items-center gap-1;
 }
 
-@layer utilities {
-  .bg-hero {
-    background-image: url("/images/ribbon.svg");
+/* Fix anchor slug links and scroll position due to fixed navbar */
+*:is(h1, h2, h3, h4, h5, h6, li[id^="user-content-"]) {
+  @apply scroll-mt-20;
+}
+
+/* Remove styling for anchors inside headings */
+*:is(h1, h2, h3, h4, h5, h6) a {
+  text-decoration: none !important;
+  font-weight: 700 !important;
+  color: var(--color-neutral-800) !important;
+}
+
+*:is(h1, h2, h3, h4, h5, h6) a:hover {
+  text-decoration: underline !important;
+}
+
+*:is(code) {
+  @apply overflow-x-auto rounded-sm text-sm;
+}
+
+/* Default hr color for Tailwind v4 compatibility */
+hr {
+  border-color: #ebebea;
+}
+
+/* Table styling for MDX tables */
+.format tbody tr {
+  border-bottom: 1px solid #ebebea;
+}
+
+.format tbody tr:last-child {
+  border-bottom: none;
+}
+
+.format thead th {
+  border-bottom: 1px solid #ebebea;
+}
+
+@keyframes slide {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
   }
 }

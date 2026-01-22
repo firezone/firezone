@@ -15,7 +15,7 @@ export function KbCard({
   return (
     <Link
       href={href}
-      className="flex flex-col p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
+      className="flex flex-col p-6 hover:shadow-sm rounded-sm border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
     >
       <h3 className="text-neutral-800 text-xl font-semibold tracking-tight mb-12">
         {title}

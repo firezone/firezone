@@ -37,7 +37,7 @@ export default function FeatureCards() {
           direction="left"
           delay={0.5}
           duration={1}
-          className="flex flex-col p-5 md:p-8 border-[1px] rounded-xl border-neutral-300"
+          className="flex flex-col p-5 md:p-8 border rounded-xl border-neutral-300"
         >
           <div className="h-12 w-12 md:h-14 md:w-14 flex rounded-xl bg-[#FFE9EB] justify-center items-center mb-5">
             <HiCloud color="#EF7E88" className="w-6 h-6 lg:w-7 lg:h-7" />
@@ -54,7 +54,7 @@ export default function FeatureCards() {
           direction="left"
           delay={0.75}
           duration={1}
-          className="flex flex-col p-6 md:p-8 border-[1px] rounded-xl border-neutral-300"
+          className="flex flex-col p-6 md:p-8 border rounded-xl border-neutral-300"
         >
           <div className="h-12 w-12 md:h-14 md:w-14 flex rounded-xl bg-[#E3F5FF] justify-center items-center mb-5">
             <HiLockClosed color="#719CF1" className="w-6 h-6 lg:w-7 lg:h-7" />
@@ -71,7 +71,7 @@ export default function FeatureCards() {
           direction="left"
           delay={1}
           duration={1}
-          className="flex flex-col p-6 md:p-8 border-[1px] rounded-xl border-neutral-300"
+          className="flex flex-col p-6 md:p-8 border rounded-xl border-neutral-300"
         >
           <div className="h-12 w-12 md:h-14 md:w-14 flex rounded-xl bg-[#EFEAFF] justify-center items-center mb-5">
             <HiMiniPuzzlePiece

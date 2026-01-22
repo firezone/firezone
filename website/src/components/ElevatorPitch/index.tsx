@@ -61,7 +61,7 @@ export default function ElevatorPitch() {
       <SlideIn direction="left" delay={delay} duration={0.5}>
         <button
           className={`flex flex-col lg:flex-row lg:w-full pointer-events-none
-          items-start lg:items-center py-6 lg:py-0 gap-4 border-[1px] justify-center
+          items-start lg:items-center py-6 lg:py-0 gap-4 border justify-center
           lg:justify-start transition duration-200 ease-in-out
         ${
           selectedOption == index

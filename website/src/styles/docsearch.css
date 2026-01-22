@@ -1,15 +1,17 @@
+@reference "../app/globals.css";
+
 .DocSearch-Button {
-  @apply w-full m-0 border border-neutral-400 rounded bg-neutral-200 text-neutral-700 ring-0 hover:ring-2 ring-accent-200 transition duration-100 !important;
+  @apply !w-full !m-0 !border !border-neutral-400 !rounded-sm !bg-neutral-200 !text-neutral-700 !ring-0 hover:!ring-2 !ring-accent-200 !transition !duration-100;
 }
 
 .DocSearch-Search-Icon {
-  @apply text-neutral-700 !important;
+  @apply !text-neutral-700;
 }
 
 .DocSearch-Input {
-  @apply ring-0 text-neutral-800 !important;
+  @apply !ring-0 !text-neutral-800;
 }
 
 .DocSearch-Form {
-  @apply mb-1 ring-accent-500 ring-2 !important;
+  @apply !mb-1 !ring-accent-500 !ring-2;
 }
