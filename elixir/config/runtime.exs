@@ -109,6 +109,9 @@ if config_env() == :prod do
     config :portal, platform_adapter, env_var_to_config!(:platform_adapter_config)
   end
 
+  # Azure Front Door ID validation - when set, rejects requests without matching X-Azure-FDID header
+  config :portal, azure_front_door_id: env_var_to_config!(:azure_front_door_id)
+
   config :portal, Portal.Cluster,
     adapter: env_var_to_config!(:erlang_cluster_adapter),
     adapter_config: env_var_to_config!(:erlang_cluster_adapter_config),
