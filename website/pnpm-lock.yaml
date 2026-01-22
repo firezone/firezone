@@ -55,7 +55,7 @@ importers:
         version: 5.3.3
       flowbite-react:
         specifier: ^0.12.16
-        version: 0.12.16(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.17)(typescript@5.9.3)
+        version: 0.12.16(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.18)(typescript@5.9.3)
       framer-motion:
         specifier: ^12.25.0
         version: 12.25.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -117,8 +117,8 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
       tailwindcss:
-        specifier: 4.1.17
-        version: 4.1.17
+        specifier: 4.1.18
+        version: 4.1.18
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3.3.3
@@ -3006,6 +3006,9 @@ packages:
   tailwindcss@4.1.17:
     resolution: {integrity: sha512-j9Ee2YjuQqYT9bbRTfTZht9W/ytp5H+jJpZKiYdP/bpnXARAuELt9ofP0lPnmHjbga7SNQIxdTAXCmtKVYjN+Q==}
 
+  tailwindcss@4.1.18:
+    resolution: {integrity: sha512-4+Z+0yiYyEtUVCScyfHCxOYP06L5Ne+JiHhY2IjR2KWMIWhJOYZKLSGZaP5HkZ8+bY0cxfzwDE5uOmzFXyIwxw==}
+
   tapable@2.3.0:
     resolution: {integrity: sha512-g9ljZiwki/LfxmQADO3dEY1CbpmXT5Hm2fJ+QaGKwSXUylMybePR7/67YW7jOrrvjEgL1Fmz5kzyAjWVWLlucg==}
     engines: {node: '>=6'}
@@ -5078,7 +5081,7 @@ snapshots:
 
   flatted@3.3.3: {}
 
-  flowbite-react@0.12.16(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.17)(typescript@5.9.3):
+  flowbite-react@0.12.16(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.18)(typescript@5.9.3):
     dependencies:
       '@floating-ui/core': 1.7.3
       '@floating-ui/react': 0.27.16(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -5096,7 +5099,7 @@ snapshots:
       recast: 0.23.11
       tailwind-merge-v2: tailwind-merge@2.6.0
       tailwind-merge-v3: tailwind-merge@3.0.1
-      tailwindcss: 4.1.17
+      tailwindcss: 4.1.18
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -6833,6 +6836,8 @@ snapshots:
   tailwind-merge@3.0.1: {}
 
   tailwindcss@4.1.17: {}
+
+  tailwindcss@4.1.18: {}
 
   tapable@2.3.0: {}
 
