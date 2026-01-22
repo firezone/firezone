@@ -29,7 +29,7 @@ export default function Footer() {
           <div className="w-full sm:w-fit flex flex-col justify-between h-20">
             <button
               type="button"
-              className="tracking-tight group shadow-primary-700 text-lg sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+              className="tracking-tight group shadow-primary-700 text-lg sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded-sm bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
             >
               <Link href="/contact/sales">Book a demo</Link>
               <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />

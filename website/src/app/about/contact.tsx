@@ -8,7 +8,7 @@ export default function Contact() {
         <h2 className="text-2xl sm:text-3xl font-semibold text-neutral-900 tracking-tight">
           Contact us:
         </h2>
-        <table className="mt-8 text-left rounded">
+        <table className="mt-8 text-left rounded-sm">
           <tbody>
             <tr className="border-b border-neutral-200">
               <td className="py-2 px-3">

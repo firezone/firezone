@@ -11,7 +11,7 @@ const customTheme: CustomFlowbiteTheme["tabs"] = {
       underline: "flex-wrap -mb-px border-b border-neutral-200",
       pills: "flex-wrap font-medium text-sm text-neutral-500 space-x-2",
       fullWidth:
-        "w-full text-sm font-medium divide-x divide-neutral-200 shadow grid grid-flow-colrounded-none",
+        "w-full text-sm font-medium divide-x divide-neutral-200 shadow-sm grid grid-flow-colrounded-none",
     },
     tabitem: {
       base: "flex items-center justify-center p-4 rounded-t-lg text-sm font-medium first:ml-0 disabled:cursor-not-allowed disabled:text-neutral-400",
@@ -66,7 +66,7 @@ function TabsGroup({ children }: { children: React.ReactNode }) {
       <Tabs
         theme={customTheme}
         variant="underline"
-        className="bg-neutral-50 rounded shadow"
+        className="bg-neutral-50 rounded-sm shadow-sm"
       >
         {children}
       </Tabs>

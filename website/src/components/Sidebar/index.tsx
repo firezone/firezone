@@ -14,7 +14,7 @@ import { useDrawer } from "@/components/Providers/DrawerProvider";
 
 const ItemGroupLabelTheme: CustomFlowbiteTheme["sidebar"] = {
   item: {
-    base: "flex items-center justify-center rounded p-2 text-sm font-semibold uppercase text-primary-450",
+    base: "flex items-center justify-center rounded-sm p-2 text-sm font-semibold uppercase text-primary-450",
   },
 };
 
@@ -26,11 +26,11 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
       off: "w-64",
     },
     inner:
-      "h-full overflow-y-auto overflow-x-hidden bg-white rounded px-3 py-4 dark:bg-neutral-800",
+      "h-full overflow-y-auto overflow-x-hidden bg-white rounded-sm px-3 py-4 dark:bg-neutral-800",
   },
   collapse: {
     button:
-      "group flex w-full items-center rounded p-2 text-base font-normal text-neutral-900 transition duration-75 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
+      "group flex w-full items-center rounded-sm p-2 text-base font-normal text-neutral-900 transition duration-75 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
     icon: {
       base: "h-6 w-6 text-neutral-500 transition duration-75 group-hover:text-neutral-900 dark:text-neutral-400 dark:group-hover:text-white",
       open: {
@@ -67,7 +67,7 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
     },
   },
   item: {
-    base: "flex items-center justify-center rounded p-2 text-base font-normal text-neutral-900 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
+    base: "flex items-center justify-center rounded-sm p-2 text-base font-normal text-neutral-900 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
     active: "bg-neutral-200 dark:bg-neutral-700",
     collapsed: {
       insideCollapse: "group w-full pl-8 transition duration-75",
@@ -77,7 +77,7 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
       base: "flex-1 whitespace-nowrap px-3",
     },
     icon: {
-      base: "h-6 w-6 flex-shrink-0 text-neutral-500 transition duration-75 group-hover:text-neutral-900 dark:text-neutral-400 dark:group-hover:text-white",
+      base: "h-6 w-6 shrink-0 text-neutral-500 transition duration-75 group-hover:text-neutral-900 dark:text-neutral-400 dark:group-hover:text-white",
       active: "text-neutral-700 dark:text-neutral-100",
     },
     label: "",

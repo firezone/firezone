@@ -197,7 +197,7 @@ export function CustomerLogosColored() {
         </Link>
         <Link
           href="https://square1.io"
-          className="mx-12 flex items-center bg-neutral-950 p-4 rounded"
+          className="mx-12 flex items-center bg-neutral-950 p-4 rounded-sm"
         >
           <Image
             alt="square1 logo"

@@ -16,7 +16,7 @@ export default function Post({
   children: React.ReactNode;
 }) {
   return (
-    <main className="py-14 lg:pb-24 border border-b-1 ">
+    <main className="py-14 lg:pb-24 border border-b ">
       <div className="flex justify-between px-4 mx-auto max-w-screen-xl">
         <article className="mx-auto w-full max-w-3xl tracking-[-0.01em] text-neutral-800 format format-sm md:format-md lg:format-lg format-firezone">
           <header className="mb-4 lg:mb-6 not-format">
