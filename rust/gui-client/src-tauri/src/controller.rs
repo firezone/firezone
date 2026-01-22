@@ -971,7 +971,7 @@ mod tests {
         let (_tunnel_rx, mut tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
         tunnel_tx.send(&service::ServerMsg::Hello).await.unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
 
         assert_eq!(test_controller.integration().shown_overview_page.len(), 1);
     }
@@ -987,8 +987,6 @@ mod tests {
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
         gui_tx.send(&gui::ClientMsg::NewInstance).await.unwrap();
         let response = gui_rx.next().await.unwrap().unwrap();
-
-        tokio::time::sleep(Duration::from_millis(500)).await;
 
         assert_eq!(test_controller.integration().shown_overview_page.len(), 2);
         assert_eq!(response, gui::ServerMsg::Ack)
