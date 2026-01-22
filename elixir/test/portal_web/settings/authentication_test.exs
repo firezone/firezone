@@ -2257,8 +2257,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      html = render(lv)
-      assert html =~ "Discovery document contains invalid JSON"
+      wait_for_verification_error(lv, "Discovery document contains invalid JSON")
     end
 
     test "validates okta_domain must be a valid FQDN", %{
@@ -2979,8 +2978,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      html = render(lv)
-      assert html =~ "Failed to fetch discovery document (HTTP 403)"
+      wait_for_verification_error(lv, "Failed to fetch discovery document (HTTP 403)")
     end
   end
 
@@ -3178,8 +3176,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      html = render(lv)
-      assert html =~ "Failed to fetch discovery document (HTTP 400)"
+      wait_for_verification_error(lv, "Failed to fetch discovery document (HTTP 400)")
     end
 
     test "handles malformed JSON in discovery document", %{
@@ -3207,8 +3204,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      html = render(lv)
-      assert html =~ "Discovery document contains invalid JSON"
+      wait_for_verification_error(lv, "Discovery document contains invalid JSON")
     end
 
     test "handles connection refused error", %{
@@ -3292,8 +3288,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      html = render(lv)
-      assert html =~ "Failed to fetch discovery document (HTTP 418)"
+      wait_for_verification_error(lv, "Failed to fetch discovery document (HTTP 418)")
     end
   end
 
@@ -3506,8 +3501,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      html = render(lv)
-      assert html =~ "Discovery document contains invalid JSON"
+      wait_for_verification_error(lv, "Discovery document contains invalid JSON")
     end
 
     test "handles JSON with invalid byte sequences", %{
@@ -3536,8 +3530,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      html = render(lv)
-      assert html =~ "Discovery document contains invalid JSON"
+      wait_for_verification_error(lv, "Discovery document contains invalid JSON")
     end
 
     test "handles HTTP 401 error", %{
@@ -3568,8 +3561,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      html = render(lv)
-      assert html =~ "Failed to fetch discovery document (HTTP 401)"
+      wait_for_verification_error(lv, "Failed to fetch discovery document (HTTP 401)")
     end
 
     test "handles Okta DNS lookup failure", %{

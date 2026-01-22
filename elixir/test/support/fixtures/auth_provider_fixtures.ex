@@ -151,6 +151,7 @@ defmodule Portal.AuthProviderFixtures do
 
   """
   def oidc_provider_fixture(:mock, attrs) do
+    # Use dynamic endpoint for cache key isolation when tests run in parallel
     mock_endpoint = PortalWeb.Mocks.OIDC.mock_endpoint()
 
     attrs
