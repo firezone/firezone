@@ -79,7 +79,8 @@ config :portal, Portal.Billing.Stripe.APIClient,
 
 config :portal, Portal.Okta.APIClient,
   req_opts: [
-    plug: {Req.Test, Portal.Okta.APIClient}
+    plug: {Req.Test, Portal.Okta.APIClient},
+    retry: false
   ]
 
 config :portal, Portal.Entra.APIClient,

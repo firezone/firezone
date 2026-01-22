@@ -456,11 +456,18 @@ defmodule Portal.Okta.ReqDPoP do
 
   @spec attach(Req.Request.t(), keyword()) :: Req.Request.t()
   def attach(%Req.Request{} = req, opts) do
-    req
-    |> Req.Request.register_options([:sign_fun, :nonce, :access_token])
-    |> Req.Request.merge_options(opts)
-    |> wrap_adapter()
-    |> Req.Request.merge_options(retry: &retry/2)
+    req =
+      req
+      |> Req.Request.register_options([:sign_fun, :nonce, :access_token])
+      |> Req.Request.merge_options(opts)
+      |> wrap_adapter()
+
+    # Only set custom retry if not already explicitly set (allows tests to disable retries)
+    if is_nil(req.options[:retry]) do
+      Req.Request.merge_options(req, retry: &retry/2)
+    else
+      req
+    end
   end
 
   defp retry(%Req.Request{} = req, %Req.Response{} = resp) do
