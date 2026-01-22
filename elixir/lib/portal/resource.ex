@@ -66,6 +66,7 @@ defmodule Portal.Resource do
     )
     |> cast_embed(:filters, with: &filter_changeset/2)
     |> assoc_constraint(:site)
+    |> assoc_constraint(:account)
     |> unique_constraint(:name,
       name: :resources_account_id_name_index,
       message: "resource with this name already exists"

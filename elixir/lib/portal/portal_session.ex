@@ -1,5 +1,6 @@
 defmodule Portal.PortalSession do
   use Ecto.Schema
+  import Ecto.Changeset
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -29,5 +30,12 @@ defmodule Portal.PortalSession do
     field :online?, :boolean, virtual: true
 
     timestamps(updated_at: false)
+  end
+
+  def changeset(changeset) do
+    changeset
+    |> assoc_constraint(:account)
+    |> assoc_constraint(:actor)
+    |> assoc_constraint(:auth_provider)
   end
 end

@@ -44,6 +44,7 @@ defmodule Portal.Actor do
     |> normalize_email(:email)
     |> validate_email(:email)
     |> assoc_constraint(:account)
+    |> assoc_constraint(:directory, name: :actors_created_by_directory_id_fkey)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
     |> check_constraint(:type, name: :type_is_valid)
   end
