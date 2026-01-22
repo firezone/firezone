@@ -1,9 +1,6 @@
 //! Gateway related messages that are needed within connlib
 
-use crate::messages::{
-    GatewayResponse, IceCredentials, Interface, Key, Peer, Relay, RelaysPresence, ResolveRequest,
-    SecretKey,
-};
+use crate::messages::{IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
 use chrono::{
     DateTime, Utc,
     serde::{ts_seconds, ts_seconds_option},
@@ -15,8 +12,6 @@ use std::{
     collections::BTreeSet,
     net::{Ipv4Addr, Ipv6Addr},
 };
-
-use super::Offer;
 
 pub type Filters = Vec<Filter>;
 
@@ -110,12 +105,6 @@ impl ResourceDescription {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct ClientPayload {
-    pub ice_parameters: Offer,
-    pub domain: Option<ResolveRequest>,
-}
-
 // TODO: Should this have a resource?
 #[derive(Debug, Deserialize, Clone)]
 pub struct InitGateway {
@@ -135,41 +124,9 @@ pub struct Config {
     pub ipv6_masquerade_enabled: bool,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct LegacyClient {
-    pub id: ClientId,
-    pub payload: ClientPayload,
-    pub peer: Peer,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct RequestConnection {
-    pub resource: ResourceDescription,
-    pub client: LegacyClient,
-    #[serde(rename = "ref")]
-    pub reference: String,
-    #[serde(with = "ts_seconds_option")]
-    pub expires_at: Option<DateTime<Utc>>,
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RemoveResource {
     pub id: ResourceId,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct AllowAccess {
-    pub client_id: ClientId,
-    pub resource: ResourceDescription,
-    #[serde(with = "ts_seconds_option")]
-    pub expires_at: Option<DateTime<Utc>>,
-    pub payload: Option<ResolveRequest>,
-    #[serde(rename = "ref")]
-    pub reference: String,
-    /// Tunnel IPv4 address.
-    pub client_ipv4: Ipv4Addr,
-    /// Tunnel IPv6 address.
-    pub client_ipv6: Ipv6Addr,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -191,8 +148,6 @@ pub struct RejectAccess {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
-    RequestConnection(RequestConnection), // Deprecated.
-    AllowAccess(AllowAccess),             // Deprecated.
     RejectAccess(RejectAccess),
     IceCandidates(ClientIceCandidates),
     InvalidateIceCandidates(ClientIceCandidates),
@@ -287,20 +242,12 @@ pub struct ClientIceCandidates {
 #[derive(Debug, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum EgressMessages {
-    ConnectionReady(ConnectionReady), // Deprecated.
     BroadcastIceCandidates(ClientsIceCandidates),
     BroadcastInvalidatedIceCandidates(ClientsIceCandidates),
     FlowAuthorized {
         #[serde(rename = "ref")]
         reference: String,
     },
-}
-
-#[derive(Debug, Serialize, Clone, PartialEq)]
-pub struct ConnectionReady {
-    #[serde(rename = "ref")]
-    pub reference: String,
-    pub gateway_payload: GatewayResponse,
 }
 
 #[cfg(test)]
@@ -397,158 +344,6 @@ mod tests {
         ]"#;
 
         serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
-    }
-
-    #[test]
-    fn can_deserialize_request_connection_messages() {
-        let json = r#"{
-            "ref": null,
-            "topic": "gateway",
-            "event": "request_connection",
-            "payload": {
-                "client": {
-                    "id": "3a25ff38-f8d7-47de-9b30-c7c40c206083",
-                    "peer": {
-                        "ipv6": "fd00:2021:1111::3a:ab1b",
-                        "public_key": "OR2dYCLwMEtwqtjOxSm4SU7BbHJDfM8ZCqK7HKXXxDw=",
-                        "ipv4": "100.114.114.30",
-                        "persistent_keepalive": 25,
-                        "preshared_key": "sMeTuiJ3mezfpVdan948CmisIWbwBZ1z7jBNnbVtfVg="
-                    },
-                    "payload": {
-                        "ice_parameters": {
-                            "username": "PvCPFevCOgkvVCtH",
-                            "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF"
-                        }
-                    }
-                },
-                "resource": {
-                    "id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
-                    "name": "172.20.0.1/16",
-                    "type": "cidr",
-                    "address": "172.20.0.0/16",
-                    "filters": []
-                },
-                "ref": "78e1159d-9dc6-480d-b2ef-1fcec2cd5730",
-                "expires_at": 1719367575,
-                "actor": {
-                    "id": "3b1d86a0-4737-4814-8add-cfec42669511"
-                },
-                "relays": [
-                    {
-                        "id": "0bfc5e02-a093-423b-827b-002d7d2bb407",
-                        "type": "stun",
-                        "addr": "172.28.0.101:3478"
-                    },
-                    {
-                        "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8",
-                        "type": "turn",
-                        "username": "1719367575:ZQHcVGkdnfgGmcP1",
-                        "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
-                        "addr": "172.28.0.101:3478",
-                        "expires_at": 1719367575
-                    }
-                ]
-            }
-        }"#;
-
-        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
-
-        assert!(matches!(message, IngressMessages::RequestConnection(_)));
-    }
-
-    #[test]
-    fn can_deserialize_legacy_request_connection_message() {
-        let json = r#"{
-  "event": "request_connection",
-  "ref": null,
-  "topic": "gateway",
-  "payload": {
-    "client": {
-      "id": "2e5c0210-3ac0-49cd-bfc9-8005046291de",
-      "peer": {
-        "ipv6": "fd00:2021:1111::4:4616",
-        "public_key": "zHtdIFPDm8QQkqjbmAc1r8O1WegviA6UeUTP6rpminA=",
-        "ipv4": "100.87.247.184",
-        "persistent_keepalive": 25,
-        "preshared_key": "BzPiNE9qszKczZcZzGsyieLYeJ2EQfkfdibls/l3beM="
-      },
-      "payload": {
-        "domain": {
-          "name": "download.httpbin",
-          "proxy_ips": [
-            "100.96.0.1",
-            "100.96.0.2",
-            "100.96.0.3",
-            "100.96.0.4",
-            "fd00:2021:1111:8000::",
-            "fd00:2021:1111:8000::1",
-            "fd00:2021:1111:8000::2",
-            "fd00:2021:1111:8000::3"
-          ]
-        },
-        "ice_parameters": {
-          "password": "MMceouYA5jGIPkxbvIiLvD",
-          "username": "aYaH"
-        }
-      }
-    },
-    "resource": {
-      "id": "619fbe83-bc95-4635-9a08-68da9a944c88",
-      "name": "?.httpbin",
-      "type": "dns",
-      "address": "?.httpbin",
-      "filters": [
-        {
-          "protocol": "tcp",
-          "port_range_end": 80,
-          "port_range_start": 80
-        },
-        {
-          "protocol": "tcp",
-          "port_range_end": 433,
-          "port_range_start": 433
-        },
-        {
-          "protocol": "udp",
-          "port_range_end": 53,
-          "port_range_start": 53
-        },
-        {
-          "protocol": "icmp"
-        }
-      ]
-    },
-    "ref": "SFMyNTY.g2gDbQAAAVhnMmdFV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFENndBQUFBQm1hakdpYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFQZ0FBQUFBR1pxTWFKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVFSaEFHMEFBQUFrTmpFNVptSmxPRE10WW1NNU5TMDBOak0xTFRsaE1EZ3ROamhrWVRsaE9UUTBZemc0YkFBQUFBRm9BbTBBQUFBTGRISmhZMlZ3WVhKbGJuUnRBQUFBTnpBd0xUZzROMlptTUdKaU1EZGhOakU1TkdOa01tTTRNamsxWkRGaE1tSXlabU15TFRnMU9USXpZV1kzTVRZNVlUQmlPR1F0TURGcW4GAKnP0g6QAWIAAVGA.MBccK7A6wR4EA1ZkKnGlHzAnh-tRitZ2d97q_IvzoD8",
-    "expires_at": 1718663242,
-    "actor": {
-      "id": "0f4a5f16-3c59-47c9-a7c1-31de7a51b26c"
-    },
-    "relays": [
-      {
-        "id": "75542064-e5f7-491b-b054-5350b4f34963",
-        "type": "turn",
-        "addr": "172.28.0.101:3478",
-        "username": "1719445215:D8RIljXHIIYGn88dBjUIFw",
-        "password": "AipiIetIXo33EnV36U+nET8lAtJXr+iSwwFU5VOfF5k",
-        "expires_at": 1719445215
-      },
-      {
-        "id": "649cd79f-2536-4f9d-906b-d20b1c5d3ac3",
-        "type": "turn",
-        "addr": "172.28.0.201:3478",
-        "username": "1719445215:hpx751e3Wt-Mg9kv7yv0mg",
-        "password": "D6A4ytn/U8xAvfOE1l3G/rNlduZD1gq21BFXhITkjpA",
-        "expires_at": 1719445215
-      }
-    ],
-    "flow_id": "b944e68a-c936-4a81-bd8d-88c45efdcb2c"
-  }
-}"#;
-
-        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
-
-        assert!(matches!(message, IngressMessages::RequestConnection(_)));
     }
 
     #[test]
