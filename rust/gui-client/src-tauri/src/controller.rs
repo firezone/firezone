@@ -936,8 +936,9 @@ async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Resu
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex, MutexGuard};
+    use std::sync::Arc;
 
+    use parking_lot::{Mutex, MutexGuard};
     use uuid::Uuid;
 
     use super::*;
@@ -1032,7 +1033,7 @@ mod tests {
         }
 
         fn integration(&self) -> MutexGuard<'_, TestIntegration> {
-            self.integration.lock().unwrap()
+            self.integration.lock()
         }
     }
 
@@ -1055,7 +1056,7 @@ mod tests {
 
     impl GuiIntegration for Arc<Mutex<TestIntegration>> {
         fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
-            self.lock().unwrap().sessions.push(session.clone());
+            self.lock().sessions.push(session.clone());
 
             Ok(())
         }
@@ -1066,7 +1067,7 @@ mod tests {
             general_settings: GeneralSettings,
             advanced_settings: AdvancedSettings,
         ) -> Result<()> {
-            let mut guard = self.lock().unwrap();
+            let mut guard = self.lock();
 
             guard.mdm_settings.push(mdm_settings);
             guard.general_settings.push(general_settings);
@@ -1076,26 +1077,23 @@ mod tests {
         }
 
         fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
-            self.lock().unwrap().file_counts.push(file_count.clone());
+            self.lock().file_counts.push(file_count.clone());
 
             Ok(())
         }
 
         fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
-            self.lock()
-                .unwrap()
-                .opened_urls
-                .push(url.as_ref().to_owned());
+            self.lock().opened_urls.push(url.as_ref().to_owned());
 
             Ok(())
         }
 
         fn set_tray_icon(&mut self, icon: system_tray::Icon) {
-            self.lock().unwrap().tray_icons.push(icon);
+            self.lock().tray_icons.push(icon);
         }
 
         fn set_tray_menu(&mut self, app_state: system_tray::AppState) {
-            self.lock().unwrap().tray_states.push(app_state);
+            self.lock().tray_states.push(app_state);
         }
 
         fn show_notification(
@@ -1106,7 +1104,6 @@ mod tests {
             let (tx, rx) = futures::channel::oneshot::channel();
 
             self.lock()
-                .unwrap()
                 .notifications
                 .push((title.into(), body.into(), tx));
 
@@ -1114,16 +1111,13 @@ mod tests {
         }
 
         fn set_window_visible(&self, visible: bool) -> Result<()> {
-            self.lock().unwrap().window_visibilities.push(visible);
+            self.lock().window_visibilities.push(visible);
 
             Ok(())
         }
 
         fn show_overview_page(&self, session: &SessionViewModel) -> Result<()> {
-            self.lock()
-                .unwrap()
-                .shown_overview_page
-                .push(session.clone());
+            self.lock().shown_overview_page.push(session.clone());
 
             Ok(())
         }
@@ -1134,17 +1128,15 @@ mod tests {
             general_settings: GeneralSettings,
             settings: AdvancedSettings,
         ) -> Result<()> {
-            self.lock().unwrap().shown_settings_page.push((
-                mdm_settings,
-                general_settings,
-                settings,
-            ));
+            self.lock()
+                .shown_settings_page
+                .push((mdm_settings, general_settings, settings));
 
             Ok(())
         }
 
         fn show_about_page(&self) -> Result<()> {
-            self.lock().unwrap().shown_about_page.push(());
+            self.lock().shown_about_page.push(());
 
             Ok(())
         }
