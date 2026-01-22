@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-depth: 0
-      - uses: chetan/git-restore-mtime-action@bca85c11349c76b2dbac06d07edf6c2407dbab1e # v2.2
+      - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
       - uses: ./.github/actions/setup-postgres
       - uses: ./.github/actions/setup-elixir
         with:
@@ -70,7 +70,7 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-depth: 0
-      - uses: chetan/git-restore-mtime-action@bca85c11349c76b2dbac06d07edf6c2407dbab1e # v2.2
+      - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
       - uses: ./.github/actions/setup-elixir
         id: setup-beam
         with:
@@ -114,7 +114,7 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-depth: 0
-      - uses: chetan/git-restore-mtime-action@bca85c11349c76b2dbac06d07edf6c2407dbab1e # v2.2
+      - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
