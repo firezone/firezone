@@ -324,7 +324,7 @@ class TunnelService : VpnService() {
                 } finally {
                     commandChannel = null
                     tunnelState = State.DOWN
-                    unreachableSites.clear();
+                    unreachableSites.clear()
 
                     stopNetworkMonitoring()
                     stopDisconnectMonitoring()

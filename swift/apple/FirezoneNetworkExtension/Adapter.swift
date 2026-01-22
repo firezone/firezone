@@ -448,11 +448,11 @@ actor Adapter {
 
     case .allGatewaysOffline(let resourceId):
       self.unreachableResources.insert(
-        UnreachableResource(resourceId: resourceId, reason: UnreachableReason.Offline))
+        UnreachableResource(resourceId: resourceId, reason: UnreachableReason.offline))
 
     case .gatewayVersionMismatch(let resourceId):
       self.unreachableResources.insert(
-        UnreachableResource(resourceId: resourceId, reason: UnreachableReason.VersionMismatch))
+        UnreachableResource(resourceId: resourceId, reason: UnreachableReason.versionMismatch))
     }
   }
 

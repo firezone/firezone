@@ -486,11 +486,11 @@ public final class Store: ObservableObject {
       let body: String
 
       switch unreachableResource.reason {
-      case .Offline:
+      case .offline:
         title = "Failed to connect to '\(resource.name)'"
         body =
           "All Gateways in the site '\(site.name)' are offline. Contact your administrator to resolve this issue."
-      case .VersionMismatch:
+      case .versionMismatch:
         title = "Failed to connect to '\(resource.name)'"
         body =
           "Your Firezone Client is incompatible with all Gateways in the site '\(site.name)'. Please update your Client to the latest version and contact your administrator if the issue persists."

@@ -15,8 +15,8 @@ public struct ConnlibState: Encodable, Decodable {
 }
 
 public enum UnreachableReason: Hashable, Encodable, Decodable {
-  case Offline
-  case VersionMismatch
+  case offline
+  case versionMismatch
 }
 
 public struct UnreachableResource: Hashable, Encodable, Decodable {
