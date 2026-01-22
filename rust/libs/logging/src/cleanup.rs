@@ -171,7 +171,10 @@ mod tests {
         let deleted = enforce_size_cap(&[dir.path()], 1); // 1 MB limit
         assert_eq!(deleted, 0);
 
-        assert!(dir.path().join("test1.log").exists(), "File should still exist");
+        assert!(
+            dir.path().join("test1.log").exists(),
+            "File should still exist"
+        );
     }
 
     #[test]
@@ -257,7 +260,12 @@ mod tests {
         let dir = TempDir::new().unwrap();
 
         let _log_file = create_old_log_file(dir.path(), "test.log", 600 * 1024);
-        let txt_file = create_file(dir.path(), "test.txt", 600 * 1024, Some(Duration::from_secs(600)));
+        let txt_file = create_file(
+            dir.path(),
+            "test.txt",
+            600 * 1024,
+            Some(Duration::from_secs(600)),
+        );
 
         // Non-.log files should be ignored in size calculation
         let deleted = enforce_size_cap(&[dir.path()], 1);
@@ -311,12 +319,7 @@ mod tests {
         create_file(dir, name, size_bytes, Some(Duration::from_secs(600)))
     }
 
-    fn create_file(
-        dir: &Path,
-        name: &str,
-        size_bytes: usize,
-        age: Option<Duration>,
-    ) -> PathBuf {
+    fn create_file(dir: &Path, name: &str, size_bytes: usize, age: Option<Duration>) -> PathBuf {
         let path = dir.join(name);
         let mut file = File::create(&path).unwrap();
         file.write_all(&vec![b'x'; size_bytes]).unwrap();
