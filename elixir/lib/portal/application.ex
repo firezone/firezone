@@ -22,6 +22,11 @@ defmodule Portal.Application do
 
   @impl true
   def stop(_state) do
+    # Force flush all pending OpenTelemetry spans before the opentelemetry_sup
+    # supervisor terminates. This ensures spans are exported without hitting
+    # shutdown timeouts that result in "killed" errors.
+    _ = :otel_tracer_provider.force_flush()
+
     # Remove the Sentry logger handler before Sentry.Supervisor terminates
     # to avoid noproc errors during shutdown
     _ = :logger.remove_handler(:sentry)
