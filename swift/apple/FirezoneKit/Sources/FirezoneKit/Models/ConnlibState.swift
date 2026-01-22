@@ -5,9 +5,11 @@
 //
 
 public struct ConnlibState: Encodable, Decodable {
+  // swiftlint:disable:next discouraged_optional_collection
   public let resources: [FirezoneKit.Resource]?
   public let unreachableResources: Set<UnreachableResource>
 
+  // swiftlint:disable:next discouraged_optional_collection
   public init(resources: [FirezoneKit.Resource]?, unreachableResources: Set<UnreachableResource>) {
     self.resources = resources
     self.unreachableResources = unreachableResources
