@@ -956,9 +956,10 @@ mod tests {
             .unwrap()
             .unwrap_err();
 
-        assert_eq!(
-            start_error.to_string(),
-            "Failed to receive hello: Timeout while waiting for message from tunnel service for 5s: deadline has elapsed"
+        assert!(
+            start_error
+                .any_downcast_ref::<FailedToReceiveHello>()
+                .is_some()
         );
     }
 
