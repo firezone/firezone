@@ -42,6 +42,7 @@ defmodule Portal.Policy do
       name: :policies_account_id_resource_id_group_id_index,
       message: "Policy for the selected Group and Resource already exists"
     )
+    |> assoc_constraint(:account)
     |> assoc_constraint(:resource)
     |> assoc_constraint(:group)
     |> unique_constraint(

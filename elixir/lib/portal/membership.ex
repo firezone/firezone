@@ -24,8 +24,6 @@ defmodule Portal.Membership do
   end
 
   def changeset(changeset) do
-    import Ecto.Changeset
-
     changeset
     |> assoc_constraint(:actor)
     |> assoc_constraint(:group)

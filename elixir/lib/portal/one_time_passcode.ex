@@ -1,5 +1,6 @@
 defmodule Portal.OneTimePasscode do
   use Ecto.Schema
+  import Ecto.Changeset
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -17,5 +18,11 @@ defmodule Portal.OneTimePasscode do
     field :expires_at, :utc_datetime_usec
 
     timestamps()
+  end
+
+  def changeset(changeset) do
+    changeset
+    |> assoc_constraint(:account)
+    |> assoc_constraint(:actor)
   end
 end

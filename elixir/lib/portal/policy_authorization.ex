@@ -45,23 +45,13 @@ defmodule Portal.PolicyAuthorization do
   end
 
   def changeset(changeset) do
-    import Ecto.Changeset
-
-    changeset =
-      changeset
-      |> assoc_constraint(:token)
-      |> assoc_constraint(:policy)
-      |> assoc_constraint(:client)
-      |> assoc_constraint(:gateway)
-      |> assoc_constraint(:resource)
-      |> assoc_constraint(:account)
-
-    # Only validate membership constraint if membership_id is present
-    # (nil for "Everyone" group policies which have no explicit membership)
-    if get_field(changeset, :membership_id) do
-      assoc_constraint(changeset, :membership)
-    else
-      changeset
-    end
+    changeset
+    |> assoc_constraint(:token)
+    |> assoc_constraint(:policy)
+    |> assoc_constraint(:client)
+    |> assoc_constraint(:gateway)
+    |> assoc_constraint(:resource)
+    |> assoc_constraint(:account)
+    |> assoc_constraint(:membership)
   end
 end

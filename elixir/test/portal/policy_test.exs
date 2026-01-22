@@ -114,6 +114,26 @@ defmodule Portal.PolicyTest do
   end
 
   describe "changeset/1 association constraints" do
+    test "enforces account association constraint" do
+      group = group_fixture()
+      resource = resource_fixture(account: group.account)
+
+      {:error, changeset} =
+        %Policy{}
+        |> cast(
+          %{
+            account_id: Ecto.UUID.generate(),
+            group_id: group.id,
+            resource_id: resource.id
+          },
+          [:account_id, :group_id, :resource_id]
+        )
+        |> Policy.changeset()
+        |> Repo.insert()
+
+      assert %{account: ["does not exist"]} = errors_on(changeset)
+    end
+
     test "enforces resource association constraint" do
       account = account_fixture()
       group = group_fixture(account: account)

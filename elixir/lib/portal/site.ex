@@ -35,5 +35,6 @@ defmodule Portal.Site do
     |> validate_required(:name)
     |> validate_length(:name, min: 1, max: 64)
     |> unique_constraint(:name, name: :sites_account_id_name_managed_by_index)
+    |> assoc_constraint(:account)
   end
 end

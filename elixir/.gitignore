@@ -58,3 +58,6 @@ npm-debug.log
 
 # ElixirLS
 .elixir_ls/
+
+# Generated DB structure file
+priv/repo/structure.sql
