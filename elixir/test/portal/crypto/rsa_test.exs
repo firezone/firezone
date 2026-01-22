@@ -127,8 +127,9 @@ defmodule Portal.Crypto.RSATest do
     end
 
     test "generates unique keypairs on each invocation" do
-      keypair1 = RSA.generate()
-      keypair2 = RSA.generate()
+      # Use 1024 bits for faster test - uniqueness behavior is the same
+      keypair1 = RSA.generate(1024)
+      keypair2 = RSA.generate(1024)
 
       refute keypair1.private_pem == keypair2.private_pem
       refute keypair1.public_pem == keypair2.public_pem
@@ -181,8 +182,9 @@ defmodule Portal.Crypto.RSATest do
     end
 
     test "signature verification fails with wrong public key" do
-      keypair1 = RSA.generate()
-      keypair2 = RSA.generate()
+      # Use 1024 bits for faster test
+      keypair1 = RSA.generate(1024)
+      keypair2 = RSA.generate(1024)
       message = "test message"
       digest = :crypto.hash(:sha256, message)
 

@@ -124,8 +124,9 @@ defmodule Portal.Crypto.JWKTest do
     end
 
     test "generates unique JWKs on each invocation" do
-      result1 = JWK.generate_jwk_and_jwks()
-      result2 = JWK.generate_jwk_and_jwks()
+      # Use 1024 bits for faster test - uniqueness behavior is the same
+      result1 = JWK.generate_jwk_and_jwks(1024)
+      result2 = JWK.generate_jwk_and_jwks(1024)
 
       refute result1.jwk["n"] == result2.jwk["n"]
       refute result1.jwk["d"] == result2.jwk["d"]
@@ -240,8 +241,9 @@ defmodule Portal.Crypto.JWKTest do
     end
 
     test "verification fails with wrong public key" do
-      result1 = JWK.generate_jwk_and_jwks()
-      result2 = JWK.generate_jwk_and_jwks()
+      # Use 1024 bits for faster test
+      result1 = JWK.generate_jwk_and_jwks(1024)
+      result2 = JWK.generate_jwk_and_jwks(1024)
 
       # Sign with result1's private key
       payload = %{"sub" => "test-user"}

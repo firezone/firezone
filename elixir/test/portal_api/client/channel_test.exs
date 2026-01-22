@@ -713,7 +713,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "resource_created_or_updated", _payload
       refute_push "resource_deleted", _payload
 
-      Process.sleep(1500)
+      Process.sleep(1050)
 
       send(socket.channel_pid, :recompute_authorized_resources)
 
