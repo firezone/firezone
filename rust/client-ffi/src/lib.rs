@@ -591,6 +591,18 @@ fn install_rustls_crypto_provider() {
     }
 }
 
+/// Enforces a size cap on log directories by deleting oldest files first.
+///
+/// # Returns
+/// Number of bytes deleted (best-effort, never fails)
+#[uniffi::export]
+pub fn enforce_log_size_cap(log_dirs: Vec<String>, max_size_mb: u32) -> u64 {
+    let paths: Vec<std::path::PathBuf> = log_dirs.iter().map(std::path::PathBuf::from).collect();
+    let path_refs: Vec<&std::path::Path> = paths.iter().map(|p| p.as_path()).collect();
+
+    logging::cleanup::enforce_size_cap(&path_refs, max_size_mb)
+}
+
 impl From<connlib_model::ResourceView> for Resource {
     fn from(resource: connlib_model::ResourceView) -> Self {
         match resource {
