@@ -939,7 +939,6 @@ mod tests {
     use std::sync::Arc;
 
     use parking_lot::{Mutex, MutexGuard};
-    use uuid::Uuid;
 
     use super::*;
 
@@ -1002,7 +1001,7 @@ mod tests {
         ctrl_tx: mpsc::Sender<ControllerRequest>,
         updates_tx: mpsc::Sender<Option<updates::Notification>>,
         integration: Arc<Mutex<TestIntegration>>,
-        gui_id: &'static str,
+        gui_id: u32,
     }
 
     impl TestController {
@@ -1144,11 +1143,8 @@ mod tests {
 
     impl Controller<Arc<Mutex<TestIntegration>>> {
         fn start_for_test() -> TestController {
-            let id = Uuid::new_v4().to_string().leak();
-
-            // Leaking memory here is fine because we are in a test and the process is terminated at the end.
-            let tunnel_id = format!("{id}_tunnel").leak();
-            let gui_id = format!("{id}_gui").leak();
+            let tunnel_id = rand::random::<u32>();
+            let gui_id = rand::random::<u32>();
 
             let tunnel_ipc_server = ipc::Server::new(SocketId::Test(tunnel_id)).unwrap();
             let gui_ipc_server = ipc::Server::new(SocketId::Test(gui_id)).unwrap();

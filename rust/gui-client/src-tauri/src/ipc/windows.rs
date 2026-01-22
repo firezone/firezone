@@ -193,7 +193,7 @@ mod tests {
     #[tokio::test]
     async fn single_instance() -> anyhow::Result<()> {
         let _guard = logging::test("trace");
-        const ID: SocketId = SocketId::Test("2GOCMPBG");
+        const ID: SocketId = SocketId::Test(0x1A6FE1F6);
         let mut server_1 = Server::new(ID)?;
         let pipe_path = server_1.pipe_path.clone();
 
