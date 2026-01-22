@@ -1,9 +1,8 @@
 defmodule PortalAPI.AccountController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
+  alias PortalAPI.Error
   alias __MODULE__.DB
-
-  action_fallback PortalAPI.FallbackController
 
   tags ["Account"]
 
@@ -13,12 +12,14 @@ defmodule PortalAPI.AccountController do
       ok: {"AccountResponse", "application/json", PortalAPI.Schemas.Account.Response}
     ]
 
-  # Show the current Account
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do
     account_id = conn.assigns.subject.account.id
 
     with {:ok, account} <- DB.fetch_account(account_id, conn.assigns.subject) do
       render(conn, :show, account: account)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 

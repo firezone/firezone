@@ -2,10 +2,9 @@ defmodule PortalAPI.GatewayController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.Error
   alias __MODULE__.DB
   alias Portal.Presence
-
-  action_fallback PortalAPI.FallbackController
 
   tags ["Gateways"]
 
@@ -25,7 +24,7 @@ defmodule PortalAPI.GatewayController do
       ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.ListResponse}
     ]
 
-  # List Gateways
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
     list_opts =
       params
@@ -41,6 +40,8 @@ defmodule PortalAPI.GatewayController do
 
     with {:ok, gateways, metadata} <- DB.list_gateways(conn.assigns.subject, list_opts) do
       render(conn, :index, gateways: gateways, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -64,11 +65,13 @@ defmodule PortalAPI.GatewayController do
       ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}
     ]
 
-  # Show a specific Gateway
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, gateway} <- DB.fetch_gateway(id, conn.assigns.subject) do
       gateway = Presence.Gateways.preload_gateways_presence([gateway]) |> List.first()
       render(conn, :show, gateway: gateway)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -92,13 +95,15 @@ defmodule PortalAPI.GatewayController do
       ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}
     ]
 
-  # Delete a Gateway
+  @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
     with {:ok, gateway} <- DB.fetch_gateway(id, subject),
          {:ok, gateway} <- DB.delete_gateway(gateway, subject) do
       render(conn, :show, gateway: gateway)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
