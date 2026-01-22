@@ -19,10 +19,8 @@ addresses = [
 ]
 # HTTP versions: 1 (HTTP/1.1) or 2 (HTTP/2)
 http_version = [1, 2]
-# Number of concurrent users (random value from range)
-users = "10..100"
-# Test duration in seconds
-run_time_secs = "30..120"
+# Number of max concurrent connections
+max_connections = 100
 
 # TCP connection testing
 [tcp]

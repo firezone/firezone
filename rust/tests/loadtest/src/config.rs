@@ -90,10 +90,8 @@ pub struct HttpConfig {
     pub addresses: Vec<String>,
     /// HTTP versions to choose from (1 or 2).
     pub http_version: Vec<u8>,
-    /// Number of concurrent users.
-    pub users: Range,
-    /// Test duration in seconds.
-    pub run_time_secs: Range,
+    /// Maximum number of concurrent connections.
+    pub max_connections: u64,
 }
 
 impl HttpConfig {
