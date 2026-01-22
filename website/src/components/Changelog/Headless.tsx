@@ -41,6 +41,10 @@ export default function Headless({ os }: { os: OS }) {
           Implements retry with exponential backoff on 429 (Too Many Requests)
           responses from the portal.
         </ChangeItem>
+        <ChangeItem pull="11804">
+          Fixes an issue where connections would flap between relayed and
+          direct, causing WireGuard connection timeouts.
+        </ChangeItem>
       </Entry>
       <Entry version="1.5.5" date={new Date("2025-12-23")}>
         {os == OS.Linux && (
