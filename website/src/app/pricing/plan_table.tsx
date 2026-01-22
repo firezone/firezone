@@ -29,7 +29,7 @@ export default function PlanTable() {
         </tr>
       </thead>
       <tbody>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Includes both admins and end-users of your Firezone account">
               Users
@@ -39,7 +39,7 @@ export default function PlanTable() {
           <td className="font-semibold gmx-1 py-4 text-center">500</td>
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Machine accounts used to access Resources without a user present">
               Service Accounts
@@ -49,7 +49,7 @@ export default function PlanTable() {
           <td className="font-semibold gmx-1 py-4 text-center">100</td>
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Sites are a collection of Gateways and Resources that share the same network connectivity context. Typically a subnet or VPC.">
               Sites
@@ -59,7 +59,7 @@ export default function PlanTable() {
           <td className="font-semibold gmx-1 py-4 text-center">100</td>
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Users with account-wide access to deploy Gateways, manage billing, and edit users, Sites, or other configuration">
               Admins
@@ -69,7 +69,7 @@ export default function PlanTable() {
           <td className="font-semibold gmx-1 py-4 text-center">10</td>
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Policies control access to Resources (e.g. Group “A” may access Resource “B”)">
               Policies
@@ -79,7 +79,7 @@ export default function PlanTable() {
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Anything you wish to manage access to (e.g. database, VPC, home network, web server, SaaS application)">
               Resources
@@ -89,7 +89,7 @@ export default function PlanTable() {
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Any device or machine that the Firezone Client connects from">
               Connected Clients
@@ -107,7 +107,7 @@ export default function PlanTable() {
             Networking Features
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Connect to Resources without opening inbound firewall ports">
               NAT hole punching
@@ -123,7 +123,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Native client apps for all major platforms">
               Native Firezone Clients
@@ -139,7 +139,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Route traffic to Resources through Firezone leaving other traffic unaffected">
               Split tunneling
@@ -155,7 +155,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Connect to Resources over IPv4 or IPv6">
               IPv4 and IPv6 Resources
@@ -171,7 +171,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Connect to IPv6-only Resources from IPv4-only networks and vice-versa">
               Automatic NAT64
@@ -187,7 +187,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Route traffic through Firezone based on DNS matching rules">
               DNS-based routing
@@ -203,7 +203,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Spread traffic across multiple Gateways within a Site">
               Gateway load-balancing
@@ -219,7 +219,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Clients automatically switch from unhealthy Gateways to healthy ones">
               Automatic Gateway failover
@@ -235,7 +235,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Route all traffic from select Clients through Firezone">
               Full-tunnel routing
@@ -257,7 +257,7 @@ export default function PlanTable() {
             Authentication & Authorization
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Control access to Resources based on user identity and group">
               Resource-level access policies
@@ -273,7 +273,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Authenticate users with a one-time code sent to their email">
               Email (OTP) authentication
@@ -289,7 +289,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Authenticate users with any OIDC-compatible provider">
               OpenID Connect authentication
@@ -305,7 +305,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Allow access based on source IP, authentication method, time of day, or country.">
               Conditional access policies
@@ -319,7 +319,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Customize the sign-in URL for your account. E.g. https://app.firezone.dev/your-organization">
               Custom account slug
@@ -333,7 +333,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Automatically sync users and groups from Google Workspace to Firezone">
               Google Workspace directory sync
@@ -345,7 +345,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Automatically sync users and groups from Microsoft Entra ID to Firezone">
               Microsoft Entra ID directory sync
@@ -357,7 +357,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Automatically sync users and groups from Okta to Firezone">
               Okta directory sync
@@ -377,7 +377,7 @@ export default function PlanTable() {
             Security Features
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Rotate WireGuard encryption keys each time a user signs in">
               Session-based key rotation
@@ -393,7 +393,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Require Clients to be marked as verified in the admin portal before they can access Resources">
               Client verification
@@ -409,7 +409,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Show where your users are connecting from">
               GeoIP Mapping
@@ -425,7 +425,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="See who accessed which Resource and when">
               Resource access logs
@@ -439,7 +439,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Restrict access to specific ports and protocols">
               Traffic restrictions
@@ -453,7 +453,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Independent audit reports of Firezone's service for compliance with industry standards">
               Firezone service compliance reports
@@ -463,7 +463,7 @@ export default function PlanTable() {
           <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="font-semibold gmx-1 py-4 text-center">SOC 2</td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Penetration testing for security vulnerabilities in Firezone's service conducted by a third party firm">
               Firezone service pentest reports
@@ -481,7 +481,7 @@ export default function PlanTable() {
             Support & Customer success
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">Community Forums</td>
           <td className="gmx-1 py-4">
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
@@ -493,7 +493,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">Community Discord</td>
           <td className="gmx-1 py-4">
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
@@ -505,7 +505,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">Priority Email</td>
           <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
@@ -515,7 +515,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">Dedicated Slack</td>
           <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
@@ -523,7 +523,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Shape the product roadmap with customized features and integrations">
               Roadmap acceleration
@@ -535,7 +535,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Get personalized deployment support and training for your team">
               White-glove onboarding
@@ -547,7 +547,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Guaranteed uptime for your Firezone service">
               Uptime SLA
@@ -565,7 +565,7 @@ export default function PlanTable() {
             Billing & payment
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Pay for your subscription using a credit card">
               Payment by credit card
@@ -579,7 +579,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Pay for your subscription using an ACH transfer">
               Payment by ACH transfer
@@ -593,7 +593,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Pay for your subscription using a wire transfer">
               Payment by wire transfer
@@ -605,7 +605,7 @@ export default function PlanTable() {
             <FaCheck className="mx-auto shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border border-neutral-200">
+        <tr className="border-b border-neutral-200">
           <td className="gmx-1 py-4">
             <Tooltip content="Pay for your subscription annually">
               Annual invoicing

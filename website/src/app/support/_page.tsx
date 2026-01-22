@@ -40,7 +40,7 @@ export default function _Page() {
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-8">
           <Link
             href="/kb/deploy"
-            className="p-6 hover:shadow-sm rounded-sm border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
+            className="p-6 hover:shadow-sm rounded-sm border-2 border-neutral-200 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineServerStack className="w-5 h-5 mr-2" />
@@ -54,7 +54,7 @@ export default function _Page() {
           </Link>
           <Link
             href="/kb/client-apps"
-            className="p-6 hover:shadow-sm rounded-sm border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
+            className="p-6 hover:shadow-sm rounded-sm border-2 border-neutral-200 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineUserCircle className="w-5 h-5 mr-2" />
@@ -67,7 +67,7 @@ export default function _Page() {
           </Link>
           <Link
             href="/kb/administer/troubleshooting"
-            className="p-6 hover:shadow-sm rounded-sm border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
+            className="p-6 hover:shadow-sm rounded-sm border-2 border-neutral-200 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineCommandLine className="w-5 h-5 mr-2" />
@@ -81,7 +81,7 @@ export default function _Page() {
           </Link>
           <Link
             href="/kb/reference/faq"
-            className="p-6 hover:shadow-sm rounded-sm border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
+            className="p-6 hover:shadow-sm rounded-sm border-2 border-neutral-200 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineQuestionMarkCircle className="w-5 h-5 mr-2" />
@@ -117,7 +117,7 @@ export default function _Page() {
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           <Link
             href="https://www.github.com/firezone/firezone/issues"
-            className="p-6 hover:shadow-sm rounded-sm border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
+            className="p-6 hover:shadow-sm rounded-sm border-2 border-neutral-200 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineMagnifyingGlass className="w-5 h-5 mr-2" />
@@ -129,7 +129,7 @@ export default function _Page() {
           </Link>
           <Link
             href="https://github.com/orgs/firezone/projects/9"
-            className="p-6 hover:shadow-sm rounded-sm border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
+            className="p-6 hover:shadow-sm rounded-sm border-2 border-neutral-200 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineMap className="w-5 h-5 mr-2" />
@@ -142,7 +142,7 @@ export default function _Page() {
           </Link>
           <Link
             href="/kb/administer/troubleshooting"
-            className="p-6 hover:shadow-sm rounded-sm border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
+            className="p-6 hover:shadow-sm rounded-sm border-2 border-neutral-200 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineDocumentPlus className="w-5 h-5 mr-2" />
@@ -208,7 +208,7 @@ export default function _Page() {
               {/*   <td className="px-6 py-4">1 - 2 minutes</td> */}
               {/*   <td className="px-6 py-4">M-F 9:00a - 5:00p Pacific</td> */}
               {/* </tr> */}
-              <tr className="bg-white border-b">
+              <tr className="bg-white border-b border-neutral-200">
                 <th
                   scope="row"
                   className="px-6 py-4 font-medium text-neutral-800"
@@ -229,7 +229,7 @@ export default function _Page() {
                 <td className="px-6 py-4">1 - 2 business days</td>
                 <td className="px-6 py-4">24/7</td>
               </tr>
-              <tr className="bg-white border-b">
+              <tr className="bg-white border-b border-neutral-200">
                 <th
                   scope="row"
                   className="px-6 py-4 font-medium text-neutral-800"
@@ -252,7 +252,7 @@ export default function _Page() {
                 <td className="px-6 py-4">Under 8 hours</td>
                 <td className="px-6 py-4">M-F</td>
               </tr>
-              <tr className="bg-white border-b">
+              <tr className="bg-white border-b border-neutral-200">
                 <th
                   scope="row"
                   className="px-6 py-4 font-medium text-neutral-800"
