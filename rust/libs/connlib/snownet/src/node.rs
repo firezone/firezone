@@ -1134,7 +1134,11 @@ fn remove_local_candidate<TId>(
     TId: fmt::Display,
 {
     if candidate.kind() != CandidateKind::Relayed {
-        debug_assert!(false, "we should only ever invalidate relay candidates");
+        debug_assert_eq!(
+            candidate.kind(),
+            CandidateKind::Relayed,
+            "we should only ever invalidate relay candidates"
+        );
         return;
     }
 
