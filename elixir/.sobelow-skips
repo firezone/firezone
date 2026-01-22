@@ -10,6 +10,7 @@ DOS.BinToAtom: Unsafe atom interpolation,lib/portal/account.ex:83,2831B26
 Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
 DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:171,3D848A0
 Config.Headers: Missing Secure Browser Headers,lib/portal_api/router.ex:15,464028
+Config.Secrets: Hardcoded Secret,config/config.exs:208,4700588
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:72,476160D
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:4,490DB25
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:20,4C29336
@@ -27,5 +28,4 @@ DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.e
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:53,7047850
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:13,7269EC9
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:43,7695619
-Config.Secrets: Hardcoded Secret,config/config.exs:204,7F38DEB
-Config.Secrets: Hardcoded Secret,config/config.exs:205,E9FD90
+Config.Secrets: Hardcoded Secret,config/config.exs:209,8DFEA3
