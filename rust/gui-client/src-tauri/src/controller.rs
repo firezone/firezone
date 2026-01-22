@@ -678,8 +678,8 @@ impl<I: GuiIntegration> Controller<I> {
                 }
 
                 self.integration.show_notification(
-                    &format!("Failed to connect to '{}'", resource.name()),
-                    &format!("Your Firezone Client is incompatible with all Gateways in the site '{}'. Please update your Client to the latest version and contact your administrator if the issue persists.", site.name)
+                    format!("Failed to connect to '{}'", resource.name()),
+                    format!("Your Firezone Client is incompatible with all Gateways in the site '{}'. Please update your Client to the latest version and contact your administrator if the issue persists.", site.name)
                 )?;
             }
             service::ServerMsg::AllGatewaysOffline { resource_id } => {
@@ -690,8 +690,8 @@ impl<I: GuiIntegration> Controller<I> {
                 }
 
                 self.integration.show_notification(
-                    &format!("Failed to connect to '{}'", resource.name()),
-                    &format!("All Gateways in the site '{}' are offline. Contact your administrator to resolve this issue.", site.name),
+                    format!("Failed to connect to '{}'", resource.name()),
+                    format!("All Gateways in the site '{}' are offline. Contact your administrator to resolve this issue.", site.name),
                 )?;
             }
         }
