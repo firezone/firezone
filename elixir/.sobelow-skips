@@ -1,13 +1,13 @@
 
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:33,122F186
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/oidc.ex:72,1687D24
 Config.CSRFRoute: CSRF via Action Reuse,lib/portal_web/router.ex:109,17FA088
-Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:40,1D07B78
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:378,1DF17A0
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal/types/filter.ex:22,1E1F28F
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/mailer.ex:49,2064866
 SQL.Query: SQL injection,lib/portal/safe.ex:285,224B461
 DOS.BinToAtom: Unsafe atom interpolation,lib/portal/account.ex:83,2831B26
 Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
-DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:366,2BF900
 DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:171,3D848A0
 Config.Headers: Missing Secure Browser Headers,lib/portal_api/router.ex:15,464028
 Config.Secrets: Hardcoded Secret,config/config.exs:208,4700588
@@ -20,12 +20,12 @@ DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.e
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:24,5775968
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:33,58DA1AC
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:66,58F0C9B
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:374,5E31712
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/client_auth.ex:42,5F2F213
 Config.Secrets: Hardcoded Secret,config/config.exs:104,61C15AF
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,696A7C1
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:216,69DCAC0
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:53,7047850
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:13,7269EC9
-Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:30,75F2F69
-Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:50,7DE9449
-DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:370,7F8C06D
+Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:43,7695619
 Config.Secrets: Hardcoded Secret,config/config.exs:209,8DFEA3
