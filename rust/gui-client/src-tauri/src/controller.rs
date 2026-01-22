@@ -24,8 +24,6 @@ use url::Url;
 
 mod ran_before;
 
-pub type CtlrTx = mpsc::Sender<ControllerRequest>;
-
 pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     mdm_settings: MdmSettings,
@@ -33,7 +31,7 @@ pub struct Controller<I: GuiIntegration> {
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
-    ctlr_tx: CtlrTx,
+    ctrl_tx: mpsc::Sender<ControllerRequest>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
     ipc_rx: ipc::ClientRead<service::ServerMsg>,
     integration: I,
@@ -69,8 +67,11 @@ pub trait GuiIntegration {
 
     fn set_tray_icon(&mut self, icon: system_tray::Icon);
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
-    fn show_notification(&self, title: &str, body: &str) -> Result<()>;
-    fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
+    fn show_notification(
+        &self,
+        title: impl Into<String>,
+        body: impl Into<String>,
+    ) -> Result<NotificationHandle>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
@@ -81,6 +82,10 @@ pub trait GuiIntegration {
         settings: AdvancedSettings,
     ) -> Result<()>;
     fn show_about_page(&self) -> Result<()>;
+}
+
+pub struct NotificationHandle {
+    pub on_click: futures::channel::oneshot::Receiver<()>,
 }
 
 #[derive(strum::Display)]
@@ -162,7 +167,7 @@ pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
     pub(crate) async fn start(
-        ctlr_tx: CtlrTx,
+        ctrl_tx: mpsc::Sender<ControllerRequest>,
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
@@ -187,7 +192,7 @@ impl<I: GuiIntegration> Controller<I> {
             advanced_settings,
             auth: auth::Auth::new()?,
             clear_logs_callback: None,
-            ctlr_tx,
+            ctrl_tx,
             ipc_client,
             ipc_rx,
             integration,
@@ -409,7 +414,7 @@ impl<I: GuiIntegration> Controller<I> {
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_ui_state();
 
-                self.integration.show_notification("Settings saved", "")?
+                let _ = self.integration.show_notification("Settings saved", "")?;
             }
             ApplyGeneralSettings(settings) => {
                 let account_slug = settings.account_slug.trim();
@@ -572,7 +577,7 @@ impl<I: GuiIntegration> Controller<I> {
         gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
 
         self.notify_settings_changed()?;
-        self.integration.show_notification("Settings saved", "")?;
+        let _ = self.integration.show_notification("Settings saved", "")?;
 
         Ok(())
     }
@@ -606,7 +611,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.sign_out().await?;
                 if is_authentication_error {
                     tracing::info!(?error_msg, "Auth error");
-                    self.integration.show_notification(
+                    let _ = self.integration.show_notification(
                         "Firezone disconnected",
                         "To access resources, sign in again.",
                     )?;
@@ -627,7 +632,7 @@ impl<I: GuiIntegration> Controller<I> {
 
                 // If this is the first time we receive resources, show the notification that we are connected.
                 if let &Status::WaitingForTunnel = &self.status {
-                    self.integration.show_notification(
+                    let _ = self.integration.show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
                     )?;
@@ -644,7 +649,7 @@ impl<I: GuiIntegration> Controller<I> {
                 tracing::info!("Tunnel service exited gracefully");
                 self.integration
                     .set_tray_icon(system_tray::icon_terminating());
-                self.integration.show_notification(
+                let _ = self.integration.show_notification(
                     "Firezone disconnected",
                     "The Firezone Tunnel service was shut down, quitting GUI process.",
                 )?;
@@ -729,16 +734,30 @@ impl<I: GuiIntegration> Controller<I> {
         self.refresh_ui_state();
 
         if notification.tell_user {
-            let title = format!("Firezone {} available for download", release.version);
+            #[cfg(target_os = "linux")]
+            let body = ""; // TODO: Clickable notifications don't work on Linux yet.
+            #[cfg(target_os = "macos")]
+            let body = "";
+            #[cfg(target_os = "windows")]
+            let body = "Click here to download the new version";
 
-            // We don't need to route through the controller here either, we could
-            // use the `open` crate directly instead of Tauri's wrapper
-            // `tauri::api::shell::open`
-            self.integration.show_update_notification(
-                self.ctlr_tx.clone(),
-                &title,
-                release.download_url,
+            let NotificationHandle { on_click } = self.integration.show_notification(
+                format!("Firezone {} available for download", release.version),
+                body,
             )?;
+            let ctrl_tx = self.ctrl_tx.clone();
+
+            tokio::spawn(async move {
+                if on_click.await.is_err() {
+                    return;
+                };
+
+                let _ = ctrl_tx
+                    .send(ControllerRequest::UpdateNotificationClicked(
+                        release.download_url,
+                    ))
+                    .await;
+            });
         }
         Ok(())
     }
