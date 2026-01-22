@@ -197,7 +197,7 @@ tauri-runtime = "2.9.2"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 tauri-utils = "2.8.0"
 telemetry = { path = "libs/telemetry" }
-tempfile = "3.23.0"
+tempfile = "3.24.0"
 test-case = "3.3.1"
 test-strategy = "0.4.3"
 thiserror = "2.0.17"
