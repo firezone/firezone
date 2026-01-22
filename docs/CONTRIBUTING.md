@@ -106,6 +106,41 @@ After this you will have running:
 - A resource with IP `172.20.0.100` on a separate network shared with the
   gateway
 
+### Generating a self-signed cert
+
+We recommend generating a trusted self-signed certificate for local development to avoid debugging TLS issues.
+
+On macOS you can generate and trust a certificate with:
+
+```sh
+cd elixir
+
+# Generate a self-signed certificate for localhost
+# Note: We use openssl instead of `mix phx.gen.cert` because of a Phoenix bug
+# that generates invalid certificates missing parameters: :NULL
+# See: https://github.com/phoenixframework/phoenix/issues/6319 which introduced this bug
+openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 \
+    -keyout priv/cert/selfsigned-key.pem \
+    -out priv/cert/selfsigned.pem \
+    -subj "/O=Firezone Development/CN=localhost" \
+    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+    -addext "basicConstraints=critical,CA:FALSE" \
+    -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
+    -addext "extendedKeyUsage=critical,serverAuth"
+
+# Add the new cert to the system trust store
+sudo security add-trusted-cert -d -p ssl -k /Library/Keychains/System.keychain priv/cert/selfsigned.pem
+```
+
+This will generate a self-signed certificate for `localhost` and add it to your
+system trust store for easier testing in browsers.
+
+**Note for Firefox users:** Firefox uses its own certificate store and ignores the
+macOS system keychain by default. To trust the certificate in Firefox, either:
+
+1. Go to `about:config` and set `security.enterprise_roots.enabled` to `true`, or
+2. Import the cert directly: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import `priv/cert/selfsigned.pem`
+
 ### Ensure Everything Works
 
 ```sh
