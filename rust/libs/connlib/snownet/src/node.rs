@@ -320,8 +320,10 @@ where
             self.allocations
                 .candidates_for_relay(&selected_relay)
                 .filter_map(|candidate| {
-                    add_local_candidate(&mut agent, candidate)
-                        .map(|c| new_ice_candidate_event(cid, c))
+                    let candidate = agent.add_local_candidate(candidate)?;
+                    let event = new_ice_candidate_event(cid, candidate.clone());
+
+                    Some(event)
                 }),
         );
 
@@ -991,7 +993,9 @@ where
             match event {
                 allocation::Event::New(candidate) => {
                     for (cid, agent, state) in self.connections.agents_and_state_by_relay_mut(rid) {
-                        if let Some(candidate) = add_local_candidate(agent, candidate.clone()) {
+                        if let Some(candidate) =
+                            agent.add_local_candidate(candidate.clone()).cloned()
+                        {
                             self.pending_events
                                 .push_back(new_ice_candidate_event(cid, candidate));
                         }
@@ -1032,7 +1036,7 @@ where
 {
     allocations
         .candidates_for_relay(&selected_relay)
-        .filter_map(move |c| add_local_candidate(agent, c))
+        .filter_map(move |c| agent.add_local_candidate(c).cloned())
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
@@ -1097,18 +1101,6 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
     }
 }
 
-/// Attempts to add the candidate to the agent, returning back the candidate if it should be signalled to the remote.
-fn add_local_candidate(agent: &mut IceAgent, candidate: Candidate) -> Option<Candidate> {
-    // srflx candidates don't need to be added to the local agent because we always send from the `base` anyway.
-    if candidate.kind() == CandidateKind::ServerReflexive {
-        return Some(candidate);
-    }
-
-    let candidate = agent.add_local_candidate(candidate)?;
-
-    Some(candidate.clone())
-}
-
 fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate) -> Event<TId> {
     tracing::debug!(?candidate, "Signalling candidate to remote");
 
@@ -1141,11 +1133,8 @@ fn remove_local_candidate<TId>(
 ) where
     TId: fmt::Display,
 {
-    if candidate.kind() == CandidateKind::ServerReflexive {
-        pending_events.push_back(Event::InvalidateIceCandidate {
-            connection: id,
-            candidate: candidate.clone(),
-        });
+    if candidate.kind() != CandidateKind::Relayed {
+        debug_assert!(false, "we should only ever invalidate relay candidates");
         return;
     }
 

@@ -1246,8 +1246,9 @@ fn update_candidate(
 ) -> bool {
     match (maybe_new, &maybe_current) {
         (Some(new), Some(current)) if &new != current => {
+            // This case is basically about detecting roaming without being told we are roaming.
+            // To ensure we don't create false-positive disconnects, we only emit the new candidate but not invalidate the old one.
             events.push_back(Event::New(new.clone()));
-            events.push_back(Event::Invalid(current.clone()));
             *maybe_current = Some(new);
 
             true
