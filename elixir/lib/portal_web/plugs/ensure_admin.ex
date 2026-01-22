@@ -21,7 +21,7 @@ defmodule PortalWeb.Plugs.EnsureAdmin do
 
   def call(conn, _opts) do
     conn
-    |> PortalWeb.FallbackController.call({:error, :not_found})
+    |> PortalWeb.Error.handle({:error, :not_found})
     |> halt()
   end
 end

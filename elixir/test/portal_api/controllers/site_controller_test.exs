@@ -197,6 +197,24 @@ defmodule PortalAPI.SiteControllerTest do
 
       assert resp["data"]["name"] == attrs["name"]
     end
+
+    test "returns error when updating system managed site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = internet_site_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{site.id}", site: %{"name" => "New Name"})
+
+      assert json_response(conn, 403) == %{
+               "error" => %{"reason" => "System managed Site cannot be modified"}
+             }
+    end
   end
 
   describe "delete/2" do
@@ -223,6 +241,26 @@ defmodule PortalAPI.SiteControllerTest do
              }
 
       refute Repo.get_by(Site, id: site.id, account_id: site.account_id)
+    end
+
+    test "returns error when deleting system managed site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = internet_site_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{site.id}")
+
+      assert json_response(conn, 403) == %{
+               "error" => %{"reason" => "System managed Site cannot be modified"}
+             }
+
+      assert Repo.get_by(Site, id: site.id, account_id: site.account_id)
     end
   end
 end

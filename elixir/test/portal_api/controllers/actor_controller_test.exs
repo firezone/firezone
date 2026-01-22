@@ -177,8 +177,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors", actor: attrs)
 
-      assert resp = json_response(conn, 422)
-      assert resp == %{"error" => %{"reason" => "Users Limit Reached"}}
+      assert resp = json_response(conn, 403)
+      assert resp == %{"error" => %{"reason" => "Users limit reached"}}
     end
 
     test "returns error when service accounts limit hit", %{
@@ -202,8 +202,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors", actor: attrs)
 
-      assert resp = json_response(conn, 422)
-      assert resp == %{"error" => %{"reason" => "Service Accounts Limit Reached"}}
+      assert resp = json_response(conn, 403)
+      assert resp == %{"error" => %{"reason" => "Service accounts limit reached"}}
     end
 
     test "creates a actor with valid attrs", %{conn: conn, actor: api_actor} do

@@ -11,8 +11,7 @@ defmodule PortalWeb.UserpassController do
 
   require Logger
 
-  action_fallback PortalWeb.FallbackController
-
+  @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(
         conn,
         %{

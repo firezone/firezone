@@ -1,10 +1,7 @@
 defmodule PortalWeb.OIDCController do
   use PortalWeb, :controller
 
-  alias Portal.{
-    AuthProvider,
-    Safe
-  }
+  alias Portal.AuthProvider
 
   alias __MODULE__.DB
 
@@ -12,16 +9,16 @@ defmodule PortalWeb.OIDCController do
 
   require Logger
 
-  action_fallback PortalWeb.FallbackController
-
   @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
 
+  @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     account = DB.get_account_by_id_or_slug!(account_id_or_slug)
     provider = get_provider!(account, params)
     provider_redirect(conn, account, provider, params)
   end
 
+  @spec callback(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def callback(conn, %{"state" => state, "code" => code}) do
     # Check if this is a verification operation (state starts with "oidc-verification:")
     case String.split(state, ":", parts: 2) do

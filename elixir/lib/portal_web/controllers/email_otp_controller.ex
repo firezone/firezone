@@ -5,7 +5,6 @@ defmodule PortalWeb.EmailOTPController do
   use PortalWeb, :controller
 
   alias Portal.Auth
-  alias Portal.EmailOTP
   alias __MODULE__.DB
   alias PortalWeb.Session.Redirector
 
@@ -13,8 +12,7 @@ defmodule PortalWeb.EmailOTPController do
 
   @constant_execution_time Application.compile_env(:portal, :constant_execution_time, 2000)
 
-  action_fallback PortalWeb.FallbackController
-
+  @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(
         conn,
         %{
@@ -46,6 +44,7 @@ defmodule PortalWeb.EmailOTPController do
     handle_error(conn, :invalid_params, params)
   end
 
+  @spec verify(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def verify(conn, %{"secret" => entered_code} = params) do
     result =
       execute_with_constant_time(

@@ -2,10 +2,9 @@ defmodule PortalAPI.MembershipController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.Error
   alias __MODULE__.DB
   import Ecto.Changeset
-
-  action_fallback PortalAPI.FallbackController
 
   tags ["Memberships"]
 
@@ -29,7 +28,7 @@ defmodule PortalAPI.MembershipController do
       ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.ListResponse}
     ]
 
-  # List members for a given Group
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"group_id" => group_id} = params) do
     list_opts =
       Pagination.params_to_list_opts(params)
@@ -37,6 +36,8 @@ defmodule PortalAPI.MembershipController do
 
     with {:ok, actors, metadata} <- DB.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 
@@ -58,6 +59,7 @@ defmodule PortalAPI.MembershipController do
          PortalAPI.Schemas.Membership.MembershipResponse}
     ]
 
+  @spec update_put(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update_put(
         conn,
         %{"group_id" => group_id, "memberships" => attrs}
@@ -65,18 +67,17 @@ defmodule PortalAPI.MembershipController do
     subject = conn.assigns.subject
 
     with {:ok, group} <- DB.fetch_group(group_id, subject),
-         true <- is_nil(group.directory_id) and group.type == :static,
+         :ok <- validate_group_editable(group),
          changeset <- update_group_memberships_changeset(group, attrs),
          {:ok, group} <- DB.update_group(changeset, subject) do
       render(conn, :memberships, memberships: group.memberships)
     else
-      false -> {:error, :not_editable}
-      error -> error
+      error -> Error.handle(conn, error)
     end
   end
 
-  def update_put(_conn, _params) do
-    {:error, :bad_request}
+  def update_put(conn, _params) do
+    Error.handle(conn, {:error, :bad_request})
   end
 
   operation :update_patch,
@@ -97,7 +98,7 @@ defmodule PortalAPI.MembershipController do
          PortalAPI.Schemas.Membership.MembershipResponse}
     ]
 
-  # Update Memberships
+  @spec update_patch(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update_patch(
         conn,
         %{"group_id" => group_id, "memberships" => params}
@@ -107,19 +108,26 @@ defmodule PortalAPI.MembershipController do
     subject = conn.assigns.subject
 
     with {:ok, group} <- DB.fetch_group(group_id, subject),
-         true <- is_nil(group.directory_id) and group.type == :static,
+         :ok <- validate_group_editable(group),
          membership_attrs <- prepare_membership_attrs(group, add, remove),
          changeset <- update_group_memberships_changeset(group, membership_attrs),
          {:ok, group} <- DB.update_group(changeset, subject) do
       render(conn, :memberships, memberships: group.memberships)
     else
-      false -> {:error, :not_editable}
-      error -> error
+      error -> Error.handle(conn, error)
     end
   end
 
-  def update_patch(_conn, _params) do
-    {:error, :bad_request}
+  def update_patch(conn, _params) do
+    Error.handle(conn, {:error, :bad_request})
+  end
+
+  defp validate_group_editable(group) do
+    if is_nil(group.directory_id) and group.type == :static do
+      :ok
+    else
+      {:error, :forbidden, reason: "Group is not editable"}
+    end
   end
 
   defp update_group_memberships_changeset(group, attrs) do

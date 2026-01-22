@@ -1,11 +1,8 @@
 defmodule PortalAPI.GoogleDirectoryController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Portal.{Google, Safe}
+  alias PortalAPI.Error
   alias __MODULE__.DB
-  import Ecto.Query
-
-  action_fallback PortalAPI.FallbackController
 
   tags ["Google Directories"]
 
@@ -17,6 +14,7 @@ defmodule PortalAPI.GoogleDirectoryController do
          PortalAPI.Schemas.GoogleDirectory.ListResponse}
     ]
 
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     directories = DB.list_directories(conn.assigns.subject)
     render(conn, :index, directories: directories)
@@ -38,9 +36,12 @@ defmodule PortalAPI.GoogleDirectoryController do
          PortalAPI.Schemas.GoogleDirectory.Response}
     ]
 
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, directory} <- DB.fetch_directory(id, conn.assigns.subject) do
       render(conn, :show, directory: directory)
+    else
+      error -> Error.handle(conn, error)
     end
   end
 

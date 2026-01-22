@@ -252,8 +252,8 @@ defmodule PortalAPI.GroupControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/groups/#{group.id}", group: %{"name" => "New Name"})
 
-      assert json_response(conn, 422) == %{
-               "error" => %{"reason" => "Cannot update a synced group"}
+      assert json_response(conn, 403) == %{
+               "error" => %{"reason" => "Cannot update a synced Group"}
              }
     end
 
