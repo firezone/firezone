@@ -36,10 +36,7 @@ jobs:
         env:
           E2E_DEFAULT_WAIT_SECONDS: 20
           CI_ASSERT_RECEIVE_TIMEOUT_MS: 250
-        run: |
-          # TODO: IDP-REFACTOR make sure to re-enable the --warnings-as-errors flag
-          mix coveralls.lcov --exclude flaky:true --exclude acceptance:true || \
-          mix coveralls.lcov --exclude flaky:true --exclude acceptance:true --failed
+        run: mix coveralls.lcov --exclude acceptance:true
 
       - name: Test Report
         if: github.event.pull_request.head.repo.full_name == github.repository && (success() || failure())

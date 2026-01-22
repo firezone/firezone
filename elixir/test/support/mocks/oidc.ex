@@ -22,11 +22,39 @@ defmodule PortalWeb.Mocks.OIDC do
       Mocks.OIDC.set_token_error(400, %{"error" => "invalid_grant"})
   """
 
-  @mock_endpoint "https://mock.oidc.test"
+  @mock_endpoint_base "https://mock.oidc.test"
 
-  def mock_endpoint, do: @mock_endpoint
+  @doc """
+  Returns the static mock endpoint base URL.
+  Use this for tests that create their own Req.Test stubs with exact path matching.
+  """
+  def mock_endpoint_static, do: @mock_endpoint_base
 
-  def discovery_document_uri, do: "#{@mock_endpoint}/.well-known/openid-configuration"
+  @doc """
+  Returns a static discovery document URI.
+  Use this for tests that create their own Req.Test stubs with exact path matching.
+  """
+  def discovery_document_uri_static, do: "#{@mock_endpoint_base}/.well-known/openid-configuration"
+
+  @doc """
+  Returns a unique mock endpoint for the current test process.
+  This ensures cache key isolation when tests run in parallel.
+  Use this with the stub_* functions which use suffix-based path matching.
+  """
+  def mock_endpoint do
+    # Use the test process PID to create a unique endpoint per test
+    # This prevents cache key collisions in OpenIDConnect.Document.Cache
+    pid_string =
+      self() |> :erlang.pid_to_list() |> List.to_string() |> String.replace(~r/[<>.]/, "")
+
+    "#{@mock_endpoint_base}/#{pid_string}"
+  end
+
+  @doc """
+  Returns a unique discovery document URI for the current test process.
+  Use this with the stub_* functions which use suffix-based path matching.
+  """
+  def discovery_document_uri, do: "#{mock_endpoint()}/.well-known/openid-configuration"
 
   @doc """
   Sets up a Req.Test stub for a complete OIDC server.
@@ -34,60 +62,69 @@ defmodule PortalWeb.Mocks.OIDC do
   """
   def stub_discovery_document do
     test_pid = self()
+    endpoint = mock_endpoint()
 
     Req.Test.stub(PortalWeb.OIDC, fn conn ->
-      handle_request(conn, test_pid)
+      handle_request(conn, test_pid, endpoint)
     end)
 
-    @mock_endpoint
+    endpoint
   end
 
   @doc """
   Sets up a Req.Test stub that returns a specific HTTP error for the discovery document.
   """
   def stub_discovery_error(status, body \\ "") do
+    endpoint = mock_endpoint()
+
     Req.Test.stub(PortalWeb.OIDC, fn conn ->
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
       |> Plug.Conn.send_resp(status, body)
     end)
 
-    @mock_endpoint
+    endpoint
   end
 
   @doc """
   Sets up a Req.Test stub that returns invalid JSON for the discovery document.
   """
   def stub_invalid_json(body \\ "this is not json{") do
+    endpoint = mock_endpoint()
+
     Req.Test.stub(PortalWeb.OIDC, fn conn ->
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
       |> Plug.Conn.send_resp(200, body)
     end)
 
-    @mock_endpoint
+    endpoint
   end
 
   @doc """
   Sets up a Req.Test stub that simulates a connection refused error.
   """
   def stub_connection_refused do
+    endpoint = mock_endpoint()
+
     Req.Test.stub(PortalWeb.OIDC, fn conn ->
       Req.Test.transport_error(conn, :econnrefused)
     end)
 
-    @mock_endpoint
+    endpoint
   end
 
   @doc """
   Sets up a Req.Test stub that simulates a DNS lookup failure (nxdomain).
   """
   def stub_dns_error do
+    endpoint = mock_endpoint()
+
     Req.Test.stub(PortalWeb.OIDC, fn conn ->
       Req.Test.transport_error(conn, :nxdomain)
     end)
 
-    @mock_endpoint
+    endpoint
   end
 
   @doc """
@@ -128,31 +165,32 @@ defmodule PortalWeb.Mocks.OIDC do
     Process.delete(:oidc_mock_userinfo_response)
   end
 
-  defp handle_request(conn, test_pid) do
+  defp handle_request(conn, test_pid, endpoint) do
     conn = fetch_conn_params(conn)
     send(test_pid, {:oidc_request, conn.request_path, conn})
 
-    case conn.request_path do
-      "/.well-known/openid-configuration" ->
-        Req.Test.json(conn, discovery_document())
+    # Match paths by suffix to support per-test unique endpoints (e.g., /024530/.well-known/openid-configuration)
+    cond do
+      String.ends_with?(conn.request_path, "/.well-known/openid-configuration") ->
+        Req.Test.json(conn, discovery_document(endpoint))
 
-      "/.well-known/jwks.json" ->
+      String.ends_with?(conn.request_path, "/.well-known/jwks.json") ->
         Req.Test.json(conn, %{"keys" => [jwks()]})
 
-      "/oauth/token" ->
-        handle_token_request(conn, test_pid)
+      String.ends_with?(conn.request_path, "/oauth/token") ->
+        handle_token_request(conn, test_pid, endpoint)
 
-      "/userinfo" ->
-        handle_userinfo_request(conn, test_pid)
+      String.ends_with?(conn.request_path, "/userinfo") ->
+        handle_userinfo_request(conn, test_pid, endpoint)
 
-      _ ->
+      true ->
         conn
         |> Plug.Conn.put_resp_content_type("application/json")
         |> Plug.Conn.send_resp(404, ~s({"error": "not_found"}))
     end
   end
 
-  defp handle_token_request(conn, test_pid) do
+  defp handle_token_request(conn, test_pid, endpoint) do
     case Process.get(:oidc_mock_token_response) do
       {:ok, response} ->
         # Clear after use so subsequent requests get default behavior
@@ -183,13 +221,13 @@ defmodule PortalWeb.Mocks.OIDC do
               "access_token" => "test_access_token",
               "token_type" => "Bearer",
               "expires_in" => 3600,
-              "id_token" => sign_openid_connect_token(default_claims())
+              "id_token" => sign_openid_connect_token(default_claims(endpoint))
             })
         end
     end
   end
 
-  defp handle_userinfo_request(conn, test_pid) do
+  defp handle_userinfo_request(conn, test_pid, _endpoint) do
     case Process.get(:oidc_mock_userinfo_response) do
       {:ok, response} ->
         Process.delete(:oidc_mock_userinfo_response)
@@ -231,7 +269,8 @@ defmodule PortalWeb.Mocks.OIDC do
     end
   end
 
-  def discovery_document, do: discovery_document(@mock_endpoint)
+  # Use static base endpoint for tests that create their own stubs
+  def discovery_document, do: discovery_document(@mock_endpoint_base)
 
   def discovery_document(port) when is_integer(port),
     do: discovery_document("http://localhost:#{port}")
@@ -316,7 +355,8 @@ defmodule PortalWeb.Mocks.OIDC do
     }
   end
 
-  def default_claims, do: default_claims(@mock_endpoint)
+  # Use static base endpoint for tests that create their own stubs
+  def default_claims, do: default_claims(@mock_endpoint_base)
 
   def default_claims(port) when is_integer(port), do: default_claims("http://localhost:#{port}")
 

@@ -89,6 +89,32 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
     }
   end
 
+  # Waits for async verification error to appear in the LiveView
+  defp wait_for_verification_error(lv, expected_message, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, 10_000)
+    interval = Keyword.get(opts, :interval, 100)
+    deadline = System.monotonic_time(:millisecond) + timeout
+
+    wait_for_verification_error_loop(lv, expected_message, deadline, interval)
+  end
+
+  defp wait_for_verification_error_loop(lv, expected_message, deadline, interval) do
+    html = render(lv)
+
+    if html =~ expected_message do
+      html
+    else
+      if System.monotonic_time(:millisecond) >= deadline do
+        flunk(
+          "Timed out waiting for verification error: #{expected_message}\n\nLast HTML contained: #{String.slice(html, 0, 500)}..."
+        )
+      else
+        Process.sleep(interval)
+        wait_for_verification_error_loop(lv, expected_message, deadline, interval)
+      end
+    end
+  end
+
   describe "mount/3" do
     test "redirects to sign in page for unauthorized user", %{account: account, conn: conn} do
       path = ~p"/#{account}/settings/directory_sync"
@@ -493,11 +519,9 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       # Start verification
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
       # Check that verification succeeded
-      assert html =~ "Verified"
+      html = wait_for_verification_error(lv, "Verified")
       assert html =~ "verified-domain.com"
     end
 
@@ -527,10 +551,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Invalid service account email or user ID"
+      wait_for_verification_error(lv, "Invalid service account email or user ID")
     end
 
     test "shows error for Google 401", %{account: account, actor: actor, conn: conn} do
@@ -553,10 +575,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Missing required scopes"
+      wait_for_verification_error(lv, "Missing required scopes")
     end
 
     test "shows error for Google 403", %{account: account, actor: actor, conn: conn} do
@@ -579,10 +599,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Admin SDK not enabled"
+      wait_for_verification_error(lv, "Admin SDK not enabled")
     end
 
     test "shows error for Google 404", %{account: account, actor: actor, conn: conn} do
@@ -614,10 +632,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Customer not found"
+      wait_for_verification_error(lv, "Customer not found")
     end
 
     test "shows error for Google 500", %{account: account, actor: actor, conn: conn} do
@@ -649,10 +665,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Google service is currently unavailable"
+      wait_for_verification_error(lv, "Google service is currently unavailable")
     end
   end
 
@@ -699,10 +713,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       # Start verification
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Verified"
+      wait_for_verification_error(lv, "Verified")
     end
 
     test "shows error for Okta 400 E0000021", %{account: account, actor: actor, conn: conn} do
@@ -731,10 +743,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Bad request to Okta"
+      wait_for_verification_error(lv, "Bad request to Okta")
     end
 
     test "shows error for Okta 401 invalid_client", %{account: account, actor: actor, conn: conn} do
@@ -763,10 +773,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Client authentication failed"
+      wait_for_verification_error(lv, "Client authentication failed")
     end
 
     test "shows error for Okta 403 with www-authenticate header", %{
@@ -806,10 +814,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "does not contain the required scopes"
+      wait_for_verification_error(lv, "does not contain the required scopes")
     end
 
     test "shows error for Okta empty apps", %{account: account, actor: actor, conn: conn} do
@@ -845,10 +851,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "No apps found"
+      wait_for_verification_error(lv, "No apps found")
     end
 
     test "shows error for Okta empty users", %{account: account, actor: actor, conn: conn} do
@@ -887,10 +891,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "No users found"
+      wait_for_verification_error(lv, "No users found")
     end
 
     test "shows error for Okta empty groups", %{account: account, actor: actor, conn: conn} do
@@ -932,10 +934,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "No groups found"
+      wait_for_verification_error(lv, "No groups found")
     end
   end
 
@@ -1715,10 +1715,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "HTTP 400 Bad Request"
+      wait_for_verification_error(lv, "HTTP 400 Bad Request")
     end
 
     test "Google 401 without error_description", %{account: account, actor: actor, conn: conn} do
@@ -1747,10 +1745,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "HTTP 401 error"
+      wait_for_verification_error(lv, "HTTP 401 error")
     end
 
     test "Google 403 without error message", %{account: account, actor: actor, conn: conn} do
@@ -1779,10 +1775,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "HTTP 403 error"
+      wait_for_verification_error(lv, "HTTP 403 error")
     end
 
     test "Google 404 without error message", %{account: account, actor: actor, conn: conn} do
@@ -1811,10 +1805,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "HTTP 404 Not Found"
+      wait_for_verification_error(lv, "HTTP 404 Not Found")
     end
 
     test "Okta 400 with E0000001", %{account: account, actor: actor, conn: conn} do
@@ -1849,10 +1841,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "API validation failed"
+      wait_for_verification_error(lv, "API validation failed")
     end
 
     test "Okta 400 with E0000003", %{account: account, actor: actor, conn: conn} do
@@ -1887,10 +1877,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "request body was invalid"
+      wait_for_verification_error(lv, "request body was invalid")
     end
 
     test "Okta 400 with invalid_client", %{account: account, actor: actor, conn: conn} do
@@ -1925,10 +1913,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Invalid client application"
+      wait_for_verification_error(lv, "Invalid client application")
     end
 
     test "Okta 400 with errorSummary only", %{account: account, actor: actor, conn: conn} do
@@ -1963,10 +1949,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Custom error message"
+      wait_for_verification_error(lv, "Custom error message")
     end
 
     test "Okta 401 with E0000011", %{account: account, actor: actor, conn: conn} do
@@ -2001,10 +1985,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Invalid token"
+      wait_for_verification_error(lv, "Invalid token")
     end
 
     test "Okta 401 with E0000061", %{account: account, actor: actor, conn: conn} do
@@ -2039,10 +2021,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Access denied"
+      wait_for_verification_error(lv, "Access denied")
     end
 
     test "Okta 403 with E0000006", %{account: account, actor: actor, conn: conn} do
@@ -2077,10 +2057,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Access denied"
+      wait_for_verification_error(lv, "Access denied")
     end
 
     test "Okta 403 with E0000022", %{account: account, actor: actor, conn: conn} do
@@ -2115,10 +2093,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "API access denied"
+      wait_for_verification_error(lv, "API access denied")
     end
 
     test "Okta 404 with E0000007", %{account: account, actor: actor, conn: conn} do
@@ -2153,10 +2129,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Resource not found"
+      wait_for_verification_error(lv, "Resource not found")
     end
 
     test "Okta 500 error", %{account: account, actor: actor, conn: conn} do
@@ -2191,10 +2165,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async - click triggers :do_verification message
       lv |> element("button", "Verify Now") |> render_click()
-      # Wait for async message to be processed and get updated HTML
-      html = render(lv)
 
-      assert html =~ "Okta service is currently unavailable"
+      wait_for_verification_error(lv, "Okta service is currently unavailable")
     end
 
     test "Okta 400 fallback (no known error code)", %{account: account, actor: actor, conn: conn} do
@@ -2228,9 +2200,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> render_change()
 
       lv |> element("button", "Verify Now") |> render_click()
-      html = render(lv)
 
-      assert html =~ "HTTP 400 Bad Request"
+      wait_for_verification_error(lv, "HTTP 400 Bad Request")
     end
 
     test "Okta 401 with errorSummary", %{account: account, actor: actor, conn: conn} do
@@ -2264,9 +2235,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> render_change()
 
       lv |> element("button", "Verify Now") |> render_click()
-      html = render(lv)
 
-      assert html =~ "Authentication failed: Custom 401 error message"
+      wait_for_verification_error(lv, "Authentication failed: Custom 401 error message")
     end
 
     test "Okta 401 fallback (no known error code)", %{account: account, actor: actor, conn: conn} do
@@ -2300,9 +2270,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> render_change()
 
       lv |> element("button", "Verify Now") |> render_click()
-      html = render(lv)
 
-      assert html =~ "HTTP 401 Unauthorized"
+      wait_for_verification_error(lv, "HTTP 401 Unauthorized")
     end
 
     test "Okta 403 with errorSummary", %{account: account, actor: actor, conn: conn} do
@@ -2336,9 +2305,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> render_change()
 
       lv |> element("button", "Verify Now") |> render_click()
-      html = render(lv)
 
-      assert html =~ "Permission denied: Custom 403 error"
+      wait_for_verification_error(lv, "Permission denied: Custom 403 error")
     end
 
     test "Okta 403 fallback (no known error code)", %{account: account, actor: actor, conn: conn} do
@@ -2372,9 +2340,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> render_change()
 
       lv |> element("button", "Verify Now") |> render_click()
-      html = render(lv)
 
-      assert html =~ "HTTP 403 Forbidden"
+      wait_for_verification_error(lv, "HTTP 403 Forbidden")
     end
 
     test "Okta 404 with errorSummary", %{account: account, actor: actor, conn: conn} do
@@ -2408,9 +2375,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> render_change()
 
       lv |> element("button", "Verify Now") |> render_click()
-      html = render(lv)
 
-      assert html =~ "Not found: Custom 404 error"
+      wait_for_verification_error(lv, "Not found: Custom 404 error")
     end
 
     test "Okta 404 fallback (no known error code)", %{account: account, actor: actor, conn: conn} do
@@ -2444,9 +2410,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> render_change()
 
       lv |> element("button", "Verify Now") |> render_click()
-      html = render(lv)
 
-      assert html =~ "HTTP 404 Not Found"
+      wait_for_verification_error(lv, "HTTP 404 Not Found")
     end
 
     test "Google 400 with generic error_description", %{
@@ -2475,9 +2440,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> render_change()
 
       lv |> element("button", "Verify Now") |> render_click()
-      html = render(lv)
 
-      assert html =~ "Authentication failed: Some other grant error"
+      wait_for_verification_error(lv, "Authentication failed: Some other grant error")
     end
 
     test "Google 400 with only error_description (no error type)", %{
@@ -2506,9 +2470,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> render_change()
 
       lv |> element("button", "Verify Now") |> render_click()
-      html = render(lv)
 
-      assert html =~ "Description without known error type"
+      wait_for_verification_error(lv, "Description without known error type")
     end
   end
 
@@ -2769,10 +2732,9 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       # Verification is async
       lv |> element("button", "Verify Now") |> render_click()
-      html = render(lv)
 
       # E0000022 maps to this specific error message
-      assert html =~ "API access denied. The feature may not be available"
+      wait_for_verification_error(lv, "API access denied. The feature may not be available")
     end
   end
 
