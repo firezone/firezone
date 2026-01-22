@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+pub mod cleanup;
 pub mod file;
 mod format;
 #[macro_use]

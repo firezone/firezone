@@ -23,7 +23,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     case idle
   }
 
-  private var getLogFolderSizeTask: Task<Void, Never>?
+  private var getLogFolderSizeTask: CancellableTask?
+  private var logCleanupTask: CancellableTask?
 
   private var logExportState: LogExportState = .idle
   private var tunnelConfiguration: TunnelConfiguration?
@@ -45,10 +46,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     migrateFirezoneId()
     self.tunnelConfiguration = TunnelConfiguration.tryLoad()
-  }
-
-  deinit {
-    getLogFolderSizeTask?.cancel()
   }
 
   override func startTunnel(
@@ -123,6 +120,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       self.adapter = adapter
 
+      // Enforce log size cap at startup and schedule hourly cleanup
+      startLogCleanupTask()
+
     } catch {
       Log.error(error)
       completionHandler(error)
@@ -140,6 +140,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     with reason: NEProviderStopReason, completionHandler: @escaping @Sendable () -> Void
   ) {
     Log.log("stopTunnel: Reason: \(reason)")
+
+    logCleanupTask = nil
 
     // handles both connlib-initiated and user-initiated stops
     adapter?.stop()
@@ -230,7 +232,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return
     }
 
-    let task = Task {
+    getLogFolderSizeTask = CancellableTask {
       let size = await Log.size(of: logFolderURL)
       let data = withUnsafeBytes(of: size) { Data($0) }
 
@@ -238,7 +240,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       guard !Task.isCancelled else { return }
       completionHandler?(data)
     }
-    getLogFolderSizeTask = task
   }
 
   func exportLogs(_ completionHandler: @escaping @Sendable (Data?) -> Void) {
@@ -297,6 +298,38 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       self.logExportState = .inProgress(tunnelLogArchive)
       sendChunk(tunnelLogArchive)
+    }
+  }
+
+  private func startLogCleanupTask() {
+    // Hardcoded 100MB limit for log cleanup
+    let maxSizeMb: UInt32 = 100
+
+    // Run cleanup immediately at startup
+    Self.performLogCleanup(maxSizeMb: maxSizeMb)
+
+    // Schedule hourly cleanup
+    logCleanupTask = CancellableTask {
+      while !Task.isCancelled {
+        try? await Task.sleep(nanoseconds: 3600 * 1_000_000_000)
+        guard !Task.isCancelled else { break }
+        Self.performLogCleanup(maxSizeMb: maxSizeMb)
+      }
+    }
+  }
+
+  private static func performLogCleanup(maxSizeMb: UInt32) {
+    guard let connlibDir = SharedAccess.connlibLogFolderURL?.path,
+      let tunnelDir = SharedAccess.tunnelLogFolderURL?.path
+    else {
+      Log.warning("Cannot enforce log size cap: log directories unavailable")
+      return
+    }
+
+    let deletedBytes = enforceLogSizeCap(logDirs: [connlibDir, tunnelDir], maxSizeMb: maxSizeMb)
+    if deletedBytes > 0 {
+      let deletedMb = deletedBytes / 1024 / 1024
+      Log.info("Cleaned up \(deletedMb) MB of old logs")
     }
   }
 
