@@ -2519,7 +2519,7 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       assert_push "flow_creation_failed", %{
-        reason: :offline,
+        reason: :version_mismatch,
         resource_id: resource_id
       }
 
@@ -2848,7 +2848,7 @@ defmodule PortalAPI.Client.ChannelTest do
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
 
-      assert_reply ref, :error, %{reason: :offline}
+      assert_reply ref, :error, %{reason: :version_mismatch}
 
       gateway =
         gateway_fixture(
@@ -2943,7 +2943,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
-      assert_reply ref, :error, %{reason: :offline}
+      assert_reply ref, :error, %{reason: :version_mismatch}
 
       gateway =
         gateway_fixture(
