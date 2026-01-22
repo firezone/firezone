@@ -45,7 +45,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-      assert redirected_to(conn) =~ "#{Mocks.OIDC.mock_endpoint()}/authorize"
+      assert redirected_to(conn) =~ "/authorize"
       assert get_resp_cookie(conn, "oidc")
     end
 
@@ -55,7 +55,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       conn = get(conn, "/#{account.slug}/sign_in/oidc/#{provider.id}")
 
-      assert redirected_to(conn) =~ "#{Mocks.OIDC.mock_endpoint()}/authorize"
+      assert redirected_to(conn) =~ "/authorize"
     end
 
     test "sets OIDC cookie with correct provider info", %{conn: conn} do
@@ -420,22 +420,23 @@ defmodule PortalWeb.OIDCControllerTest do
       provider: provider
     } do
       # Set up a stub that returns invalid JSON for token exchange
+      # Use suffix matching to support dynamic per-test endpoints
       Req.Test.stub(PortalWeb.OIDC, fn conn ->
         conn = PortalWeb.Mocks.OIDC.__fetch_conn_params__(conn)
 
-        case conn.request_path do
-          "/.well-known/openid-configuration" ->
+        cond do
+          String.ends_with?(conn.request_path, "/.well-known/openid-configuration") ->
             Req.Test.json(conn, Mocks.OIDC.discovery_document())
 
-          "/.well-known/jwks.json" ->
+          String.ends_with?(conn.request_path, "/.well-known/jwks.json") ->
             Req.Test.json(conn, %{"keys" => [Mocks.OIDC.jwks()]})
 
-          "/oauth/token" ->
+          String.ends_with?(conn.request_path, "/oauth/token") ->
             conn
             |> Plug.Conn.put_resp_content_type("application/json")
             |> Plug.Conn.send_resp(200, "not valid json")
 
-          _ ->
+          true ->
             Plug.Conn.send_resp(conn, 404, "")
         end
       end)
@@ -917,7 +918,7 @@ defmodule PortalWeb.OIDCControllerTest do
           "nonce" => "client-nonce"
         })
 
-      assert redirected_to(conn) =~ "#{Mocks.OIDC.mock_endpoint()}/authorize"
+      assert redirected_to(conn) =~ "/authorize"
       assert conn.resp_cookies["oidc"]
     end
 
@@ -931,7 +932,7 @@ defmodule PortalWeb.OIDCControllerTest do
           "redirect_to" => "/some/path"
         })
 
-      assert redirected_to(conn) =~ "#{Mocks.OIDC.mock_endpoint()}/authorize"
+      assert redirected_to(conn) =~ "/authorize"
       assert conn.resp_cookies["oidc"]
     end
   end
