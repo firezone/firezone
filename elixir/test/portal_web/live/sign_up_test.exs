@@ -507,13 +507,14 @@ defmodule PortalWeb.SignUpTest do
 
   describe "Stripe API resilience" do
     setup do
-      # Enable retry for these tests
+      # Enable retry for these tests with fast retry delay for testing
       Portal.Config.put_env_override(Portal.Billing.Stripe.APIClient,
         endpoint: "https://api.stripe.com",
         req_opts: [
           plug: {Req.Test, Portal.Billing.Stripe.APIClient},
           retry: :transient,
-          max_retries: 1
+          max_retries: 1,
+          retry_delay: fn _attempt -> 10 end
         ]
       )
 
