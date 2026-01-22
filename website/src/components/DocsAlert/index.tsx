@@ -22,7 +22,7 @@ export default function Alert({
       );
     case "warning":
       return (
-        <div className="text-sm mb-4 px-3 py-3 flex items-center rounded-sm border bg-accent-100 text-accent-800 border-accent-200">
+        <div className="text-sm mb-4 px-3 flex items-center rounded-sm border bg-accent-100 text-accent-800 border-accent-200">
           <HiOutlineExclamationCircle className="flex-none w-5 h-5 mr-2" />
           {children}
         </div>
