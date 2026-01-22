@@ -38,7 +38,7 @@ pub struct Controller<I: GuiIntegration> {
     log_filter_reloader: FilterReloadHandle,
     /// A release that's ready to download
     release: Option<updates::Release>,
-    rx: ReceiverStream<ControllerRequest>,
+    ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
@@ -167,9 +167,10 @@ pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
     pub(crate) async fn start(
-        ctrl_tx: mpsc::Sender<ControllerRequest>,
+        socket: SocketId,
         integration: I,
-        rx: mpsc::Receiver<ControllerRequest>,
+        ctrl_tx: mpsc::Sender<ControllerRequest>,
+        ctrl_rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
         mdm_settings: MdmSettings,
         advanced_settings: AdvancedSettings,
@@ -179,8 +180,7 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (mut ipc_rx, ipc_client) =
-            ipc::connect(SocketId::Tunnel, ipc::ConnectOptions::default()).await?;
+        let (mut ipc_rx, ipc_client) = ipc::connect(socket, ipc::ConnectOptions::default()).await?;
 
         receive_hello(&mut ipc_rx)
             .await
@@ -198,7 +198,7 @@ impl<I: GuiIntegration> Controller<I> {
             integration,
             log_filter_reloader,
             release: None,
-            rx: ReceiverStream::new(rx),
+            ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
@@ -297,7 +297,7 @@ impl<I: GuiIntegration> Controller<I> {
                 return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
 
-            if let Poll::Ready(maybe_req) = self.rx.poll_next_unpin(cx) {
+            if let Poll::Ready(maybe_req) = self.ctrl_rx.poll_next_unpin(cx) {
                 return Poll::Ready(EventloopTick::ControllerRequest(maybe_req));
             }
 
@@ -932,4 +932,247 @@ async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Resu
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use parking_lot::{Mutex, MutexGuard};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn fails_without_receiving_hello() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+
+        // Accept the IPC connection
+        let (_tunnel_rx, _tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
+
+        let start_error = tokio::time::timeout(Duration::from_secs(6), test_controller.join_handle)
+            .await
+            .expect("should not timeout")
+            .unwrap()
+            .unwrap_err();
+
+        assert!(
+            start_error
+                .any_downcast_ref::<FailedToReceiveHello>()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn launches_overview_page_on_startup() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+
+        let (_tunnel_rx, mut tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
+        tunnel_tx.send(&service::ServerMsg::Hello).await.unwrap();
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        assert_eq!(test_controller.integration().shown_overview_page.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn shows_page_when_2nd_instance_launches() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+
+        let (_tunnel_rx, mut tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
+        tunnel_tx.send(&service::ServerMsg::Hello).await.unwrap();
+
+        let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
+        gui_tx.send(&gui::ClientMsg::NewInstance).await.unwrap();
+        let response = gui_rx.next().await.unwrap().unwrap();
+
+        assert_eq!(test_controller.integration().shown_overview_page.len(), 2);
+        assert_eq!(response, gui::ServerMsg::Ack)
+    }
+
+    #[expect(dead_code, reason = "It is a test.")]
+    struct TestController {
+        join_handle: tokio::task::JoinHandle<Result<()>>,
+        tunnel_server: ipc::Server,
+        ctrl_tx: mpsc::Sender<ControllerRequest>,
+        updates_tx: mpsc::Sender<Option<updates::Notification>>,
+        integration: Arc<Mutex<TestIntegration>>,
+        gui_id: u32,
+    }
+
+    impl TestController {
+        async fn tunnel_service_ipc_accept(
+            &mut self,
+        ) -> (
+            ipc::ServerRead<service::ClientMsg>,
+            ipc::ServerWrite<service::ServerMsg>,
+        ) {
+            self.tunnel_server
+                .next_client_split::<service::ClientMsg, service::ServerMsg>()
+                .await
+                .unwrap()
+        }
+
+        async fn gui_ipc_connect(
+            &mut self,
+        ) -> (
+            ipc::ClientRead<gui::ServerMsg>,
+            ipc::ClientWrite<gui::ClientMsg>,
+        ) {
+            ipc::connect(
+                SocketId::Test(self.gui_id),
+                ipc::ConnectOptions { num_attempts: 2 },
+            )
+            .await
+            .unwrap()
+        }
+
+        fn integration(&self) -> MutexGuard<'_, TestIntegration> {
+            self.integration.lock()
+        }
+    }
+
+    #[derive(Default)]
+    struct TestIntegration {
+        sessions: Vec<SessionViewModel>,
+        mdm_settings: Vec<MdmSettings>,
+        general_settings: Vec<GeneralSettings>,
+        advanced_settings: Vec<AdvancedSettings>,
+        file_counts: Vec<FileCount>,
+        opened_urls: Vec<String>,
+        tray_icons: Vec<system_tray::Icon>,
+        tray_states: Vec<system_tray::AppState>,
+        notifications: Vec<(String, String, futures::channel::oneshot::Sender<()>)>,
+        window_visibilities: Vec<bool>,
+        shown_overview_page: Vec<SessionViewModel>,
+        shown_settings_page: Vec<(MdmSettings, GeneralSettings, AdvancedSettings)>,
+        shown_about_page: Vec<()>,
+    }
+
+    impl GuiIntegration for Arc<Mutex<TestIntegration>> {
+        fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
+            self.lock().sessions.push(session.clone());
+
+            Ok(())
+        }
+
+        fn notify_settings_changed(
+            &self,
+            mdm_settings: MdmSettings,
+            general_settings: GeneralSettings,
+            advanced_settings: AdvancedSettings,
+        ) -> Result<()> {
+            let mut guard = self.lock();
+
+            guard.mdm_settings.push(mdm_settings);
+            guard.general_settings.push(general_settings);
+            guard.advanced_settings.push(advanced_settings);
+
+            Ok(())
+        }
+
+        fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
+            self.lock().file_counts.push(file_count.clone());
+
+            Ok(())
+        }
+
+        fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
+            self.lock().opened_urls.push(url.as_ref().to_owned());
+
+            Ok(())
+        }
+
+        fn set_tray_icon(&mut self, icon: system_tray::Icon) {
+            self.lock().tray_icons.push(icon);
+        }
+
+        fn set_tray_menu(&mut self, app_state: system_tray::AppState) {
+            self.lock().tray_states.push(app_state);
+        }
+
+        fn show_notification(
+            &self,
+            title: impl Into<String>,
+            body: impl Into<String>,
+        ) -> Result<NotificationHandle> {
+            let (tx, rx) = futures::channel::oneshot::channel();
+
+            self.lock()
+                .notifications
+                .push((title.into(), body.into(), tx));
+
+            Ok(NotificationHandle { on_click: rx })
+        }
+
+        fn set_window_visible(&self, visible: bool) -> Result<()> {
+            self.lock().window_visibilities.push(visible);
+
+            Ok(())
+        }
+
+        fn show_overview_page(&self, session: &SessionViewModel) -> Result<()> {
+            self.lock().shown_overview_page.push(session.clone());
+
+            Ok(())
+        }
+
+        fn show_settings_page(
+            &self,
+            mdm_settings: MdmSettings,
+            general_settings: GeneralSettings,
+            settings: AdvancedSettings,
+        ) -> Result<()> {
+            self.lock()
+                .shown_settings_page
+                .push((mdm_settings, general_settings, settings));
+
+            Ok(())
+        }
+
+        fn show_about_page(&self) -> Result<()> {
+            self.lock().shown_about_page.push(());
+
+            Ok(())
+        }
+    }
+
+    impl Controller<Arc<Mutex<TestIntegration>>> {
+        fn start_for_test() -> TestController {
+            let tunnel_id = rand::random::<u32>();
+            let gui_id = rand::random::<u32>();
+
+            let tunnel_ipc_server = ipc::Server::new(SocketId::Test(tunnel_id)).unwrap();
+            let gui_ipc_server = ipc::Server::new(SocketId::Test(gui_id)).unwrap();
+
+            let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
+            let (updates_tx, updates_rx) = mpsc::channel(16);
+            let (_, log_filter_reloader) = logging::try_filter::<()>("debug").unwrap();
+            let integration = Arc::new(Mutex::new(TestIntegration::default()));
+
+            let join_handle = tokio::spawn(Self::start(
+                SocketId::Test(tunnel_id),
+                integration.clone(),
+                ctrl_tx.clone(),
+                ctrl_rx,
+                GeneralSettings::default(),
+                MdmSettings::default(),
+                AdvancedSettings::default(),
+                log_filter_reloader,
+                updates_rx,
+                gui_ipc_server,
+            ));
+
+            TestController {
+                join_handle,
+                integration,
+                tunnel_server: tunnel_ipc_server,
+                ctrl_tx,
+                updates_tx,
+                gui_id,
+            }
+        }
+    }
 }

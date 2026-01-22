@@ -70,10 +70,8 @@ pub enum SocketId {
     ///
     /// Includes an ID so that multiple tests can
     /// run in parallel.
-    ///
-    /// The ID should have A-Z, 0-9 only, no dots or slashes, because of Windows named pipes name restrictions.
     #[cfg(test)]
-    Test(&'static str),
+    Test(u32),
 }
 
 pub struct Decoder<D> {
@@ -204,7 +202,7 @@ mod tests {
     #[tokio::test]
     async fn no_such_service() -> Result<()> {
         let _guard = logging::test("trace");
-        const ID: SocketId = SocketId::Test("H56FRXVH");
+        const ID: SocketId = SocketId::Test(0xC41CD2FA);
 
         if super::connect::<(), ()>(ID, super::ConnectOptions::default())
             .await
@@ -230,7 +228,7 @@ mod tests {
     async fn smoke() -> Result<()> {
         let _guard = logging::test("trace");
         let loops = 10;
-        const ID: SocketId = SocketId::Test("OB5SZCGN");
+        const ID: SocketId = SocketId::Test(0x2071B40E);
 
         let mut server = Server::new(ID).expect("Error while starting IPC server");
 
@@ -311,7 +309,7 @@ mod tests {
     async fn loop_to_next_client() -> Result<()> {
         let _guard = logging::test("trace");
 
-        let mut server = Server::new(SocketId::Test("H6L73DG5"))?;
+        let mut server = Server::new(SocketId::Test(0x92967990))?;
         for i in 0..5 {
             if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
                 Err(err).with_context(|| {
