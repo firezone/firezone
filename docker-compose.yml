@@ -123,9 +123,6 @@ services:
   # This is a service container which allows to run mix tasks for local development
   # without having to install Elixir and Erlang on the host machine.
   elixir:
-    extends:
-      file: scripts/compose/portal.yml
-      service: common
     build:
       context: elixir
       target: compiler
