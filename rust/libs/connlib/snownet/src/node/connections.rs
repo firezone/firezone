@@ -14,13 +14,12 @@ use str0m::ice::IceAgent;
 use crate::{
     ConnectionStats, Event,
     node::{
-        Connection, ConnectionState, InitialConnection, add_local_candidate,
-        allocations::Allocations, new_ice_candidate_event,
+        Connection, ConnectionState, add_local_candidate, allocations::Allocations,
+        new_ice_candidate_event,
     },
 };
 
 pub struct Connections<TId, RId> {
-    initial: BTreeMap<TId, InitialConnection<RId>>,
     established: BTreeMap<TId, Connection<RId>>,
 
     established_by_wireguard_session_index: BTreeMap<usize, TId>,
@@ -33,7 +32,6 @@ pub struct Connections<TId, RId> {
 impl<TId, RId> Default for Connections<TId, RId> {
     fn default() -> Self {
         Self {
-            initial: Default::default(),
             established: Default::default(),
             established_by_wireguard_session_index: Default::default(),
             disconnected_ids: Default::default(),
@@ -51,10 +49,6 @@ where
     const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
     pub(crate) fn handle_timeout(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
-        for (id, _) in self.initial.extract_if(.., |_, conn| conn.is_failed) {
-            events.push_back(Event::ConnectionFailed(id));
-        }
-
         for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
             events.push_back(Event::ConnectionFailed(id));
 
@@ -77,10 +71,6 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
     }
 
-    pub(crate) fn remove_initial(&mut self, id: &TId) -> Option<InitialConnection<RId>> {
-        self.initial.remove(id)
-    }
-
     pub(crate) fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
         let connection = self.established.remove(id)?;
 
@@ -96,10 +86,6 @@ where
         Some(connection)
     }
 
-    pub(crate) fn contains_initial(&self, id: &TId) -> bool {
-        self.initial.contains_key(id)
-    }
-
     pub(crate) fn check_relays_available(
         &mut self,
         allocations: &Allocations<RId>,
@@ -107,19 +93,6 @@ where
         rng: &mut impl Rng,
         now: Instant,
     ) {
-        for (_, c) in self.iter_initial_mut() {
-            if allocations.contains(&c.relay) {
-                continue;
-            }
-
-            let Some((new_rid, _)) = allocations.sample(rng) else {
-                continue;
-            };
-
-            tracing::info!(old_rid = ?c.relay, %new_rid, "Updating relay");
-            c.relay = new_rid;
-        }
-
         for (cid, c) in self.iter_established_mut() {
             if allocations.contains(&c.relay.id) {
                 continue; // Our relay is still there, no problems.
@@ -153,14 +126,6 @@ where
         self.established.iter().map(move |(id, c)| (*id, c.stats))
     }
 
-    pub(crate) fn insert_initial(
-        &mut self,
-        id: TId,
-        connection: InitialConnection<RId>,
-    ) -> Option<InitialConnection<RId>> {
-        self.initial.insert(id, connection)
-    }
-
     pub(crate) fn insert_established(
         &mut self,
         id: TId,
@@ -181,42 +146,25 @@ where
     pub(crate) fn agent_and_state_mut(
         &mut self,
         id: TId,
-    ) -> Option<(&mut IceAgent, Option<&mut ConnectionState>, RId)> {
-        let maybe_initial_connection = self
-            .initial
+    ) -> Option<(&mut IceAgent, &mut ConnectionState, RId)> {
+        self.established
             .get_mut(&id)
-            .map(|i| (&mut i.agent, None, i.relay));
-        let maybe_established_connection = self
-            .established
-            .get_mut(&id)
-            .map(|c| (&mut c.agent, Some(&mut c.state), c.relay.id));
-
-        maybe_initial_connection.or(maybe_established_connection)
+            .map(|c| (&mut c.agent, &mut c.state, c.relay.id))
     }
 
     pub(crate) fn agents_and_state_by_relay_mut(
         &mut self,
         id: RId,
-    ) -> impl Iterator<Item = (TId, &mut IceAgent, Option<&mut ConnectionState>)> + '_ {
-        let initial_connections = self
-            .initial
-            .iter_mut()
-            .filter_map(move |(cid, i)| (i.relay == id).then_some((*cid, &mut i.agent, None)));
-        let established_connections = self.established.iter_mut().filter_map(move |(cid, c)| {
-            (c.relay.id == id).then_some((*cid, &mut c.agent, Some(&mut c.state)))
-        });
-
-        initial_connections.chain(established_connections)
+    ) -> impl Iterator<Item = (TId, &mut IceAgent, &mut ConnectionState)> + '_ {
+        self.established.iter_mut().filter_map(move |(cid, c)| {
+            (c.relay.id == id).then_some((*cid, &mut c.agent, &mut c.state))
+        })
     }
 
     pub(crate) fn agents_mut(&mut self) -> impl Iterator<Item = (TId, &mut IceAgent)> {
-        let initial_agents = self.initial.iter_mut().map(|(id, c)| (*id, &mut c.agent));
-        let negotiated_agents = self
-            .established
+        self.established
             .iter_mut()
-            .map(|(id, c)| (*id, &mut c.agent));
-
-        initial_agents.chain(negotiated_agents)
+            .map(|(id, c)| (*id, &mut c.agent))
     }
 
     pub(crate) fn get_established_mut(
@@ -272,12 +220,6 @@ where
         Ok((*id, conn))
     }
 
-    pub(crate) fn iter_initial_mut(
-        &mut self,
-    ) -> impl Iterator<Item = (TId, &mut InitialConnection<RId>)> {
-        self.initial.iter_mut().map(|(id, conn)| (*id, conn))
-    }
-
     pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
         self.established.iter().map(|(id, conn)| (*id, conn))
     }
@@ -289,17 +231,16 @@ where
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.initial.len() + self.established.len()
+        self.established.len()
     }
 
     pub(crate) fn clear(&mut self) {
-        self.initial.clear();
         self.established.clear();
         self.established_by_wireguard_session_index.clear();
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
-        self.initial.keys().chain(self.established.keys()).copied()
+        self.established.keys().copied()
     }
 
     pub(crate) fn all_idle(&self) -> bool {
@@ -308,7 +249,6 @@ where
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
-            .chain(self.initial.values_mut().filter_map(|c| c.poll_timeout()))
             .chain(
                 self.established
                     .values_mut()

@@ -12,7 +12,7 @@ pub(crate) use crate::gateway::unroutable_packet::RoutingError;
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::gateway::flow_tracker::FlowTracker;
 use crate::messages::gateway::{Client, ResourceDescription, Subject};
-use crate::messages::{Answer, IceCredentials, ResolveRequest};
+use crate::messages::{IceCredentials, ResolveRequest};
 use crate::peer_store::PeerStore;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
@@ -284,23 +284,6 @@ impl GatewayState {
         for peer in self.peers.iter_mut() {
             peer.update_resource(&resource);
         }
-    }
-
-    /// Accept a connection request from a client.
-    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
-    pub fn accept(
-        &mut self,
-        client_id: ClientId,
-        offer: snownet::Offer,
-        client: PublicKey,
-        now: Instant,
-    ) -> Result<Answer, NoTurnServers> {
-        let answer = self.node.accept_connection(client_id, offer, client, now)?;
-
-        Ok(Answer {
-            username: answer.credentials.username,
-            password: answer.credentials.password,
-        })
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %client.id))]

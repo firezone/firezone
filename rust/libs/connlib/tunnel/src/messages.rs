@@ -1,12 +1,10 @@
 //! Message types that are used by both the gateway and client.
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-use boringtun::x25519;
 use chrono::{DateTime, Utc, serde::ts_seconds};
 use connlib_model::RelayId;
 use dns_types::{DoHUrl, DomainName};
 use ip_network::IpNetwork;
-use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -52,58 +50,10 @@ pub struct ResolveRequest {
     pub proxy_ips: Vec<IpAddr>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct Answer {
-    pub username: String,
-    pub password: String,
-}
-
-#[expect(deprecated)]
-impl From<Answer> for snownet::Answer {
-    fn from(val: Answer) -> Self {
-        snownet::Answer {
-            credentials: snownet::Credentials {
-                username: val.username,
-                password: val.password,
-            },
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct Offer {
-    pub username: String,
-    pub password: String,
-}
-
-#[expect(deprecated)]
-impl Offer {
-    // Not a very clean API but it is deprecated anyway.
-    pub fn into_snownet_offer(self, key: SecretKey) -> snownet::Offer {
-        snownet::Offer {
-            session_key: x25519::StaticSecret::from(key.expose_secret().0),
-            credentials: snownet::Credentials {
-                username: self.username,
-                password: self.password,
-            },
-        }
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
 pub struct DomainResponse {
     pub domain: DomainName,
     pub address: Vec<IpAddr>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct ConnectionAccepted {
-    pub ice_parameters: Answer,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub enum GatewayResponse {
-    ConnectionAccepted(ConnectionAccepted),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
