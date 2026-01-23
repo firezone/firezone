@@ -640,7 +640,8 @@ defmodule Portal.Repo.Seeds do
     }
 
     # Service account token with a nonce for compatibility with GUI clients
-    service_account_nonce = "n"
+    # Using a realistic 32-character hex nonce like production tokens
+    service_account_nonce = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
     service_account_fragment = "abc123"
     service_account_salt = "kKKA7dtf3TJk0-1O2D9N1w"
 

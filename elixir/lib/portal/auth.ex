@@ -11,6 +11,10 @@ defmodule Portal.Auth do
   alias __MODULE__.DB
   require Logger
 
+  # Token nonce configuration
+  @token_nonce_length 32
+  @token_nonce_encoder :hex32
+
   # Client Tokens
 
   # GUI client token - called from auth controllers
@@ -39,7 +43,7 @@ defmodule Portal.Auth do
         %Subject{account: %{id: account_id}} = subject
       ) do
     # Generate a nonce for service account tokens so they can be used with GUI clients
-    nonce = Portal.Crypto.random_token(32, encoder: :hex32)
+    nonce = Portal.Crypto.random_token(@token_nonce_length, encoder: @token_nonce_encoder)
     {secret_fragment, secret_salt, secret_hash} = generate_token_secrets(nonce)
 
     %ClientToken{
