@@ -114,14 +114,29 @@ DHCP server of their local network.
 ### Secure DNS
 
 <Alert color="info">
-  Secure DNS was added in macOS 1.5.10, iOS 1.5.10, Android 1.5.7, Windows
-  1.5.9, and Linux 1.5.9.
+  Secure DNS was added in the following client versions:
+  - **macOS**: 1.5.10
+  - **iOS**: 1.5.10
+  - **Android**: 1.5.7
+  - **Windows GUI**: 1.5.9
+  - **Windows Headless**: 1.5.9
+  - **Linux Headless**: 1.5.9
 </Alert>
 
-Firezone Clients can use the DNS-over-HTTPS protocol for all non-Firezone
+Firezone Clients can use the DNS-over-HTTPS (DoH) protocol for all non-Firezone
 resources. Secure DNS encrypts all DNS traffic, preventing middleboxes
 (including ISPs) from seeing or manipulating DNS traffic. This is especially
 useful on insecure or untrusted networks.
+
+You can choose from several trusted DoH providers:
+
+- **Google Public DNS**: Google's public DNS service
+- **Cloudflare DNS**: Cloudflare's privacy-focused DNS service
+- **Quad9 DNS**: Security and privacy-focused DNS service
+- **OpenDNS**: Cisco's OpenDNS service
+
+To enable Secure DNS, go to `Settings -> DNS` in the admin portal and select
+the "Secure DNS" option, then choose your preferred DoH provider.
 
 ### Custom resolvers
 
