@@ -11,6 +11,9 @@ class FirezoneApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // Initialize Telemetry as early as possible
+        Telemetry.start(this)
+
         // Disable Crashlytics for debug builds
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
 
