@@ -157,12 +157,12 @@ impl GuiIntegration for TauriIntegration {
         self.tray.update(app_state)
     }
 
-    fn show_notification(
+    async fn show_notification(
         &self,
         title: impl Into<String>,
         body: impl Into<String>,
     ) -> Result<NotificationHandle> {
-        os::show_notification(&self.app, title.into(), body.into())
+        os::show_notification(title.into(), body.into()).await
     }
 
     fn set_window_visible(&self, visible: bool) -> Result<()> {
@@ -423,7 +423,6 @@ pub fn run(
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .build(tauri::generate_context!())

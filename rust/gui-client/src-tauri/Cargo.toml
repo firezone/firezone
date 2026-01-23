@@ -36,6 +36,7 @@ ip-packet = { workspace = true }
 keyring-core = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
+notify-rust = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
@@ -55,7 +56,6 @@ strum = { workspace = true }
 subtle = { workspace = true }
 tauri = { workspace = true, features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = { workspace = true }
-tauri-plugin-notification = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-plugin-shell = { workspace = true }
 tauri-runtime = { workspace = true }
