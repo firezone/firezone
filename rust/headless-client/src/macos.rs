@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, bail};
 use bin_shared::BUNDLE_ID;
 
+use super::TOKEN_ENV_KEY;
+
 // Root user and group IDs on macOS
 const ROOT_USER: u32 = 0;
 const ROOT_GROUP: u32 = 0;
@@ -17,7 +19,11 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     let metadata = match std::fs::metadata(path) {
         Ok(m) => m,
         Err(_) => {
-            tracing::info!(?path, "No token found at path");
+            tracing::info!(
+                ?path,
+                ?TOKEN_ENV_KEY,
+                "No token found in env var or on disk"
+            );
             bail!("Token file doesn't exist");
         }
     };
