@@ -17,7 +17,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
-import androidx.lifecycle.MutableLiveData
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.installations.FirebaseInstallations
 import com.squareup.moshi.Moshi
@@ -38,6 +37,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.channels.produce
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -88,18 +88,18 @@ class TunnelService : VpnService() {
         get() = _tunnelResources
         set(value) {
             _tunnelResources = value
-            updateResourcesLiveData(value)
+            updateResourcesStateFlow(value)
         }
     var tunnelState: State
         get() = _tunnelState
         set(value) {
             _tunnelState = value
-            updateServiceStateLiveData(value)
+            updateServiceStateFlow(value)
         }
 
     // Used to update the UI when the SessionActivity is bound to this service
-    private var serviceStateLiveData: MutableLiveData<State>? = null
-    private var resourcesLiveData: MutableLiveData<List<Resource>>? = null
+    private var serviceStateMutableStateFlow: MutableStateFlow<State?>? = null
+    private var resourcesMutableStateFlow: MutableStateFlow<List<Resource>>? = null
 
     // For binding the SessionActivity view to this service
     private val binder = LocalBinder()
@@ -387,26 +387,26 @@ class TunnelService : VpnService() {
         }
     }
 
-    fun setServiceStateLiveData(liveData: MutableLiveData<State>) {
-        serviceStateLiveData = liveData
+    fun setServiceStateMutableStateFlow(stateFlow: MutableStateFlow<State?>) {
+        serviceStateMutableStateFlow = stateFlow
 
         // Update the newly bound SessionActivity with our current state
-        serviceStateLiveData?.postValue(tunnelState)
+        serviceStateMutableStateFlow?.value = tunnelState
     }
 
-    fun setResourcesLiveData(liveData: MutableLiveData<List<Resource>>) {
-        resourcesLiveData = liveData
+    fun setResourcesMutableStateFlow(stateFlow: MutableStateFlow<List<Resource>>) {
+        resourcesMutableStateFlow = stateFlow
 
         // Update the newly bound SessionActivity with our current resources
-        resourcesLiveData?.postValue(tunnelResources)
+        resourcesMutableStateFlow?.value = tunnelResources
     }
 
-    private fun updateServiceStateLiveData(state: State) {
-        serviceStateLiveData?.postValue(state)
+    private fun updateServiceStateFlow(state: State) {
+        serviceStateMutableStateFlow?.value = state
     }
 
-    private fun updateResourcesLiveData(resources: List<Resource>) {
-        resourcesLiveData?.postValue(resources)
+    private fun updateResourcesStateFlow(resources: List<Resource>) {
+        resourcesMutableStateFlow?.value = resources
     }
 
     private fun deviceId(): String {
