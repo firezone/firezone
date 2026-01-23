@@ -136,6 +136,7 @@ struct FirezoneApp: App {
 
           // Show alert
           SentrySDK.pauseAppHangTracking()
+          defer { SentrySDK.resumeAppHangTracking() }
           alert.runModal()
 
           // Exit this instance since we can't terminate the other one
