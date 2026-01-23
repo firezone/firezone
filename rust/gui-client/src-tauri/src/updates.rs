@@ -1,10 +1,10 @@
-//! Module to check the Github repo for new releases
+//! Module to check the Firezone website API for new releases
 
 use anyhow::{Context, Result};
 use rand::{Rng as _, thread_rng};
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::{io::Write, path::PathBuf, str::FromStr, time::Duration};
+use std::{collections::HashMap, io::Write, path::PathBuf, str::FromStr, time::Duration};
 use tokio::sync::mpsc;
 use url::Url;
 
@@ -212,63 +212,46 @@ fn version_file_path() -> Result<PathBuf> {
 
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release> {
-    // Don't follow any redirects, just tell us what the Firezone site says the URL is
-    // If we follow multiple redirects, we'll end up with a messier URL like
-    // ```
-    // https://objects.githubusercontent.com/github-production-release-asset-2e65be/257787813/b3816cc1-87e4-42ae-b354-2dbb7f98721c?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=releaseassetproduction%2F20240627%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240627T210330Z&X-Amz-Expires=300&X-Amz-Signature=fd367bcdc7e64ffac0b318ab710dd5f673dd5b5ac3a9ccdc621adf5d304df557&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=257787813&response-content-disposition=attachment%3B%20filename%3Dfirezone-client-gui-windows_1.1.0_x86_64.msi&response-content-type=application%2Foctet-stream
-    // ```
-    // The version number is still in there, but it's easier to just disable redirects
-    // and parse the number from the Firezone website, instead of making multiple HTTP requests
-    // and then hoping Github and Amazon's APIs don't change.
-    //
-    // When we need to do auto-updates later, we can leave redirects enabled for those.
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()?;
+    let client = reqwest::Client::builder().build()?;
     let arch = std::env::consts::ARCH;
     let os = std::env::consts::OS;
 
-    // We used to send this to Github, couldn't hurt to send it to our own site, too
     let user_agent = format!("Firezone Client/{:?} ({os}; {arch})", current_version());
 
-    let mut update_url = url::Url::parse("https://www.firezone.dev")
+    // Check the API for the latest version
+    let api_url = url::Url::parse("https://www.firezone.dev/api/releases")
         .context("Impossible: Hard-coded URL should always be parsable")?;
-    update_url.set_path(&format!("/dl/firezone-client-gui-{os}/latest/{arch}"));
 
     let response = client
-        .head(update_url.clone())
-        .header("User-Agent", user_agent)
+        .get(api_url.clone())
+        .header("User-Agent", &user_agent)
         .send()
         .await?;
-    let status = response.status();
-    if status != reqwest::StatusCode::TEMPORARY_REDIRECT {
-        anyhow::bail!("HTTP status: {status} from update URL `{update_url}`");
+    
+    if !response.status().is_success() {
+        anyhow::bail!("HTTP status: {} from API URL `{}`", response.status(), api_url);
     }
-    let download_url = response
-        .headers()
-        .get(reqwest::header::LOCATION)
-        .context("this URL should always have a redirect")?
-        .to_str()?;
-    tracing::debug!(?download_url);
-    let download_url = Url::parse(download_url)?;
-    let version = parse_version_from_url(&download_url)?;
+
+    let versions: HashMap<String, String> = response
+        .json()
+        .await
+        .context("Failed to parse JSON response from /api/releases")?;
+    let version_str = versions
+        .get("gui")
+        .context("API response missing 'gui' field")?;
+    let version = Version::parse(version_str)
+        .context("Failed to parse version string from API")?;
+    tracing::debug!(?version, "Latest GUI version from API");
+
+    // Construct the download URL using the redirect endpoint
+    let mut download_url = url::Url::parse("https://www.firezone.dev")
+        .context("Impossible: Hard-coded URL should always be parsable")?;
+    download_url.set_path(&format!("/dl/firezone-client-gui-{os}/latest/{arch}"));
+
     Ok(Release {
         download_url,
         version,
     })
-}
-
-fn parse_version_from_url(url: &Url) -> Result<Version> {
-    let filename = url
-        .path_segments()
-        .context("URL must have a path")?
-        .next_back()
-        .context("URL path must have a last segment")?;
-    let version_str = filename
-        .split('_')
-        .nth(1)
-        .context("Filename must have 3 parts separated by underscores")?;
-    Ok(Version::parse(version_str)?)
 }
 
 pub(crate) fn current_version() -> Result<Version> {
@@ -392,8 +375,10 @@ mod tests {
 
     fn release(major: u64, minor: u64, patch: u64) -> Release {
         let version = Version::new(major, minor, patch);
+        let arch = std::env::consts::ARCH;
+        let os = std::env::consts::OS;
         let download_url = format!(
-            "https://www.github.com/firezone/firezone/releases/download/{version}/firezone-client-gui-windows_{version}_x86_64.msi"
+            "https://www.firezone.dev/dl/firezone-client-gui-{os}/{version}/{arch}"
         );
         let download_url = Url::parse(&download_url).unwrap();
         Release {
@@ -403,62 +388,49 @@ mod tests {
     }
 
     #[test]
-    fn parse_version_from_url() {
-        for (input, expected) in [
-            (
-                "https://www.github.com/firezone/firezone/releases/download/1.0.0/firezone-client-gui-windows_1.0.0_x86_64.msi",
-                Some((1, 0, 0)),
-            ),
-            (
-                "https://www.github.com/firezone/firezone/releases/download/1.0.1/firezone-client-gui-linux_1.0.1_x86_64.deb",
-                Some((1, 0, 1)),
-            ),
-            (
-                "https://www.github.com/firezone/firezone/releases/download/1.0.1/firezone-client-gui-linux_x86_64.deb",
-                None,
-            ),
-        ] {
-            let input = Url::parse(input).unwrap();
-            let expected = expected.map(|(a, b, c)| Version::new(a, b, c));
-            let actual = super::parse_version_from_url(&input).ok();
-            assert_eq!(actual, expected);
-        }
+    fn test_json_parsing_with_gui_field() {
+        use std::collections::HashMap;
+
+        // Test that we can parse a valid JSON response with the "gui" field
+        let json_str = r#"{"apple":"1.2.3","android":"1.2.4","gui":"1.5.9","headless":"1.5.6","gateway":"1.4.19"}"#;
+        let versions: HashMap<String, String> = serde_json::from_str(json_str).unwrap();
+        
+        assert_eq!(versions.get("gui"), Some(&"1.5.9".to_string()));
+        let version = Version::parse(versions.get("gui").unwrap()).unwrap();
+        assert_eq!(version, Version::new(1, 5, 9));
     }
 
     #[test]
-    fn pick_asset() {
-        let asset_names = [
-            "firezone-client-gui-linux_1.0.0-pre.14_aarch64.deb",
-            "firezone-client-gui-linux_1.0.0-pre.14_x86_64.deb",
-            "firezone-client-gui-windows_1.0.0-pre.14_aarch64.msi",
-            "firezone-client-gui-windows_1.0.0-pre.14_x86_64.msi",
-            "firezone-client-headless-linux_1.0.0-pre.14_aarch64.deb",
-            "firezone-client-headless-linux_1.0.0-pre.14_x86_64.deb",
-            "firezone-client-headless-windows_1.0.0-pre.14_aarch64.msi",
-            "firezone-client-headless-windows_1.0.0-pre.14_x86_64.msi",
-            "firezone-gateway-linux_1.0.0-pre.14_aarch64.deb",
-            "firezone-gateway-linux_1.0.0-pre.14_x86_64.deb",
-            "firezone-gateway-windows_1.0.0-pre.14_aarch64.msi",
-            "firezone-gateway-windows_1.0.0-pre.14_x86_64.msi",
-        ];
+    fn test_json_parsing_missing_gui_field() {
+        use std::collections::HashMap;
 
-        let product = "client-gui";
-        let arch = "x86_64";
-        let os = "windows";
-        let package = "msi";
+        // Test that we handle missing "gui" field appropriately
+        let json_str = r#"{"apple":"1.2.3","android":"1.2.4"}"#;
+        let versions: HashMap<String, String> = serde_json::from_str(json_str).unwrap();
+        
+        assert_eq!(versions.get("gui"), None);
+    }
 
-        let prefix = format!("firezone-{product}-{os}_");
-        let suffix = format!("_{arch}.{package}");
+    #[test]
+    fn test_version_parsing() {
+        // Test various version string formats
+        assert!(Version::parse("1.5.9").is_ok());
+        assert!(Version::parse("1.0.0").is_ok());
+        assert!(Version::parse("2.10.15").is_ok());
+        assert!(Version::parse("1.0.0-pre.14").is_ok());
+        
+        // Invalid version strings should fail
+        assert!(Version::parse("not-a-version").is_err());
+        assert!(Version::parse("").is_err());
+    }
 
-        let mut iter = asset_names
-            .into_iter()
-            .filter(|x| x.starts_with(&prefix) && x.ends_with(&suffix));
-        let asset_name = iter.next().unwrap();
-        assert!(iter.next().is_none());
-
-        assert_eq!(
-            asset_name,
-            "firezone-client-gui-windows_1.0.0-pre.14_x86_64.msi"
-        );
+    #[test]
+    fn test_download_url_construction() {
+        let release = release(1, 5, 9);
+        let url_str = release.download_url.to_string();
+        
+        // Verify URL contains version
+        assert!(url_str.contains("1.5.9"));
+        assert!(url_str.starts_with("https://www.firezone.dev/dl/firezone-client-gui-"));
     }
 }
