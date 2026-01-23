@@ -124,10 +124,15 @@ defmodule Portal.MixProject do
       {:opentelemetry_logger_metadata, "~> 0.2.0"},
       {:opentelemetry_exporter, "~> 1.8"},
       {:opentelemetry_ecto, "~> 1.2"},
+      {:opentelemetry_oban, "~> 1.1.1"},
       {:opentelemetry_telemetry, "~> 1.1", override: true},
       {:opentelemetry_bandit, "~> 0.3"},
       {:opentelemetry_phoenix, "~> 2.0"},
       {:nimble_options, "~> 1.0", override: true},
+
+      # TODO: Remove override when this issue is resolved:
+      # https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/428
+      {:opentelemetry_semantic_conventions, "~> 1.27", override: true},
       {:sentry, "~> 11.0"},
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},

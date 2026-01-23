@@ -12,10 +12,11 @@ defmodule Portal.Application do
     Portal.Telemetry.Reporter.Oban.attach()
 
     # OpenTelemetry setup
-    _ = OpentelemetryLoggerMetadata.setup()
-    _ = OpentelemetryEcto.setup([:portal, :repo])
-    _ = OpentelemetryBandit.setup()
-    _ = OpentelemetryPhoenix.setup(adapter: :bandit)
+    :ok = OpentelemetryLoggerMetadata.setup()
+    :ok = OpentelemetryEcto.setup([:portal, :repo])
+    :ok = OpentelemetryBandit.setup()
+    :ok = OpentelemetryPhoenix.setup(adapter: :bandit)
+    :ok = OpentelemetryOban.setup()
 
     Supervisor.start_link(children(), strategy: :one_for_one, name: __MODULE__.Supervisor)
   end
