@@ -177,7 +177,14 @@ impl TunDeviceManager {
             .await
             {
                 Ok(()) => tracing::debug!("Successfully created routing rules for IPv4"),
-                Err(e) => tracing::warn!("Failed to add IPv4 routing rules: {e}"),
+                Err(e) if matches!(&e, NetlinkError(err) if err.raw_code() == -libc::EOPNOTSUPP) => {
+                    tracing::warn!(
+                        error = %e,
+                        "VRF/fwmark routing rules not supported for IPv4 (possibly WSL or kernel without VRF). \
+                         Routes will still be added but routing loop prevention may not work"
+                    )
+                }
+                Err(e) => tracing::warn!(error = %e, "Failed to add IPv4 routing rules"),
             }
         }
 
@@ -190,7 +197,14 @@ impl TunDeviceManager {
             .await
             {
                 Ok(()) => tracing::debug!("Successfully created routing rules for IPv6"),
-                Err(e) => tracing::warn!("Failed to add IPv6 routing rules: {e}"),
+                Err(e) if matches!(&e, NetlinkError(err) if err.raw_code() == -libc::EOPNOTSUPP) => {
+                    tracing::warn!(
+                        error = %e,
+                        "VRF/fwmark routing rules not supported for IPv6 (possibly WSL or kernel without VRF). \
+                         Routes will still be added but routing loop prevention may not work"
+                    )
+                }
+                Err(e) => tracing::warn!(error = %e, "Failed to add IPv6 routing rules"),
             }
         }
 
