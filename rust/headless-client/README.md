@@ -1,11 +1,11 @@
 # headless-client
 
-This crate acts as the CLI / headless Client, and the privileged tunnel service for the GUI Client, for both Linux and Windows.
+This crate acts as the CLI / headless Client, and the privileged tunnel service for the GUI Client, for Linux, Windows, and macOS.
 
 It is built as:
 
-- `headless-client` to act as the Linux / Windows headless Client
-- `firezone-headless-client` to act as the Linux tunnel service, Windows headless Client, or Windows tunnel service
+- `headless-client` to act as the Linux / Windows / macOS headless Client
+- `firezone-headless-client` to act as the Linux tunnel service, Windows headless Client, Windows tunnel service, or macOS headless Client
 
 In general, the brand name should be part of the file name, but the OS name should not be.
 
@@ -15,11 +15,11 @@ To run the headless Client:
 
 1. Generate a new Service account token from the "Actors -> Service Accounts"
    section of the admin portal and save it in your secrets manager. The Firezone
-   Linux client requires a service account at this time.
+   headless client requires a service account at this time.
 1. Ensure `/etc/dev.firezone.client/token` is only readable by root (i.e. `chmod 400`)
 1. Ensure `/etc/dev.firezone.client/token` contains the Service account token. The Client needs this before it can start
 1. Set `FIREZONE_ID` to a unique string to identify this client in the portal,
-   e.g. `export FIREZONE_ID=$(head -c 32 /dev/urandom | sha256sum | cut -d' ' -f1)`. The client requires this variable at
+   e.g. `export FIREZONE_ID=$(head -c 32 /dev/urandom | sha256sum | cut -d' ' -f1)` (Linux/macOS) or similar on Windows. The client requires this variable at
    startup. We recommend this to be a 64 character hex string.
 1. Set `LOG_DIR` to a suitable directory for writing logs
    ```
@@ -32,12 +32,28 @@ To run the headless Client:
 ./firezone-headless-client standalone
 ```
 
+### Platform-Specific Notes
+
+#### Linux
 If you're running as an unprivileged user, you'll need the `CAP_NET_ADMIN`
 capability to open `/dev/net/tun`. You can add this to the client binary with:
 
 ```
 sudo setcap 'cap_net_admin+eip' /path/to/firezone-headless-client
 ```
+
+#### macOS
+On macOS, the headless client requires root privileges to:
+- Access the TUN device (utun interface)
+- Modify system DNS settings (when DNS control is enabled)
+
+Run with `sudo`:
+```
+sudo ./firezone-headless-client
+```
+
+#### Windows
+On Windows, the headless client must be run with Administrator privileges.
 
 ## Building
 
@@ -49,12 +65,37 @@ cargo build --release -p firezone-headless-client
 
 The binary will be in `target/release/firezone-headless-client`
 
-The release on Github are built with musl. To build this way, use:
+### Linux
+
+The releases on Github are built with musl. To build this way, use:
 
 ```bash
 rustup target add x86_64-unknown-linux-musl
 sudo apt-get install musl-tools
 cargo build --release -p headless-client --target x86_64-unknown-linux-musl
+```
+
+### macOS
+
+To build for macOS:
+
+```bash
+# For Intel Macs
+rustup target add x86_64-apple-darwin
+cargo build --release -p firezone-headless-client --target x86_64-apple-darwin
+
+# For Apple Silicon Macs
+rustup target add aarch64-apple-darwin
+cargo build --release -p firezone-headless-client --target aarch64-apple-darwin
+```
+
+### Windows
+
+For Windows builds, use the MSVC toolchain:
+
+```bash
+rustup target add x86_64-pc-windows-msvc
+cargo build --release -p firezone-headless-client --target x86_64-pc-windows-msvc
 ```
 
 ## Files
