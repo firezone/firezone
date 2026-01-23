@@ -229,6 +229,9 @@ dependencies {
 
     // UniFFI
     implementation("net.java.dev.jna:jna:5.18.1@aar")
+
+    // Sentry
+    implementation("io.sentry:sentry-android:8.3.0")
 }
 
 cargo {
