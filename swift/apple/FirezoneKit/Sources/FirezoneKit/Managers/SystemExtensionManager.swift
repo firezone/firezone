@@ -7,7 +7,7 @@
 #if os(macOS)
   import SystemExtensions
 
-  enum SystemExtensionError: Error {
+  public enum SystemExtensionError: Error {
     case unknownResult(OSSystemExtensionRequest.Result)
 
     var description: String {
@@ -57,7 +57,7 @@
     func tryInstall() async throws -> SystemExtensionStatus
   }
 
-  enum SystemExtensionRequestType {
+  public enum SystemExtensionRequestType {
     case install
     case check
   }
