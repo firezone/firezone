@@ -41,6 +41,11 @@
 		C1892134991C462C8E137DE3 /* Channel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C09DC14A4A04715A37BC04C /* Channel.swift */; };
 		C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
 		CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2847ACC9D73EA6F356F2DEE1 /* connlib.swift */; };
+		FZ0CLI012E80000000000001 /* FirezoneCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000010 /* FirezoneCLI.swift */; };
+		FZ0CLI012E80000000000002 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = FZ0CLI012E80000000000020 /* FirezoneKit */; };
+		FZ0CLI012E80000000000003 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = FZ0CLI012E80000000000030 /* ArgumentParser */; };
+		FZ0CLI012E80000000000004 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
+		FZ0CLI012E80000000000005 /* firezone in Copy CLI Binary */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000011 /* firezone */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +62,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 8D5047E22CE6A8F4009802E9;
 			remoteInfo = FirezoneNetworkExtensionmacOS;
+		};
+		FZ0CLI012E80000000000040 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FZ0CLI012E80000000000100;
+			remoteInfo = FirezoneCLI;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -81,6 +93,17 @@
 				8DC169A02CFF77D1006801B5 /* dev.firezone.firezone.network-extension.systemextension in Embed System Extensions */,
 			);
 			name = "Embed System Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FZ0CLI012E80000000000050 /* Copy CLI Binary */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				FZ0CLI012E80000000000005 /* firezone in Copy CLI Binary */,
+			);
+			name = "Copy CLI Binary";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -117,6 +140,10 @@
 		8DE1077A2D2313EB00DB5A45 /* Info.iOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.iOS.plist; sourceTree = "<group>"; };
 		8DE1077B2D2313EB00DB5A45 /* Info.macOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.macOS.plist; sourceTree = "<group>"; };
 		E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SessionEventLoop.swift; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000010 /* FirezoneCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneCLI.swift; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000011 /* firezone */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = firezone; sourceTree = BUILT_PRODUCTS_DIR; };
+		FZ0CLI012E80000000000012 /* FirezoneCLI.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FirezoneCLI.entitlements; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -147,6 +174,16 @@
 			files = (
 				05D3BB2128FDE9C000BC3727 /* NetworkExtension.framework in Frameworks */,
 				79756C6629704A7A0018E2D5 /* FirezoneKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FZ0CLI012E80000000000060 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FZ0CLI012E80000000000002 /* FirezoneKit in Frameworks */,
+				FZ0CLI012E80000000000003 /* ArgumentParser in Frameworks */,
+				FZ0CLI012E80000000000004 /* NetworkExtension.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -207,6 +244,7 @@
 				8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */,
 				8DD2C4C2297B37BA00F984BF /* Packages */,
 				8DCC021B28D512AC007E12D2 /* Firezone */,
+				FZ0CLI012E80000000000070 /* FirezoneCLI */,
 				05833DF928F73B070008FAB0 /* FirezoneNetworkExtension */,
 				8DCC021A28D512AC007E12D2 /* Products */,
 				8D3F90C328D64FAD00980124 /* Frameworks */,
@@ -220,6 +258,7 @@
 				8DCC021928D512AC007E12D2 /* Firezone.app */,
 				05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */,
 				8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */,
+				FZ0CLI012E80000000000011 /* firezone */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -251,6 +290,24 @@
 				8DD2C4C3297B37BA00F984BF /* FirezoneKit */,
 			);
 			name = Packages;
+			sourceTree = "<group>";
+		};
+		FZ0CLI012E80000000000070 /* FirezoneCLI */ = {
+			isa = PBXGroup;
+			children = (
+				FZ0CLI012E80000000000012 /* FirezoneCLI.entitlements */,
+				FZ0CLI012E80000000000013 /* Info.plist */,
+				FZ0CLI012E80000000000071 /* Sources */,
+			);
+			path = FirezoneCLI;
+			sourceTree = "<group>";
+		};
+		FZ0CLI012E80000000000071 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				FZ0CLI012E80000000000010 /* FirezoneCLI.swift */,
+			);
+			path = Sources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -309,12 +366,14 @@
 				8DCC021728D512AC007E12D2 /* Resources */,
 				8DC169A32CFF77D1006801B5 /* Embed Foundation Extensions */,
 				8DC169A42CFF77D1006801B5 /* Embed System Extensions */,
+				FZ0CLI012E80000000000050 /* Copy CLI Binary */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				8DC1699F2CFF77D1006801B5 /* PBXTargetDependency */,
 				8DC169A22CFF77D1006801B5 /* PBXTargetDependency */,
+				FZ0CLI012E80000000000041 /* PBXTargetDependency */,
 			);
 			name = Firezone;
 			packageProductDependencies = (
@@ -323,6 +382,26 @@
 			productName = Firezone;
 			productReference = 8DCC021928D512AC007E12D2 /* Firezone.app */;
 			productType = "com.apple.product-type.application";
+		};
+		FZ0CLI012E80000000000100 /* FirezoneCLI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FZ0CLI012E80000000000200 /* Build configuration list for PBXNativeTarget "FirezoneCLI" */;
+			buildPhases = (
+				FZ0CLI012E80000000000080 /* Sources */,
+				FZ0CLI012E80000000000060 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FirezoneCLI;
+			packageProductDependencies = (
+				FZ0CLI012E80000000000020 /* FirezoneKit */,
+				FZ0CLI012E80000000000030 /* ArgumentParser */,
+			);
+			productName = firezone;
+			productReference = FZ0CLI012E80000000000011 /* firezone */;
+			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
 
@@ -345,6 +424,9 @@
 						CreatedOnToolsVersion = 14.0;
 						LastSwiftMigration = 1400;
 					};
+					FZ0CLI012E80000000000100 = {
+						CreatedOnToolsVersion = 16.1;
+					};
 				};
 			};
 			buildConfigurationList = 8DCC021428D512AC007E12D2 /* Build configuration list for PBXProject "Firezone" */;
@@ -356,6 +438,9 @@
 				Base,
 			);
 			mainGroup = 8DCC021028D512AC007E12D2;
+			packageReferences = (
+				FZ0CLI012E80000000000300 /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
+			);
 			productRefGroup = 8DCC021A28D512AC007E12D2 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -363,6 +448,7 @@
 				8DCC021828D512AC007E12D2 /* Firezone */,
 				05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensioniOS */,
 				8D5047E22CE6A8F4009802E9 /* FirezoneNetworkExtensionmacOS */,
+				FZ0CLI012E80000000000100 /* FirezoneCLI */,
 			);
 		};
 /* End PBXProject section */
@@ -518,6 +604,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FZ0CLI012E80000000000080 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FZ0CLI012E80000000000001 /* FirezoneCLI.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -534,6 +628,14 @@
 			);
 			target = 8D5047E22CE6A8F4009802E9 /* FirezoneNetworkExtensionmacOS */;
 			targetProxy = 8DC169A12CFF77D1006801B5 /* PBXContainerItemProxy */;
+		};
+		FZ0CLI012E80000000000041 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (
+				macos,
+			);
+			target = FZ0CLI012E80000000000100 /* FirezoneCLI */;
+			targetProxy = FZ0CLI012E80000000000040 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -967,6 +1069,54 @@
 			};
 			name = Release;
 		};
+		FZ0CLI012E80000000000201 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FirezoneCLI/FirezoneCLI.entitlements;
+				CODE_SIGN_IDENTITY = "$(inherited)";
+				CODE_SIGN_STYLE = "$(inherited)";
+				CURRENT_PROJECT_VERSION = "$(inherited)";
+				DEVELOPMENT_TEAM = "$(inherited)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = FirezoneCLI/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
+				PRODUCT_NAME = firezone;
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.2;
+			};
+			name = Debug;
+		};
+		FZ0CLI012E80000000000202 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FirezoneCLI/FirezoneCLI.entitlements;
+				CODE_SIGN_IDENTITY = "$(inherited)";
+				CODE_SIGN_STYLE = "$(inherited)";
+				CURRENT_PROJECT_VERSION = "$(inherited)";
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "$(inherited)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = FirezoneCLI/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
+				PRODUCT_NAME = firezone;
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.2;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1006,6 +1156,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		FZ0CLI012E80000000000200 /* Build configuration list for PBXNativeTarget "FirezoneCLI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FZ0CLI012E80000000000201 /* Debug */,
+				FZ0CLI012E80000000000202 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1021,7 +1180,27 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = FirezoneKit;
 		};
+		FZ0CLI012E80000000000020 /* FirezoneKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FirezoneKit;
+		};
+		FZ0CLI012E80000000000030 /* ArgumentParser */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FZ0CLI012E80000000000300 /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
+			productName = ArgumentParser;
+		};
 /* End XCSwiftPackageProductDependency section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FZ0CLI012E80000000000300 /* XCRemoteSwiftPackageReference "swift-argument-parser" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-argument-parser";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = 8DCC021128D512AC007E12D2 /* Project object */;
 }

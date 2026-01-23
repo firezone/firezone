@@ -7,7 +7,7 @@
 #if os(macOS)
   import SystemExtensions
 
-  enum SystemExtensionError: Error {
+  public enum SystemExtensionError: Error {
     case unknownResult(OSSystemExtensionRequest.Result)
 
     var description: String {
@@ -18,7 +18,7 @@
     }
   }
 
-  enum SystemExtensionStatus {
+  public enum SystemExtensionStatus {
     // Not installed or enabled at all
     case needsInstall
 
@@ -30,16 +30,20 @@
     case installed
   }
 
-  enum SystemExtensionRequestType {
+  public enum SystemExtensionRequestType {
     case install
     case check
   }
 
-  class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
+  public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
 
-    func sendRequest(
+    public override init() {
+      super.init()
+    }
+
+    public func sendRequest(
       requestType: SystemExtensionRequestType,
       identifier: String,
       continuation: CheckedContinuation<SystemExtensionStatus, Error>

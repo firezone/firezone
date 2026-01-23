@@ -10,8 +10,8 @@ import SystemPackage
 
 // TODO: Use a more abstract IPC protocol to make this less terse
 
-enum IPCClient {
-  enum Error: Swift.Error {
+public enum IPCClient {
+  public enum Error: Swift.Error {
     case decodeIPCDataFailed
     case noIPCData
     case invalidStatus(NEVPNStatus)
@@ -34,7 +34,7 @@ enum IPCClient {
 
   // Auto-connect
   @MainActor
-  static func start(
+  public static func start(
     session: NETunnelProviderSession, configuration: TunnelConfiguration
   ) throws {
     let configData = try encoder.encode(configuration)
@@ -46,7 +46,7 @@ enum IPCClient {
 
   // Sign in
   @MainActor
-  static func start(
+  public static func start(
     session: NETunnelProviderSession, token: String, configuration: TunnelConfiguration
   ) throws {
     let configData = try encoder.encode(configuration)
@@ -144,7 +144,7 @@ enum IPCClient {
 
   // Subscribe to system notifications about our VPN status changing
   // and let our handler know about them.
-  static func subscribeToVPNStatusUpdates(
+  public static func subscribeToVPNStatusUpdates(
     session: NETunnelProviderSession,
     handler: @escaping @MainActor (NEVPNStatus) async throws -> Void
   ) {

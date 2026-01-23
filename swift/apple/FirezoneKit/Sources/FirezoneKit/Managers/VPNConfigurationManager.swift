@@ -27,13 +27,11 @@ enum VPNConfigurationManagerError: Error {
 public final class VPNConfigurationManager {
   let manager: NETunnelProviderManager
 
-  // App cannot run without bundle identifier - force unwrap is safe
-  // swiftlint:disable:next force_unwrapping
-  public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
+  public static let bundleIdentifier: String = "dev.firezone.firezone.network-extension"
   static let bundleDescription = "Firezone"
 
   // Initialize and save a new VPN configuration in system Preferences
-  init() async throws {
+  public init() async throws {
     let protocolConfiguration = NETunnelProviderProtocol()
     let manager = NETunnelProviderManager()
 
@@ -69,7 +67,7 @@ public final class VPNConfigurationManager {
     return providerConfiguration
   }
 
-  static func load() async throws -> VPNConfigurationManager? {
+  public static func load() async throws -> VPNConfigurationManager? {
     // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
     // Since our bundle ID can change (by us), find the one that's current and ignore the others.
     let managers = try await NETunnelProviderManager.loadAllFromPreferences()
@@ -83,13 +81,13 @@ public final class VPNConfigurationManager {
 
   // If another VPN is activated on the system, ours becomes disabled. This is provided so that we may call it before
   // each start attempt in order to reactivate our configuration.
-  func enable() async throws {
+  public func enable() async throws {
     manager.isEnabled = true
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
   }
 
-  func session() -> NETunnelProviderSession? {
+  public func session() -> NETunnelProviderSession? {
     return manager.connection as? NETunnelProviderSession
   }
 
