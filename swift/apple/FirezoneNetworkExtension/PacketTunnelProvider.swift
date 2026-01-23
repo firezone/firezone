@@ -115,11 +115,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         startCompletionHandler: completionHandler
       )
 
+      // Set the adapter reference immediately so other methods can access it
+      self.adapter = adapter
+
       // Start the adapter asynchronously
       Task {
         do {
           try await adapter.start()
-          self.adapter = adapter
           
           // Enforce log size cap at startup and schedule hourly cleanup
           self.startLogCleanupTask()
