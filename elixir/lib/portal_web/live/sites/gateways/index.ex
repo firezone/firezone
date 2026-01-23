@@ -101,16 +101,6 @@ defmodule PortalWeb.Sites.Gateways.Index do
             <div class="flex flex-col items-center justify-center text-center text-neutral-500 p-4">
               <div class="pb-4">
                 No gateways to display.
-                <span :if={@site.managed_by == :system and @site.name == "Internet"}>
-                  <.link class={[link_style()]} navigate={~p"/#{@account}/sites/#{@site}/new_token"}>
-                    Deploy a Gateway to the Internet Site.
-                  </.link>
-                </span>
-                <span :if={@site.managed_by == :account}>
-                  <.link class={[link_style()]} navigate={~p"/#{@account}/sites/#{@site}/new_token"}>
-                    Deploy a Gateway to connect Resources.
-                  </.link>
-                </span>
               </div>
             </div>
           </:empty>

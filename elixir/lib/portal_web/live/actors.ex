@@ -592,10 +592,6 @@ defmodule PortalWeb.Actors do
             <div class="flex justify-center text-center text-neutral-500 p-4">
               <div class="w-auto pb-4">
                 No actors to display.
-                <.link class={[link_style()]} navigate={~p"/#{@account}/actors/add"}>
-                  Add an actor
-                </.link>
-                to get started.
               </div>
             </div>
           </:empty>

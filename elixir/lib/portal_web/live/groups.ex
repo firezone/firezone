@@ -293,14 +293,6 @@ defmodule PortalWeb.Groups do
             <div class="flex justify-center text-center text-neutral-500 p-4">
               <div class="w-auto pb-4">
                 No groups to display.
-                <.link class={[link_style()]} navigate={~p"/#{@account}/groups/add"}>
-                  Add a group manually
-                </.link>
-                or
-                <.link class={[link_style()]} navigate={~p"/#{@account}/settings/directory_sync"}>
-                  go to settings
-                </.link>
-                to sync groups from an identity provider.
               </div>
             </div>
           </:empty>

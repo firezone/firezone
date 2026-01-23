@@ -252,19 +252,6 @@ defmodule PortalWeb.Resources.Show do
                   name="hero-exclamation-triangle-solid"
                   class="inline-block w-3.5 h-3.5 mr-1 text-red-500"
                 /> No policies to display.
-                <.link
-                  class={[link_style()]}
-                  navigate={
-                    if site_id = @params["site_id"] do
-                      ~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{site_id}"
-                    else
-                      ~p"/#{@account}/policies/new?resource_id=#{@resource}"
-                    end
-                  }
-                >
-                  Add a policy
-                </.link>
-                to grant access to this Resource.
               </div>
             </div>
           </:empty>
