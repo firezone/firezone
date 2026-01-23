@@ -40,7 +40,6 @@
 # Firebase Crashlytics
 # ====================
 # Keep Firebase Crashlytics classes for proper crash reporting
--keepattributes *Annotation*
 -keep class com.google.firebase.crashlytics.** { *; }
 -dontwarn com.google.firebase.crashlytics.**
 
@@ -130,9 +129,6 @@
 # ====================
 # OkHttp
 # ====================
-# JSR 305 annotations are for embedding nullability information.
--dontwarn javax.annotation.**
-
 # A resource is loaded with a relative path so the package of this class must be preserved.
 -adaptresourcefilenames okhttp3/internal/publicsuffix/PublicSuffixDatabase.gz
 
@@ -177,7 +173,7 @@
 }
 
 # Keep custom Application class
--keep class dev.firezone.android.** extends android.app.Application { *; }
+-keep class dev.firezone.android.core.FirezoneApp { *; }
 
 # Keep VPN Service
 -keep class * extends android.net.VpnService { *; }
