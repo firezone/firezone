@@ -8,11 +8,11 @@ import PlanBadge from "@/components/PlanBadge";
 
 </PlanBadge>
 
-Service accounts are non-user actors used with
-[headless clients](/kb/deploy/clients#headless-mode-operation) where no user is
+Service accounts are non-user actors used for authentication where no user is
 physically present to perform a standard identity provider authentication flow.
 They are commonly used for managing access from servers, machines, IoT devices,
-or other non-user machines to your Resources.
+or other non-user machines to your Resources, as well as for programmatic or
+automated access from GUI clients.
 
 Service accounts behave like any other actor in Firezone -- they can be added to
 Groups and Policies to gain access to Resources. Unlike users, however, service
@@ -28,15 +28,16 @@ To create a service account:
 1. Set an appropriate expiration for the initial token
 1. Copy and store the token somewhere safe -- it will only be shown once
 
-The token can then be used with any Firezone Client that supports
-[headless mode operation](/kb/deploy/clients#headless-mode-operation).
+The token can then be used with any Firezone Client, including
+[headless clients](/kb/deploy/clients#headless-mode-operation) and GUI clients
+(macOS, Android, iOS, Windows, Linux).
 
 ## Managing tokens
 
 Service account tokens authenticate directly to the Firezone API using
-long-lived, multi-owner tokens. A single token can be used by multiple headless
-clients simultaneously, making them ideal for fleets of machines that need the
-same access.
+long-lived, multi-owner tokens. A single token can be used by multiple clients
+simultaneously, making them ideal for fleets of machines or multiple devices
+that need the same access.
 
 Service account tokens are managed entirely in the Firezone admin portal and are
 **not affected** by identity provider configuration or session lifetime

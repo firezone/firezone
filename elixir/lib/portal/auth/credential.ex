@@ -4,8 +4,11 @@ defmodule Portal.Auth.Credential do
 
   There are three credential types:
   - `:api_token` - API tokens for api_client actors (no auth_provider_id)
-  - `:token` - Client tokens for service accounts and users (has auth_provider_id)
+  - `:client_token` - Client tokens for service accounts and users (may have auth_provider_id for OAuth-based tokens)
   - `:portal_session` - Portal sessions for web users (has auth_provider_id)
+
+  Service account tokens (headless client tokens) can be used with both headless and GUI clients.
+  GUI client tokens have an auth_provider_id from the OAuth flow, while service account tokens do not.
   """
 
   @type api_token :: %__MODULE__{type: :api_token, id: Ecto.UUID.t()}
