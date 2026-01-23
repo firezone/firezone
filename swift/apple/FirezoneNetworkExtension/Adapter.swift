@@ -183,33 +183,25 @@ class Adapter: @unchecked Sendable {
     // which cancels the Task, triggering onTermination -> monitor.cancel()
   }
 
-  func start() throws {
+  func start() async throws {
     Log.log("Adapter.start: Starting session for account: \(accountSlug)")
 
-    // Get device metadata - synchronously get values from MainActor
+    // Get device metadata - asynchronously get values from MainActor
+    let deviceName: String
     #if os(iOS)
-      let deviceMetadata = LockedState<(String, String?)>(initialState: ("", nil))
+      let identifierForVendor: String?
+      (deviceName, identifierForVendor) = await MainActor.run {
+        (DeviceMetadata.getDeviceName(), DeviceMetadata.getIdentifierForVendor())
+      }
     #else
-      let deviceMetadata = LockedState<String>(initialState: "")
+      deviceName = await MainActor.run {
+        DeviceMetadata.getDeviceName()
+      }
     #endif
-    let semaphore = DispatchSemaphore(value: 0)
-
-    Task { @MainActor in
-      let name = DeviceMetadata.getDeviceName()
-      #if os(iOS)
-        let identifier = DeviceMetadata.getIdentifierForVendor()
-        deviceMetadata.withLock { $0 = (name, identifier) }
-      #else
-        deviceMetadata.withLock { $0 = name }
-      #endif
-      semaphore.signal()
-    }
-    semaphore.wait()
 
     let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
 
     #if os(iOS)
-      let (deviceName, identifierForVendor) = deviceMetadata.withLock { $0 }
       let deviceInfo = DeviceInfo(
         firebaseInstallationId: nil,
         deviceUuid: nil,
@@ -217,7 +209,6 @@ class Adapter: @unchecked Sendable {
         identifierForVendor: identifierForVendor
       )
     #else
-      let deviceName = deviceMetadata.withLock { $0 }
       let deviceInfo = DeviceInfo(
         firebaseInstallationId: nil,
         deviceUuid: getDeviceUuid(),
