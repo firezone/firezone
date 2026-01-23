@@ -172,9 +172,6 @@
     public static final android.os.Parcelable$Creator *;
 }
 
-# Keep custom Application class
--keep class dev.firezone.android.core.FirezoneApp { *; }
-
 # Keep VPN Service
 -keep class * extends android.net.VpnService { *; }
 -keep class dev.firezone.android.tunnel.TunnelService { *; }
