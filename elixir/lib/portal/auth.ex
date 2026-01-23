@@ -38,12 +38,14 @@ defmodule Portal.Auth do
         attrs,
         %Subject{account: %{id: account_id}} = subject
       ) do
-    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
+    # Generate a nonce for service account tokens so they can be used with GUI clients
+    nonce = Portal.Crypto.random_token(32, encoder: :hex32)
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets(nonce)
 
     %ClientToken{
       account_id: actor.account_id,
       actor_id: actor.id,
-      secret_nonce: "",
+      secret_nonce: nonce,
       secret_fragment: secret_fragment,
       secret_salt: secret_salt,
       secret_hash: secret_hash

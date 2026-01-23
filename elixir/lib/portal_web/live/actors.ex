@@ -1649,7 +1649,10 @@ defmodule PortalWeb.Actors do
 
         case Auth.create_headless_client_token(actor, attrs, subject) do
           {:ok, token} ->
-            encoded_token = Auth.encode_fragment!(token)
+            encoded_fragment = Auth.encode_fragment!(token)
+            # Prepend the nonce to create the complete token
+            # This allows the token to be used with both headless and GUI clients
+            encoded_token = token.secret_nonce <> encoded_fragment
             {:ok, {token, encoded_token}}
 
           error ->

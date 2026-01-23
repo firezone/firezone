@@ -24,7 +24,10 @@ defmodule Portal.AuthTest do
                  admin_subject
                )
 
-      encoded_token = encode_fragment!(token)
+      # Service account tokens now include a nonce for GUI client compatibility
+      encoded_fragment = encode_fragment!(token)
+      # Prepend the nonce to create the complete token
+      encoded_token = token.secret_nonce <> encoded_fragment
       context = build_context(type: :client)
       assert {:ok, subject} = authenticate(encoded_token, context)
       assert subject.account.id == account.id
@@ -50,7 +53,10 @@ defmodule Portal.AuthTest do
                  admin_subject
                )
 
-      encoded_token = encode_fragment!(token)
+      # Service account tokens now include a nonce for GUI client compatibility
+      encoded_fragment = encode_fragment!(token)
+      # Prepend the nonce to create the complete token
+      encoded_token = token.secret_nonce <> encoded_fragment
       context = build_context(type: :client)
 
       # Use token multiple times
@@ -297,7 +303,10 @@ defmodule Portal.AuthTest do
                  admin_subject
                )
 
-      encoded_token = encode_fragment!(token)
+      # Service account tokens now include a nonce for GUI client compatibility
+      encoded_fragment = encode_fragment!(token)
+      # Prepend the nonce to create the complete token
+      encoded_token = token.secret_nonce <> encoded_fragment
       context = build_context(type: :client)
       assert {:ok, subject} = authenticate(encoded_token, context)
       assert subject.actor.id == service_account.id

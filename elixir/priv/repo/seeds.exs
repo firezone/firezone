@@ -639,18 +639,29 @@ defmodule Portal.Repo.Seeds do
       }
     }
 
+    # Service account token with a nonce for compatibility with GUI clients
+    service_account_nonce = "n"
+    service_account_fragment = "abc123"
+    service_account_salt = "kKKA7dtf3TJk0-1O2D9N1w"
+
     service_account_token =
       %ClientToken{
         id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
         account_id: service_account_actor.account_id,
         actor_id: service_account_actor.id,
-        secret_salt: "kKKA7dtf3TJk0-1O2D9N1w",
-        secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5",
+        secret_nonce: service_account_nonce,
+        secret_fragment: service_account_fragment,
+        secret_salt: service_account_salt,
+        secret_hash:
+          Portal.Crypto.hash(
+            :sha3_256,
+            service_account_nonce <> service_account_fragment <> service_account_salt
+          ),
         expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
       }
       |> Repo.insert!()
 
-    service_account_actor_encoded_token = "n" <> Auth.encode_fragment!(service_account_token)
+    service_account_actor_encoded_token = service_account_nonce <> Auth.encode_fragment!(service_account_token)
 
     # Email tokens are generated during sign-in flow, not pre-generated
     unprivileged_actor_email_token = "<generated during sign-in>"

@@ -117,7 +117,10 @@ defmodule PortalAPI.Client.SocketTest do
           admin_subject
         )
 
-      encoded_token = Portal.Auth.encode_fragment!(token)
+      # Service account tokens now include a nonce for GUI client compatibility
+      encoded_fragment = Portal.Auth.encode_fragment!(token)
+      # Prepend the nonce to create the complete token
+      encoded_token = token.secret_nonce <> encoded_fragment
 
       attrs = connect_attrs(token: encoded_token)
       connect_info = build_connect_info(ip: @client_remote_ip, token: encoded_token)
