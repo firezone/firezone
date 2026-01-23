@@ -74,7 +74,7 @@ object Telemetry {
 
         if (environment != null) {
             Sentry.configureScope { scope ->
-                scope.setTag("environment", environment)
+                scope.environment = environment
             }
         } else {
             // Disable Sentry in unknown environments
@@ -90,12 +90,12 @@ object Telemetry {
     }
 
     /**
-     * Get the distribution type (appstore or standalone).
+     * Get the distribution type (google_play or standalone).
      */
     private fun distributionType(): String {
-        // Apps from the app store have a receipt file
+        // For Android, we could check the package installer to detect Google Play installation
         // For now, we'll return "standalone" as default
-        // TODO: Implement proper detection if needed
+        // TODO: Implement proper detection using context.packageManager.getInstallerPackageName if needed
         return "standalone"
     }
 
