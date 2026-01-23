@@ -115,13 +115,19 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         startCompletionHandler: completionHandler
       )
 
-      // Start the adapter
-      try adapter.start()
-
-      self.adapter = adapter
-
-      // Enforce log size cap at startup and schedule hourly cleanup
-      startLogCleanupTask()
+      // Start the adapter asynchronously
+      Task {
+        do {
+          try await adapter.start()
+          self.adapter = adapter
+          
+          // Enforce log size cap at startup and schedule hourly cleanup
+          self.startLogCleanupTask()
+        } catch {
+          Log.error(error)
+          completionHandler(error)
+        }
+      }
 
     } catch {
       Log.error(error)
