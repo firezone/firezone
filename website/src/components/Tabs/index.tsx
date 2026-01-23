@@ -66,7 +66,6 @@ function TabsGroup({ children }: { children: React.ReactNode }) {
       <Tabs
         theme={customTheme}
         variant="underline"
-        className="bg-neutral-50 rounded-sm shadow-sm"
       >
         {children}
       </Tabs>
