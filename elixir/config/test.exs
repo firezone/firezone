@@ -12,6 +12,7 @@ partition_suffix =
   end
 
 config :portal, sql_sandbox: true
+config :portal, replica_repo: Portal.Repo
 
 # Use ephemeral port for health server to avoid conflicts between test runs
 config :portal, Portal.Health, health_port: 0

@@ -226,6 +226,8 @@ defmodule Portal.Cache.Gateway do
 
     @infinity ~U[9999-12-31 23:59:59.999999Z]
 
+    defp repo, do: Portal.Config.fetch_env!(:portal, :replica_repo)
+
     def all_gateway_policy_authorizations_for_cache!(%Portal.Gateway{} = gateway) do
       now = DateTime.utc_now()
 
@@ -237,7 +239,7 @@ defmodule Portal.Cache.Gateway do
         [policy_authorizations: f],
         {{f.client_id, f.resource_id}, {f.id, f.expires_at}}
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(repo())
       |> Safe.all()
     end
 
