@@ -14,6 +14,7 @@ defmodule Portal.Application do
     # OpenTelemetry setup
     :ok = OpentelemetryLoggerMetadata.setup()
     :ok = OpentelemetryEcto.setup([:portal, :repo])
+    :ok = OpentelemetryEcto.setup([:portal, :repo, :replica])
     :ok = OpentelemetryBandit.setup()
     :ok = OpentelemetryPhoenix.setup(adapter: :bandit)
     :ok = OpentelemetryOban.setup()
@@ -33,6 +34,7 @@ defmodule Portal.Application do
     [
       # Core services
       Portal.Repo,
+      Portal.Repo.Replica,
       Portal.PubSub,
 
       # Infrastructure services
