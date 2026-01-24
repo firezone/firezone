@@ -72,7 +72,7 @@ defmodule PortalWeb.Sites.NewToken do
               phx_click="tab_selected"
               selected={@selected_tab == "debian-instructions"}
             >
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 1: Add the Firezone package repository.
               </p>
 
@@ -83,7 +83,7 @@ defmodule PortalWeb.Sites.NewToken do
                 phx-update="ignore"
               ><%= debian_command_apt_repository() %></.code_block>
 
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 2: Install the Gateway:
               </p>
 
@@ -94,7 +94,7 @@ defmodule PortalWeb.Sites.NewToken do
                 phx-update="ignore"
               ><%= debian_command_install() %></.code_block>
 
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 3: Configure a token:
               </p>
 
@@ -105,7 +105,7 @@ defmodule PortalWeb.Sites.NewToken do
                 phx-update="ignore"
               ><%= debian_command_authenticate() %></.code_block>
 
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 4: Use the below token when prompted:
               </p>
 
@@ -116,7 +116,7 @@ defmodule PortalWeb.Sites.NewToken do
                 phx-update="ignore"
               ><%= token(@env) %></.code_block>
 
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 5: You are now ready to manage the Gateway using the <code>firezone</code> CLI.
               </p>
             </:tab>
@@ -183,7 +183,7 @@ defmodule PortalWeb.Sites.NewToken do
               phx_click="tab_selected"
               selected={@selected_tab == "terraform-instructions"}
             >
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 1: Copy the token shown below to a safe location.
               </p>
 
@@ -194,7 +194,7 @@ defmodule PortalWeb.Sites.NewToken do
                 phx-update="ignore"
               ><%= token(@env) %></.code_block>
 
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 2: Follow one of our
                 <.website_link path="/kb/automate">Terraform guides</.website_link>
                 to deploy a Gateway for your cloud provider.
@@ -207,7 +207,7 @@ defmodule PortalWeb.Sites.NewToken do
               phx_click="tab_selected"
               selected={@selected_tab == "binary-instructions"}
             >
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 1:
                 <.website_link path="/changelog">
                   Download the latest binary
@@ -215,7 +215,7 @@ defmodule PortalWeb.Sites.NewToken do
                 for your architecture.
               </p>
 
-              <p class="p-6 pt-0">
+              <p class="p-6 pt-0 font-semibold">
                 Step 2: Set required environment variables:
               </p>
 
@@ -226,7 +226,7 @@ defmodule PortalWeb.Sites.NewToken do
                 phx-update="ignore"
               ><%= manual_command_env(@env) %></.code_block>
 
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 3: Enable packet forwarding for IPv4 and IPv6:
               </p>
 
@@ -237,7 +237,7 @@ defmodule PortalWeb.Sites.NewToken do
                 phx-update="ignore"
               ><%= manual_command_forwarding() %></.code_block>
 
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 4: Enable masquerading for ethernet and WiFi interfaces:
               </p>
 
@@ -248,7 +248,7 @@ defmodule PortalWeb.Sites.NewToken do
                 phx-update="ignore"
               ><%= manual_command_masquerading() %></.code_block>
 
-              <p class="p-6">
+              <p class="p-6 font-semibold">
                 Step 5: Run the binary you downloaded in Step 1:
               </p>
 

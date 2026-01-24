@@ -196,9 +196,9 @@ defmodule PortalWeb.CoreComponents do
 
   def tabs(assigns) do
     ~H"""
-    <div class="mb-4 rounded shadow">
+    <div class="mb-4">
       <div
-        class="border-neutral-100 border-b-2 bg-neutral-50 rounded-t"
+        class="border-neutral-100 border-b-2"
         id={"#{@id}-container"}
         phx-hook="Tabs"
         {@rest}
@@ -245,7 +245,7 @@ defmodule PortalWeb.CoreComponents do
       <div id={@id}>
         <%= for tab <- @tab do %>
           <div
-            class="hidden rounded-b bg-white"
+            class="hidden"
             id={tab.id}
             role="tabpanel"
             aria-labelledby={"#{tab.id}-tab"}
