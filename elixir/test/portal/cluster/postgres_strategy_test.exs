@@ -81,8 +81,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-          # Need more time for the async log to be captured
-          Process.sleep(100)
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       assert log =~ "unable to connect to"
@@ -102,7 +102,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
-          Process.sleep(50)
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       assert log =~ "Received goodbye from node"
@@ -118,7 +119,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:unknown@node"})
-          Process.sleep(50)
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       refute log =~ "Received goodbye from node"
@@ -140,7 +142,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
           # Send two goodbyes in quick succession
           send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
           send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
-          Process.sleep(50)
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       # Should only log disconnect once
@@ -185,8 +188,15 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       log =
         capture_log(fn ->
+          ref = Process.monitor(listener_pid)
           Process.exit(listener_pid, :kill)
-          Process.sleep(100)
+          # Wait for the process to actually die before checking GenServer state
+          receive do
+            {:DOWN, ^ref, :process, ^listener_pid, _} -> :ok
+          end
+
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       assert log =~ "PostgreSQL listener died, reconnecting"
@@ -204,8 +214,15 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       log =
         capture_log(fn ->
+          ref = Process.monitor(notify_conn)
           Process.exit(notify_conn, :kill)
-          Process.sleep(100)
+          # Wait for the process to actually die before checking GenServer state
+          receive do
+            {:DOWN, ^ref, :process, ^notify_conn, _} -> :ok
+          end
+
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       assert log =~ "PostgreSQL notify connection died, reconnecting"
@@ -241,7 +258,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         capture_log(fn ->
           # Trigger heartbeat which checks stale nodes
           send(pid, :heartbeat)
-          Process.sleep(50)
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       assert log =~ "Disconnecting stale nodes"
@@ -281,7 +299,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, :heartbeat)
-          Process.sleep(50)
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       assert log =~ "Connected nodes count is below threshold"
@@ -306,7 +325,9 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         capture_log(fn ->
           # Simulate successful heartbeat from another node
           send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-          Process.sleep(50)
+          # Ensure GenServer processed the message before ending capture
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       assert log =~ "Connected nodes count is back above threshold"
@@ -346,7 +367,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, :heartbeat)
-          Process.sleep(50)
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       assert log =~ "Failed to send cluster notification"
@@ -366,8 +388,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, :heartbeat)
-          # Need more time for the SQL error to propagate back
-          Process.sleep(100)
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       assert log =~ "Failed to send cluster notification"
@@ -406,7 +428,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
           # Use a repo with invalid config to trigger connection failure
           state = build_state_with_invalid_repo()
           {:ok, pid} = GenServer.start_link(PostgresStrategy, [state])
-          Process.sleep(100)
+          _ = :sys.get_state(pid)
+          Logger.flush()
           GenServer.stop(pid, :normal)
         end)
 
@@ -443,7 +466,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:node2@test"})
-          Process.sleep(50)
+          _ = :sys.get_state(pid)
+          Logger.flush()
         end)
 
       # Should not log recovery since we're still below threshold
