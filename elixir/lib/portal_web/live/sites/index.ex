@@ -140,6 +140,10 @@ defmodule PortalWeb.Sites.Index do
             <div class="flex justify-center text-center text-neutral-500 p-4">
               <div class="w-auto pb-4">
                 No sites to display.
+                <.link class={[link_style()]} navigate={~p"/#{@account}/sites/new"}>
+                  Add a site
+                </.link>
+                to start deploying gateways and adding resources.
               </div>
             </div>
           </:empty>

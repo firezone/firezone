@@ -140,6 +140,9 @@ defmodule PortalWeb.Resources.Index do
                 <div class="pb-4">
                   No resources to display
                 </div>
+                <.add_button navigate={~p"/#{@account}/resources/new"}>
+                  Add Resource
+                </.add_button>
               </div>
             </div>
           </:empty>

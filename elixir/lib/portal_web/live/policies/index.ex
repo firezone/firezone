@@ -138,6 +138,10 @@ defmodule PortalWeb.Policies.Index do
             <div class="flex justify-center text-center text-neutral-500 p-4">
               <div class="pb-4 w-auto">
                 No policies to display.
+                <.link class={[link_style()]} navigate={~p"/#{@account}/policies/new"}>
+                  Add a policy
+                </.link>
+                to grant access to Resources.
               </div>
             </div>
           </:empty>
