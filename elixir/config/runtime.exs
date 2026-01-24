@@ -32,6 +32,28 @@ if config_env() == :prod do
              else: [{:hostname, env_var_to_config!(:database_host)}]
            )
 
+  config :portal,
+         Portal.Repo.Replica,
+         [
+           {:database, env_var_to_config!(:database_name)},
+           {:username, env_var_to_config!(:database_user)},
+           {:port, env_var_to_config!(:database_port)},
+           {:pool_size, env_var_to_config!(:database_pool_size)},
+           {:queue_target, env_var_to_config!(:database_queue_target)},
+           {:queue_interval, env_var_to_config!(:database_queue_interval)},
+           {:ssl, env_var_to_config!(:database_ssl)},
+           {:parameters, env_var_to_config!(:database_parameters)},
+           {:hostname, env_var_to_config!(:database_host_replica)}
+         ] ++
+           if(env_var_to_config!(:database_socket_options) != [],
+             do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
+             else: []
+           ) ++
+           if(env_var_to_config(:database_password),
+             do: [{:password, env_var_to_config!(:database_password)}],
+             else: []
+           )
+
   config :portal, Portal.ChangeLogs.ReplicationConnection,
     # TODO: Use a dedicated node for Change Log replication
     enabled: env_var_to_config!(:background_jobs_enabled),

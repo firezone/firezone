@@ -23,6 +23,11 @@ config :portal, Portal.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   queue_target: 1000
 
+config :portal, Portal.Repo.Replica,
+  database: "firezone_test#{partition_suffix}",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  queue_target: 1000
+
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,

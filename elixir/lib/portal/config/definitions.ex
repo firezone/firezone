@@ -181,6 +181,14 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_host, :string, default: "postgres")
 
   @doc """
+  PostgreSQL replica host for read-only queries.
+  Falls back to DATABASE_HOST if not set.
+  """
+  defconfig(:database_host_replica, :string,
+    default: fn -> System.get_env("DATABASE_HOST", "postgres") end
+  )
+
+  @doc """
   PostgreSQL socket directory (takes precedence over hostname).
   """
   defconfig(:database_socket_dir, :string, default: nil)

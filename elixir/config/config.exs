@@ -12,7 +12,7 @@ import Config
 ##### Portal ##################
 ###############################
 
-config :portal, ecto_repos: [Portal.Repo]
+config :portal, ecto_repos: [Portal.Repo, Portal.Repo.Replica]
 config :portal, generators: [binary_id: true]
 
 config :portal, sql_sandbox: false
@@ -32,6 +32,16 @@ config :portal, Portal.Repo,
   migration_timestamps: [type: :timestamptz],
   migration_lock: :pg_advisory_lock,
   start_apps_before_migration: [:ssl, :logger_json]
+
+config :portal, Portal.Repo.Replica,
+  hostname: "localhost",
+  username: "postgres",
+  password: "postgres",
+  database: "firezone_dev",
+  show_sensitive_data_on_connection_error: true,
+  pool_size: :erlang.system_info(:logical_processors_available) * 2,
+  queue_target: 500,
+  queue_interval: 1000
 
 config :portal, Portal.ChangeLogs.ReplicationConnection,
   replication_slot_name: "change_logs_slot",
