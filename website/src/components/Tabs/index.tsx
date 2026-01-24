@@ -24,7 +24,7 @@ const customTheme: CustomFlowbiteTheme["tabs"] = {
           },
         },
         underline: {
-          base: "rounded-t-lg",
+          base: "rounded-t-lg cursor-pointer",
           active: {
             on: "text-accent-600 rounded-t-lg border-b-2 border-accent-600 active",
             off: "border-b-2 border-transparent text-neutral-500 hover:border-accent-200 hover:text-accent-600",
