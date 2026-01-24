@@ -1,6 +1,5 @@
-import { HiCheck } from "react-icons/hi2";
+import { HiCheck, HiCommandLine } from "react-icons/hi2";
 import { FaDocker, FaUbuntu } from "react-icons/fa";
-import { SiSystemd } from "react-icons/si";
 import Link from "next/link";
 import { TabsItem, TabsGroup } from "@/components/Tabs";
 import Image from "next/image";
@@ -81,7 +80,7 @@ curl -fsSL \
 </div>)}
 
 </TabsItem>
-<TabsItem title="systemd" icon={SiSystemd}>
+<TabsItem title="systemd" icon={HiCommandLine}>
 
 If you deployed via the portal, your unit file should already contain logic
 necessary to upgrade the Gateway on service start. Simply move the old binary
