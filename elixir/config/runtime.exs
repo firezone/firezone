@@ -19,6 +19,10 @@ if config_env() == :prod do
            {:ssl, env_var_to_config!(:database_ssl)},
            {:parameters, env_var_to_config!(:database_parameters)}
          ] ++
+           if(env_var_to_config!(:database_socket_options) != [],
+             do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
+             else: []
+           ) ++
            if(env_var_to_config(:database_password),
              do: [{:password, env_var_to_config!(:database_password)}],
              else: []
@@ -41,6 +45,10 @@ if config_env() == :prod do
         username: env_var_to_config!(:database_user),
         database: env_var_to_config!(:database_name)
       ] ++
+        if(env_var_to_config!(:database_socket_options) != [],
+          do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
+          else: []
+        ) ++
         if(env_var_to_config(:database_password),
           do: [{:password, env_var_to_config!(:database_password)}],
           else: []
@@ -63,6 +71,10 @@ if config_env() == :prod do
         username: env_var_to_config!(:database_user),
         database: env_var_to_config!(:database_name)
       ] ++
+        if(env_var_to_config!(:database_socket_options) != [],
+          do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
+          else: []
+        ) ++
         if(env_var_to_config(:database_password),
           do: [{:password, env_var_to_config!(:database_password)}],
           else: []

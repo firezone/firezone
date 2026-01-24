@@ -2,7 +2,6 @@
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:33,122F186
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/oidc.ex:72,1687D24
 Config.CSRFRoute: CSRF via Action Reuse,lib/portal_web/router.ex:109,17FA088
-DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:378,1DF17A0
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal/types/filter.ex:22,1E1F28F
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/mailer.ex:49,2064866
 SQL.Query: SQL injection,lib/portal/safe.ex:285,224B461
@@ -20,11 +19,12 @@ DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.e
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:24,5775968
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:33,58DA1AC
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:66,58F0C9B
-DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:374,5E31712
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/client_auth.ex:42,5F2F213
 Config.Secrets: Hardcoded Secret,config/config.exs:104,61C15AF
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:395,66000F3
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,696A7C1
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:216,69DCAC0
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:391,6BBB04E
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:53,7047850
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:13,7269EC9
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:43,7695619
