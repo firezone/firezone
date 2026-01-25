@@ -69,6 +69,8 @@ jobs:
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+          labels: |
+            org.opencontainers.image.revision=${{ inputs.sha }}
 
       # main: read/write cache
       - name: Build and push control plane images (read/write cache)
@@ -88,3 +90,5 @@ jobs:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:staging
+          labels: |
+            org.opencontainers.image.revision=${{ inputs.sha }}

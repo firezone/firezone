@@ -72,6 +72,7 @@ jobs:
           SOURCE_TAG=ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.sha }}
 
           docker buildx imagetools create \
+            --annotation "index:org.opencontainers.image.revision=${{ steps.set-variables.outputs.sha }}" \
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.version }} \
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.version }}-${{ steps.set-variables.outputs.sha }} \
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.major_version }} \
