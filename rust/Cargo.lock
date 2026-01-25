@@ -669,8 +669,8 @@ dependencies = [
 
 [[package]]
 name = "aya"
-version = "0.13.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.13.2"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
  "assert_matches",
  "aya-obj",
@@ -679,15 +679,15 @@ dependencies = [
  "hashbrown 0.16.0",
  "libc",
  "log",
- "object 0.37.3",
+ "object 0.38.1",
  "once_cell",
  "thiserror 2.0.17",
 ]
 
 [[package]]
 name = "aya-build"
-version = "0.1.2"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.1.3"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.23.0",
@@ -695,9 +695,10 @@ dependencies = [
 
 [[package]]
 name = "aya-ebpf"
-version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.1.2"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
+ "aya-build",
  "aya-ebpf-bindings",
  "aya-ebpf-cty",
  "aya-ebpf-macros",
@@ -706,21 +707,25 @@ dependencies = [
 
 [[package]]
 name = "aya-ebpf-bindings"
-version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.1.2"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
+ "aya-build",
  "aya-ebpf-cty",
 ]
 
 [[package]]
 name = "aya-ebpf-cty"
-version = "0.2.2"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.3"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
+dependencies = [
+ "aya-build",
+]
 
 [[package]]
 name = "aya-ebpf-macros"
-version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.1.2"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
  "proc-macro2",
  "proc-macro2-diagnostics",
@@ -730,8 +735,8 @@ dependencies = [
 
 [[package]]
 name = "aya-log"
-version = "0.2.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.2"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
  "aya",
  "aya-log-common",
@@ -741,16 +746,16 @@ dependencies = [
 
 [[package]]
 name = "aya-log-common"
-version = "0.1.15"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.1.16"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
  "num_enum",
 ]
 
 [[package]]
 name = "aya-log-ebpf"
-version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.1.2"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
  "aya-ebpf",
  "aya-log-common",
@@ -759,8 +764,8 @@ dependencies = [
 
 [[package]]
 name = "aya-log-ebpf-macros"
-version = "0.1.0"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.1.1"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
  "aya-log-common",
  "aya-log-parser",
@@ -771,21 +776,21 @@ dependencies = [
 
 [[package]]
 name = "aya-log-parser"
-version = "0.1.13"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.1.14"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
  "aya-log-common",
 ]
 
 [[package]]
 name = "aya-obj"
-version = "0.2.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.2"
+source = "git+https://github.com/aya-rs/aya#e746618143f010fe7f05635a1a6e1a8b723bfd31"
 dependencies = [
  "bytes",
  "hashbrown 0.16.0",
  "log",
- "object 0.37.3",
+ "object 0.38.1",
  "thiserror 2.0.17",
 ]
 
@@ -3452,9 +3457,6 @@ name = "hashbrown"
 version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84b26c544d002229e640969970a2e74021aadf6e2f96372b9c58eff97de08eb3"
-dependencies = [
- "foldhash 0.1.5",
-]
 
 [[package]]
 name = "hashbrown"
@@ -4968,7 +4970,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
- "proc-macro-crate 3.3.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.114",
@@ -5236,12 +5238,12 @@ dependencies = [
 
 [[package]]
 name = "object"
-version = "0.37.3"
+version = "0.38.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff76201f031d8863c38aa7f905eca4f53abbfa15f609db4277d44cd8938f33fe"
+checksum = "271638cd5fa9cca89c4c304675ca658efc4e64a66c716b7cfe1afb4b9611dbbc"
 dependencies = [
  "crc32fast",
- "hashbrown 0.15.3",
+ "hashbrown 0.16.0",
  "indexmap 2.9.0",
  "memchr",
 ]
