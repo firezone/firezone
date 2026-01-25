@@ -48,7 +48,6 @@ defmodule Portal.Application do
       Portal.Presence,
       Portal.Mailer.RateLimiter,
       Portal.ComponentVersions,
-      Portal.Geo,
 
       # Health check server (always enabled)
       Portal.Health,
