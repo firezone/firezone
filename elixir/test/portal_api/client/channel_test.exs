@@ -2252,9 +2252,23 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       # Prime cache
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2306,9 +2320,23 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2347,9 +2375,23 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = PubSub.Account.subscribe(gateway.account_id)
 
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
 
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
@@ -2461,9 +2503,23 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :ok = PubSub.Account.subscribe(account.id)
 
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2582,9 +2638,23 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :ok = PubSub.Account.subscribe(account.id)
 
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -3061,9 +3131,23 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       :ok = PubSub.Account.subscribe(account.id)
 
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
 
       ref = push(socket, "reuse_connection", attrs)
 
@@ -3215,9 +3299,23 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :ok = PubSub.Account.subscribe(account.id)
 
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
 
       push(socket, "reuse_connection", %{
         "resource_id" => resource.id,
