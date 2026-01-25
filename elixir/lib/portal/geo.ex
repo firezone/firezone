@@ -1,33 +1,12 @@
 defmodule Portal.Geo do
-  use GenServer
-  require Logger
+  @moduledoc """
+  Geolocation utilities for IP address lookups using the MaxMind GeoLite2-City database.
+
+  Database reloading is handled externally by the maxmind-sync service, which calls
+  `Geolix.reload_databases()` via RPC when a new database is downloaded.
+  """
 
   @radius_of_earth_km 6371.0
-  @refresh_interval :timer.hours(24)
-
-  def start_link(_opts) do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
-  end
-
-  @impl true
-  def init(_opts) do
-    schedule_refresh()
-    {:ok, %{}}
-  end
-
-  @impl true
-  def handle_info(:refresh, state) do
-    Logger.info("Reloading Geolix databases")
-    :ok = Geolix.reload_databases()
-    Logger.info("Geolix databases reloaded successfully")
-
-    schedule_refresh()
-    {:noreply, state}
-  end
-
-  defp schedule_refresh do
-    Process.send_after(self(), :refresh, @refresh_interval)
-  end
 
   # ISO 3166-1 alpha-2
   # https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2
