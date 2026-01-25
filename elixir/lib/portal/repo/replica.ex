@@ -3,6 +3,4 @@ defmodule Portal.Repo.Replica do
     otp_app: :portal,
     adapter: Ecto.Adapters.Postgres,
     read_only: true
-
-  def read_only?, do: true
 end
