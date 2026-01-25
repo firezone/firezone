@@ -19,7 +19,11 @@ defmodule Portal.Release do
         )
       )
 
-    for repo <- @repos do
+    # Filter out read-only repos (like Replica) - they share the same database
+    # and should not have migrations run against them
+    repos = Enum.reject(@repos, &read_only_repo?/1)
+
+    for repo <- repos do
       {:ok, _, _} = do_migration(repo, manual)
     end
   end
@@ -91,6 +95,10 @@ defmodule Portal.Release do
           |> maybe_log_error()
       end
     end
+  end
+
+  defp read_only_repo?(repo) do
+    function_exported?(repo, :read_only?, 0) and repo.read_only?()
   end
 
   defp maybe_log_error(0), do: nil
