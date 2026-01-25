@@ -1039,7 +1039,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "crossbeam-queue",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "opentelemetry_sdk",
  "tokio",
  "tracing",
@@ -2569,7 +2569,7 @@ dependencies = [
  "logging",
  "moka",
  "nix",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
@@ -2684,7 +2684,7 @@ dependencies = [
  "libc",
  "logging",
  "nix",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
@@ -2750,7 +2750,7 @@ dependencies = [
  "logging",
  "mio",
  "once_cell",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "phoenix-channel",
@@ -2770,7 +2770,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-core",
- "tracing-opentelemetry",
+ "tracing-opentelemetry 0.32.1",
  "tracing-stackdriver",
  "tracing-subscriber",
  "trackable",
@@ -5305,6 +5305,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "opentelemetry"
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b84bcd6ae87133e903af7ef497404dda70c60d0ea14895fc8a5e6722754fc2a0"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+ "js-sys",
+ "pin-project-lite",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "opentelemetry-http"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5313,7 +5326,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "http 1.4.0",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "reqwest",
 ]
 
@@ -5324,7 +5337,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dbee664a43e07615731afc539ca60c6d9f1a9425e25ca09c57bc36c87c55852b"
 dependencies = [
  "http 1.4.0",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "opentelemetry-http",
  "opentelemetry-proto",
  "opentelemetry_sdk",
@@ -5342,7 +5355,7 @@ version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e046fd7660710fe5a05e8748e70d9058dc15c94ba914e7c4faa7c728f0e8ddc"
 dependencies = [
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "opentelemetry_sdk",
  "prost",
  "tonic",
@@ -5355,7 +5368,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "447191061af41c3943e082ea359ab8b64ff27d6d34d30d327df309ddef1eef6f"
 dependencies = [
  "chrono",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "opentelemetry_sdk",
 ]
 
@@ -5368,7 +5381,7 @@ dependencies = [
  "futures-channel",
  "futures-executor",
  "futures-util",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "percent-encoding",
  "rand 0.9.1",
  "serde_json",
@@ -7315,7 +7328,7 @@ dependencies = [
  "gat-lending-iterator",
  "ip-packet",
  "libc",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "quinn-udp",
  "socket2 0.6.1",
  "tokio",
@@ -8120,7 +8133,7 @@ dependencies = [
  "hex",
  "ip-packet",
  "moka",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "opentelemetry_sdk",
  "parking_lot",
  "reqwest",
@@ -8694,8 +8707,24 @@ checksum = "ddcf5959f39507d0d04d6413119c04f33b623f4f951ebcbdddddfad2d0623a9c"
 dependencies = [
  "js-sys",
  "once_cell",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "opentelemetry_sdk",
+ "smallvec",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
+ "tracing-subscriber",
+ "web-time",
+]
+
+[[package]]
+name = "tracing-opentelemetry"
+version = "0.32.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ac28f2d093c6c477eaa76b23525478f38de514fa9aeb1285738d4b97a9552fc"
+dependencies = [
+ "js-sys",
+ "opentelemetry 0.31.0",
  "smallvec",
  "tracing",
  "tracing-core",
@@ -8720,13 +8749,13 @@ version = "0.12.0"
 source = "git+https://github.com/thomaseizinger/tracing-stackdriver?branch=bump-otel-0.30#0b86826d6229cefca4d567c04dce4ff18aaf534b"
 dependencies = [
  "Inflector",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "time",
  "tracing-core",
- "tracing-opentelemetry",
+ "tracing-opentelemetry 0.31.0",
  "tracing-subscriber",
 ]
 
@@ -8880,7 +8909,7 @@ dependencies = [
  "l4-udp-dns-client",
  "l4-udp-dns-server",
  "logging",
- "opentelemetry",
+ "opentelemetry 0.30.0",
  "proptest",
  "proptest-state-machine",
  "rand 0.8.5",
