@@ -366,6 +366,8 @@ jobs:
           # no cache-to -> read-only
           target: ${{ matrix.stage }}
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            org.opencontainers.image.revision=${{ inputs.sha }}
       # main: read/write cache
       - name: Build Docker images (read/write cache)
         if: ${{ github.ref == 'refs/heads/main' }}
@@ -384,6 +386,8 @@ jobs:
             type=gha,scope=${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max,ignore-error=true
           target: ${{ matrix.stage }}
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            org.opencontainers.image.revision=${{ inputs.sha }}
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.image_name }}
@@ -462,7 +466,9 @@ jobs:
           echo "Sources: $sources"
 
           # shellcheck disable=SC2086 # $tags and $sources must be split by whitespace
-          docker buildx imagetools create $tags $sources
+          docker buildx imagetools create \
+            --annotation "index:org.opencontainers.image.revision=${{ inputs.sha }}" \
+            $tags $sources
           docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}"
 
   regenerate-apt-index:
