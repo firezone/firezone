@@ -181,6 +181,14 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_host, :string, default: "postgres")
 
   @doc """
+  PostgreSQL replica host for read-only queries.
+  Falls back to DATABASE_HOST if not set.
+  """
+  defconfig(:database_host_replica, :string,
+    default: fn -> System.get_env("DATABASE_HOST", "postgres") end
+  )
+
+  @doc """
   PostgreSQL socket directory (takes precedence over hostname).
   """
   defconfig(:database_socket_dir, :string, default: nil)
@@ -221,6 +229,23 @@ defmodule Portal.Config.Definitions do
   How often to check for queries that exceeded 2 * `database_queue_target` milliseconds
   """
   defconfig(:database_queue_interval, :integer, default: 1000)
+
+  @doc """
+  Socket options for database connections.
+
+  These options are passed to the underlying TCP socket. The most important option is
+  `keepalive: true` which enables TCP keepalive probes to detect dead connections.
+
+  Without keepalive, connections can become "zombies" when the database server becomes
+  unavailable (e.g., during Azure platform maintenance), causing queries to hang until
+  the checkout timeout is reached.
+
+  Accepts a JSON object with socket options (e.g. `{"keepalive": true}`).
+  """
+  defconfig(:database_socket_options, :map,
+    default: %{},
+    dump: &Dumper.keyword/1
+  )
 
   @doc """
   Name of the replication slot used by Firezone.
