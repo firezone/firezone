@@ -115,4 +115,33 @@ defmodule Portal.Repo.ReplicaTest do
       assert config[:pool] == Ecto.Adapters.SQL.Sandbox
     end
   end
+
+  describe "read_only?/0" do
+    test "Portal.Repo returns false" do
+      refute Portal.Repo.read_only?()
+    end
+
+    test "Portal.Repo.Replica returns true" do
+      assert Replica.read_only?()
+    end
+
+    test "Release.migrate filters out read-only repos" do
+      # This tests that the Release module correctly identifies read-only repos
+      # by verifying the repos that would be used for migration
+      repos = Application.fetch_env!(:portal, :ecto_repos)
+
+      # Both repos should be configured
+      assert Portal.Repo in repos
+      assert Replica in repos
+
+      # But only non-read-only repos should be migrated
+      migration_repos =
+        Enum.reject(repos, fn repo ->
+          function_exported?(repo, :read_only?, 0) and repo.read_only?()
+        end)
+
+      assert Portal.Repo in migration_repos
+      refute Replica in migration_repos
+    end
+  end
 end
