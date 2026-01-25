@@ -143,12 +143,14 @@ defmodule Portal.Replication.Connection do
   defp connection_functions do
     quote do
       def start_link(%{instance: %__MODULE__{} = instance, connection_opts: connection_opts}) do
-        opts = connection_opts ++ [name: {:global, __MODULE__}]
-        Postgrex.ReplicationConnection.start_link(__MODULE__, instance, opts)
+        Postgrex.ReplicationConnection.start_link(__MODULE__, instance, connection_opts)
       end
 
       @impl true
       def init(state) do
+        # Join pg group so other nodes can discover and link to us
+        :ok = :pg.join(__MODULE__, self())
+
         if state.flush_interval > 0 do
           Process.send_after(self(), :flush, state.flush_interval)
         end
