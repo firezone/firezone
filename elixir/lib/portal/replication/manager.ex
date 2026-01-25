@@ -23,23 +23,23 @@ defmodule Portal.Replication.Manager do
     {:ok, %{retries: 0, connection_pid: nil, connection_module: connection_module}}
   end
 
-  # Try to find an existing connection process or start a new one, with edge cases handled
-  # to minimize false starts. During deploys, the new nodes will merge into the existing
-  # cluster state and we want to minimize the window of time where we're not processing
-  # messages.
+  # Try to find an existing connection process via pg groups, or start a new one.
+  # When we link to an existing process (local or remote), we'll receive an EXIT
+  # message if it dies, allowing us to immediately try to take over the slot.
 
   @impl true
   def handle_info(:connect, %{connection_module: connection_module, connection_pid: nil} = state) do
     Process.send_after(self(), :connect, @retry_interval)
 
-    # First, try to link to an existing connection process
-    case :global.whereis_name(connection_module) do
-      :undefined ->
-        # No existing process found, attempt to start one
-        start_connection(state)
-
-      pid when is_pid(pid) ->
+    # Check if another node already has the connection
+    case :pg.get_members(connection_module) do
+      [pid | _] ->
+        # Found existing connection, link to it for failover
         link_existing_pid(pid, state)
+
+      [] ->
+        # No existing connection, try to start one
+        start_connection(state)
     end
   end
 
