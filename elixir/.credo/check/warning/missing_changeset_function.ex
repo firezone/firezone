@@ -52,6 +52,11 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
             end
           end
 
+      Note: The check only looks for `embedded_schema` blocks to determine
+      if a schema is embedded. Schemas with `@primary_key false` but using
+      regular `schema` blocks are not considered embedded and should have
+      a changeset/1 function.
+
       ## Exceptions
 
       Simple schemas that don't accept user input or validation (like audit logs,
@@ -102,14 +107,6 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
        ) do
     module_name = Enum.join(module_parts, ".")
     {ast, %{state | module_name: module_name, defmodule_line: meta[:line]}}
-  end
-
-  # Detect @primary_key false (indicator of embedded schema)
-  defp collect_info(
-         {:@, _, [{:primary_key, _, [false]}]} = ast,
-         state
-       ) do
-    {ast, %{state | is_embedded: true}}
   end
 
   # Detect embedded_schema (definitive indicator)
