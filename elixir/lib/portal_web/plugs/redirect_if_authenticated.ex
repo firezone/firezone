@@ -2,8 +2,8 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticated do
   @moduledoc """
   Redirects authenticated users to the portal when accessing sign-in pages.
 
-  When `as=client` is specified in the params, this plug does NOT redirect,
-  allowing client sign-in flows to proceed even when a portal session exists.
+  When `as=gui-client`, `as=headless-client`, or `as=client` (deprecated) is specified in the params,
+  this plug does NOT redirect, allowing client sign-in flows to proceed even when a portal session exists.
   """
   @behaviour Plug
 
@@ -17,11 +17,12 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticated do
   @impl true
   def call(
         %Plug.Conn{
-          params: %{"as" => "client"},
+          params: %{"as" => as},
           assigns: %{account: %Account{}, subject: %Subject{}}
         } = conn,
         _opts
-      ) do
+      )
+      when as in ["client", "gui-client", "headless-client"] do
     # Client sign-in flow should proceed even if user has a portal session
     conn
   end

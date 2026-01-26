@@ -51,12 +51,12 @@ defmodule PortalWeb.Session.Redirector do
   end
 
   @doc """
-  Redirects to the client application after sign-in.
+  Redirects to the GUI client application after sign-in.
 
   Sets a cookie with client auth data and renders the client_redirect.html page
   which handles the platform-specific redirect.
   """
-  def client_signed_in(
+  def gui_client_signed_in(
         %Plug.Conn{} = conn,
         account,
         actor_name,
@@ -83,6 +83,42 @@ defmodule PortalWeb.Session.Redirector do
     |> Phoenix.Controller.render("client_redirect.html",
       redirect_url: redirect_url,
       account: account,
+      layout: false
+    )
+  end
+
+  @doc """
+  Alias for gui_client_signed_in for backward compatibility.
+  """
+  def client_signed_in(conn, account, actor_name, identifier, token, state) do
+    gui_client_signed_in(conn, account, actor_name, identifier, token, state)
+  end
+
+  @doc """
+  Shows the token to the headless client user.
+
+  Renders a page displaying the token with a copy button for the user to
+  manually copy and paste into their headless client.
+  """
+  def headless_client_signed_in(
+        %Plug.Conn{} = conn,
+        account,
+        actor_name,
+        %ClientToken{} = token,
+        state
+      ) do
+    fragment = Portal.Auth.encode_fragment!(token)
+
+    conn
+    |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
+    |> Phoenix.Controller.put_root_layout(false)
+    |> Phoenix.Controller.put_view(PortalWeb.SignInHTML)
+    |> Phoenix.Controller.render("headless_client_token.html",
+      token: fragment,
+      actor_name: actor_name,
+      account: account,
+      expires_at: token.expires_at,
+      state: state,
       layout: false
     )
   end
