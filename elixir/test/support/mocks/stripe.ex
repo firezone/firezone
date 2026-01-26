@@ -264,7 +264,7 @@ defmodule Portal.Mocks.Stripe do
               "livemode" => false,
               "metadata" => plan_metadata,
               "nickname" => nil,
-              "product" => "prod_Na6dGcTsmU0I4R",
+              "product" => "prod_test_team",
               "tiers_mode" => nil,
               "transform_usage" => nil,
               "trial_period_days" => nil,
@@ -282,7 +282,7 @@ defmodule Portal.Mocks.Stripe do
               "lookup_key" => nil,
               "metadata" => %{},
               "nickname" => nil,
-              "product" => "prod_Na6dGcTsmU0I4R",
+              "product" => "prod_test_team",
               "recurring" => %{
                 "aggregate_usage" => nil,
                 "interval" => "month",
@@ -395,7 +395,9 @@ defmodule Portal.Mocks.Stripe do
   def build_all(type, customer_id, seats, metadata \\ %{})
 
   def build_all(:starter, customer_id, seats, metadata) do
-    product = build_product(name: "Starter", metadata: starter_metadata())
+    product =
+      build_product(id: "prod_test_starter", name: "Starter", metadata: starter_metadata())
+
     price = build_price(product: product["id"], amount: 0)
 
     subscription =
@@ -409,7 +411,7 @@ defmodule Portal.Mocks.Stripe do
   end
 
   def build_all(:team, customer_id, seats, metadata) do
-    product = build_product(name: "Team", metadata: team_metadata())
+    product = build_product(id: "prod_test_team", name: "Team", metadata: team_metadata())
     price = build_price(product: product["id"], amount: 500)
 
     subscription =
@@ -423,7 +425,13 @@ defmodule Portal.Mocks.Stripe do
   end
 
   def build_all(:enterprise, customer_id, seats, metadata) do
-    product = build_product(name: "Enterprise", metadata: enterprise_metadata())
+    product =
+      build_product(
+        id: "prod_test_enterprise",
+        name: "Enterprise",
+        metadata: enterprise_metadata()
+      )
+
     price = build_price(product: product["id"], amount: 1000)
 
     subscription =
