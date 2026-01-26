@@ -161,10 +161,24 @@ impl Cli {
     }
 }
 
-#[derive(clap::Subcommand, Clone, Copy)]
-#[clap(hide = true)]
+#[derive(clap::Subcommand, Clone)]
 enum Cmd {
+    #[clap(hide = true)]
     Standalone,
+
+    /// Sign in via browser-based authentication
+    SignIn {
+        /// Auth base URL (e.g., https://app.firezone.dev)
+        #[arg(long, env = "FIREZONE_AUTH_BASE_URL")]
+        auth_base_url: Option<url::Url>,
+
+        /// Account slug
+        #[arg(long, env = "FIREZONE_ACCOUNT_SLUG")]
+        account_slug: Option<String>,
+    },
+
+    /// Sign out by removing the stored token
+    SignOut,
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -192,6 +206,18 @@ fn try_main() -> Result<()> {
         .map_err(|_| anyhow!("Failed to install default crypto provider"))?;
 
     let cli = Cli::parse();
+
+    if let Some(Cmd::SignIn {
+        auth_base_url,
+        account_slug,
+    }) = &cli._command
+    {
+        return handle_sign_in(auth_base_url.clone(), account_slug.clone(), &cli.token_path);
+    }
+
+    if let Some(Cmd::SignOut) = &cli._command {
+        return handle_sign_out(&cli.token_path);
+    }
 
     // Modifying the environment of a running process is unsafe. If any other
     // thread is reading or writing the environment, something bad can happen.
@@ -454,6 +480,118 @@ fn try_main() -> Result<()> {
     Ok(())
 }
 
+#[expect(
+    clippy::print_stdout,
+    reason = "This command is designed to print to stdout for user interaction"
+)]
+fn handle_sign_in(
+    auth_base_url: Option<url::Url>,
+    account_slug: Option<String>,
+    token_path: &Path,
+) -> Result<()> {
+    use std::io::{self, Write};
+
+    const MIN_TOKEN_LENGTH: usize = 64;
+
+    let base_url = auth_base_url.unwrap_or_else(|| {
+        url::Url::parse("https://app.firezone.dev")
+            .expect("Default auth base URL should always be valid")
+    });
+
+    let mut auth_url = base_url;
+    if let Some(slug) = account_slug.as_deref() {
+        auth_url.set_path(slug);
+    }
+
+    auth_url
+        .query_pairs_mut()
+        .append_pair("as", "headless-client");
+
+    println!("\n==========================================================================");
+    println!("Firezone Headless Client - Browser Authentication");
+    println!("==========================================================================\n");
+    println!("To sign in to Firezone, please follow these steps:\n");
+    println!("1. Open the following URL in your web browser:\n");
+    println!("   {}\n", auth_url);
+    println!("2. Complete the sign-in process in your browser");
+    println!("3. Copy the token displayed in the browser");
+    println!("4. Return to this terminal and paste the token below\n");
+    println!("==========================================================================\n");
+
+    print!("Enter the token from your browser: ");
+    io::stdout().flush()?;
+
+    let input = rpassword::read_password().context("Failed to read token from stdin")?;
+    println!();
+    let token = input.trim();
+
+    if token.is_empty() {
+        anyhow::bail!("No token provided");
+    }
+
+    if token.len() < MIN_TOKEN_LENGTH {
+        anyhow::bail!(
+            "Token appears to be too short (expected at least {} characters, got {}). Please ensure you copied the complete token.",
+            MIN_TOKEN_LENGTH,
+            token.len()
+        );
+    }
+
+    if let Some(parent) = token_path.parent() {
+        std::fs::create_dir_all(parent).context("Failed to create token directory")?;
+    }
+
+    // Write token with restrictive permissions from the start to avoid
+    // a window where the file may be world-readable via umask-derived permissions.
+    {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+
+        let mut file = options
+            .open(token_path)
+            .context("Failed to create token file")?;
+        file.write_all(token.as_bytes())
+            .context("Failed to write token to file")?;
+    }
+
+    platform::set_token_permissions(token_path)?;
+
+    println!("\n✓ Token saved successfully to: {}", token_path.display());
+    println!("\nYou can now start the Firezone client. It will automatically use this token.");
+
+    Ok(())
+}
+
+#[expect(
+    clippy::print_stdout,
+    reason = "This command is designed to print to stdout for user interaction"
+)]
+fn handle_sign_out(token_path: &Path) -> Result<()> {
+    match std::fs::remove_file(token_path) {
+        Ok(()) => {
+            println!(
+                "✓ Token removed successfully from: {}",
+                token_path.display()
+            );
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            println!("No token file found at: {}", token_path.display());
+            Ok(())
+        }
+        Err(e) => Err(anyhow::anyhow!(e).context(format!(
+            "Failed to remove token file: {}",
+            token_path.display()
+        ))),
+    }
+}
+
 /// Read the token from disk if it was not in the environment
 ///
 /// # Returns
@@ -507,7 +645,7 @@ fn tonic_otlp_exporter(
 
 #[cfg(test)]
 mod tests {
-    use super::Cli;
+    use super::{Cli, Cmd};
     use clap::Parser;
     use std::path::PathBuf;
     use url::Url;
@@ -529,5 +667,82 @@ mod tests {
             Cli::try_parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]).unwrap();
         assert!(actual.check);
         assert_eq!(actual.log_dir, Some(PathBuf::from("bogus_log_dir")));
+    }
+
+    #[test]
+    fn sign_in_bare() {
+        let actual = Cli::try_parse_from(["firezone-headless-client", "sign-in"]).unwrap();
+        assert!(matches!(
+            actual._command,
+            Some(Cmd::SignIn {
+                auth_base_url: None,
+                account_slug: None,
+            })
+        ));
+    }
+
+    #[test]
+    fn sign_in_with_options() {
+        let actual = Cli::try_parse_from([
+            "firezone-headless-client",
+            "sign-in",
+            "--auth-base-url",
+            "https://auth.example.com",
+            "--account-slug",
+            "my-team",
+        ])
+        .unwrap();
+
+        match actual._command {
+            Some(Cmd::SignIn {
+                auth_base_url,
+                account_slug,
+            }) => {
+                assert_eq!(auth_base_url.unwrap().as_str(), "https://auth.example.com/");
+                assert_eq!(account_slug.unwrap(), "my-team");
+            }
+            _ => panic!("Expected SignIn command"),
+        }
+    }
+
+    #[test]
+    fn sign_in_respects_token_path() {
+        let actual = Cli::try_parse_from([
+            "firezone-headless-client",
+            "--token-path",
+            "/custom/token/path",
+            "sign-in",
+        ])
+        .unwrap();
+
+        assert_eq!(actual.token_path, PathBuf::from("/custom/token/path"));
+        assert!(matches!(actual._command, Some(Cmd::SignIn { .. })));
+    }
+
+    #[test]
+    fn sign_in_uses_default_token_path() {
+        let actual = Cli::try_parse_from(["firezone-headless-client", "sign-in"]).unwrap();
+
+        assert_eq!(actual.token_path, super::platform::default_token_path());
+    }
+
+    #[test]
+    fn sign_out_bare() {
+        let actual = Cli::try_parse_from(["firezone-headless-client", "sign-out"]).unwrap();
+        assert!(matches!(actual._command, Some(Cmd::SignOut)));
+    }
+
+    #[test]
+    fn sign_out_respects_token_path() {
+        let actual = Cli::try_parse_from([
+            "firezone-headless-client",
+            "--token-path",
+            "/custom/token/path",
+            "sign-out",
+        ])
+        .unwrap();
+
+        assert_eq!(actual.token_path, PathBuf::from("/custom/token/path"));
+        assert!(matches!(actual._command, Some(Cmd::SignOut)));
     }
 }

@@ -25,6 +25,7 @@ opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
 phoenix-channel = { workspace = true }
+rpassword = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
 socket-factory = { workspace = true }

@@ -16,6 +16,14 @@ pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
     Ok(())
 }
 
+// The return value is useful on Linux
+#[expect(clippy::unnecessary_wraps)]
+pub(crate) fn set_token_permissions(_path: &Path) -> Result<()> {
+    // TODO: Restrict token file access to SYSTEM and Administrators on Windows
+    tracing::warn!("Token file permissions are not restricted on Windows");
+    Ok(())
+}
+
 pub(crate) fn default_token_path() -> PathBuf {
     get_known_folder_path(KnownFolder::ProgramData)
         .expect("ProgramData folder not found. Is %PROGRAMDATA% set?")
