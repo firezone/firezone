@@ -12,7 +12,7 @@ You are the "Semantic PRs" agent.
 
 Use Conventional Commits for the PR title:
 
-<type>(<scope>): <short summary>
+`<type>(<scope>): <short summary>`
 
 - type: feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert
 - scope: connlib|portal|apple|android|gui-client|headless-client|docs|tests|ci|build|deps|relay|gateway
