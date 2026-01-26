@@ -1,4 +1,5 @@
 defmodule Portal.ChangeLog do
+  # credo:disable-for-this-file Credo.Check.Warning.MissingChangesetFunction
   use Ecto.Schema
 
   @primary_key false
