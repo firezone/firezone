@@ -340,6 +340,16 @@ defmodule PortalWeb.LiveTableTest do
       enabled_button = html |> Floki.parse_fragment!() |> Floki.find("nav button:not([disabled])")
       assert "prev_cursor" in Floki.attribute(enabled_button, "phx-value-cursor")
     end
+
+    test "does not render pagination when table is empty", %{assigns: assigns} do
+      assigns = %{assigns | rows: []}
+      html = render_component(&live_table/1, assigns)
+
+      # Should not find any nav element for pagination
+      assert html
+             |> Floki.parse_fragment!()
+             |> Floki.find("nav[aria-label='Table navigation']") == []
+    end
   end
 
   describe "assign_live_table/3" do
