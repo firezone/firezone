@@ -211,7 +211,12 @@ defmodule Portal.Cache.Client do
     Removes all policies, resources, and memberships associated with the given group_id from the cache.
   """
 
-  @spec delete_membership(t(), Portal.Membership.t(), Portal.Client.t(), Authentication.Subject.t()) ::
+  @spec delete_membership(
+          t(),
+          Portal.Membership.t(),
+          Portal.Client.t(),
+          Authentication.Subject.t()
+        ) ::
           {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def delete_membership(cache, membership, client, subject) do

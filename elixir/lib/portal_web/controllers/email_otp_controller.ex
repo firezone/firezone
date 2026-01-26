@@ -68,7 +68,12 @@ defmodule PortalWeb.EmailOTPController do
          {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
          {:ok, passcode} <-
-           Authentication.verify_one_time_passcode(account.id, actor_id, passcode_id, entered_code),
+           Authentication.verify_one_time_passcode(
+             account.id,
+             actor_id,
+             passcode_id,
+             entered_code
+           ),
          :ok <- check_admin(passcode.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, passcode.actor, provider, params) do

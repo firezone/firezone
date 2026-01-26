@@ -6,7 +6,7 @@ defmodule PortalAPI.Gateway.Channel do
   alias Portal.{
     Cache,
     Changes.Change,
-    Auth,
+    Authentication,
     PubSub,
     Resource,
     Presence

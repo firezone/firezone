@@ -1,7 +1,7 @@
 defmodule PortalWeb.Policies.New do
   use PortalWeb, :live_view
   import PortalWeb.Policies.Components
-  alias Portal.{Policy, Auth}
+  alias Portal.{Policy, Authentication}
   alias __MODULE__.Database
 
   def mount(params, _session, socket) do

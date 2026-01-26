@@ -347,7 +347,11 @@ defmodule Portal.Billing do
     end
   end
 
-  def billing_portal_url(%Portal.Account{} = account, return_url, %Auth.Subject{} = subject) do
+  def billing_portal_url(
+        %Portal.Account{} = account,
+        return_url,
+        %Authentication.Subject{} = subject
+      ) do
     secret_key = fetch_config!(:secret_key)
 
     # Only account admins can manage billing

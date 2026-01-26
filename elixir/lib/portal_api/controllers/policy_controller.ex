@@ -141,7 +141,7 @@ defmodule PortalAPI.PolicyController do
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
-    alias Portal.{Policy, Safe, Auth}
+    alias Portal.{Policy, Safe, Authentication}
 
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)

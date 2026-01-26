@@ -3035,7 +3035,11 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       {:ok, subject} =
         Portal.Authentication.build_subject(
           %Portal.PortalSession{actor_id: actor.id, account_id: actor.account_id},
-          %Portal.Authentication.Context{type: :portal, user_agent: "test", remote_ip: {127, 0, 0, 1}}
+          %Portal.Authentication.Context{
+            type: :portal,
+            user_agent: "test",
+            remote_ip: {127, 0, 0, 1}
+          }
         )
 
       # Should return {:ok, 0} for nil provider
@@ -3123,7 +3127,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       }
 
       expires_at = DateTime.add(DateTime.utc_now(), 3600, :second)
-      {:ok, _session} = Portal.Authentication.create_portal_session(actor, provider.id, context, expires_at)
+
+      {:ok, _session} =
+        Portal.Authentication.create_portal_session(actor, provider.id, context, expires_at)
 
       {:ok, lv, _html} =
         conn

@@ -107,7 +107,7 @@ defmodule PortalWeb.Session.Redirector do
         %ClientToken{} = token,
         state
       ) do
-    fragment = Portal.Auth.encode_fragment!(token)
+    fragment = Portal.Authentication.encode_fragment!(token)
 
     conn
     |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)

@@ -8,7 +8,7 @@ defmodule PortalAPI.Client.Channel do
     PubSub,
     Gateway,
     Presence,
-    Auth
+    Authentication
   }
 
   alias __MODULE__.Database
@@ -1050,7 +1050,7 @@ defmodule PortalAPI.Client.Channel do
          resource_id,
          policy_id,
          membership_id,
-         %Auth.Subject{
+         %Authentication.Subject{
            account: %{id: account_id},
            actor: %{id: actor_id},
            credential: %{id: token_id},

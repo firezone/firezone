@@ -6,7 +6,7 @@ defmodule Portal.Repo.Seeds do
 
   alias Portal.{
     Repo,
-    Auth,
+    Authentication,
     AuthProvider,
     Account,
     Actor,
@@ -320,12 +320,16 @@ defmodule Portal.Repo.Seeds do
       |> Repo.insert!()
 
     # Create auth providers for main account
-    system_subject = %Auth.Subject{
+    system_subject = %Authentication.Subject{
       account: account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
       credential: %Authentication.Credential{type: :token, id: Ecto.UUID.generate()},
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
-      context: %Authentication.Context{type: :client, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
+      context: %Authentication.Context{
+        type: :client,
+        remote_ip: {127, 0, 0, 1},
+        user_agent: "seeds/1"
+      }
     }
 
     {:ok, _email_provider} =
@@ -378,12 +382,16 @@ defmodule Portal.Repo.Seeds do
       )
 
     # Create auth providers for other_account
-    other_system_subject = %Auth.Subject{
+    other_system_subject = %Authentication.Subject{
       account: other_account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
       credential: %Authentication.Credential{type: :portal_session, id: Ecto.UUID.generate()},
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
-      context: %Authentication.Context{type: :portal, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"}
+      context: %Authentication.Context{
+        type: :portal,
+        remote_ip: {127, 0, 0, 1},
+        user_agent: "seeds/1"
+      }
     }
 
     {:ok, _other_email_provider} =
@@ -615,7 +623,7 @@ defmodule Portal.Repo.Seeds do
 
     # For seeds, create a system subject for admin operations
     # In real usage, subjects are created during sign-in flow
-    admin_subject = %Auth.Subject{
+    admin_subject = %Authentication.Subject{
       account: account,
       actor: admin_actor,
       credential: %Authentication.Credential{type: :portal_session, id: Ecto.UUID.generate()},
@@ -627,7 +635,7 @@ defmodule Portal.Repo.Seeds do
       }
     }
 
-    unprivileged_subject = %Auth.Subject{
+    unprivileged_subject = %Authentication.Subject{
       account: account,
       actor: unprivileged_actor,
       credential: %Authentication.Credential{type: :token, id: unprivileged_client_token.id},
@@ -650,7 +658,8 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    service_account_actor_encoded_token = "n" <> Authentication.encode_fragment!(service_account_token)
+    service_account_actor_encoded_token =
+      "n" <> Authentication.encode_fragment!(service_account_token)
 
     # Email tokens are generated during sign-in flow, not pre-generated
     unprivileged_actor_email_token = "<generated during sign-in>"
