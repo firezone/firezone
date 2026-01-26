@@ -2689,6 +2689,7 @@ dependencies = [
  "opentelemetry-stdout",
  "opentelemetry_sdk",
  "phoenix-channel",
+ "rpassword",
  "rustls",
  "sd-notify",
  "secrecy",

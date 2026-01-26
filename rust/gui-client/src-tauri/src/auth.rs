@@ -74,7 +74,7 @@ impl Request {
         let base = url.to_string();
 
         SecretString::from(format!(
-            "{base}?as=client&nonce={}&state={}",
+            "{base}?as=gui-client&nonce={}&state={}",
             self.nonce.expose_secret(),
             self.state.expose_secret()
         ))
@@ -444,7 +444,7 @@ mod tests {
         };
         assert_eq!(
             req.to_url(&auth_base_url, None).expose_secret(),
-            "https://app.firez.one/?as=client&nonce=some_nonce&state=some_state"
+            "https://app.firez.one/?as=gui-client&nonce=some_nonce&state=some_state"
         );
     }
 
