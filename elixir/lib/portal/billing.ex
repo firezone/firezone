@@ -15,6 +15,14 @@ defmodule Portal.Billing do
     fetch_config!(:webhook_signing_secret)
   end
 
+  def plan_product_ids do
+    fetch_config!(:plan_product_ids)
+  end
+
+  def adhoc_device_product_id do
+    fetch_config!(:adhoc_device_product_id)
+  end
+
   # Limits and Features
 
   def users_limit_exceeded?(%Portal.Account{} = account, users_count) do

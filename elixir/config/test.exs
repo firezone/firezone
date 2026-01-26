@@ -73,7 +73,17 @@ config :portal, Portal.Billing,
   enabled: true,
   secret_key: "sk_test_123",
   webhook_signing_secret: "whsec_test_123",
-  default_price_id: "price_test_123"
+  default_price_id: "price_test_123",
+  plan_product_ids: [
+    # Starter
+    "prod_test_starter",
+    # Team
+    "prod_test_team",
+    # Enterprise
+    "prod_test_enterprise"
+  ],
+  # Adhoc Device
+  adhoc_device_product_id: "prod_test_adhoc_device"
 
 config :portal, Portal.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
