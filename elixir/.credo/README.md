@@ -41,15 +41,15 @@ Prevents the use of `action_fallback` macro in controllers. Use explicit error h
 
 Restricts direct `Portal.Repo` calls to specific contexts (Portal.Safe module, seeds, tests, migrations).
 
-### Warning.SafeCallsOutsideDBModule
+### Warning.SafeCallsOutsideDatabaseModule
 
 Validates that database functions are properly isolated.
 
-### Warning.MissingDBAlias
+### Warning.MissingDatabaseAlias
 
 Ensures proper Portal.Safe aliasing in modules that need it.
 
-### Warning.CrossModuleDBCall
+### Warning.CrossModuleDatabaseCall
 
 Prevents cross-module database operations to maintain proper boundaries.
 
