@@ -1,16 +1,16 @@
 defmodule PortalWeb.Settings.Billing do
   use PortalWeb, :live_view
   alias Portal.Billing
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
 
   def mount(_params, _session, socket) do
     if Billing.account_provisioned?(socket.assigns.account) do
-      admins_count = DB.count_account_admin_users_for_account(socket.assigns.account)
-      service_accounts_count = DB.count_service_accounts_for_account(socket.assigns.account)
-      users_count = DB.count_users_for_account(socket.assigns.account)
-      active_users_count = DB.count_1m_active_users_for_account(socket.assigns.account)
-      sites_count = DB.count_groups_for_account(socket.assigns.account)
+      admins_count = Database.count_account_admin_users_for_account(socket.assigns.account)
+      service_accounts_count = Database.count_service_accounts_for_account(socket.assigns.account)
+      users_count = Database.count_users_for_account(socket.assigns.account)
+      active_users_count = Database.count_1m_active_users_for_account(socket.assigns.account)
+      sites_count = Database.count_groups_for_account(socket.assigns.account)
 
       socket =
         assign(socket,
@@ -288,7 +288,7 @@ defmodule PortalWeb.Settings.Billing do
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

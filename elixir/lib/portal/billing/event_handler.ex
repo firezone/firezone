@@ -6,7 +6,7 @@ defmodule Portal.Billing.EventHandler do
   alias Portal.Accounts
   alias Portal.Billing
   alias Portal.Billing.Stripe.ProcessedEvents
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
 
   @subscription_events ["created", "resumed"]
@@ -18,7 +18,7 @@ defmodule Portal.Billing.EventHandler do
   defp process_event_with_lock(event) do
     customer_id = extract_customer_id(event)
 
-    DB.with_customer_lock(customer_id, fn ->
+    Database.with_customer_lock(customer_id, fn ->
       process_event(event, customer_id)
     end)
   end
@@ -408,7 +408,7 @@ defmodule Portal.Billing.EventHandler do
   defp generate_unique_slug do
     slug_candidate = Portal.NameGenerator.generate_slug()
 
-    if DB.slug_exists?(slug_candidate) do
+    if Database.slug_exists?(slug_candidate) do
       generate_unique_slug()
     else
       slug_candidate
@@ -418,7 +418,7 @@ defmodule Portal.Billing.EventHandler do
   # TODO: BILLING OVERHAUL
   # The DB operations should be wrapped in a transaction to ensure atomicity
   defp create_account_with_defaults(attrs, metadata, account_email) do
-    with {:ok, account} <- attrs |> create_account_changeset() |> DB.insert(),
+    with {:ok, account} <- attrs |> create_account_changeset() |> Database.insert(),
          {:ok, account} <- Billing.update_stripe_customer(account),
          {:ok, account} <- Portal.Billing.create_subscription(account),
          :ok <- setup_account_defaults(account, metadata, account_email) do
@@ -429,16 +429,16 @@ defmodule Portal.Billing.EventHandler do
   defp setup_account_defaults(account, metadata, account_email) do
     # Create default groups and resources
     changeset = create_everyone_group_changeset(account)
-    {:ok, _everyone_group} = DB.insert(changeset)
+    {:ok, _everyone_group} = Database.insert(changeset)
     changeset = create_site_changeset(account, %{name: "Default Site"})
-    {:ok, _site} = DB.insert_site(changeset)
+    {:ok, _site} = Database.insert_site(changeset)
     changeset = create_internet_site_changeset(account)
-    {:ok, internet_site} = DB.insert_site(changeset)
+    {:ok, internet_site} = Database.insert_site(changeset)
     changeset = create_internet_resource_changeset(account, internet_site)
-    {:ok, _resource} = DB.insert(changeset)
+    {:ok, _resource} = Database.insert(changeset)
 
     # Create email provider
-    {:ok, _email_provider} = DB.create_email_provider(account)
+    {:ok, _email_provider} = Database.create_email_provider(account)
 
     # Create admin user
     email = metadata["account_admin_email"] || account_email
@@ -446,7 +446,7 @@ defmodule Portal.Billing.EventHandler do
     family_name = metadata["account_owner_last_name"]
     name = "#{given_name} #{family_name}"
     changeset = create_admin_changeset(account, email, name)
-    {:ok, _actor} = DB.insert(changeset)
+    {:ok, _actor} = Database.insert(changeset)
 
     :ok
   end
@@ -514,7 +514,7 @@ defmodule Portal.Billing.EventHandler do
   # Account Updates
   defp update_account_by_stripe_customer_id(customer_id, attrs) do
     with {:ok, account_id} <- Billing.fetch_customer_account_id(customer_id) do
-      DB.update_account_by_id(account_id, attrs)
+      Database.update_account_by_id(account_id, attrs)
     end
   end
 
@@ -588,7 +588,7 @@ defmodule Portal.Billing.EventHandler do
     |> validate_required([:name, :legal_name, :slug])
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
 

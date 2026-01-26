@@ -1,7 +1,7 @@
 defmodule PortalWeb.Groups do
   use PortalWeb, :live_view
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   import Ecto.Changeset
 
@@ -38,7 +38,7 @@ defmodule PortalWeb.Groups do
 
   # Show Group Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    group = DB.get_group_with_actors!(id, socket.assigns.subject)
+    group = Database.get_group_with_actors!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
 
     {:noreply, assign(socket, group: group, show_member_filter: "")}
@@ -46,7 +46,7 @@ defmodule PortalWeb.Groups do
 
   # Edit Group Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    group = DB.get_group_with_actors!(id, socket.assigns.subject)
+    group = Database.get_group_with_actors!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
 
     if editable_group?(group) do
@@ -115,7 +115,7 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_event("add_member", %{"actor_id" => actor_id}, socket) do
-    actor = DB.get_actor!(actor_id, socket.assigns.subject)
+    actor = Database.get_actor!(actor_id, socket.assigns.subject)
 
     {members_to_add, members_to_remove} =
       if Map.has_key?(socket.assigns, :members_to_remove) do
@@ -159,10 +159,10 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    group = DB.get_group!(id, socket.assigns.subject)
+    group = Database.get_group!(id, socket.assigns.subject)
 
     if deletable_group?(group) do
-      case DB.delete(group, socket.assigns.subject) do
+      case Database.delete(group, socket.assigns.subject) do
         {:ok, _group} ->
           {:noreply, handle_success(socket, "Group deleted successfully")}
 
@@ -179,7 +179,7 @@ defmodule PortalWeb.Groups do
     group = %Portal.Group{account_id: socket.assigns.subject.account.id}
     changeset = changeset(group, attrs)
 
-    case DB.create(changeset, socket.assigns.subject) do
+    case Database.create(changeset, socket.assigns.subject) do
       {:ok, _group} ->
         socket =
           socket
@@ -199,7 +199,7 @@ defmodule PortalWeb.Groups do
       attrs = build_attrs_with_memberships(attrs, socket)
       changeset = changeset(socket.assigns.group, attrs)
 
-      case DB.update(changeset, socket.assigns.subject) do
+      case Database.update(changeset, socket.assigns.subject) do
         {:ok, group} ->
           socket =
             socket
@@ -223,7 +223,7 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_groups_update!(socket, list_opts) do
-    with {:ok, groups, metadata} <- DB.list_groups(socket.assigns.subject, list_opts) do
+    with {:ok, groups, metadata} <- Database.list_groups(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          groups: groups,
@@ -803,7 +803,7 @@ defmodule PortalWeb.Groups do
   # Member search helpers
   defp get_search_results(search_term, socket) do
     if has_content?(search_term) do
-      DB.search_actors(search_term, socket.assigns.subject, socket.assigns.members_to_add)
+      Database.search_actors(search_term, socket.assigns.subject, socket.assigns.members_to_add)
     else
       nil
     end
@@ -894,7 +894,7 @@ defmodule PortalWeb.Groups do
     )
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.Safe

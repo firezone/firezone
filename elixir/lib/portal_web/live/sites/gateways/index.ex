@@ -1,9 +1,9 @@
 defmodule PortalWeb.Sites.Gateways.Index do
   use PortalWeb, :live_view
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(%{"id" => id}, _session, socket) do
-    site = DB.get_site!(id, socket.assigns.subject)
+    site = Database.get_site!(id, socket.assigns.subject)
 
     if connected?(socket) do
       :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
@@ -38,7 +38,7 @@ defmodule PortalWeb.Sites.Gateways.Index do
   def handle_gateways_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:online?])
 
-    with {:ok, gateways, metadata} <- DB.list_gateways(socket.assigns.subject, list_opts) do
+    with {:ok, gateways, metadata} <- Database.list_gateways(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          gateways: gateways,
@@ -137,7 +137,7 @@ defmodule PortalWeb.Sites.Gateways.Index do
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
     do: handle_live_table_event(event, params, socket)
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, Gateway}
 

@@ -1,11 +1,11 @@
 defmodule PortalWeb.Resources.New do
   use PortalWeb, :live_view
   import PortalWeb.Resources.Components
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(params, _session, socket) do
-    sites = DB.all_sites(socket.assigns.subject)
-    changeset = DB.new_resource(socket.assigns.account)
+    sites = Database.all_sites(socket.assigns.subject)
+    changeset = Database.new_resource(socket.assigns.account)
 
     socket =
       assign(
@@ -226,7 +226,7 @@ defmodule PortalWeb.Resources.New do
       |> maybe_put_site_id(socket.assigns.params)
 
     changeset =
-      DB.new_resource(socket.assigns.account, attrs)
+      Database.new_resource(socket.assigns.account, attrs)
       |> Map.put(:action, :validate)
 
     socket =
@@ -246,7 +246,7 @@ defmodule PortalWeb.Resources.New do
       |> map_filters_form_attrs(socket.assigns.account)
       |> maybe_put_site_id(socket.assigns.params)
 
-    case DB.create_resource(attrs, socket.assigns.subject) do
+    case Database.create_resource(attrs, socket.assigns.subject) do
       {:ok, resource} ->
         socket = put_flash(socket, :success, "Resource #{resource.name} created successfully")
 
@@ -289,7 +289,7 @@ defmodule PortalWeb.Resources.New do
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
     alias Portal.{Safe, Resource}

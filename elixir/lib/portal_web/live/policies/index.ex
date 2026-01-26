@@ -1,7 +1,7 @@
 defmodule PortalWeb.Policies.Index do
   use PortalWeb, :live_view
   alias Portal.{Changes.Change, PubSub}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -30,7 +30,7 @@ defmodule PortalWeb.Policies.Index do
 
   def handle_params(%{"policies_filter" => %{"site_id" => site_id}} = params, uri, socket) do
     socket = handle_live_tables_params(socket, params, uri)
-    filter_site = DB.get_site(site_id, socket.assigns.subject)
+    filter_site = Database.get_site(site_id, socket.assigns.subject)
 
     {:noreply,
      assign(socket, filter_site: filter_site, filter_resource: nil, return_to: uri_path(uri))}
@@ -38,7 +38,7 @@ defmodule PortalWeb.Policies.Index do
 
   def handle_params(%{"policies_filter" => %{"resource_id" => resource_id}} = params, uri, socket) do
     socket = handle_live_tables_params(socket, params, uri)
-    filter_resource = DB.get_resource(resource_id, socket.assigns.subject)
+    filter_resource = Database.get_resource(resource_id, socket.assigns.subject)
 
     {:noreply,
      assign(socket, filter_site: nil, filter_resource: filter_resource, return_to: uri_path(uri))}
@@ -57,7 +57,7 @@ defmodule PortalWeb.Policies.Index do
   def handle_policies_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, group: [], resource: [])
 
-    with {:ok, policies, metadata} <- DB.list_policies(socket.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- Database.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          policies: policies,
@@ -167,7 +167,7 @@ defmodule PortalWeb.Policies.Index do
     {:noreply, socket}
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Safe, Policy, Site, Resource}

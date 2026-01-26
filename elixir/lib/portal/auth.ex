@@ -8,7 +8,7 @@ defmodule Portal.Auth do
   alias Portal.Auth.Context
   alias Portal.Auth.Credential
   alias Portal.Auth.Subject
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
 
   # Client Tokens
@@ -29,7 +29,7 @@ defmodule Portal.Auth do
     |> put_change(:secret_fragment, secret_fragment)
     |> put_change(:secret_salt, secret_salt)
     |> put_change(:secret_hash, secret_hash)
-    |> DB.insert_token()
+    |> Database.insert_token()
   end
 
   # Headless client token - used with service accounts
@@ -51,7 +51,7 @@ defmodule Portal.Auth do
     |> cast(attrs, [:expires_at])
     |> validate_required([:expires_at])
     |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
-    |> DB.insert_token(subject)
+    |> Database.insert_token(subject)
   end
 
   # API Tokens
@@ -73,7 +73,7 @@ defmodule Portal.Auth do
     |> cast(attrs, [:name, :expires_at])
     |> validate_required([:expires_at])
     |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
-    |> DB.insert_api_token(subject)
+    |> Database.insert_api_token(subject)
     |> case do
       {:ok, token} -> {:ok, encode_fragment!(token)}
       {:error, changeset} -> {:error, changeset}
@@ -90,7 +90,7 @@ defmodule Portal.Auth do
       secret_salt: secret_salt,
       secret_hash: secret_hash
     }
-    |> DB.insert_relay_token()
+    |> Database.insert_relay_token()
   end
 
   # Gateway Tokens
@@ -105,7 +105,7 @@ defmodule Portal.Auth do
       secret_salt: secret_salt,
       secret_hash: secret_hash
     }
-    |> DB.insert_gateway_token(subject)
+    |> Database.insert_gateway_token(subject)
   end
 
   defp generate_token_secrets(nonce \\ "") do
@@ -125,7 +125,7 @@ defmodule Portal.Auth do
     expires_at = DateTime.utc_now() |> DateTime.add(@otp_expiration_seconds, :second)
 
     # Delete existing passcodes for this actor first
-    :ok = DB.delete_one_time_passcodes_for_actor(account, actor)
+    :ok = Database.delete_one_time_passcodes_for_actor(account, actor)
 
     %OneTimePasscode{
       account_id: account.id,
@@ -134,14 +134,14 @@ defmodule Portal.Auth do
       code: code,
       expires_at: expires_at
     }
-    |> DB.insert_one_time_passcode()
+    |> Database.insert_one_time_passcode()
   end
 
   def verify_one_time_passcode(account_id, actor_id, passcode_id, entered_code) do
-    case DB.fetch_one_time_passcode(account_id, actor_id, passcode_id) do
+    case Database.fetch_one_time_passcode(account_id, actor_id, passcode_id) do
       {:ok, passcode} ->
         if Portal.Crypto.equal?(:argon2, entered_code, passcode.code_hash) do
-          :ok = DB.delete_one_time_passcode(passcode)
+          :ok = Database.delete_one_time_passcode(passcode)
           {:ok, passcode}
         else
           {:error, :invalid_code}
@@ -174,15 +174,15 @@ defmodule Portal.Auth do
       remote_ip_location_lon: context.remote_ip_location_lon,
       expires_at: expires_at
     }
-    |> DB.insert_portal_session()
+    |> Database.insert_portal_session()
   end
 
   def fetch_portal_session(account_id, session_id) do
-    DB.fetch_portal_session(account_id, session_id)
+    Database.fetch_portal_session(account_id, session_id)
   end
 
   def delete_portal_session(%PortalSession{} = session) do
-    DB.delete_portal_session(session)
+    Database.delete_portal_session(session)
   end
 
   # Token encoding/decoding
@@ -214,7 +214,12 @@ defmodule Portal.Auth do
   end
 
   def verify_relay_token(encoded_token) when is_binary(encoded_token) do
-    verify_infrastructure_token(encoded_token, "relay", "relay_group", &DB.fetch_relay_token/1)
+    verify_infrastructure_token(
+      encoded_token,
+      "relay",
+      "relay_group",
+      &Database.fetch_relay_token/1
+    )
   end
 
   def verify_gateway_token(encoded_token) when is_binary(encoded_token) do
@@ -222,7 +227,7 @@ defmodule Portal.Auth do
       encoded_token,
       "gateway",
       "gateway_group",
-      &DB.fetch_gateway_token/2
+      &Database.fetch_gateway_token/2
     )
   end
 
@@ -258,14 +263,14 @@ defmodule Portal.Auth do
   end
 
   def fetch_token(account_id, token_id, %Context{} = context) do
-    DB.fetch_token_for_use(account_id, token_id, context)
+    Database.fetch_token_for_use(account_id, token_id, context)
   end
 
   def use_token(encoded_token, %Context{} = context)
       when is_binary(encoded_token) do
     with {:ok, {nonce, account_id, id, fragment}} <-
            decode_token_with_context(encoded_token, context),
-         {:ok, token} <- DB.fetch_token_for_use(account_id, id, context),
+         {:ok, token} <- Database.fetch_token_for_use(account_id, id, context),
          :ok <- verify_secret_hash(token, nonce, fragment) do
       {:ok, token}
     else
@@ -348,9 +353,9 @@ defmodule Portal.Auth do
   end
 
   defp do_build_subject(token_or_session, context, credential) do
-    account = DB.get_account_by_id!(token_or_session.account_id)
+    account = Database.get_account_by_id!(token_or_session.account_id)
 
-    with {:ok, actor} <- DB.fetch_active_actor_by_id(token_or_session.actor_id) do
+    with {:ok, actor} <- Database.fetch_active_actor_by_id(token_or_session.actor_id) do
       {:ok,
        %Subject{
          actor: actor,
@@ -366,7 +371,7 @@ defmodule Portal.Auth do
     Portal.Config.fetch_env!(:portal, Portal.Tokens)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

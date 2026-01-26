@@ -1,7 +1,7 @@
 defmodule Portal.Changes.Hooks.Accounts do
   @behaviour Portal.Changes.Hooks
   alias Portal.{Billing, Changes.Change, PubSub}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Portal.SchemaHelpers
   require Logger
 
@@ -20,8 +20,8 @@ defmodule Portal.Changes.Hooks.Accounts do
       )
       when not is_nil(disabled_at) do
     account = struct_from_params(Portal.Account, old_data)
-    DB.delete_policy_authorizations_for_account(account)
-    DB.delete_client_tokens_for_account(account)
+    Database.delete_policy_authorizations_for_account(account)
+    Database.delete_client_tokens_for_account(account)
 
     on_delete(lsn, old_data)
   end
@@ -50,7 +50,7 @@ defmodule Portal.Changes.Hooks.Accounts do
     PubSub.Account.broadcast(account.id, change)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.ClientToken
     alias Portal.PolicyAuthorization

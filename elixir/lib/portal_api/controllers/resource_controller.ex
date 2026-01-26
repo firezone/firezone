@@ -3,7 +3,7 @@ defmodule PortalAPI.ResourceController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   tags ["Resources"]
 
@@ -22,7 +22,7 @@ defmodule PortalAPI.ResourceController do
     list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, resources, metadata} <-
-           DB.list_resources(conn.assigns.subject, list_opts) do
+           Database.list_resources(conn.assigns.subject, list_opts) do
       render(conn, :index, resources: resources, metadata: metadata)
     else
       error -> Error.handle(conn, error)
@@ -45,7 +45,7 @@ defmodule PortalAPI.ResourceController do
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
-    with {:ok, resource} <- DB.fetch_resource(id, conn.assigns.subject) do
+    with {:ok, resource} <- Database.fetch_resource(id, conn.assigns.subject) do
       render(conn, :show, resource: resource)
     else
       error -> Error.handle(conn, error)
@@ -67,7 +67,7 @@ defmodule PortalAPI.ResourceController do
     attrs = set_param_defaults(params)
     changeset = create_changeset(attrs, conn.assigns.subject)
 
-    with {:ok, resource} <- DB.insert_resource(changeset, conn.assigns.subject) do
+    with {:ok, resource} <- Database.insert_resource(changeset, conn.assigns.subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/resources/#{resource}")
@@ -103,9 +103,9 @@ defmodule PortalAPI.ResourceController do
     subject = conn.assigns.subject
     attrs = set_param_defaults(params)
 
-    with {:ok, resource} <- DB.fetch_resource(id, subject),
+    with {:ok, resource} <- Database.fetch_resource(id, subject),
          :ok <- validate_not_internet_resource(resource),
-         {:ok, resource} <- DB.update_resource(resource, attrs, subject) do
+         {:ok, resource} <- Database.update_resource(resource, attrs, subject) do
       render(conn, :show, resource: resource)
     else
       error -> Error.handle(conn, error)
@@ -134,9 +134,9 @@ defmodule PortalAPI.ResourceController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, resource} <- DB.fetch_resource(id, subject),
+    with {:ok, resource} <- Database.fetch_resource(id, subject),
          :ok <- validate_not_internet_resource(resource),
-         {:ok, resource} <- DB.delete_resource(resource, subject) do
+         {:ok, resource} <- Database.delete_resource(resource, subject) do
       render(conn, :show, resource: resource)
     else
       error -> Error.handle(conn, error)
@@ -160,7 +160,7 @@ defmodule PortalAPI.ResourceController do
     |> Ecto.Changeset.put_change(:account_id, subject.account.id)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

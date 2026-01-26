@@ -1,9 +1,9 @@
 defmodule PortalWeb.Sites.Edit do
   use PortalWeb, :live_view
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(%{"id" => id}, _session, socket) do
-    site = DB.get_site!(id, socket.assigns.subject)
+    site = Database.get_site!(id, socket.assigns.subject)
     changeset = change_site(site)
 
     socket =
@@ -61,7 +61,7 @@ defmodule PortalWeb.Sites.Edit do
   def handle_event("submit", %{"site" => attrs}, socket) do
     changeset = update_changeset(socket.assigns.site, attrs, socket.assigns.subject)
 
-    with {:ok, site} <- DB.update_site(changeset, socket.assigns.subject) do
+    with {:ok, site} <- Database.update_site(changeset, socket.assigns.subject) do
       socket =
         socket
         |> put_flash(:success, "Site #{site.name} updated successfully")
@@ -92,7 +92,7 @@ defmodule PortalWeb.Sites.Edit do
     |> Portal.Site.changeset()
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

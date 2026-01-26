@@ -1,7 +1,7 @@
 defmodule PortalWeb.Sites.New do
   use PortalWeb, :live_view
   alias Portal.Billing
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Ecto.Changeset
 
   def mount(_params, _session, socket) do
@@ -56,7 +56,7 @@ defmodule PortalWeb.Sites.New do
 
     with true <- Billing.can_create_sites?(socket.assigns.subject.account),
          changeset = create_changeset(socket.assigns.subject.account, attrs),
-         {:ok, site} <- DB.create_site(changeset, socket.assigns.subject) do
+         {:ok, site} <- Database.create_site(changeset, socket.assigns.subject) do
       socket =
         socket
         |> put_flash(:success, "Site #{site.name} created successfully")
@@ -98,7 +98,7 @@ defmodule PortalWeb.Sites.New do
     |> cast(attrs, [:name])
   end
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.Safe
 
     def create_site(changeset, subject) do

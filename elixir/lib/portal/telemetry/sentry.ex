@@ -10,7 +10,7 @@ defmodule Portal.Telemetry.Sentry do
     nil
   end
 
-  # These occur under normal operation whenever a particular account or resource can't be found in the DB.
+  # These occur under normal operation whenever a particular account or resource can't be found in the Database.
   def before_send(%{original_exception: %Ecto.NoResultsError{}}) do
     nil
   end

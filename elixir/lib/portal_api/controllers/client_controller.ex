@@ -4,7 +4,7 @@ defmodule PortalAPI.ClientController do
   alias PortalAPI.Pagination
   alias PortalAPI.Error
   alias Portal.Presence.Clients
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Ecto.Changeset
   import Portal.Changeset
 
@@ -33,7 +33,7 @@ defmodule PortalAPI.ClientController do
       |> Pagination.params_to_list_opts()
       |> Keyword.put(:preload, [:online?, :ipv4_address, :ipv6_address])
 
-    with {:ok, clients, metadata} <- DB.list_clients(conn.assigns.subject, list_opts) do
+    with {:ok, clients, metadata} <- Database.list_clients(conn.assigns.subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
     else
       error -> Error.handle(conn, error)
@@ -57,7 +57,7 @@ defmodule PortalAPI.ClientController do
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
-    with {:ok, client} <- DB.fetch_client(id, conn.assigns.subject) do
+    with {:ok, client} <- Database.fetch_client(id, conn.assigns.subject) do
       client = Clients.preload_clients_presence([client]) |> List.first()
       render(conn, :show, client: client)
     else
@@ -86,9 +86,9 @@ defmodule PortalAPI.ClientController do
   def update(conn, %{"id" => id, "client" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- DB.fetch_client(id, subject),
+    with {:ok, client} <- Database.fetch_client(id, subject),
          changeset = update_changeset(client, params),
-         {:ok, client} <- DB.update_client(changeset, subject) do
+         {:ok, client} <- Database.update_client(changeset, subject) do
       render(conn, :show, client: client)
     else
       error -> Error.handle(conn, error)
@@ -129,9 +129,9 @@ defmodule PortalAPI.ClientController do
   def verify(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- DB.fetch_client(id, subject),
+    with {:ok, client} <- Database.fetch_client(id, subject),
          changeset = client |> change() |> put_default_value(:verified_at, DateTime.utc_now()),
-         {:ok, client} <- DB.verify_client(changeset, subject) do
+         {:ok, client} <- Database.verify_client(changeset, subject) do
       render(conn, :show, client: client)
     else
       error -> Error.handle(conn, error)
@@ -157,9 +157,9 @@ defmodule PortalAPI.ClientController do
   def unverify(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- DB.fetch_client(id, subject),
+    with {:ok, client} <- Database.fetch_client(id, subject),
          changeset = client |> change() |> put_change(:verified_at, nil),
-         {:ok, client} <- DB.remove_client_verification(changeset, subject) do
+         {:ok, client} <- Database.remove_client_verification(changeset, subject) do
       render(conn, :show, client: client)
     else
       error -> Error.handle(conn, error)
@@ -185,15 +185,15 @@ defmodule PortalAPI.ClientController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- DB.fetch_client(id, subject),
-         {:ok, client} <- DB.delete_client(client, subject) do
+    with {:ok, client} <- Database.fetch_client(id, subject),
+         {:ok, client} <- Database.delete_client(client, subject) do
       render(conn, :show, client: client)
     else
       error -> Error.handle(conn, error)
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Presence.Clients, Safe}
     alias Portal.Client

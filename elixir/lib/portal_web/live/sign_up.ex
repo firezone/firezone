@@ -2,7 +2,7 @@ defmodule PortalWeb.SignUp do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :public}}
   alias Portal.{Accounts, Actor, Config}
   alias PortalWeb.Registration
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   defmodule Registration do
     use Ecto.Schema
@@ -426,7 +426,7 @@ defmodule PortalWeb.SignUp do
   defp generate_unique_slug do
     slug_candidate = Portal.NameGenerator.generate_slug()
 
-    if DB.slug_exists?(slug_candidate) do
+    if Database.slug_exists?(slug_candidate) do
       generate_unique_slug()
     else
       slug_candidate
@@ -458,7 +458,7 @@ defmodule PortalWeb.SignUp do
   end
 
   defp register_account(socket, registration) do
-    DB.register_account(
+    Database.register_account(
       registration,
       &create_account_changeset/1,
       &create_everyone_group_changeset/1,
@@ -509,7 +509,7 @@ defmodule PortalWeb.SignUp do
     |> validate_required([:name, :type])
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Changeset
 
     alias Portal.{

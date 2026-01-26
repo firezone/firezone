@@ -3,7 +3,7 @@ defmodule PortalAPI.GatewayTokenController do
   use OpenApiSpex.ControllerSpecs
   alias Portal.Auth
   alias PortalAPI.Error
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   tags ["Gateway Tokens"]
 
@@ -25,7 +25,7 @@ defmodule PortalAPI.GatewayTokenController do
   def create(conn, %{"site_id" => site_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, site} <- DB.fetch_site(site_id, subject),
+    with {:ok, site} <- Database.fetch_site(site_id, subject),
          {:ok, token} <- Auth.create_gateway_token(site, subject) do
       conn
       |> put_status(:created)
@@ -61,8 +61,8 @@ defmodule PortalAPI.GatewayTokenController do
   def delete(conn, %{"site_id" => _site_id, "id" => token_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, token} <- DB.fetch_token(token_id, subject),
-         {:ok, deleted_token} <- DB.delete_token(token, subject) do
+    with {:ok, token} <- Database.fetch_token(token_id, subject),
+         {:ok, deleted_token} <- Database.delete_token(token, subject) do
       render(conn, :deleted, token: deleted_token)
     else
       error -> Error.handle(conn, error)
@@ -89,15 +89,15 @@ defmodule PortalAPI.GatewayTokenController do
   def delete_all(conn, %{"site_id" => site_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, site} <- DB.fetch_site(site_id, subject),
-         {deleted_count, _} <- DB.delete_all_tokens(site, subject) do
+    with {:ok, site} <- Database.fetch_site(site_id, subject),
+         {deleted_count, _} <- Database.delete_all_tokens(site, subject) do
       render(conn, :deleted_all, count: deleted_count)
     else
       error -> Error.handle(conn, error)
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Site

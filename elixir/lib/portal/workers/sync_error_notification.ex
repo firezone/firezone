@@ -19,7 +19,7 @@ defmodule Portal.Workers.SyncErrorNotification do
   alias Portal.Google
   alias Portal.Okta
   alias Portal.Mailer
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
 
   @impl Oban.Worker
@@ -34,7 +34,7 @@ defmodule Portal.Workers.SyncErrorNotification do
 
   defp check_entra_directories(%{"frequency" => frequency}) do
     Entra.Directory
-    |> DB.errored_disabled_directories(frequency)
+    |> Database.errored_disabled_directories(frequency)
     |> Enum.each(&send_notification(:entra, &1, frequency))
 
     :ok
@@ -42,7 +42,7 @@ defmodule Portal.Workers.SyncErrorNotification do
 
   defp check_google_directories(%{"frequency" => frequency}) do
     Google.Directory
-    |> DB.errored_disabled_directories(frequency)
+    |> Database.errored_disabled_directories(frequency)
     |> Enum.each(&send_notification(:google, &1, frequency))
 
     :ok
@@ -50,7 +50,7 @@ defmodule Portal.Workers.SyncErrorNotification do
 
   defp check_okta_directories(%{"frequency" => frequency}) do
     Okta.Directory
-    |> DB.errored_disabled_directories(frequency)
+    |> Database.errored_disabled_directories(frequency)
     |> Enum.each(&send_notification(:okta, &1, frequency))
 
     :ok
@@ -66,7 +66,7 @@ defmodule Portal.Workers.SyncErrorNotification do
     )
 
     # Get account admin actors and send notifications
-    admins = DB.get_account_admin_actors(directory.account_id)
+    admins = Database.get_account_admin_actors(directory.account_id)
 
     case admins do
       [] ->
@@ -118,10 +118,10 @@ defmodule Portal.Workers.SyncErrorNotification do
     {:ok, _directory} =
       directory
       |> Ecto.Changeset.cast(%{"error_email_count" => new_count}, [:error_email_count])
-      |> DB.update_directory()
+      |> Database.update_directory()
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

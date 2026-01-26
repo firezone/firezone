@@ -11,10 +11,10 @@ defmodule PortalWeb.SignIn do
     Userpass
   }
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
-    account = DB.get_account_by_id_or_slug!(account_id_or_slug)
+    account = Database.get_account_by_id_or_slug!(account_id_or_slug)
     mount_account(account, params, socket)
   end
 
@@ -291,13 +291,13 @@ defmodule PortalWeb.SignIn do
 
   defp auth_providers(account, module) do
     if module in [EmailOTP.AuthProvider, Userpass.AuthProvider] do
-      DB.get_auth_provider(account, module)
+      Database.get_auth_provider(account, module)
     else
-      DB.list_auth_providers(account, module)
+      Database.list_auth_providers(account, module)
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

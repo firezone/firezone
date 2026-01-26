@@ -1,7 +1,7 @@
 defmodule PortalWeb.Actors do
   use PortalWeb, :live_view
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   alias Portal.Actor
   alias Portal.Auth
@@ -71,20 +71,20 @@ defmodule PortalWeb.Actors do
 
   # Show Actor Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    actor = DB.get_actor!(id, socket.assigns.subject)
+    actor = Database.get_actor!(id, socket.assigns.subject)
 
     # Load identities and tokens/sessions based on actor type
-    identities = DB.get_identities_for_actor(actor.id, socket.assigns.subject)
-    groups = DB.get_groups_for_actor(actor.id, socket.assigns.subject)
+    identities = Database.get_identities_for_actor(actor.id, socket.assigns.subject)
+    groups = Database.get_groups_for_actor(actor.id, socket.assigns.subject)
 
     # Load tokens and sessions based on actor type
     {tokens, sessions} =
       if actor.type == :service_account do
-        {DB.get_client_tokens_for_actor(actor.id, socket.assigns.subject), []}
+        {Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject), []}
       else
         # Users have both client tokens and portal sessions
-        {DB.get_client_tokens_for_actor(actor.id, socket.assigns.subject),
-         DB.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)}
+        {Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject),
+         Database.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)}
       end
 
     socket = handle_live_tables_params(socket, params, uri)
@@ -108,7 +108,7 @@ defmodule PortalWeb.Actors do
 
   # Add Token Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :add_token}} = socket) do
-    actor = DB.get_actor!(id, socket.assigns.subject)
+    actor = Database.get_actor!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
 
     # Default token expiration to 1 year from now
@@ -126,7 +126,7 @@ defmodule PortalWeb.Actors do
 
   # Edit Actor Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    actor = DB.get_actor!(id, socket.assigns.subject)
+    actor = Database.get_actor!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
     changeset = changeset(actor, %{})
 
@@ -204,7 +204,7 @@ defmodule PortalWeb.Actors do
         {:noreply, put_flash(socket, :error_inline, "Admin user limit reached for your account")}
 
       true ->
-        case DB.create(changeset, socket.assigns.subject) do
+        case Database.create(changeset, socket.assigns.subject) do
           {:ok, actor} ->
             socket =
               socket
@@ -233,7 +233,7 @@ defmodule PortalWeb.Actors do
       token_expiration = Map.get(params, "token_expiration")
 
       result =
-        DB.create_service_account_with_token(
+        Database.create_service_account_with_token(
           changeset,
           token_expiration,
           socket.assigns.subject,
@@ -289,7 +289,7 @@ defmodule PortalWeb.Actors do
 
       {:noreply, assign(socket, form: to_form(changeset))}
     else
-      case DB.update(changeset, socket.assigns.subject) do
+      case Database.update(changeset, socket.assigns.subject) do
         {:ok, actor} ->
           socket =
             socket
@@ -308,13 +308,13 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    actor = DB.get_actor!(id, socket.assigns.subject)
+    actor = Database.get_actor!(id, socket.assigns.subject)
 
     # Prevent users from deleting themselves
     if actor.id == socket.assigns.subject.actor.id do
       {:noreply, put_flash(socket, :error, "You cannot delete yourself")}
     else
-      case DB.delete(actor, socket.assigns.subject) do
+      case Database.delete(actor, socket.assigns.subject) do
         {:ok, _actor} ->
           {:noreply, handle_success(socket, "Actor deleted successfully")}
 
@@ -328,7 +328,7 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("disable", %{"id" => id}, socket) do
-    actor = DB.get_actor!(id, socket.assigns.subject)
+    actor = Database.get_actor!(id, socket.assigns.subject)
 
     # Prevent users from disabling themselves
     if actor.id == socket.assigns.subject.actor.id do
@@ -337,7 +337,7 @@ defmodule PortalWeb.Actors do
       case actor
            |> change()
            |> put_change(:disabled_at, DateTime.utc_now())
-           |> DB.update(socket.assigns.subject) do
+           |> Database.update(socket.assigns.subject) do
         {:ok, updated_actor} ->
           socket = reload_live_table!(socket, "actors")
 
@@ -361,12 +361,12 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("enable", %{"id" => id}, socket) do
-    actor = DB.get_actor!(id, socket.assigns.subject)
+    actor = Database.get_actor!(id, socket.assigns.subject)
 
     case actor
          |> change()
          |> put_change(:disabled_at, nil)
-         |> DB.update(socket.assigns.subject) do
+         |> Database.update(socket.assigns.subject) do
       {:ok, updated_actor} ->
         socket = reload_live_table!(socket, "actors")
 
@@ -416,13 +416,14 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete_token", %{"id" => token_id}, socket) do
-    token = DB.get_client_token_by_id(token_id, socket.assigns.subject)
+    token = Database.get_client_token_by_id(token_id, socket.assigns.subject)
     entity = if socket.assigns.actor.type == :service_account, do: "token", else: "session"
 
     if token do
-      case DB.delete(token, socket.assigns.subject) do
+      case Database.delete(token, socket.assigns.subject) do
         {:ok, _} ->
-          tokens = DB.get_client_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+          tokens =
+            Database.get_client_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
 
           {:noreply,
            socket
@@ -438,7 +439,7 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete_session", %{"id" => session_id}, socket) do
-    session = DB.get_portal_session_by_id(session_id, socket.assigns.subject)
+    session = Database.get_portal_session_by_id(session_id, socket.assigns.subject)
 
     if session do
       :ok =
@@ -448,7 +449,9 @@ defmodule PortalWeb.Actors do
         })
 
       # Reload sessions for the actor
-      sessions = DB.get_portal_sessions_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+      sessions =
+        Database.get_portal_sessions_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+
       socket = assign(socket, sessions: sessions)
       {:noreply, put_flash(socket, :success_inline, "Session deleted successfully")}
     else
@@ -457,16 +460,16 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete_identity", %{"id" => identity_id}, socket) do
-    case DB.get_identity_by_id(identity_id, socket.assigns.subject) do
+    case Database.get_identity_by_id(identity_id, socket.assigns.subject) do
       nil ->
         {:noreply, put_flash(socket, :error, "Identity not found")}
 
       identity ->
-        case DB.delete(identity, socket.assigns.subject) do
+        case Database.delete(identity, socket.assigns.subject) do
           {:ok, _} ->
             # Reload identities for the actor
             identities =
-              DB.get_identities_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+              Database.get_identities_for_actor(socket.assigns.actor.id, socket.assigns.subject)
 
             socket = assign(socket, identities: identities)
             {:noreply, put_flash(socket, :success_inline, "Identity deleted successfully")}
@@ -522,7 +525,7 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_actors_update!(socket, list_opts) do
-    with {:ok, actors, metadata} <- DB.list_actors(socket.assigns.subject, list_opts) do
+    with {:ok, actors, metadata} <- Database.list_actors(socket.assigns.subject, list_opts) do
       {:ok, assign(socket, actors: actors, actors_metadata: metadata)}
     end
   end
@@ -1736,14 +1739,14 @@ defmodule PortalWeb.Actors do
   defp other_enabled_admins_exist?(actor, subject) do
     case actor do
       %{type: :account_admin_user, account_id: account_id, id: id} ->
-        DB.other_enabled_admins_exist?(account_id, id, subject)
+        Database.other_enabled_admins_exist?(account_id, id, subject)
 
       _ ->
         false
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.ExternalIdentity

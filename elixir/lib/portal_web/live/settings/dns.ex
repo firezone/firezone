@@ -1,9 +1,9 @@
 defmodule PortalWeb.Settings.DNS do
   use PortalWeb, :live_view
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
-    account = DB.get_account_by_id!(socket.assigns.account.id, socket.assigns.subject)
+    account = Database.get_account_by_id!(socket.assigns.account.id, socket.assigns.subject)
     # Ensure config has proper defaults
     account = %{account | config: Portal.Accounts.Config.ensure_defaults(account.config)}
 
@@ -315,10 +315,10 @@ defmodule PortalWeb.Settings.DNS do
   defp update_account_config(account, attrs, subject) do
     account
     |> change_account_config(attrs)
-    |> DB.update(subject)
+    |> Database.update(subject)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account
