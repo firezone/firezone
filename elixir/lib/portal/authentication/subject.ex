@@ -1,6 +1,6 @@
-defmodule Portal.Auth.Subject do
-  alias Portal.Auth.Context
-  alias Portal.Auth.Credential
+defmodule Portal.Authentication.Subject do
+  alias Portal.Authentication.Context
+  alias Portal.Authentication.Credential
 
   @type actor :: %Portal.Actor{}
 

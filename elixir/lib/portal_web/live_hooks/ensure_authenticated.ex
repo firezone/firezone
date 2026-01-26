@@ -3,7 +3,7 @@ defmodule PortalWeb.LiveHooks.EnsureAuthenticated do
 
   import Phoenix.LiveView
 
-  alias Portal.Auth.Subject
+  alias Portal.Authentication.Subject
 
   def on_mount(:default, _params, _session, %{assigns: %{subject: %Subject{}}} = socket) do
     {:cont, socket}

@@ -1,6 +1,6 @@
-defmodule Portal.AuthTest do
+defmodule Portal.AuthenticationTest do
   use Portal.DataCase, async: true
-  import Portal.Auth
+  import Portal.Authentication
   import Portal.TokenFixtures
   import Portal.SubjectFixtures
   import Portal.AccountFixtures

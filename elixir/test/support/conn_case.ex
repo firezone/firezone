@@ -88,7 +88,7 @@ defmodule PortalWeb.ConnCase do
   def authorize_conn_with_provider(conn, %Portal.Actor{} = actor, provider) do
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0, "FooBar 1.1")
 
-    context = %Portal.Auth.Context{
+    context = %Portal.Authentication.Context{
       type: :portal,
       user_agent: user_agent,
       remote_ip_location_region: "UA",
@@ -101,14 +101,14 @@ defmodule PortalWeb.ConnCase do
     expires_at = DateTime.add(DateTime.utc_now(), 300, :second)
 
     {:ok, session} =
-      Portal.Auth.create_portal_session(
+      Portal.Authentication.create_portal_session(
         actor,
         provider.id,
         context,
         expires_at
       )
 
-    {:ok, subject} = Portal.Auth.build_subject(session, context)
+    {:ok, subject} = Portal.Authentication.build_subject(session, context)
 
     # Set the cookie. We need to set it as a response cookie first,
     # then transfer to request cookies for subsequent requests.
