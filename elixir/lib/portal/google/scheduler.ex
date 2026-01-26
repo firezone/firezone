@@ -27,6 +27,7 @@ defmodule Portal.Google.Scheduler do
           where: is_nil(a.disabled_at),
           where: fragment("(?)->>'idp_sync' = 'true'", a.features)
         )
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         |> Safe.unscoped()
         |> Safe.stream()
         |> Stream.each(fn directory ->

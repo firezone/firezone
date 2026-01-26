@@ -613,11 +613,13 @@ defmodule PortalWeb.SignUp do
 
       cast(%Portal.Actor{}, attrs, ~w[account_id email name type allow_email_otp_sign_in]a)
       |> Portal.Actor.changeset()
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.insert()
     end
 
     def insert(changeset) do
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       Safe.unscoped(changeset)
       |> Safe.insert()
     end
@@ -626,6 +628,7 @@ defmodule PortalWeb.SignUp do
       import Ecto.Query
 
       query = from(a in Portal.Account, where: a.slug == ^slug, select: count(a.id))
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       Safe.unscoped(query) |> Safe.exists?()
     end
   end

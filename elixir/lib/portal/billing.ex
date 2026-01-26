@@ -415,6 +415,7 @@ defmodule Portal.Billing do
 
     def update(changeset) do
       changeset
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.update()
     end
@@ -425,6 +426,7 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type in [:account_admin_user, :account_user]
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -435,6 +437,7 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type == :service_account
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -445,6 +448,7 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type == :account_admin_user
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -461,6 +465,7 @@ defmodule Portal.Billing do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -470,6 +475,7 @@ defmodule Portal.Billing do
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -480,6 +486,7 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type == :api_client
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -489,6 +496,7 @@ defmodule Portal.Billing do
         where: t.actor_id == ^actor.id,
         where: t.account_id == ^actor.account_id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -500,6 +508,7 @@ defmodule Portal.Billing do
           where: s.name == "Internet",
           where: s.managed_by == :system
         )
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         |> Safe.unscoped()
         |> Safe.one()
 
@@ -515,6 +524,7 @@ defmodule Portal.Billing do
         name: "Internet",
         managed_by: :system
       }
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.insert()
     end
@@ -525,6 +535,7 @@ defmodule Portal.Billing do
           where: r.account_id == ^account.id,
           where: r.type == :internet
         )
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         |> Safe.unscoped()
         |> Safe.one()
 
@@ -541,6 +552,7 @@ defmodule Portal.Billing do
         type: :internet,
         site_id: site.id
       }
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.insert()
     end

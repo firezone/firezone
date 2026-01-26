@@ -1,8 +1,6 @@
 defmodule Portal.IPv4Address do
   use Ecto.Schema
   import Ecto.Changeset
-  alias Portal.Safe
-  require Logger
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -45,50 +43,41 @@ defmodule Portal.IPv4Address do
 
   def device_cidr, do: @device_cidr
 
-  @doc """
-  Allocates the next available IPv4 address for a client or gateway.
+  defdelegate allocate_next_available_address(account_id, opts), to: __MODULE__.Database
 
-  This function calls a PL/pgSQL function that atomically:
-  1. Finds next available candidate using MAX(address) + 1 within the specified CIDR
-  2. Inserts the address into ipv4_addresses with the client_id or gateway_id
-  3. Handles collisions with existing addresses by retrying
+  defmodule Database do
+    alias Portal.Safe
+    require Logger
 
-  Returns `{:ok, %IPv4Address{}}` on success or `{:error, reason}` on failure.
+    def allocate_next_available_address(account_id, opts) do
+      client_id = Keyword.get(opts, :client_id)
+      gateway_id = Keyword.get(opts, :gateway_id)
+      cidr = Keyword.get(opts, :cidr, Portal.IPv4Address.device_cidr())
 
-  ## Options
-    * `:client_id` - The client ID to associate with the address
-    * `:gateway_id` - The gateway ID to associate with the address
-    * `:cidr` - Override the CIDR range for allocation (defaults to module's device CIDR)
+      account_id_binary = Ecto.UUID.dump!(account_id)
+      client_id_binary = if client_id, do: Ecto.UUID.dump!(client_id)
+      gateway_id_binary = if gateway_id, do: Ecto.UUID.dump!(gateway_id)
 
-  Exactly one of `:client_id` or `:gateway_id` must be provided.
-  """
-  def allocate_next_available_address(account_id, opts) do
-    client_id = Keyword.get(opts, :client_id)
-    gateway_id = Keyword.get(opts, :gateway_id)
-    cidr = Keyword.get(opts, :cidr, @device_cidr)
+      # credo:disable-for-lines:4 Credo.Check.Warning.SafeUnscopedUsage
+      case Safe.query(
+             Safe.unscoped(),
+             "SELECT * FROM allocate_address($1, $2, $3, $4, $5)",
+             [account_id_binary, "ipv4", cidr, client_id_binary, gateway_id_binary]
+           ) do
+        {:ok, %Postgrex.Result{rows: [[account_id, address, client_id, gateway_id, inserted_at]]}} ->
+          {:ok,
+           %Portal.IPv4Address{
+             account_id: Ecto.UUID.load!(account_id),
+             address: address,
+             client_id: if(client_id, do: Ecto.UUID.load!(client_id)),
+             gateway_id: if(gateway_id, do: Ecto.UUID.load!(gateway_id)),
+             inserted_at: inserted_at
+           }}
 
-    account_id_binary = Ecto.UUID.dump!(account_id)
-    client_id_binary = if client_id, do: Ecto.UUID.dump!(client_id)
-    gateway_id_binary = if gateway_id, do: Ecto.UUID.dump!(gateway_id)
-
-    case Safe.query(
-           Safe.unscoped(),
-           "SELECT * FROM allocate_address($1, $2, $3, $4, $5)",
-           [account_id_binary, "ipv4", cidr, client_id_binary, gateway_id_binary]
-         ) do
-      {:ok, %Postgrex.Result{rows: [[account_id, address, client_id, gateway_id, inserted_at]]}} ->
-        {:ok,
-         %__MODULE__{
-           account_id: Ecto.UUID.load!(account_id),
-           address: address,
-           client_id: if(client_id, do: Ecto.UUID.load!(client_id)),
-           gateway_id: if(gateway_id, do: Ecto.UUID.load!(gateway_id)),
-           inserted_at: inserted_at
-         }}
-
-      {:error, error} ->
-        Logger.error("Failed to allocate IPv4 address", account_id: account_id, error: error)
-        {:error, error}
+        {:error, error} ->
+          Logger.error("Failed to allocate IPv4 address", account_id: account_id, error: error)
+          {:error, error}
+      end
     end
   end
 end

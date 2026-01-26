@@ -572,11 +572,13 @@ defmodule Portal.Google.Sync do
         where: d.is_disabled == false,
         where: is_nil(a.disabled_at)
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
 
     def update_directory(changeset) do
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       changeset |> Safe.unscoped() |> Safe.update()
     end
 
@@ -594,6 +596,7 @@ defmodule Portal.Google.Sync do
           identity_attrs
         )
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       case Safe.unscoped() |> Safe.query(query, params) do
         {:ok, %Postgrex.Result{rows: rows}} -> {:ok, %{upserted_identities: length(rows)}}
         {:error, reason} -> {:error, reason}
@@ -749,6 +752,7 @@ defmodule Portal.Google.Sync do
           entity_type
         )
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       case Safe.unscoped() |> Safe.query(query, params) do
         {:ok, %Postgrex.Result{num_rows: num_rows}} ->
           {:ok, %{upserted_groups: num_rows}}
@@ -849,6 +853,7 @@ defmodule Portal.Google.Sync do
       params =
         build_membership_upsert_params(account_id, directory_id, last_synced_at, tuples)
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       case Safe.unscoped() |> Safe.query(query, params) do
         {:ok, %Postgrex.Result{num_rows: num_rows}} -> {:ok, %{upserted_memberships: num_rows}}
         {:error, reason} -> {:error, reason}
@@ -920,6 +925,7 @@ defmodule Portal.Google.Sync do
           where: g.last_synced_at < ^synced_at or is_nil(g.last_synced_at)
         )
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       query |> Safe.unscoped() |> Safe.delete_all()
     end
 
@@ -931,6 +937,7 @@ defmodule Portal.Google.Sync do
           where: i.last_synced_at < ^synced_at or is_nil(i.last_synced_at)
         )
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       query |> Safe.unscoped() |> Safe.delete_all()
     end
 
@@ -945,6 +952,7 @@ defmodule Portal.Google.Sync do
           where: m.last_synced_at < ^synced_at or is_nil(m.last_synced_at)
         )
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       query |> Safe.unscoped() |> Safe.delete_all()
     end
 
@@ -963,6 +971,7 @@ defmodule Portal.Google.Sync do
             )
         )
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       query |> Safe.unscoped() |> Safe.delete_all()
     end
   end

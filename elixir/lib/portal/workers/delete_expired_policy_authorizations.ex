@@ -34,6 +34,7 @@ defmodule Portal.Workers.DeleteExpiredPolicyAuthorizations do
     def delete_expired_policy_authorizations do
       from(pa in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: pa], pa.expires_at <= ^DateTime.utc_now())
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

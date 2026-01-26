@@ -69,8 +69,7 @@ defmodule Portal.Ops do
   def set_banner(message) do
     clear_banner()
 
-    %Banner{}
-    |> Banner.changeset(message: message)
+    %Banner{message: message}
     |> Database.insert()
   end
 
@@ -87,24 +86,28 @@ defmodule Portal.Ops do
         where: a.id == ^id,
         where: not is_nil(a.disabled_at)
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one!()
     end
 
-    def insert(changeset) do
-      changeset
+    def insert(banner) do
+      banner
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.insert()
     end
 
     def delete_all(schema) do
       from(s in schema)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end
 
-    def delete(record) do
-      record
+    def delete(banner) do
+      banner
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete()
     end

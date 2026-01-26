@@ -59,6 +59,7 @@ defmodule Portal.Changes.Hooks.Actors do
       from(c in ClientToken,
         where: c.account_id == ^account_id and c.actor_id == ^actor_id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end
@@ -67,6 +68,7 @@ defmodule Portal.Changes.Hooks.Actors do
       from(p in PortalSession,
         where: p.account_id == ^account_id and p.actor_id == ^actor_id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

@@ -375,6 +375,7 @@ defmodule PortalWeb.EmailOTPController do
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
       query
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
       |> handle_nil()
@@ -384,6 +385,7 @@ defmodule PortalWeb.EmailOTPController do
       from(p in EmailOTP.AuthProvider,
         where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
       |> handle_nil()
@@ -398,6 +400,7 @@ defmodule PortalWeb.EmailOTPController do
             a.allow_email_otp_sign_in == true
       )
       |> preload(:account)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
       |> handle_nil()

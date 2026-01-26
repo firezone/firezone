@@ -86,6 +86,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
       else
         where(Account, [a], a.slug == ^id_or_slug)
       end
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
@@ -106,6 +107,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
           where: p.account_id == ^account_id and p.is_default == true and p.is_disabled == false,
           limit: 1
         )
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         |> Safe.unscoped()
         |> Safe.one()
       end)

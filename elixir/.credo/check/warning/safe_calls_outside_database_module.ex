@@ -1,4 +1,4 @@
-defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
+defmodule Credo.Check.Warning.SafeCallsOutsideDatabaseModule do
   use Credo.Check,
     base_priority: :high,
     category: :warning,

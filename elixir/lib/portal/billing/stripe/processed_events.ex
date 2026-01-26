@@ -61,6 +61,7 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
     def event_processed?(stripe_event_id) do
       ProcessedEvent.Query.all()
       |> ProcessedEvent.Query.by_event_id(stripe_event_id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.exists?()
     end
@@ -68,6 +69,7 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
     def get_by_stripe_event_id(stripe_event_id) do
       ProcessedEvent.Query.all()
       |> ProcessedEvent.Query.by_event_id(stripe_event_id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
@@ -75,6 +77,7 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
     def create_processed_event(attrs \\ %{}) do
       %ProcessedEvent{}
       |> ProcessedEvent.Changeset.changeset(attrs)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.insert()
     end
@@ -82,6 +85,7 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
     def get_latest_for_stripe_customer(stripe_customer_id) do
       ProcessedEvent.Query.all()
       |> ProcessedEvent.Query.by_latest_event(stripe_customer_id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
@@ -89,6 +93,7 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
     def get_latest_for_stripe_customer_by_type(customer_id, event_type) do
       ProcessedEvent.Query.all()
       |> ProcessedEvent.Query.by_latest_event_type(customer_id, event_type)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
@@ -99,6 +104,7 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
       {count, _} =
         ProcessedEvent.Query.all()
         |> ProcessedEvent.Query.by_cutoff_date(cutoff_date)
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         |> Safe.unscoped()
         |> Safe.delete_all()
 

@@ -195,6 +195,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         limit: ^limit
       )
       |> maybe_after_cursor(cursor)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
     end
@@ -204,6 +205,7 @@ defmodule Portal.Workers.CheckAccountLimits do
 
     def update(changeset) do
       changeset
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.update()
     end
@@ -219,6 +221,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
@@ -233,6 +236,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
@@ -247,6 +251,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
@@ -274,6 +279,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: s.account_id,
         select: {s.account_id, count(s.actor_id)}
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
@@ -287,6 +293,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: g.account_id,
         select: {g.account_id, count(g.id)}
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()

@@ -29,6 +29,7 @@ defmodule Portal.Workers.DeleteExpiredAPITokens do
     def delete_expired_api_tokens do
       from(t in APIToken, as: :api_tokens)
       |> where([api_tokens: t], t.expires_at <= ^DateTime.utc_now())
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

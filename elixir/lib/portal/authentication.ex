@@ -381,12 +381,14 @@ defmodule Portal.Authentication do
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one!()
     end
 
     def fetch_active_actor_by_id(id) do
       from(a in Actor, where: a.id == ^id, where: is_nil(a.disabled_at))
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
       |> case do
@@ -398,6 +400,7 @@ defmodule Portal.Authentication do
     # Client
     def insert_token(changeset) do
       changeset
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.insert()
     end
@@ -411,12 +414,14 @@ defmodule Portal.Authentication do
 
     def insert_relay_token(relay_token) do
       relay_token
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.insert()
     end
 
     def fetch_relay_token(id) do
       from(rt in Portal.RelayToken, where: rt.id == ^id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
       |> case do
@@ -442,6 +447,7 @@ defmodule Portal.Authentication do
         where: gt.account_id == ^account_id,
         where: gt.id == ^id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
       |> case do
@@ -480,6 +486,7 @@ defmodule Portal.Authentication do
         ]
       )
       |> select([tokens: tokens], tokens)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.update_all([])
       |> case do
@@ -492,6 +499,7 @@ defmodule Portal.Authentication do
 
     def insert_one_time_passcode(passcode) do
       passcode
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.insert()
     end
@@ -507,6 +515,7 @@ defmodule Portal.Authentication do
         where: a.allow_email_otp_sign_in == true,
         preload: [actor: a]
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
       |> case do
@@ -520,6 +529,7 @@ defmodule Portal.Authentication do
         where: otp.account_id == ^account.id,
         where: otp.actor_id == ^actor.id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
 
@@ -531,6 +541,7 @@ defmodule Portal.Authentication do
         where: otp.account_id == ^passcode.account_id,
         where: otp.id == ^passcode.id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
 
@@ -541,6 +552,7 @@ defmodule Portal.Authentication do
 
     def insert_portal_session(session) do
       session
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.insert()
     end
@@ -557,6 +569,7 @@ defmodule Portal.Authentication do
         where: ps.auth_provider_id in subquery(enabled_provider_ids),
         preload: [actor: a]
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
       |> case do
@@ -587,6 +600,7 @@ defmodule Portal.Authentication do
         where: ps.account_id == ^session.account_id,
         where: ps.id == ^session.id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
 

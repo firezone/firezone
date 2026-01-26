@@ -687,6 +687,7 @@ defmodule PortalWeb.OIDCController do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       query |> Safe.unscoped() |> Safe.one!()
     end
 
@@ -696,6 +697,7 @@ defmodule PortalWeb.OIDCController do
       from(p in schema,
         where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one!()
     end
@@ -774,6 +776,7 @@ defmodule PortalWeb.OIDCController do
 
       {count, rows} =
         Safe.insert_all(
+          # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
           Safe.unscoped(),
           ExternalIdentity,
           query_with_ctes,

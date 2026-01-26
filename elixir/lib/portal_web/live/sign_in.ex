@@ -310,17 +310,20 @@ defmodule PortalWeb.SignIn do
           do: from(a in Account, where: a.id == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       query |> Safe.unscoped() |> Safe.one!()
     end
 
     def get_auth_provider(account, module) do
       from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
 
     def list_auth_providers(account, module) do
       from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
     end

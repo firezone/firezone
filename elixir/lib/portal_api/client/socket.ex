@@ -148,6 +148,7 @@ defmodule PortalAPI.Client.Socket do
               where: c.external_id == ^external_id,
               preload: [:ipv4_address, :ipv6_address]
             )
+            # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
             |> Safe.unscoped()
             |> Safe.one()
           end

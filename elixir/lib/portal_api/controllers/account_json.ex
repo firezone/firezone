@@ -64,6 +64,7 @@ defmodule PortalAPI.AccountJSON do
         where: is_nil(a.disabled_at),
         where: a.type in [:account_admin_user, :account_user]
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -74,6 +75,7 @@ defmodule PortalAPI.AccountJSON do
         where: is_nil(a.disabled_at),
         where: a.type == :service_account
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -84,6 +86,7 @@ defmodule PortalAPI.AccountJSON do
         where: is_nil(a.disabled_at),
         where: a.type == :account_admin_user
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -100,6 +103,7 @@ defmodule PortalAPI.AccountJSON do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -109,6 +113,7 @@ defmodule PortalAPI.AccountJSON do
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end

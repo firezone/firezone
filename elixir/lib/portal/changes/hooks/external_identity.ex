@@ -35,6 +35,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
             c.actor_id == ^actor_id and
             c.auth_provider_id in subquery(auth_provider_ids)
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end
@@ -48,6 +49,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
             p.actor_id == ^actor_id and
             p.auth_provider_id in subquery(auth_provider_ids)
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

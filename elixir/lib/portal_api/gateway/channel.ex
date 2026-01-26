@@ -713,6 +713,7 @@ defmodule PortalAPI.Gateway.Channel do
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one!()
     end

@@ -640,6 +640,7 @@ defmodule Portal.Billing.EventHandler do
       hashed_id = :erlang.phash2(customer_id)
 
       Safe.transact(fn ->
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         {:ok, _} = Safe.unscoped() |> Safe.query("SELECT pg_advisory_xact_lock($1)", [hashed_id])
         fun.()
       end)
@@ -647,6 +648,7 @@ defmodule Portal.Billing.EventHandler do
 
     def slug_exists?(slug) do
       from(a in Portal.Account, where: a.slug == ^slug)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.exists?()
     end
@@ -662,19 +664,23 @@ defmodule Portal.Billing.EventHandler do
         account_id: account.id
       }
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       with {:ok, _auth_provider} <- Safe.unscoped(auth_provider) |> Safe.insert(),
+           # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
            {:ok, email_provider} <- Safe.unscoped(email_otp_provider) |> Safe.insert() do
         {:ok, email_provider}
       end
     end
 
     def insert(changeset) do
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       Safe.unscoped(changeset)
       |> Safe.insert()
     end
 
     def update_account_by_id(id, attrs) do
       from(a in Account, where: a.id == ^id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one!()
       |> case do
@@ -684,12 +690,14 @@ defmodule Portal.Billing.EventHandler do
           |> cast_embed(:limits)
           |> cast_embed(:features)
           |> cast_embed(:metadata)
+          # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
           |> Safe.unscoped()
           |> Safe.update()
       end
     end
 
     def insert_site(changeset) do
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       Safe.unscoped(changeset)
       |> Safe.insert()
     end

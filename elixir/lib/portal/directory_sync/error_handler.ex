@@ -323,18 +323,21 @@ defmodule Portal.DirectorySync.ErrorHandler do
 
     def get_directory(:entra, directory_id) do
       from(d in Entra.Directory, where: d.id == ^directory_id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
 
     def get_directory(:google, directory_id) do
       from(d in Google.Directory, where: d.id == ^directory_id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
 
     def get_directory(:okta, directory_id) do
       from(d in Okta.Directory, where: d.id == ^directory_id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
@@ -349,6 +352,7 @@ defmodule Portal.DirectorySync.ErrorHandler do
           :is_verified
         ])
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
     end
   end

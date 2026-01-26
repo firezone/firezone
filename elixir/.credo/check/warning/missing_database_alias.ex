@@ -1,4 +1,4 @@
-defmodule Credo.Check.Warning.MissingDBAlias do
+defmodule Credo.Check.Warning.MissingDatabaseAlias do
   use Credo.Check,
     base_priority: :high,
     category: :warning,
