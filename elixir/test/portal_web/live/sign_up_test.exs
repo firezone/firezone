@@ -502,6 +502,11 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Account Slug:"
       assert html =~ "Sign In URL:"
       assert html =~ "Sign In"
+      assert html =~ "Next Steps:"
+      assert html =~ "Download the Firezone Client"
+      assert html =~ "https://www.firezone.dev/kb/client-apps"
+      assert html =~ "View the Quickstart Guide"
+      assert html =~ "https://www.firezone.dev/kb/quickstart"
     end
   end
 
