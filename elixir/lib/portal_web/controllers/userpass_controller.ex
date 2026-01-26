@@ -57,7 +57,11 @@ defmodule PortalWeb.UserpassController do
   end
 
   defp check_admin(%Portal.Actor{type: :account_admin_user}, _context_type), do: :ok
-  defp check_admin(%Portal.Actor{type: :account_user}, :client), do: :ok
+
+  defp check_admin(%Portal.Actor{type: :account_user}, t)
+       when t in [:gui_client, :headless_client],
+       do: :ok
+
   defp check_admin(_actor, _context_type), do: {:error, :not_admin}
 
   defp create_session_or_token(conn, actor, provider, params) do
@@ -73,7 +77,10 @@ defmodule PortalWeb.UserpassController do
     # Determine session lifetime based on context type
     session_lifetime_secs =
       case type do
-        :client ->
+        :gui_client ->
+          provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
+
+        :headless_client ->
           provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
 
         :portal ->
@@ -91,10 +98,23 @@ defmodule PortalWeb.UserpassController do
           expires_at
         )
 
-      :client ->
+      :gui_client ->
         attrs = %{
           type: :client,
           secret_nonce: params["nonce"],
+          secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
+          account_id: actor.account_id,
+          actor_id: actor.id,
+          auth_provider_id: provider.id,
+          expires_at: expires_at
+        }
+
+        Portal.Auth.create_gui_client_token(attrs)
+
+      :headless_client ->
+        attrs = %{
+          type: :client,
+          secret_nonce: "",
           secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
           account_id: actor.account_id,
           actor_id: actor.id,
@@ -114,14 +134,26 @@ defmodule PortalWeb.UserpassController do
     |> Redirector.portal_signed_in(account, params)
   end
 
-  # Context: :client
+  # Context: :gui_client
   # Store a cookie and redirect to client handler which redirects to the final URL based on platform
-  defp signed_in(conn, :client, account, actor, token, params) do
-    Redirector.client_signed_in(
+  defp signed_in(conn, :gui_client, account, actor, token, params) do
+    Redirector.gui_client_signed_in(
       conn,
       account,
       actor.name,
       actor.email,
+      token,
+      params["state"]
+    )
+  end
+
+  # Context: :headless_client
+  # Show the token to the user to copy manually
+  defp signed_in(conn, :headless_client, account, actor, token, params) do
+    Redirector.headless_client_signed_in(
+      conn,
+      account,
+      actor.name,
       token,
       params["state"]
     )
@@ -167,7 +199,9 @@ defmodule PortalWeb.UserpassController do
     |> halt()
   end
 
-  defp context_type(%{"as" => "client"}), do: :client
+  defp context_type(%{"as" => "client"}), do: :gui_client
+  defp context_type(%{"as" => "gui-client"}), do: :gui_client
+  defp context_type(%{"as" => "headless-client"}), do: :headless_client
   defp context_type(_), do: :portal
 
   defmodule Database do

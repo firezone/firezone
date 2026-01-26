@@ -42,6 +42,32 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
       refute conn.halted
     end
 
+    test "does not redirect authenticated user when as=gui-client param is set", %{
+      conn: conn,
+      actor: actor
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> Map.put(:params, %{"as" => "gui-client"})
+        |> RedirectIfAuthenticated.call([])
+
+      refute conn.halted
+    end
+
+    test "does not redirect authenticated user when as=headless-client param is set", %{
+      conn: conn,
+      actor: actor
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> Map.put(:params, %{"as" => "headless-client"})
+        |> RedirectIfAuthenticated.call([])
+
+      refute conn.halted
+    end
+
     test "does not redirect unauthenticated user", %{
       conn: conn,
       account: account
@@ -78,6 +104,32 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
         |> get(~p"/#{account.slug}?as=client&nonce=test-nonce&state=test-state")
 
       # Should render the sign-in page (200)
+      assert html_response(conn, 200) =~ "Sign In"
+    end
+
+    test "integration: authenticated user with as=headless-client goes through full pipeline", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/#{account.slug}?as=headless-client&state=test-state")
+
+      assert html_response(conn, 200) =~ "Sign In"
+    end
+
+    test "integration: authenticated user with as=gui-client goes through full pipeline", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/#{account.slug}?as=gui-client&nonce=test-nonce&state=test-state")
+
       assert html_response(conn, 200) =~ "Sign In"
     end
 

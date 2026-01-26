@@ -541,6 +541,139 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert state == %{}
     end
 
+    test "successfully authenticates admin user in gui-client context", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor =
+        actor_fixture(
+          type: :account_admin_user,
+          account: account,
+          allow_email_otp_sign_in: true
+        )
+
+      # Initiate sign-in with gui-client context
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+          "email" => %{"email" => actor.email},
+          "as" => "gui-client",
+          "state" => "test-state",
+          "nonce" => "test-nonce"
+        })
+
+      # Get the code from the email
+      assert_received {:email, email}
+      code = extract_code_from_email(email)
+
+      # Verify with gui-client context
+      conn =
+        conn
+        |> recycle_with_cookie()
+        |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
+          "secret" => code,
+          "as" => "gui-client",
+          "state" => "test-state",
+          "nonce" => "test-nonce"
+        })
+
+      # gui-client context renders the client_redirect page (200)
+      assert conn.status == 200
+      assert conn.resp_body =~ "client_redirect"
+
+      # Email OTP cookie should be cleared
+      state = get_cookie_state(conn)
+      assert state == %{}
+    end
+
+    test "successfully authenticates admin user in headless-client context", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor =
+        actor_fixture(
+          type: :account_admin_user,
+          account: account,
+          allow_email_otp_sign_in: true
+        )
+
+      # Initiate sign-in with headless-client context
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+          "email" => %{"email" => actor.email},
+          "as" => "headless-client",
+          "state" => "test-state"
+        })
+
+      # Get the code from the email
+      assert_received {:email, email}
+      code = extract_code_from_email(email)
+
+      # Verify with headless-client context
+      conn =
+        conn
+        |> recycle_with_cookie()
+        |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
+          "secret" => code,
+          "as" => "headless-client",
+          "state" => "test-state"
+        })
+
+      # Headless client context renders the token display page (200)
+      assert conn.status == 200
+      assert conn.resp_body =~ "token-value"
+      assert conn.resp_body =~ "Copy token to clipboard"
+      assert conn.resp_body =~ actor.name
+
+      # Email OTP cookie should be cleared
+      state = get_cookie_state(conn)
+      assert state == %{}
+    end
+
+    test "successfully authenticates account_user in headless-client context", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor =
+        actor_fixture(
+          type: :account_user,
+          account: account,
+          allow_email_otp_sign_in: true
+        )
+
+      # Initiate sign-in with headless-client context
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+          "email" => %{"email" => actor.email},
+          "as" => "headless-client",
+          "state" => "test-state"
+        })
+
+      # Get the code from the email
+      assert_received {:email, email}
+      code = extract_code_from_email(email)
+
+      # Verify with headless-client context
+      conn =
+        conn
+        |> recycle_with_cookie()
+        |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
+          "secret" => code,
+          "as" => "headless-client",
+          "state" => "test-state"
+        })
+
+      # Headless client context renders the token display page (200)
+      assert conn.status == 200
+      assert conn.resp_body =~ "Copy token to clipboard"
+
+      # Email OTP cookie should be cleared
+      state = get_cookie_state(conn)
+      assert state == %{}
+    end
+
     test "rejects account_user in browser context (portal requires admin)", %{
       conn: conn,
       account: account,
