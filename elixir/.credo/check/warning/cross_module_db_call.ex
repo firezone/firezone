@@ -4,11 +4,11 @@ defmodule Credo.Check.Warning.CrossModuleDBCall do
     category: :warning,
     explanations: [
       check: """
-      Modules should not directly call into other modules' DB submodules.
+      Modules should not directly call into other modules' Database submodules.
 
-      Each module should only call its own DB module functions. If you need
+      Each module should only call its own Database module functions. If you need
       to access data from another module, create a public function in that
-      module that delegates to its DB module internally.
+      module that delegates to its Database module internally.
       """,
       params: []
     ]
@@ -20,7 +20,7 @@ defmodule Credo.Check.Warning.CrossModuleDBCall do
     # Extract the current module name and aliases from the file
     {current_modules, aliases} = extract_module_info(source_file)
 
-    # Find all cross-module DB calls
+    # Find all cross-module Database calls
     Credo.Code.prewalk(source_file, &traverse(&1, &2, issue_meta, current_modules, aliases), [])
   end
 
@@ -38,7 +38,7 @@ defmodule Credo.Check.Warning.CrossModuleDBCall do
     {ast, {[module_name | modules], aliases}}
   end
 
-  # Extract alias with :as option - alias Foo.Bar.DB, as: SomeDB
+  # Extract alias with :as option - alias Foo.Bar.Database, as: SomeDatabase
   defp extract_info(
          {:alias, _, [{:__aliases__, _, module_parts}, [as: {:__aliases__, _, [alias_name]}]]} =
            ast,
@@ -76,7 +76,7 @@ defmodule Credo.Check.Warning.CrossModuleDBCall do
     {ast, acc}
   end
 
-  # Check for calls like OtherModule.DB.function() or AliasedDB.function()
+  # Check for calls like OtherModule.Database.function() or AliasedDatabase.function()
   defp traverse(
          {{:., meta, [{:__aliases__, _, module_path}, _func]}, _, _} = ast,
          issues,
@@ -127,17 +127,17 @@ defmodule Credo.Check.Warning.CrossModuleDBCall do
   end
 
   defp cross_module_db_call?(module_path, current_modules) do
-    # Check if this is a DB module call
+    # Check if this is a Database module call
     case List.last(module_path) do
-      "DB" when length(module_path) >= 2 ->
-        # Get the parent module (everything except "DB")
+      "Database" when length(module_path) >= 2 ->
+        # Get the parent module (everything except "Database")
         parent_parts = Enum.take(module_path, length(module_path) - 1)
         parent_module = Enum.join(parent_parts, ".")
 
         # It's a cross-module call if the parent module is not in our current modules
         # and it's not a special allowed module
         not Enum.member?(current_modules, parent_module) and
-          not Enum.member?(current_modules, parent_module <> ".DB") and
+          not Enum.member?(current_modules, parent_module <> ".Database") and
           not allowed_module?(parent_module)
 
       _ ->
@@ -154,7 +154,7 @@ defmodule Credo.Check.Warning.CrossModuleDBCall do
     format_issue(
       issue_meta,
       message:
-        "Cross-module DB call detected: #{module_name}. Modules should not call other modules' DB functions directly. Create a public API function instead.",
+        "Cross-module Database call detected: #{module_name}. Modules should not call other modules' Database functions directly. Create a public API function instead.",
       trigger: module_name,
       line_no: line_no
     )

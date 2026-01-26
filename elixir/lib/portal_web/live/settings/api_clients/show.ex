@@ -1,11 +1,11 @@
 defmodule PortalWeb.Settings.ApiClients.Show do
   use PortalWeb, :live_view
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Ecto.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
     if Portal.Account.rest_api_enabled?(socket.assigns.account) do
-      actor = DB.get_api_client!(id, socket.assigns.subject)
+      actor = Database.get_api_client!(id, socket.assigns.subject)
 
       socket =
         socket
@@ -31,7 +31,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
   end
 
   def handle_tokens_update!(socket, list_opts) do
-    case DB.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+    case Database.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
       {:ok, tokens, metadata} ->
         {:ok,
          assign(socket,
@@ -233,7 +233,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
   def handle_event("disable", _params, socket) do
     changeset = disable_actor_changeset(socket.assigns.actor)
 
-    with {:ok, actor} <- DB.update_actor(changeset, socket.assigns.subject) do
+    with {:ok, actor} <- Database.update_actor(changeset, socket.assigns.subject) do
       socket =
         socket
         |> put_flash(:success, "API Client was disabled.")
@@ -246,7 +246,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
 
   def handle_event("enable", _params, socket) do
     changeset = enable_actor_changeset(socket.assigns.actor)
-    {:ok, actor} = DB.update_actor(changeset, socket.assigns.subject)
+    {:ok, actor} = Database.update_actor(changeset, socket.assigns.subject)
 
     socket =
       socket
@@ -259,7 +259,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
 
   def handle_event("revoke_all_tokens", _params, socket) do
     {:ok, deleted_tokens_count} =
-      DB.delete_all_tokens_for_actor(socket.assigns.actor, socket.assigns.subject)
+      Database.delete_all_tokens_for_actor(socket.assigns.actor, socket.assigns.subject)
 
     socket =
       socket
@@ -270,7 +270,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
   end
 
   def handle_event("revoke_token", %{"id" => id}, socket) do
-    {:ok, _token} = DB.delete_token(id, socket.assigns.subject)
+    {:ok, _token} = Database.delete_token(id, socket.assigns.subject)
 
     socket =
       socket
@@ -281,7 +281,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    with {:ok, _actor} <- DB.delete_actor(socket.assigns.actor, socket.assigns.subject) do
+    with {:ok, _actor} <- Database.delete_actor(socket.assigns.actor, socket.assigns.subject) do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients")}
     end
   end
@@ -298,7 +298,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
     |> put_change(:disabled_at, nil)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

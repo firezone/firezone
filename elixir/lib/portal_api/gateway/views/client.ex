@@ -9,7 +9,7 @@ defmodule PortalAPI.Gateway.Views.Client do
 
     # TODO: For easier testing, we re-parse the client version here.
     # Long term, we should not be parsing the user-agent at all in here.
-    # Instead we should directly store the parsed information in the DB.
+    # Instead we should directly store the parsed information in the Database.
     [client_version | _] = String.split(rest, " ", parts: 2)
 
     # Note: We purposely omit the client_type as that will say `connlib` for older clients

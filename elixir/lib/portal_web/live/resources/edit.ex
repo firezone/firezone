@@ -1,11 +1,11 @@
 defmodule PortalWeb.Resources.Edit do
   use PortalWeb, :live_view
   import PortalWeb.Resources.Components
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(%{"id" => id} = params, _session, socket) do
-    resource = DB.get_resource!(id, socket.assigns.subject)
-    sites = DB.all_sites(socket.assigns.subject)
+    resource = Database.get_resource!(id, socket.assigns.subject)
+    sites = Database.all_sites(socket.assigns.subject)
     form = change_resource(resource, socket.assigns.subject) |> to_form()
 
     socket =
@@ -241,7 +241,7 @@ defmodule PortalWeb.Resources.Edit do
 
     changeset = update_changeset(socket.assigns.resource, attrs, socket.assigns.subject)
 
-    case DB.update_resource(changeset, socket.assigns.subject) do
+    case Database.update_resource(changeset, socket.assigns.subject) do
       {:ok, resource} ->
         socket = put_flash(socket, :success, "Resource #{resource.name} updated successfully")
 
@@ -288,7 +288,7 @@ defmodule PortalWeb.Resources.Edit do
     |> Portal.Resource.changeset()
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, Resource}
 

@@ -2,7 +2,7 @@ defmodule PortalAPI.AccountController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   tags ["Account"]
 
@@ -16,14 +16,14 @@ defmodule PortalAPI.AccountController do
   def show(conn, _params) do
     account_id = conn.assigns.subject.account.id
 
-    with {:ok, account} <- DB.fetch_account(account_id, conn.assigns.subject) do
+    with {:ok, account} <- Database.fetch_account(account_id, conn.assigns.subject) do
       render(conn, :show, account: account)
     else
       error -> Error.handle(conn, error)
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

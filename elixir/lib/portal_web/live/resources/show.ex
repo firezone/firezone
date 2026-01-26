@@ -3,7 +3,7 @@ defmodule PortalWeb.Resources.Show do
   import PortalWeb.Policies.Components
   import PortalWeb.Resources.Components
   alias Portal.PubSub
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(%{"id" => id} = params, _session, socket) do
     resource = get_resource!(id, socket.assigns.subject)
@@ -20,7 +20,7 @@ defmodule PortalWeb.Resources.Show do
         params: Map.take(params, ["site_id"])
       )
       |> assign_live_table("policy_authorizations",
-        query_module: DB.PolicyAuthorizationQuery,
+        query_module: Database.PolicyAuthorizationQuery,
         sortable_fields: [],
         hide_filters: [:expiration],
         callback: &handle_policy_authorizations_update!/2
@@ -55,7 +55,7 @@ defmodule PortalWeb.Resources.Show do
   def handle_policies_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, group: [], resource: [])
 
-    with {:ok, policies, metadata} <- DB.list_policies(socket.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- Database.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          policies: policies,
@@ -73,7 +73,7 @@ defmodule PortalWeb.Resources.Show do
       )
 
     with {:ok, policy_authorizations, metadata} <-
-           DB.list_policy_authorizations_for(
+           Database.list_policy_authorizations_for(
              socket.assigns.resource,
              socket.assigns.subject,
              list_opts
@@ -366,7 +366,7 @@ defmodule PortalWeb.Resources.Show do
         %{assigns: %{resource: %{id: id}}} = socket
       )
       when resource_id == id do
-    resource = DB.get_resource!(socket.assigns.resource.id, socket.assigns.subject)
+    resource = Database.get_resource!(socket.assigns.resource.id, socket.assigns.subject)
 
     {:noreply, assign(socket, resource: resource)}
   end
@@ -380,7 +380,7 @@ defmodule PortalWeb.Resources.Show do
 
   def handle_event("delete", %{"id" => _resource_id}, socket) do
     {:ok, _deleted_resource} =
-      DB.delete_resource(socket.assigns.resource, socket.assigns.subject)
+      Database.delete_resource(socket.assigns.resource, socket.assigns.subject)
 
     socket = put_flash(socket, :success, "Resource was deleted.")
 
@@ -404,18 +404,18 @@ defmodule PortalWeb.Resources.Show do
   end
 
   defp get_resource!("internet", subject) do
-    DB.get_internet_resource!(subject)
+    Database.get_internet_resource!(subject)
   end
 
   defp get_resource!(id, subject) do
-    DB.get_resource!(id, subject)
+    Database.get_resource!(id, subject)
   end
 
   defp format_ip_stack(:dual), do: "Dual-stack (IPv4 and IPv6)"
   defp format_ip_stack(:ipv4_only), do: "IPv4 only"
   defp format_ip_stack(:ipv6_only), do: "IPv6 only"
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Safe, Resource, Policy}
@@ -561,8 +561,8 @@ defmodule PortalWeb.Resources.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_policy_id(policy.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_policy_id(policy.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -571,8 +571,8 @@ defmodule PortalWeb.Resources.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_resource_id(resource.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_resource_id(resource.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -581,8 +581,8 @@ defmodule PortalWeb.Resources.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_client_id(client.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_client_id(client.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -591,8 +591,8 @@ defmodule PortalWeb.Resources.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_actor_id(actor.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_actor_id(actor.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -601,19 +601,19 @@ defmodule PortalWeb.Resources.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
       |> list_policy_authorizations(subject, opts)
     end
 
     defp list_policy_authorizations(queryable, subject, opts) do
       queryable
       |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.list(DB.PolicyAuthorizationQuery, opts)
+      |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
     end
   end
 
-  defmodule DB.PolicyAuthorizationQuery do
+  defmodule Database.PolicyAuthorizationQuery do
     import Ecto.Query
 
     def all do

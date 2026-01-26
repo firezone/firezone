@@ -3,7 +3,7 @@ defmodule PortalAPI.PolicyController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   tags ["Policies"]
 
@@ -21,7 +21,7 @@ defmodule PortalAPI.PolicyController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, policies, metadata} <- DB.list_policies(conn.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- Database.list_policies(conn.assigns.subject, list_opts) do
       render(conn, :index, policies: policies, metadata: metadata)
     else
       error -> Error.handle(conn, error)
@@ -44,7 +44,7 @@ defmodule PortalAPI.PolicyController do
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
-    with {:ok, policy} <- DB.fetch_policy(id, conn.assigns.subject) do
+    with {:ok, policy} <- Database.fetch_policy(id, conn.assigns.subject) do
       render(conn, :show, policy: policy)
     else
       error -> Error.handle(conn, error)
@@ -64,8 +64,8 @@ defmodule PortalAPI.PolicyController do
   def create(conn, %{"policy" => params}) do
     subject = conn.assigns.subject
 
-    with :ok <- DB.validate_internet_resource_policy(params, subject),
-         {:ok, policy} <- DB.create_policy(params, subject) do
+    with :ok <- Database.validate_internet_resource_policy(params, subject),
+         {:ok, policy} <- Database.create_policy(params, subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/policies/#{policy}")
@@ -99,9 +99,9 @@ defmodule PortalAPI.PolicyController do
   def update(conn, %{"id" => id, "policy" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, policy} <- DB.fetch_policy(id, subject),
-         :ok <- DB.validate_internet_resource_policy(params, subject),
-         {:ok, policy} <- DB.update_policy(policy, params, subject) do
+    with {:ok, policy} <- Database.fetch_policy(id, subject),
+         :ok <- Database.validate_internet_resource_policy(params, subject),
+         {:ok, policy} <- Database.update_policy(policy, params, subject) do
       render(conn, :show, policy: policy)
     else
       error -> Error.handle(conn, error)
@@ -130,15 +130,15 @@ defmodule PortalAPI.PolicyController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, policy} <- DB.fetch_policy(id, subject),
-         {:ok, policy} <- DB.delete_policy(policy, subject) do
+    with {:ok, policy} <- Database.fetch_policy(id, subject),
+         {:ok, policy} <- Database.delete_policy(policy, subject) do
       render(conn, :show, policy: policy)
     else
       error -> Error.handle(conn, error)
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
     alias Portal.{Policy, Safe, Auth}

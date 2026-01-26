@@ -1,7 +1,7 @@
 defmodule PortalWeb.Settings.ApiClients.Index do
   use PortalWeb, :live_view
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 
@@ -48,7 +48,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
   def handle_api_clients_update!(socket, list_opts) do
     with {:ok, actors, actors_metadata} <-
-           DB.list_actors(socket.assigns.subject, list_opts) do
+           Database.list_actors(socket.assigns.subject, list_opts) do
       socket =
         assign(socket,
           actors: actors,

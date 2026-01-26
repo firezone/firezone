@@ -4,7 +4,7 @@ defmodule PortalAPI.GroupController do
   alias PortalAPI.Pagination
   alias PortalAPI.Error
   alias Portal.Group
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Ecto.Changeset
 
   tags ["Groups"]
@@ -23,7 +23,7 @@ defmodule PortalAPI.GroupController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, groups, metadata} <- DB.list_groups(conn.assigns.subject, list_opts) do
+    with {:ok, groups, metadata} <- Database.list_groups(conn.assigns.subject, list_opts) do
       render(conn, :index, groups: groups, metadata: metadata)
     else
       error -> Error.handle(conn, error)
@@ -46,7 +46,7 @@ defmodule PortalAPI.GroupController do
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
-    with {:ok, group} <- DB.fetch_group(id, conn.assigns.subject) do
+    with {:ok, group} <- Database.fetch_group(id, conn.assigns.subject) do
       render(conn, :show, group: group)
     else
       error -> Error.handle(conn, error)
@@ -65,7 +65,7 @@ defmodule PortalAPI.GroupController do
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"group" => params}) do
     with changeset <- create_group_changeset(conn.assigns.subject.account, params),
-         {:ok, group} <- DB.insert_group(changeset, conn.assigns.subject) do
+         {:ok, group} <- Database.insert_group(changeset, conn.assigns.subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/groups/#{group}")
@@ -105,10 +105,10 @@ defmodule PortalAPI.GroupController do
   def update(conn, %{"id" => id, "group" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, group} <- DB.fetch_group(id, subject),
+    with {:ok, group} <- Database.fetch_group(id, subject),
          :ok <- validate_group_updatable(group),
          changeset = do_update_group_changeset(group, params),
-         {:ok, group} <- DB.update_group(changeset, subject) do
+         {:ok, group} <- Database.update_group(changeset, subject) do
       render(conn, :show, group: group)
     else
       error -> Error.handle(conn, error)
@@ -118,7 +118,7 @@ defmodule PortalAPI.GroupController do
   def update(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, group} <- DB.fetch_group(id, subject),
+    with {:ok, group} <- Database.fetch_group(id, subject),
          :ok <- validate_group_updatable(group) do
       Error.handle(conn, {:error, :bad_request})
     else
@@ -162,15 +162,15 @@ defmodule PortalAPI.GroupController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, group} <- DB.fetch_group(id, subject),
-         {:ok, group} <- DB.delete_group(group, subject) do
+    with {:ok, group} <- Database.fetch_group(id, subject),
+         {:ok, group} <- Database.delete_group(group, subject) do
       render(conn, :show, group: group)
     else
       error -> Error.handle(conn, error)
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Group, Safe}
 

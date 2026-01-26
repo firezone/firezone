@@ -3,7 +3,7 @@ defmodule PortalWeb.Settings.ApiClients.New do
   import PortalWeb.Settings.ApiClients.Components
   import Ecto.Changeset
   alias Portal.Actor
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
     account = socket.assigns.account
@@ -81,7 +81,7 @@ defmodule PortalWeb.Settings.ApiClients.New do
       attrs = Map.put(attrs, "type", :api_client)
       changeset = changeset(attrs)
 
-      with {:ok, actor} <- DB.create_api_client(changeset, socket.assigns.subject) do
+      with {:ok, actor} <- Database.create_api_client(changeset, socket.assigns.subject) do
         socket =
           push_navigate(socket,
             to: ~p"/#{account}/settings/api_clients/#{actor}/new_token"
@@ -112,7 +112,7 @@ defmodule PortalWeb.Settings.ApiClients.New do
     |> validate_length(:name, min: 1, max: 255)
   end
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.Safe
 
     def create_api_client(changeset, subject) do

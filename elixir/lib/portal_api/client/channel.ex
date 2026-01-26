@@ -11,7 +11,7 @@ defmodule PortalAPI.Client.Channel do
     Auth
   }
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
 
@@ -302,7 +302,7 @@ defmodule PortalAPI.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           DB.all_compatible_gateways_for_client_and_resource(
+           Database.all_compatible_gateways_for_client_and_resource(
              socket.assigns.client,
              resource,
              socket.assigns.subject
@@ -402,7 +402,7 @@ defmodule PortalAPI.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           DB.all_compatible_gateways_for_client_and_resource(
+           Database.all_compatible_gateways_for_client_and_resource(
              socket.assigns.client,
              resource,
              socket.assigns.subject
@@ -460,7 +460,7 @@ defmodule PortalAPI.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           DB.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
+           Database.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
            |> then(fn
              {:ok, gw} ->
                {:ok, Presence.Gateways.preload_gateways_presence([gw]) |> List.first()}
@@ -531,7 +531,7 @@ defmodule PortalAPI.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           DB.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
+           Database.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
            |> then(fn
              {:ok, gw} ->
                {:ok, Presence.Gateways.preload_gateways_presence([gw]) |> List.first()}
@@ -920,7 +920,7 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, assign(socket, cache: cache)}
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, Gateway}
 

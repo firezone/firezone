@@ -21,7 +21,7 @@ defmodule Portal.Cache.Gateway do
   """
 
   alias Portal.{Cache, Gateway}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Ecto.UUID, only: [dump!: 1, load!: 1]
 
   require OpenTelemetry.Tracer
@@ -46,7 +46,7 @@ defmodule Portal.Cache.Gateway do
         gateway_id: gateway.id,
         account_id: gateway.account_id
       } do
-      DB.all_gateway_policy_authorizations_for_cache!(gateway)
+      Database.all_gateway_policy_authorizations_for_cache!(gateway)
       |> Enum.reduce(%{}, fn {{client_id, resource_id}, {policy_authorization_id, expires_at}},
                              acc ->
         cid_bytes = dump!(client_id)
@@ -176,7 +176,7 @@ defmodule Portal.Cache.Gateway do
   end
 
   defp handle_last_policy_authorization_removal(cache, key, policy_authorization) do
-    case DB.reauthorize_policy_authorization(policy_authorization) do
+    case Database.reauthorize_policy_authorization(policy_authorization) do
       {:ok, new_policy_authorization} ->
         new_policy_authorization_id = dump!(new_policy_authorization.id)
         expires_at_unix = DateTime.to_unix(new_policy_authorization.expires_at, :second)
@@ -218,7 +218,7 @@ defmodule Portal.Cache.Gateway do
 
   # Inline functions from Portal.PolicyAuthorizations - moved to DB module
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.Safe
     import Ecto.Query
     import Ecto.Changeset

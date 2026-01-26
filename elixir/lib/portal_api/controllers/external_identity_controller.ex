@@ -3,7 +3,7 @@ defmodule PortalAPI.ExternalIdentityController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   tags ["ExternalIdentities"]
 
@@ -25,7 +25,7 @@ defmodule PortalAPI.ExternalIdentityController do
     list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, external_identities, metadata} <-
-           DB.list_external_identities(actor_id, conn.assigns.subject, list_opts) do
+           Database.list_external_identities(actor_id, conn.assigns.subject, list_opts) do
       render(conn, :index, external_identities: external_identities, metadata: metadata)
     else
       error -> Error.handle(conn, error)
@@ -56,7 +56,7 @@ defmodule PortalAPI.ExternalIdentityController do
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
-    with {:ok, external_identity} <- DB.fetch_external_identity(id, conn.assigns.subject) do
+    with {:ok, external_identity} <- Database.fetch_external_identity(id, conn.assigns.subject) do
       render(conn, :show, external_identity: external_identity)
     else
       error -> Error.handle(conn, error)
@@ -87,16 +87,16 @@ defmodule PortalAPI.ExternalIdentityController do
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
-    with {:ok, external_identity} <- DB.fetch_external_identity(id, conn.assigns.subject),
+    with {:ok, external_identity} <- Database.fetch_external_identity(id, conn.assigns.subject),
          {:ok, deleted_external_identity} <-
-           DB.delete_external_identity(external_identity, conn.assigns.subject) do
+           Database.delete_external_identity(external_identity, conn.assigns.subject) do
       render(conn, :show, external_identity: deleted_external_identity)
     else
       error -> Error.handle(conn, error)
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.ExternalIdentity
     alias Portal.Safe

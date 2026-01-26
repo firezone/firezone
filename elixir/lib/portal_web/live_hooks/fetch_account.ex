@@ -1,9 +1,9 @@
 defmodule PortalWeb.LiveHooks.FetchAccount do
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def on_mount(:default, %{"account_id_or_slug" => account_id_or_slug}, _session, socket)
       when is_binary(account_id_or_slug) do
-    case DB.get_account_by_id_or_slug(account_id_or_slug) do
+    case Database.get_account_by_id_or_slug(account_id_or_slug) do
       nil -> {:cont, socket}
       %Portal.Account{} = account -> {:cont, Phoenix.Component.assign(socket, :account, account)}
     end
@@ -13,7 +13,7 @@ defmodule PortalWeb.LiveHooks.FetchAccount do
     {:cont, socket}
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

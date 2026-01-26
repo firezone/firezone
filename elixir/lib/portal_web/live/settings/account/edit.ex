@@ -1,6 +1,6 @@
 defmodule PortalWeb.Settings.Account.Edit do
   use PortalWeb, :live_view
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
     changeset = change_account_name(socket.assigns.account)
@@ -86,10 +86,10 @@ defmodule PortalWeb.Settings.Account.Edit do
   defp update_account_name(account, attrs, subject) do
     account
     |> change_account_name(attrs)
-    |> DB.update(subject)
+    |> Database.update(subject)
   end
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.Safe
 
     def update(changeset, subject) do

@@ -3,7 +3,7 @@ defmodule PortalAPI.SiteController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   tags ["Sites"]
 
@@ -26,7 +26,7 @@ defmodule PortalAPI.SiteController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, sites, metadata} <- DB.list_sites(conn.assigns.subject, list_opts) do
+    with {:ok, sites, metadata} <- Database.list_sites(conn.assigns.subject, list_opts) do
       render(conn, :index, sites: sites, metadata: metadata)
     else
       error -> Error.handle(conn, error)
@@ -49,7 +49,7 @@ defmodule PortalAPI.SiteController do
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
-    with {:ok, site} <- DB.fetch_site(id, conn.assigns.subject) do
+    with {:ok, site} <- Database.fetch_site(id, conn.assigns.subject) do
       render(conn, :show, site: site)
     else
       error -> Error.handle(conn, error)
@@ -69,7 +69,7 @@ defmodule PortalAPI.SiteController do
   def create(conn, %{"site" => params}) do
     changeset = create_changeset(conn.assigns.subject.account, params)
 
-    with {:ok, site} <- DB.create_site(changeset, conn.assigns.subject) do
+    with {:ok, site} <- Database.create_site(changeset, conn.assigns.subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/sites/#{site}")
@@ -113,9 +113,9 @@ defmodule PortalAPI.SiteController do
   def update(conn, %{"id" => id, "site" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, site} <- DB.fetch_site(id, subject),
+    with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
-         {:ok, site} <- DB.update_site(site, params, subject) do
+         {:ok, site} <- Database.update_site(site, params, subject) do
       render(conn, :show, site: site)
     else
       error -> Error.handle(conn, error)
@@ -144,9 +144,9 @@ defmodule PortalAPI.SiteController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, site} <- DB.fetch_site(id, subject),
+    with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
-         {:ok, site} <- DB.delete_site(site, subject) do
+         {:ok, site} <- Database.delete_site(site, subject) do
       render(conn, :show, site: site)
     else
       error -> Error.handle(conn, error)
@@ -158,7 +158,7 @@ defmodule PortalAPI.SiteController do
 
   defp validate_not_system_managed(_site), do: :ok
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, Billing}
     alias Portal.Site

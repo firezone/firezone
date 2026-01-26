@@ -1,6 +1,6 @@
 defmodule Portal.Changes.Hooks.AuthProviders do
   @behaviour Portal.Changes.Hooks
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   @impl true
   def on_insert(_lsn, _data), do: :ok
@@ -12,8 +12,8 @@ defmodule Portal.Changes.Hooks.AuthProviders do
         %{"is_disabled" => false},
         %{"is_disabled" => true, "account_id" => account_id, "id" => provider_id}
       ) do
-    DB.delete_client_tokens_for_provider(account_id, provider_id)
-    DB.delete_portal_sessions_for_provider(account_id, provider_id)
+    Database.delete_client_tokens_for_provider(account_id, provider_id)
+    Database.delete_portal_sessions_for_provider(account_id, provider_id)
 
     :ok
   end
@@ -23,7 +23,7 @@ defmodule Portal.Changes.Hooks.AuthProviders do
   @impl true
   def on_delete(_lsn, _old_data), do: :ok
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.ClientToken
     alias Portal.PortalSession

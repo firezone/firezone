@@ -3,7 +3,7 @@ defmodule PortalAPI.MembershipController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Ecto.Changeset
 
   tags ["Memberships"]
@@ -34,7 +34,7 @@ defmodule PortalAPI.MembershipController do
       Pagination.params_to_list_opts(params)
       |> Keyword.put(:filter, group_id: group_id)
 
-    with {:ok, actors, metadata} <- DB.list_actors(conn.assigns.subject, list_opts) do
+    with {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
     else
       error -> Error.handle(conn, error)
@@ -66,10 +66,10 @@ defmodule PortalAPI.MembershipController do
       ) do
     subject = conn.assigns.subject
 
-    with {:ok, group} <- DB.fetch_group(group_id, subject),
+    with {:ok, group} <- Database.fetch_group(group_id, subject),
          :ok <- validate_group_editable(group),
          changeset <- update_group_memberships_changeset(group, attrs),
-         {:ok, group} <- DB.update_group(changeset, subject) do
+         {:ok, group} <- Database.update_group(changeset, subject) do
       render(conn, :memberships, memberships: group.memberships)
     else
       error -> Error.handle(conn, error)
@@ -107,11 +107,11 @@ defmodule PortalAPI.MembershipController do
     remove = Map.get(params, "remove", [])
     subject = conn.assigns.subject
 
-    with {:ok, group} <- DB.fetch_group(group_id, subject),
+    with {:ok, group} <- Database.fetch_group(group_id, subject),
          :ok <- validate_group_editable(group),
          membership_attrs <- prepare_membership_attrs(group, add, remove),
          changeset <- update_group_memberships_changeset(group, membership_attrs),
-         {:ok, group} <- DB.update_group(changeset, subject) do
+         {:ok, group} <- Database.update_group(changeset, subject) do
       render(conn, :memberships, memberships: group.memberships)
     else
       error -> Error.handle(conn, error)
@@ -164,7 +164,7 @@ defmodule PortalAPI.MembershipController do
       else: Enum.map(membership_ids, &%{"actor_id" => &1, "account_id" => group.account_id})
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

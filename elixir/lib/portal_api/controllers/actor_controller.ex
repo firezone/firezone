@@ -4,7 +4,7 @@ defmodule PortalAPI.ActorController do
   alias PortalAPI.Pagination
   alias PortalAPI.Error
   alias Portal.Billing
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Ecto.Changeset
 
   tags ["Actors"]
@@ -23,7 +23,7 @@ defmodule PortalAPI.ActorController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, actors, metadata} <- DB.list_actors(conn.assigns.subject, list_opts) do
+    with {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
     else
       error -> Error.handle(conn, error)
@@ -46,7 +46,7 @@ defmodule PortalAPI.ActorController do
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
-    with {:ok, actor} <- DB.fetch_actor(id, conn.assigns.subject) do
+    with {:ok, actor} <- Database.fetch_actor(id, conn.assigns.subject) do
       render(conn, :show, actor: actor)
     else
       error -> Error.handle(conn, error)
@@ -69,7 +69,7 @@ defmodule PortalAPI.ActorController do
 
     with :ok <- check_billing_limits(account, actor_type),
          changeset <- create_actor_changeset(account, params),
-         {:ok, actor} <- DB.insert_actor(changeset, subject) do
+         {:ok, actor} <- Database.insert_actor(changeset, subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/actors/#{actor}")
@@ -139,9 +139,9 @@ defmodule PortalAPI.ActorController do
   def update(conn, %{"id" => id, "actor" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- DB.fetch_actor(id, subject),
+    with {:ok, actor} <- Database.fetch_actor(id, subject),
          changeset <- actor_changeset(actor, params),
-         {:ok, actor} <- DB.update_actor(changeset, subject) do
+         {:ok, actor} <- Database.update_actor(changeset, subject) do
       render(conn, :show, actor: actor)
     else
       error -> Error.handle(conn, error)
@@ -170,8 +170,8 @@ defmodule PortalAPI.ActorController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- DB.fetch_actor(id, subject),
-         {:ok, actor} <- DB.delete_actor(actor, subject) do
+    with {:ok, actor} <- Database.fetch_actor(id, subject),
+         {:ok, actor} <- Database.delete_actor(actor, subject) do
       render(conn, :show, actor: actor)
     else
       error -> Error.handle(conn, error)
@@ -190,7 +190,7 @@ defmodule PortalAPI.ActorController do
     |> validate_required([:name, :type])
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

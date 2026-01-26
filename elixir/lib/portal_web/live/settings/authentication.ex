@@ -11,7 +11,7 @@ defmodule PortalWeb.Settings.Authentication do
     Okta
   }
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   import Ecto.Changeset
 
@@ -71,7 +71,7 @@ defmodule PortalWeb.Settings.Authentication do
       )
       when type in @edit_types do
     schema = AuthProvider.module!(type)
-    provider = DB.get_provider!(schema, id, socket.assigns.subject)
+    provider = Database.get_provider!(schema, id, socket.assigns.subject)
     is_legacy = Map.get(provider, :is_legacy, false)
 
     # Legacy providers can't be verified (must be deleted and recreated)
@@ -192,7 +192,7 @@ defmodule PortalWeb.Settings.Authentication do
          "You cannot delete the provider you are currently signed in with."
        )}
     else
-      case DB.delete_provider!(provider, socket.assigns.subject) do
+      case Database.delete_provider!(provider, socket.assigns.subject) do
         {:ok, _provider} ->
           {:noreply,
            socket
@@ -228,7 +228,7 @@ defmodule PortalWeb.Settings.Authentication do
         )
       end
 
-    case DB.update_provider(changeset, socket.assigns.subject) do
+    case Database.update_provider(changeset, socket.assigns.subject) do
       {:ok, _provider} ->
         action = if new_disabled_state, do: "disabled", else: "enabled"
 
@@ -271,7 +271,7 @@ defmodule PortalWeb.Settings.Authentication do
   def handle_event("revoke_sessions", %{"id" => id}, socket) do
     provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
 
-    case DB.revoke_sessions_for_provider(provider, socket.assigns.subject) do
+    case Database.revoke_sessions_for_provider(provider, socket.assigns.subject) do
       {:ok, _} ->
         {:noreply,
          socket
@@ -382,8 +382,8 @@ defmodule PortalWeb.Settings.Authentication do
 
   defp init(socket) do
     providers =
-      DB.list_all_providers(socket.assigns.subject)
-      |> DB.enrich_with_session_counts(socket.assigns.subject)
+      Database.list_all_providers(socket.assigns.subject)
+      |> Database.enrich_with_session_counts(socket.assigns.subject)
 
     assign(socket,
       providers: providers,
@@ -1097,12 +1097,12 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp submit_provider(%{assigns: %{live_action: :new, form: %{source: changeset}}} = socket) do
-    DB.insert_provider(changeset, socket.assigns.subject)
+    Database.insert_provider(changeset, socket.assigns.subject)
     |> handle_submit(socket)
   end
 
   defp submit_provider(%{assigns: %{live_action: :edit, form: %{source: changeset}}} = socket) do
-    DB.update_provider(changeset, socket.assigns.subject)
+    Database.update_provider(changeset, socket.assigns.subject)
     |> handle_submit(socket)
   end
 
@@ -1306,7 +1306,7 @@ defmodule PortalWeb.Settings.Authentication do
       |> Enum.find(fn provider -> provider.id == provider_id end)
 
     with true <- provider_type(provider) not in ["email_otp", "userpass"],
-         {:ok, _result} <- DB.set_default_provider(provider, socket.assigns) do
+         {:ok, _result} <- Database.set_default_provider(provider, socket.assigns) do
       socket =
         socket
         |> put_flash(:success, "Default authentication provider set to #{provider.name}")
@@ -1338,7 +1338,7 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp clear_default_provider(socket) do
-    with {:ok, _result} <- DB.clear_default_provider(socket.assigns) do
+    with {:ok, _result} <- Database.clear_default_provider(socket.assigns) do
       socket =
         socket
         |> put_flash(:success, "Default authentication provider cleared")
@@ -1379,7 +1379,7 @@ defmodule PortalWeb.Settings.Authentication do
     "#{days}d"
   end
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.{AuthProvider, EmailOTP, Userpass, OIDC, Entra, Google, Okta, Safe}
     import Ecto.Query
     import Ecto.Changeset

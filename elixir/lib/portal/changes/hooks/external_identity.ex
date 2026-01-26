@@ -1,6 +1,6 @@
 defmodule Portal.Changes.Hooks.ExternalIdentities do
   @behaviour Portal.Changes.Hooks
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   @impl true
   def on_insert(_lsn, _data), do: :ok
@@ -14,13 +14,13 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
         "issuer" => issuer,
         "actor_id" => actor_id
       }) do
-    DB.delete_client_tokens(account_id, actor_id, issuer)
-    DB.delete_portal_sessions(account_id, actor_id, issuer)
+    Database.delete_client_tokens(account_id, actor_id, issuer)
+    Database.delete_portal_sessions(account_id, actor_id, issuer)
 
     :ok
   end
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.ClientToken
     alias Portal.PortalSession
     alias Portal.Safe

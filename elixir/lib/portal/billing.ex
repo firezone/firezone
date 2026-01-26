@@ -2,7 +2,7 @@ defmodule Portal.Billing do
   alias Portal.Auth
   alias Portal.Billing.EventHandler
   alias Portal.Billing.Stripe.APIClient
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
 
   # Configuration helpers
@@ -28,8 +28,8 @@ defmodule Portal.Billing do
   end
 
   def can_create_users?(%Portal.Account{} = account) do
-    users_count = DB.count_users_for_account(account)
-    active_users_count = DB.count_1m_active_users_for_account(account)
+    users_count = Database.count_users_for_account(account)
+    active_users_count = Database.count_1m_active_users_for_account(account)
 
     cond do
       not Portal.Account.active?(account) ->
@@ -52,7 +52,7 @@ defmodule Portal.Billing do
   end
 
   def can_create_service_accounts?(%Portal.Account{} = account) do
-    service_accounts_count = DB.count_service_accounts_for_account(account)
+    service_accounts_count = Database.count_service_accounts_for_account(account)
 
     Portal.Account.active?(account) and
       (is_nil(account.limits.service_accounts_count) or
@@ -65,7 +65,7 @@ defmodule Portal.Billing do
   end
 
   def can_create_sites?(%Portal.Account{} = account) do
-    sites_count = DB.count_sites_for_account(account)
+    sites_count = Database.count_sites_for_account(account)
 
     Portal.Account.active?(account) and
       (is_nil(account.limits.sites_count) or
@@ -78,7 +78,7 @@ defmodule Portal.Billing do
   end
 
   def can_create_admin_users?(%Portal.Account{} = account) do
-    account_admins_count = DB.count_account_admin_users_for_account(account)
+    account_admins_count = Database.count_account_admin_users_for_account(account)
 
     Portal.Account.active?(account) and
       (is_nil(account.limits.account_admin_users_count) or
@@ -91,7 +91,7 @@ defmodule Portal.Billing do
   end
 
   def can_create_api_clients?(%Portal.Account{} = account) do
-    api_clients_count = DB.count_api_clients_for_account(account)
+    api_clients_count = Database.count_api_clients_for_account(account)
 
     Portal.Account.active?(account) and
       (is_nil(account.limits.api_clients_count) or
@@ -104,7 +104,7 @@ defmodule Portal.Billing do
   end
 
   def can_create_api_tokens?(%Portal.Account{} = account, %Portal.Actor{} = actor) do
-    api_tokens_count = DB.count_api_tokens_for_actor(actor)
+    api_tokens_count = Database.count_api_tokens_for_actor(actor)
 
     Portal.Account.active?(account) and
       (is_nil(account.limits.api_tokens_per_client_count) or
@@ -128,7 +128,7 @@ defmodule Portal.Billing do
         customer_id: customer_id,
         billing_email: customer_email
       })
-      |> DB.update()
+      |> Database.update()
     else
       {:ok, {status, body}} ->
         :ok =
@@ -237,7 +237,7 @@ defmodule Portal.Billing do
            APIClient.create_subscription(secret_key, customer_id, default_price_id) do
       account
       |> update_account_metadata_changeset(%{subscription_id: subscription_id})
-      |> DB.update()
+      |> Database.update()
     else
       {:ok, {status, body}} ->
         :ok =
@@ -297,22 +297,22 @@ defmodule Portal.Billing do
   defp ensure_internet_site_and_resource_exist(%Portal.Account{} = account) do
     # Ensure Internet site exists
     site =
-      case DB.fetch_internet_site(account) do
+      case Database.fetch_internet_site(account) do
         {:ok, site} ->
           site
 
         {:error, :not_found} ->
-          {:ok, site} = DB.create_internet_site(account)
+          {:ok, site} = Database.create_internet_site(account)
           site
       end
 
     # Ensure Internet resource exists
-    case DB.fetch_internet_resource(account) do
+    case Database.fetch_internet_resource(account) do
       {:ok, _resource} ->
         {:ok, account}
 
       {:error, :not_found} ->
-        {:ok, _resource} = DB.create_internet_resource(account, site)
+        {:ok, _resource} = Database.create_internet_resource(account, site)
         {:ok, account}
     end
   end
@@ -394,7 +394,7 @@ defmodule Portal.Billing do
     |> cast_embed(:metadata)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

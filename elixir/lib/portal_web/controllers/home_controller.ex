@@ -1,12 +1,12 @@
 defmodule PortalWeb.HomeController do
   use PortalWeb, :controller
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def home(conn, params) do
     %PortalWeb.Cookie.RecentAccounts{account_ids: recent_account_ids} =
       PortalWeb.Cookie.RecentAccounts.fetch(conn)
 
-    recent_accounts = DB.get_accounts_by_ids(recent_account_ids)
+    recent_accounts = Database.get_accounts_by_ids(recent_account_ids)
     ids_to_remove = recent_account_ids -- Enum.map(recent_accounts, & &1.id)
     conn = PortalWeb.Cookie.RecentAccounts.remove(conn, ids_to_remove)
     params = PortalWeb.Auth.take_sign_in_params(params)
@@ -48,7 +48,7 @@ defmodule PortalWeb.HomeController do
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

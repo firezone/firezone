@@ -4,7 +4,7 @@ defmodule PortalWeb.Settings.BillingTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ClientFixtures
-  alias PortalWeb.Settings.Billing.DB
+  alias PortalWeb.Settings.Billing.Database
   alias Portal.Billing.Stripe.APIClient
 
   setup do
@@ -509,7 +509,7 @@ defmodule PortalWeb.Settings.BillingTest do
     end
   end
 
-  describe "DB.count_account_admin_users_for_account/1" do
+  describe "Database.count_account_admin_users_for_account/1" do
     test "counts only account admin users", %{account: account} do
       # Create various actor types
       _admin1 = admin_actor_fixture(account: account)
@@ -517,7 +517,7 @@ defmodule PortalWeb.Settings.BillingTest do
       _user = actor_fixture(account: account, type: :account_user)
       _service = service_account_fixture(account: account)
 
-      count = DB.count_account_admin_users_for_account(account)
+      count = Database.count_account_admin_users_for_account(account)
       # 2 created here + 1 from setup = 3
       assert count == 3
     end
@@ -527,19 +527,19 @@ defmodule PortalWeb.Settings.BillingTest do
 
       _disabled_admin = disabled_actor_fixture(account: account, type: :account_admin_user)
 
-      count = DB.count_account_admin_users_for_account(account)
+      count = Database.count_account_admin_users_for_account(account)
       # Only the active admin + 1 from setup
       assert count == 2
     end
   end
 
-  describe "DB.count_service_accounts_for_account/1" do
+  describe "Database.count_service_accounts_for_account/1" do
     test "counts only service accounts", %{account: account} do
       _sa1 = service_account_fixture(account: account)
       _sa2 = service_account_fixture(account: account)
       _user = actor_fixture(account: account, type: :account_user)
 
-      count = DB.count_service_accounts_for_account(account)
+      count = Database.count_service_accounts_for_account(account)
       assert count == 2
     end
 
@@ -548,19 +548,19 @@ defmodule PortalWeb.Settings.BillingTest do
 
       _disabled_sa = disabled_actor_fixture(account: account, type: :service_account)
 
-      count = DB.count_service_accounts_for_account(account)
+      count = Database.count_service_accounts_for_account(account)
       assert count == 1
     end
   end
 
-  describe "DB.count_users_for_account/1" do
+  describe "Database.count_users_for_account/1" do
     test "counts both account_admin_user and account_user types", %{account: account} do
       _admin = admin_actor_fixture(account: account)
       _user1 = actor_fixture(account: account, type: :account_user)
       _user2 = actor_fixture(account: account, type: :account_user)
       _service = service_account_fixture(account: account)
 
-      count = DB.count_users_for_account(account)
+      count = Database.count_users_for_account(account)
       # 3 created here + 1 admin from setup = 4
       assert count == 4
     end
@@ -570,18 +570,18 @@ defmodule PortalWeb.Settings.BillingTest do
 
       _disabled_user = disabled_actor_fixture(account: account, type: :account_user)
 
-      count = DB.count_users_for_account(account)
+      count = Database.count_users_for_account(account)
       # 1 active user + 1 admin from setup = 2
       assert count == 2
     end
   end
 
-  describe "DB.count_1m_active_users_for_account/1" do
+  describe "Database.count_1m_active_users_for_account/1" do
     test "counts users with recent client activity", %{account: account, actor: actor} do
       # Create a client with recent activity
       _client = client_fixture(account: account, actor: actor, last_seen_at: DateTime.utc_now())
 
-      count = DB.count_1m_active_users_for_account(account)
+      count = Database.count_1m_active_users_for_account(account)
       assert count == 1
     end
 
@@ -590,7 +590,7 @@ defmodule PortalWeb.Settings.BillingTest do
       two_months_ago = DateTime.utc_now() |> DateTime.add(-60, :day)
       _old_client = client_fixture(account: account, actor: actor, last_seen_at: two_months_ago)
 
-      count = DB.count_1m_active_users_for_account(account)
+      count = Database.count_1m_active_users_for_account(account)
       assert count == 0
     end
 
@@ -602,7 +602,7 @@ defmodule PortalWeb.Settings.BillingTest do
       _client1 = client_fixture(account: account, actor: actor, last_seen_at: DateTime.utc_now())
       _client2 = client_fixture(account: account, actor: actor, last_seen_at: DateTime.utc_now())
 
-      count = DB.count_1m_active_users_for_account(account)
+      count = Database.count_1m_active_users_for_account(account)
       assert count == 1
     end
 
@@ -612,12 +612,12 @@ defmodule PortalWeb.Settings.BillingTest do
       _client =
         client_fixture(account: account, actor: disabled_actor, last_seen_at: DateTime.utc_now())
 
-      count = DB.count_1m_active_users_for_account(account)
+      count = Database.count_1m_active_users_for_account(account)
       assert count == 0
     end
   end
 
-  describe "DB.count_groups_for_account/1" do
+  describe "Database.count_groups_for_account/1" do
     test "counts only account-managed sites", %{account: account} do
       # Create account-managed sites
       Portal.SiteFixtures.site_fixture(account: account, managed_by: :account)
@@ -626,7 +626,7 @@ defmodule PortalWeb.Settings.BillingTest do
       # Create system-managed site (should not be counted)
       Portal.SiteFixtures.site_fixture(account: account, managed_by: :system)
 
-      count = DB.count_groups_for_account(account)
+      count = Database.count_groups_for_account(account)
       assert count == 2
     end
   end

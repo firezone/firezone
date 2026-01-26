@@ -1,6 +1,6 @@
 defmodule PortalWeb.Resources.Components do
   use PortalWeb, :component_library
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   @resource_types %{
     internet: %{index: 1, label: nil},
@@ -10,7 +10,7 @@ defmodule PortalWeb.Resources.Components do
   }
 
   def fetch_resource_option(id, subject) do
-    resource = DB.get_resource!(id, subject)
+    resource = Database.get_resource!(id, subject)
     {:ok, resource_option(resource)}
   end
 
@@ -21,7 +21,7 @@ defmodule PortalWeb.Resources.Components do
         else: []
 
     {:ok, resources, metadata} =
-      DB.list_resources(subject,
+      Database.list_resources(subject,
         preload: [:site],
         limit: 25,
         filter: filter
@@ -341,7 +341,7 @@ defmodule PortalWeb.Resources.Components do
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, Resource}
 
@@ -355,11 +355,11 @@ defmodule PortalWeb.Resources.Components do
     def list_resources(subject, opts \\ []) do
       from(r in Resource, as: :resources)
       |> Safe.scoped(subject)
-      |> Safe.list(DB.ListQuery, opts)
+      |> Safe.list(Database.ListQuery, opts)
     end
   end
 
-  defmodule DB.ListQuery do
+  defmodule Database.ListQuery do
     import Ecto.Query
     import Portal.Repo.Query
 

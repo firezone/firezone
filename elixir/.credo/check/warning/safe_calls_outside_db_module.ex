@@ -4,9 +4,9 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
     category: :warning,
     explanations: [
       check: """
-      Portal.Safe should only be called from within a DB module.
+      Portal.Safe should only be called from within a Database module.
 
-      All modules that need to access Portal.Safe should define an inline DB module
+      All modules that need to access Portal.Safe should define an inline Database module
       and make all Portal.Safe calls from within that module.
       """,
       params: []
@@ -92,10 +92,10 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
     {ast, acc}
   end
 
-  # Check if we're in a DB module anywhere in the module hierarchy
+  # Check if we're in a Database module anywhere in the module hierarchy
   defp should_report?(module_stack) do
     not Enum.any?(module_stack, fn module_name ->
-      module_name == "DB" or String.ends_with?(module_name, ".DB")
+      module_name == "Database" or String.ends_with?(module_name, ".Database")
     end)
   end
 
@@ -106,7 +106,7 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
     format_issue(
       issue_meta,
       message:
-        "Portal.Safe should only be called from within a DB module#{location}. Create an inline DB module and move this call there.",
+        "Portal.Safe should only be called from within a Database module#{location}. Create an inline Database module and move this call there.",
       trigger: "Portal.Safe",
       line_no: line_no
     )

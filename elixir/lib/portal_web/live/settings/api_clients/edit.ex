@@ -3,11 +3,11 @@ defmodule PortalWeb.Settings.ApiClients.Edit do
   import PortalWeb.Settings.ApiClients.Components
   import Ecto.Changeset
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(%{"id" => id}, _session, socket) do
     if Portal.Account.rest_api_enabled?(socket.assigns.account) do
-      actor = DB.get_api_client!(id, socket.assigns.subject)
+      actor = Database.get_api_client!(id, socket.assigns.subject)
       changeset = changeset(actor, %{})
 
       socket =
@@ -66,7 +66,7 @@ defmodule PortalWeb.Settings.ApiClients.Edit do
   def handle_event("submit", %{"actor" => attrs}, socket) do
     changeset = changeset(socket.assigns.actor, attrs)
 
-    with {:ok, actor} <- DB.update_api_client(changeset, socket.assigns.subject) do
+    with {:ok, actor} <- Database.update_api_client(changeset, socket.assigns.subject) do
       socket =
         push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/#{actor}")
 
@@ -84,7 +84,7 @@ defmodule PortalWeb.Settings.ApiClients.Edit do
     |> validate_length(:name, min: 1, max: 255)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

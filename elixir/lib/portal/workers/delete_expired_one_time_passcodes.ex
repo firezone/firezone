@@ -8,20 +8,20 @@ defmodule Portal.Workers.DeleteExpiredOneTimePasscodes do
     max_attempts: 3,
     unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   require Logger
 
   @impl Oban.Worker
   def perform(_job) do
-    {count, _} = DB.delete_expired_passcodes()
+    {count, _} = Database.delete_expired_passcodes()
 
     Logger.info("Deleted #{count} expired one-time passcodes")
 
     :ok
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.OneTimePasscode
     alias Portal.Safe

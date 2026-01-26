@@ -3,7 +3,7 @@ defmodule PortalWeb.OIDCController do
 
   alias Portal.AuthProvider
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   alias PortalWeb.Session.Redirector
 
@@ -13,7 +13,7 @@ defmodule PortalWeb.OIDCController do
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
-    account = DB.get_account_by_id_or_slug!(account_id_or_slug)
+    account = Database.get_account_by_id_or_slug!(account_id_or_slug)
     provider = get_provider!(account, params)
     provider_redirect(conn, account, provider, params)
   end
@@ -57,7 +57,7 @@ defmodule PortalWeb.OIDCController do
          conn = PortalWeb.Cookie.OIDC.delete(conn),
          :ok <- verify_state(cookie.state, state),
          context_type = context_type(cookie.params),
-         account = DB.get_account_by_id_or_slug!(cookie.account_id),
+         account = Database.get_account_by_id_or_slug!(cookie.account_id),
          provider = get_provider!(account, cookie),
          :ok <- validate_context(provider, context_type),
          {:ok, tokens} <-
@@ -253,11 +253,11 @@ defmodule PortalWeb.OIDCController do
       "Unable to connect to the identity provider: #{inspect(reason)}. Please try again or contact your administrator."
 
   defp get_provider!(account, %{"auth_provider_type" => type, "auth_provider_id" => id}) do
-    DB.get_provider!(account.id, type, id)
+    Database.get_provider!(account.id, type, id)
   end
 
   defp get_provider!(account, %PortalWeb.Cookie.OIDC{} = cookie) do
-    DB.get_provider!(account.id, cookie.auth_provider_type, cookie.auth_provider_id)
+    Database.get_provider!(account.id, cookie.auth_provider_type, cookie.auth_provider_id)
   end
 
   defp fetch_userinfo(provider, access_token) do
@@ -293,7 +293,7 @@ defmodule PortalWeb.OIDCController do
       |> Map.put("idp_id", idp_id)
 
     with %{valid?: true} <- validate_upsert_attrs(attrs) do
-      DB.upsert_identity(account.id, email, issuer, idp_id, profile_attrs)
+      Database.upsert_identity(account.id, email, issuer, idp_id, profile_attrs)
     else
       changeset -> {:error, changeset}
     end
@@ -645,7 +645,7 @@ defmodule PortalWeb.OIDCController do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, AuthProvider, ExternalIdentity}
     alias Portal.Account

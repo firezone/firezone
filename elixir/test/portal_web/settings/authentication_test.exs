@@ -1647,7 +1647,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # DB Module Tests
   # =============================================================================
 
-  describe "DB.list_all_providers/1" do
+  describe "Database.list_all_providers/1" do
     test "returns all provider types", %{account: account, actor: actor, conn: conn} do
       # Create various provider types
       google_provider_fixture(account: account)
@@ -1668,7 +1668,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     end
   end
 
-  describe "DB.enrich_with_session_counts/2" do
+  describe "Database.enrich_with_session_counts/2" do
     test "returns zero counts for providers with no sessions", %{
       account: account,
       actor: actor,
@@ -1719,7 +1719,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     end
   end
 
-  describe "DB.revoke_sessions_for_provider/2" do
+  describe "Database.revoke_sessions_for_provider/2" do
     test "deletes all sessions for a provider", %{account: account, actor: actor, conn: conn} do
       provider = google_provider_fixture(account: account, name: "Revoke Test Provider")
 
@@ -3027,9 +3027,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # DB Helper Edge Cases
   # =============================================================================
 
-  describe "DB helper edge cases" do
+  describe "Database helper edge cases" do
     test "revoke_sessions_for_provider handles nil provider", %{actor: actor} do
-      alias PortalWeb.Settings.Authentication.DB
+      alias PortalWeb.Settings.Authentication.Database
 
       # Build a proper subject from the actor
       {:ok, subject} =
@@ -3039,7 +3039,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         )
 
       # Should return {:ok, 0} for nil provider
-      assert {:ok, 0} = DB.revoke_sessions_for_provider(nil, subject)
+      assert {:ok, 0} = Database.revoke_sessions_for_provider(nil, subject)
     end
   end
 

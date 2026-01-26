@@ -3,7 +3,7 @@ defmodule PortalAPI.GatewayController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   alias Portal.Presence
 
   tags ["Gateways"]
@@ -38,7 +38,7 @@ defmodule PortalAPI.GatewayController do
         list_opts
       end
 
-    with {:ok, gateways, metadata} <- DB.list_gateways(conn.assigns.subject, list_opts) do
+    with {:ok, gateways, metadata} <- Database.list_gateways(conn.assigns.subject, list_opts) do
       render(conn, :index, gateways: gateways, metadata: metadata)
     else
       error -> Error.handle(conn, error)
@@ -67,7 +67,7 @@ defmodule PortalAPI.GatewayController do
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
-    with {:ok, gateway} <- DB.fetch_gateway(id, conn.assigns.subject) do
+    with {:ok, gateway} <- Database.fetch_gateway(id, conn.assigns.subject) do
       gateway = Presence.Gateways.preload_gateways_presence([gateway]) |> List.first()
       render(conn, :show, gateway: gateway)
     else
@@ -99,15 +99,15 @@ defmodule PortalAPI.GatewayController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, gateway} <- DB.fetch_gateway(id, subject),
-         {:ok, gateway} <- DB.delete_gateway(gateway, subject) do
+    with {:ok, gateway} <- Database.fetch_gateway(id, subject),
+         {:ok, gateway} <- Database.delete_gateway(gateway, subject) do
       render(conn, :show, gateway: gateway)
     else
       error -> Error.handle(conn, error)
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Gateway

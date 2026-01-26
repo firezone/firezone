@@ -1,5 +1,5 @@
 defmodule Portal.Telemetry.Reporter.Oban do
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   @moduledoc """
   A simple module for reporting Oban job exceptions to Sentry.
@@ -266,13 +266,13 @@ defmodule Portal.Telemetry.Reporter.Oban do
   defp handle_4xx_error(provider, directory_id, error_message) do
     now = DateTime.utc_now()
 
-    case DB.get_directory(provider, directory_id) do
+    case Database.get_directory(provider, directory_id) do
       # Directory doesn't exist, nothing to update
       nil ->
         :ok
 
       directory ->
-        DB.update_directory(directory, %{
+        Database.update_directory(directory, %{
           "errored_at" => now,
           "error_message" => error_message,
           "is_disabled" => true,
@@ -288,7 +288,7 @@ defmodule Portal.Telemetry.Reporter.Oban do
   defp handle_5xx_error(provider, directory_id, error_message) do
     now = DateTime.utc_now()
 
-    case DB.get_directory(provider, directory_id) do
+    case Database.get_directory(provider, directory_id) do
       # Directory doesn't exist, nothing to update
       nil ->
         :ok
@@ -317,11 +317,11 @@ defmodule Portal.Telemetry.Reporter.Oban do
             updates
           end
 
-        DB.update_directory(directory, updates)
+        Database.update_directory(directory, updates)
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, Entra, Google, Okta}
 

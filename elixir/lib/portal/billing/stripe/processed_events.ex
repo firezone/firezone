@@ -6,27 +6,27 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
 
   import Ecto.Query, warn: false
   alias Portal.Billing.Stripe.ProcessedEvents.ProcessedEvent
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   @doc """
   Checks if a Stripe event has already been processed by event ID.
   """
   def event_processed?(stripe_event_id) do
-    DB.event_processed?(stripe_event_id)
+    Database.event_processed?(stripe_event_id)
   end
 
   @doc """
   Gets a processed event by Stripe event ID.
   """
   def get_by_stripe_event_id(stripe_event_id) do
-    DB.get_by_stripe_event_id(stripe_event_id)
+    Database.get_by_stripe_event_id(stripe_event_id)
   end
 
   @doc """
   Creates a processed event record.
   """
   def create_processed_event(attrs \\ %{}) do
-    DB.create_processed_event(attrs)
+    Database.create_processed_event(attrs)
   end
 
   @doc """
@@ -35,7 +35,7 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
   def get_latest_for_stripe_customer(nil), do: nil
 
   def get_latest_for_stripe_customer(stripe_customer_id) do
-    DB.get_latest_for_stripe_customer(stripe_customer_id)
+    Database.get_latest_for_stripe_customer(stripe_customer_id)
   end
 
   @doc """
@@ -44,17 +44,17 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
   def get_latest_for_stripe_customer(nil, _event_type), do: nil
 
   def get_latest_for_stripe_customer(customer_id, event_type) do
-    DB.get_latest_for_stripe_customer_by_type(customer_id, event_type)
+    Database.get_latest_for_stripe_customer_by_type(customer_id, event_type)
   end
 
   @doc """
   Cleans up processed events older than specified days.
   """
   def cleanup_old_events(days_old \\ 30) do
-    DB.cleanup_old_events(days_old)
+    Database.cleanup_old_events(days_old)
   end
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.Safe
     alias Portal.Billing.Stripe.ProcessedEvents.ProcessedEvent
 

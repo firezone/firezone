@@ -2,14 +2,14 @@ defmodule PortalWeb.Plugs.FetchAccount do
   @behaviour Plug
 
   import Plug.Conn
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   @impl true
   def init(opts), do: opts
 
   @impl true
   def call(%Plug.Conn{path_info: [account_id_or_slug | _rest]} = conn, _opts) do
-    case DB.get_account_by_id_or_slug(account_id_or_slug) do
+    case Database.get_account_by_id_or_slug(account_id_or_slug) do
       nil -> conn
       %Portal.Account{} = account -> assign(conn, :account, account)
     end
@@ -17,7 +17,7 @@ defmodule PortalWeb.Plugs.FetchAccount do
 
   def call(conn, _opts), do: conn
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

@@ -12,7 +12,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
   alias Portal.Google
   alias Portal.Entra
   alias Portal.Okta
-  alias PortalWeb.Settings.DirectorySync.DB
+  alias PortalWeb.Settings.DirectorySync.Database
 
   # Generate a test RSA key pair using JOSE for Okta tests
   @test_jwk JOSE.JWK.generate_key({:rsa, 2048})
@@ -1121,7 +1121,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> Google.Directory.changeset()
 
       # Insert should fail due to unique constraint on name
-      assert {:error, error_changeset} = DB.insert_directory(changeset, subject)
+      assert {:error, error_changeset} = Database.insert_directory(changeset, subject)
 
       # Check the error message
       {message, _opts} = Keyword.get(error_changeset.errors, :name)
@@ -1363,7 +1363,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ directory.name
 
       # Verify that stats are computed correctly using the existing subject
-      stats = DB.count_deletion_stats(directory, subject)
+      stats = Database.count_deletion_stats(directory, subject)
       assert stats.actors == 1
       assert stats.groups == 1
       assert stats.policies == 1
@@ -1536,14 +1536,14 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
     end
   end
 
-  describe "DB module" do
+  describe "Database module" do
     test "list_all_directories returns all directory types", %{account: account, actor: actor} do
       google_dir = google_directory_fixture(account: account)
       entra_dir = entra_directory_fixture(account: account)
       okta_dir = okta_directory_fixture(account: account)
 
       subject = admin_subject_fixture(account: account, actor: actor)
-      directories = DB.list_all_directories(subject)
+      directories = Database.list_all_directories(subject)
 
       assert length(directories) == 3
 
@@ -1561,7 +1561,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         Oban.insert(Portal.Google.Sync.new(%{"directory_id" => directory.id}))
 
       subject = admin_subject_fixture(account: account, actor: actor)
-      [enriched] = DB.list_all_directories(subject)
+      [enriched] = Database.list_all_directories(subject)
 
       assert enriched.has_active_job == true
     end
@@ -1591,7 +1591,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       )
 
       subject = admin_subject_fixture(account: account, actor: actor)
-      [enriched] = DB.list_all_directories(subject)
+      [enriched] = Database.list_all_directories(subject)
 
       assert enriched.groups_count == 2
       assert enriched.actors_count == 1
@@ -1601,7 +1601,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       directory = google_directory_fixture(account: account)
 
       subject = admin_subject_fixture(account: account, actor: actor)
-      fetched = DB.get_directory!(Google.Directory, directory.id, subject)
+      fetched = Database.get_directory!(Google.Directory, directory.id, subject)
 
       assert fetched.id == directory.id
       assert fetched.name == directory.name
@@ -1611,7 +1611,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       subject = admin_subject_fixture(account: account, actor: actor)
 
       assert_raise Ecto.NoResultsError, fn ->
-        DB.get_directory!(Google.Directory, Ecto.UUID.generate(), subject)
+        Database.get_directory!(Google.Directory, Ecto.UUID.generate(), subject)
       end
     end
 
@@ -1658,7 +1658,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       Portal.PolicyFixtures.policy_fixture(account: account, group: group2)
 
       subject = admin_subject_fixture(account: account, actor: actor)
-      stats = DB.count_deletion_stats(directory, subject)
+      stats = Database.count_deletion_stats(directory, subject)
 
       assert stats.actors == 2
       assert stats.identities == 2
@@ -1668,7 +1668,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
     test "reload returns nil for nil directory", %{account: account, actor: actor} do
       subject = admin_subject_fixture(account: account, actor: actor)
-      assert DB.reload(nil, subject) == nil
+      assert Database.reload(nil, subject) == nil
     end
 
     test "reload returns updated directory", %{account: account, actor: actor} do
@@ -1680,7 +1680,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> Portal.Repo.update!()
 
       subject = admin_subject_fixture(account: account, actor: actor)
-      reloaded = DB.reload(directory, subject)
+      reloaded = Database.reload(directory, subject)
 
       assert reloaded.name == "Updated"
     end
@@ -2766,7 +2766,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         attempt: 1
       })
 
-      [enriched] = DB.list_all_directories(subject)
+      [enriched] = Database.list_all_directories(subject)
 
       assert enriched.most_recent_job != nil
       assert enriched.most_recent_job.state == "completed"
@@ -2795,7 +2795,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         attempt: 1
       })
 
-      [enriched] = DB.list_all_directories(subject)
+      [enriched] = Database.list_all_directories(subject)
 
       assert enriched.has_active_job == true
       assert enriched.most_recent_job != nil
@@ -2836,7 +2836,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         attempt: 1
       })
 
-      [enriched] = DB.list_all_directories(subject)
+      [enriched] = Database.list_all_directories(subject)
 
       # Active job should be returned as most_recent_job
       assert enriched.most_recent_job.state == "executing"
@@ -2863,7 +2863,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         errors: [%{"at" => DateTime.to_iso8601(now), "error" => "Some error"}]
       })
 
-      [enriched] = DB.list_all_directories(subject)
+      [enriched] = Database.list_all_directories(subject)
 
       assert enriched.most_recent_job != nil
       assert enriched.most_recent_job.state == "discarded"

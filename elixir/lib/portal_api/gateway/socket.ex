@@ -2,7 +2,7 @@ defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
   alias Portal.Auth
   alias Portal.{Gateway, Version}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.Changeset
@@ -34,9 +34,9 @@ defmodule PortalAPI.Gateway.Socket do
     attrs = Map.take(attrs, ~w[external_id name public_key])
 
     with {:ok, gateway_token} <- Auth.verify_gateway_token(encoded_token),
-         {:ok, site} <- DB.fetch_site(gateway_token.site_id),
+         {:ok, site} <- Database.fetch_site(gateway_token.site_id),
          changeset = upsert_changeset(site, attrs, context),
-         {:ok, gateway} <- DB.upsert_gateway(changeset, site) do
+         {:ok, gateway} <- Database.upsert_gateway(changeset, site) do
       OpenTelemetry.Tracer.set_attributes(%{
         token_id: gateway_token.id,
         gateway_id: gateway.id,
@@ -106,7 +106,7 @@ defmodule PortalAPI.Gateway.Socket do
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Gateway
     alias Portal.IPv4Address

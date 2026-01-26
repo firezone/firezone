@@ -1,6 +1,6 @@
 defmodule PortalWeb.SignIn.Email do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :public}}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(
         %{
@@ -12,7 +12,7 @@ defmodule PortalWeb.SignIn.Email do
       ) do
     redirect_params = PortalWeb.Auth.take_sign_in_params(params)
 
-    account = DB.get_account_by_id_or_slug(account_id_or_slug)
+    account = Database.get_account_by_id_or_slug(account_id_or_slug)
 
     with %Portal.Account{} = account <- account,
          {:ok, email} <- Map.fetch(session, "email") do
@@ -194,7 +194,7 @@ defmodule PortalWeb.SignIn.Email do
     """
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

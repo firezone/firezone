@@ -3,17 +3,17 @@ defmodule Portal.Okta.Scheduler do
   Worker to schedule Okta directory syncs.
   """
   use Oban.Worker, queue: :okta_scheduler, max_attempts: 1
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
     Logger.debug("Scheduling Okta directory sync jobs")
 
-    DB.queue_sync_jobs()
+    Database.queue_sync_jobs()
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

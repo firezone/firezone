@@ -6,7 +6,7 @@ defmodule PortalWeb.UserpassController do
 
   alias Portal.Userpass
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   alias PortalWeb.Session.Redirector
 
   require Logger
@@ -24,7 +24,7 @@ defmodule PortalWeb.UserpassController do
     password = userpass["secret"]
     context_type = context_type(params)
 
-    with %Portal.Account{} = account <- DB.get_account_by_id_or_slug(account_id_or_slug),
+    with %Portal.Account{} = account <- Database.get_account_by_id_or_slug(account_id_or_slug),
          %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
          %Portal.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
@@ -128,11 +128,11 @@ defmodule PortalWeb.UserpassController do
   end
 
   defp fetch_provider(account, id) do
-    DB.get_provider(account, id)
+    Database.get_provider(account, id)
   end
 
   defp fetch_actor(account, email) do
-    DB.get_actor_by_email(account, email)
+    Database.get_actor_by_email(account, email)
   end
 
   defp handle_error(conn, {:error, :invalid_secret}, _params) do
@@ -170,7 +170,7 @@ defmodule PortalWeb.UserpassController do
   defp context_type(%{"as" => "client"}), do: :client
   defp context_type(_), do: :portal
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

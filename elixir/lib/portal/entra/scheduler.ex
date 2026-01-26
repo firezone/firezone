@@ -4,17 +4,17 @@ defmodule Portal.Entra.Scheduler do
   """
 
   use Oban.Worker, queue: :entra_scheduler, max_attempts: 1
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
     Logger.debug("Scheduling Entra directory sync jobs")
 
-    DB.queue_sync_jobs()
+    Database.queue_sync_jobs()
   end
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.Safe
     import Ecto.Query
 

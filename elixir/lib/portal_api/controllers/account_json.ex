@@ -1,5 +1,5 @@
 defmodule PortalAPI.AccountJSON do
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   @doc """
   Render a single Account
@@ -20,11 +20,11 @@ defmodule PortalAPI.AccountJSON do
 
   defp build_limits(account) do
     # Get current usage counts
-    users_count = DB.count_users_for_account(account)
-    monthly_active_users_count = DB.count_1m_active_users_for_account(account)
-    service_accounts_count = DB.count_service_accounts_for_account(account)
-    admin_users_count = DB.count_account_admin_users_for_account(account)
-    sites_count = DB.count_groups_for_account(account)
+    users_count = Database.count_users_for_account(account)
+    monthly_active_users_count = Database.count_1m_active_users_for_account(account)
+    service_accounts_count = Database.count_service_accounts_for_account(account)
+    admin_users_count = Database.count_account_admin_users_for_account(account)
+    sites_count = Database.count_groups_for_account(account)
 
     %{}
     |> put_limit(:users, account.limits.users_count, users_count)
@@ -52,7 +52,7 @@ defmodule PortalAPI.AccountJSON do
     })
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Actor

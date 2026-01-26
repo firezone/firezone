@@ -1,7 +1,7 @@
 defmodule Portal.Changes.Hooks.Policies do
   @behaviour Portal.Changes.Hooks
   alias Portal.{Changes.Change, Policy, PubSub}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Portal.SchemaHelpers
 
   @impl true
@@ -20,7 +20,7 @@ defmodule Portal.Changes.Hooks.Policies do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
     policy = struct_from_params(Policy, old_data)
-    DB.delete_policy_authorizations_for_policy(policy)
+    Database.delete_policy_authorizations_for_policy(policy)
 
     on_delete(lsn, old_data)
   end
@@ -44,7 +44,7 @@ defmodule Portal.Changes.Hooks.Policies do
     if old_policy.conditions != policy.conditions or
          old_policy.group_id != policy.group_id or
          old_policy.resource_id != policy.resource_id do
-      DB.delete_policy_authorizations_for_policy(old_policy)
+      Database.delete_policy_authorizations_for_policy(old_policy)
     end
 
     PubSub.Account.broadcast(policy.account_id, change)
@@ -58,7 +58,7 @@ defmodule Portal.Changes.Hooks.Policies do
     PubSub.Account.broadcast(policy.account_id, change)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, Policy, PolicyAuthorization}
 

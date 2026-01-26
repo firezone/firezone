@@ -1,5 +1,5 @@
 defmodule Portal.Cache.Client do
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   @moduledoc """
     This cache is used in the client channel to maintain a materialized view of the client access state.
@@ -305,8 +305,8 @@ defmodule Portal.Cache.Client do
           cache
         else
           # Need to fetch the resource from the DB
-          {:ok, resource} = DB.fetch_resource_by_id(resource_id, subject)
-          resource = DB.preload_site(resource)
+          {:ok, resource} = Database.fetch_resource_by_id(resource_id, subject)
+          resource = Database.preload_site(resource)
 
           resource = Portal.Cache.Cacheable.to_cache(resource)
 
@@ -392,7 +392,7 @@ defmodule Portal.Cache.Client do
       # We need to hydrate the new site name if the site has changed
       site =
         if site_changed? do
-          case DB.get_site_by_id(site_id, subject) do
+          case Database.get_site_by_id(site_id, subject) do
             %Portal.Site{} = site -> Portal.Cache.Cacheable.to_cache(site)
             nil -> nil
           end
@@ -422,7 +422,7 @@ defmodule Portal.Cache.Client do
 
     OpenTelemetry.Tracer.with_span "Cache.Cacheable.hydrate", attributes: attributes do
       {_policies, cache} =
-        DB.all_policies_for_actor_id!(client.actor_id, subject)
+        Database.all_policies_for_actor_id!(client.actor_id, subject)
         |> Enum.map_reduce(%{policies: %{}, resources: %{}}, fn policy, cache ->
           resource = Cache.Cacheable.to_cache(policy.resource)
           resources = Map.put(cache.resources, resource.id, resource)
@@ -433,7 +433,7 @@ defmodule Portal.Cache.Client do
         end)
 
       memberships =
-        for membership <- DB.all_memberships_for_actor_id!(client.actor_id, subject),
+        for membership <- Database.all_memberships_for_actor_id!(client.actor_id, subject),
             into: %{} do
           mid = if membership.id, do: dump!(membership.id), else: nil
           {dump!(membership.group_id), mid}
@@ -554,7 +554,7 @@ defmodule Portal.Cache.Client do
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 
