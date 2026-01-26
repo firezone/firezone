@@ -6,6 +6,42 @@ defmodule Portal.Mailer.AuthEmailTest do
   import Portal.AuthProviderFixtures
   import Portal.Mailer.AuthEmail
 
+  describe "sign_up_link_email/4" do
+    test "includes client download and quickstart links" do
+      account = account_fixture()
+
+      actor =
+        actor_fixture(
+          account: account,
+          type: :account_admin_user,
+          email: "test@example.com"
+        )
+        |> Portal.Repo.preload(:account)
+
+      email =
+        sign_up_link_email(
+          account,
+          actor,
+          "Mozilla/5.0",
+          {127, 0, 0, 1}
+        )
+
+      # Check HTML body contains the new links
+      assert email.html_body =~ "Next Steps:"
+      assert email.html_body =~ "Download the Firezone Client"
+      assert email.html_body =~ "https://www.firezone.dev/kb/client-apps"
+      assert email.html_body =~ "View the Quickstart Guide"
+      assert email.html_body =~ "https://www.firezone.dev/kb/quickstart"
+
+      # Check text body contains the new links
+      assert email.text_body =~ "Next Steps:"
+      assert email.text_body =~ "Download the Firezone Client for your platform:"
+      assert email.text_body =~ "https://www.firezone.dev/kb/client-apps"
+      assert email.text_body =~ "View the Quickstart Guide to get started:"
+      assert email.text_body =~ "https://www.firezone.dev/kb/quickstart"
+    end
+  end
+
   describe "sign_in_link_email/7" do
     test "generates sign-in URL with properly encoded query params" do
       account = account_fixture()
