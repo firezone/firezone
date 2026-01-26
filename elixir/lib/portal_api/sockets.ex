@@ -49,7 +49,7 @@ defmodule PortalAPI.Sockets do
 
   def auth_context(%{user_agent: user_agent, x_headers: x_headers, peer_data: peer_data}, type) do
     remote_ip = real_ip(x_headers, peer_data)
-    Portal.Auth.Context.build(remote_ip, user_agent, x_headers, type)
+    Portal.Authentication.Context.build(remote_ip, user_agent, x_headers, type)
   end
 
   defp real_ip(x_headers, peer_data) do

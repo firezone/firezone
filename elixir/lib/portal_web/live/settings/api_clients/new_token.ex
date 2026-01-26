@@ -1,7 +1,7 @@
 defmodule PortalWeb.Settings.ApiClients.NewToken do
   use PortalWeb, :live_view
   import PortalWeb.Settings.ApiClients.Components
-  alias Portal.{Auth, APIToken}
+  alias Portal.{Authentication, APIToken}
   alias __MODULE__.Database
   import Ecto.Changeset
 
@@ -93,7 +93,7 @@ defmodule PortalWeb.Settings.ApiClients.NewToken do
       attrs = map_expires_at(attrs)
 
       with {:ok, encoded_token} <-
-             Auth.create_api_token(
+             Authentication.create_api_token(
                actor,
                attrs,
                socket.assigns.subject

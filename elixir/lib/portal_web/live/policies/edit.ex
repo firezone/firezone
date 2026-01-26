@@ -1,7 +1,7 @@
 defmodule PortalWeb.Policies.Edit do
   use PortalWeb, :live_view
   import PortalWeb.Policies.Components
-  alias Portal.{Policy, Auth}
+  alias Portal.{Policy, Authentication}
   alias __MODULE__.Database
 
   def mount(%{"id" => id}, _session, socket) do
@@ -249,7 +249,7 @@ defmodule PortalWeb.Policies.Edit do
     |> Policy.changeset()
   end
 
-  defp update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
+  defp update_policy(%Policy{} = policy, attrs, %Authentication.Subject{} = subject) do
     changeset = change_policy(policy, attrs)
     Database.update_policy(changeset, subject)
   end
@@ -258,9 +258,9 @@ defmodule PortalWeb.Policies.Edit do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Group}
-    alias Portal.Auth
+    alias Portal.Authentication
 
-    def get_policy!(id, %Auth.Subject{} = subject) do
+    def get_policy!(id, %Authentication.Subject{} = subject) do
       from(p in Policy, as: :policies)
       |> where([policies: p], p.id == ^id)
       |> preload([:group, :resource])
@@ -268,7 +268,7 @@ defmodule PortalWeb.Policies.Edit do
       |> Safe.one!()
     end
 
-    def update_policy(changeset, %Auth.Subject{} = subject) do
+    def update_policy(changeset, %Authentication.Subject{} = subject) do
       Safe.scoped(changeset, subject)
       |> Safe.update()
     end

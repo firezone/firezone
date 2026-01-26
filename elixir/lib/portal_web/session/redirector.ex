@@ -9,7 +9,7 @@ defmodule PortalWeb.Session.Redirector do
   """
   use PortalWeb, :verified_routes
 
-  alias Portal.Auth
+  alias Portal.Authentication
   alias Portal.ClientToken
 
   @doc """
@@ -64,7 +64,7 @@ defmodule PortalWeb.Session.Redirector do
         %ClientToken{} = token,
         state
       ) do
-    fragment = Portal.Auth.encode_fragment!(token)
+    fragment = Portal.Authentication.encode_fragment!(token)
 
     client_auth_cookie = %PortalWeb.Cookie.ClientAuth{
       actor_name: actor_name,
@@ -107,7 +107,7 @@ defmodule PortalWeb.Session.Redirector do
         %ClientToken{} = token,
         state
       ) do
-    fragment = Portal.Auth.encode_fragment!(token)
+    fragment = Portal.Authentication.encode_fragment!(token)
 
     conn
     |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
@@ -130,7 +130,7 @@ defmodule PortalWeb.Session.Redirector do
   """
 
   def signed_out(
-        %Plug.Conn{assigns: %{subject: %Auth.Subject{} = subject, account: account}} =
+        %Plug.Conn{assigns: %{subject: %Authentication.Subject{} = subject, account: account}} =
           conn,
         account_or_slug
       ) do
@@ -140,7 +140,7 @@ defmodule PortalWeb.Session.Redirector do
     %{type: :portal_session, id: portal_session_id} = subject.credential
 
     :ok =
-      Auth.delete_portal_session(%Portal.PortalSession{
+      Authentication.delete_portal_session(%Portal.PortalSession{
         account_id: account.id,
         id: portal_session_id
       })

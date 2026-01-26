@@ -8,7 +8,7 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticated do
   @behaviour Plug
 
   alias Portal.Account
-  alias Portal.Auth.Subject
+  alias Portal.Authentication.Subject
   alias PortalWeb.Session.Redirector
 
   @impl true

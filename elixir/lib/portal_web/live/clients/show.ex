@@ -527,7 +527,7 @@ defmodule PortalWeb.Clients.Show do
 
     def list_policy_authorizations_for(
           %Portal.Policy{} = policy,
-          %Portal.Auth.Subject{} = subject,
+          %Portal.Authentication.Subject{} = subject,
           opts
         ) do
       Database.PolicyAuthorizationQuery.all()
@@ -537,7 +537,7 @@ defmodule PortalWeb.Clients.Show do
 
     def list_policy_authorizations_for(
           %Portal.Resource{} = resource,
-          %Portal.Auth.Subject{} = subject,
+          %Portal.Authentication.Subject{} = subject,
           opts
         ) do
       Database.PolicyAuthorizationQuery.all()
@@ -547,7 +547,7 @@ defmodule PortalWeb.Clients.Show do
 
     def list_policy_authorizations_for(
           %Portal.Client{} = client,
-          %Portal.Auth.Subject{} = subject,
+          %Portal.Authentication.Subject{} = subject,
           opts
         ) do
       Database.PolicyAuthorizationQuery.all()
@@ -557,7 +557,7 @@ defmodule PortalWeb.Clients.Show do
 
     def list_policy_authorizations_for(
           %Portal.Actor{} = actor,
-          %Portal.Auth.Subject{} = subject,
+          %Portal.Authentication.Subject{} = subject,
           opts
         ) do
       Database.PolicyAuthorizationQuery.all()
@@ -567,7 +567,7 @@ defmodule PortalWeb.Clients.Show do
 
     def list_policy_authorizations_for(
           %Portal.Gateway{} = gateway,
-          %Portal.Auth.Subject{} = subject,
+          %Portal.Authentication.Subject{} = subject,
           opts
         ) do
       Database.PolicyAuthorizationQuery.all()

@@ -1,7 +1,7 @@
 defmodule PortalAPI.GatewayTokenController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Portal.Auth
+  alias Portal.Authentication
   alias PortalAPI.Error
   alias __MODULE__.Database
 
@@ -26,10 +26,10 @@ defmodule PortalAPI.GatewayTokenController do
     subject = conn.assigns.subject
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
-         {:ok, token} <- Auth.create_gateway_token(site, subject) do
+         {:ok, token} <- Authentication.create_gateway_token(site, subject) do
       conn
       |> put_status(:created)
-      |> render(:show, token: token, encoded_token: Auth.encode_fragment!(token))
+      |> render(:show, token: token, encoded_token: Authentication.encode_fragment!(token))
     else
       error -> Error.handle(conn, error)
     end

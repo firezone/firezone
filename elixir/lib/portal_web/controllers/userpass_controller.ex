@@ -69,7 +69,7 @@ defmodule PortalWeb.UserpassController do
     remote_ip = conn.remote_ip
     type = context_type(params)
     headers = conn.req_headers
-    context = Portal.Auth.Context.build(remote_ip, user_agent, headers, type)
+    context = Portal.Authentication.Context.build(remote_ip, user_agent, headers, type)
 
     # Get the provider schema module to access default values
     schema = provider.__struct__
@@ -91,7 +91,7 @@ defmodule PortalWeb.UserpassController do
 
     case type do
       :portal ->
-        Portal.Auth.create_portal_session(
+        Portal.Authentication.create_portal_session(
           actor,
           provider.id,
           context,
@@ -109,7 +109,7 @@ defmodule PortalWeb.UserpassController do
           expires_at: expires_at
         }
 
-        Portal.Auth.create_gui_client_token(attrs)
+        Portal.Authentication.create_gui_client_token(attrs)
 
       :headless_client ->
         attrs = %{
@@ -122,7 +122,7 @@ defmodule PortalWeb.UserpassController do
           expires_at: expires_at
         }
 
-        Portal.Auth.create_gui_client_token(attrs)
+        Portal.Authentication.create_gui_client_token(attrs)
     end
   end
 

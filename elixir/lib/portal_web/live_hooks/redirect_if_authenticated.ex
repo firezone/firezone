@@ -6,7 +6,7 @@ defmodule PortalWeb.LiveHooks.RedirectIfAuthenticated do
   this hook does NOT redirect, allowing client sign-in flows to proceed even when a portal session exists.
   """
   alias Portal.Account
-  alias Portal.Auth.Subject
+  alias Portal.Authentication.Subject
   alias PortalWeb.Session.Redirector
 
   def on_mount(

@@ -64,7 +64,7 @@ defmodule Portal.Mailer.AuthEmail do
   def new_user_email(
         %Portal.Account{} = account,
         %Portal.Actor{} = actor,
-        %Portal.Auth.Subject{} = subject
+        %Portal.Authentication.Subject{} = subject
       ) do
     default_email()
     |> subject("Welcome to Firezone")

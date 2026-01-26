@@ -1,6 +1,6 @@
 defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
-  alias Portal.Auth
+  alias Portal.Authentication
   alias Portal.{Gateway, Version}
   alias __MODULE__.Database
   require Logger
@@ -33,7 +33,7 @@ defmodule PortalAPI.Gateway.Socket do
     context = PortalAPI.Sockets.auth_context(connect_info, :gateway)
     attrs = Map.take(attrs, ~w[external_id name public_key])
 
-    with {:ok, gateway_token} <- Auth.verify_gateway_token(encoded_token),
+    with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, site} <- Database.fetch_site(gateway_token.site_id),
          changeset = upsert_changeset(site, attrs, context),
          {:ok, gateway} <- Database.upsert_gateway(changeset, site) do

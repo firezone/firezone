@@ -7,7 +7,7 @@ defmodule Portal.Safe do
   import Ecto.Changeset
   require Logger
 
-  alias Portal.{Auth.Subject, Repo}
+  alias Portal.{Authentication.Subject, Repo}
 
   defmodule Scoped do
     @moduledoc """

@@ -79,7 +79,7 @@ defmodule PortalWeb.SignUp do
 
   def mount(_params, _session, socket) do
     user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
-    real_ip = PortalWeb.Auth.real_ip(socket)
+    real_ip = PortalWeb.Authentication.real_ip(socket)
     sign_up_enabled? = Config.sign_up_enabled?()
 
     changeset =

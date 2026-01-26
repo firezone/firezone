@@ -6,7 +6,7 @@ defmodule PortalWeb.Plugs.EnsureAuthenticated do
   import Plug.Conn
   import Phoenix.Controller
 
-  alias Portal.Auth.Subject
+  alias Portal.Authentication.Subject
 
   @impl true
   def init(opts), do: opts

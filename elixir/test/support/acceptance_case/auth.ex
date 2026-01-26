@@ -48,7 +48,7 @@ defmodule PortalWeb.AcceptanceCase.Auth do
     user_agent = fetch_session_user_agent!(session)
     remote_ip = {127, 0, 0, 1}
 
-    context = %Portal.Auth.Context{
+    context = %Portal.Authentication.Context{
       type: :portal,
       user_agent: user_agent,
       remote_ip_location_region: "UA",
@@ -61,7 +61,7 @@ defmodule PortalWeb.AcceptanceCase.Auth do
     expires_at = DateTime.add(DateTime.utc_now(), 8 * 60 * 60, :second)
 
     {:ok, portal_session} =
-      Portal.Auth.create_portal_session(actor, provider.id, context, expires_at)
+      Portal.Authentication.create_portal_session(actor, provider.id, context, expires_at)
 
     # Create signed cookie value
     signing_salt = Portal.Config.fetch_env!(:portal, :cookie_signing_salt)
@@ -82,7 +82,7 @@ defmodule PortalWeb.AcceptanceCase.Auth do
   def assert_unauthenticated(session, account_id) do
     case fetch_session_cookie(session, account_id) do
       {:ok, session_id} ->
-        case Portal.Auth.fetch_portal_session(account_id, session_id) do
+        case Portal.Authentication.fetch_portal_session(account_id, session_id) do
           {:ok, _portal_session} ->
             flunk("User is authenticated but should not be")
 
@@ -122,7 +122,7 @@ defmodule PortalWeb.AcceptanceCase.Auth do
   def assert_authenticated(session, %Portal.Actor{} = actor) do
     case fetch_session_cookie(session, actor.account_id) do
       {:ok, session_id} ->
-        case Portal.Auth.fetch_portal_session(actor.account_id, session_id) do
+        case Portal.Authentication.fetch_portal_session(actor.account_id, session_id) do
           {:ok, portal_session} ->
             assert portal_session.actor_id == actor.id,
                    "Expected actor #{actor.id}, got #{portal_session.actor_id}"

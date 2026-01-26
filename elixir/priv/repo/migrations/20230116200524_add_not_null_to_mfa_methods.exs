@@ -12,7 +12,7 @@ defmodule Portal.Repo.Migrations.AddNotNullToMfaMethods do
     # will be unable to decrypt it and will get an error:
     #
     #   ** (ArgumentError) cannot load `"..."`as type Portal.Encrypted.Map
-    #   for field :payload in %Portal.Auth.MFA.Method{...}
+    #   for field :payload in %Portal.Authentication.MFA.Method{...}
     execute("""
     UPDATE mfa_methods
     SET payload = '#{Base.encode64(:crypto.strong_rand_bytes(32))}'

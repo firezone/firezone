@@ -1,13 +1,13 @@
-defmodule Portal.Auth do
+defmodule Portal.Authentication do
   import Ecto.Changeset
   import Ecto.Query
   import Portal.Changeset
   alias Portal.ClientToken
   alias Portal.OneTimePasscode
   alias Portal.PortalSession
-  alias Portal.Auth.Context
-  alias Portal.Auth.Credential
-  alias Portal.Auth.Subject
+  alias Portal.Authentication.Context
+  alias Portal.Authentication.Credential
+  alias Portal.Authentication.Subject
   alias __MODULE__.Database
   require Logger
 
@@ -450,7 +450,7 @@ defmodule Portal.Auth do
       end
     end
 
-    def fetch_token_for_use(account_id, token_id, %Portal.Auth.Context{} = context) do
+    def fetch_token_for_use(account_id, token_id, %Portal.Authentication.Context{} = context) do
       now = DateTime.utc_now()
       remote_ip = %Postgrex.INET{address: context.remote_ip}
 

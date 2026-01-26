@@ -1,7 +1,7 @@
 defmodule PortalWeb.Policies.New do
   use PortalWeb, :live_view
   import PortalWeb.Policies.Components
-  alias Portal.{Policy, Auth}
+  alias Portal.{Policy, Authentication}
   alias __MODULE__.Database
 
   def mount(params, _session, socket) do
@@ -267,7 +267,7 @@ defmodule PortalWeb.Policies.New do
 
   # Inline functions from Portal.Policies
 
-  defp new_policy(attrs, %Auth.Subject{} = subject) do
+  defp new_policy(attrs, %Authentication.Subject{} = subject) do
     import Ecto.Changeset
 
     %Policy{}
@@ -278,7 +278,7 @@ defmodule PortalWeb.Policies.New do
     |> put_change(:account_id, subject.account.id)
   end
 
-  defp create_policy(attrs, %Auth.Subject{} = subject) do
+  defp create_policy(attrs, %Authentication.Subject{} = subject) do
     changeset = new_policy(attrs, subject)
     Database.insert_policy(changeset, subject)
   end
@@ -287,9 +287,9 @@ defmodule PortalWeb.Policies.New do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Group}
-    alias Portal.Auth
+    alias Portal.Authentication
 
-    def insert_policy(changeset, %Auth.Subject{} = subject) do
+    def insert_policy(changeset, %Authentication.Subject{} = subject) do
       Safe.scoped(changeset, subject)
       |> Safe.insert()
     end

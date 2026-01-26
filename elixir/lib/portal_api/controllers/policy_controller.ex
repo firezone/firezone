@@ -141,7 +141,7 @@ defmodule PortalAPI.PolicyController do
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
-    alias Portal.{Policy, Safe, Auth}
+    alias Portal.{Policy, Safe, Authentication}
 
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)
@@ -169,7 +169,7 @@ defmodule PortalAPI.PolicyController do
       |> Safe.update()
     end
 
-    def validate_internet_resource_policy(attrs, %Auth.Subject{} = subject) do
+    def validate_internet_resource_policy(attrs, %Authentication.Subject{} = subject) do
       resource_id = attrs["resource_id"]
 
       if resource_id do
@@ -197,7 +197,7 @@ defmodule PortalAPI.PolicyController do
       end
     end
 
-    def create_policy(attrs, %Auth.Subject{} = subject) do
+    def create_policy(attrs, %Authentication.Subject{} = subject) do
       changeset = create_changeset(attrs, subject)
 
       Safe.scoped(changeset, subject)
@@ -210,7 +210,7 @@ defmodule PortalAPI.PolicyController do
       |> Safe.delete()
     end
 
-    defp create_changeset(attrs, %Auth.Subject{} = subject) do
+    defp create_changeset(attrs, %Authentication.Subject{} = subject) do
       %Policy{}
       |> cast(attrs, ~w[description group_id resource_id]a)
       |> validate_required(~w[group_id resource_id]a)

@@ -4,7 +4,7 @@ defmodule PortalWeb.Actors do
   alias __MODULE__.Database
 
   alias Portal.Actor
-  alias Portal.Auth
+  alias Portal.Authentication
   alias Portal.ExternalIdentity
   alias Portal.PortalSession
   alias Portal.ClientToken
@@ -443,7 +443,7 @@ defmodule PortalWeb.Actors do
 
     if session do
       :ok =
-        Auth.delete_portal_session(%PortalSession{
+        Authentication.delete_portal_session(%PortalSession{
           account_id: socket.assigns.account.id,
           id: session.id
         })
@@ -1650,9 +1650,9 @@ defmodule PortalWeb.Actors do
         # Build the token attributes
         attrs = %{"expires_at" => expires_at}
 
-        case Auth.create_headless_client_token(actor, attrs, subject) do
+        case Authentication.create_headless_client_token(actor, attrs, subject) do
           {:ok, token} ->
-            encoded_token = Auth.encode_fragment!(token)
+            encoded_token = Authentication.encode_fragment!(token)
             {:ok, {token, encoded_token}}
 
           error ->

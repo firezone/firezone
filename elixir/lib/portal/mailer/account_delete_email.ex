@@ -7,7 +7,7 @@ defmodule Portal.Mailer.AccountDelete do
 
   def account_delete_email(
         %Portal.Account{} = account,
-        %Portal.Auth.Subject{} = subject
+        %Portal.Authentication.Subject{} = subject
       ) do
     default_email()
     |> subject("ACCOUNT DELETE REQUEST - #{account.id}")

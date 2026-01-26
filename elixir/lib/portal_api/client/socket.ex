@@ -1,6 +1,6 @@
 defmodule PortalAPI.Client.Socket do
   use Phoenix.Socket
-  alias Portal.{Auth, Version}
+  alias Portal.{Authentication, Version}
   alias Portal.Client
   alias __MODULE__.Database
   require Logger
@@ -92,7 +92,7 @@ defmodule PortalAPI.Client.Socket do
     context = PortalAPI.Sockets.auth_context(connect_info, :client)
 
     with {:ok, %{credential: %{type: :client_token, id: token_id}} = subject} <-
-           Auth.authenticate(token, context),
+           Authentication.authenticate(token, context),
          changeset = upsert_changeset(subject.actor, subject, attrs),
          {:ok, client} <- Database.upsert_client(changeset, subject) do
       OpenTelemetry.Tracer.set_attributes(%{

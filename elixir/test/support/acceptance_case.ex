@@ -14,7 +14,7 @@ defmodule PortalWeb.AcceptanceCase do
       alias Portal.Repo
       alias Portal.Fixtures
       alias Portal.Mocks
-      alias PortalWeb.AcceptanceCase.{Vault, Auth}
+      alias PortalWeb.AcceptanceCase.{Vault, Authentication}
 
       # The default endpoint for testing
       @endpoint PortalWeb.Endpoint

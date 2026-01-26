@@ -1,4 +1,4 @@
-defmodule Portal.Auth.Credential do
+defmodule Portal.Authentication.Credential do
   @moduledoc """
   Represents the authentication credential used to create a Subject.
 

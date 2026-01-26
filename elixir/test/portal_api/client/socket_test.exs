@@ -111,13 +111,13 @@ defmodule PortalAPI.Client.SocketTest do
       in_one_minute = DateTime.utc_now() |> DateTime.add(60, :second)
 
       {:ok, token} =
-        Portal.Auth.create_headless_client_token(
+        Portal.Authentication.create_headless_client_token(
           actor,
           %{expires_at: in_one_minute},
           admin_subject
         )
 
-      encoded_token = Portal.Auth.encode_fragment!(token)
+      encoded_token = Portal.Authentication.encode_fragment!(token)
 
       attrs = connect_attrs(token: encoded_token)
       connect_info = build_connect_info(ip: @client_remote_ip, token: encoded_token)
