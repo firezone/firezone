@@ -400,6 +400,7 @@ defmodule PortalWeb.LiveTable do
   def paginator(assigns) do
     ~H"""
     <nav
+      :if={@rows_count > 0}
       class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 p-4"
       aria-label="Table navigation"
     >
