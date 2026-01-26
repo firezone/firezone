@@ -182,7 +182,9 @@ defmodule PortalWeb.SignIn do
   end
 
   # We allow signing in to Web UI even for disabled accounts
-  def disabled?(account, %{"as" => "client"}), do: not Portal.Account.active?(account)
+  def disabled?(account, %{"as" => as}) when as in ["client", "gui-client", "headless-client"],
+    do: not Portal.Account.active?(account)
+
   def disabled?(_account, _params), do: false
 
   def separator(assigns) do

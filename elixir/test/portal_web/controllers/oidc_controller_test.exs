@@ -159,6 +159,40 @@ defmodule PortalWeb.OIDCControllerTest do
       assert flash(conn, :error) ==
                "This authentication method is not available for your sign-in context."
     end
+
+    test "redirects with error when provider context doesn't allow headless-client access", %{
+      conn: conn,
+      account: account
+    } do
+      provider = oidc_provider_fixture(account: account, context: :portal_only)
+      cookie = build_oidc_cookie(account, provider, params: %{"as" => "headless-client"})
+
+      conn = perform_callback(conn, cookie)
+
+      assert redirected_to(conn) =~ "/#{account.slug}"
+
+      assert flash(conn, :error) ==
+               "This authentication method is not available for your sign-in context."
+    end
+
+    test "allows headless-client access when provider context is clients_only", %{
+      conn: conn,
+      account: account
+    } do
+      %{provider: provider} = setup_oidc_provider(account, context: :clients_only)
+      actor = admin_actor_fixture(account: account, email: "admin@example.com")
+
+      ctx = %{conn: conn, account: account, provider: provider}
+      setup_successful_auth(ctx, actor)
+
+      cookie =
+        build_oidc_cookie(account, provider, params: %{"as" => "headless-client"})
+
+      conn = perform_callback(conn, cookie)
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "Copy token to clipboard"
+    end
   end
 
   describe "callback/2 with Entra admin consent params" do
@@ -499,6 +533,27 @@ defmodule PortalWeb.OIDCControllerTest do
       actor = actor_fixture(account: ctx.account, email: "user@example.com")
       setup_successful_auth(ctx, actor, sub: "regular-user-123")
       assert_client_sign_in_success(ctx)
+    end
+
+    test "successful headless-client sign-in for admin user creates token and renders token page",
+         ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      setup_successful_auth(ctx, actor)
+      assert_headless_client_sign_in_success(ctx)
+    end
+
+    test "successful headless-client sign-in for regular user creates token and renders token page",
+         ctx do
+      actor = actor_fixture(account: ctx.account, email: "user@example.com")
+      setup_successful_auth(ctx, actor, sub: "regular-user-123")
+      assert_headless_client_sign_in_success(ctx)
+    end
+
+    test "successful gui-client sign-in for admin user creates token and renders redirect page",
+         ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      setup_successful_auth(ctx, actor)
+      assert_gui_client_sign_in_success(ctx)
     end
 
     test "successful sign-in with unverified email logs info message", ctx do
@@ -935,6 +990,35 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) =~ "/authorize"
       assert conn.resp_cookies["oidc"]
     end
+
+    test "redirects to IdP with headless-client params", %{conn: conn} do
+      account = account_fixture()
+      %{provider: provider} = setup_oidc_provider(account)
+
+      conn =
+        get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}", %{
+          "as" => "headless-client",
+          "state" => "headless-state"
+        })
+
+      assert redirected_to(conn) =~ "/authorize"
+      assert conn.resp_cookies["oidc"]
+    end
+
+    test "redirects to IdP with gui-client params", %{conn: conn} do
+      account = account_fixture()
+      %{provider: provider} = setup_oidc_provider(account)
+
+      conn =
+        get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}", %{
+          "as" => "gui-client",
+          "state" => "gui-state",
+          "nonce" => "gui-nonce"
+        })
+
+      assert redirected_to(conn) =~ "/authorize"
+      assert conn.resp_cookies["oidc"]
+    end
   end
 
   describe "sign_in/2 discovery document errors" do
@@ -1181,6 +1265,39 @@ defmodule PortalWeb.OIDCControllerTest do
     assert conn.status == 200
     assert conn.resp_body =~ "client_redirect"
     assert conn.resp_cookies["client_auth"]
+
+    conn
+  end
+
+  # Performs gui-client sign-in and asserts success.
+  defp assert_gui_client_sign_in_success(ctx) do
+    cookie =
+      build_oidc_cookie(ctx.account, ctx.provider,
+        params: %{"as" => "gui-client", "nonce" => "client-nonce", "state" => "client-state"}
+      )
+
+    conn = perform_callback(ctx.conn, cookie)
+
+    assert conn.status == 200
+    assert conn.resp_body =~ "client_redirect"
+    assert conn.resp_cookies["client_auth"]
+
+    conn
+  end
+
+  # Performs headless-client sign-in and asserts success.
+  defp assert_headless_client_sign_in_success(ctx) do
+    cookie =
+      build_oidc_cookie(ctx.account, ctx.provider,
+        params: %{"as" => "headless-client", "state" => "client-state"}
+      )
+
+    conn = perform_callback(ctx.conn, cookie)
+
+    assert conn.status == 200
+    assert conn.resp_body =~ "Copy token to clipboard"
+    # Headless client should NOT set client_auth cookie
+    refute conn.resp_cookies["client_auth"]
 
     conn
   end

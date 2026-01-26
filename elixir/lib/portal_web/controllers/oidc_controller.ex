@@ -384,13 +384,15 @@ defmodule PortalWeb.OIDCController do
        ),
        do: :ok
 
-  defp check_admin(%Portal.ExternalIdentity{actor: %Portal.Actor{type: :account_user}}, :client),
-    do: :ok
+  defp check_admin(%Portal.ExternalIdentity{actor: %Portal.Actor{type: :account_user}}, t)
+       when t in [:gui_client, :headless_client],
+       do: :ok
 
   defp check_admin(_identity, _context_type), do: {:error, :not_admin}
 
-  defp validate_context(%{context: context}, :client)
-       when context in [:clients_only, :clients_and_portal] do
+  defp validate_context(%{context: context}, t)
+       when t in [:gui_client, :headless_client] and
+              context in [:clients_only, :clients_and_portal] do
     :ok
   end
 
@@ -414,7 +416,10 @@ defmodule PortalWeb.OIDCController do
     # Determine session lifetime based on context type
     session_lifetime_secs =
       case type do
-        :client ->
+        :gui_client ->
+          provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
+
+        :headless_client ->
           provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
 
         :portal ->
@@ -432,9 +437,21 @@ defmodule PortalWeb.OIDCController do
           expires_at
         )
 
-      :client ->
+      :gui_client ->
         attrs = %{
           secret_nonce: params["nonce"],
+          account_id: identity.account_id,
+          actor_id: identity.actor_id,
+          auth_provider_id: provider.id,
+          identity_id: identity.id,
+          expires_at: expires_at
+        }
+
+        Portal.Auth.create_gui_client_token(attrs)
+
+      :headless_client ->
+        attrs = %{
+          secret_nonce: "",
           account_id: identity.account_id,
           actor_id: identity.actor_id,
           auth_provider_id: provider.id,
@@ -454,10 +471,10 @@ defmodule PortalWeb.OIDCController do
     |> Redirector.portal_signed_in(account, params)
   end
 
-  # Context: :client
+  # Context: :gui_client
   # Store a cookie and redirect to client handler which redirects to the final URL based on platform
-  defp signed_in(conn, :client, account, identity, token, _provider, _tokens, params) do
-    Redirector.client_signed_in(
+  defp signed_in(conn, :gui_client, account, identity, token, _provider, _tokens, params) do
+    Redirector.gui_client_signed_in(
       conn,
       account,
       identity.actor.name,
@@ -467,7 +484,21 @@ defmodule PortalWeb.OIDCController do
     )
   end
 
-  defp context_type(%{"as" => "client"}), do: :client
+  # Context: :headless_client
+  # Show the token to the user to copy manually
+  defp signed_in(conn, :headless_client, account, identity, token, _provider, _tokens, params) do
+    Redirector.headless_client_signed_in(
+      conn,
+      account,
+      identity.actor.name,
+      token,
+      params["state"]
+    )
+  end
+
+  defp context_type(%{"as" => "client"}), do: :gui_client
+  defp context_type(%{"as" => "gui-client"}), do: :gui_client
+  defp context_type(%{"as" => "headless-client"}), do: :headless_client
   defp context_type(_), do: :portal
 
   defp handle_error(conn, {:error, :oidc_cookie_not_found}) do
