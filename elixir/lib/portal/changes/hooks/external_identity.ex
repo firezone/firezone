@@ -23,7 +23,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
   defmodule Database do
     alias Portal.ClientToken
     alias Portal.PortalSession
-    alias Portal.Safe
+    alias Portal.Repo
     import Ecto.Query
 
     def delete_client_tokens(account_id, actor_id, issuer) do
@@ -35,8 +35,8 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
             c.actor_id == ^actor_id and
             c.auth_provider_id in subquery(auth_provider_ids)
       )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
 
     def delete_portal_sessions(account_id, actor_id, issuer) do
@@ -48,8 +48,8 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
             p.actor_id == ^actor_id and
             p.auth_provider_id in subquery(auth_provider_ids)
       )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
 
     defp auth_provider_ids_for_issuer(issuer) do

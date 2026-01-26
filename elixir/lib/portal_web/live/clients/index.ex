@@ -145,30 +145,30 @@ defmodule PortalWeb.Clients.Index do
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
-    alias Portal.{Presence.Clients, Safe}
+    alias Portal.{Presence.Clients, Repo, Authorization}
     alias Portal.Client
 
     def list_clients(subject, opts \\ []) do
-      base_query = from(c in Client, as: :clients)
+      Authorization.with_subject(subject, fn ->
+        base_query = from(c in Client, as: :clients)
 
-      # Check if we need to prefilter by presence
-      base_query =
-        case get_in(opts, [:filter, :presence]) do
-          "online" ->
-            ids = Clients.online_client_ids(subject.account.id)
-            where(base_query, [clients: c], c.id in ^ids)
+        # Check if we need to prefilter by presence
+        base_query =
+          case get_in(opts, [:filter, :presence]) do
+            "online" ->
+              ids = Clients.online_client_ids(subject.account.id)
+              where(base_query, [clients: c], c.id in ^ids)
 
-          "offline" ->
-            ids = Clients.online_client_ids(subject.account.id)
-            where(base_query, [clients: c], c.id not in ^ids)
+            "offline" ->
+              ids = Clients.online_client_ids(subject.account.id)
+              where(base_query, [clients: c], c.id not in ^ids)
 
-          _ ->
-            base_query
-        end
+            _ ->
+              base_query
+          end
 
-      base_query
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+        Repo.list(base_query, __MODULE__, opts)
+      end)
     end
 
     def cursor_fields do

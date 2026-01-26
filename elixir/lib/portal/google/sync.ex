@@ -560,7 +560,7 @@ defmodule Portal.Google.Sync do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
 
     @issuer "https://accounts.google.com"
 
@@ -572,12 +572,13 @@ defmodule Portal.Google.Sync do
         where: d.is_disabled == false,
         where: is_nil(a.disabled_at)
       )
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
     end
 
     def update_directory(changeset) do
-      changeset |> Safe.unscoped() |> Safe.update()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      changeset |> Repo.update()
     end
 
     def batch_upsert_identities(_account_id, _directory_id, _last_synced_at, []),
@@ -594,7 +595,7 @@ defmodule Portal.Google.Sync do
           identity_attrs
         )
 
-      case Safe.unscoped() |> Safe.query(query, params) do
+      case Repo.query(query, params) do
         {:ok, %Postgrex.Result{rows: rows}} -> {:ok, %{upserted_identities: length(rows)}}
         {:error, reason} -> {:error, reason}
       end
@@ -749,7 +750,7 @@ defmodule Portal.Google.Sync do
           entity_type
         )
 
-      case Safe.unscoped() |> Safe.query(query, params) do
+      case Repo.query(query, params) do
         {:ok, %Postgrex.Result{num_rows: num_rows}} ->
           {:ok, %{upserted_groups: num_rows}}
 
@@ -849,7 +850,7 @@ defmodule Portal.Google.Sync do
       params =
         build_membership_upsert_params(account_id, directory_id, last_synced_at, tuples)
 
-      case Safe.unscoped() |> Safe.query(query, params) do
+      case Repo.query(query, params) do
         {:ok, %Postgrex.Result{num_rows: num_rows}} -> {:ok, %{upserted_memberships: num_rows}}
         {:error, reason} -> {:error, reason}
       end
@@ -920,7 +921,8 @@ defmodule Portal.Google.Sync do
           where: g.last_synced_at < ^synced_at or is_nil(g.last_synced_at)
         )
 
-      query |> Safe.unscoped() |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      query |> Repo.delete_all()
     end
 
     def delete_unsynced_identities(account_id, directory_id, synced_at) do
@@ -931,7 +933,8 @@ defmodule Portal.Google.Sync do
           where: i.last_synced_at < ^synced_at or is_nil(i.last_synced_at)
         )
 
-      query |> Safe.unscoped() |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      query |> Repo.delete_all()
     end
 
     def delete_unsynced_memberships(account_id, directory_id, synced_at) do
@@ -945,7 +948,8 @@ defmodule Portal.Google.Sync do
           where: m.last_synced_at < ^synced_at or is_nil(m.last_synced_at)
         )
 
-      query |> Safe.unscoped() |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      query |> Repo.delete_all()
     end
 
     def delete_actors_without_identities(account_id, directory_id) do
@@ -963,7 +967,8 @@ defmodule Portal.Google.Sync do
             )
         )
 
-      query |> Safe.unscoped() |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      query |> Repo.delete_all()
     end
   end
 end

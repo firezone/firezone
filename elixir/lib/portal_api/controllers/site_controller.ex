@@ -88,9 +88,9 @@ defmodule PortalAPI.SiteController do
 
     %Portal.Site{}
     |> cast(attrs, [:name])
-    |> validate_required([:name])
     |> put_change(:account_id, account.id)
     |> put_change(:managed_by, :account)
+    |> Portal.Site.changeset()
   end
 
   operation :update,
@@ -160,50 +160,51 @@ defmodule PortalAPI.SiteController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, Billing}
+    alias Portal.{Repo, Billing, Authorization}
     alias Portal.Site
 
     def list_sites(subject, opts \\ []) do
-      from(g in Site, as: :sites)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(g in Site, as: :sites)
+        |> Repo.list(__MODULE__, opts)
+      end)
     end
 
     def fetch_site(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(s in Site, as: :sites)
         |> where([sites: s], s.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        site -> {:ok, site}
-      end
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          site -> {:ok, site}
+        end
+      end)
     end
 
     def create_site(changeset, subject) do
       with true <- Billing.can_create_sites?(subject.account) do
-        Safe.scoped(changeset, subject)
-        |> Safe.insert()
+        Authorization.with_subject(subject, fn ->
+          Repo.insert(changeset)
+        end)
       else
         false -> {:error, :sites_limit_reached}
       end
     end
 
     def update_site(site, attrs, subject) do
-      site
-      |> Safe.preload(:account)
-      |> changeset(attrs, subject)
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        site
+        |> Repo.preload(:account)
+        |> changeset(attrs, subject)
+        |> Repo.update()
+      end)
     end
 
     def delete_site(site, subject) do
-      site
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Repo.delete(site)
+      end)
     end
 
     defp changeset(site, attrs, _subject) do

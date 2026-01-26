@@ -55,42 +55,42 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
   end
 
   defmodule Database do
-    alias Portal.Safe
+    alias Portal.Repo
     alias Portal.Billing.Stripe.ProcessedEvents.ProcessedEvent
 
     def event_processed?(stripe_event_id) do
       ProcessedEvent.Query.all()
       |> ProcessedEvent.Query.by_event_id(stripe_event_id)
-      |> Safe.unscoped()
-      |> Safe.exists?()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.exists?()
     end
 
     def get_by_stripe_event_id(stripe_event_id) do
       ProcessedEvent.Query.all()
       |> ProcessedEvent.Query.by_event_id(stripe_event_id)
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
     end
 
     def create_processed_event(attrs \\ %{}) do
       %ProcessedEvent{}
       |> ProcessedEvent.Changeset.changeset(attrs)
-      |> Safe.unscoped()
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.insert()
     end
 
     def get_latest_for_stripe_customer(stripe_customer_id) do
       ProcessedEvent.Query.all()
       |> ProcessedEvent.Query.by_latest_event(stripe_customer_id)
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
     end
 
     def get_latest_for_stripe_customer_by_type(customer_id, event_type) do
       ProcessedEvent.Query.all()
       |> ProcessedEvent.Query.by_latest_event_type(customer_id, event_type)
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
     end
 
     def cleanup_old_events(days_old \\ 30) do
@@ -99,8 +99,8 @@ defmodule Portal.Billing.Stripe.ProcessedEvents do
       {count, _} =
         ProcessedEvent.Query.all()
         |> ProcessedEvent.Query.by_cutoff_date(cutoff_date)
-        |> Safe.unscoped()
-        |> Safe.delete_all()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Repo.delete_all()
 
       {:ok, count}
     end

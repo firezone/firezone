@@ -343,19 +343,21 @@ defmodule PortalWeb.Resources.Components do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, Resource}
+    alias Portal.{Authorization, Repo, Resource}
 
     def get_resource!(id, subject) do
-      from(r in Resource, as: :resources)
-      |> where([resources: r], r.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.id == ^id)
+        |> Repo.one!()
+      end)
     end
 
     def list_resources(subject, opts \\ []) do
-      from(r in Resource, as: :resources)
-      |> Safe.scoped(subject)
-      |> Safe.list(Database.ListQuery, opts)
+      Authorization.with_subject(subject, fn ->
+        query = from(r in Resource, as: :resources)
+        Repo.list(query, Database.ListQuery, opts)
+      end)
     end
   end
 

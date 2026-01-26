@@ -25,18 +25,16 @@ defmodule PortalAPI.AccountController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.{Authorization, Repo}
     alias Portal.Account
 
     def fetch_account(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(a in Account, where: a.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
+        |> Repo.one()
+      end)
+      |> case do
         nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
         account -> {:ok, account}
       end
     end

@@ -15,10 +15,11 @@ defmodule Portal.Okta.Scheduler do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
 
     def queue_sync_jobs do
-      Safe.transact(fn ->
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.transaction(fn ->
         from(d in Portal.Okta.Directory,
           join: a in Portal.Account,
           on: a.id == d.account_id,
@@ -26,8 +27,8 @@ defmodule Portal.Okta.Scheduler do
           where: is_nil(a.disabled_at),
           where: fragment("(?)->>'idp_sync' = 'true'", a.features)
         )
-        |> Safe.unscoped()
-        |> Safe.stream()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Repo.stream()
         |> Stream.each(fn directory ->
           args = %{directory_id: directory.id}
           {:ok, _job} = Portal.Okta.Sync.new(args) |> Oban.insert()

@@ -99,47 +99,44 @@ defmodule PortalAPI.GatewayTokenController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
     alias Portal.Site
-    alias Portal.GatewayToken
+    alias Portal.{GatewayToken, Authorization}
 
     def fetch_site(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(s in Site, as: :sites)
         |> where([sites: s], s.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        site -> {:ok, site}
-      end
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          site -> {:ok, site}
+        end
+      end)
     end
 
     def fetch_token(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(t in GatewayToken, where: t.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        token -> {:ok, token}
-      end
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          token -> {:ok, token}
+        end
+      end)
     end
 
     def delete_token(token, subject) do
-      token
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Repo.delete(token)
+      end)
     end
 
     def delete_all_tokens(site, subject) do
-      from(t in GatewayToken, where: t.site_id == ^site.id)
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
+      Authorization.with_subject(subject, fn ->
+        from(t in GatewayToken, where: t.site_id == ^site.id)
+        |> Repo.delete_all()
+      end)
     end
   end
 end

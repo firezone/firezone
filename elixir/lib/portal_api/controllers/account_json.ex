@@ -54,7 +54,6 @@ defmodule PortalAPI.AccountJSON do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
     alias Portal.Actor
     alias Portal.Client
 
@@ -64,8 +63,8 @@ defmodule PortalAPI.AccountJSON do
         where: is_nil(a.disabled_at),
         where: a.type in [:account_admin_user, :account_user]
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Portal.Repo.fetch_unscoped(:aggregate, :count)
     end
 
     def count_service_accounts_for_account(account) do
@@ -74,8 +73,8 @@ defmodule PortalAPI.AccountJSON do
         where: is_nil(a.disabled_at),
         where: a.type == :service_account
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Portal.Repo.fetch_unscoped(:aggregate, :count)
     end
 
     def count_account_admin_users_for_account(account) do
@@ -84,8 +83,8 @@ defmodule PortalAPI.AccountJSON do
         where: is_nil(a.disabled_at),
         where: a.type == :account_admin_user
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Portal.Repo.fetch_unscoped(:aggregate, :count)
     end
 
     def count_1m_active_users_for_account(account) do
@@ -100,8 +99,8 @@ defmodule PortalAPI.AccountJSON do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Portal.Repo.fetch_unscoped(:aggregate, :count)
     end
 
     def count_groups_for_account(account) do
@@ -109,8 +108,8 @@ defmodule PortalAPI.AccountJSON do
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Portal.Repo.fetch_unscoped(:aggregate, :count)
     end
   end
 end

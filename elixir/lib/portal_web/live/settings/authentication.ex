@@ -1097,11 +1097,15 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp submit_provider(%{assigns: %{live_action: :new, form: %{source: changeset}}} = socket) do
+    changeset = %{changeset | action: nil}
+
     Database.insert_provider(changeset, socket.assigns.subject)
     |> handle_submit(socket)
   end
 
   defp submit_provider(%{assigns: %{live_action: :edit, form: %{source: changeset}}} = socket) do
+    changeset = %{changeset | action: nil}
+
     Database.update_provider(changeset, socket.assigns.subject)
     |> handle_submit(socket)
   end
@@ -1380,62 +1384,80 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defmodule Database do
-    alias Portal.{AuthProvider, EmailOTP, Userpass, OIDC, Entra, Google, Okta, Safe}
+    alias Portal.{
+      AuthProvider,
+      Authorization,
+      EmailOTP,
+      Userpass,
+      OIDC,
+      Entra,
+      Google,
+      Okta,
+      Repo
+    }
+
     import Ecto.Query
     import Ecto.Changeset
 
     def list_all_providers(subject) do
-      [
-        EmailOTP.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Userpass.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Google.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Entra.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Okta.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        OIDC.AuthProvider |> Safe.scoped(subject) |> Safe.all()
-      ]
-      |> List.flatten()
+      Authorization.with_subject(subject, fn ->
+        [
+          Repo.all(EmailOTP.AuthProvider),
+          Repo.all(Userpass.AuthProvider),
+          Repo.all(Google.AuthProvider),
+          Repo.all(Entra.AuthProvider),
+          Repo.all(Okta.AuthProvider),
+          Repo.all(OIDC.AuthProvider)
+        ]
+        |> List.flatten()
+      end)
     end
 
     def get_provider!(schema, id, subject) do
-      from(p in schema, where: p.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(p in schema, where: p.id == ^id)
+        |> Repo.one!()
+      end)
     end
 
     def insert_provider(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Repo.insert(changeset)
+      end)
     end
 
     def update_provider(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Repo.update(changeset)
+      end)
     end
 
     def delete_provider!(provider, subject) do
-      # Delete the parent auth_provider, which will CASCADE delete the child and tokens
-      parent =
-        from(p in AuthProvider, where: p.id == ^provider.id)
-        |> Safe.scoped(subject)
-        |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        # Delete the parent auth_provider, which will CASCADE delete the child and tokens
+        parent =
+          from(p in AuthProvider, where: p.id == ^provider.id)
+          |> Repo.one!()
 
-      parent |> Safe.scoped(subject) |> Safe.delete()
+        Repo.delete(parent)
+      end)
     end
 
     def set_default_provider(provider, assigns) do
-      Safe.transact(fn ->
+      Repo.transact(fn ->
         with :ok <- clear_all_defaults(assigns.providers, assigns.subject) do
           # Then set is_default on the selected provider
           changeset = change(provider, is_default: true)
-          changeset |> Safe.scoped(assigns.subject) |> Safe.update()
+
+          Authorization.with_subject(assigns.subject, fn ->
+            Repo.update(changeset)
+          end)
         end
       end)
     end
 
     def clear_default_provider(assigns) do
-      Safe.transact(fn ->
+      Repo.transact(fn ->
         case clear_all_defaults(assigns.providers, assigns.subject) do
           :ok -> {:ok, :cleared}
           error -> error
@@ -1448,7 +1470,7 @@ defmodule PortalWeb.Settings.Authentication do
         if Map.has_key?(p, :is_default) && p.is_default do
           changeset = change(p, is_default: false)
 
-          case changeset |> Safe.scoped(subject) |> Safe.update() do
+          case Authorization.with_subject(subject, fn -> Repo.update(changeset) end) do
             {:ok, _} -> {:cont, :ok}
             {:error, reason} -> {:halt, {:error, reason}}
           end
@@ -1461,30 +1483,30 @@ defmodule PortalWeb.Settings.Authentication do
     def enrich_with_session_counts(providers, subject) do
       provider_ids = Enum.map(providers, & &1.id)
 
-      client_tokens_counts =
-        from(ct in Portal.ClientToken,
-          where: ct.auth_provider_id in ^provider_ids,
-          group_by: ct.auth_provider_id,
-          select: {ct.auth_provider_id, count(ct.id)}
-        )
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> Map.new()
+      Authorization.with_subject(subject, fn ->
+        client_tokens_counts =
+          from(ct in Portal.ClientToken,
+            where: ct.auth_provider_id in ^provider_ids,
+            group_by: ct.auth_provider_id,
+            select: {ct.auth_provider_id, count(ct.id)}
+          )
+          |> Repo.all()
+          |> Map.new()
 
-      portal_sessions_counts =
-        from(ps in Portal.PortalSession,
-          where: ps.auth_provider_id in ^provider_ids,
-          group_by: ps.auth_provider_id,
-          select: {ps.auth_provider_id, count(ps.id)}
-        )
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> Map.new()
+        portal_sessions_counts =
+          from(ps in Portal.PortalSession,
+            where: ps.auth_provider_id in ^provider_ids,
+            group_by: ps.auth_provider_id,
+            select: {ps.auth_provider_id, count(ps.id)}
+          )
+          |> Repo.all()
+          |> Map.new()
 
-      Enum.map(providers, fn provider ->
-        provider
-        |> Map.put(:client_tokens_count, Map.get(client_tokens_counts, provider.id, 0))
-        |> Map.put(:portal_sessions_count, Map.get(portal_sessions_counts, provider.id, 0))
+        Enum.map(providers, fn provider ->
+          provider
+          |> Map.put(:client_tokens_count, Map.get(client_tokens_counts, provider.id, 0))
+          |> Map.put(:portal_sessions_count, Map.get(portal_sessions_counts, provider.id, 0))
+        end)
       end)
     end
 
@@ -1492,18 +1514,18 @@ defmodule PortalWeb.Settings.Authentication do
     def revoke_sessions_for_provider(nil, _subject), do: {:ok, 0}
 
     def revoke_sessions_for_provider(provider, subject) do
-      Safe.transact(fn ->
-        {client_tokens_deleted, _} =
-          from(ct in Portal.ClientToken, where: ct.auth_provider_id == ^provider.id)
-          |> Safe.scoped(subject)
-          |> Safe.delete_all()
+      Repo.transact(fn ->
+        Authorization.with_subject(subject, fn ->
+          {client_tokens_deleted, _} =
+            from(ct in Portal.ClientToken, where: ct.auth_provider_id == ^provider.id)
+            |> Repo.delete_all()
 
-        {portal_sessions_deleted, _} =
-          from(ps in Portal.PortalSession, where: ps.auth_provider_id == ^provider.id)
-          |> Safe.scoped(subject)
-          |> Safe.delete_all()
+          {portal_sessions_deleted, _} =
+            from(ps in Portal.PortalSession, where: ps.auth_provider_id == ^provider.id)
+            |> Repo.delete_all()
 
-        {:ok, client_tokens_deleted + portal_sessions_deleted}
+          {:ok, client_tokens_deleted + portal_sessions_deleted}
+        end)
       end)
     end
   end

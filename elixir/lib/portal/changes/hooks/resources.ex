@@ -47,15 +47,15 @@ defmodule Portal.Changes.Hooks.Resources do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
 
     # Inline function from Portal.PolicyAuthorizations
     def delete_policy_authorizations_for(%Portal.Resource{} = resource) do
       from(f in Portal.PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: f], f.account_id == ^resource.account_id)
       |> where([policy_authorizations: f], f.resource_id == ^resource.id)
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
   end
 end

@@ -166,30 +166,31 @@ defmodule PortalAPI.MembershipController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.{Repo, Authorization}
 
     def list_actors(subject, opts) do
-      from(a in Portal.Actor, as: :actors)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(a in Portal.Actor, as: :actors)
+        |> Repo.list(__MODULE__, opts)
+      end)
     end
 
     def fetch_group(id, subject) do
-      from(g in Portal.Group, where: g.id == ^id)
-      |> preload(:memberships)
-      |> Safe.scoped(subject)
-      |> Safe.one()
-      |> case do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        group -> {:ok, group}
-      end
+      Authorization.with_subject(subject, fn ->
+        from(g in Portal.Group, where: g.id == ^id)
+        |> preload(:memberships)
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          group -> {:ok, group}
+        end
+      end)
     end
 
     def update_group(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Repo.update(changeset)
+      end)
     end
 
     def cursor_fields do

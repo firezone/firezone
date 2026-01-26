@@ -99,11 +99,12 @@ defmodule PortalWeb.Sites.New do
   end
 
   defmodule Database do
-    alias Portal.Safe
+    alias Portal.Authorization
 
     def create_site(changeset, subject) do
-      Safe.scoped(changeset, subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.insert(changeset)
+      end)
     end
   end
 end

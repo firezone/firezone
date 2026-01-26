@@ -418,33 +418,37 @@ defmodule PortalWeb.Resources.Show do
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
-    alias Portal.{Safe, Resource, Policy}
+    alias Portal.{Authorization, Resource, Policy}
 
     def get_resource!(id, subject) do
-      from(r in Resource, as: :resources)
-      |> where([resources: r], r.id == ^id)
-      |> preload([:site, :policies])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.id == ^id)
+        |> preload([:site, :policies])
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def get_internet_resource!(subject) do
-      from(r in Resource, as: :resources)
-      |> where([resources: r], r.type == :internet)
-      |> preload([:site, :policies])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.type == :internet)
+        |> preload([:site, :policies])
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def delete_resource(resource, subject) do
-      Safe.scoped(resource, subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.delete(resource)
+      end)
     end
 
     def list_policies(subject, opts \\ []) do
-      from(p in Policy, as: :policies)
-      |> Safe.scoped(subject)
-      |> Safe.list(DB, opts)
+      Authorization.with_subject(subject, fn ->
+        from(p in Policy, as: :policies)
+        |> Portal.Repo.list(DB, opts)
+      end)
     end
 
     # Pagination support for policies
@@ -607,9 +611,10 @@ defmodule PortalWeb.Resources.Show do
     end
 
     defp list_policy_authorizations(queryable, subject, opts) do
-      queryable
-      |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
+      Authorization.with_subject(subject, fn ->
+        queryable
+        |> Portal.Repo.list(Database.PolicyAuthorizationQuery, opts)
+      end)
     end
   end
 

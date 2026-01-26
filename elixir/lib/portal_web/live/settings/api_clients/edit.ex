@@ -86,19 +86,22 @@ defmodule PortalWeb.Settings.ApiClients.Edit do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Authorization
 
     def get_api_client!(id, subject) do
-      from(a in Portal.Actor,
-        where: a.id == ^id,
-        where: a.type == :api_client
-      )
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(a in Portal.Actor,
+          where: a.id == ^id,
+          where: a.type == :api_client
+        )
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def update_api_client(changeset, subject) do
-      Safe.scoped(changeset, subject) |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.update(changeset)
+      end)
     end
   end
 end

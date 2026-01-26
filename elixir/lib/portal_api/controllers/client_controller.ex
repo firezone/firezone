@@ -195,13 +195,14 @@ defmodule PortalAPI.ClientController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Presence.Clients, Safe}
+    alias Portal.{Presence.Clients, Repo, Authorization}
     alias Portal.Client
 
     def list_clients(subject, opts \\ []) do
-      from(c in Client, as: :clients)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(c in Client, as: :clients)
+        |> Repo.list(__MODULE__, opts)
+      end)
     end
 
     def cursor_fields do
@@ -218,22 +219,20 @@ defmodule PortalAPI.ClientController do
     end
 
     def fetch_client(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(c in Client, as: :clients)
         |> where([clients: c], c.id == ^id)
         |> preload([:ipv4_address, :ipv6_address])
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        client -> {:ok, client}
-      end
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          client -> {:ok, client}
+        end
+      end)
     end
 
     def update_client(changeset, subject) do
-      case Safe.scoped(changeset, subject) |> Safe.update() do
+      case Authorization.with_subject(subject, fn -> Repo.update(changeset) end) do
         {:ok, updated_client} ->
           {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
@@ -243,7 +242,7 @@ defmodule PortalAPI.ClientController do
     end
 
     def verify_client(changeset, subject) do
-      case Safe.scoped(changeset, subject) |> Safe.update() do
+      case Authorization.with_subject(subject, fn -> Repo.update(changeset) end) do
         {:ok, updated_client} ->
           {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
@@ -253,7 +252,7 @@ defmodule PortalAPI.ClientController do
     end
 
     def remove_client_verification(changeset, subject) do
-      case Safe.scoped(changeset, subject) |> Safe.update() do
+      case Authorization.with_subject(subject, fn -> Repo.update(changeset) end) do
         {:ok, updated_client} ->
           {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
@@ -263,7 +262,7 @@ defmodule PortalAPI.ClientController do
     end
 
     def delete_client(client, subject) do
-      case Safe.scoped(client, subject) |> Safe.delete() do
+      case Authorization.with_subject(subject, fn -> Repo.delete(client) end) do
         {:ok, deleted_client} ->
           {:ok, Clients.preload_clients_presence([deleted_client]) |> List.first()}
 

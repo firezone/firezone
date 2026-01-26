@@ -922,20 +922,19 @@ defmodule PortalAPI.Client.Channel do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, Gateway}
+    alias Portal.Authorization
+    alias Portal.Gateway
 
     def fetch_gateway_by_id(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(g in Gateway, as: :gateways)
         |> where([gateways: g], g.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        gateway -> {:ok, gateway}
-      end
+        |> Portal.Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          gateway -> {:ok, gateway}
+        end
+      end)
     end
 
     def all_compatible_gateways_for_client_and_resource(
@@ -943,37 +942,41 @@ defmodule PortalAPI.Client.Channel do
           resource,
           subject
         ) do
-      resource_site_id = site_id_from_resource(resource)
+      Authorization.with_subject(subject, fn ->
+        resource_site_id = site_id_from_resource(resource)
 
-      connected_gateway_ids =
-        Presence.Gateways.Account.list(subject.account.id)
-        |> Map.keys()
+        connected_gateway_ids =
+          Presence.Gateways.Account.list(subject.account.id)
+          |> Map.keys()
 
-      online_gateways =
-        from(g in Gateway, as: :gateways)
-        |> where([gateways: g], g.id in ^connected_gateway_ids and g.site_id == ^resource_site_id)
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> case do
-          {:error, :unauthorized} -> []
-          gateways -> gateways
+        online_gateways =
+          from(g in Gateway, as: :gateways)
+          |> where(
+            [gateways: g],
+            g.id in ^connected_gateway_ids and g.site_id == ^resource_site_id
+          )
+          |> Portal.Repo.fetch(:all)
+          |> case do
+            {:error, :unauthorized} -> []
+            gateways -> gateways
+          end
+
+        compatible_gateways =
+          filter_compatible_gateways(online_gateways, resource, client.last_seen_version)
+
+        cond do
+          compatible_gateways != [] ->
+            {:ok, compatible_gateways}
+
+          online_gateways != [] ->
+            # Gateways are online but all were filtered out due to version incompatibility
+            {:error, :version_mismatch}
+
+          true ->
+            # No gateways online at all
+            {:ok, []}
         end
-
-      compatible_gateways =
-        filter_compatible_gateways(online_gateways, resource, client.last_seen_version)
-
-      cond do
-        compatible_gateways != [] ->
-          {:ok, compatible_gateways}
-
-        online_gateways != [] ->
-          # Gateways are online but all were filtered out due to version incompatibility
-          {:error, :version_mismatch}
-
-        true ->
-          # No gateways online at all
-          {:ok, []}
-      end
+      end)
     end
 
     # Filters gateways by the resource type, gateway version, and client version.
@@ -1076,8 +1079,9 @@ defmodule PortalAPI.Client.Channel do
         expires_at: expires_at
       })
 
-    Portal.Safe.scoped(changeset, subject)
-    |> Portal.Safe.insert()
+    Portal.Authorization.with_subject(subject, fn ->
+      Portal.Repo.insert(changeset)
+    end)
   end
 
   defp create_policy_authorization_changeset(attrs) do

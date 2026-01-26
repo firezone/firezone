@@ -27,7 +27,7 @@ defmodule Portal.Changes.Hooks.AuthProviders do
     import Ecto.Query
     alias Portal.ClientToken
     alias Portal.PortalSession
-    alias Portal.Safe
+    alias Portal.Repo
 
     # Delete all GUI client tokens for a provider and disconnect their sockets
     # Service Account tokens do not have an auth provider set and will not be affected
@@ -36,8 +36,8 @@ defmodule Portal.Changes.Hooks.AuthProviders do
       from(c in ClientToken,
         where: c.account_id == ^account_id and c.auth_provider_id == ^provider_id
       )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
 
     def delete_portal_sessions_for_provider(account_id, provider_id) do
@@ -45,8 +45,8 @@ defmodule Portal.Changes.Hooks.AuthProviders do
       from(p in PortalSession,
         where: p.account_id == ^account_id and p.auth_provider_id == ^provider_id
       )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
   end
 end

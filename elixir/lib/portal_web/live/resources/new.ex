@@ -292,13 +292,14 @@ defmodule PortalWeb.Resources.New do
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
-    alias Portal.{Safe, Resource}
+    alias Portal.{Authorization, Repo, Resource}
 
     def all_sites(subject) do
-      from(g in Portal.Site, as: :sites)
-      |> where([sites: s], s.managed_by != :system)
-      |> Safe.scoped(subject)
-      |> Safe.all()
+      Authorization.with_subject(subject, fn ->
+        from(g in Portal.Site, as: :sites)
+        |> where([sites: s], s.managed_by != :system)
+        |> Repo.all()
+      end)
     end
 
     # TODO: Keep all changeset logic out of the DB module
@@ -315,8 +316,9 @@ defmodule PortalWeb.Resources.New do
         new_resource(subject.account, attrs)
         |> validate_required([:site_id])
 
-      Safe.scoped(changeset, subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Repo.insert(changeset)
+      end)
     end
   end
 end

@@ -192,12 +192,13 @@ defmodule PortalAPI.ActorController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.{Repo, Authorization}
 
     def list_actors(subject, opts \\ []) do
-      from(a in Portal.Actor, as: :actors)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(a in Portal.Actor, as: :actors)
+        |> Repo.list(__MODULE__, opts)
+      end)
     end
 
     def cursor_fields do
@@ -208,32 +209,32 @@ defmodule PortalAPI.ActorController do
     end
 
     def fetch_actor(id, subject) do
-      from(a in Portal.Actor, where: a.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
-      |> case do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        actor -> {:ok, actor}
-      end
+      Authorization.with_subject(subject, fn ->
+        from(a in Portal.Actor, where: a.id == ^id)
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          actor -> {:ok, actor}
+        end
+      end)
     end
 
     def insert_actor(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Repo.insert(changeset)
+      end)
     end
 
     def update_actor(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Repo.update(changeset)
+      end)
     end
 
     def delete_actor(actor, subject) do
-      actor
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Repo.delete(actor)
+      end)
     end
   end
 end

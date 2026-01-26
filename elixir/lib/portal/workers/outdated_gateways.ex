@@ -103,7 +103,7 @@ defmodule Portal.Workers.OutdatedGateways do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
     alias Portal.Client
 
     def all_accounts_pending_notification! do
@@ -119,8 +119,8 @@ defmodule Portal.Workers.OutdatedGateways do
               a.config
             )
       )
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
     end
 
     def all_admins_for_account!(account) do
@@ -128,14 +128,13 @@ defmodule Portal.Workers.OutdatedGateways do
       |> where([actors: a], is_nil(a.disabled_at))
       |> where([actors: a], a.account_id == ^account.id)
       |> where([actors: a], a.type == :account_admin_user)
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
     end
 
     def update_account(changeset) do
-      changeset
-      |> Safe.unscoped()
-      |> Safe.update()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.update(changeset)
     end
 
     def count_incompatible_for(account, gateway_version) do
@@ -155,24 +154,24 @@ defmodule Portal.Workers.OutdatedGateways do
         as: :actor
       )
       |> where([actor: a], is_nil(a.disabled_at))
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.aggregate(:count)
     end
 
     def all_gateways_for_account!(account) do
       from(g in Portal.Gateway,
         where: g.account_id == ^account.id
       )
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
     end
 
     def all_sites_for_account!(account) do
       from(g in Portal.Site,
         where: g.account_id == ^account.id
       )
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
     end
 
     def all_online_gateway_ids_by_site_id!(site_id) do

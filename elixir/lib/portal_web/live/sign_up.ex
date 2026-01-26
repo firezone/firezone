@@ -516,7 +516,7 @@ defmodule PortalWeb.SignUp do
       Actor,
       AuthProvider,
       EmailOTP,
-      Safe
+      Repo
     }
 
     # OTP 28 dialyzer is stricter about opaque types (MapSet) inside Ecto.Multi
@@ -571,7 +571,7 @@ defmodule PortalWeb.SignUp do
           rate_limit_interval: :timer.minutes(30)
         )
       end)
-      |> Safe.transact()
+      |> Repo.transact()
     end
 
     def create_email_provider(account) do
@@ -595,7 +595,7 @@ defmodule PortalWeb.SignUp do
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:auth_provider, parent_changeset)
       |> Ecto.Multi.insert(:email_otp_provider, email_otp_changeset)
-      |> Safe.transact()
+      |> Repo.transact()
       |> case do
         {:ok, %{email_otp_provider: email_provider}} -> {:ok, email_provider}
         {:error, _step, changeset, _changes} -> {:error, changeset}
@@ -613,20 +613,21 @@ defmodule PortalWeb.SignUp do
 
       cast(%Portal.Actor{}, attrs, ~w[account_id email name type allow_email_otp_sign_in]a)
       |> Portal.Actor.changeset()
-      |> Safe.unscoped()
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.insert()
     end
 
     def insert(changeset) do
-      Safe.unscoped(changeset)
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.insert(changeset)
     end
 
     def slug_exists?(slug) do
       import Ecto.Query
 
       query = from(a in Portal.Account, where: a.slug == ^slug, select: count(a.id))
-      Safe.unscoped(query) |> Safe.exists?()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.exists?(query)
     end
   end
 end

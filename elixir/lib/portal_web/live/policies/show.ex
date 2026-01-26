@@ -321,40 +321,44 @@ defmodule PortalWeb.Policies.Show do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
+    alias Portal.{Policy, Repo, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Authorization}
     alias Portal.Authentication
 
     def get_policy!(id, %Authentication.Subject{} = subject) do
-      from(p in Policy, as: :policies)
-      |> where([policies: p], p.id == ^id)
-      |> preload(group: [], resource: [])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(p in Policy, as: :policies)
+        |> where([policies: p], p.id == ^id)
+        |> preload(group: [], resource: [])
+        |> Repo.one!()
+      end)
     end
 
     def update_policy(changeset, %Authentication.Subject{} = subject) do
-      Safe.scoped(changeset, subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Repo.update(changeset)
+      end)
     end
 
     def delete_policy(%Policy{} = policy, %Authentication.Subject{} = subject) do
-      Safe.scoped(policy, subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Repo.delete(policy)
+      end)
     end
 
     def all_active_providers_for_account(_account, subject) do
-      [
-        Userpass.AuthProvider,
-        EmailOTP.AuthProvider,
-        OIDC.AuthProvider,
-        Google.AuthProvider,
-        Entra.AuthProvider,
-        Okta.AuthProvider
-      ]
-      |> Enum.flat_map(fn schema ->
-        from(p in schema, where: not p.is_disabled)
-        |> Safe.scoped(subject)
-        |> Safe.all()
+      Authorization.with_subject(subject, fn ->
+        [
+          Userpass.AuthProvider,
+          EmailOTP.AuthProvider,
+          OIDC.AuthProvider,
+          Google.AuthProvider,
+          Entra.AuthProvider,
+          Okta.AuthProvider
+        ]
+        |> Enum.flat_map(fn schema ->
+          from(p in schema, where: not p.is_disabled)
+          |> Repo.all()
+        end)
       end)
     end
 
@@ -363,10 +367,11 @@ defmodule PortalWeb.Policies.Show do
           %Portal.Authentication.Subject{} = subject,
           opts
         ) do
-      Database.PolicyAuthorizationQuery.all()
-      |> Database.PolicyAuthorizationQuery.by_policy_id(policy.id)
-      |> Safe.scoped(subject)
-      |> Safe.list(Database.PolicyAuthorizationQuery, opts)
+      Authorization.with_subject(subject, fn ->
+        Database.PolicyAuthorizationQuery.all()
+        |> Database.PolicyAuthorizationQuery.by_policy_id(policy.id)
+        |> Repo.list(Database.PolicyAuthorizationQuery, opts)
+      end)
     end
   end
 

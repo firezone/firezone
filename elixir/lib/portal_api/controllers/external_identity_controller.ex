@@ -99,16 +99,17 @@ defmodule PortalAPI.ExternalIdentityController do
   defmodule Database do
     import Ecto.Query
     alias Portal.ExternalIdentity
-    alias Portal.Safe
+    alias Portal.{Repo, Authorization}
 
     def list_external_identities(actor_id, subject, opts \\ []) do
-      from(ei in ExternalIdentity,
-        as: :external_identities,
-        where: ei.actor_id == ^actor_id,
-        order_by: [desc: ei.inserted_at]
-      )
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(ei in ExternalIdentity,
+          as: :external_identities,
+          where: ei.actor_id == ^actor_id,
+          order_by: [desc: ei.inserted_at]
+        )
+        |> Repo.list(__MODULE__, opts)
+      end)
     end
 
     def cursor_fields do
@@ -119,22 +120,20 @@ defmodule PortalAPI.ExternalIdentityController do
     end
 
     def fetch_external_identity(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(ei in ExternalIdentity, where: ei.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        external_identity -> {:ok, external_identity}
-      end
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          external_identity -> {:ok, external_identity}
+        end
+      end)
     end
 
     def delete_external_identity(external_identity, subject) do
-      external_identity
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Repo.delete(external_identity)
+      end)
     end
   end
 end

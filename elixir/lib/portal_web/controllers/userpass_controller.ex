@@ -206,7 +206,7 @@ defmodule PortalWeb.UserpassController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
     alias Portal.Account
     alias Portal.Userpass
 
@@ -216,23 +216,24 @@ defmodule PortalWeb.UserpassController do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query |> Safe.unscoped() |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.one(query)
     end
 
     def get_provider(account, id) do
       from(p in Userpass.AuthProvider,
         where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
       )
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
     end
 
     def get_actor_by_email(account, email) do
       from(a in Portal.Actor,
         where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at)
       )
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
     end
   end
 end

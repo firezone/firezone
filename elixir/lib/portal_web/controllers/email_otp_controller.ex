@@ -365,7 +365,7 @@ defmodule PortalWeb.EmailOTPController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
     alias Portal.{Account, Actor, EmailOTP}
 
     def fetch_account_by_id_or_slug(id_or_slug) do
@@ -374,36 +374,42 @@ defmodule PortalWeb.EmailOTPController do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query
-      |> Safe.unscoped()
-      |> Safe.one()
-      |> handle_nil()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      case Repo.one(query) do
+        nil -> {:error, :not_found}
+        result -> {:ok, result}
+      end
     end
 
     def fetch_provider_by_id(account, id) do
-      from(p in EmailOTP.AuthProvider,
-        where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
-      )
-      |> Safe.unscoped()
-      |> Safe.one()
-      |> handle_nil()
+      query =
+        from(p in EmailOTP.AuthProvider,
+          where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
+        )
+
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      case Repo.one(query) do
+        nil -> {:error, :not_found}
+        result -> {:ok, result}
+      end
     end
 
     def fetch_actor_by_email(account, email) do
-      from(a in Actor,
-        where:
-          a.email == ^email and
-            a.account_id == ^account.id and
-            is_nil(a.disabled_at) and
-            a.allow_email_otp_sign_in == true
-      )
-      |> preload(:account)
-      |> Safe.unscoped()
-      |> Safe.one()
-      |> handle_nil()
-    end
+      query =
+        from(a in Actor,
+          where:
+            a.email == ^email and
+              a.account_id == ^account.id and
+              is_nil(a.disabled_at) and
+              a.allow_email_otp_sign_in == true
+        )
+        |> preload(:account)
 
-    defp handle_nil(nil), do: {:error, :not_found}
-    defp handle_nil(result), do: {:ok, result}
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      case Repo.one(query) do
+        nil -> {:error, :not_found}
+        result -> {:ok, result}
+      end
+    end
   end
 end

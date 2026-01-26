@@ -24,13 +24,13 @@ defmodule Portal.Workers.DeleteExpiredPortalSessions do
   defmodule Database do
     import Ecto.Query
     alias Portal.PortalSession
-    alias Portal.Safe
+    alias Portal.Repo
 
     def delete_expired_sessions do
       from(s in PortalSession, as: :sessions)
       |> where([sessions: s], s.expires_at <= ^DateTime.utc_now())
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
   end
 end

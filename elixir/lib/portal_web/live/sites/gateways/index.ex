@@ -139,19 +139,21 @@ defmodule PortalWeb.Sites.Gateways.Index do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, Gateway}
+    alias Portal.{Authorization, Repo, Gateway}
 
     def get_site!(id, subject) do
-      from(s in Portal.Site, as: :sites)
-      |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(s in Portal.Site, as: :sites)
+        |> where([sites: s], s.id == ^id)
+        |> Repo.one!()
+      end)
     end
 
     def list_gateways(subject, opts \\ []) do
-      from(g in Gateway, as: :gateways)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        query = from(g in Gateway, as: :gateways)
+        Repo.list(query, __MODULE__, opts)
+      end)
     end
 
     def cursor_fields do

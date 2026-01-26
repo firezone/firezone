@@ -214,46 +214,52 @@ defmodule PortalWeb.Sites.Index do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, Site, Resource}
+    alias Portal.{Authorization, Repo, Site, Resource}
 
     def list_sites(subject, opts \\ []) do
-      from(g in Site, as: :sites)
-      |> where([sites: s], s.managed_by != :system)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        query =
+          from(g in Site, as: :sites)
+          |> where([sites: s], s.managed_by != :system)
+
+        Repo.list(query, __MODULE__, opts)
+      end)
     end
 
     def count_resources_by_site(site_ids, subject) do
-      from(r in Resource, as: :resources)
-      |> where([resources: r], r.site_id in ^site_ids)
-      |> group_by([resources: r], r.site_id)
-      |> select([resources: r], {r.site_id, count(r.id)})
-      |> Safe.scoped(subject)
-      |> Safe.all()
-      |> Map.new()
+      Authorization.with_subject(subject, fn ->
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.site_id in ^site_ids)
+        |> group_by([resources: r], r.site_id)
+        |> select([resources: r], {r.site_id, count(r.id)})
+        |> Repo.all()
+        |> Map.new()
+      end)
     end
 
     def count_policies_by_site(site_ids, subject) do
-      from(p in Portal.Policy, as: :policies)
-      |> join(:inner, [policies: p], r in Resource,
-        on: r.id == p.resource_id and r.account_id == p.account_id,
-        as: :resources
-      )
-      |> where([resources: r], r.site_id in ^site_ids)
-      |> group_by([resources: r], r.site_id)
-      |> select([resources: r], {r.site_id, count()})
-      |> Safe.scoped(subject)
-      |> Safe.all()
-      |> Map.new()
+      Authorization.with_subject(subject, fn ->
+        from(p in Portal.Policy, as: :policies)
+        |> join(:inner, [policies: p], r in Resource,
+          on: r.id == p.resource_id and r.account_id == p.account_id,
+          as: :resources
+        )
+        |> where([resources: r], r.site_id in ^site_ids)
+        |> group_by([resources: r], r.site_id)
+        |> select([resources: r], {r.site_id, count()})
+        |> Repo.all()
+        |> Map.new()
+      end)
     end
 
     def get_internet_resource(subject) do
       resource =
-        from(r in Resource, as: :resources)
-        |> where([resources: r], r.type == :internet)
-        |> preload(site: :gateways)
-        |> Safe.scoped(subject)
-        |> Safe.one()
+        Authorization.with_subject(subject, fn ->
+          from(r in Resource, as: :resources)
+          |> where([resources: r], r.type == :internet)
+          |> preload(site: :gateways)
+          |> Repo.one()
+        end)
 
       case resource do
         nil ->

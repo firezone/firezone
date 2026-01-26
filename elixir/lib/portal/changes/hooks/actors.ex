@@ -52,23 +52,23 @@ defmodule Portal.Changes.Hooks.Actors do
   defmodule Database do
     alias Portal.ClientToken
     alias Portal.PortalSession
-    alias Portal.Safe
+    alias Portal.Repo
     import Ecto.Query
 
     def delete_client_tokens_for_actor(account_id, actor_id) do
       from(c in ClientToken,
         where: c.account_id == ^account_id and c.actor_id == ^actor_id
       )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
 
     def delete_portal_sessions_for_actor(account_id, actor_id) do
       from(p in PortalSession,
         where: p.account_id == ^account_id and p.actor_id == ^actor_id
       )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
   end
 end

@@ -1749,10 +1749,10 @@ defmodule PortalWeb.Actors do
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
+    alias Portal.Authorization
     alias Portal.ExternalIdentity
     alias Portal.Actor
     alias Portal.Presence
-    alias Portal.Safe
     alias Portal.Directory
     alias Portal.Repo.Filter
 
@@ -1815,37 +1815,38 @@ defmodule PortalWeb.Actors do
     end
 
     defp directory_values(subject) do
-      directories =
-        from(d in Directory,
-          where: d.account_id == ^subject.account.id,
-          left_join: google in Portal.Google.Directory,
-          on: google.id == d.id and d.type == :google,
-          left_join: entra in Portal.Entra.Directory,
-          on: entra.id == d.id and d.type == :entra,
-          left_join: okta in Portal.Okta.Directory,
-          on: okta.id == d.id and d.type == :okta,
-          select: %{
-            id: d.id,
-            name: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name),
-            type: d.type
-          },
-          order_by: [asc: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name)]
-        )
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> case do
-          {:error, _} ->
-            []
+      Authorization.with_subject(subject, fn ->
+        directories =
+          from(d in Directory,
+            where: d.account_id == ^subject.account.id,
+            left_join: google in Portal.Google.Directory,
+            on: google.id == d.id and d.type == :google,
+            left_join: entra in Portal.Entra.Directory,
+            on: entra.id == d.id and d.type == :entra,
+            left_join: okta in Portal.Okta.Directory,
+            on: okta.id == d.id and d.type == :okta,
+            select: %{
+              id: d.id,
+              name: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name),
+              type: d.type
+            },
+            order_by: [asc: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name)]
+          )
+          |> Portal.Repo.fetch(:all)
+          |> case do
+            {:error, _} ->
+              []
 
-          directories ->
-            directories
-            |> Enum.map(fn %{id: id, name: name} ->
-              %DirectoryOption{id: id, name: name}
-            end)
-        end
+            directories ->
+              directories
+              |> Enum.map(fn %{id: id, name: name} ->
+                %DirectoryOption{id: id, name: name}
+              end)
+          end
 
-      # Add Firezone option at the beginning
-      [%DirectoryOption{id: "firezone", name: "Firezone"} | directories]
+        # Add Firezone option at the beginning
+        [%DirectoryOption{id: "firezone", name: "Firezone"} | directories]
+      end)
     end
 
     def filter_by_status(queryable, "active") do
@@ -1891,182 +1892,195 @@ defmodule PortalWeb.Actors do
     end
 
     def list_actors(subject, opts \\ []) do
-      all()
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        all()
+        |> Portal.Repo.list(__MODULE__, opts)
+      end)
     end
 
     def get_actor!(id, subject) do
-      from(a in Actor, as: :actors)
-      |> where([actors: a], a.id == ^id)
-      |> where([actors: a], a.type != :api_client)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(a in Actor, as: :actors)
+        |> where([actors: a], a.id == ^id)
+        |> where([actors: a], a.type != :api_client)
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def get_identities_for_actor(actor_id, subject) do
-      from(i in ExternalIdentity, as: :identities)
-      |> where([identities: i], i.actor_id == ^actor_id)
-      |> join(:left, [identities: i], d in assoc(i, :directory), as: :directory)
-      |> join(:left, [directory: d], gd in Portal.Google.Directory,
-        on: gd.id == d.id and d.type == :google,
-        as: :google_directory
-      )
-      |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-        on: ed.id == d.id and d.type == :entra,
-        as: :entra_directory
-      )
-      |> join(:left, [directory: d], od in Portal.Okta.Directory,
-        on: od.id == d.id and d.type == :okta,
-        as: :okta_directory
-      )
-      |> select_merge(
-        [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
-        %{
-          directory_name:
-            fragment(
-              "COALESCE(?, ?, ?, 'Firezone')",
-              gd.name,
-              ed.name,
-              od.name
-            )
-        }
-      )
-      |> order_by([identities: i], desc: i.inserted_at)
-      |> Safe.scoped(subject)
-      |> Safe.all()
+      Authorization.with_subject(subject, fn ->
+        from(i in ExternalIdentity, as: :identities)
+        |> where([identities: i], i.actor_id == ^actor_id)
+        |> join(:left, [identities: i], d in assoc(i, :directory), as: :directory)
+        |> join(:left, [directory: d], gd in Portal.Google.Directory,
+          on: gd.id == d.id and d.type == :google,
+          as: :google_directory
+        )
+        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
+          on: ed.id == d.id and d.type == :entra,
+          as: :entra_directory
+        )
+        |> join(:left, [directory: d], od in Portal.Okta.Directory,
+          on: od.id == d.id and d.type == :okta,
+          as: :okta_directory
+        )
+        |> select_merge(
+          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+          %{
+            directory_name:
+              fragment(
+                "COALESCE(?, ?, ?, 'Firezone')",
+                gd.name,
+                ed.name,
+                od.name
+              )
+          }
+        )
+        |> order_by([identities: i], desc: i.inserted_at)
+        |> Portal.Repo.fetch(:all)
+      end)
     end
 
     def other_enabled_admins_exist?(account_id, actor_id, subject) do
-      from(a in Actor,
-        where: a.account_id == ^account_id,
-        where: a.type == :account_admin_user,
-        where: a.id != ^actor_id,
-        where: is_nil(a.disabled_at)
-      )
-      |> Safe.scoped(subject)
-      |> Safe.exists?()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.exists?(
+          from(a in Actor,
+            where: a.account_id == ^account_id,
+            where: a.type == :account_admin_user,
+            where: a.id != ^actor_id,
+            where: is_nil(a.disabled_at)
+          )
+        )
+      end)
     end
 
     def get_client_tokens_for_actor(actor_id, subject) do
-      from(c in ClientToken, as: :client_tokens)
-      |> where([client_tokens: c], c.actor_id == ^actor_id)
-      |> order_by([client_tokens: c], desc: c.inserted_at)
-      |> Safe.scoped(subject)
-      |> Safe.all()
-      |> Presence.Clients.preload_client_tokens_presence()
+      Authorization.with_subject(subject, fn ->
+        from(c in ClientToken, as: :client_tokens)
+        |> where([client_tokens: c], c.actor_id == ^actor_id)
+        |> order_by([client_tokens: c], desc: c.inserted_at)
+        |> Portal.Repo.fetch(:all)
+        |> Presence.Clients.preload_client_tokens_presence()
+      end)
     end
 
     def get_identity_by_id(identity_id, subject) do
-      from(i in ExternalIdentity, as: :identities)
-      |> where([identities: i], i.id == ^identity_id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      Authorization.with_subject(subject, fn ->
+        from(i in ExternalIdentity, as: :identities)
+        |> where([identities: i], i.id == ^identity_id)
+        |> Portal.Repo.fetch(:one)
+      end)
     end
 
     def get_client_token_by_id(token_id, subject) do
-      from(c in ClientToken, as: :client_tokens)
-      |> where([client_tokens: c], c.id == ^token_id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      Authorization.with_subject(subject, fn ->
+        from(c in ClientToken, as: :client_tokens)
+        |> where([client_tokens: c], c.id == ^token_id)
+        |> Portal.Repo.fetch(:one)
+      end)
     end
 
     def get_portal_sessions_for_actor(actor_id, subject) do
-      from(ps in PortalSession, as: :portal_sessions)
-      |> where([portal_sessions: ps], ps.actor_id == ^actor_id)
-      |> join(:left, [portal_sessions: ps], ap in assoc(ps, :auth_provider), as: :auth_provider)
-      |> select_merge([auth_provider: ap], %{
-        auth_provider_type: type(ap.type, :string),
-        auth_provider_name:
-          fragment(
-            """
-            COALESCE(
-              (SELECT name FROM google_auth_providers WHERE id = ?),
-              (SELECT name FROM entra_auth_providers WHERE id = ?),
-              (SELECT name FROM okta_auth_providers WHERE id = ?),
-              (SELECT name FROM oidc_auth_providers WHERE id = ?),
-              (SELECT name FROM userpass_auth_providers WHERE id = ?),
-              (SELECT name FROM email_otp_auth_providers WHERE id = ?)
+      Authorization.with_subject(subject, fn ->
+        from(ps in PortalSession, as: :portal_sessions)
+        |> where([portal_sessions: ps], ps.actor_id == ^actor_id)
+        |> join(:left, [portal_sessions: ps], ap in assoc(ps, :auth_provider), as: :auth_provider)
+        |> select_merge([auth_provider: ap], %{
+          auth_provider_type: type(ap.type, :string),
+          auth_provider_name:
+            fragment(
+              """
+              COALESCE(
+                (SELECT name FROM google_auth_providers WHERE id = ?),
+                (SELECT name FROM entra_auth_providers WHERE id = ?),
+                (SELECT name FROM okta_auth_providers WHERE id = ?),
+                (SELECT name FROM oidc_auth_providers WHERE id = ?),
+                (SELECT name FROM userpass_auth_providers WHERE id = ?),
+                (SELECT name FROM email_otp_auth_providers WHERE id = ?)
+              )
+              """,
+              ap.id,
+              ap.id,
+              ap.id,
+              ap.id,
+              ap.id,
+              ap.id
             )
-            """,
-            ap.id,
-            ap.id,
-            ap.id,
-            ap.id,
-            ap.id,
-            ap.id
-          )
-      })
-      |> order_by([portal_sessions: ps], desc: ps.inserted_at)
-      |> Safe.scoped(subject)
-      |> Safe.all()
-      |> Presence.PortalSessions.preload_portal_sessions_presence()
+        })
+        |> order_by([portal_sessions: ps], desc: ps.inserted_at)
+        |> Portal.Repo.fetch(:all)
+        |> Presence.PortalSessions.preload_portal_sessions_presence()
+      end)
     end
 
     def get_portal_session_by_id(session_id, subject) do
-      from(ps in PortalSession, as: :portal_sessions)
-      |> where([portal_sessions: ps], ps.id == ^session_id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      Authorization.with_subject(subject, fn ->
+        from(ps in PortalSession, as: :portal_sessions)
+        |> where([portal_sessions: ps], ps.id == ^session_id)
+        |> Portal.Repo.fetch(:one)
+      end)
     end
 
     def get_groups_for_actor(actor_id, subject) do
-      from(g in Portal.Group, as: :groups)
-      |> join(:inner, [groups: g], m in Portal.Membership,
-        on: m.group_id == g.id and m.account_id == g.account_id,
-        as: :membership
-      )
-      |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
-      |> join(:left, [directory: d], gd in Portal.Google.Directory,
-        on: gd.id == d.id and d.type == :google,
-        as: :google_directory
-      )
-      |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-        on: ed.id == d.id and d.type == :entra,
-        as: :entra_directory
-      )
-      |> join(:left, [directory: d], od in Portal.Okta.Directory,
-        on: od.id == d.id and d.type == :okta,
-        as: :okta_directory
-      )
-      |> where([membership: m], m.actor_id == ^actor_id)
-      |> select_merge(
-        [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
-        %{
-          directory_type: d.type,
-          directory_name: fragment("COALESCE(?, ?, ?)", gd.name, ed.name, od.name)
-        }
-      )
-      |> order_by([groups: g], asc: g.name)
-      |> Safe.scoped(subject)
-      |> Safe.all()
+      Authorization.with_subject(subject, fn ->
+        from(g in Portal.Group, as: :groups)
+        |> join(:inner, [groups: g], m in Portal.Membership,
+          on: m.group_id == g.id and m.account_id == g.account_id,
+          as: :membership
+        )
+        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [directory: d], gd in Portal.Google.Directory,
+          on: gd.id == d.id and d.type == :google,
+          as: :google_directory
+        )
+        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
+          on: ed.id == d.id and d.type == :entra,
+          as: :entra_directory
+        )
+        |> join(:left, [directory: d], od in Portal.Okta.Directory,
+          on: od.id == d.id and d.type == :okta,
+          as: :okta_directory
+        )
+        |> where([membership: m], m.actor_id == ^actor_id)
+        |> select_merge(
+          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+          %{
+            directory_type: d.type,
+            directory_name: fragment("COALESCE(?, ?, ?)", gd.name, ed.name, od.name)
+          }
+        )
+        |> order_by([groups: g], asc: g.name)
+        |> Portal.Repo.fetch(:all)
+      end)
     end
 
     def create(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.insert(changeset)
+      end)
     end
 
     def create_service_account_with_token(changeset, token_expiration, subject, token_creator_fn) do
-      Safe.transact(fn ->
-        with {:ok, actor} <- create(changeset, subject),
-             token_result <- token_creator_fn.(actor, token_expiration, subject) do
-          {:ok, {actor, token_result}}
-        end
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.transact(fn ->
+          with {:ok, actor} <- Portal.Repo.insert(changeset),
+               token_result <- token_creator_fn.(actor, token_expiration, subject) do
+            {:ok, {actor, token_result}}
+          end
+        end)
       end)
     end
 
     def update(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.update(changeset)
+      end)
     end
 
     def delete(actor, subject) do
-      actor
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.delete(actor)
+      end)
     end
   end
 end

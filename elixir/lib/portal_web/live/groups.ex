@@ -897,7 +897,7 @@ defmodule PortalWeb.Groups do
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
-    alias Portal.Safe
+    alias Portal.Authorization
     alias Portal.Directory
     alias Portal.Repo.Filter
 
@@ -907,65 +907,66 @@ defmodule PortalWeb.Groups do
 
     # Inlined from Portal.Actors.list_groups
     def list_groups(subject, opts \\ []) do
-      # Extract order_by to handle member_count sorting specially
-      {order_by, opts} = Keyword.pop(opts, :order_by, [])
+      Authorization.with_subject(subject, fn ->
+        # Extract order_by to handle member_count sorting specially
+        {order_by, opts} = Keyword.pop(opts, :order_by, [])
 
-      member_counts_query =
-        from(m in Portal.Membership,
-          group_by: m.group_id,
-          select: %{
-            group_id: m.group_id,
-            count: count(m.actor_id)
-          }
-        )
+        member_counts_query =
+          from(m in Portal.Membership,
+            group_by: m.group_id,
+            select: %{
+              group_id: m.group_id,
+              count: count(m.actor_id)
+            }
+          )
 
-      query =
-        from(g in Portal.Group, as: :groups)
-        |> join(:left, [groups: g], mc in subquery(member_counts_query),
-          on: mc.group_id == g.id,
-          as: :member_counts
-        )
-        |> join(:left, [groups: g], d in Directory,
-          on: d.id == g.directory_id and d.account_id == g.account_id,
-          as: :directory
-        )
-        |> where(
-          [groups: g],
-          not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-        )
-        |> select_merge([groups: g, member_counts: mc, directory: d], %{
-          count: coalesce(mc.count, 0),
-          member_count: coalesce(mc.count, 0),
-          directory_type: d.type
-        })
+        query =
+          from(g in Portal.Group, as: :groups)
+          |> join(:left, [groups: g], mc in subquery(member_counts_query),
+            on: mc.group_id == g.id,
+            as: :member_counts
+          )
+          |> join(:left, [groups: g], d in Directory,
+            on: d.id == g.directory_id and d.account_id == g.account_id,
+            as: :directory
+          )
+          |> where(
+            [groups: g],
+            not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+          )
+          |> select_merge([groups: g, member_counts: mc, directory: d], %{
+            count: coalesce(mc.count, 0),
+            member_count: coalesce(mc.count, 0),
+            directory_type: d.type
+          })
 
-      # Apply manual ordering with NULLS LAST for count field
-      {query, final_order_by} =
-        case order_by do
-          [{:member_counts, :desc, :count}] ->
-            # Apply ordering manually with NULLS LAST, don't pass to Safe.list
-            updated_query =
-              query
-              |> order_by([member_counts: mc], fragment("? DESC NULLS LAST", mc.count))
+        # Apply manual ordering with NULLS LAST for count field
+        {query, final_order_by} =
+          case order_by do
+            [{:member_counts, :desc, :count}] ->
+              # Apply ordering manually with NULLS LAST, don't pass to Portal.Repo.list
+              updated_query =
+                query
+                |> order_by([member_counts: mc], fragment("? DESC NULLS LAST", mc.count))
 
-            {updated_query, []}
+              {updated_query, []}
 
-          [{:member_counts, :asc, :count}] ->
-            # Apply ordering manually with NULLS FIRST, don't pass to Safe.list
-            updated_query =
-              query
-              |> order_by([member_counts: mc], fragment("? ASC NULLS FIRST", mc.count))
+            [{:member_counts, :asc, :count}] ->
+              # Apply ordering manually with NULLS FIRST, don't pass to Portal.Repo.list
+              updated_query =
+                query
+                |> order_by([member_counts: mc], fragment("? ASC NULLS FIRST", mc.count))
 
-            {updated_query, []}
+              {updated_query, []}
 
-          _ ->
-            # Let Safe.list handle the ordering normally
-            {query, order_by}
-        end
+            _ ->
+              # Let Portal.Repo.list handle the ordering normally
+              {query, order_by}
+          end
 
-      query
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, Keyword.put(opts, :order_by, final_order_by))
+        query
+        |> Portal.Repo.list(__MODULE__, Keyword.put(opts, :order_by, final_order_by))
+      end)
     end
 
     def cursor_fields do
@@ -999,37 +1000,38 @@ defmodule PortalWeb.Groups do
     end
 
     defp directory_values(subject) do
-      directories =
-        from(d in Directory,
-          where: d.account_id == ^subject.account.id,
-          left_join: google in Portal.Google.Directory,
-          on: google.id == d.id and d.type == :google,
-          left_join: entra in Portal.Entra.Directory,
-          on: entra.id == d.id and d.type == :entra,
-          left_join: okta in Portal.Okta.Directory,
-          on: okta.id == d.id and d.type == :okta,
-          select: %{
-            id: d.id,
-            name: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name),
-            type: d.type
-          },
-          order_by: [asc: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name)]
-        )
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> case do
-          {:error, _} ->
-            []
+      Authorization.with_subject(subject, fn ->
+        directories =
+          from(d in Directory,
+            where: d.account_id == ^subject.account.id,
+            left_join: google in Portal.Google.Directory,
+            on: google.id == d.id and d.type == :google,
+            left_join: entra in Portal.Entra.Directory,
+            on: entra.id == d.id and d.type == :entra,
+            left_join: okta in Portal.Okta.Directory,
+            on: okta.id == d.id and d.type == :okta,
+            select: %{
+              id: d.id,
+              name: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name),
+              type: d.type
+            },
+            order_by: [asc: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name)]
+          )
+          |> Portal.Repo.fetch(:all)
+          |> case do
+            {:error, _} ->
+              []
 
-          directories ->
-            directories
-            |> Enum.map(fn %{id: id, name: name} ->
-              %DirectoryOption{id: id, name: name}
-            end)
-        end
+            directories ->
+              directories
+              |> Enum.map(fn %{id: id, name: name} ->
+                %DirectoryOption{id: id, name: name}
+              end)
+          end
 
-      # Add Firezone option at the beginning
-      [%DirectoryOption{id: "firezone", name: "Firezone"} | directories]
+        # Add Firezone option at the beginning
+        [%DirectoryOption{id: "firezone", name: "Firezone"} | directories]
+      end)
     end
 
     def filter_by_directory(queryable, "firezone") do
@@ -1047,80 +1049,85 @@ defmodule PortalWeb.Groups do
     end
 
     def get_group!(id, subject) do
-      from(g in Portal.Group, as: :groups)
-      |> join(:left, [groups: g], d in Directory,
-        on: d.id == g.directory_id and d.account_id == g.account_id,
-        as: :directory
-      )
-      |> where([groups: groups], groups.id == ^id)
-      |> select_merge([groups: g, directory: d], %{
-        directory_type: d.type
-      })
-      |> Safe.scoped(subject)
-      |> Safe.one!()
-    end
-
-    def get_actor!(id, subject) do
-      from(a in Portal.Actor, as: :actors)
-      |> where([actors: a], a.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
-    end
-
-    def search_actors(search_term, subject, exclude_actors) do
-      exclude_ids = Enum.map(exclude_actors, & &1.id)
-
-      case from(a in Portal.Actor, as: :actors)
-           |> where(
-             [actors: a],
-             (fulltext_search(a.name, ^search_term) or fulltext_search(a.email, ^search_term)) and
-               a.id not in ^exclude_ids
-           )
-           |> limit(10)
-           |> Safe.scoped(subject)
-           |> Safe.all() do
-        actors when is_list(actors) -> actors
-        {:error, _} -> []
-      end
-    end
-
-    def get_group_with_actors!(id, subject) do
-      query =
+      Authorization.with_subject(subject, fn ->
         from(g in Portal.Group, as: :groups)
+        |> join(:left, [groups: g], d in Directory,
+          on: d.id == g.directory_id and d.account_id == g.account_id,
+          as: :directory
+        )
         |> where([groups: groups], groups.id == ^id)
-        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
         |> select_merge([groups: g, directory: d], %{
           directory_type: d.type
         })
-        |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and d.type == :google,
-          as: :google_directory
-        )
-        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and d.type == :entra,
-          as: :entra_directory
-        )
-        |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and d.type == :okta,
-          as: :okta_directory
-        )
-        |> join(:left, [groups: g], m in assoc(g, :memberships), as: :memberships)
-        |> join(:left, [memberships: m], a in assoc(m, :actor), as: :actors)
-        |> select_merge(
-          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
-          %{
-            directory_name:
-              fragment(
-                "COALESCE(?, ?, ?)",
-                gd.name,
-                ed.name,
-                od.name
-              )
-          }
-        )
-        |> preload([memberships: m, actors: a], memberships: m, actors: a)
+        |> Portal.Repo.fetch!(:one)
+      end)
+    end
 
-      query |> Safe.scoped(subject) |> Safe.one!()
+    def get_actor!(id, subject) do
+      Authorization.with_subject(subject, fn ->
+        from(a in Portal.Actor, as: :actors)
+        |> where([actors: a], a.id == ^id)
+        |> Portal.Repo.fetch!(:one)
+      end)
+    end
+
+    def search_actors(search_term, subject, exclude_actors) do
+      Authorization.with_subject(subject, fn ->
+        exclude_ids = Enum.map(exclude_actors, & &1.id)
+
+        case from(a in Portal.Actor, as: :actors)
+             |> where(
+               [actors: a],
+               (fulltext_search(a.name, ^search_term) or fulltext_search(a.email, ^search_term)) and
+                 a.id not in ^exclude_ids
+             )
+             |> limit(10)
+             |> Portal.Repo.fetch(:all) do
+          actors when is_list(actors) -> actors
+          {:error, _} -> []
+        end
+      end)
+    end
+
+    def get_group_with_actors!(id, subject) do
+      Authorization.with_subject(subject, fn ->
+        query =
+          from(g in Portal.Group, as: :groups)
+          |> where([groups: groups], groups.id == ^id)
+          |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+          |> select_merge([groups: g, directory: d], %{
+            directory_type: d.type
+          })
+          |> join(:left, [directory: d], gd in Portal.Google.Directory,
+            on: gd.id == d.id and d.type == :google,
+            as: :google_directory
+          )
+          |> join(:left, [directory: d], ed in Portal.Entra.Directory,
+            on: ed.id == d.id and d.type == :entra,
+            as: :entra_directory
+          )
+          |> join(:left, [directory: d], od in Portal.Okta.Directory,
+            on: od.id == d.id and d.type == :okta,
+            as: :okta_directory
+          )
+          |> join(:left, [groups: g], m in assoc(g, :memberships), as: :memberships)
+          |> join(:left, [memberships: m], a in assoc(m, :actor), as: :actors)
+          |> select_merge(
+            [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+            %{
+              directory_name:
+                fragment(
+                  "COALESCE(?, ?, ?)",
+                  gd.name,
+                  ed.name,
+                  od.name
+                )
+            }
+          )
+          |> preload([memberships: m, actors: a], memberships: m, actors: a)
+
+        query |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def preloads do
@@ -1128,21 +1135,21 @@ defmodule PortalWeb.Groups do
     end
 
     def create(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Portal.Authorization.with_subject(subject, fn ->
+        Portal.Repo.insert(changeset)
+      end)
     end
 
     def update(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Portal.Authorization.with_subject(subject, fn ->
+        Portal.Repo.update(changeset)
+      end)
     end
 
     def delete(group, subject) do
-      group
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      Portal.Authorization.with_subject(subject, fn ->
+        Portal.Repo.delete(group)
+      end)
     end
   end
 end

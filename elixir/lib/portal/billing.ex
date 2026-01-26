@@ -408,15 +408,14 @@ defmodule Portal.Billing do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
     alias Portal.Account
     alias Portal.Actor
     alias Portal.Client
 
     def update(changeset) do
-      changeset
-      |> Safe.unscoped()
-      |> Safe.update()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.update(changeset)
     end
 
     def count_users_for_account(%Account{} = account) do
@@ -425,8 +424,8 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type in [:account_admin_user, :account_user]
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.aggregate(:count)
     end
 
     def count_service_accounts_for_account(%Account{} = account) do
@@ -435,8 +434,8 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type == :service_account
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.aggregate(:count)
     end
 
     def count_account_admin_users_for_account(%Account{} = account) do
@@ -445,8 +444,8 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type == :account_admin_user
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.aggregate(:count)
     end
 
     def count_1m_active_users_for_account(%Account{} = account) do
@@ -461,8 +460,8 @@ defmodule Portal.Billing do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.aggregate(:count)
     end
 
     def count_sites_for_account(account) do
@@ -470,8 +469,8 @@ defmodule Portal.Billing do
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.aggregate(:count)
     end
 
     def count_api_clients_for_account(%Account{} = account) do
@@ -480,8 +479,8 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type == :api_client
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.aggregate(:count)
     end
 
     def count_api_tokens_for_actor(%Actor{} = actor) do
@@ -489,8 +488,8 @@ defmodule Portal.Billing do
         where: t.actor_id == ^actor.id,
         where: t.account_id == ^actor.account_id
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.aggregate(:count)
     end
 
     def fetch_internet_site(%Account{} = account) do
@@ -500,8 +499,8 @@ defmodule Portal.Billing do
           where: s.name == "Internet",
           where: s.managed_by == :system
         )
-        |> Safe.unscoped()
-        |> Safe.one()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Repo.one()
 
       case result do
         nil -> {:error, :not_found}
@@ -515,8 +514,8 @@ defmodule Portal.Billing do
         name: "Internet",
         managed_by: :system
       }
-      |> Safe.unscoped()
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.insert()
     end
 
     def fetch_internet_resource(%Account{} = account) do
@@ -525,8 +524,8 @@ defmodule Portal.Billing do
           where: r.account_id == ^account.id,
           where: r.type == :internet
         )
-        |> Safe.unscoped()
-        |> Safe.one()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Repo.one()
 
       case result do
         nil -> {:error, :not_found}
@@ -541,8 +540,8 @@ defmodule Portal.Billing do
         type: :internet,
         site_id: site.id
       }
-      |> Safe.unscoped()
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.insert()
     end
   end
 end

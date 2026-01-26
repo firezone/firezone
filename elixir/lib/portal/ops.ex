@@ -80,33 +80,31 @@ defmodule Portal.Ops do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Account, Safe}
+    alias Portal.{Account, Repo}
 
     def get_disabled_account!(id) do
       from(a in Account,
         where: a.id == ^id,
         where: not is_nil(a.disabled_at)
       )
-      |> Safe.unscoped()
-      |> Safe.one!()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one!()
     end
 
     def insert(changeset) do
-      changeset
-      |> Safe.unscoped()
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.insert(changeset)
     end
 
     def delete_all(schema) do
       from(s in schema)
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
 
     def delete(record) do
-      record
-      |> Safe.unscoped()
-      |> Safe.delete()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.delete(record)
     end
   end
 end

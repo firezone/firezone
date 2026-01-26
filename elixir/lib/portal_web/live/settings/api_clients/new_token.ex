@@ -132,15 +132,16 @@ defmodule PortalWeb.Settings.ApiClients.NewToken do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Authorization
 
     def get_api_client!(id, subject) do
-      from(a in Portal.Actor,
-        where: a.id == ^id,
-        where: a.type == :api_client
-      )
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(a in Portal.Actor,
+          where: a.id == ^id,
+          where: a.type == :api_client
+        )
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
   end
 end

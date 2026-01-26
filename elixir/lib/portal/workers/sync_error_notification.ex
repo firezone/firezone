@@ -123,7 +123,7 @@ defmodule Portal.Workers.SyncErrorNotification do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
 
     # We want to find all directories that are currently disabled due to sync errors.
     # For 4xx errors, the directory is disabled immediately.
@@ -132,8 +132,8 @@ defmodule Portal.Workers.SyncErrorNotification do
     def errored_disabled_directories(schema, frequency) do
       schema
       |> errored_disabled_directories_query(frequency)
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
     end
 
     defp errored_disabled_directories_query(schema, "daily") do
@@ -169,9 +169,8 @@ defmodule Portal.Workers.SyncErrorNotification do
     end
 
     def update_directory(changeset) do
-      changeset
-      |> Safe.unscoped()
-      |> Safe.update()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.update(changeset)
     end
 
     def get_account_admin_actors(account_id) do
@@ -180,8 +179,8 @@ defmodule Portal.Workers.SyncErrorNotification do
         where: a.type == :account_admin_user,
         where: is_nil(a.disabled_at)
       )
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
     end
   end
 end

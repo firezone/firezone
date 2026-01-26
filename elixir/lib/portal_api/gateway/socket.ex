@@ -111,16 +111,11 @@ defmodule PortalAPI.Gateway.Socket do
     alias Portal.Gateway
     alias Portal.IPv4Address
     alias Portal.IPv6Address
-    alias Portal.Safe
     alias Portal.Site
 
     def fetch_site(id) do
-      result =
-        from(s in Site, where: s.id == ^id)
-        |> Safe.unscoped()
-        |> Safe.one()
-
-      case result do
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      case Portal.Repo.one(from(s in Site, where: s.id == ^id)) do
         nil -> {:error, :not_found}
         site -> {:ok, site}
       end
@@ -143,8 +138,8 @@ defmodule PortalAPI.Gateway.Socket do
               where: g.external_id == ^external_id,
               preload: [:ipv4_address, :ipv6_address]
             )
-            |> Safe.unscoped()
-            |> Safe.one()
+            # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+            |> Portal.Repo.fetch_unscoped(:one)
           end
 
         {:ok, existing}
@@ -172,7 +167,7 @@ defmodule PortalAPI.Gateway.Socket do
           IPv6Address.allocate_next_available_address(account_id, gateway_id: gateway.id)
         end
       end)
-      |> Safe.transact()
+      |> Portal.Repo.transact()
       |> case do
         {:ok, %{gateway: gateway, ipv4_address: ipv4_address, ipv6_address: ipv6_address}} ->
           {:ok, %{gateway | ipv4_address: ipv4_address, ipv6_address: ipv6_address}}

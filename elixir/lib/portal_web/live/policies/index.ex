@@ -170,26 +170,28 @@ defmodule PortalWeb.Policies.Index do
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
-    alias Portal.{Safe, Policy, Site, Resource}
+    alias Portal.{Repo, Policy, Site, Resource, Authorization}
 
     def get_site(id, subject) do
-      from(s in Site, as: :sites)
-      |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      Authorization.with_subject(subject, fn ->
+        from(s in Site, as: :sites)
+        |> where([sites: s], s.id == ^id)
+        |> Repo.one()
+      end)
     end
 
     def get_resource(id, subject) do
-      from(r in Resource, as: :resources)
-      |> where([resources: r], r.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      Authorization.with_subject(subject, fn ->
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.id == ^id)
+        |> Repo.one()
+      end)
     end
 
     def list_policies(subject, opts \\ []) do
-      from(p in Policy, as: :policies)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        Repo.list(from(p in Policy, as: :policies), __MODULE__, opts)
+      end)
     end
 
     # Pagination support

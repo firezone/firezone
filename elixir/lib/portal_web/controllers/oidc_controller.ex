@@ -678,7 +678,7 @@ defmodule PortalWeb.OIDCController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, AuthProvider, ExternalIdentity}
+    alias Portal.{AuthProvider, ExternalIdentity, Repo}
     alias Portal.Account
 
     def get_account_by_id_or_slug!(id_or_slug) do
@@ -687,7 +687,8 @@ defmodule PortalWeb.OIDCController do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query |> Safe.unscoped() |> Safe.one!()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.one!(query)
     end
 
     def get_provider!(account_id, type, id) do
@@ -696,8 +697,8 @@ defmodule PortalWeb.OIDCController do
       from(p in schema,
         where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
       )
-      |> Safe.unscoped()
-      |> Safe.one!()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one!()
     end
 
     def upsert_identity(account_id, email, issuer, idp_id, profile_attrs) do
@@ -772,9 +773,9 @@ defmodule PortalWeb.OIDCController do
         |> with_cte("actor_lookup", as: ^actor_lookup_cte)
         |> with_cte("existing_identity", as: ^existing_identity_cte)
 
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
       {count, rows} =
-        Safe.insert_all(
-          Safe.unscoped(),
+        Repo.insert_all(
           ExternalIdentity,
           query_with_ctes,
           on_conflict: {:replace, replace_fields},
@@ -788,7 +789,8 @@ defmodule PortalWeb.OIDCController do
           {:error, :actor_not_found}
 
         {_, [%ExternalIdentity{} = identity]} ->
-          {:ok, Safe.preload(identity, [:actor, :account])}
+          # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+          {:ok, Repo.preload(identity, [:actor, :account])}
       end
     end
   end

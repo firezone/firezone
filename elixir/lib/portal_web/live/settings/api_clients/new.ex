@@ -80,6 +80,8 @@ defmodule PortalWeb.Settings.ApiClients.New do
     if Portal.Billing.can_create_api_clients?(account) do
       attrs = Map.put(attrs, "type", :api_client)
       changeset = changeset(attrs)
+      changeset = %{changeset | action: nil}
+      changeset = Ecto.Changeset.put_change(changeset, :account_id, account.id)
 
       with {:ok, actor} <- Database.create_api_client(changeset, socket.assigns.subject) do
         socket =
@@ -113,10 +115,12 @@ defmodule PortalWeb.Settings.ApiClients.New do
   end
 
   defmodule Database do
-    alias Portal.Safe
+    alias Portal.Authorization
 
     def create_api_client(changeset, subject) do
-      Safe.scoped(changeset, subject) |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.insert(changeset)
+      end)
     end
   end
 end

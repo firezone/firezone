@@ -94,19 +94,21 @@ defmodule PortalWeb.Sites.Edit do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Authorization
 
     def get_site!(id, subject) do
-      from(s in Portal.Site, as: :site)
-      |> where([site: s], s.id == ^id)
-      |> preload(:account)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(s in Portal.Site, as: :site)
+        |> where([site: s], s.id == ^id)
+        |> preload(:account)
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def update_site(changeset, subject) do
-      Safe.scoped(changeset, subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.update(changeset)
+      end)
     end
   end
 end

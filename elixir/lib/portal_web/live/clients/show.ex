@@ -471,21 +471,22 @@ defmodule PortalWeb.Clients.Show do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Presence.Clients, Safe}
+    alias Portal.{Presence.Clients, Authorization}
     alias Portal.Client
 
     def get_client!(id, subject) do
-      from(c in Client, as: :clients)
-      |> where([clients: c], c.id == ^id)
-      |> preload([:actor, :ipv4_address, :ipv6_address])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(c in Client, as: :clients)
+        |> where([clients: c], c.id == ^id)
+        |> preload([:actor, :ipv4_address, :ipv6_address])
+        |> Portal.Repo.one!()
+      end)
     end
 
     def verify_client(changeset, subject) do
       # Only account_admin_user can verify clients
       if subject.actor.type == :account_admin_user do
-        case Safe.scoped(changeset, subject) |> Safe.update() do
+        case Authorization.with_subject(subject, fn -> Portal.Repo.update(changeset) end) do
           {:ok, updated_client} ->
             {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
@@ -500,7 +501,7 @@ defmodule PortalWeb.Clients.Show do
     def remove_client_verification(changeset, subject) do
       # Only account_admin_user can remove client verification
       if subject.actor.type == :account_admin_user do
-        case Safe.scoped(changeset, subject) |> Safe.update() do
+        case Authorization.with_subject(subject, fn -> Portal.Repo.update(changeset) end) do
           {:ok, updated_client} ->
             {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
@@ -513,7 +514,7 @@ defmodule PortalWeb.Clients.Show do
     end
 
     def delete_client(client, subject) do
-      case Safe.scoped(client, subject) |> Safe.delete() do
+      case Authorization.with_subject(subject, fn -> Portal.Repo.delete(client) end) do
         {:ok, deleted_client} ->
           {:ok, Clients.preload_clients_presence([deleted_client]) |> List.first()}
 
@@ -576,9 +577,10 @@ defmodule PortalWeb.Clients.Show do
     end
 
     defp list_policy_authorizations(queryable, subject, opts) do
-      queryable
-      |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
+      Authorization.with_subject(subject, fn ->
+        queryable
+        |> Portal.Repo.list(Database.PolicyAuthorizationQuery, opts)
+      end)
     end
   end
 

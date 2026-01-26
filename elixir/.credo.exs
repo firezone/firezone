@@ -44,7 +44,8 @@
         ".credo/check/warning/safe_calls_outside_db_module.ex",
         ".credo/check/warning/missing_db_alias.ex",
         ".credo/check/warning/cross_module_db_call.ex",
-        ".credo/check/warning/action_fallback_usage.ex"
+        ".credo/check/warning/action_fallback_usage.ex",
+        ".credo/check/warning/repo_missing_subject.ex"
       ],
       #
       # If you want to enforce a style guide and need a more traditional linting
@@ -159,7 +160,8 @@
           {Credo.Check.Warning.UnsafeExec, []},
 
           # Custom Checks
-          {Credo.Check.Warning.ActionFallbackUsage, []}
+          {Credo.Check.Warning.ActionFallbackUsage, []},
+          {Credo.Check.Warning.RepoMissingSubject, []}
         ],
         disabled: [
           # Custom Checks for Portal conventions

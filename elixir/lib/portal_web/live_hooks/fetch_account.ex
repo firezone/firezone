@@ -15,7 +15,6 @@ defmodule PortalWeb.LiveHooks.FetchAccount do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
     alias Portal.Account
 
     def get_account_by_id_or_slug(id_or_slug) do
@@ -24,7 +23,8 @@ defmodule PortalWeb.LiveHooks.FetchAccount do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query |> Safe.unscoped() |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      query |> Portal.Repo.fetch_unscoped(:one)
     end
   end
 end

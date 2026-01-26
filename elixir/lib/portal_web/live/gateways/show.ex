@@ -177,20 +177,22 @@ defmodule PortalWeb.Gateways.Show do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Authorization
     alias Portal.Gateway
 
     def get_gateway!(id, subject) do
-      from(g in Gateway, as: :gateways)
-      |> where([gateways: g], g.id == ^id)
-      |> preload([:site, :ipv4_address, :ipv6_address])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(g in Gateway, as: :gateways)
+        |> where([gateways: g], g.id == ^id)
+        |> preload([:site, :ipv4_address, :ipv6_address])
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def delete_gateway(gateway, subject) do
-      Safe.scoped(gateway, subject)
-      |> Safe.delete()
+      Portal.Authorization.with_subject(subject, fn ->
+        Portal.Repo.delete(gateway)
+      end)
     end
 
     def preload_gateways_presence(gateways) do

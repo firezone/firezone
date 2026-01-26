@@ -633,22 +633,23 @@ defmodule Portal.Billing.EventHandler do
       Account,
       AuthProvider,
       EmailOTP,
-      Safe
+      Repo
     }
 
     def with_customer_lock(customer_id, fun) do
       hashed_id = :erlang.phash2(customer_id)
 
-      Safe.transact(fn ->
-        {:ok, _} = Safe.unscoped() |> Safe.query("SELECT pg_advisory_xact_lock($1)", [hashed_id])
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.transact(fn ->
+        {:ok, _} = Repo.query("SELECT pg_advisory_xact_lock($1)", [hashed_id])
         fun.()
       end)
     end
 
     def slug_exists?(slug) do
       from(a in Portal.Account, where: a.slug == ^slug)
-      |> Safe.unscoped()
-      |> Safe.exists?()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.exists?()
     end
 
     def create_email_provider(account) do
@@ -662,21 +663,23 @@ defmodule Portal.Billing.EventHandler do
         account_id: account.id
       }
 
-      with {:ok, _auth_provider} <- Safe.unscoped(auth_provider) |> Safe.insert(),
-           {:ok, email_provider} <- Safe.unscoped(email_otp_provider) |> Safe.insert() do
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      with {:ok, _auth_provider} <- Repo.insert(auth_provider),
+           # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+           {:ok, email_provider} <- Repo.insert(email_otp_provider) do
         {:ok, email_provider}
       end
     end
 
     def insert(changeset) do
-      Safe.unscoped(changeset)
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.insert(changeset)
     end
 
     def update_account_by_id(id, attrs) do
       from(a in Account, where: a.id == ^id)
-      |> Safe.unscoped()
-      |> Safe.one!()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one!()
       |> case do
         %Account{} = account ->
           account
@@ -684,14 +687,14 @@ defmodule Portal.Billing.EventHandler do
           |> cast_embed(:limits)
           |> cast_embed(:features)
           |> cast_embed(:metadata)
-          |> Safe.unscoped()
-          |> Safe.update()
+          # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+          |> Repo.update()
       end
     end
 
     def insert_site(changeset) do
-      Safe.unscoped(changeset)
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.insert(changeset)
     end
   end
 end

@@ -1,7 +1,7 @@
 defmodule Portal.IPv6Address do
   use Ecto.Schema
   import Ecto.Changeset
-  alias Portal.Safe
+  alias Portal.Repo
   require Logger
 
   @primary_key false
@@ -71,8 +71,7 @@ defmodule Portal.IPv6Address do
     client_id_binary = if client_id, do: Ecto.UUID.dump!(client_id)
     gateway_id_binary = if gateway_id, do: Ecto.UUID.dump!(gateway_id)
 
-    case Safe.query(
-           Safe.unscoped(),
+    case Repo.query(
            "SELECT * FROM allocate_address($1, $2, $3, $4, $5)",
            [account_id_binary, "ipv6", cidr, client_id_binary, gateway_id_binary]
          ) do

@@ -561,68 +561,64 @@ defmodule Portal.Cache.Client do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.{Authorization, Repo}
 
     def all_policies_for_actor_id!(actor_id, subject) do
       # Service accounts don't get access to the "Everyone" group - they must have explicit memberships
       include_everyone_group = subject.actor.type in [:account_user, :account_admin_user]
 
-      from(p in Portal.Policy, as: :policies)
-      |> where([policies: p], is_nil(p.disabled_at))
-      |> join(:inner, [policies: p], ag in Portal.Group,
-        on: ag.id == p.group_id and ag.account_id == p.account_id,
-        as: :group
-      )
-      |> join(:inner, [policies: p], actor in Portal.Actor,
-        on: actor.id == ^actor_id and actor.account_id == p.account_id,
-        as: :actor
-      )
-      |> join(:left, [group: ag], m in Portal.Membership,
-        on: m.group_id == ag.id and m.account_id == ag.account_id,
-        as: :memberships
-      )
-      |> where(
-        [memberships: m, group: ag, actor: a],
-        m.actor_id == ^actor_id or
-          (^include_everyone_group and
-             ag.type == :managed and
-             ag.name == "Everyone")
-      )
-      |> preload(resource: :site)
-      |> Safe.scoped(subject)
-      |> Safe.all()
+      Authorization.with_subject(subject, fn ->
+        from(p in Portal.Policy, as: :policies)
+        |> where([policies: p], is_nil(p.disabled_at))
+        |> join(:inner, [policies: p], ag in Portal.Group,
+          on: ag.id == p.group_id and ag.account_id == p.account_id,
+          as: :group
+        )
+        |> join(:inner, [policies: p], actor in Portal.Actor,
+          on: actor.id == ^actor_id and actor.account_id == p.account_id,
+          as: :actor
+        )
+        |> join(:left, [group: ag], m in Portal.Membership,
+          on: m.group_id == ag.id and m.account_id == ag.account_id,
+          as: :memberships
+        )
+        |> where(
+          [memberships: m, group: ag, actor: a],
+          m.actor_id == ^actor_id or
+            (^include_everyone_group and
+               ag.type == :managed and
+               ag.name == "Everyone")
+        )
+        |> preload(resource: :site)
+        |> Repo.all()
+      end)
     end
 
     def all_memberships_for_actor_id!(actor_id, subject) do
       # Get real memberships
       memberships =
-        from(m in Portal.Membership, where: m.actor_id == ^actor_id)
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> case do
-          {:error, :unauthorized} -> []
-          list -> list
-        end
+        Authorization.with_subject(subject, fn ->
+          from(m in Portal.Membership, where: m.actor_id == ^actor_id)
+          |> Repo.all()
+        end)
 
       # Service accounts don't get access to the "Everyone" group - they must have explicit memberships
       if subject.actor.type in [:account_user, :account_admin_user] do
         # Get the Everyone group for this account (if it exists)
         everyone_group =
-          from(g in Portal.Group,
-            where:
-              g.type == :managed and
-                g.name == "Everyone" and
-                g.account_id == ^subject.account.id
-          )
-          |> Safe.scoped(subject)
-          |> Safe.one()
+          Authorization.with_subject(subject, fn ->
+            from(g in Portal.Group,
+              where:
+                g.type == :managed and
+                  g.name == "Everyone" and
+                  g.account_id == ^subject.account.id
+            )
+            |> Repo.one()
+          end)
 
         # Append a synthetic membership for the Everyone group
         case everyone_group do
           nil ->
-            memberships
-
-          {:error, :unauthorized} ->
             memberships
 
           group ->
@@ -634,20 +630,18 @@ defmodule Portal.Cache.Client do
     end
 
     def fetch_resource_by_id(id, subject) do
-      result =
-        from(r in Portal.Resource, where: r.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
+      case Authorization.with_subject(subject, fn ->
+             from(r in Portal.Resource, where: r.id == ^id)
+             |> Repo.one()
+           end) do
         nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
         resource -> {:ok, resource}
       end
     end
 
     def preload_site(resource) do
-      Safe.preload(resource, :site)
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.preload(resource, :site)
     end
 
     def get_site(nil, _subject), do: nil
@@ -655,17 +649,19 @@ defmodule Portal.Cache.Client do
     def get_site(%Portal.Cache.Cacheable.Site{} = site, subject) do
       id = Ecto.UUID.load!(site.id)
 
-      from(s in Portal.Site, where: s.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      Authorization.with_subject(subject, fn ->
+        from(s in Portal.Site, where: s.id == ^id)
+        |> Repo.one()
+      end)
     end
 
     def get_site_by_id(site_id, subject) when is_binary(site_id) do
       id = Ecto.UUID.load!(site_id)
 
-      from(s in Portal.Site, where: s.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      Authorization.with_subject(subject, fn ->
+        from(s in Portal.Site, where: s.id == ^id)
+        |> Repo.one()
+      end)
     end
   end
 end

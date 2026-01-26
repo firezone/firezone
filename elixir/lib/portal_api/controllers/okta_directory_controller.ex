@@ -46,25 +46,24 @@ defmodule PortalAPI.OktaDirectoryController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Okta, Safe}
+    alias Portal.{Okta, Repo, Authorization}
 
     def list_directories(subject) do
-      from(d in Okta.Directory, as: :directories, order_by: [desc: d.inserted_at])
-      |> Safe.scoped(subject)
-      |> Safe.all()
+      Authorization.with_subject(subject, fn ->
+        from(d in Okta.Directory, as: :directories, order_by: [desc: d.inserted_at])
+        |> Repo.all()
+      end)
     end
 
     def fetch_directory(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(d in Okta.Directory, where: d.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        directory -> {:ok, directory}
-      end
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          directory -> {:ok, directory}
+        end
+      end)
     end
   end
 end

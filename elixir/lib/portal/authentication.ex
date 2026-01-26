@@ -373,7 +373,7 @@ defmodule Portal.Authentication do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.{Authorization, Repo}
     alias Portal.Account
     alias Portal.Actor
     alias Portal.ClientToken
@@ -381,14 +381,14 @@ defmodule Portal.Authentication do
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
-      |> Safe.unscoped()
-      |> Safe.one!()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one!()
     end
 
     def fetch_active_actor_by_id(id) do
       from(a in Actor, where: a.id == ^id, where: is_nil(a.disabled_at))
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
       |> case do
         nil -> {:error, :not_found}
         actor -> {:ok, actor}
@@ -397,28 +397,26 @@ defmodule Portal.Authentication do
 
     # Client
     def insert_token(changeset) do
-      changeset
-      |> Safe.unscoped()
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.insert(changeset)
     end
 
     # Service Account
     def insert_token(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Repo.insert(changeset)
+      end)
     end
 
     def insert_relay_token(relay_token) do
-      relay_token
-      |> Safe.unscoped()
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.insert(relay_token)
     end
 
     def fetch_relay_token(id) do
       from(rt in Portal.RelayToken, where: rt.id == ^id)
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
       |> case do
         nil -> {:error, :not_found}
         relay_token -> {:ok, relay_token}
@@ -426,15 +424,18 @@ defmodule Portal.Authentication do
     end
 
     def insert_gateway_token(gateway_token, subject) do
-      gateway_token
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        case Authorization.authorize(:insert, Portal.GatewayToken, subject) do
+          :ok -> Repo.insert(gateway_token)
+          {:error, :unauthorized} -> {:error, :unauthorized}
+        end
+      end)
     end
 
     def insert_api_token(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Repo.insert(changeset)
+      end)
     end
 
     def fetch_gateway_token(account_id, id) do
@@ -442,8 +443,8 @@ defmodule Portal.Authentication do
         where: gt.account_id == ^account_id,
         where: gt.id == ^id
       )
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
       |> case do
         nil -> {:error, :not_found}
         gateway_token -> {:ok, gateway_token}
@@ -480,8 +481,8 @@ defmodule Portal.Authentication do
         ]
       )
       |> select([tokens: tokens], tokens)
-      |> Safe.unscoped()
-      |> Safe.update_all([])
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.update_all([])
       |> case do
         {1, [token]} -> {:ok, token}
         {0, []} -> {:error, :not_found}
@@ -491,9 +492,8 @@ defmodule Portal.Authentication do
     # One-Time Passcode functions
 
     def insert_one_time_passcode(passcode) do
-      passcode
-      |> Safe.unscoped()
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.insert(passcode)
     end
 
     def fetch_one_time_passcode(account_id, actor_id, id) do
@@ -507,8 +507,8 @@ defmodule Portal.Authentication do
         where: a.allow_email_otp_sign_in == true,
         preload: [actor: a]
       )
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
       |> case do
         nil -> {:error, :not_found}
         otp -> {:ok, otp}
@@ -520,8 +520,8 @@ defmodule Portal.Authentication do
         where: otp.account_id == ^account.id,
         where: otp.actor_id == ^actor.id
       )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
 
       :ok
     end
@@ -531,8 +531,8 @@ defmodule Portal.Authentication do
         where: otp.account_id == ^passcode.account_id,
         where: otp.id == ^passcode.id
       )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
 
       :ok
     end
@@ -540,9 +540,8 @@ defmodule Portal.Authentication do
     # Portal Session functions
 
     def insert_portal_session(session) do
-      session
-      |> Safe.unscoped()
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.insert(session)
     end
 
     def fetch_portal_session(account_id, id) do
@@ -557,8 +556,8 @@ defmodule Portal.Authentication do
         where: ps.auth_provider_id in subquery(enabled_provider_ids),
         preload: [actor: a]
       )
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
       |> case do
         nil -> {:error, :not_found}
         session -> {:ok, session}
@@ -587,8 +586,8 @@ defmodule Portal.Authentication do
         where: ps.account_id == ^session.account_id,
         where: ps.id == ^session.id
       )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
 
       :ok
     end

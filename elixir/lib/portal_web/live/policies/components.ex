@@ -813,131 +813,137 @@ defmodule PortalWeb.Policies.Components do
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
-    alias Portal.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
+    alias Portal.Authorization
+    alias Portal.{Userpass, EmailOTP, OIDC, Google, Entra, Okta}
 
     def all_active_providers_for_account(account, subject) do
-      # Query all auth provider types that are not disabled
-      userpass_query =
-        from(p in Userpass.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
+      Authorization.with_subject(subject, fn ->
+        # Query all auth provider types that are not disabled
+        userpass_query =
+          from(p in Userpass.AuthProvider,
+            where: p.account_id == ^account.id and not p.is_disabled
+          )
 
-      email_otp_query =
-        from(p in EmailOTP.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
+        email_otp_query =
+          from(p in EmailOTP.AuthProvider,
+            where: p.account_id == ^account.id and not p.is_disabled
+          )
 
-      oidc_query =
-        from(p in OIDC.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
+        oidc_query =
+          from(p in OIDC.AuthProvider,
+            where: p.account_id == ^account.id and not p.is_disabled
+          )
 
-      google_query =
-        from(p in Google.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
+        google_query =
+          from(p in Google.AuthProvider,
+            where: p.account_id == ^account.id and not p.is_disabled
+          )
 
-      entra_query =
-        from(p in Entra.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
+        entra_query =
+          from(p in Entra.AuthProvider,
+            where: p.account_id == ^account.id and not p.is_disabled
+          )
 
-      okta_query =
-        from(p in Okta.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
+        okta_query =
+          from(p in Okta.AuthProvider,
+            where: p.account_id == ^account.id and not p.is_disabled
+          )
 
-      # Combine all providers from different tables using Safe
-      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (okta_query |> Safe.scoped(subject) |> Safe.all())
+        # Combine all providers from different tables
+        (userpass_query |> Portal.Repo.fetch(:all)) ++
+          (email_otp_query |> Portal.Repo.fetch(:all)) ++
+          (oidc_query |> Portal.Repo.fetch(:all)) ++
+          (google_query |> Portal.Repo.fetch(:all)) ++
+          (entra_query |> Portal.Repo.fetch(:all)) ++
+          (okta_query |> Portal.Repo.fetch(:all))
+      end)
     end
 
     # Inlined from PortalWeb.Groups.Components
     def fetch_group_option(id, subject) do
-      group =
-        from(g in Portal.Group, as: :groups)
-        |> where([groups: g], g.id == ^id)
-        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
-        |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and d.type == :google,
-          as: :google_directory
-        )
-        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and d.type == :entra,
-          as: :entra_directory
-        )
-        |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and d.type == :okta,
-          as: :okta_directory
-        )
-        |> select_merge(
-          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
-          %{
-            directory_name:
-              fragment(
-                "COALESCE(?, ?, ?, 'Firezone')",
-                gd.name,
-                ed.name,
-                od.name
-              ),
-            directory_type: d.type
-          }
-        )
-        |> Safe.scoped(subject)
-        |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        group =
+          from(g in Portal.Group, as: :groups)
+          |> where([groups: g], g.id == ^id)
+          |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+          |> join(:left, [directory: d], gd in Portal.Google.Directory,
+            on: gd.id == d.id and d.type == :google,
+            as: :google_directory
+          )
+          |> join(:left, [directory: d], ed in Portal.Entra.Directory,
+            on: ed.id == d.id and d.type == :entra,
+            as: :entra_directory
+          )
+          |> join(:left, [directory: d], od in Portal.Okta.Directory,
+            on: od.id == d.id and d.type == :okta,
+            as: :okta_directory
+          )
+          |> select_merge(
+            [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+            %{
+              directory_name:
+                fragment(
+                  "COALESCE(?, ?, ?, 'Firezone')",
+                  gd.name,
+                  ed.name,
+                  od.name
+                ),
+              directory_type: d.type
+            }
+          )
+          |> Portal.Repo.fetch!(:one)
 
-      {:ok, group_option(group)}
+        {:ok, group_option(group)}
+      end)
     end
 
     def list_group_options(search_query_or_nil, subject) do
-      query =
-        from(g in Portal.Group, as: :groups)
-        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
-        |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and d.type == :google,
-          as: :google_directory
-        )
-        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and d.type == :entra,
-          as: :entra_directory
-        )
-        |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and d.type == :okta,
-          as: :okta_directory
-        )
-        |> select_merge(
-          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
-          %{
-            directory_name:
-              fragment(
-                "COALESCE(?, ?, ?, 'Firezone')",
-                gd.name,
-                ed.name,
-                od.name
-              ),
-            directory_type: d.type
-          }
-        )
-        |> order_by([groups: g], asc: g.name)
-        |> limit(25)
+      Authorization.with_subject(subject, fn ->
+        query =
+          from(g in Portal.Group, as: :groups)
+          |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+          |> join(:left, [directory: d], gd in Portal.Google.Directory,
+            on: gd.id == d.id and d.type == :google,
+            as: :google_directory
+          )
+          |> join(:left, [directory: d], ed in Portal.Entra.Directory,
+            on: ed.id == d.id and d.type == :entra,
+            as: :entra_directory
+          )
+          |> join(:left, [directory: d], od in Portal.Okta.Directory,
+            on: od.id == d.id and d.type == :okta,
+            as: :okta_directory
+          )
+          |> select_merge(
+            [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+            %{
+              directory_name:
+                fragment(
+                  "COALESCE(?, ?, ?, 'Firezone')",
+                  gd.name,
+                  ed.name,
+                  od.name
+                ),
+              directory_type: d.type
+            }
+          )
+          |> order_by([groups: g], asc: g.name)
+          |> limit(25)
 
-      query =
-        if search_query_or_nil != "" and search_query_or_nil != nil do
-          from(g in query, where: fulltext_search(g.name, ^search_query_or_nil))
-        else
-          query
-        end
+        query =
+          if search_query_or_nil != "" and search_query_or_nil != nil do
+            from(g in query, where: fulltext_search(g.name, ^search_query_or_nil))
+          else
+            query
+          end
 
-      groups = query |> Safe.scoped(subject) |> Safe.all()
+        groups = query |> Portal.Repo.fetch(:all)
 
-      # For metadata, we'll return a simple count
-      metadata = %{limit: 25, count: length(groups)}
+        # For metadata, we'll return a simple count
+        metadata = %{limit: 25, count: length(groups)}
 
-      {:ok, grouped_select_options(groups), metadata}
+        {:ok, grouped_select_options(groups), metadata}
+      end)
     end
 
     defp grouped_select_options(groups) do
@@ -1036,9 +1042,10 @@ defmodule PortalWeb.Policies.Components do
     end
 
     defp list_policy_authorizations(queryable, subject, opts) do
-      queryable
-      |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
+      Authorization.with_subject(subject, fn ->
+        queryable
+        |> Portal.Repo.list(Database.PolicyAuthorizationQuery, opts)
+      end)
     end
   end
 

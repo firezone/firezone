@@ -320,19 +320,20 @@ defmodule PortalWeb.Settings.DNS do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
     alias Portal.Account
+    alias Portal.Authorization
 
     def get_account_by_id!(id, subject) do
-      from(a in Account, where: a.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(a in Account, where: a.id == ^id)
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def update(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.update(changeset)
+      end)
     end
   end
 end

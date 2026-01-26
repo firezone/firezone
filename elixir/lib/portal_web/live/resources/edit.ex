@@ -290,26 +290,29 @@ defmodule PortalWeb.Resources.Edit do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, Resource}
+    alias Portal.{Authorization, Repo, Resource}
 
     def all_sites(subject) do
-      from(s in Portal.Site, as: :sites)
-      |> where([sites: s], s.managed_by != :system)
-      |> Safe.scoped(subject)
-      |> Safe.all()
+      Authorization.with_subject(subject, fn ->
+        from(s in Portal.Site, as: :sites)
+        |> where([sites: s], s.managed_by != :system)
+        |> Repo.all()
+      end)
     end
 
     def get_resource!(id, subject) do
-      from(r in Resource, as: :resources)
-      |> where([resources: r], r.id == ^id)
-      |> preload(:site)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(r in Resource, as: :resources)
+        |> where([resources: r], r.id == ^id)
+        |> preload(:site)
+        |> Repo.one!()
+      end)
     end
 
     def update_resource(changeset, subject) do
-      Safe.scoped(changeset, subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Repo.update(changeset)
+      end)
     end
   end
 end

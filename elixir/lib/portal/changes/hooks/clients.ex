@@ -33,14 +33,14 @@ defmodule Portal.Changes.Hooks.Clients do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, PolicyAuthorization}
+    alias Portal.{Repo, PolicyAuthorization}
 
     def delete_policy_authorizations_for_client(%Portal.Client{} = client) do
       from(f in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: f], f.account_id == ^client.account_id)
       |> where([policy_authorizations: f], f.client_id == ^client.id)
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
   end
 end

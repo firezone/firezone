@@ -133,12 +133,12 @@ defmodule PortalWeb.Settings.Account.Notifications.Edit do
   end
 
   defmodule Database do
-    alias Portal.Safe
+    alias Portal.Authorization
 
     def update(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.update(changeset)
+      end)
     end
   end
 end

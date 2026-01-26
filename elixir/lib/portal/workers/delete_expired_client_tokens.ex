@@ -24,13 +24,13 @@ defmodule Portal.Workers.DeleteExpiredClientTokens do
   defmodule Database do
     import Ecto.Query
     alias Portal.ClientToken
-    alias Portal.Safe
+    alias Portal.Repo
 
     def delete_expired_client_tokens do
       from(c in ClientToken, as: :client_tokens)
       |> where([client_tokens: c], c.expires_at <= ^DateTime.utc_now())
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
   end
 end

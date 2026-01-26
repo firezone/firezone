@@ -423,13 +423,14 @@ defmodule PortalWeb.Sites.NewToken do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Authorization
 
     def get_site!(id, subject) do
-      from(s in Portal.Site, as: :sites)
-      |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(s in Portal.Site, as: :sites)
+        |> where([sites: s], s.id == ^id)
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def create_token(site, subject) do

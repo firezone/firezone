@@ -29,13 +29,13 @@ defmodule Portal.Workers.DeleteExpiredPolicyAuthorizations do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, PolicyAuthorization}
+    alias Portal.{Repo, PolicyAuthorization}
 
     def delete_expired_policy_authorizations do
       from(pa in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: pa], pa.expires_at <= ^DateTime.utc_now())
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
   end
 end

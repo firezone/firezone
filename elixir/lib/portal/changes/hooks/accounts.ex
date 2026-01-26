@@ -54,20 +54,20 @@ defmodule Portal.Changes.Hooks.Accounts do
     import Ecto.Query
     alias Portal.ClientToken
     alias Portal.PolicyAuthorization
-    alias Portal.Safe
+    alias Portal.Repo
 
     def delete_policy_authorizations_for_account(%Portal.Account{} = account) do
       from(pa in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: pa], pa.account_id == ^account.id)
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
 
     def delete_client_tokens_for_account(%Portal.Account{} = account) do
       from(ct in ClientToken, as: :client_tokens)
       |> where([client_tokens: ct], ct.account_id == ^account.id)
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
   end
 end

@@ -141,32 +141,32 @@ defmodule PortalAPI.PolicyController do
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
-    alias Portal.{Policy, Safe, Authentication}
+    alias Portal.{Policy, Repo, Authentication, Authorization}
 
     def list_policies(subject, opts \\ []) do
-      from(p in Policy, as: :policies)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(p in Policy, as: :policies)
+        |> Repo.list(__MODULE__, opts)
+      end)
     end
 
     def fetch_policy(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(p in Policy, where: p.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        policy -> {:ok, policy}
-      end
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          policy -> {:ok, policy}
+        end
+      end)
     end
 
     def update_policy(policy, attrs, subject) do
-      policy
-      |> changeset(attrs)
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        policy
+        |> changeset(attrs)
+        |> Repo.update()
+      end)
     end
 
     def validate_internet_resource_policy(attrs, %Authentication.Subject{} = subject) do
@@ -174,9 +174,10 @@ defmodule PortalAPI.PolicyController do
 
       if resource_id do
         resource =
-          from(r in Portal.Resource, where: r.id == ^resource_id)
-          |> Safe.scoped(subject)
-          |> Safe.one()
+          Authorization.with_subject(subject, fn ->
+            from(r in Portal.Resource, where: r.id == ^resource_id)
+            |> Repo.one()
+          end)
 
         case resource do
           nil ->
@@ -200,14 +201,15 @@ defmodule PortalAPI.PolicyController do
     def create_policy(attrs, %Authentication.Subject{} = subject) do
       changeset = create_changeset(attrs, subject)
 
-      Safe.scoped(changeset, subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Repo.insert(changeset)
+      end)
     end
 
     def delete_policy(policy, subject) do
-      policy
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Repo.delete(policy)
+      end)
     end
 
     defp create_changeset(attrs, %Authentication.Subject{} = subject) do

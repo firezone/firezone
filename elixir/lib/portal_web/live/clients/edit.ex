@@ -90,19 +90,20 @@ defmodule PortalWeb.Clients.Edit do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Presence.Clients, Safe}
+    alias Portal.{Presence.Clients, Repo, Authorization}
     alias Portal.Client
 
     def get_client!(id, subject) do
-      from(c in Client, as: :clients)
-      |> where([clients: c], c.id == ^id)
-      |> preload(:actor)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(c in Client, as: :clients)
+        |> where([clients: c], c.id == ^id)
+        |> preload(:actor)
+        |> Repo.one!()
+      end)
     end
 
     def update_client(changeset, subject) do
-      case Safe.scoped(changeset, subject) |> Safe.update() do
+      case Authorization.with_subject(subject, fn -> Repo.update(changeset) end) do
         {:ok, updated_client} ->
           {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 

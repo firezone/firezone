@@ -187,32 +187,37 @@ defmodule PortalWeb.Resources.Index do
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
-    alias Portal.{Safe, Resource, Policy, Site}
+    alias Portal.{Authorization, Repo, Resource, Policy, Site}
 
     def get_site(id, subject) do
-      from(s in Site, as: :sites)
-      |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      Authorization.with_subject(subject, fn ->
+        from(s in Site, as: :sites)
+        |> where([sites: s], s.id == ^id)
+        |> Repo.one()
+      end)
     end
 
     def list_resources(subject, opts \\ []) do
-      from(resources in Resource, as: :resources)
-      |> where([resources: r], r.type != :internet)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        query =
+          from(resources in Resource, as: :resources)
+          |> where([resources: r], r.type != :internet)
+
+        Repo.list(query, __MODULE__, opts)
+      end)
     end
 
     def count_policies_for_resources(resources, subject) do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
-      from(p in Policy, as: :policies)
-      |> where([policies: p], p.resource_id in ^ids)
-      |> where([policies: p], is_nil(p.disabled_at))
-      |> group_by([policies: p], p.resource_id)
-      |> select([policies: p], {p.resource_id, count(p.id)})
-      |> Safe.scoped(subject)
-      |> Safe.all()
+      Authorization.with_subject(subject, fn ->
+        from(p in Policy, as: :policies)
+        |> where([policies: p], p.resource_id in ^ids)
+        |> where([policies: p], is_nil(p.disabled_at))
+        |> group_by([policies: p], p.resource_id)
+        |> select([policies: p], {p.resource_id, count(p.id)})
+        |> Repo.all()
+      end)
       |> case do
         {:error, _} -> %{}
         counts -> Map.new(counts)

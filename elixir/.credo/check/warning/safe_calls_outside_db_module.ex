@@ -8,6 +8,11 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
 
       All modules that need to access Portal.Safe should define an inline Database module
       and make all Portal.Safe calls from within that module.
+
+      NOTE: Portal.Safe is deprecated in favor of Portal.Repo with prepare_query callback.
+      New code should use Portal.Repo directly in Database modules with the :subject option:
+        Repo.all(query, subject: subject)
+        Repo.insert_with_subject(changeset, subject)
       """,
       params: []
     ]

@@ -323,24 +323,24 @@ defmodule Portal.Telemetry.Reporter.Oban do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, Entra, Google, Okta}
+    alias Portal.{Repo, Entra, Google, Okta}
 
     def get_directory(:entra, directory_id) do
       from(d in Entra.Directory, where: d.id == ^directory_id)
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
     end
 
     def get_directory(:google, directory_id) do
       from(d in Google.Directory, where: d.id == ^directory_id)
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
     end
 
     def get_directory(:okta, directory_id) do
       from(d in Okta.Directory, where: d.id == ^directory_id)
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
     end
 
     def update_directory(directory, attrs) do
@@ -353,7 +353,8 @@ defmodule Portal.Telemetry.Reporter.Oban do
           :is_verified
         ])
 
-      {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      {:ok, _directory} = changeset |> Repo.update()
     end
   end
 end

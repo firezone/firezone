@@ -11,8 +11,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
     OIDC,
     Google,
     Okta,
-    Entra,
-    Safe
+    Entra
   }
 
   alias __MODULE__.Database
@@ -86,8 +85,8 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
       else
         where(Account, [a], a.slug == ^id_or_slug)
       end
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Portal.Repo.one()
     end
 
     def get_default_provider_for_account(account) do
@@ -106,8 +105,8 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
           where: p.account_id == ^account_id and p.is_default == true and p.is_disabled == false,
           limit: 1
         )
-        |> Safe.unscoped()
-        |> Safe.one()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Portal.Repo.one()
       end)
     end
   end

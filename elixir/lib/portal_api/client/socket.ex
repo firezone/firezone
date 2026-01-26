@@ -129,7 +129,6 @@ defmodule PortalAPI.Client.Socket do
     alias Portal.Client
     alias Portal.IPv4Address
     alias Portal.IPv6Address
-    alias Portal.Safe
 
     # OTP 28 dialyzer is stricter about opaque types (MapSet) inside Ecto.Multi
     @dialyzer {:no_opaque, upsert_client: 2}
@@ -148,8 +147,8 @@ defmodule PortalAPI.Client.Socket do
               where: c.external_id == ^external_id,
               preload: [:ipv4_address, :ipv6_address]
             )
-            |> Safe.unscoped()
-            |> Safe.one()
+            # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+            |> Portal.Repo.fetch_unscoped(:one)
           end
 
         {:ok, existing}
@@ -175,7 +174,7 @@ defmodule PortalAPI.Client.Socket do
           IPv6Address.allocate_next_available_address(account_id, client_id: client.id)
         end
       end)
-      |> Safe.transact()
+      |> Portal.Repo.transact()
       |> case do
         {:ok, %{client: client, ipv4_address: ipv4_address, ipv6_address: ipv6_address}} ->
           {:ok, %{client | ipv4_address: ipv4_address, ipv6_address: ipv6_address}}

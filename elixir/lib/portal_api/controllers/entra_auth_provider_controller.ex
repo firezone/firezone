@@ -47,25 +47,24 @@ defmodule PortalAPI.EntraAuthProviderController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Entra, Safe}
+    alias Portal.{Entra, Repo, Authorization}
 
     def list_providers(subject) do
-      from(p in Entra.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])
-      |> Safe.scoped(subject)
-      |> Safe.all()
+      Authorization.with_subject(subject, fn ->
+        from(p in Entra.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])
+        |> Repo.all()
+      end)
     end
 
     def fetch_provider(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(p in Entra.AuthProvider, where: p.id == ^id)
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        provider -> {:ok, provider}
-      end
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          provider -> {:ok, provider}
+        end
+      end)
     end
   end
 end

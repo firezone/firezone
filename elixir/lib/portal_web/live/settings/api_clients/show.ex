@@ -300,59 +300,63 @@ defmodule PortalWeb.Settings.ApiClients.Show do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Authorization
 
     def get_api_client!(id, subject) do
-      from(a in Portal.Actor,
-        where: a.id == ^id,
-        where: a.type == :api_client
-      )
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(a in Portal.Actor,
+          where: a.id == ^id,
+          where: a.type == :api_client
+        )
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def update_actor(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.update(changeset)
+      end)
     end
 
     def list_tokens_for(actor, subject, opts \\ []) do
-      from(t in Portal.APIToken,
-        as: :tokens,
-        where: t.actor_id == ^actor.id,
-        order_by: [desc: t.inserted_at, desc: t.id]
-      )
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(t in Portal.APIToken,
+          as: :tokens,
+          where: t.actor_id == ^actor.id,
+          order_by: [desc: t.inserted_at, desc: t.id]
+        )
+        |> Portal.Repo.list(__MODULE__, opts)
+      end)
     end
 
     def delete_all_tokens_for_actor(actor, subject) do
-      query = from(t in Portal.APIToken, where: t.actor_id == ^actor.id)
-      {count, _} = query |> Safe.scoped(subject) |> Safe.delete_all()
-      {:ok, count}
+      Authorization.with_subject(subject, fn ->
+        query = from(t in Portal.APIToken, where: t.actor_id == ^actor.id)
+        {count, _} = Portal.Repo.delete_all(query)
+        {:ok, count}
+      end)
     end
 
     def delete_token(token_id, subject) do
-      result =
-        from(t in Portal.APIToken,
-          where: t.id == ^token_id,
-          where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
-        )
-        |> Safe.scoped(subject)
-        |> Safe.one()
+      Authorization.with_subject(subject, fn ->
+        result =
+          from(t in Portal.APIToken,
+            where: t.id == ^token_id,
+            where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
+          )
+          |> Portal.Repo.one()
 
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        token -> Safe.scoped(token, subject) |> Safe.delete()
-      end
+        case result do
+          nil -> {:error, :not_found}
+          token -> Portal.Repo.delete(token)
+        end
+      end)
     end
 
     def delete_actor(actor, subject) do
-      actor
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.delete(actor)
+      end)
     end
 
     def cursor_fields do

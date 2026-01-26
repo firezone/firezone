@@ -24,13 +24,13 @@ defmodule Portal.Workers.DeleteExpiredOneTimePasscodes do
   defmodule Database do
     import Ecto.Query
     alias Portal.OneTimePasscode
-    alias Portal.Safe
+    alias Portal.Repo
 
     def delete_expired_passcodes do
       from(p in OneTimePasscode, as: :passcodes)
       |> where([passcodes: p], p.expires_at <= ^DateTime.utc_now())
-      |> Safe.unscoped()
-      |> Safe.delete_all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.delete_all()
     end
   end
 end

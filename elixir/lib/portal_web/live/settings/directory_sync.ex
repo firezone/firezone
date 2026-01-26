@@ -1248,11 +1248,13 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     changeset
     |> put_change(:id, directory_id)
+    |> put_change(:account_id, account_id)
     |> put_assoc(:directory, directory_changeset)
   end
 
   defp submit_directory(%{assigns: %{live_action: :new, form: %{source: changeset}}} = socket) do
     changeset = put_directory_assoc(changeset, socket)
+    changeset = %{changeset | action: nil}
 
     changeset
     |> Database.insert_directory(socket.assigns.subject)
@@ -1283,6 +1285,8 @@ defmodule PortalWeb.Settings.DirectorySync do
       else
         changeset
       end
+
+    changeset = %{changeset | action: nil}
 
     changeset
     |> Database.update_directory(socket.assigns.subject)
@@ -1644,87 +1648,91 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defmodule Database do
-    alias Portal.{Entra, Google, Okta, Safe}
+    alias Portal.{Authorization, Entra, Google, Okta, Repo}
     import Ecto.Query
 
     def list_all_directories(subject) do
-      [
-        Entra.Directory |> Safe.scoped(subject) |> Safe.all(),
-        Google.Directory |> Safe.scoped(subject) |> Safe.all(),
-        Okta.Directory |> Safe.scoped(subject) |> Safe.all()
-      ]
-      |> List.flatten()
-      |> enrich_with_job_status()
-      |> enrich_with_sync_stats(subject)
+      Authorization.with_subject(subject, fn ->
+        directories =
+          [
+            Repo.all(Entra.Directory),
+            Repo.all(Google.Directory),
+            Repo.all(Okta.Directory)
+          ]
+          |> List.flatten()
+          |> enrich_with_job_status()
+
+        enrich_with_sync_stats(directories)
+      end)
     end
 
     def get_directory!(schema, id, subject) do
-      from(d in schema, where: d.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(d in schema, where: d.id == ^id)
+        |> Repo.one!()
+      end)
     end
 
     def insert_directory(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Repo.insert(changeset)
+      end)
     end
 
     def update_directory(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Repo.update(changeset)
+      end)
     end
 
     def delete_directory(directory, subject) do
-      # Delete the parent Portal.Directory, which will CASCADE delete the child
-      parent =
-        from(d in Portal.Directory, where: d.id == ^directory.id)
-        |> Safe.scoped(subject)
-        |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        # Delete the parent Portal.Directory, which will CASCADE delete the child
+        parent =
+          from(d in Portal.Directory, where: d.id == ^directory.id)
+          |> Repo.one!()
 
-      parent |> Safe.scoped(subject) |> Safe.delete()
+        Repo.delete(parent)
+      end)
     end
 
     def count_deletion_stats(directory, subject) do
       directory_id = directory.id
 
-      actors_count =
-        from(a in Portal.Actor,
-          where: a.created_by_directory_id == ^directory_id
-        )
-        |> Safe.scoped(subject)
-        |> Safe.aggregate(:count)
+      Authorization.with_subject(subject, fn ->
+        actors_count =
+          from(a in Portal.Actor,
+            where: a.created_by_directory_id == ^directory_id
+          )
+          |> Repo.aggregate(:count)
 
-      identities_count =
-        from(ei in Portal.ExternalIdentity,
-          where: ei.directory_id == ^directory_id
-        )
-        |> Safe.scoped(subject)
-        |> Safe.aggregate(:count)
+        identities_count =
+          from(ei in Portal.ExternalIdentity,
+            where: ei.directory_id == ^directory_id
+          )
+          |> Repo.aggregate(:count)
 
-      groups_count =
-        from(g in Portal.Group,
-          where: g.directory_id == ^directory_id
-        )
-        |> Safe.scoped(subject)
-        |> Safe.aggregate(:count)
+        groups_count =
+          from(g in Portal.Group,
+            where: g.directory_id == ^directory_id
+          )
+          |> Repo.aggregate(:count)
 
-      policies_count =
-        from(p in Portal.Policy,
-          join: g in Portal.Group,
-          on: p.group_id == g.id and p.account_id == g.account_id,
-          where: g.directory_id == ^directory_id
-        )
-        |> Safe.scoped(subject)
-        |> Safe.aggregate(:count)
+        policies_count =
+          from(p in Portal.Policy,
+            join: g in Portal.Group,
+            on: p.group_id == g.id and p.account_id == g.account_id,
+            where: g.directory_id == ^directory_id
+          )
+          |> Repo.aggregate(:count)
 
-      %{
-        actors: actors_count,
-        identities: identities_count,
-        groups: groups_count,
-        policies: policies_count
-      }
+        %{
+          actors: actors_count,
+          identities: identities_count,
+          groups: groups_count,
+          policies: policies_count
+        }
+      end)
     end
 
     def reload(nil, _subject), do: nil
@@ -1733,9 +1741,10 @@ defmodule PortalWeb.Settings.DirectorySync do
       # Reload the directory with fresh data
       schema = directory.__struct__
 
-      from(d in schema, where: d.id == ^directory.id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      Authorization.with_subject(subject, fn ->
+        from(d in schema, where: d.id == ^directory.id)
+        |> Repo.one()
+      end)
     end
 
     defp enrich_with_job_status(directories) do
@@ -1752,8 +1761,8 @@ defmodule PortalWeb.Settings.DirectorySync do
           where: fragment("?->>'directory_id'", j.args) in ^directory_ids,
           order_by: [desc: j.inserted_at]
         )
-        |> Safe.unscoped()
-        |> Safe.all()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Repo.all()
         |> Enum.map(fn job -> {job.args["directory_id"], job} end)
         |> Map.new()
 
@@ -1765,8 +1774,8 @@ defmodule PortalWeb.Settings.DirectorySync do
           where: fragment("?->>'directory_id'", j.args) in ^directory_ids,
           order_by: [desc: j.completed_at]
         )
-        |> Safe.unscoped()
-        |> Safe.all()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Repo.all()
         |> Enum.uniq_by(& &1.args["directory_id"])
         |> Enum.map(fn job -> {job.args["directory_id"], job} end)
         |> Map.new()
@@ -1801,7 +1810,7 @@ defmodule PortalWeb.Settings.DirectorySync do
       }
     end
 
-    defp enrich_with_sync_stats(directories, subject) do
+    defp enrich_with_sync_stats(directories) do
       directory_ids = Enum.map(directories, & &1.id)
 
       # Count actors per directory (actors that have identities from this directory)
@@ -1811,8 +1820,8 @@ defmodule PortalWeb.Settings.DirectorySync do
           group_by: ei.directory_id,
           select: {ei.directory_id, count(ei.actor_id, :distinct)}
         )
-        |> Safe.scoped(subject)
-        |> Safe.all()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Repo.all()
         |> Map.new()
 
       # Count groups per directory
@@ -1822,8 +1831,8 @@ defmodule PortalWeb.Settings.DirectorySync do
           group_by: g.directory_id,
           select: {g.directory_id, count(g.id)}
         )
-        |> Safe.scoped(subject)
-        |> Safe.all()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Repo.all()
         |> Map.new()
 
       Enum.map(directories, fn dir ->

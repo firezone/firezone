@@ -2,7 +2,6 @@ defmodule PortalWeb.SignIn do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :public}}
 
   alias Portal.{
-    Safe,
     Google,
     EmailOTP,
     Entra,
@@ -301,7 +300,6 @@ defmodule PortalWeb.SignIn do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
     alias Portal.Account
 
     def get_account_by_id_or_slug!(id_or_slug) do
@@ -310,19 +308,20 @@ defmodule PortalWeb.SignIn do
           do: from(a in Account, where: a.id == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query |> Safe.unscoped() |> Safe.one!()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      query |> Portal.Repo.fetch_unscoped!(:one)
     end
 
     def get_auth_provider(account, module) do
       from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Portal.Repo.fetch_unscoped(:one)
     end
 
     def list_auth_providers(account, module) do
       from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Portal.Repo.fetch_unscoped(:all)
     end
   end
 end

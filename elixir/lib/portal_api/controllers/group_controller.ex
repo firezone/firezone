@@ -172,50 +172,49 @@ defmodule PortalAPI.GroupController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Group, Safe}
+    alias Portal.{Group, Repo, Authorization}
 
     def list_groups(subject, opts \\ []) do
-      from(g in Group, as: :groups)
-      |> where(
-        [groups: g],
-        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-      )
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(g in Group, as: :groups)
+        |> where(
+          [groups: g],
+          not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+        )
+        |> Repo.list(__MODULE__, opts)
+      end)
     end
 
     def fetch_group(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(g in Group,
           where: g.id == ^id,
           where: g.type != :managed
         )
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        group -> {:ok, group}
-      end
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          group -> {:ok, group}
+        end
+      end)
     end
 
     def insert_group(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Authorization.with_subject(subject, fn ->
+        Repo.insert(changeset)
+      end)
     end
 
     def update_group(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Repo.update(changeset)
+      end)
     end
 
     def delete_group(%Group{} = group, subject) do
-      group
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Repo.delete(group)
+      end)
     end
 
     def cursor_fields do

@@ -219,7 +219,7 @@ defmodule Portal.Cache.Gateway do
   # Inline functions from Portal.PolicyAuthorizations - moved to DB module
 
   defmodule Database do
-    alias Portal.Safe
+    alias Portal.Repo
     import Ecto.Query
     import Ecto.Changeset
     require Logger
@@ -237,23 +237,23 @@ defmodule Portal.Cache.Gateway do
         [policy_authorizations: f],
         {{f.client_id, f.resource_id}, {f.id, f.expires_at}}
       )
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
     end
 
     def fetch_client_by_id!(id, _opts \\ []) do
       from(c in Portal.Client, as: :clients)
       |> where([clients: c], c.id == ^id)
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
     end
 
     def fetch_gateway_by_id(id) do
       result =
         from(g in Portal.Gateway, as: :gateways)
         |> where([gateways: g], g.id == ^id)
-        |> Safe.unscoped()
-        |> Safe.one()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Repo.one()
 
       if result do
         {:ok, result}
@@ -268,8 +268,8 @@ defmodule Portal.Cache.Gateway do
           where: t.id == ^id,
           where: t.expires_at > ^DateTime.utc_now()
         )
-        |> Safe.unscoped()
-        |> Safe.one()
+        # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+        |> Repo.one()
 
       if result do
         {:ok, result}
@@ -283,8 +283,8 @@ defmodule Portal.Cache.Gateway do
         where: m.actor_id == ^actor_id,
         where: m.group_id == ^group_id
       )
-      |> Safe.unscoped()
-      |> Safe.one()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.one()
       |> case do
         nil -> {:error, :not_found}
         membership -> {:ok, membership}
@@ -300,8 +300,8 @@ defmodule Portal.Cache.Gateway do
             g.name == "Everyone" and
             g.account_id == ^account_id
       )
-      |> Safe.unscoped()
-      |> Safe.exists?()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.exists?()
     end
 
     def fetch_membership_id_or_nil_for_everyone(actor_id, group_id, account_id) do
@@ -345,14 +345,14 @@ defmodule Portal.Cache.Gateway do
              ag.account_id == a.account_id)
       )
       |> preload(resource: :site)
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
     end
 
     def insert_policy_authorization(changeset) do
       changeset
-      |> Safe.unscoped()
-      |> Safe.insert()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.insert()
     end
 
     def reauthorize_policy_authorization(%Portal.PolicyAuthorization{} = policy_authorization) do
@@ -396,8 +396,8 @@ defmodule Portal.Cache.Gateway do
                gateway_remote_ip: policy_authorization.gateway_remote_ip,
                expires_at: expires_at
              })
-             |> Safe.unscoped()
-             |> Safe.insert() do
+             # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+             |> Repo.insert() do
         Logger.info("Reauthorized policy_authorization",
           old_policy_authorization: inspect(policy_authorization),
           new_policy_authorization: inspect(new_policy_authorization)

@@ -175,11 +175,11 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
   end
 
   defmodule Database do
-    alias Portal.{Safe, ChangeLog}
+    alias Portal.{Repo, ChangeLog}
 
     def bulk_insert(list_of_attrs) do
-      Safe.unscoped()
-      |> Safe.insert_all(ChangeLog, list_of_attrs,
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.insert_all(ChangeLog, list_of_attrs,
         on_conflict: :nothing,
         conflict_target: [:lsn]
       )

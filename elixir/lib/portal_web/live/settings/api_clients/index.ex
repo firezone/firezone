@@ -3,13 +3,14 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Authorization
 
     def list_actors(subject, opts \\ []) do
-      from(a in Portal.Actor, as: :actors)
-      |> where([actors: a], a.type == :api_client)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(a in Portal.Actor, as: :actors)
+        |> where([actors: a], a.type == :api_client)
+        |> Portal.Repo.list(__MODULE__, opts)
+      end)
     end
 
     def cursor_fields do

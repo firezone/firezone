@@ -109,14 +109,15 @@ defmodule PortalAPI.GatewayController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
     alias Portal.Gateway
-    alias Portal.Presence
+    alias Portal.{Presence, Authorization}
 
     def list_gateways(subject, opts \\ []) do
-      from(g in Gateway, as: :gateways)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(g in Gateway, as: :gateways)
+        |> Repo.list(__MODULE__, opts)
+      end)
     end
 
     def cursor_fields do
@@ -149,22 +150,20 @@ defmodule PortalAPI.GatewayController do
     end
 
     def fetch_gateway(id, subject) do
-      result =
+      Authorization.with_subject(subject, fn ->
         from(g in Gateway, as: :gateways)
         |> where([gateways: g], g.id == ^id)
         |> preload([:ipv4_address, :ipv6_address])
-        |> Safe.scoped(subject)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        gateway -> {:ok, gateway}
-      end
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          gateway -> {:ok, gateway}
+        end
+      end)
     end
 
     def delete_gateway(gateway, subject) do
-      case Safe.scoped(gateway, subject) |> Safe.delete() do
+      case Authorization.with_subject(subject, fn -> Repo.delete(gateway) end) do
         {:ok, deleted_gateway} ->
           {:ok, Presence.Gateways.preload_gateways_presence([deleted_gateway]) |> List.first()}
 

@@ -507,26 +507,28 @@ defmodule PortalWeb.Sites.Show do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
-    alias Portal.Gateway
+    alias Portal.{Authorization, Gateway}
 
     def get_site!(id, subject) do
-      from(s in Portal.Site, as: :sites)
-      |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(s in Portal.Site, as: :sites)
+        |> where([sites: s], s.id == ^id)
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def delete_tokens_for_site(site, subject) do
-      from(t in Portal.GatewayToken, where: t.site_id == ^site.id)
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
+      Authorization.with_subject(subject, fn ->
+        from(t in Portal.GatewayToken, where: t.site_id == ^site.id)
+        |> Portal.Repo.delete_all()
+      end)
     end
 
     def list_gateways(subject, opts \\ []) do
-      from(g in Gateway, as: :gateways)
-      |> Safe.scoped(subject)
-      |> Safe.list(__MODULE__, opts)
+      Authorization.with_subject(subject, fn ->
+        from(g in Gateway, as: :gateways)
+        |> Portal.Repo.list(__MODULE__, opts)
+      end)
     end
 
     def cursor_fields do
@@ -568,57 +570,61 @@ defmodule PortalWeb.Sites.Show do
     end
 
     def delete_site(site, subject) do
-      Safe.scoped(site, subject)
-      |> Safe.delete()
+      Authorization.with_subject(subject, fn ->
+        Portal.Repo.delete(site)
+      end)
     end
 
     def count_site_deletion_stats(site, subject) do
-      gateways =
-        from(g in Gateway, where: g.site_id == ^site.id)
-        |> Safe.scoped(subject)
-        |> Safe.aggregate(:count)
+      Authorization.with_subject(subject, fn ->
+        gateways =
+          from(g in Gateway, where: g.site_id == ^site.id)
+          |> Portal.Repo.fetch(:aggregate, :count)
 
-      tokens =
-        from(t in Portal.GatewayToken, where: t.site_id == ^site.id)
-        |> Safe.scoped(subject)
-        |> Safe.aggregate(:count)
+        tokens =
+          from(t in Portal.GatewayToken, where: t.site_id == ^site.id)
+          |> Portal.Repo.fetch(:aggregate, :count)
 
-      resources =
-        from(r in Portal.Resource, where: r.site_id == ^site.id)
-        |> Safe.scoped(subject)
-        |> Safe.aggregate(:count)
+        resources =
+          from(r in Portal.Resource, where: r.site_id == ^site.id)
+          |> Portal.Repo.fetch(:aggregate, :count)
 
-      %{gateways: gateways, tokens: tokens, resources: resources}
+        %{gateways: gateways, tokens: tokens, resources: resources}
+      end)
     end
 
     def get_internet_resource!(subject) do
-      from(r in Portal.Resource, as: :resources)
-      |> where([resources: r], r.type == :internet)
-      |> limit(1)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(r in Portal.Resource, as: :resources)
+        |> where([resources: r], r.type == :internet)
+        |> limit(1)
+        |> Portal.Repo.fetch!(:one)
+      end)
     end
 
     def list_resources(subject, opts \\ []) do
-      from(r in Portal.Resource, as: :resources)
-      |> Safe.scoped(subject)
-      |> Safe.list(Database.ResourceQuery, opts)
+      Authorization.with_subject(subject, fn ->
+        from(r in Portal.Resource, as: :resources)
+        |> Portal.Repo.list(Database.ResourceQuery, opts)
+      end)
     end
 
     def count_policies_by_resource(resource_ids, subject) do
-      from(p in Portal.Policy, as: :policies)
-      |> where([policies: p], p.resource_id in ^resource_ids)
-      |> group_by([policies: p], p.resource_id)
-      |> select([policies: p], {p.resource_id, count(p.id)})
-      |> Safe.scoped(subject)
-      |> Safe.all()
-      |> Map.new()
+      Authorization.with_subject(subject, fn ->
+        from(p in Portal.Policy, as: :policies)
+        |> where([policies: p], p.resource_id in ^resource_ids)
+        |> group_by([policies: p], p.resource_id)
+        |> select([policies: p], {p.resource_id, count(p.id)})
+        |> Portal.Repo.fetch(:all)
+        |> Map.new()
+      end)
     end
 
     def list_policies(subject, opts \\ []) do
-      from(p in Portal.Policy, as: :policies)
-      |> Safe.scoped(subject)
-      |> Safe.list(Database.PolicyQuery, opts)
+      Authorization.with_subject(subject, fn ->
+        from(p in Portal.Policy, as: :policies)
+        |> Portal.Repo.list(Database.PolicyQuery, opts)
+      end)
     end
   end
 

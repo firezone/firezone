@@ -257,70 +257,87 @@ defmodule PortalWeb.Policies.Edit do
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
-    alias Portal.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Group}
+
+    alias Portal.{
+      Policy,
+      Repo,
+      Userpass,
+      EmailOTP,
+      OIDC,
+      Google,
+      Entra,
+      Okta,
+      Group,
+      Authorization
+    }
+
     alias Portal.Authentication
 
     def get_policy!(id, %Authentication.Subject{} = subject) do
-      from(p in Policy, as: :policies)
-      |> where([policies: p], p.id == ^id)
-      |> preload([:group, :resource])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      Authorization.with_subject(subject, fn ->
+        from(p in Policy, as: :policies)
+        |> where([policies: p], p.id == ^id)
+        |> preload([:group, :resource])
+        |> Repo.one!()
+      end)
     end
 
     def update_policy(changeset, %Authentication.Subject{} = subject) do
-      Safe.scoped(changeset, subject)
-      |> Safe.update()
+      Authorization.with_subject(subject, fn ->
+        Repo.update(changeset)
+      end)
     end
 
     def all_active_providers_for_account(_account, subject) do
-      [
-        Userpass.AuthProvider,
-        EmailOTP.AuthProvider,
-        OIDC.AuthProvider,
-        Google.AuthProvider,
-        Entra.AuthProvider,
-        Okta.AuthProvider
-      ]
-      |> Enum.flat_map(fn schema ->
-        from(p in schema, where: not p.is_disabled)
-        |> Safe.scoped(subject)
-        |> Safe.all()
+      Authorization.with_subject(subject, fn ->
+        [
+          Userpass.AuthProvider,
+          EmailOTP.AuthProvider,
+          OIDC.AuthProvider,
+          Google.AuthProvider,
+          Entra.AuthProvider,
+          Okta.AuthProvider
+        ]
+        |> Enum.flat_map(fn schema ->
+          from(p in schema, where: not p.is_disabled)
+          |> Repo.all()
+        end)
       end)
     end
 
     def fetch_group_option(id, subject) do
       group =
-        from(g in Group, as: :groups)
-        |> where([groups: g], g.id == ^id)
-        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
-        |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and d.type == :google,
-          as: :google_directory
-        )
-        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and d.type == :entra,
-          as: :entra_directory
-        )
-        |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and d.type == :okta,
-          as: :okta_directory
-        )
-        |> select_merge(
-          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
-          %{
-            directory_name:
-              fragment(
-                "COALESCE(?, ?, ?)",
-                gd.name,
-                ed.name,
-                od.name
-              ),
-            directory_type: d.type
-          }
-        )
-        |> Safe.scoped(subject)
-        |> Safe.one!()
+        Authorization.with_subject(subject, fn ->
+          from(g in Group, as: :groups)
+          |> where([groups: g], g.id == ^id)
+          |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+          |> join(:left, [directory: d], gd in Portal.Google.Directory,
+            on: gd.id == d.id and d.type == :google,
+            as: :google_directory
+          )
+          |> join(:left, [directory: d], ed in Portal.Entra.Directory,
+            on: ed.id == d.id and d.type == :entra,
+            as: :entra_directory
+          )
+          |> join(:left, [directory: d], od in Portal.Okta.Directory,
+            on: od.id == d.id and d.type == :okta,
+            as: :okta_directory
+          )
+          |> select_merge(
+            [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+            %{
+              directory_name:
+                fragment(
+                  "COALESCE(?, ?, ?)",
+                  gd.name,
+                  ed.name,
+                  od.name
+                ),
+              directory_type: d.type
+            }
+          )
+          |> Repo.one!()
+        end)
 
       {:ok, group_option(group)}
     end
@@ -364,7 +381,7 @@ defmodule PortalWeb.Policies.Edit do
           query
         end
 
-      groups = query |> Safe.scoped(subject) |> Safe.all()
+      groups = Authorization.with_subject(subject, fn -> Repo.all(query) end)
       metadata = %{limit: 25, count: length(groups)}
 
       {:ok, grouped_select_options(groups), metadata}

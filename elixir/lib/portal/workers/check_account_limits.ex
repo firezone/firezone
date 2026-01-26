@@ -136,7 +136,7 @@ defmodule Portal.Workers.CheckAccountLimits do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.Repo
     alias Portal.Account
     alias Portal.Actor
     alias Portal.Client
@@ -195,17 +195,16 @@ defmodule Portal.Workers.CheckAccountLimits do
         limit: ^limit
       )
       |> maybe_after_cursor(cursor)
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
     end
 
     defp maybe_after_cursor(query, nil), do: query
     defp maybe_after_cursor(query, cursor), do: where(query, [a], a.id > ^cursor)
 
     def update(changeset) do
-      changeset
-      |> Safe.unscoped()
-      |> Safe.update()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Repo.update(changeset)
     end
 
     # Batched count queries - one query for all active accounts using GROUP BY
@@ -219,8 +218,8 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
       |> Map.new()
     end
 
@@ -233,8 +232,8 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
       |> Map.new()
     end
 
@@ -247,8 +246,8 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
       |> Map.new()
     end
 
@@ -274,8 +273,8 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: s.account_id,
         select: {s.account_id, count(s.actor_id)}
       )
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
       |> Map.new()
     end
 
@@ -287,8 +286,8 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: g.account_id,
         select: {g.account_id, count(g.id)}
       )
-      |> Safe.unscoped()
-      |> Safe.all()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Repo.all()
       |> Map.new()
     end
   end

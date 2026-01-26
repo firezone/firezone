@@ -698,18 +698,18 @@ defmodule PortalAPI.Gateway.Channel do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
     alias Portal.Account
     alias Portal.Client
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
-      |> Safe.unscoped()
-      |> Safe.one!()
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      |> Portal.Repo.fetch_unscoped!(:one)
     end
 
     def preload_client_addresses(%Client{} = client) do
-      Safe.preload(client, [:ipv4_address, :ipv6_address])
+      # credo:disable-for-next-line Credo.Check.Warning.RepoMissingSubject
+      Portal.Repo.preload(client, [:ipv4_address, :ipv6_address])
     end
   end
 end
