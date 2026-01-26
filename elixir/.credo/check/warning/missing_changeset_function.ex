@@ -133,6 +133,15 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
     {ast, %{state | has_changeset: true}}
   end
 
+  # Handle changeset with no arguments list (shouldn't happen but be defensive)
+  defp collect_info(
+         {:def, _, [{:changeset, _, nil}, _body]} = ast,
+         state
+       ) do
+    # changeset with no args - probably not what we want, so don't mark as has_changeset
+    {ast, state}
+  end
+
   defp collect_info(ast, state) do
     {ast, state}
   end
