@@ -9,7 +9,7 @@ defmodule PortalWeb.Session.Redirector do
   """
   use PortalWeb, :verified_routes
 
-  alias Portal.Auth
+  alias Portal.Authentication
   alias Portal.ClientToken
 
   @doc """
@@ -64,7 +64,7 @@ defmodule PortalWeb.Session.Redirector do
         %ClientToken{} = token,
         state
       ) do
-    fragment = Portal.Auth.encode_fragment!(token)
+    fragment = Portal.Authentication.encode_fragment!(token)
 
     client_auth_cookie = %PortalWeb.Cookie.ClientAuth{
       actor_name: actor_name,

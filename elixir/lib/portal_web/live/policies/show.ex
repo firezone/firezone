@@ -322,7 +322,7 @@ defmodule PortalWeb.Policies.Show do
   defmodule Database do
     import Ecto.Query
     alias Portal.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
-    alias Portal.Auth
+    alias Portal.Authentication
 
     def get_policy!(id, %Auth.Subject{} = subject) do
       from(p in Policy, as: :policies)
@@ -360,7 +360,7 @@ defmodule PortalWeb.Policies.Show do
 
     def list_policy_authorizations_for(
           %Portal.Policy{} = policy,
-          %Portal.Auth.Subject{} = subject,
+          %Portal.Authentication.Subject{} = subject,
           opts
         ) do
       Database.PolicyAuthorizationQuery.all()

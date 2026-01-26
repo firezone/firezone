@@ -1,4 +1,4 @@
-defmodule PortalWeb.Auth do
+defmodule PortalWeb.Authentication do
   use PortalWeb, :verified_routes
   require Logger
 

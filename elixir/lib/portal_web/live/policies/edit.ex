@@ -258,7 +258,7 @@ defmodule PortalWeb.Policies.Edit do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Group}
-    alias Portal.Auth
+    alias Portal.Authentication
 
     def get_policy!(id, %Auth.Subject{} = subject) do
       from(p in Policy, as: :policies)

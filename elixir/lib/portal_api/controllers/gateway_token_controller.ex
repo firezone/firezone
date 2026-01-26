@@ -1,7 +1,7 @@
 defmodule PortalAPI.GatewayTokenController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
-  alias Portal.Auth
+  alias Portal.Authentication
   alias PortalAPI.Error
   alias __MODULE__.Database
 

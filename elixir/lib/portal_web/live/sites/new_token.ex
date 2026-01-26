@@ -433,8 +433,8 @@ defmodule PortalWeb.Sites.NewToken do
     end
 
     def create_token(site, subject) do
-      with {:ok, token} <- Portal.Auth.create_gateway_token(site, subject) do
-        {:ok, %{token | secret_fragment: nil}, Portal.Auth.encode_fragment!(token)}
+      with {:ok, token} <- Portal.Authentication.create_gateway_token(site, subject) do
+        {:ok, %{token | secret_fragment: nil}, Portal.Authentication.encode_fragment!(token)}
       end
     end
   end

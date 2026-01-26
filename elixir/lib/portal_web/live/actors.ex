@@ -4,7 +4,7 @@ defmodule PortalWeb.Actors do
   alias __MODULE__.Database
 
   alias Portal.Actor
-  alias Portal.Auth
+  alias Portal.Authentication
   alias Portal.ExternalIdentity
   alias Portal.PortalSession
   alias Portal.ClientToken

@@ -3,7 +3,7 @@ defmodule PortalWeb.Plugs.FetchSubject do
 
   import Plug.Conn
   alias Portal.Account
-  alias Portal.Auth
+  alias Portal.Authentication
 
   require Logger
 

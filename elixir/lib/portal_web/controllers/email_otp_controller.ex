@@ -4,7 +4,7 @@ defmodule PortalWeb.EmailOTPController do
   """
   use PortalWeb, :controller
 
-  alias Portal.Auth
+  alias Portal.Authentication
   alias __MODULE__.Database
   alias PortalWeb.Session.Redirector
 
@@ -68,7 +68,7 @@ defmodule PortalWeb.EmailOTPController do
          {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
          {:ok, passcode} <-
-           Auth.verify_one_time_passcode(account.id, actor_id, passcode_id, entered_code),
+           Authentication.verify_one_time_passcode(account.id, actor_id, passcode_id, entered_code),
          :ok <- check_admin(passcode.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, passcode.actor, provider, params) do
@@ -108,7 +108,7 @@ defmodule PortalWeb.EmailOTPController do
       execute_with_constant_time(
         fn ->
           with {:ok, actor} <- Database.fetch_actor_by_email(account, email),
-               {:ok, otp} <- Auth.create_one_time_passcode(account, actor),
+               {:ok, otp} <- Authentication.create_one_time_passcode(account, actor),
                {:ok, _} <- send_email_otp(conn, actor, otp.code, auth_provider_id, params) do
             {actor.id, otp.id, nil}
           else
@@ -174,7 +174,7 @@ defmodule PortalWeb.EmailOTPController do
     remote_ip = conn.remote_ip
     type = context_type(params)
     headers = conn.req_headers
-    context = Portal.Auth.Context.build(remote_ip, user_agent, headers, type)
+    context = Portal.Authentication.Context.build(remote_ip, user_agent, headers, type)
 
     # Get the provider schema module to access default values
     schema = provider.__struct__
@@ -196,7 +196,7 @@ defmodule PortalWeb.EmailOTPController do
 
     case type do
       :portal ->
-        Auth.create_portal_session(
+        Authentication.create_portal_session(
           actor,
           provider.id,
           context,
@@ -214,7 +214,7 @@ defmodule PortalWeb.EmailOTPController do
           expires_at: expires_at
         }
 
-        Auth.create_gui_client_token(attrs)
+        Authentication.create_gui_client_token(attrs)
 
       :headless_client ->
         attrs = %{
@@ -227,7 +227,7 @@ defmodule PortalWeb.EmailOTPController do
           expires_at: expires_at
         }
 
-        Auth.create_gui_client_token(attrs)
+        Authentication.create_gui_client_token(attrs)
     end
   end
 

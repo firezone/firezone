@@ -2,7 +2,7 @@ defmodule PortalAPI.Relay.Socket do
   use Phoenix.Socket
   defoverridable terminate: 2
 
-  alias Portal.Auth
+  alias Portal.Authentication
   alias Portal.Relay
   require Logger
   require OpenTelemetry.Tracer

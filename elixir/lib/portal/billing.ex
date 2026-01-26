@@ -1,5 +1,5 @@
 defmodule Portal.Billing do
-  alias Portal.Auth
+  alias Portal.Authentication
   alias Portal.Billing.EventHandler
   alias Portal.Billing.Stripe.APIClient
   alias __MODULE__.Database

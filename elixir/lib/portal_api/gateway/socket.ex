@@ -1,6 +1,6 @@
 defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
-  alias Portal.Auth
+  alias Portal.Authentication
   alias Portal.{Gateway, Version}
   alias __MODULE__.Database
   require Logger

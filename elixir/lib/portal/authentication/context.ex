@@ -1,4 +1,4 @@
-defmodule Portal.Auth.Context do
+defmodule Portal.Authentication.Context do
   @typedoc """
   This structure represents an authentication context for a user or an API token.
 

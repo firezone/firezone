@@ -287,7 +287,7 @@ defmodule PortalWeb.Policies.New do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Group}
-    alias Portal.Auth
+    alias Portal.Authentication
 
     def insert_policy(changeset, %Auth.Subject{} = subject) do
       Safe.scoped(changeset, subject)

@@ -73,7 +73,7 @@ defmodule Portal.Repo.Filter do
           name: atom(),
           title: String.t() | nil,
           type: type(),
-          values: values() | Range.t() | (Portal.Auth.Subject.t() -> values() | Range.t()) | nil,
+          values: values() | Range.t() | (Portal.Authentication.Subject.t() -> values() | Range.t()) | nil,
           fun: fun()
         }
 

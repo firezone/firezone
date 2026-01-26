@@ -23,7 +23,7 @@ defmodule PortalWeb.SignIn do
       assign(socket,
         page_title: "Sign In",
         account: account,
-        params: PortalWeb.Auth.take_sign_in_params(params),
+        params: PortalWeb.Authentication.take_sign_in_params(params),
         google_auth_providers: auth_providers(account, Google.AuthProvider),
         okta_auth_providers: auth_providers(account, Okta.AuthProvider),
         entra_auth_providers: auth_providers(account, Entra.AuthProvider),

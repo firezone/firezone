@@ -8,9 +8,9 @@ defmodule Portal.SubjectFixtures do
   import Portal.TokenFixtures
   import Portal.PortalSessionFixtures
 
-  alias Portal.Auth.Context
-  alias Portal.Auth.Credential
-  alias Portal.Auth.Subject
+  alias Portal.Authentication.Context
+  alias Portal.Authentication.Credential
+  alias Portal.Authentication.Subject
 
   @doc """
   Build an auth subject with sensible defaults.
