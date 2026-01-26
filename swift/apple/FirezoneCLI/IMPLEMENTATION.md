@@ -8,6 +8,7 @@ This implementation follows the NetworkExtension approach as requested, rather t
 2. **Reuses existing code** - Leverages FirezoneKit, Store.swift, IPCClient.swift
 3. **Better macOS integration** - Uses system VPN frameworks
 4. **Easier deployment** - Can be distributed as a regular app
+5. **API compatibility** - Matches Linux/Windows headless client API from PR #11882
 
 ## Architecture
 
@@ -15,9 +16,9 @@ This implementation follows the NetworkExtension approach as requested, rather t
 ┌─────────────────────────────────────────┐
 │          FirezoneCLI (main.swift)       │
 │  Command-line interface                 │
-│  - Parse commands                       │
+│  - Parse subcommands (sign-in, etc)     │
 │  - Configure tunnel                     │
-│  - Start/stop/status                    │
+│  - Default action: connect              │
 └─────────────┬───────────────────────────┘
               │ Uses NETunnelProviderManager
               ↓
@@ -26,6 +27,7 @@ This implementation follows the NetworkExtension approach as requested, rather t
 │  - Store.swift (state management)       │
 │  - IPCClient.swift (IPC with extension) │
 │  - TunnelConfiguration                  │
+│  - Token (Keychain storage)             │
 └─────────────┬───────────────────────────┘
               │
               ↓
@@ -42,22 +44,30 @@ This implementation follows the NetworkExtension approach as requested, rather t
 ### ✅ Completed
 
 1. **CLI Source Code** (`FirezoneCLI/Sources/main.swift`)
-   - Command-line argument parsing
-   - Connect/disconnect/status/version commands
+   - **API matching PR #11882**:
+     - Default behavior: Connect when run without subcommand
+     - `sign-in` subcommand: Browser-based authentication
+     - `sign-out` subcommand: Remove stored token
+     - `version` subcommand: Show version info
+   - Token management via Keychain
+   - Device ID auto-generation
    - Environment variable configuration
    - Uses NETunnelProviderManager API
+   - Signal handling for graceful shutdown
 
 2. **Configuration Files**
    - `FirezoneCLI.entitlements` - App entitlements for NetworkExtension
    - `Info.plist` - Bundle information
    - `Package.swift` - Swift package manifest
    - `README.md` - Build and usage instructions
+   - `IMPLEMENTATION.md` - Architecture and design documentation
 
 3. **Documentation**
    - Architecture overview
    - Build instructions (both Xcode and command line)
-   - Usage examples
+   - Usage examples matching Linux/Windows API
    - Comparison with pure-Rust approach
+   - API compatibility notes
 
 ### ⏳ Requires Manual Setup
 
@@ -78,6 +88,37 @@ The following steps require Xcode and cannot be automated:
    - Add code signing secrets
    - Configure release artifacts
 
+## API Compatibility with PR #11882
+
+The CLI follows the same API as Linux and Windows headless clients:
+
+### Default Behavior
+```bash
+# Connect automatically (no subcommand needed)
+./firezone-cli
+```
+
+### Subcommands
+```bash
+# Sign in interactively
+./firezone-cli sign-in
+
+# Sign out
+./firezone-cli sign-out
+
+# Show version
+./firezone-cli version
+```
+
+### Environment Variables
+
+- `FIREZONE_TOKEN` - Service account token (optional if using sign-in)
+- `FIREZONE_ID` - Device identifier (auto-generated if not set)
+- `FIREZONE_API_URL` - API endpoint (optional, defaults to wss://api.firezone.dev/)
+- `FIREZONE_AUTH_BASE_URL` - Auth base URL for sign-in (optional)
+- `FIREZONE_ACCOUNT_SLUG` - Account slug for sign-in (optional)
+- `FIREZONE_NAME` - Friendly device name (optional)
+
 ## Key Differences from Pure-Rust Approach
 
 | Aspect | NetworkExtension | Pure-Rust |
@@ -88,16 +129,8 @@ The following steps require Xcode and cannot be automated:
 | Distribution | App bundle with signing | Single binary |
 | Codebase | Swift + Rust (via FFI) | Pure Rust |
 | Deployment | Standard macOS app | Requires root setup |
-
-## Environment Variables
-
-The CLI uses environment variables instead of files for configuration:
-
-- `FIREZONE_TOKEN` - Service account token
-- `FIREZONE_ID` - Device identifier (UUID)
-- `FIREZONE_API_URL` - API endpoint (optional)
-
-This is more secure than file-based configuration and doesn't require root to access protected directories.
+| API | Same as PR #11882 | Same as PR #11882 |
+| Token Storage | Keychain | File system |
 
 ## Usage Example
 

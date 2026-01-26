@@ -59,29 +59,94 @@ The binary will be in `build/Build/Products/Release/firezone-cli`
 
 ## Usage
 
-### Environment Variables
+The CLI follows the same API as Linux and Windows headless clients from PR #11882.
 
-- `FIREZONE_TOKEN` - Service account token (required)
-- `FIREZONE_ID` - Device identifier (required)
-- `FIREZONE_API_URL` - API URL (optional, defaults to wss://api.firezone.dev/)
+### Default Behavior (Connect)
 
-### Commands
+When run without any subcommand, `firezone-cli` automatically connects to Firezone:
 
 ```bash
-# Start the tunnel
+# Connect using stored token from sign-in
+./firezone-cli
+
+# Or connect using environment variable
 export FIREZONE_TOKEN="your-token-here"
-export FIREZONE_ID=$(uuidgen)
-./firezone-cli connect
+./firezone-cli
+```
 
-# Check status
-./firezone-cli status
+### Subcommands
 
-# Stop the tunnel
-./firezone-cli disconnect
+#### sign-in
 
-# Show version
+Interactive browser-based authentication:
+
+```bash
+# Sign in with default settings
+./firezone-cli sign-in
+
+# Sign in with custom auth URL and account
+export FIREZONE_AUTH_BASE_URL="https://app.firezone.dev"
+export FIREZONE_ACCOUNT_SLUG="my-account"
+./firezone-cli sign-in
+```
+
+This will:
+1. Display a URL to open in your browser
+2. Wait for you to complete authentication
+3. Prompt you to paste the token
+4. Store the token securely in Keychain
+
+#### sign-out
+
+Remove stored authentication token:
+
+```bash
+./firezone-cli sign-out
+```
+
+#### version
+
+Show version information:
+
+```bash
 ./firezone-cli version
 ```
+
+### Environment Variables
+
+- `FIREZONE_TOKEN` - Service account token (optional if using sign-in)
+- `FIREZONE_ID` - Device identifier (auto-generated if not set)
+- `FIREZONE_API_URL` - API URL (optional, defaults to wss://api.firezone.dev/)
+- `FIREZONE_AUTH_BASE_URL` - Auth base URL for sign-in (optional, defaults to https://app.firezone.dev)
+- `FIREZONE_ACCOUNT_SLUG` - Account slug for sign-in (optional)
+- `FIREZONE_NAME` - Friendly name for this device (optional)
+
+### Examples
+
+```bash
+# First-time setup with browser authentication
+./firezone-cli sign-in
+
+# Connect after sign-in
+./firezone-cli
+
+# Connect with environment variables (no sign-in needed)
+export FIREZONE_TOKEN="your-service-account-token"
+export FIREZONE_ID=$(uuidgen)
+./firezone-cli
+
+# Sign out when done
+./firezone-cli sign-out
+```
+
+## API Compatibility
+
+This implementation matches the API introduced in PR #11882 for Linux and Windows headless clients:
+
+- **Default action**: Connect (no explicit "connect" command needed)
+- **sign-in**: Browser-based interactive authentication
+- **sign-out**: Remove stored token
+- **Implied disconnect**: Stop the CLI process (Ctrl+C) to disconnect
 
 ## Differences from Pure-Rust Headless Client
 
@@ -93,6 +158,7 @@ export FIREZONE_ID=$(uuidgen)
 | Code signing | Required | Optional |
 | Distribution | .app bundle | Single binary |
 | Shared code | Uses FirezoneKit | Uses bin-shared |
+| API | Same as PR #11882 | Same as PR #11882 |
 
 ## CI/CD Integration
 
@@ -106,7 +172,7 @@ To add this to the release process:
 ## Future Work
 
 - Add launchd plist for running as a service
-- Implement proper signal handling for graceful shutdown
-- Add configuration file support (not just env vars)
 - Implement log file output
 - Add support for multiple profiles/configurations
+- Add status command to show tunnel state
+
