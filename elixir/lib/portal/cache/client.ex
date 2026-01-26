@@ -52,7 +52,7 @@ defmodule Portal.Cache.Client do
 
   """
 
-  alias Portal.{Auth, Client, Cache, Resource, Policy, Version}
+  alias Portal.{Authentication, Client, Cache, Resource, Policy, Version}
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.UUID, only: [dump!: 1, load!: 1]
@@ -86,7 +86,7 @@ defmodule Portal.Cache.Client do
     the resource is not authorized for the client.
   """
 
-  @spec authorize_resource(t(), Portal.Client.t(), Ecto.UUID.t(), Auth.Subject.t()) ::
+  @spec authorize_resource(t(), Portal.Client.t(), Ecto.UUID.t(), Authentication.Subject.t()) ::
           {:ok, Cache.Cacheable.Resource.t(), Ecto.UUID.t(), Ecto.UUID.t(), non_neg_integer()}
           | {:error, :not_found}
           | {:error, {:forbidden, violated_properties: [atom()]}}
@@ -147,7 +147,7 @@ defmodule Portal.Cache.Client do
   @spec recompute_connectable_resources(
           t() | nil,
           Portal.Client.t(),
-          Auth.Subject.t(),
+          Authentication.Subject.t(),
           Keyword.t()
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
@@ -190,7 +190,7 @@ defmodule Portal.Cache.Client do
     yield deleted IDs, so we send those back.
   """
 
-  @spec add_membership(t(), Portal.Client.t(), Auth.Subject.t()) ::
+  @spec add_membership(t(), Portal.Client.t(), Authentication.Subject.t()) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def add_membership(cache, client, subject) do
@@ -211,7 +211,7 @@ defmodule Portal.Cache.Client do
     Removes all policies, resources, and memberships associated with the given group_id from the cache.
   """
 
-  @spec delete_membership(t(), Portal.Membership.t(), Portal.Client.t(), Auth.Subject.t()) ::
+  @spec delete_membership(t(), Portal.Membership.t(), Portal.Client.t(), Authentication.Subject.t()) ::
           {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def delete_membership(cache, membership, client, subject) do
@@ -252,7 +252,7 @@ defmodule Portal.Cache.Client do
           t(),
           Portal.Site.t(),
           Portal.Client.t(),
-          Auth.Subject.t()
+          Authentication.Subject.t()
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
@@ -289,7 +289,7 @@ defmodule Portal.Cache.Client do
     otherwise we just return the updated cache.
   """
 
-  @spec add_policy(t(), Policy.t(), Portal.Client.t(), Auth.Subject.t()) ::
+  @spec add_policy(t(), Policy.t(), Portal.Client.t(), Authentication.Subject.t()) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def add_policy(cache, %{resource_id: resource_id} = policy, client, subject) do
@@ -336,7 +336,7 @@ defmodule Portal.Cache.Client do
     Removes a policy from the cache. If we can't find another policy granting access to the resource,
     we return the deleted resource ID.
   """
-  @spec delete_policy(t(), Policy.t(), Portal.Client.t(), Auth.Subject.t()) ::
+  @spec delete_policy(t(), Policy.t(), Portal.Client.t(), Authentication.Subject.t()) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
   def delete_policy(cache, policy, client, subject) do
     policy = Portal.Cache.Cacheable.to_cache(policy)
@@ -378,7 +378,7 @@ defmodule Portal.Cache.Client do
     we return only the updated cache.
   """
 
-  @spec update_resource(t(), Portal.Resource.t(), Portal.Client.t(), Auth.Subject.t()) ::
+  @spec update_resource(t(), Portal.Resource.t(), Portal.Client.t(), Authentication.Subject.t()) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def update_resource(cache, %Portal.Resource{} = changed_resource, client, subject) do

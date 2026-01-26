@@ -130,7 +130,7 @@ defmodule PortalWeb.Session.Redirector do
   """
 
   def signed_out(
-        %Plug.Conn{assigns: %{subject: %Auth.Subject{} = subject, account: account}} =
+        %Plug.Conn{assigns: %{subject: %Authentication.Subject{} = subject, account: account}} =
           conn,
         account_or_slug
       ) do
@@ -140,7 +140,7 @@ defmodule PortalWeb.Session.Redirector do
     %{type: :portal_session, id: portal_session_id} = subject.credential
 
     :ok =
-      Auth.delete_portal_session(%Portal.PortalSession{
+      Authentication.delete_portal_session(%Portal.PortalSession{
         account_id: account.id,
         id: portal_session_id
       })

@@ -1054,7 +1054,7 @@ defmodule PortalAPI.Client.Channel do
            account: %{id: account_id},
            actor: %{id: actor_id},
            credential: %{id: token_id},
-           context: %Auth.Context{
+           context: %Authentication.Context{
              remote_ip: client_remote_ip,
              user_agent: client_user_agent
            }

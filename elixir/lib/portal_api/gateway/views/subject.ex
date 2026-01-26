@@ -1,7 +1,7 @@
 defmodule PortalAPI.Gateway.Views.Subject do
   alias Portal.Authentication
 
-  def render(%Auth.Subject{} = subject) do
+  def render(%Authentication.Subject{} = subject) do
     %{
       auth_provider_id: subject.credential.auth_provider_id,
       actor_id: subject.actor.id,

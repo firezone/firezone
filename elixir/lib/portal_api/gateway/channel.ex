@@ -198,7 +198,7 @@ defmodule PortalAPI.Gateway.Channel do
       authorization_expires_at: authorization_expires_at,
       ice_credentials: ice_credentials,
       preshared_key: preshared_key,
-      subject: %Auth.Subject{} = subject
+      subject: %Authentication.Subject{} = subject
     } = payload
 
     # Preload addresses in case client was received via PubSub without them

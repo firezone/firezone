@@ -10,11 +10,11 @@ defmodule PortalWeb.LiveHooks.FetchSubject do
         user_agent = get_connect_info(socket, :user_agent)
         real_ip = PortalWeb.Authentication.real_ip(socket)
         x_headers = get_connect_info(socket, :x_headers)
-        context = Auth.Context.build(real_ip, user_agent, x_headers, :portal)
+        context = Authentication.Context.build(real_ip, user_agent, x_headers, :portal)
 
         with {:ok, session_id} <- Map.fetch(session, "portal_session_id"),
-             {:ok, portal_session} <- Auth.fetch_portal_session(account.id, session_id),
-             {:ok, subject} <- Auth.build_subject(portal_session, context) do
+             {:ok, portal_session} <- Authentication.fetch_portal_session(account.id, session_id),
+             {:ok, subject} <- Authentication.build_subject(portal_session, context) do
           subject
         else
           _ -> nil

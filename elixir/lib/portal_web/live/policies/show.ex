@@ -1,7 +1,7 @@
 defmodule PortalWeb.Policies.Show do
   use PortalWeb, :live_view
   import PortalWeb.Policies.Components
-  alias Portal.{Policy, Auth}
+  alias Portal.{Policy, Authentication}
   alias __MODULE__.Database
   import Ecto.Changeset
   import Portal.Changeset
@@ -293,11 +293,11 @@ defmodule PortalWeb.Policies.Show do
 
   # Inline functions from Portal.Policies
 
-  defp get_policy!(id, %Auth.Subject{} = subject) do
+  defp get_policy!(id, %Authentication.Subject{} = subject) do
     Database.get_policy!(id, subject)
   end
 
-  defp disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+  defp disable_policy(%Policy{} = policy, %Authentication.Subject{} = subject) do
     changeset =
       policy
       |> change()
@@ -306,7 +306,7 @@ defmodule PortalWeb.Policies.Show do
     Database.update_policy(changeset, subject)
   end
 
-  defp enable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+  defp enable_policy(%Policy{} = policy, %Authentication.Subject{} = subject) do
     changeset =
       policy
       |> change()
@@ -315,7 +315,7 @@ defmodule PortalWeb.Policies.Show do
     Database.update_policy(changeset, subject)
   end
 
-  defp delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+  defp delete_policy(%Policy{} = policy, %Authentication.Subject{} = subject) do
     Database.delete_policy(policy, subject)
   end
 
@@ -324,7 +324,7 @@ defmodule PortalWeb.Policies.Show do
     alias Portal.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
     alias Portal.Authentication
 
-    def get_policy!(id, %Auth.Subject{} = subject) do
+    def get_policy!(id, %Authentication.Subject{} = subject) do
       from(p in Policy, as: :policies)
       |> where([policies: p], p.id == ^id)
       |> preload(group: [], resource: [])
@@ -332,12 +332,12 @@ defmodule PortalWeb.Policies.Show do
       |> Safe.one!()
     end
 
-    def update_policy(changeset, %Auth.Subject{} = subject) do
+    def update_policy(changeset, %Authentication.Subject{} = subject) do
       Safe.scoped(changeset, subject)
       |> Safe.update()
     end
 
-    def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+    def delete_policy(%Policy{} = policy, %Authentication.Subject{} = subject) do
       Safe.scoped(policy, subject)
       |> Safe.delete()
     end

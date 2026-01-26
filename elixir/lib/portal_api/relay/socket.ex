@@ -49,7 +49,7 @@ defmodule PortalAPI.Relay.Socket do
   defp do_connect(encoded_token, attrs, socket, connect_info) do
     context = PortalAPI.Sockets.auth_context(connect_info, :relay)
 
-    with {:ok, relay_token} <- Auth.verify_relay_token(encoded_token),
+    with {:ok, relay_token} <- Authentication.verify_relay_token(encoded_token),
          {:ok, relay} <- build_relay(attrs, context) do
       OpenTelemetry.Tracer.set_attributes(%{
         token_id: relay_token.id
@@ -72,7 +72,7 @@ defmodule PortalAPI.Relay.Socket do
     end
   end
 
-  defp build_relay(attrs, %Auth.Context{} = context) do
+  defp build_relay(attrs, %Authentication.Context{} = context) do
     ipv4 = attrs["ipv4"]
     ipv6 = attrs["ipv6"]
 
