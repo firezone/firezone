@@ -9,6 +9,10 @@ import Foundation
 import FirezoneKit
 import NetworkExtension
 
+#if os(macOS)
+  import SystemExtensions
+#endif
+
 @main
 struct FirezoneCLI {
   static func main() async throws {
@@ -40,11 +44,11 @@ struct FirezoneCLI {
   
   static func printUsage() {
     print("""
-    Firezone CLI - Headless VPN Client
+    Firezone - Headless ZTNA Client
     
     Usage: firezone-cli [subcommand] [options]
     
-    When run without a subcommand, connects to Firezone and starts the VPN tunnel.
+    When run without a subcommand, connects to Firezone and starts the tunnel.
     
     Subcommands:
       sign-in          Sign in via browser-based authentication
@@ -65,7 +69,6 @@ struct FirezoneCLI {
       firezone-cli sign-in                            # Interactive sign-in
       firezone-cli sign-out                           # Sign out
       firezone-cli version                            # Show version
-    
     Note: This CLI uses NetworkExtension and does not require root privileges.
     """)
   }
@@ -179,72 +182,79 @@ struct FirezoneCLI {
     }
     
     let apiURL = ProcessInfo.processInfo.environment["FIREZONE_API_URL"] ?? "wss://api.firezone.dev/"
-    let deviceName = ProcessInfo.processInfo.environment["FIREZONE_NAME"]
     
-    // Create tunnel configuration
-    let configuration = TunnelConfiguration(
-      apiURL: apiURL,
-      accountSlug: "default", // TODO: Extract from token or make configurable
-      logFilter: "info",
-      internetResourceEnabled: false
-    )
+    #if os(macOS)
+      // Install system extension if needed
+      print("Checking system extension...")
+      let manager = SystemExtensionManager()
+      let status = try await withCheckedThrowingContinuation {
+        (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
+        manager.sendRequest(
+          requestType: .check,
+          identifier: VPNConfigurationManager.bundleIdentifier,
+          continuation: continuation
+        )
+      }
+      
+      if status == .needsInstall || status == .needsReplacement {
+        print("Installing system extension...")
+        print("You may be prompted to allow the system extension in System Settings.")
+        let _ = try await withCheckedThrowingContinuation {
+          (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
+          manager.sendRequest(
+            requestType: .install,
+            identifier: VPNConfigurationManager.bundleIdentifier,
+            continuation: continuation
+          )
+        }
+        print("✓ System extension installed")
+      } else {
+        print("✓ System extension already installed")
+      }
+    #endif
     
-    // Use NETunnelProviderManager to start the tunnel
-    let manager = NETunnelProviderManager()
-    
-    // Load existing configuration or create new one
-    try await manager.loadFromPreferences()
-    
-    // Configure the tunnel
-    let protocolConfiguration = NETunnelProviderProtocol()
-    protocolConfiguration.providerBundleIdentifier = "dev.firezone.client.network-extension"
-    protocolConfiguration.serverAddress = apiURL
-    
-    // Store configuration for the network extension
-    var providerConfig: [String: Any] = [
-      "token": token.description,
-      "firezoneId": deviceId
-    ]
-    
-    if let name = deviceName {
-      providerConfig["deviceName"] = name
+    // Load or create VPN configuration
+    var vpnManager = try await VPNConfigurationManager.load()
+    if vpnManager == nil {
+      print("Creating VPN configuration...")
+      vpnManager = try await VPNConfigurationManager()
+      print("✓ VPN configuration created")
     }
     
-    protocolConfiguration.providerConfiguration = providerConfig
-    
-    manager.protocolConfiguration = protocolConfiguration
-    manager.isEnabled = true
-    manager.localizedDescription = "Firezone CLI"
-    
-    // Save configuration
-    try await manager.saveToPreferences()
-    try await manager.loadFromPreferences()
-    
-    // Start the tunnel
-    do {
-      try manager.connection.startVPNTunnel()
-      print("✓ VPN tunnel started successfully")
-      
-      // Keep the process running to maintain the tunnel
-      print("Tunnel is running. Press Ctrl+C to stop.")
-      
-      // Set up signal handler for graceful shutdown
-      signal(SIGINT) { _ in
-        print("\nReceived interrupt signal, shutting down...")
-        exit(0)
-      }
-      
-      signal(SIGTERM) { _ in
-        print("\nReceived termination signal, shutting down...")
-        exit(0)
-      }
-      
-      // Wait indefinitely
-      try await Task.sleep(for: .seconds(Int.max))
-    } catch {
-      print("Failed to start VPN tunnel: \(error)")
+    guard let vpnManager = vpnManager else {
+      print("Error: Failed to initialize VPN manager")
       exit(1)
     }
+    
+    // Enable the VPN configuration
+    try await vpnManager.enable()
+    
+    guard let session = vpnManager.session() else {
+      print("Error: Failed to get VPN session")
+      exit(1)
+    }
+    
+    // Start the tunnel using IPCClient like the GUI app does
+    print("Starting tunnel...")
+    try IPCClient.start(session: session, token: token.description)
+    print("✓ Tunnel started successfully")
+    
+    // Keep the process running to maintain the tunnel
+    print("Tunnel is running. Press Ctrl+C to stop.")
+    
+    // Set up signal handler for graceful shutdown
+    signal(SIGINT) { _ in
+      print("\nReceived interrupt signal, shutting down...")
+      exit(0)
+    }
+    
+    signal(SIGTERM) { _ in
+      print("\nReceived termination signal, shutting down...")
+      exit(0)
+    }
+    
+    // Wait indefinitely
+    try await Task.sleep(for: .seconds(Int.max))
   }
 }
 
