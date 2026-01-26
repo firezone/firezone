@@ -13,7 +13,7 @@ defmodule Portal.Workers.CheckAccountLimits do
     unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
 
   alias Portal.Billing
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   @batch_size 100
 
@@ -21,12 +21,12 @@ defmodule Portal.Workers.CheckAccountLimits do
   def perform(_job) do
     # Pre-compute all counts for all active accounts in 5 batched queries
     # instead of 5 queries per account (N+1 -> 5 total queries)
-    counts = DB.fetch_all_counts_for_active_accounts()
+    counts = Database.fetch_all_counts_for_active_accounts()
     process_accounts_in_batches(nil, counts)
   end
 
   defp process_accounts_in_batches(cursor, counts) do
-    case DB.fetch_active_accounts_batch(cursor, @batch_size) do
+    case Database.fetch_active_accounts_batch(cursor, @batch_size) do
       [] ->
         :ok
 
@@ -131,10 +131,10 @@ defmodule Portal.Workers.CheckAccountLimits do
 
     account
     |> cast(attrs, [:warning, :warning_delivery_attempts, :warning_last_sent_at])
-    |> DB.update()
+    |> Database.update()
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

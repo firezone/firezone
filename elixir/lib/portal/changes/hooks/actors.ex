@@ -1,6 +1,6 @@
 defmodule Portal.Changes.Hooks.Actors do
   @behaviour Portal.Changes.Hooks
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   @impl true
   def on_insert(_lsn, _data), do: :ok
@@ -18,8 +18,8 @@ defmodule Portal.Changes.Hooks.Actors do
         %{"disabled_at" => disabled_at}
       )
       when not is_nil(disabled_at) do
-    DB.delete_client_tokens_for_actor(account_id, actor_id)
-    DB.delete_portal_sessions_for_actor(account_id, actor_id)
+    Database.delete_client_tokens_for_actor(account_id, actor_id)
+    Database.delete_portal_sessions_for_actor(account_id, actor_id)
 
     :ok
   end
@@ -38,7 +38,7 @@ defmodule Portal.Changes.Hooks.Actors do
           "id" => actor_id
         }
       ) do
-    DB.delete_portal_sessions_for_actor(account_id, actor_id)
+    Database.delete_portal_sessions_for_actor(account_id, actor_id)
 
     :ok
   end
@@ -49,7 +49,7 @@ defmodule Portal.Changes.Hooks.Actors do
   # Side effects are handled by the cascade delete hooks
   def on_delete(_lsn, _old_data), do: :ok
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.ClientToken
     alias Portal.PortalSession
     alias Portal.Safe

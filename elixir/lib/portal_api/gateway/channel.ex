@@ -1,7 +1,7 @@
 defmodule PortalAPI.Gateway.Channel do
   use PortalAPI, :channel
   alias PortalAPI.Gateway.Views
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   alias Portal.{
     Cache,
@@ -59,7 +59,7 @@ defmodule PortalAPI.Gateway.Channel do
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.Global.subscribe()
 
-    account = DB.get_account_by_id!(socket.assigns.gateway.account_id)
+    account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
 
     init(socket, account, relays)
 
@@ -202,7 +202,7 @@ defmodule PortalAPI.Gateway.Channel do
     } = payload
 
     # Preload addresses in case client was received via PubSub without them
-    client = DB.preload_client_addresses(client)
+    client = Database.preload_client_addresses(client)
 
     ref =
       encode_ref(socket, {
@@ -249,7 +249,7 @@ defmodule PortalAPI.Gateway.Channel do
     } = attrs
 
     # Preload addresses in case client was received via PubSub without them
-    client = DB.preload_client_addresses(client)
+    client = Database.preload_client_addresses(client)
 
     case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
@@ -300,7 +300,7 @@ defmodule PortalAPI.Gateway.Channel do
     } = attrs
 
     # Preload addresses in case client was received via PubSub without them
-    client = DB.preload_client_addresses(client)
+    client = Database.preload_client_addresses(client)
 
     case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
@@ -696,7 +696,7 @@ defmodule PortalAPI.Gateway.Channel do
   defp nils_last(_, nil), do: true
   defp nils_last(a, b), do: a <= b
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account

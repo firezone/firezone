@@ -9,7 +9,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     PubSub
   }
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   import Ecto.Changeset
 
@@ -43,7 +43,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   defp init(socket, opts \\ []) do
     new = Keyword.get(opts, :new, false)
-    directories = DB.list_all_directories(socket.assigns.subject)
+    directories = Database.list_all_directories(socket.assigns.subject)
 
     if new do
       socket
@@ -80,7 +80,7 @@ defmodule PortalWeb.Settings.DirectorySync do
       )
       when type in @types do
     schema = Map.get(@modules, type)
-    directory = DB.get_directory!(schema, id, socket.assigns.subject)
+    directory = Database.get_directory!(schema, id, socket.assigns.subject)
     changeset = changeset(directory, %{})
 
     # Extract public key if this is an Okta directory with a keypair
@@ -186,7 +186,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   def handle_event("delete_directory", %{"id" => id}, socket) do
     directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end)
 
-    case DB.delete_directory(directory, socket.assigns.subject) do
+    case Database.delete_directory(directory, socket.assigns.subject) do
       {:ok, _directory} ->
         {:noreply,
          socket
@@ -243,7 +243,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           end
         end
 
-      case DB.update_directory(changeset, socket.assigns.subject) do
+      case Database.update_directory(changeset, socket.assigns.subject) do
         {:ok, _directory} ->
           action = if new_disabled_state, do: "disabled", else: "enabled"
 
@@ -833,7 +833,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   attr :subject, :any, required: true
 
   defp deletion_stats(assigns) do
-    stats = DB.count_deletion_stats(assigns.directory, assigns.subject)
+    stats = Database.count_deletion_stats(assigns.directory, assigns.subject)
     total = stats.actors + stats.identities + stats.groups + stats.policies
     assigns = assign(assigns, stats: stats, total: total)
 
@@ -1255,7 +1255,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     changeset = put_directory_assoc(changeset, socket)
 
     changeset
-    |> DB.insert_directory(socket.assigns.subject)
+    |> Database.insert_directory(socket.assigns.subject)
     |> handle_submit(socket)
   end
 
@@ -1285,7 +1285,7 @@ defmodule PortalWeb.Settings.DirectorySync do
       end
 
     changeset
-    |> DB.update_directory(socket.assigns.subject)
+    |> Database.update_directory(socket.assigns.subject)
     |> handle_submit(socket)
   end
 
@@ -1643,7 +1643,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     {String.trim(key), clean_value}
   end
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.{Entra, Google, Okta, Safe}
     import Ecto.Query
 

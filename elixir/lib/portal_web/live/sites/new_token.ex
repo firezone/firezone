@@ -1,13 +1,13 @@
 defmodule PortalWeb.Sites.NewToken do
   use PortalWeb, :live_view
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(%{"id" => id}, _session, socket) do
-    site = DB.get_site!(id, socket.assigns.subject)
+    site = Database.get_site!(id, socket.assigns.subject)
 
     {site, token, env} =
       if connected?(socket) do
-        {:ok, token, encoded_token} = DB.create_token(site, socket.assigns.subject)
+        {:ok, token, encoded_token} = Database.create_token(site, socket.assigns.subject)
         :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
         {site, token, env(encoded_token)}
       else
@@ -421,7 +421,7 @@ defmodule PortalWeb.Sites.NewToken do
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

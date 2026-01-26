@@ -8,20 +8,20 @@ defmodule Portal.Workers.DeleteExpiredPortalSessions do
     max_attempts: 3,
     unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   require Logger
 
   @impl Oban.Worker
   def perform(_job) do
-    {count, _} = DB.delete_expired_sessions()
+    {count, _} = Database.delete_expired_sessions()
 
     Logger.info("Deleted #{count} expired portal sessions")
 
     :ok
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.PortalSession
     alias Portal.Safe

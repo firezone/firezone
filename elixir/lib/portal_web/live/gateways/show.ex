@@ -1,11 +1,11 @@
 defmodule PortalWeb.Gateways.Show do
   use PortalWeb, :live_view
   alias Portal.Presence
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(%{"id" => id}, _session, socket) do
-    gateway = DB.get_gateway!(id, socket.assigns.subject)
-    gateway = DB.preload_gateways_presence([gateway]) |> List.first()
+    gateway = Database.get_gateway!(id, socket.assigns.subject)
+    gateway = Database.preload_gateways_presence([gateway]) |> List.first()
 
     if connected?(socket) do
       :ok = Presence.Gateways.Site.subscribe(gateway.site_id)
@@ -151,7 +151,7 @@ defmodule PortalWeb.Gateways.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, gateway.id) ->
-          gateway = DB.get_gateway!(gateway.id, socket.assigns.subject)
+          gateway = Database.get_gateway!(gateway.id, socket.assigns.subject)
           assign(socket, gateway: %{gateway | online?: true})
 
         Map.has_key?(payload.leaves, gateway.id) ->
@@ -165,7 +165,7 @@ defmodule PortalWeb.Gateways.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _gateway} = DB.delete_gateway(socket.assigns.gateway, socket.assigns.subject)
+    {:ok, _gateway} = Database.delete_gateway(socket.assigns.gateway, socket.assigns.subject)
 
     socket =
       socket
@@ -175,7 +175,7 @@ defmodule PortalWeb.Gateways.Show do
     {:noreply, socket}
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Gateway

@@ -1,7 +1,7 @@
 defmodule Portal.Changes.Hooks.Resources do
   @behaviour Portal.Changes.Hooks
   alias Portal.{Changes.Change, PubSub}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Portal.SchemaHelpers
 
   @impl true
@@ -31,7 +31,7 @@ defmodule Portal.Changes.Hooks.Resources do
          old_resource.ip_stack != resource.ip_stack or
          old_resource.type != resource.type or
          old_resource.address != resource.address do
-      DB.delete_policy_authorizations_for(resource)
+      Database.delete_policy_authorizations_for(resource)
     end
 
     PubSub.Account.broadcast(resource.account_id, change)
@@ -45,7 +45,7 @@ defmodule Portal.Changes.Hooks.Resources do
     PubSub.Account.broadcast(resource.account_id, change)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

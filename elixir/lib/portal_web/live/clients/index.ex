@@ -2,7 +2,7 @@ defmodule PortalWeb.Clients.Index do
   use PortalWeb, :live_view
   import PortalWeb.Clients.Components
   alias Portal.{Presence.Clients, ComponentVersions}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -35,7 +35,7 @@ defmodule PortalWeb.Clients.Index do
   def handle_clients_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
 
-    with {:ok, clients, metadata} <- DB.list_clients(socket.assigns.subject, list_opts) do
+    with {:ok, clients, metadata} <- Database.list_clients(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          clients: clients,
@@ -142,7 +142,7 @@ defmodule PortalWeb.Clients.Index do
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Presence.Clients, Safe}

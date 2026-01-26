@@ -12,7 +12,7 @@ defmodule Portal.Google.Sync do
     ]
 
   alias Portal.Google
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
 
   @impl Oban.Worker
@@ -22,7 +22,7 @@ defmodule Portal.Google.Sync do
       timestamp: DateTime.utc_now()
     )
 
-    case DB.get_directory(directory_id) do
+    case Database.get_directory(directory_id) do
       nil ->
         Logger.info("Google directory not found, disabled, or account disabled, skipping",
           google_directory_id: directory_id
@@ -48,7 +48,7 @@ defmodule Portal.Google.Sync do
         :is_verified
       ])
 
-    {:ok, _directory} = DB.update_directory(changeset)
+    {:ok, _directory} = Database.update_directory(changeset)
   end
 
   defp sync(%Google.Directory{} = directory) do
@@ -435,7 +435,7 @@ defmodule Portal.Google.Sync do
     account_id = directory.account_id
     directory_id = directory.id
 
-    case DB.batch_upsert_identities(account_id, directory_id, synced_at, identities) do
+    case Database.batch_upsert_identities(account_id, directory_id, synced_at, identities) do
       {:ok, %{upserted_identities: count}} ->
         Logger.debug("Upserted #{count} identities", google_directory_id: directory.id)
         :ok
@@ -456,7 +456,7 @@ defmodule Portal.Google.Sync do
     directory_id = directory.id
 
     {:ok, %{upserted_groups: count}} =
-      DB.batch_upsert_groups(account_id, directory_id, synced_at, groups, :group)
+      Database.batch_upsert_groups(account_id, directory_id, synced_at, groups, :group)
 
     Logger.debug("Upserted #{count} groups", google_directory_id: directory.id)
     :ok
@@ -466,7 +466,7 @@ defmodule Portal.Google.Sync do
     account_id = directory.account_id
     directory_id = directory.id
 
-    case DB.batch_upsert_memberships(account_id, directory_id, synced_at, memberships) do
+    case Database.batch_upsert_memberships(account_id, directory_id, synced_at, memberships) do
       {:ok, %{upserted_memberships: count}} ->
         Logger.debug("Upserted #{count} memberships", google_directory_id: directory.id)
         :ok
@@ -487,7 +487,7 @@ defmodule Portal.Google.Sync do
     directory_id = directory.id
 
     {:ok, %{upserted_groups: count}} =
-      DB.batch_upsert_groups(account_id, directory_id, synced_at, org_units, :org_unit)
+      Database.batch_upsert_groups(account_id, directory_id, synced_at, org_units, :org_unit)
 
     Logger.debug("Upserted #{count} organization units", google_directory_id: directory.id)
     :ok
@@ -498,7 +498,8 @@ defmodule Portal.Google.Sync do
     directory_id = directory.id
 
     # Delete groups that weren't synced
-    {deleted_groups_count, _} = DB.delete_unsynced_groups(account_id, directory_id, synced_at)
+    {deleted_groups_count, _} =
+      Database.delete_unsynced_groups(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced groups",
       google_directory_id: directory.id,
@@ -507,7 +508,7 @@ defmodule Portal.Google.Sync do
 
     # Delete identities that weren't synced
     {deleted_identities_count, _} =
-      DB.delete_unsynced_identities(account_id, directory_id, synced_at)
+      Database.delete_unsynced_identities(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced identities",
       google_directory_id: directory.id,
@@ -516,7 +517,7 @@ defmodule Portal.Google.Sync do
 
     # Delete memberships that weren't synced
     {deleted_memberships_count, _} =
-      DB.delete_unsynced_memberships(account_id, directory_id, synced_at)
+      Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced group memberships",
       google_directory_id: directory.id,
@@ -524,7 +525,8 @@ defmodule Portal.Google.Sync do
     )
 
     # Delete actors that no longer have any identities and were created by this directory
-    {deleted_actors_count, _} = DB.delete_actors_without_identities(account_id, directory_id)
+    {deleted_actors_count, _} =
+      Database.delete_actors_without_identities(account_id, directory_id)
 
     Logger.debug("Deleted actors without identities",
       google_directory_id: directory.id,
@@ -556,7 +558,7 @@ defmodule Portal.Google.Sync do
     }
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

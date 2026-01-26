@@ -1,6 +1,6 @@
 defmodule Portal.ChangeLogs.ReplicationConnection do
   use Portal.Replication.Connection
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
@@ -100,7 +100,7 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     to_insert = Map.values(state.flush_buffer)
     attempted_count = Enum.count(state.flush_buffer)
 
-    {successful_count, _change_logs} = DB.bulk_insert(to_insert)
+    {successful_count, _change_logs} = Database.bulk_insert(to_insert)
 
     Logger.info("Flushed #{successful_count}/#{attempted_count} change logs")
 
@@ -174,7 +174,7 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     end)
   end
 
-  defmodule DB do
+  defmodule Database do
     alias Portal.{Safe, ChangeLog}
 
     def bulk_insert(list_of_attrs) do

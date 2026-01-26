@@ -1,7 +1,7 @@
 defmodule PortalWeb.Sites.Index do
   use PortalWeb, :live_view
   alias Portal.Presence
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
 
   def mount(_params, _session, socket) do
@@ -9,7 +9,7 @@ defmodule PortalWeb.Sites.Index do
       :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
     end
 
-    internet_resource = DB.get_internet_resource(socket.assigns.subject)
+    internet_resource = Database.get_internet_resource(socket.assigns.subject)
 
     socket =
       socket
@@ -36,10 +36,10 @@ defmodule PortalWeb.Sites.Index do
   end
 
   def handle_sites_update!(socket, list_opts) do
-    with {:ok, sites, metadata} <- DB.list_sites(socket.assigns.subject, list_opts) do
+    with {:ok, sites, metadata} <- Database.list_sites(socket.assigns.subject, list_opts) do
       site_ids = Enum.map(sites, & &1.id)
-      resources_counts = DB.count_resources_by_site(site_ids, socket.assigns.subject)
-      policies_counts = DB.count_policies_by_site(site_ids, socket.assigns.subject)
+      resources_counts = Database.count_resources_by_site(site_ids, socket.assigns.subject)
+      policies_counts = Database.count_policies_by_site(site_ids, socket.assigns.subject)
 
       {:ok,
        assign(socket,
@@ -198,7 +198,7 @@ defmodule PortalWeb.Sites.Index do
         %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},
         socket
       ) do
-    internet_resource = DB.get_internet_resource(socket.assigns.subject)
+    internet_resource = Database.get_internet_resource(socket.assigns.subject)
 
     socket =
       socket
@@ -212,7 +212,7 @@ defmodule PortalWeb.Sites.Index do
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
     do: handle_live_table_event(event, params, socket)
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, Site, Resource}
 

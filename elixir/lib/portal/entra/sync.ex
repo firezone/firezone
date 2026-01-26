@@ -12,7 +12,7 @@ defmodule Portal.Entra.Sync do
     ]
 
   alias Portal.Entra
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   require Logger
 
   @impl Oban.Worker
@@ -22,7 +22,7 @@ defmodule Portal.Entra.Sync do
       timestamp: DateTime.utc_now()
     )
 
-    case DB.get_directory(directory_id) do
+    case Database.get_directory(directory_id) do
       nil ->
         Logger.info("Entra directory not found, disabled, or account disabled, skipping",
           entra_directory_id: directory_id
@@ -48,7 +48,7 @@ defmodule Portal.Entra.Sync do
         :is_verified
       ])
 
-    {:ok, _directory} = DB.update_directory(changeset)
+    {:ok, _directory} = Database.update_directory(changeset)
   end
 
   defp sync(%Entra.Directory{} = directory) do
@@ -533,7 +533,7 @@ defmodule Portal.Entra.Sync do
     issuer = issuer(directory)
     directory_id = directory.id
 
-    case DB.batch_upsert_identities(
+    case Database.batch_upsert_identities(
            account_id,
            issuer,
            directory_id,
@@ -560,7 +560,7 @@ defmodule Portal.Entra.Sync do
     directory_id = directory.id
 
     {:ok, %{upserted_groups: count}} =
-      DB.batch_upsert_groups(account_id, directory_id, synced_at, groups)
+      Database.batch_upsert_groups(account_id, directory_id, synced_at, groups)
 
     Logger.debug("Upserted #{count} groups", entra_directory_id: directory.id)
     :ok
@@ -571,7 +571,13 @@ defmodule Portal.Entra.Sync do
     directory_id = directory.id
     issuer = issuer(directory)
 
-    case DB.batch_upsert_memberships(account_id, issuer, directory_id, synced_at, memberships) do
+    case Database.batch_upsert_memberships(
+           account_id,
+           issuer,
+           directory_id,
+           synced_at,
+           memberships
+         ) do
       {:ok, %{upserted_memberships: count}} ->
         Logger.debug("Upserted #{count} memberships", entra_directory_id: directory.id)
         :ok
@@ -592,7 +598,8 @@ defmodule Portal.Entra.Sync do
     directory_id = directory.id
 
     # Delete groups that weren't synced
-    {deleted_groups_count, _} = DB.delete_unsynced_groups(account_id, directory_id, synced_at)
+    {deleted_groups_count, _} =
+      Database.delete_unsynced_groups(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced groups",
       entra_directory_id: directory.id,
@@ -601,7 +608,7 @@ defmodule Portal.Entra.Sync do
 
     # Delete identities that weren't synced
     {deleted_identities_count, _} =
-      DB.delete_unsynced_identities(account_id, directory_id, synced_at)
+      Database.delete_unsynced_identities(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced identities",
       entra_directory_id: directory.id,
@@ -610,7 +617,7 @@ defmodule Portal.Entra.Sync do
 
     # Delete memberships that weren't synced
     {deleted_memberships_count, _} =
-      DB.delete_unsynced_memberships(account_id, directory_id, synced_at)
+      Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced group memberships",
       entra_directory_id: directory.id,
@@ -618,7 +625,8 @@ defmodule Portal.Entra.Sync do
     )
 
     # Delete actors that no longer have any identities and were created by this directory
-    {deleted_actors_count, _} = DB.delete_actors_without_identities(account_id, directory_id)
+    {deleted_actors_count, _} =
+      Database.delete_actors_without_identities(account_id, directory_id)
 
     Logger.debug("Deleted actors without identities",
       entra_directory_id: directory.id,
@@ -669,7 +677,7 @@ defmodule Portal.Entra.Sync do
     }
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

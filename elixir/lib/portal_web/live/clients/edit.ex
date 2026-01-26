@@ -1,10 +1,10 @@
 defmodule PortalWeb.Clients.Edit do
   use PortalWeb, :live_view
   alias Portal.Presence.Clients
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(%{"id" => id}, _session, socket) do
-    client = DB.get_client!(id, socket.assigns.subject)
+    client = Database.get_client!(id, socket.assigns.subject)
     changeset = update_changeset(client, %{})
 
     socket =
@@ -68,7 +68,7 @@ defmodule PortalWeb.Clients.Edit do
   def handle_event("submit", %{"client" => attrs}, socket) do
     changeset = update_changeset(socket.assigns.client, attrs)
 
-    with {:ok, client} <- DB.update_client(changeset, socket.assigns.subject) do
+    with {:ok, client} <- Database.update_client(changeset, socket.assigns.subject) do
       socket = push_navigate(socket, to: ~p"/#{socket.assigns.account}/clients/#{client}")
       {:noreply, socket}
     else
@@ -88,7 +88,7 @@ defmodule PortalWeb.Clients.Edit do
     |> Portal.Client.changeset()
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Presence.Clients, Safe}
     alias Portal.Client

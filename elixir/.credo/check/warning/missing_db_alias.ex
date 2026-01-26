@@ -4,9 +4,9 @@ defmodule Credo.Check.Warning.MissingDBAlias do
     category: :warning,
     explanations: [
       check: """
-      Modules that have an inline DB module should alias it as `alias __MODULE__.DB`.
+      Modules that have an inline Database module should alias it as `alias __MODULE__.Database`.
 
-      This ensures all database operations go through the module's own DB module
+      This ensures all database operations go through the module's own Database module
       and makes the code more maintainable and consistent.
       """,
       params: []
@@ -28,7 +28,7 @@ defmodule Credo.Check.Warning.MissingDBAlias do
       format_issue(
         issue_meta,
         message:
-          "Module #{module_name} has a DB submodule but doesn't alias it. Add `alias __MODULE__.DB` to the module.",
+          "Module #{module_name} has a Database submodule but doesn't alias it. Add `alias __MODULE__.Database` to the module.",
         trigger: module_name,
         line_no: info.line_no
       )
@@ -46,10 +46,10 @@ defmodule Credo.Check.Warning.MissingDBAlias do
        ) do
     module_name = Enum.join(module_parts, ".")
 
-    # Check if this module has a DB submodule
+    # Check if this module has a Database submodule
     has_db_module = has_inline_db_module?(body)
 
-    # Check if this module has alias __MODULE__.DB
+    # Check if this module has alias __MODULE__.Database
     has_db_alias = has_db_alias?(body)
 
     info = %{
@@ -66,7 +66,7 @@ defmodule Credo.Check.Warning.MissingDBAlias do
   defp has_inline_db_module?(body) do
     {_, result} =
       Macro.prewalk(body, false, fn
-        {:defmodule, _, [{:__aliases__, _, ["DB"]}, _]}, _acc ->
+        {:defmodule, _, [{:__aliases__, _, ["Database"]}, _]}, _acc ->
           {:halt, true}
 
         ast, acc ->
@@ -79,19 +79,22 @@ defmodule Credo.Check.Warning.MissingDBAlias do
   defp has_db_alias?(body) do
     {_, result} =
       Macro.prewalk(body, false, fn
-        # Check for alias __MODULE__.DB
-        {:alias, _, [{:__aliases__, _, [{:__MODULE__, _, _}, "DB"]}]}, _acc ->
+        # Check for alias __MODULE__.Database
+        {:alias, _, [{:__aliases__, _, [{:__MODULE__, _, _}, "Database"]}]}, _acc ->
           {:halt, true}
 
-        # Check for alias __MODULE__.DB, as: DB
+        # Check for alias __MODULE__.Database, as: Database
         {:alias, _,
-         [{:__aliases__, _, [{:__MODULE__, _, _}, "DB"]}, [as: {:__aliases__, _, ["DB"]}]]},
+         [
+           {:__aliases__, _, [{:__MODULE__, _, _}, "Database"]},
+           [as: {:__aliases__, _, ["Database"]}]
+         ]},
         _acc ->
           {:halt, true}
 
         # Also check for the common pattern where __MODULE__ is expanded
-        {:alias, _, [{:__aliases__, _, [_, "DB"]}]}, _acc ->
-          # This could be a pattern like `alias MyModule.DB` where MyModule is __MODULE__
+        {:alias, _, [{:__aliases__, _, [_, "Database"]}]}, _acc ->
+          # This could be a pattern like `alias MyModule.Database` where MyModule is __MODULE__
           # We'll be conservative and consider this as having the alias
           {:halt, true}
 

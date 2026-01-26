@@ -12,7 +12,7 @@ defmodule Portal.Workers.OutdatedGateways do
   require Logger
   require OpenTelemetry.Tracer
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   alias Portal.{Gateway, Mailer}
 
   @impl Oban.Worker
@@ -24,9 +24,9 @@ defmodule Portal.Workers.OutdatedGateways do
   defp run_check do
     latest_version = Portal.ComponentVersions.gateway_version()
 
-    DB.all_accounts_pending_notification!()
+    Database.all_accounts_pending_notification!()
     |> Enum.each(fn account ->
-      incompatible_client_count = DB.count_incompatible_for(account, latest_version)
+      incompatible_client_count = Database.count_incompatible_for(account, latest_version)
 
       all_online_gateways_for_account(account)
       |> Enum.filter(&Gateway.gateway_outdated?/1)
@@ -36,11 +36,11 @@ defmodule Portal.Workers.OutdatedGateways do
 
   defp all_online_gateways_for_account(account) do
     gateways_by_id =
-      DB.all_gateways_for_account!(account)
+      Database.all_gateways_for_account!(account)
       |> Enum.group_by(& &1.id)
 
-    DB.all_sites_for_account!(account)
-    |> Enum.flat_map(&DB.all_online_gateway_ids_by_site_id!(&1.id))
+    Database.all_sites_for_account!(account)
+    |> Enum.flat_map(&Database.all_online_gateway_ids_by_site_id!(&1.id))
     |> Enum.flat_map(&Map.get(gateways_by_id, &1))
   end
 
@@ -49,7 +49,7 @@ defmodule Portal.Workers.OutdatedGateways do
   end
 
   defp send_notifications(gateways, account, incompatible_client_count) do
-    DB.all_admins_for_account!(account)
+    Database.all_admins_for_account!(account)
     |> Enum.each(&send_email(account, gateways, incompatible_client_count, &1.email))
 
     changeset =
@@ -63,7 +63,7 @@ defmodule Portal.Workers.OutdatedGateways do
         }
       })
 
-    DB.update_account(changeset)
+    Database.update_account(changeset)
   end
 
   defp send_email(account, gateways, incompatible_client_count, email) do
@@ -101,7 +101,7 @@ defmodule Portal.Workers.OutdatedGateways do
     )
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Client

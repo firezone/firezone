@@ -5,7 +5,7 @@ defmodule PortalWeb.EmailOTPController do
   use PortalWeb, :controller
 
   alias Portal.Auth
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   alias PortalWeb.Session.Redirector
 
   require Logger
@@ -22,8 +22,8 @@ defmodule PortalWeb.EmailOTPController do
         } = params
       )
       when is_binary(email) do
-    with {:ok, account} <- DB.fetch_account_by_id_or_slug(account_id_or_slug),
-         {:ok, _provider} <- DB.fetch_provider_by_id(account, auth_provider_id) do
+    with {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
+         {:ok, _provider} <- Database.fetch_provider_by_id(account, auth_provider_id) do
       conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id)
 
       redirect_params = sanitize(params)
@@ -65,8 +65,8 @@ defmodule PortalWeb.EmailOTPController do
     context_type = context_type(params)
 
     with {:ok, actor_id, passcode_id, email} <- fetch_state(conn),
-         {:ok, account} <- DB.fetch_account_by_id_or_slug(account_id_or_slug),
-         {:ok, provider} <- DB.fetch_provider_by_id(account, auth_provider_id),
+         {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
+         {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
          {:ok, passcode} <-
            Auth.verify_one_time_passcode(account.id, actor_id, passcode_id, entered_code),
          :ok <- check_admin(passcode.actor, context_type),
@@ -107,7 +107,7 @@ defmodule PortalWeb.EmailOTPController do
     {actor_id, passcode_id, error} =
       execute_with_constant_time(
         fn ->
-          with {:ok, actor} <- DB.fetch_actor_by_email(account, email),
+          with {:ok, actor} <- Database.fetch_actor_by_email(account, email),
                {:ok, otp} <- Auth.create_one_time_passcode(account, actor),
                {:ok, _} <- send_email_otp(conn, actor, otp.code, auth_provider_id, params) do
             {actor.id, otp.id, nil}
@@ -324,7 +324,7 @@ defmodule PortalWeb.EmailOTPController do
     end
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.{Account, Actor, EmailOTP}

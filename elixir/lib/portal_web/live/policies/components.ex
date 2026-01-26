@@ -810,7 +810,7 @@ defmodule PortalWeb.Policies.Components do
     """
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
@@ -990,8 +990,8 @@ defmodule PortalWeb.Policies.Components do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_policy_id(policy.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_policy_id(policy.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -1000,8 +1000,8 @@ defmodule PortalWeb.Policies.Components do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_resource_id(resource.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_resource_id(resource.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -1010,8 +1010,8 @@ defmodule PortalWeb.Policies.Components do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_client_id(client.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_client_id(client.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -1020,8 +1020,8 @@ defmodule PortalWeb.Policies.Components do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_actor_id(actor.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_actor_id(actor.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -1030,19 +1030,19 @@ defmodule PortalWeb.Policies.Components do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
       |> list_policy_authorizations(subject, opts)
     end
 
     defp list_policy_authorizations(queryable, subject, opts) do
       queryable
       |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.list(DB.PolicyAuthorizationQuery, opts)
+      |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
     end
   end
 
-  defmodule DB.PolicyAuthorizationQuery do
+  defmodule Database.PolicyAuthorizationQuery do
     import Ecto.Query
 
     def all do

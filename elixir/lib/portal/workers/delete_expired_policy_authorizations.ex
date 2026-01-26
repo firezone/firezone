@@ -8,7 +8,7 @@ defmodule Portal.Workers.DeleteExpiredPolicyAuthorizations do
     max_attempts: 3,
     unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
 
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   require Logger
 
@@ -20,14 +20,14 @@ defmodule Portal.Workers.DeleteExpiredPolicyAuthorizations do
   end
 
   def perform(_job) do
-    {count, nil} = DB.delete_expired_policy_authorizations()
+    {count, nil} = Database.delete_expired_policy_authorizations()
 
     Logger.info("Deleted #{count} expired policy authorizations")
 
     :ok
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, PolicyAuthorization}
 

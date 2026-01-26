@@ -2,7 +2,7 @@ defmodule PortalWeb.Policies.Show do
   use PortalWeb, :live_view
   import PortalWeb.Policies.Components
   alias Portal.{Policy, Auth}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Ecto.Changeset
   import Portal.Changeset
 
@@ -10,7 +10,7 @@ defmodule PortalWeb.Policies.Show do
     policy = get_policy!(id, socket.assigns.subject)
 
     providers =
-      DB.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
+      Database.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
 
     socket =
       assign(socket,
@@ -19,7 +19,7 @@ defmodule PortalWeb.Policies.Show do
         providers: providers
       )
       |> assign_live_table("policy_authorizations",
-        query_module: DB.PolicyAuthorizationQuery,
+        query_module: Database.PolicyAuthorizationQuery,
         sortable_fields: [],
         hide_filters: [:expiration],
         callback: &handle_policy_authorizations_update!/2
@@ -41,7 +41,7 @@ defmodule PortalWeb.Policies.Show do
       )
 
     with {:ok, policy_authorizations, metadata} <-
-           DB.list_policy_authorizations_for(
+           Database.list_policy_authorizations_for(
              socket.assigns.policy,
              socket.assigns.subject,
              list_opts
@@ -294,7 +294,7 @@ defmodule PortalWeb.Policies.Show do
   # Inline functions from Portal.Policies
 
   defp get_policy!(id, %Auth.Subject{} = subject) do
-    DB.get_policy!(id, subject)
+    Database.get_policy!(id, subject)
   end
 
   defp disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
@@ -303,7 +303,7 @@ defmodule PortalWeb.Policies.Show do
       |> change()
       |> put_default_value(:disabled_at, DateTime.utc_now())
 
-    DB.update_policy(changeset, subject)
+    Database.update_policy(changeset, subject)
   end
 
   defp enable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
@@ -312,14 +312,14 @@ defmodule PortalWeb.Policies.Show do
       |> change()
       |> put_change(:disabled_at, nil)
 
-    DB.update_policy(changeset, subject)
+    Database.update_policy(changeset, subject)
   end
 
   defp delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
-    DB.delete_policy(policy, subject)
+    Database.delete_policy(policy, subject)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
     alias Portal.Auth
@@ -363,14 +363,14 @@ defmodule PortalWeb.Policies.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_policy_id(policy.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_policy_id(policy.id)
       |> Safe.scoped(subject)
-      |> Safe.list(DB.PolicyAuthorizationQuery, opts)
+      |> Safe.list(Database.PolicyAuthorizationQuery, opts)
     end
   end
 
-  defmodule DB.PolicyAuthorizationQuery do
+  defmodule Database.PolicyAuthorizationQuery do
     import Ecto.Query
 
     def all do

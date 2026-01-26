@@ -3,12 +3,12 @@ defmodule PortalWeb.Clients.Show do
   import PortalWeb.Policies.Components
   import PortalWeb.Clients.Components
   alias Portal.{Presence.Clients, ComponentVersions}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
   import Ecto.Changeset
   import Portal.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
-    client = DB.get_client!(id, socket.assigns.subject)
+    client = Database.get_client!(id, socket.assigns.subject)
     client = Clients.preload_clients_presence([client]) |> List.first()
 
     if connected?(socket) do
@@ -22,7 +22,7 @@ defmodule PortalWeb.Clients.Show do
         page_title: "Client #{client.name}"
       )
       |> assign_live_table("policy_authorizations",
-        query_module: DB.PolicyAuthorizationQuery,
+        query_module: Database.PolicyAuthorizationQuery,
         sortable_fields: [],
         hide_filters: [:expiration],
         callback: &handle_policy_authorizations_update!/2
@@ -45,7 +45,7 @@ defmodule PortalWeb.Clients.Show do
       )
 
     with {:ok, policy_authorizations, metadata} <-
-           DB.list_policy_authorizations_for(
+           Database.list_policy_authorizations_for(
              socket.assigns.client,
              socket.assigns.subject,
              list_opts
@@ -406,7 +406,7 @@ defmodule PortalWeb.Clients.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, client.id) ->
-          client = DB.get_client!(client.id, socket.assigns.subject)
+          client = Database.get_client!(client.id, socket.assigns.subject)
           assign(socket, client: %{client | online?: true})
 
         Map.has_key?(payload.leaves, client.id) ->
@@ -428,7 +428,7 @@ defmodule PortalWeb.Clients.Show do
       |> change()
       |> put_default_value(:verified_at, DateTime.utc_now())
 
-    {:ok, client} = DB.verify_client(changeset, socket.assigns.subject)
+    {:ok, client} = Database.verify_client(changeset, socket.assigns.subject)
 
     client = %{
       client
@@ -447,7 +447,7 @@ defmodule PortalWeb.Clients.Show do
       |> change()
       |> put_change(:verified_at, nil)
 
-    {:ok, client} = DB.remove_client_verification(changeset, socket.assigns.subject)
+    {:ok, client} = Database.remove_client_verification(changeset, socket.assigns.subject)
 
     client = %{
       client
@@ -459,7 +459,7 @@ defmodule PortalWeb.Clients.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _deleted_client} = DB.delete_client(socket.assigns.client, socket.assigns.subject)
+    {:ok, _deleted_client} = Database.delete_client(socket.assigns.client, socket.assigns.subject)
 
     socket =
       socket
@@ -469,7 +469,7 @@ defmodule PortalWeb.Clients.Show do
     {:noreply, socket}
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.{Presence.Clients, Safe}
     alias Portal.Client
@@ -530,8 +530,8 @@ defmodule PortalWeb.Clients.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_policy_id(policy.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_policy_id(policy.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -540,8 +540,8 @@ defmodule PortalWeb.Clients.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_resource_id(resource.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_resource_id(resource.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -550,8 +550,8 @@ defmodule PortalWeb.Clients.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_client_id(client.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_client_id(client.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -560,8 +560,8 @@ defmodule PortalWeb.Clients.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_actor_id(actor.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_actor_id(actor.id)
       |> list_policy_authorizations(subject, opts)
     end
 
@@ -570,19 +570,19 @@ defmodule PortalWeb.Clients.Show do
           %Portal.Auth.Subject{} = subject,
           opts
         ) do
-      DB.PolicyAuthorizationQuery.all()
-      |> DB.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
+      Database.PolicyAuthorizationQuery.all()
+      |> Database.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
       |> list_policy_authorizations(subject, opts)
     end
 
     defp list_policy_authorizations(queryable, subject, opts) do
       queryable
       |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.list(DB.PolicyAuthorizationQuery, opts)
+      |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
     end
   end
 
-  defmodule DB.PolicyAuthorizationQuery do
+  defmodule Database.PolicyAuthorizationQuery do
     import Ecto.Query
 
     def all do

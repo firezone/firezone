@@ -12,7 +12,7 @@ defmodule Portal.Okta.Sync do
     ]
 
   alias Portal.Okta
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   require Logger
   require OpenTelemetry.Tracer
@@ -24,7 +24,7 @@ defmodule Portal.Okta.Sync do
       timestamp: DateTime.utc_now()
     )
 
-    case DB.get_directory(directory_id) do
+    case Database.get_directory(directory_id) do
       nil ->
         Logger.info("Okta directory not found, disabled, or account disabled, skipping",
           okta_directory_id: directory_id
@@ -51,7 +51,7 @@ defmodule Portal.Okta.Sync do
         :is_verified
       ])
 
-    {:ok, _directory} = DB.update_directory(changeset)
+    {:ok, _directory} = Database.update_directory(changeset)
   end
 
   defp sync(%Okta.Directory{} = directory) do
@@ -205,7 +205,7 @@ defmodule Portal.Okta.Sync do
             }
           end)
 
-        case DB.batch_upsert_identities(
+        case Database.batch_upsert_identities(
                account_id,
                issuer,
                directory_id,
@@ -284,7 +284,7 @@ defmodule Portal.Okta.Sync do
 
         unless Enum.empty?(group_attrs) do
           {:ok, %{upserted_groups: count}} =
-            DB.batch_upsert_groups(account_id, directory_id, synced_at, group_attrs)
+            Database.batch_upsert_groups(account_id, directory_id, synced_at, group_attrs)
 
           Logger.debug("Upserted #{count} groups", okta_directory_id: directory.id)
         end
@@ -300,7 +300,7 @@ defmodule Portal.Okta.Sync do
 
     Logger.debug("Syncing group memberships", okta_directory_id: directory.id)
 
-    group_idp_ids = DB.get_synced_group_idp_ids(account_id, directory_id, synced_at)
+    group_idp_ids = Database.get_synced_group_idp_ids(account_id, directory_id, synced_at)
 
     Logger.debug("Found synced groups",
       okta_directory_id: directory.id,
@@ -341,7 +341,7 @@ defmodule Portal.Okta.Sync do
         Enum.map(member_ids, fn member_id -> {group_idp_id, member_id} end)
       end)
 
-    case DB.batch_upsert_memberships(
+    case Database.batch_upsert_memberships(
            account_id,
            issuer,
            directory_id,
@@ -424,7 +424,7 @@ defmodule Portal.Okta.Sync do
 
     # Delete groups that weren't synced
     {deleted_groups_count, _} =
-      DB.delete_unsynced_groups(account_id, directory_id, synced_at)
+      Database.delete_unsynced_groups(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced groups",
       okta_directory_id: directory.id,
@@ -433,7 +433,7 @@ defmodule Portal.Okta.Sync do
 
     # Delete identities that weren't synced
     {deleted_identities_count, _} =
-      DB.delete_unsynced_identities(account_id, directory_id, synced_at)
+      Database.delete_unsynced_identities(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced identities",
       okta_directory_id: directory.id,
@@ -442,7 +442,7 @@ defmodule Portal.Okta.Sync do
 
     # Delete memberships that weren't synced
     {deleted_memberships_count, _} =
-      DB.delete_unsynced_memberships(account_id, directory_id, synced_at)
+      Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
 
     Logger.debug("Deleted unsynced group memberships",
       okta_directory_id: directory.id,
@@ -450,7 +450,8 @@ defmodule Portal.Okta.Sync do
     )
 
     # Delete actors that no longer have any identities and were created by this directory
-    {deleted_actors_count, _} = DB.delete_actors_without_identities(account_id, directory_id)
+    {deleted_actors_count, _} =
+      Database.delete_actors_without_identities(account_id, directory_id)
 
     Logger.debug("Deleted actors without identities",
       okta_directory_id: directory.id,
@@ -458,7 +459,7 @@ defmodule Portal.Okta.Sync do
     )
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     alias Portal.Safe
 

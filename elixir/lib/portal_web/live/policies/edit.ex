@@ -2,13 +2,13 @@ defmodule PortalWeb.Policies.Edit do
   use PortalWeb, :live_view
   import PortalWeb.Policies.Components
   alias Portal.{Policy, Auth}
-  alias __MODULE__.DB
+  alias __MODULE__.Database
 
   def mount(%{"id" => id}, _session, socket) do
-    policy = DB.get_policy!(id, socket.assigns.subject)
+    policy = Database.get_policy!(id, socket.assigns.subject)
 
     providers =
-      DB.all_active_providers_for_account(
+      Database.all_active_providers_for_account(
         socket.assigns.account,
         socket.assigns.subject
       )
@@ -60,8 +60,8 @@ defmodule PortalWeb.Policies.Edit do
                   label="Group"
                   placeholder="Select Group"
                   field={@form[:group_id]}
-                  fetch_option_callback={&DB.fetch_group_option(&1, @subject)}
-                  list_options_callback={&DB.list_group_options(&1, @subject)}
+                  fetch_option_callback={&Database.fetch_group_option(&1, @subject)}
+                  list_options_callback={&Database.list_group_options(&1, @subject)}
                   value={@form[:group_id].value}
                   required
                 >
@@ -251,10 +251,10 @@ defmodule PortalWeb.Policies.Edit do
 
   defp update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
     changeset = change_policy(policy, attrs)
-    DB.update_policy(changeset, subject)
+    Database.update_policy(changeset, subject)
   end
 
-  defmodule DB do
+  defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Policy, Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Group}
