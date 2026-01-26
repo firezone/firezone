@@ -19,6 +19,19 @@ config :portal, PortalWeb.Endpoint,
 
 config :portal, PortalAPI.Endpoint, server: true
 
+config :portal, Portal.Billing,
+  # Stripe live mode product IDs
+  plan_product_ids: [
+    # Starter
+    "prod_PY9HpTq72kNPk7",
+    # Team
+    "prod_PnvjiKBrSTBVqp",
+    # Enterprise
+    "prod_PY9QUBMAlUEYes"
+  ],
+  # Adhoc Device
+  adhoc_device_product_id: "prod_TrOXz3nZyOI15i"
+
 ###############################
 ##### Third-party configs #####
 ###############################

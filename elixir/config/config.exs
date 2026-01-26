@@ -217,7 +217,18 @@ config :portal, Portal.Billing,
   enabled: true,
   secret_key: "sk_test_1111",
   webhook_signing_secret: "whsec_test_1111",
-  default_price_id: "price_1OkUIcADeNU9NGxvTNA4PPq6"
+  default_price_id: "price_1OkUIcADeNU9NGxvTNA4PPq6",
+  # Stripe sandbox/test mode product IDs
+  plan_product_ids: [
+    # Starter
+    "prod_PZdZiSBX1HdXO2",
+    # Team
+    "prod_PZdbLazRNU3Bdi",
+    # Enterprise
+    "prod_PZdb7NJhcdyjRV"
+  ],
+  # Adhoc Device
+  adhoc_device_product_id: "prod_TrPXF2LVHSJpMk"
 
 config :portal,
   platform_adapter: nil,

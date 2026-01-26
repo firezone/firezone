@@ -218,4 +218,128 @@ defmodule Portal.Billing.EventHandlerTest do
       assert admin.name == "Jane Doe"
     end
   end
+
+  describe "handle_event/1 with subscription active events" do
+    setup do
+      account =
+        account_fixture(%{
+          metadata: %{
+            stripe: %{
+              customer_id: "cus_existing123"
+            }
+          }
+        })
+
+      customer =
+        Stripe.build_customer(
+          id: account.metadata.stripe.customer_id,
+          metadata: %{"account_id" => account.id}
+        )
+
+      %{account: account, customer: customer}
+    end
+
+    test "processes subscription with a single plan product", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
+
+      event = Stripe.build_event("customer.subscription.created", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.disabled_at == nil
+    end
+
+    test "processes plan product and ignores adhoc device product", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
+
+      adhoc_price = Stripe.build_price(product: "prod_test_adhoc_device")
+      adhoc_item = Stripe.build_subscription_item(price: adhoc_price, quantity: 1)
+      subscription = update_in(subscription, ["items", "data"], &[adhoc_item | &1])
+
+      event = Stripe.build_event("customer.subscription.created", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.disabled_at == nil
+    end
+
+    test "processes plan product and warns on unrecognized product", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
+
+      unknown_price = Stripe.build_price(product: "prod_unknown_xyz")
+      unknown_item = Stripe.build_subscription_item(price: unknown_price, quantity: 1)
+      subscription = update_in(subscription, ["items", "data"], &[unknown_item | &1])
+
+      event = Stripe.build_event("customer.subscription.created", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.disabled_at == nil
+    end
+
+    test "returns error when subscription has multiple plan products", %{
+      account: account,
+      customer: customer
+    } do
+      {_product1, _price1, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
+
+      team_price = Stripe.build_price(product: "prod_test_team")
+      team_item = Stripe.build_subscription_item(price: team_price, quantity: 5)
+      subscription = update_in(subscription, ["items", "data"], &[team_item | &1])
+
+      event = Stripe.build_event("customer.subscription.created", subscription)
+
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+
+      assert {:error, :multiple_plan_products} = EventHandler.handle_event(event)
+    end
+
+    test "returns error when subscription has no plan products", %{
+      account: account,
+      customer: customer
+    } do
+      subscription =
+        Stripe.build_subscription(
+          customer: account.metadata.stripe.customer_id,
+          items: [[price: Stripe.build_price(product: "prod_unknown_xyz"), quantity: 1]]
+        )
+
+      event = Stripe.build_event("customer.subscription.created", subscription)
+
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+
+      assert {:error, :no_plan_product} = EventHandler.handle_event(event)
+    end
+  end
 end
