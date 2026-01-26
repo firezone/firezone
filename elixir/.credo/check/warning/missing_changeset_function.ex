@@ -104,9 +104,17 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
   defp collect_info(
          {:defmodule, meta, [{:__aliases__, _, module_parts}, _body]} = ast,
          state
-       ) do
+       ) when is_list(module_parts) do
     module_name = Enum.join(module_parts, ".")
     {ast, %{state | module_name: module_name, defmodule_line: meta[:line]}}
+  end
+
+  # Handle single-atom module names (though rare in this codebase)
+  defp collect_info(
+         {:defmodule, meta, [module_name, _body]} = ast,
+         state
+       ) when is_atom(module_name) do
+    {ast, %{state | module_name: to_string(module_name), defmodule_line: meta[:line]}}
   end
 
   # Detect embedded_schema (definitive indicator)
@@ -117,11 +125,11 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
     {ast, %{state | is_embedded: true}}
   end
 
-  # Detect changeset/1 function
+  # Detect changeset/1 function (matches any single-argument changeset function)
   defp collect_info(
-         {:def, _, [{:changeset, _, [_arg]}, _body]} = ast,
+         {:def, _, [{:changeset, _, args}, _body]} = ast,
          state
-       ) do
+       ) when is_list(args) and length(args) == 1 do
     {ast, %{state | has_changeset: true}}
   end
 
