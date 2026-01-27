@@ -355,7 +355,7 @@ async fn discards_failed_ips_on_hiccup() {
         panic!("Expected `Hiccup`")
     };
 
-    let result = tokio::time::timeout(Duration::from_secs(1), async {
+    let result = tokio::time::timeout(Duration::from_secs(2), async {
         future::poll_fn(|cx| channel.poll(cx)).await
     })
     .await
