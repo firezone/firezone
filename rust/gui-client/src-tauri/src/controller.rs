@@ -953,8 +953,9 @@ async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Resu
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{sync::Arc, time::Instant};
 
+    use connlib_model::{ResourceId, Site, SiteId};
     use parking_lot::{Mutex, MutexGuard};
 
     use super::*;
@@ -965,7 +966,8 @@ mod tests {
         let mut test_controller = Controller::start_for_test();
 
         // Accept the IPC connection
-        let (_tunnel_rx, _tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
 
         let start_error = tokio::time::timeout(Duration::from_secs(6), test_controller.join_handle)
             .await
@@ -985,8 +987,8 @@ mod tests {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
 
-        let (_tunnel_rx, mut tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
-        tunnel_tx.send(&service::ServerMsg::Hello).await.unwrap();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -998,8 +1000,8 @@ mod tests {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
 
-        let (_tunnel_rx, mut tunnel_tx) = test_controller.tunnel_service_ipc_accept().await;
-        tunnel_tx.send(&service::ServerMsg::Hello).await.unwrap();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
 
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
         gui_tx.send(&gui::ClientMsg::NewInstance).await.unwrap();
@@ -1009,27 +1011,62 @@ mod tests {
         assert_eq!(response, gui::ServerMsg::Ack)
     }
 
+    #[tokio::test]
+    async fn shows_sign_in_notification_on_first_resources() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        boot_tunnel(&mut test_controller, &mut mock_tunnel, vec![dns_resource()]).await;
+
+        let (title, body) = test_controller
+            .wait_integration(|i| i.nth_notification(0))
+            .await;
+        assert_eq!(title, "Firezone connected");
+        assert_eq!(body, "You are now signed in and able to access resources.");
+
+        mock_tunnel.send_resources(vec![dns_resource()]).await;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(
+            test_controller.integration().notifications.len(),
+            1,
+            "should not show repeated notifications"
+        );
+    }
+
+    async fn boot_tunnel(
+        test_controller: &mut TestController,
+        mock_tunnel: &mut MockTunnel,
+        resources: Vec<ResourceView>,
+    ) {
+        mock_tunnel.send_hello().await;
+        mock_tunnel.rx_start_telemetry().await;
+        test_controller.sign_in().await;
+        mock_tunnel.rx_start_telemetry().await;
+        mock_tunnel.start_ok().await;
+        mock_tunnel.send_resources(resources).await;
+    }
+
     #[expect(dead_code, reason = "It is a test.")]
     struct TestController {
         join_handle: tokio::task::JoinHandle<Result<()>>,
         tunnel_server: ipc::Server,
         ctrl_tx: mpsc::Sender<ControllerRequest>,
         updates_tx: mpsc::Sender<Option<updates::Notification>>,
-        integration: Arc<Mutex<TestIntegration>>,
+        integration: Arc<Mutex<MockIntegration>>,
         gui_id: u32,
     }
 
     impl TestController {
-        async fn tunnel_service_ipc_accept(
-            &mut self,
-        ) -> (
-            ipc::ServerRead<service::ClientMsg>,
-            ipc::ServerWrite<service::ServerMsg>,
-        ) {
-            self.tunnel_server
+        async fn tunnel_service_ipc_accept(&mut self) -> MockTunnel {
+            let (rx, tx) = self
+                .tunnel_server
                 .next_client_split::<service::ClientMsg, service::ServerMsg>()
                 .await
-                .unwrap()
+                .unwrap();
+
+            MockTunnel { rx, tx }
         }
 
         async fn gui_ipc_connect(
@@ -1046,13 +1083,46 @@ mod tests {
             .unwrap()
         }
 
-        fn integration(&self) -> MutexGuard<'_, TestIntegration> {
+        async fn sign_in(&mut self) {
+            self.ctrl_tx.send(ControllerRequest::SignIn).await.unwrap();
+
+            let first_url = self
+                .wait_integration(|i| i.opened_urls.first().cloned())
+                .await;
+            let url = Url::parse(&first_url).unwrap();
+            let state = url
+                .query_pairs()
+                .find_map(|(key, value)| (key == "state").then_some(value))
+                .unwrap();
+
+            let (mut rx, mut tx) = self.gui_ipc_connect().await;
+            tx.send(&gui::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap())).await.unwrap();
+            let ack = rx.next().await.unwrap().unwrap();
+            assert_eq!(ack, gui::ServerMsg::Ack);
+        }
+
+        fn integration(&self) -> MutexGuard<'_, MockIntegration> {
             self.integration.lock()
+        }
+
+        async fn wait_integration<R>(&self, extract: impl Fn(&MockIntegration) -> Option<R>) -> R {
+            let start = Instant::now();
+
+            while start.elapsed() < Duration::from_secs(1) {
+                let Some(val) = extract(&self.integration()) else {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    continue;
+                };
+
+                return val;
+            }
+
+            panic!("Timeout while waiting for `TestIntegration` to change")
         }
     }
 
     #[derive(Default)]
-    struct TestIntegration {
+    struct MockIntegration {
         sessions: Vec<SessionViewModel>,
         mdm_settings: Vec<MdmSettings>,
         general_settings: Vec<GeneralSettings>,
@@ -1068,7 +1138,15 @@ mod tests {
         shown_about_page: Vec<()>,
     }
 
-    impl GuiIntegration for Arc<Mutex<TestIntegration>> {
+    impl MockIntegration {
+        fn nth_notification(&self, idx: usize) -> Option<(String, String)> {
+            let (body, title, _) = self.notifications.get(idx)?;
+
+            Some((body.clone(), title.clone()))
+        }
+    }
+
+    impl GuiIntegration for Arc<Mutex<MockIntegration>> {
         fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
             self.lock().sessions.push(session.clone());
 
@@ -1164,7 +1242,46 @@ mod tests {
         }
     }
 
-    impl Controller<Arc<Mutex<TestIntegration>>> {
+    struct MockTunnel {
+        rx: ipc::ServerRead<service::ClientMsg>,
+        tx: ipc::ServerWrite<service::ServerMsg>,
+    }
+
+    impl MockTunnel {
+        async fn send_hello(&mut self) {
+            self.tx.send(&service::ServerMsg::Hello).await.unwrap();
+        }
+
+        async fn rx_start_telemetry(&mut self) {
+            let msg = self.rx.next().await.unwrap().unwrap();
+            assert!(
+                matches!(msg, service::ClientMsg::StartTelemetry { .. }),
+                "expected `StartTelemetry` but got {msg:?}"
+            );
+        }
+
+        async fn start_ok(&mut self) {
+            let msg = self.rx.next().await.unwrap().unwrap();
+            assert!(
+                matches!(msg, service::ClientMsg::Connect { .. }),
+                "expected `Connect` but got {msg:?}"
+            );
+
+            self.tx
+                .send(&service::ServerMsg::ConnectResult(Ok(())))
+                .await
+                .unwrap();
+        }
+
+        async fn send_resources(&mut self, resources: Vec<ResourceView>) {
+            self.tx
+                .send(&service::ServerMsg::OnUpdateResources(resources))
+                .await
+                .unwrap();
+        }
+    }
+
+    impl Controller<Arc<Mutex<MockIntegration>>> {
         fn start_for_test() -> TestController {
             let tunnel_id = rand::random::<u32>();
             let gui_id = rand::random::<u32>();
@@ -1175,7 +1292,7 @@ mod tests {
             let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
             let (updates_tx, updates_rx) = mpsc::channel(16);
             let (_, log_filter_reloader) = logging::try_filter::<()>("debug").unwrap();
-            let integration = Arc::new(Mutex::new(TestIntegration::default()));
+            let integration = Arc::new(Mutex::new(MockIntegration::default()));
 
             let join_handle = tokio::spawn(Self::start(
                 SocketId::Test(tunnel_id),
@@ -1199,5 +1316,19 @@ mod tests {
                 gui_id,
             }
         }
+    }
+
+    fn dns_resource() -> ResourceView {
+        ResourceView::Dns(connlib_model::DnsResourceView {
+            id: ResourceId::from_u128(1),
+            address: "example.com".to_owned(),
+            name: "example.com".to_owned(),
+            address_description: None,
+            sites: vec![Site {
+                id: SiteId::from_u128(2),
+                name: "Example Site".to_owned(),
+            }],
+            status: connlib_model::ResourceStatus::Offline,
+        })
     }
 }
