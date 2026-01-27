@@ -199,7 +199,6 @@ services:
       FIREZONE_FLOW_LOGS: true
       FIREZONE_API_URL: ws://portal:8081
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
-      FZFF_GATEWAY_USERSPACE_DNS_A_AAAA_RECORDS: true
     command:
       - sh
       - -c
