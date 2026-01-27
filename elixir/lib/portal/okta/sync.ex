@@ -577,6 +577,10 @@ defmodule Portal.Okta.Sync do
     end
 
     # Count functions for circuit breaker threshold checks
+    @spec count_identities(String.t(), String.t(), DateTime.t()) :: %{
+            total: non_neg_integer(),
+            to_delete: non_neg_integer()
+          }
     def count_identities(account_id, directory_id, synced_at) do
       total =
         from(i in Portal.ExternalIdentity,
@@ -600,6 +604,10 @@ defmodule Portal.Okta.Sync do
       %{total: total, to_delete: to_delete}
     end
 
+    @spec count_groups(String.t(), String.t(), DateTime.t()) :: %{
+            total: non_neg_integer(),
+            to_delete: non_neg_integer()
+          }
     def count_groups(account_id, directory_id, synced_at) do
       total =
         from(g in Portal.Group,
