@@ -16,6 +16,7 @@ config :portal, ecto_repos: [Portal.Repo, Portal.Repo.Replica]
 config :portal, generators: [binary_id: true]
 
 config :portal, sql_sandbox: false
+config :portal, replica_repo: Portal.Repo.Replica
 
 # Don't run manual migrations by default
 config :portal, run_manual_migrations: false
