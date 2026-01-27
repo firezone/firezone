@@ -66,6 +66,19 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
     Log.info("Starting tunnel - Version: \(version), Build: \(build)")
 
+    // Try to load configuration from options first (passed from client at startup)
+    if let configData = options?["configuration"] as? Data {
+      do {
+        let decoder = PropertyListDecoder()
+        let configFromOptions = try decoder.decode(TunnelConfiguration.self, from: configData)
+        // Save it for future fallback (e.g., system-initiated restarts)
+        configFromOptions.save()
+        self.tunnelConfiguration = configFromOptions
+      } catch {
+        Log.error(error)
+      }
+    }
+
     // If the tunnel starts up before the GUI after an upgrade crossing the 1.4.15 version boundary,
     // the old system settings-based config will still be present and the new configuration will be empty.
     // So handle that edge case gracefully.
