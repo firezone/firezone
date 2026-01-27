@@ -132,43 +132,6 @@ defmodule Portal.Okta.ErrorCodes do
   end
 
   @doc """
-  Format network/transport errors into user-friendly messages.
-
-  Handles DNS failures, timeouts, TLS errors, and other network issues.
-  """
-  @spec format_transport_error(Req.TransportError.t()) :: String.t()
-  def format_transport_error(%Req.TransportError{reason: reason}) do
-    case reason do
-      :nxdomain ->
-        "DNS lookup failed. Please verify the Okta domain is spelled correctly."
-
-      :timeout ->
-        "Connection timed out. Please check network connectivity."
-
-      :connect_timeout ->
-        "Connection timed out. Please check network connectivity."
-
-      :econnrefused ->
-        "Connection refused. Please verify the Okta domain is correct."
-
-      :closed ->
-        "Connection closed unexpectedly. Please try again."
-
-      {:tls_alert, {alert_type, _}} ->
-        "TLS error (#{alert_type}). Please check network configuration."
-
-      :ehostunreach ->
-        "Host is unreachable. Please check network connectivity."
-
-      :enetunreach ->
-        "Network is unreachable. Please check network connectivity."
-
-      _ ->
-        "Network error: #{inspect(reason)}"
-    end
-  end
-
-  @doc """
   Default resolution based on HTTP status code.
 
   Used when no specific error code is available.

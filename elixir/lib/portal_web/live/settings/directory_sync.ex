@@ -1525,7 +1525,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp parse_okta_verification_error({:error, %Req.TransportError{} = error}) do
-    Logger.info(Portal.Okta.ErrorCodes.format_transport_error(error))
+    Logger.info(Portal.DirectorySync.ErrorHandler.format_transport_error(error))
     "Transport error while contacting Okta API.  Please try again"
   end
 

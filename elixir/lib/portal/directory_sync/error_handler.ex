@@ -166,22 +166,28 @@ defmodule Portal.DirectorySync.ErrorHandler do
     Portal.Okta.ErrorCodes.format_error(status, nil)
   end
 
-  defp format_transport_error(%Req.TransportError{reason: reason}) do
+  @doc """
+  Format network/transport errors into user-friendly messages.
+
+  Handles DNS failures, timeouts, TLS errors, and other network issues.
+  """
+  @spec format_transport_error(Req.TransportError.t()) :: String.t()
+  def format_transport_error(%Req.TransportError{reason: reason}) do
     case reason do
       :nxdomain ->
-        "DNS lookup failed"
+        "DNS lookup failed."
 
       :timeout ->
-        "Connection timed out"
+        "Connection timed out."
 
       :connect_timeout ->
-        "Connection timed out"
+        "Connection timed out."
 
       :econnrefused ->
-        "Connection refused"
+        "Connection refused."
 
       :closed ->
-        "Connection closed unexpectedly"
+        "Connection closed unexpectedly."
 
       {:tls_alert, {alert_type, _}} ->
         "TLS error (#{alert_type})."
