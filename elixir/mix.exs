@@ -92,11 +92,6 @@ defmodule Portal.MixProject do
 
       # Erlang clustering
       {:libcluster, "~> 3.3"},
-
-      # CLDR / Internationalization
-      {:ex_cldr_dates_times, "~> 2.13"},
-      {:ex_cldr_numbers, "~> 2.31"},
-      {:ex_cldr, "~> 2.38"},
       {:tzdata, "~> 1.1"},
       {:sizeable, "~> 1.0"},
 
