@@ -58,17 +58,17 @@ aya-build = { git = "https://github.com/aya-rs/aya" }
 aya-ebpf = { git = "https://github.com/aya-rs/aya" }
 aya-log = { git = "https://github.com/aya-rs/aya" }
 aya-log-ebpf = { git = "https://github.com/aya-rs/aya" }
-backoff = { version = "0.4", features = ["tokio"] }
+backoff = { version = "0.4.0", features = ["tokio"] }
 base64 = { version = "0.22.1", default-features = false }
-bimap = "0.6"
+bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
 bnum = "0.13.0"
-boringtun = { version = "0.6", default-features = false }
+boringtun = { version = "0.6.0", default-features = false }
 bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.11.0", default-features = false }
 caps = "0.5.6"
-chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
+chrono = { version = "0.4.43", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = "4.5.54"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
@@ -83,11 +83,11 @@ dns-lookup = "3.0"
 dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
-either = "1"
+either = "1.15.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
-etherparse = { version = "0.19", default-features = false }
+etherparse = { version = "0.19.0", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
-filetime = "0.2"
+filetime = "0.2.27"
 firezone-headless-client = { path = "headless-client" }
 firezone-relay = { path = "relay/server" }
 flume = { version = "0.11.1", features = ["async"] }
@@ -103,13 +103,13 @@ hmac = "0.12.1"
 http = "1.4.0"
 http-body-util = "0.1.3"
 http-client = { path = "libs/http-client" }
-humantime = "2.3"
+humantime = "2.3.0"
 hyper = "1.8.1"
 hyper-util = "0.1.19"
 ip-packet = { path = "libs/connlib/ip-packet" }
-ip_network = { version = "0.4", default-features = false }
-ip_network_table = { version = "0.2", default-features = false }
-itertools = "0.14"
+ip_network = { version = "0.4.1", default-features = false }
+ip_network_table = { version = "0.2.0", default-features = false }
+itertools = "0.14.0"
 jni = "0.21.1"
 keyring-core = "0.7.0"
 known-folders = "1.4.0"
@@ -119,48 +119,48 @@ l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-client = { path = "libs/connlib/l4-udp-dns-client" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
 libc = "0.2.180"
-libfuzzer-sys = "0.4"
-log = "0.4"
+libfuzzer-sys = "0.4.10"
+log = "0.4.29"
 logging = { path = "libs/logging" }
 lru = "0.16.1"
 mio = "1.1.1"
 moka = "0.12.11"
 native-dialog = "0.7.0"
 netlink-packet-core = "0.8.1"
-netlink-packet-route = "0.28"
+netlink-packet-route = "0.28.0"
 network-types = "0.1.0"
 nix = "0.30.1"
-nu-ansi-term = "0.50"
+nu-ansi-term = "0.50.3"
 num_cpus = "1.17.0"
 once_cell = "1.21.3"
 opentelemetry = "0.30.0"
 opentelemetry-otlp = "0.30.0"
 opentelemetry-stdout = "0.30.0"
 opentelemetry_sdk = "0.30.0"
-os_info = { version = "3", default-features = false }
-output_vt100 = "0.1"
+os_info = { version = "3.14.0", default-features = false }
+output_vt100 = "0.1.3"
 parking_lot = "0.12.5"
 phoenix-channel = { path = "libs/connlib/phoenix-channel" }
 png = "0.17.16"
-proc-macro2 = "1.0"
+proc-macro2 = "1.0.106"
 proptest = "1.9.0"
 proptest-state-machine = "0.6.0"
 quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
-quote = "1.0"
+quote = "1.0.44"
 rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.7.1"
 reqwest = { version = "0.12.28", default-features = false }
 resolv-conf = "0.7.6"
 ringbuffer = "0.16.0"
-roxmltree = "0.21"
+roxmltree = "0.21.1"
 rpassword = "7.4.0"
 rtnetlink = { version = "0.20.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.36", default-features = false, features = ["ring"] }
 rustls-pki-types = "1.13.2"
 sadness-generator = "0.6.0"
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
-secrecy = "0.10"
+secrecy = "0.10.3"
 semver = "1.0.27"
 sentry = { version = "0.46.1", default-features = false }
 sentry-tracing = "0.46.1"
@@ -171,10 +171,10 @@ serde_with = "3.16.0"
 sha2 = "0.10.9"
 smallvec = "1.15.1"
 smbios-lib = "0.9.2"
-smoltcp = { version = "0.12", default-features = false }
+smoltcp = { version = "0.12.0", default-features = false }
 snownet = { path = "libs/connlib/snownet" }
 socket-factory = { path = "libs/connlib/socket-factory" }
-socket2 = { version = "0.6" }
+socket2 = { version = "0.6.1" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
 static_assertions = "1.1.0"
@@ -186,7 +186,7 @@ subtle = "2.5.0"
 supports-color = "3.0.2"
 swift-bridge = "0.1.57"
 swift-bridge-build = "0.1.57"
-syn = "2.0"
+syn = "2.0.114"
 tauri = "2.9.2"
 tauri-build = "2.4.0"
 tauri-plugin-dialog = "2.4.2"
@@ -207,7 +207,7 @@ tokio-rustls = { version = "0.26.4", default-features = false }
 tokio-stream = "0.1.18"
 tokio-tungstenite = "0.28.0"
 tokio-util = "0.7.18"
-toml = "0.9"
+toml = "0.9.6"
 tracing = { version = "0.1.40" }
 tracing-appender = "0.2.4"
 tracing-core = "0.1.36"
@@ -232,7 +232,7 @@ windows-native-keyring-store = "0.4.0"
 windows-service = "0.8.0"
 winreg = "0.55.0"
 zbus = "5.13.1"
-zip = { version = "7", default-features = false }
+zip = { version = "7.2.0", default-features = false }
 
 [workspace.lints.clippy]
 dbg_macro = "warn"
