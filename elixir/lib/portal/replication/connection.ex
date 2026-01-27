@@ -396,20 +396,44 @@ defmodule Portal.Replication.Connection do
       def handle_data(data, state) when is_keep_alive(data) do
         %KeepAlive{reply: reply, wal_end: wal_end} = parse(data)
 
-        wal_end =
-          if state.flush_interval > 0 do
-            # If we are flushing, we use the tracked last_flushed_lsn
-            state.last_flushed_lsn + 1
+        # PostgreSQL standby_status takes three positions:
+        #   - write: last WAL byte + 1 RECEIVED (may not be persisted yet)
+        #   - flush: last WAL byte + 1 DURABLY STORED (flushed to disk)
+        #   - apply: last WAL byte + 1 APPLIED/PROCESSED
+        #
+        # For buffered mode, we need to distinguish between what we've received vs flushed:
+        #   - write = wal_end + 1 (tells PostgreSQL we're receiving data, prevents rapid KeepAlives)
+        #   - flush/apply = last_flushed_lsn + 1 (tells PostgreSQL what's safe to remove from slot)
+        #
+        # This allows PostgreSQL to know we're alive and receiving data (write), while also
+        # preserving durability by tracking what we've actually persisted (flush/apply).
+
+        {write_lsn, flush_lsn} =
+          if state.flush_interval == 0 do
+            # Not buffering - we process immediately, all positions are current
+            lsn = wal_end + 1
+            {lsn, lsn}
           else
-            # Otherwise, we assume to be current with the server
-            wal_end + 1
+            # Buffering mode - we've received up to wal_end, but only flushed up to last_flushed_lsn
+            write = wal_end + 1
+
+            flush =
+              if state.last_flushed_lsn > 0 do
+                state.last_flushed_lsn + 1
+              else
+                # Haven't flushed anything yet - use write position to avoid tight loop
+                # This trades some durability for stability during initial buffering
+                write
+              end
+
+            {write, flush}
           end
 
         # Always reply with standby status to send acks. When wal_sender_timeout is disabled,
         # we won't always receive KeepAlive messages with the reply field set.
-        message = standby_status(wal_end, wal_end, wal_end, reply)
+        message = standby_status(write_lsn, flush_lsn, flush_lsn, reply)
 
-        state = %{state | last_sent_lsn: wal_end, last_keep_alive: DateTime.utc_now()}
+        state = %{state | last_sent_lsn: flush_lsn, last_keep_alive: DateTime.utc_now()}
 
         {:noreply, message, state}
       end
@@ -493,7 +517,7 @@ defmodule Portal.Replication.Connection do
       end
 
       defp maybe_flush(%{flush_buffer: buffer, flush_buffer_size: size} = state)
-           when map_size(buffer) >= size do
+           when size > 0 and map_size(buffer) >= size do
         on_flush(state)
       end
 
