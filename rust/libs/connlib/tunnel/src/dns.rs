@@ -841,6 +841,42 @@ mod tests {
     }
 
     #[test]
+    fn ip_stack_is_honored_from_cached_records() {
+        let mut resolver = StubResolver::new(BTreeSet::from([DnsResourceRecord {
+            domain: "example.com".parse().unwrap(),
+            resource: ResourceId::from_u128(1),
+            ips: vec![
+                IpAddr::from(Ipv4Addr::new(100, 96, 0, 1)),
+                IpAddr::from(Ipv4Addr::new(100, 96, 0, 2)),
+                IpAddr::from(Ipv4Addr::new(100, 96, 0, 3)),
+                IpAddr::from(Ipv4Addr::new(100, 96, 0, 4)),
+                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0)),
+                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 1)),
+                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 2)),
+                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 3)),
+            ],
+        }]));
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Ipv4Only,
+        );
+
+        let query = Query::new(
+            "example.com".parse::<dns_types::DomainName>().unwrap(),
+            RecordType::AAAA,
+        );
+
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+            panic!("Unexpected result")
+        };
+
+        assert_eq!(response.response_code(), ResponseCode::NOERROR);
+        assert_eq!(response.records().count(), 0);
+    }
+
+    #[test]
     fn emits_new_records_on_assign() {
         let mut resolver = StubResolver::default();
 
