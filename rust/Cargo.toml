@@ -158,7 +158,7 @@ rpassword = "7.4.0"
 rtnetlink = { version = "0.20.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.36", default-features = false, features = ["ring"] }
 rustls-pki-types = "1.14.0"
-sadness-generator = "0.6.0"
+sadness-generator = "0.7.0"
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.10.3"
 semver = "1.0.27"
