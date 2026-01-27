@@ -55,7 +55,7 @@ runs:
           exit 1
         }
       shell: pwsh
-    - uses: cargo-bins/cargo-binstall@80aaafe04903087c333980fa2686259ddd34b2d9 # v1.16.6
+    - uses: cargo-bins/cargo-binstall@11f258db84cec40fc56c7b10bfc37c31dd9a3c98 # v1.17.3
     - run: cargo binstall komac -y
       shell: pwsh
     - run: |
