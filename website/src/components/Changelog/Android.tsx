@@ -54,6 +54,11 @@ export default function Android() {
           Fixes an issue where connections would flap between relayed and
           direct, causing WireGuard connection timeouts.
         </ChangeItem>
+        <ChangeItem pull="11891">
+          Fixes an issue where cached IPv6 addresses for a resource got returned
+          for IPv4-only DNS resources if the setting was only changed after a
+          DNS query had already been processed.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-12-23")}>
         <ChangeItem pull="11077">
