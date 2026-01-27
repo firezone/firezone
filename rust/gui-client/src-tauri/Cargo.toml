@@ -55,7 +55,6 @@ strum = { workspace = true }
 subtle = { workspace = true }
 tauri = { workspace = true, features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = { workspace = true }
-tauri-plugin-notification = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-plugin-shell = { workspace = true }
 tauri-runtime = { workspace = true }
@@ -77,6 +76,7 @@ zip = { workspace = true, features = ["deflate", "time"] }
 dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
 nix = { workspace = true, features = ["user"] }
+notify-rust = { workspace = true }
 sd-notify = { workspace = true }
 tracing-journald = { workspace = true }
 

@@ -1,6 +1,4 @@
 use anyhow::{Context as _, Result};
-use tauri::AppHandle;
-use tauri_plugin_notification::NotificationExt as _;
 
 use crate::controller::NotificationHandle;
 
@@ -34,18 +32,16 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn show_notification(
-    app: &AppHandle,
-    title: String,
-    body: String,
-) -> Result<NotificationHandle> {
+pub(crate) async fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
     let (_, rx) = futures::channel::oneshot::channel();
 
-    app.notification()
-        .builder()
-        .title(&title)
+    let notification = notify_rust::Notification::new()
+        .summary(&title)
         .body(&body)
-        .show()?;
+        .show_async()
+        .await?;
+
+    notification.on_close(|| {});
 
     Ok(NotificationHandle { on_click: rx })
 }

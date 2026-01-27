@@ -69,9 +69,9 @@ pub trait GuiIntegration {
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
     fn show_notification(
         &self,
-        title: impl Into<String>,
-        body: impl Into<String>,
-    ) -> Result<NotificationHandle>;
+        title: impl Into<String> + Send,
+        body: impl Into<String> + Send,
+    ) -> impl Future<Output = Result<NotificationHandle>> + Send;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
@@ -258,7 +258,7 @@ impl<I: GuiIntegration> Controller<I> {
                     break;
                 }
                 EventloopTick::UpdateNotification(notification) => {
-                    self.handle_update_notification(notification)?
+                    self.handle_update_notification(notification).await?
                 }
                 EventloopTick::NewInstanceLaunched(None) => {
                     return Err(anyhow!("GUI IPC socket closed"));
@@ -414,7 +414,10 @@ impl<I: GuiIntegration> Controller<I> {
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_ui_state();
 
-                let _ = self.integration.show_notification("Settings saved", "")?;
+                let _ = self
+                    .integration
+                    .show_notification("Settings saved", "")
+                    .await?;
             }
             ApplyGeneralSettings(settings) => {
                 let account_slug = settings.account_slug.trim();
@@ -577,7 +580,10 @@ impl<I: GuiIntegration> Controller<I> {
         gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
 
         self.notify_settings_changed()?;
-        let _ = self.integration.show_notification("Settings saved", "")?;
+        let _ = self
+            .integration
+            .show_notification("Settings saved", "")
+            .await?;
 
         Ok(())
     }
@@ -611,10 +617,13 @@ impl<I: GuiIntegration> Controller<I> {
                 self.sign_out().await?;
                 if is_authentication_error {
                     tracing::info!(?error_msg, "Auth error");
-                    let _ = self.integration.show_notification(
-                        "Firezone disconnected",
-                        "To access resources, sign in again.",
-                    )?;
+                    let _ = self
+                        .integration
+                        .show_notification(
+                            "Firezone disconnected",
+                            "To access resources, sign in again.",
+                        )
+                        .await?;
                 } else {
                     tracing::error!("Connlib disconnected: {error_msg}");
                     native_dialog::MessageDialog::new()
@@ -632,10 +641,13 @@ impl<I: GuiIntegration> Controller<I> {
 
                 // If this is the first time we receive resources, show the notification that we are connected.
                 if let &Status::WaitingForTunnel = &self.status {
-                    let _ = self.integration.show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
+                    let _ = self
+                        .integration
+                        .show_notification(
+                            "Firezone connected",
+                            "You are now signed in and able to access resources.",
+                        )
+                        .await?;
                 }
 
                 tracing::debug!(len = resources.len(), "Got new Resources");
@@ -649,10 +661,13 @@ impl<I: GuiIntegration> Controller<I> {
                 tracing::info!("Tunnel service exited gracefully");
                 self.integration
                     .set_tray_icon(system_tray::icon_terminating());
-                let _ = self.integration.show_notification(
-                    "Firezone disconnected",
-                    "The Firezone Tunnel service was shut down, quitting GUI process.",
-                )?;
+                let _ = self
+                    .integration
+                    .show_notification(
+                        "Firezone disconnected",
+                        "The Firezone Tunnel service was shut down, quitting GUI process.",
+                    )
+                    .await?;
 
                 return Ok(ControlFlow::Break(()));
             }
@@ -719,7 +734,7 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     /// Set (or clear) update notification
-    fn handle_update_notification(
+    async fn handle_update_notification(
         &mut self,
         notification: Option<updates::Notification>,
     ) -> Result<()> {
@@ -741,10 +756,13 @@ impl<I: GuiIntegration> Controller<I> {
             #[cfg(target_os = "windows")]
             let body = "Click here to download the new version";
 
-            let NotificationHandle { on_click } = self.integration.show_notification(
-                format!("Firezone {} available for download", release.version),
-                body,
-            )?;
+            let NotificationHandle { on_click } = self
+                .integration
+                .show_notification(
+                    format!("Firezone {} available for download", release.version),
+                    body,
+                )
+                .await?;
             let ctrl_tx = self.ctrl_tx.clone();
 
             tokio::spawn(async move {
@@ -1093,10 +1111,10 @@ mod tests {
             self.lock().tray_states.push(app_state);
         }
 
-        fn show_notification(
+        async fn show_notification(
             &self,
-            title: impl Into<String>,
-            body: impl Into<String>,
+            title: impl Into<String> + Send,
+            body: impl Into<String> + Send,
         ) -> Result<NotificationHandle> {
             let (tx, rx) = futures::channel::oneshot::channel();
 
