@@ -108,12 +108,12 @@
                     <a href="https://www.firezone.dev/kb/administer/upgrading#version-compatibility">Read more</a> about version compatibility in Firezone.
                   </p>
                   <p style="margin: 0; line-height: 24px; margin-top: 16px;">
-                    Read more about upgrading in our <a href="https://www.firezone.dev/kb/administer/upgrading">upgrade guide</a>.
+                    Read more about upgrading in our <a href="https://www.firezone.dev/kb/administer/upgrading">upgrade guide</a>, or configure <a href="https://www.firezone.dev/kb/administer/upgrading#automatic-upgrades">automatic upgrades</a>.
                   </p>
                   <% else %>
                   <p style="margin: 0; line-height: 24px;">
                     We recommend updating the Gateways at your earliest convenience. Help on how to upgrade Gateways can be found
-                    in our <a href="https://www.firezone.dev/kb/administer/upgrading">Firezone Gateway Upgrade Guide</a>.
+                    in our <a href="https://www.firezone.dev/kb/administer/upgrading">Firezone Gateway Upgrade Guide</a>, or you can configure <a href="https://www.firezone.dev/kb/administer/upgrading#automatic-upgrades">automatic upgrades</a>.
                   </p>
                   <% end %>
                   <p style="margin: 0; margin-top: 16px; line-height: 24px">

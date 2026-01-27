@@ -118,10 +118,92 @@ if you consistently encounter issues with the upgrade process.
 </TabsItem>
 </TabsGroup>
 
-### Verification
+## Automatic upgrades
 
-After running the upgrade, check that the version reported by the Gateway in the
-admin portal matches the latest published version on our
+For production deployments, we recommend automating Gateway upgrades to ensure
+your Gateways stay up-to-date with the latest security patches and features.
+
+<TabsGroup>
+<TabsItem title="APT repository" active>
+
+### Using unattended-upgrades
+
+On Debian/Ubuntu systems, you can use `unattended-upgrades` to automatically
+install Firezone Gateway updates.
+
+1. Install unattended-upgrades (if not already installed):
+
+```bash
+sudo apt update
+sudo apt install unattended-upgrades
+```
+
+2. Create a configuration file for Firezone:
+
+```bash
+sudo tee /etc/apt/apt.conf.d/52unattended-upgrades-firezone << 'EOF'
+Unattended-Upgrade::Allowed-Origins {
+    "Firezone:stable";
+};
+EOF
+```
+
+3. Enable automatic upgrades:
+
+```bash
+sudo dpkg-reconfigure -plow unattended-upgrades
+```
+
+4. Verify the configuration is working:
+
+```bash
+sudo unattended-upgrade --dry-run --debug
+```
+
+Updates will be applied automatically (typically daily). Check logs at
+`/var/log/unattended-upgrades/` for upgrade history.
+
+</TabsItem>
+<TabsItem title="Docker">
+
+### Using Watchtower
+
+[Watchtower](https://containrrr.dev/watchtower/) automatically updates running
+Docker containers when new images are available.
+
+```bash
+docker run -d \
+  --name watchtower \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  containrrr/watchtower \
+  --interval 86400 \
+  firezone-gateway
+```
+
+This checks for updates every 24 hours (86400 seconds). See the
+[Watchtower documentation](https://containrrr.dev/watchtower/) for advanced
+configuration options like notifications and scheduling.
+
+</TabsItem>
+<TabsItem title="systemd">
+
+For systemd binary deployments, consider using a cron job or systemd timer to
+periodically check for updates:
+
+1. Download the latest binary to a temporary location
+2. Compare versions with the installed binary
+3. If newer, stop the service, replace the binary, and restart
+
+Alternatively, migrate to the APT-based installation for easier automatic
+updates using `unattended-upgrades`.
+
+</TabsItem>
+</TabsGroup>
+
+## Verification
+
+After upgrading (manually or automatically), check that the version reported by
+the Gateway in the admin portal matches the latest published version on our
 [changelog page](/changelog) to ensure it's up to date:
 
 <Image
@@ -132,7 +214,7 @@ admin portal matches the latest published version on our
   alt="Gateway upgrade verification"
 />
 
-### Downtime considerations
+## Downtime considerations
 
 Gateways deployed within the same Site will automatically
 [failover](/kb/deploy/gateways#failover) for each other. By upgrading Gateways

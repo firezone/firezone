@@ -22,5 +22,8 @@ We recommend upgrading the Gateways at your earliest convenience.
 Help on how to upgrade Gateways can be found in our Firezone Documentation:
 https://www.firezone.dev/kb/administer/upgrading
 
+You can also configure automatic upgrades to keep your Gateways up-to-date:
+https://www.firezone.dev/kb/administer/upgrading#automatic-upgrades
+
 Thanks,
 The Firezone Team
