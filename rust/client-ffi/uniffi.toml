@@ -1,11 +1,9 @@
 # UniFFI Configuration for client-ffi
 
 [bindings.swift]
-# Enable experimental features for better async support
-experimental_sendable_value_types = true
-
-# Generate proper Swift concurrency annotations
 generate_immutable_records = true
+generate_codable_conformance = true
+generate_case_iterable_conformance = true
 
 [bindings.kotlin]
 android = true

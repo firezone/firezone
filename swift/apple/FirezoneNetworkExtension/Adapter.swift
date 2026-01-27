@@ -529,59 +529,42 @@ class Adapter: @unchecked Sendable {
 
   // MARK: - Resource conversion (uniffi → FirezoneKit)
 
-  private func convertResource(_ resource: Resource) -> FirezoneKit.Resource {
-    switch resource {
-    case .dns(let dnsResource):
-      return FirezoneKit.Resource(
-        id: dnsResource.id,
-        name: dnsResource.name,
-        address: dnsResource.address,
-        addressDescription: dnsResource.addressDescription,
-        status: convertResourceStatus(dnsResource.status),
-        sites: dnsResource.sites.map { convertSite($0) },
-        type: .dns
-      )
-    case .cidr(let cidrResource):
-      return FirezoneKit.Resource(
-        id: cidrResource.id,
-        name: cidrResource.name,
-        address: cidrResource.address,
-        addressDescription: cidrResource.addressDescription,
-        status: convertResourceStatus(cidrResource.status),
-        sites: cidrResource.sites.map { convertSite($0) },
-        type: .cidr
-      )
-    case .internet(let internetResource):
-      return FirezoneKit.Resource(
-        id: internetResource.id,
-        name: internetResource.name,
-        address: nil,
-        addressDescription: nil,
-        status: convertResourceStatus(internetResource.status),
-        sites: internetResource.sites.map { convertSite($0) },
-        type: .internet
-      )
+  private func convertResource(_ uniffiResource: Resource) -> FirezoneKit.Resource {
+    switch uniffiResource {
+    case .dns(let resource):
+      FirezoneKit.Resource(
+        id: resource.id, name: resource.name, address: resource.address,
+        addressDescription: resource.addressDescription,
+        status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .dns)
+    case .cidr(let resource):
+      FirezoneKit.Resource(
+        id: resource.id, name: resource.name, address: resource.address,
+        addressDescription: resource.addressDescription,
+        status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .cidr)
+    case .internet(let resource):
+      FirezoneKit.Resource(
+        id: resource.id, name: resource.name, address: nil, addressDescription: nil,
+        status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .internet)
     }
   }
+}
 
-  private func convertSite(_ site: Site) -> FirezoneKit.Site {
-    return FirezoneKit.Site(
-      id: site.id,
-      name: site.name
-    )
+// MARK: - UniFFI → FirezoneKit type conversions
+
+extension FirezoneKit.Site {
+  init(_ site: Site) {
+    self.init(id: site.id, name: site.name)
   }
+}
 
-  private func convertResourceStatus(_ status: ResourceStatus) -> FirezoneKit.ResourceStatus {
+extension FirezoneKit.ResourceStatus {
+  init(_ status: ResourceStatus) {
     switch status {
-    case .unknown:
-      return .unknown
-    case .online:
-      return .online
-    case .offline:
-      return .offline
+    case .unknown: self = .unknown
+    case .online: self = .online
+    case .offline: self = .offline
     }
   }
-
 }
 
 extension Network.NWPath {
