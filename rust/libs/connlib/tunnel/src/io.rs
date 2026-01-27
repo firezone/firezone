@@ -729,7 +729,7 @@ mod tests {
         let mut io = Io::for_test();
 
         let result = io.rebind_dns(vec![
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 40000), // This one will almost definitely work.
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0), // This one will almost definitely work.
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), 40000), // This one will fail.
         ]);
 
