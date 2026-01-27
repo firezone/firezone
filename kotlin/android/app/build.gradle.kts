@@ -1,4 +1,6 @@
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+import groovy.json.JsonSlurper
+import java.io.ByteArrayOutputStream
 
 plugins {
     id("org.mozilla.rust-android-gradle.rust-android")
@@ -270,11 +272,37 @@ val generateUniffiBindings =
             }
 
         val rustDir = layout.projectDirectory.dir("../../../rust")
+        val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get()
+
+        // Get the cargo target directory at configuration time for proper input tracking
+        val metadataOutput = ByteArrayOutputStream()
+        project.exec {
+            workingDir = rustDir.asFile
+            commandLine("cargo", "metadata", "--format-version", "1")
+            standardOutput = metadataOutput
+        }
+        val metadataJson = metadataOutput.toString()
+        val metadata =
+            try {
+                JsonSlurper().parseText(metadataJson) as Map<*, *>
+            } catch (e: Exception) {
+                throw GradleException(
+                    "Failed to parse cargo metadata JSON. Ensure 'cargo' is installed and accessible. Error: ${e.message}",
+                    e,
+                )
+            }
+        val targetDir =
+            metadata["target_directory"] as? String
+                ?: throw GradleException(
+                    "cargo metadata did not contain 'target_directory' field. Output was: ${metadataJson.take(500)}",
+                )
 
         // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
         // all the same from the bindings PoV.
-        val input = rustDir.dir("target/x86_64-linux-android/$profile/libconnlib.so")
-        val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get()
+        val inputFile = file("$targetDir/x86_64-linux-android/$profile/libconnlib.so")
+
+        inputs.file(inputFile)
+        outputs.dir(outDir)
 
         doLast {
             // Execute uniffi-bindgen command from the rust directory
@@ -284,13 +312,10 @@ val generateUniffiBindings =
                 commandLine(
                     "sh",
                     "-c",
-                    "cd ${rustDir.asFile} && cargo run --bin uniffi-bindgen generate --library --language kotlin ${input.asFile} --out-dir ${outDir.asFile}",
+                    "cd ${rustDir.asFile} && cargo run --bin uniffi-bindgen generate --library --language kotlin $inputFile --out-dir ${outDir.asFile}",
                 )
             }
         }
-
-        inputs.file(input)
-        outputs.dir(outDir)
     }
 
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
