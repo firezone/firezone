@@ -563,6 +563,8 @@ defmodule Portal.Cache.Client do
     import Ecto.Query
     alias Portal.Safe
 
+    defp repo, do: Portal.Config.fetch_env!(:portal, :replica_repo)
+
     def all_policies_for_actor_id!(actor_id, subject) do
       # Service accounts don't get access to the "Everyone" group - they must have explicit memberships
       include_everyone_group = subject.actor.type in [:account_user, :account_admin_user]
@@ -589,7 +591,7 @@ defmodule Portal.Cache.Client do
              ag.name == "Everyone")
       )
       |> preload(resource: :site)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, repo())
       |> Safe.all()
     end
 
@@ -597,7 +599,7 @@ defmodule Portal.Cache.Client do
       # Get real memberships
       memberships =
         from(m in Portal.Membership, where: m.actor_id == ^actor_id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, repo())
         |> Safe.all()
         |> case do
           {:error, :unauthorized} -> []
@@ -614,7 +616,7 @@ defmodule Portal.Cache.Client do
                 g.name == "Everyone" and
                 g.account_id == ^subject.account.id
           )
-          |> Safe.scoped(subject)
+          |> Safe.scoped(subject, repo())
           |> Safe.one()
 
         # Append a synthetic membership for the Everyone group
@@ -636,7 +638,7 @@ defmodule Portal.Cache.Client do
     def fetch_resource_by_id(id, subject) do
       result =
         from(r in Portal.Resource, where: r.id == ^id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, repo())
         |> Safe.one()
 
       case result do
@@ -647,7 +649,7 @@ defmodule Portal.Cache.Client do
     end
 
     def preload_site(resource) do
-      Safe.preload(resource, :site)
+      Safe.preload(resource, :site, repo())
     end
 
     def get_site(nil, _subject), do: nil
@@ -656,7 +658,7 @@ defmodule Portal.Cache.Client do
       id = Ecto.UUID.load!(site.id)
 
       from(s in Portal.Site, where: s.id == ^id)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, repo())
       |> Safe.one()
     end
 
@@ -664,7 +666,7 @@ defmodule Portal.Cache.Client do
       id = Ecto.UUID.load!(site_id)
 
       from(s in Portal.Site, where: s.id == ^id)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, repo())
       |> Safe.one()
     end
   end
