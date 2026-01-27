@@ -129,7 +129,7 @@ public final class Log {
 /// Thread-safe: All mutable state access is serialised through workQueue.
 /// Log writes are queued asynchronously to avoid blocking the caller.
 private final class LogWriter: @unchecked Sendable {
-  enum Severity: String, Codable {
+  enum Severity: String {
     case trace = "TRACE"
     case debug = "DEBUG"
     case info = "INFO"
@@ -137,30 +137,20 @@ private final class LogWriter: @unchecked Sendable {
     case error = "ERROR"
   }
 
-  struct LogEntry: Codable {
-    let time: String
-    let severity: Severity
-    let message: String
-  }
-
   // All log writes happen in the workQueue
   private let workQueue: DispatchQueue
   private let logger: Logger
   private var handle: FileHandle
   private let dateFormatter: ISO8601DateFormatter
-  private let jsonEncoder: JSONEncoder
-  private let folderURL: URL  // Add this to store folder URL
-  private var currentLogFileURL: URL  // Add this to track current file
+  private let folderURL: URL
+  private var currentLogFileURL: URL
 
   init?(folderURL: URL?, logger: Logger) {
     let fileManager = FileManager.default
     let dateFormatter = ISO8601DateFormatter()
-    let jsonEncoder = JSONEncoder()
     dateFormatter.formatOptions = [.withFullDate, .withFullTime, .withFractionalSeconds]
-    jsonEncoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
 
     self.dateFormatter = dateFormatter
-    self.jsonEncoder = jsonEncoder
     self.logger = logger
 
     // Create log dir if not exists
@@ -176,7 +166,7 @@ private final class LogWriter: @unchecked Sendable {
     let logFileURL =
       folderURL
       .appendingPathComponent(dateFormatter.string(from: Date()))
-      .appendingPathExtension("jsonl")
+      .appendingPathExtension("log")
 
     self.currentLogFileURL = logFileURL  // Store current file URL
 
@@ -233,22 +223,14 @@ private final class LogWriter: @unchecked Sendable {
   }
 
   func write(severity: Severity, message: String) {
-    let logEntry = LogEntry(
-      time: dateFormatter.string(from: Date()),
-      severity: severity,
-      message: message)
-
-    guard let jsonData = try? jsonEncoder.encode(logEntry) + Data("\n".utf8)
-    else {
-      logger.error("Could not encode log message to JSON!")
-      return
-    }
+    let timestamp = dateFormatter.string(from: Date())
+    let line = "\(timestamp) \(severity.rawValue) \(message)\n"
 
     workQueue.async { [weak self] in
       guard let self = self else { return }
       guard let handle = self.ensureFileExists() else { return }
 
-      handle.write(jsonData)
+      handle.write(Data(line.utf8))
     }
   }
 }
