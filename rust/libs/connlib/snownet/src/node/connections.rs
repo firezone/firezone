@@ -13,10 +13,7 @@ use str0m::ice::IceAgent;
 
 use crate::{
     ConnectionStats, Event,
-    node::{
-        Connection, ConnectionState, add_local_candidate, allocations::Allocations,
-        new_ice_candidate_event,
-    },
+    node::{Connection, ConnectionState, allocations::Allocations, new_ice_candidate_event},
 };
 
 pub struct Connections<TId, RId> {
@@ -113,7 +110,7 @@ where
 
             for candidate in allocation
                 .current_relay_candidates()
-                .filter_map(|candidate| add_local_candidate(&mut c.agent, candidate))
+                .filter_map(|candidate| c.agent.add_local_candidate(candidate).cloned())
             {
                 pending_events.push_back(new_ice_candidate_event(cid, candidate));
             }
