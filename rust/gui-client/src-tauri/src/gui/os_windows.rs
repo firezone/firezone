@@ -62,7 +62,7 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
 /// Firefox doesn't have this problem. Maybe they're using a different API.
 #[expect(
     clippy::unused_async,
-    reason = "Signture must match other operating systems"
+    reason = "Signature must match other operating systems"
 )]
 pub(crate) async fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
     let (tx, rx) = futures::channel::oneshot::channel();
