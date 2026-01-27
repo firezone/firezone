@@ -1,11 +1,9 @@
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bin_shared::{TunDeviceManager, signals};
-#[cfg(not(target_os = "windows"))]
-use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
 use telemetry::{Telemetry, analytics};
 
-use futures::{FutureExt as _, TryFutureExt};
+use futures::TryFutureExt;
 use hickory_resolver::TokioResolver;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
@@ -34,9 +32,6 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 /// How long we allow a DNS resolution via hickory.
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Cache DNS responses for 30 seconds.
-const DNS_TTL: Duration = Duration::from_secs(30);
-
 // DNS resolution happens as part of every connection setup.
 // For a connection to succeed, DNS resolution must be less than `snownet`'s handshake timeout.
 static_assertions::const_assert!(
@@ -55,8 +50,6 @@ pub struct Eventloop {
     >,
     portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
-
-    dns_cache: moka::future::Cache<DomainName, Vec<IpAddr>>,
 
     sigint: signals::Terminate,
 
@@ -96,13 +89,6 @@ impl Eventloop {
                 1000,
             ),
             logged_permission_denied: false,
-            dns_cache: moka::future::Cache::builder()
-                .name("DNS queries")
-                .time_to_live(DNS_TTL)
-                .eviction_listener(|domain, ips, cause| {
-                    tracing::debug!(%domain, ?ips, ?cause, "DNS cache entry evicted");
-                })
-                .build(),
             portal_event_rx,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
@@ -502,44 +488,36 @@ impl Eventloop {
         &self,
         domain: DomainName,
     ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> + use<> {
-        if telemetry::feature_flags::gateway_userspace_dns_a_aaaa_records() {
-            let resolver = self.resolver.clone();
+        let resolver = self.resolver.clone();
 
-            async move {
-                let ipv4_lookup = resolver
-                    .ipv4_lookup(domain.to_string())
-                    .map_ok(|ipv4| ipv4.into_iter().map(|r| IpAddr::V4(r.0)));
-                let ipv6_lookup = resolver
-                    .ipv6_lookup(domain.to_string())
-                    .map_ok(|ipv6| ipv6.into_iter().map(|r| IpAddr::V6(r.0)));
+        async move {
+            let ipv4_lookup = resolver
+                .ipv4_lookup(domain.to_string())
+                .map_ok(|ipv4| ipv4.into_iter().map(|r| IpAddr::V4(r.0)));
+            let ipv6_lookup = resolver
+                .ipv6_lookup(domain.to_string())
+                .map_ok(|ipv6| ipv6.into_iter().map(|r| IpAddr::V6(r.0)));
 
-                let ips = match futures::future::join(ipv4_lookup, ipv6_lookup).await {
-                    (Ok(ipv4), Ok(ipv6)) => iter::empty().chain(ipv4).chain(ipv6).collect(),
-                    (Ok(ipv4), Err(e)) => {
-                        tracing::debug!(%domain, "AAAA lookup failed: {e}");
+            let ips = match futures::future::join(ipv4_lookup, ipv6_lookup).await {
+                (Ok(ipv4), Ok(ipv6)) => iter::empty().chain(ipv4).chain(ipv6).collect(),
+                (Ok(ipv4), Err(e)) => {
+                    tracing::debug!(%domain, "AAAA lookup failed: {e}");
 
-                        ipv4.collect()
-                    }
-                    (Err(e), Ok(ipv6)) => {
-                        tracing::debug!(%domain, "A lookup failed: {e}");
+                    ipv4.collect()
+                }
+                (Err(e), Ok(ipv6)) => {
+                    tracing::debug!(%domain, "A lookup failed: {e}");
 
-                        ipv6.collect()
-                    }
-                    (Err(e1), Err(e2)) => {
-                        tracing::debug!(%domain, "A and AAAA lookup failed: [{e1}; {e2}]");
+                    ipv6.collect()
+                }
+                (Err(e1), Err(e2)) => {
+                    tracing::debug!(%domain, "A and AAAA lookup failed: [{e1}; {e2}]");
 
-                        vec![]
-                    }
-                };
+                    vec![]
+                }
+            };
 
-                Ok(ips)
-            }
-            .boxed()
-        } else {
-            let do_resolve = resolve(domain.clone());
-            let cache = self.dns_cache.clone();
-
-            async move { cache.try_get_with(domain, do_resolve).await }.boxed()
+            Ok(ips)
         }
     }
 }
@@ -646,60 +624,6 @@ async fn update_portal_host_ips(
     };
 
     portal.update_ips(ips);
-}
-
-async fn resolve(domain: DomainName) -> Result<Vec<IpAddr>> {
-    tracing::debug!(%domain, "Resolving DNS");
-
-    let dname = domain.to_string();
-
-    let addresses = tokio::task::spawn_blocking(move || resolve_addresses(&dname))
-        .await
-        .context("DNS resolution task failed")?
-        .context("DNS resolution failed")?;
-
-    Ok(addresses)
-}
-
-#[cfg(target_os = "windows")]
-fn resolve_addresses(_: &str) -> std::io::Result<Vec<IpAddr>> {
-    unimplemented!()
-}
-
-#[cfg(not(target_os = "windows"))]
-fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpAddr>> {
-    use libc::{AF_INET, AF_INET6};
-    let addr_v4: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET)
-        .map_err(|e| e.into())
-        .and_then(|a| a.collect());
-    let addr_v6: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET6)
-        .map_err(|e| e.into())
-        .and_then(|a| a.collect());
-    match (addr_v4, addr_v6) {
-        (Ok(v4), Ok(v6)) => Ok(v6
-            .iter()
-            .map(|a| a.sockaddr.ip())
-            .chain(v4.iter().map(|a| a.sockaddr.ip()))
-            .collect()),
-        (Ok(v4), Err(_)) => Ok(v4.iter().map(|a| a.sockaddr.ip()).collect()),
-        (Err(_), Ok(v6)) => Ok(v6.iter().map(|a| a.sockaddr.ip()).collect()),
-        (Err(e), Err(_)) => Err(e),
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn resolve_address_family(addr: &str, family: i32) -> Result<AddrInfoIter, LookupError> {
-    use libc::SOCK_STREAM;
-
-    dns_lookup::getaddrinfo(
-        Some(addr),
-        None,
-        Some(AddrInfoHints {
-            socktype: SOCK_STREAM,
-            address: family,
-            ..Default::default()
-        }),
-    )
 }
 
 fn is_unreachable(e: &io::Error) -> bool {
