@@ -45,7 +45,7 @@ defmodule Portal.Mailer.AuthEmail do
       url(~p"/#{actor.account.slug}/sign_in/email_otp/#{auth_provider_id}/verify?#{params}")
 
     token_created_at =
-      Cldr.DateTime.to_string!(token_created_at, Portal.CLDR, format: :short) <> " UTC"
+      PortalWeb.Format.short_datetime(token_created_at) <> " UTC"
 
     default_email()
     |> subject("Firezone sign in token")

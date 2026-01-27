@@ -113,7 +113,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
           <.vertical_table_row>
             <:label>Created</:label>
             <:value>
-              {Cldr.DateTime.Formatter.date(@actor.inserted_at, 1, "en", Portal.CLDR, [])}
+              {PortalWeb.Format.short_date(@actor.inserted_at)}
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -164,7 +164,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
             {token.name}
           </:col>
           <:col :let={token} label="expires at">
-            {Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Portal.CLDR, [])}
+            {PortalWeb.Format.short_date(token.expires_at)}
           </:col>
           <:col :let={token} label="last used">
             <.relative_datetime datetime={token.last_seen_at} />

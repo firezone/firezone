@@ -362,9 +362,6 @@ config :portal,
 config :openid_connect,
   finch_transport_opts: []
 
-config :ex_cldr,
-  default_locale: "en"
-
 config :mime, :types, %{
   "application/xml" => ["xml"]
 }
