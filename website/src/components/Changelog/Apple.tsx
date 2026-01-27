@@ -26,7 +26,7 @@ export default function Apple() {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem>
-          Exported logs now use plain text format instead of JSONL for easier
+          Exports logs in plain text format instead of JSONL for easier
           reading.
         </ChangeItem>
         <ChangeItem pull="11834">
