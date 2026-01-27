@@ -216,9 +216,10 @@ impl StubResolver {
         fqdn: dns_types::DomainName,
         resource: Resource,
     ) -> Vec<OwnedRecordData> {
-        self.get_or_assign_ips(fqdn, resource)
+        self.get_or_assign_ips(fqdn, resource.id)
             .into_iter()
             .filter_map(get_v4)
+            .filter(|_| resource.ip_stack.supports_ipv4())
             .map(dns_types::records::a)
             .collect_vec()
     }
@@ -228,9 +229,10 @@ impl StubResolver {
         fqdn: dns_types::DomainName,
         resource: Resource,
     ) -> Vec<OwnedRecordData> {
-        self.get_or_assign_ips(fqdn, resource)
+        self.get_or_assign_ips(fqdn, resource.id)
             .into_iter()
             .filter_map(get_v6)
+            .filter(|_| resource.ip_stack.supports_ipv6())
             .map(dns_types::records::aaaa)
             .collect_vec()
     }
@@ -238,23 +240,17 @@ impl StubResolver {
     fn get_or_assign_ips(
         &mut self,
         fqdn: dns_types::DomainName,
-        resource: Resource,
+        resource: ResourceId,
     ) -> Vec<IpAddr> {
         let mut records_changed = false;
 
         let ips = self
             .fqdn_to_ips
-            .entry((fqdn.clone(), resource.id))
+            .entry((fqdn.clone(), resource))
             .or_insert_with(|| {
                 let mut ips = Vec::with_capacity(8);
-
-                if resource.ip_stack.supports_ipv4() {
-                    ips.extend(self.ip_provider.get_n_ipv4(4));
-                }
-
-                if resource.ip_stack.supports_ipv6() {
-                    ips.extend(self.ip_provider.get_n_ipv6(4));
-                }
+                ips.extend(self.ip_provider.get_n_ipv4(4));
+                ips.extend(self.ip_provider.get_n_ipv6(4));
 
                 tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
 
@@ -264,7 +260,7 @@ impl StubResolver {
             })
             .clone();
         for ip in &ips {
-            self.ips_to_fqdn.insert(*ip, (fqdn.clone(), resource.id));
+            self.ips_to_fqdn.insert(*ip, (fqdn.clone(), resource));
         }
 
         if records_changed {
@@ -793,6 +789,73 @@ mod tests {
     #[test]
     fn aaaa_query_for_ipv4_only_resource_yields_empty_set() {
         let mut resolver = StubResolver::default();
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Ipv4Only,
+        );
+
+        let query = Query::new(
+            "example.com".parse::<dns_types::DomainName>().unwrap(),
+            RecordType::AAAA,
+        );
+
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+            panic!("Unexpected result")
+        };
+
+        assert_eq!(response.response_code(), ResponseCode::NOERROR);
+        assert_eq!(response.records().count(), 0);
+    }
+
+    #[test]
+    fn ip_stack_can_be_restricted_after_initial_query() {
+        let mut resolver = StubResolver::default();
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Dual,
+        );
+
+        let query = Query::new(
+            "example.com".parse::<dns_types::DomainName>().unwrap(),
+            RecordType::AAAA,
+        );
+
+        resolver.handle(&query);
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Ipv4Only,
+        );
+
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+            panic!("Unexpected result")
+        };
+
+        assert_eq!(response.response_code(), ResponseCode::NOERROR);
+        assert_eq!(response.records().count(), 0);
+    }
+
+    #[test]
+    fn ip_stack_is_honored_from_cached_records() {
+        let mut resolver = StubResolver::new(BTreeSet::from([DnsResourceRecord {
+            domain: "example.com".parse().unwrap(),
+            resource: ResourceId::from_u128(1),
+            ips: vec![
+                IpAddr::from(Ipv4Addr::new(100, 96, 0, 1)),
+                IpAddr::from(Ipv4Addr::new(100, 96, 0, 2)),
+                IpAddr::from(Ipv4Addr::new(100, 96, 0, 3)),
+                IpAddr::from(Ipv4Addr::new(100, 96, 0, 4)),
+                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0)),
+                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 1)),
+                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 2)),
+                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 3)),
+            ],
+        }]));
 
         resolver.add_resource(
             ResourceId::from_u128(1),

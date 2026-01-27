@@ -49,6 +49,11 @@ export default function GUI({ os }: { os: OS }) {
             Fixes an issue where notifications would not always be displayed.
           </ChangeItem>
         )}
+        <ChangeItem pull="11891">
+          Fixes an issue where cached IPv6 addresses for a resource got returned
+          for IPv4-only DNS resources if the setting was only changed after a
+          DNS query had already been processed.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.9" date={new Date("2025-12-23")}>
         {os == OS.Linux && (
