@@ -28,7 +28,9 @@ import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.Site
+import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -566,52 +568,18 @@ class TunnelService : VpnService() {
 
     private fun convertResource(resource: uniffi.connlib.Resource): Resource =
         when (resource) {
-            is uniffi.connlib.Resource.Dns -> {
-                Resource(
-                    type = dev.firezone.android.tunnel.model.ResourceType.DNS,
-                    id = resource.resource.id,
-                    address = resource.resource.address,
-                    addressDescription = resource.resource.addressDescription,
-                    sites = resource.resource.sites.map { convertSite(it) },
-                    name = resource.resource.name,
-                    status = convertResourceStatus(resource.resource.status),
-                )
+            is uniffi.connlib.Resource.Dns -> resource.resource.let { r ->
+                Resource(ResourceType.DNS, r.id, r.address, r.addressDescription,
+                    r.sites.map { it.toModel() }, r.name, r.status.toModel())
             }
-            is uniffi.connlib.Resource.Cidr -> {
-                Resource(
-                    type = dev.firezone.android.tunnel.model.ResourceType.CIDR,
-                    id = resource.resource.id,
-                    address = resource.resource.address,
-                    addressDescription = resource.resource.addressDescription,
-                    sites = resource.resource.sites.map { convertSite(it) },
-                    name = resource.resource.name,
-                    status = convertResourceStatus(resource.resource.status),
-                )
+            is uniffi.connlib.Resource.Cidr -> resource.resource.let { r ->
+                Resource(ResourceType.CIDR, r.id, r.address, r.addressDescription,
+                    r.sites.map { it.toModel() }, r.name, r.status.toModel())
             }
-            is uniffi.connlib.Resource.Internet -> {
-                Resource(
-                    type = dev.firezone.android.tunnel.model.ResourceType.Internet,
-                    id = resource.resource.id,
-                    address = null,
-                    addressDescription = null,
-                    sites = resource.resource.sites.map { convertSite(it) },
-                    name = resource.resource.name,
-                    status = convertResourceStatus(resource.resource.status),
-                )
+            is uniffi.connlib.Resource.Internet -> resource.resource.let { r ->
+                Resource(ResourceType.Internet, r.id, null, null,
+                    r.sites.map { it.toModel() }, r.name, r.status.toModel())
             }
-        }
-
-    private fun convertSite(site: uniffi.connlib.Site): dev.firezone.android.tunnel.model.Site =
-        dev.firezone.android.tunnel.model.Site(
-            id = site.id,
-            name = site.name,
-        )
-
-    private fun convertResourceStatus(status: uniffi.connlib.ResourceStatus): dev.firezone.android.tunnel.model.StatusEnum =
-        when (status) {
-            uniffi.connlib.ResourceStatus.UNKNOWN -> dev.firezone.android.tunnel.model.StatusEnum.UNKNOWN
-            uniffi.connlib.ResourceStatus.ONLINE -> dev.firezone.android.tunnel.model.StatusEnum.ONLINE
-            uniffi.connlib.ResourceStatus.OFFLINE -> dev.firezone.android.tunnel.model.StatusEnum.OFFLINE
         }
 
     companion object {
@@ -646,4 +614,14 @@ class TunnelService : VpnService() {
             context.startService(intent)
         }
     }
+}
+
+// UniFFI → Model type conversions
+
+private fun uniffi.connlib.Site.toModel() = Site(id = id, name = name)
+
+private fun uniffi.connlib.ResourceStatus.toModel() = when (this) {
+    uniffi.connlib.ResourceStatus.UNKNOWN -> StatusEnum.UNKNOWN
+    uniffi.connlib.ResourceStatus.ONLINE -> StatusEnum.ONLINE
+    uniffi.connlib.ResourceStatus.OFFLINE -> StatusEnum.OFFLINE
 }
