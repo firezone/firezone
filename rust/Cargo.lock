@@ -2175,18 +2175,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dns-lookup"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e39034cee21a2f5bbb66ba0e3689819c4bb5d00382a282006e802a7ffa6c41d"
-dependencies = [
- "cfg-if",
- "libc",
- "socket2 0.6.1",
- "windows-sys 0.60.2",
-]
-
-[[package]]
 name = "dns-over-tcp"
 version = "0.1.0"
 dependencies = [
@@ -2555,7 +2543,6 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-model",
- "dns-lookup",
  "dns-types",
  "either",
  "futures",
@@ -2566,7 +2553,6 @@ dependencies = [
  "ip_network",
  "libc",
  "logging",
- "moka",
  "nix",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -4645,13 +4631,10 @@ version = "0.12.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3dec6bd31b08944e08b58fd99373893a6c17054d6f3ea5006cc894f4f4eee2a"
 dependencies = [
- "async-lock",
  "crossbeam-channel",
  "crossbeam-epoch",
  "crossbeam-utils",
  "equivalent",
- "event-listener",
- "futures-util",
  "parking_lot",
  "portable-atomic",
  "smallvec",

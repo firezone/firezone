@@ -41,7 +41,6 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true }
 libc = { workspace = true, features = ["std", "const-extern-fn", "extra_traits"] }
 logging = { workspace = true }
-moka = { workspace = true, features = ["future"] }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
@@ -66,11 +65,7 @@ uuid = { workspace = true, features = ["v4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = { workspace = true }
-dns-lookup = { workspace = true }
 nix = { workspace = true, features = ["user"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-dns-lookup = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true, features = ["std"] }
