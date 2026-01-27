@@ -104,7 +104,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             </.badge>
           </:col>
           <:col :let={actor} label="created at">
-            {Cldr.DateTime.Formatter.date(actor.inserted_at, 1, "en", Portal.CLDR, [])}
+            {PortalWeb.Format.short_date(actor.inserted_at)}
           </:col>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
