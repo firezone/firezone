@@ -1,0 +1,19 @@
+# Android development tasks
+#
+# Tasks are auto-discovered from mise-tasks/ directory.
+# Task names match filenames (e.g., mise-tasks/format.sh -> //kotlin/android:format)
+
+[task_config]
+includes = ["mise-tasks"]
+
+[tasks.setup-ndk]
+description = "Install required NDK version (must match build.gradle.kts)"
+run = "sdkmanager 'ndk;28.1.13356709'"
+
+[tasks.build]
+description = "Build debug APK"
+run = "./gradlew assembleDebug"
+
+[tasks.test]
+description = "Run unit tests"
+run = "./gradlew test"
