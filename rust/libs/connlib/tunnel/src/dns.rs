@@ -814,6 +814,37 @@ mod tests {
     }
 
     #[test]
+    fn ip_stack_can_be_restricted_after_initial_query() {
+        let mut resolver = StubResolver::default();
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Dual,
+        );
+
+        let query = Query::new(
+            "example.com".parse::<dns_types::DomainName>().unwrap(),
+            RecordType::AAAA,
+        );
+
+        resolver.handle(&query);
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Ipv4Only,
+        );
+
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+            panic!("Unexpected result")
+        };
+
+        assert_eq!(response.response_code(), ResponseCode::NOERROR);
+        assert_eq!(response.records().count(), 0);
+    }
+
+    #[test]
     fn emits_new_records_on_assign() {
         let mut resolver = StubResolver::default();
 
