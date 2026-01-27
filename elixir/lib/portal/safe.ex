@@ -109,17 +109,29 @@ defmodule Portal.Safe do
       reraise Ecto.NoResultsError, [queryable: queryable], __STACKTRACE__
   end
 
+  defp set_rls_context(account_id) do
+    Repo.query!("SELECT set_config('app.current_account_id', $1, true)", [account_id])
+  end
+
   # Query operations
   @spec one(Scoped.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
   def one(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      safe_repo(fn ->
-        queryable
-        |> apply_account_filter(schema, account_id)
-        |> Repo.one()
-      end)
+      {:ok, result} =
+        Repo.transact(fn ->
+          set_rls_context(account_id)
+
+          {:ok,
+           safe_repo(fn ->
+             queryable
+             |> apply_account_filter(schema, account_id)
+             |> Repo.one()
+           end)}
+        end)
+
+      result
     end
   end
 
@@ -134,8 +146,15 @@ defmodule Portal.Safe do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      filtered_query = apply_account_filter(queryable, schema, account_id)
-      safe_repo!(fn -> Repo.one!(filtered_query) end, filtered_query)
+      {:ok, result} =
+        Repo.transact(fn ->
+          set_rls_context(account_id)
+
+          filtered_query = apply_account_filter(queryable, schema, account_id)
+          {:ok, safe_repo!(fn -> Repo.one!(filtered_query) end, filtered_query)}
+        end)
+
+      result
     end
   end
 
@@ -152,11 +171,19 @@ defmodule Portal.Safe do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      safe_repo(fn ->
-        queryable
-        |> apply_account_filter(schema, account_id)
-        |> Repo.all()
-      end) || []
+      {:ok, result} =
+        Repo.transact(fn ->
+          set_rls_context(account_id)
+
+          {:ok,
+           safe_repo(fn ->
+             queryable
+             |> apply_account_filter(schema, account_id)
+             |> Repo.all()
+           end)}
+        end)
+
+      result || []
     end
   end
 
@@ -174,11 +201,19 @@ defmodule Portal.Safe do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      safe_repo(fn ->
-        queryable
-        |> apply_account_filter(schema, account_id)
-        |> Repo.exists?()
-      end) || false
+      {:ok, result} =
+        Repo.transact(fn ->
+          set_rls_context(account_id)
+
+          {:ok,
+           safe_repo(fn ->
+             queryable
+             |> apply_account_filter(schema, account_id)
+             |> Repo.exists?()
+           end)}
+        end)
+
+      result || false
     end
   end
 
@@ -209,11 +244,19 @@ defmodule Portal.Safe do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      safe_repo(fn ->
-        queryable
-        |> apply_account_filter(schema, account_id)
-        |> Repo.list(query_module, opts)
-      end) || {:ok, [], %{}}
+      {:ok, result} =
+        Repo.transact(fn ->
+          set_rls_context(account_id)
+
+          {:ok,
+           safe_repo(fn ->
+             queryable
+             |> apply_account_filter(schema, account_id)
+             |> Repo.list(query_module, opts)
+           end)}
+        end)
+
+      result || {:ok, [], %{}}
     end
   end
 
@@ -231,11 +274,19 @@ defmodule Portal.Safe do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      safe_repo(fn ->
-        queryable
-        |> apply_account_filter(schema, account_id)
-        |> Repo.aggregate(aggregate)
-      end) || 0
+      {:ok, result} =
+        Repo.transact(fn ->
+          set_rls_context(account_id)
+
+          {:ok,
+           safe_repo(fn ->
+             queryable
+             |> apply_account_filter(schema, account_id)
+             |> Repo.aggregate(aggregate)
+           end)}
+        end)
+
+      result || 0
     end
   end
 
@@ -315,6 +366,7 @@ defmodule Portal.Safe do
       :ok ->
         {:ok, result} =
           Repo.transact(fn ->
+            set_rls_context(subject.account.id)
             emit_subject_message(subject)
 
             {:ok, Repo.insert_all(schema_or_source, entries, opts)}
@@ -353,6 +405,7 @@ defmodule Portal.Safe do
 
     with :ok <- permit(:insert, schema, subject) do
       Repo.transact(fn ->
+        set_rls_context(subject.account.id)
         emit_subject_message(subject)
 
         changeset
@@ -368,6 +421,7 @@ defmodule Portal.Safe do
 
     with :ok <- permit(:insert, schema, subject) do
       Repo.transact(fn ->
+        set_rls_context(subject.account.id)
         emit_subject_message(subject)
 
         %{struct | account_id: subject.account.id}
@@ -414,6 +468,7 @@ defmodule Portal.Safe do
 
     with :ok <- permit(:update, schema, subject) do
       Repo.transact(fn ->
+        set_rls_context(subject.account.id)
         emit_subject_message(subject)
 
         changeset
@@ -453,6 +508,7 @@ defmodule Portal.Safe do
       :ok ->
         {:ok, result} =
           Repo.transact(fn ->
+            set_rls_context(subject.account.id)
             emit_subject_message(subject)
 
             {:ok, Repo.update_all(queryable, updates)}
@@ -487,6 +543,7 @@ defmodule Portal.Safe do
 
     with :ok <- permit(:delete, schema, subject) do
       Repo.transact(fn ->
+        set_rls_context(account_id)
         emit_subject_message(subject)
 
         changeset
@@ -505,6 +562,7 @@ defmodule Portal.Safe do
 
     with :ok <- permit(:delete, schema, subject) do
       Repo.transact(fn ->
+        set_rls_context(account_id)
         emit_subject_message(subject)
 
         Repo.delete(struct)
@@ -553,6 +611,7 @@ defmodule Portal.Safe do
       :ok ->
         {:ok, result} =
           Repo.transact(fn ->
+            set_rls_context(subject.account.id)
             emit_subject_message(subject)
 
             {:ok, Repo.delete_all(queryable, opts)}
