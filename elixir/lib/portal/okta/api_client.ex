@@ -111,7 +111,10 @@ defmodule Portal.Okta.APIClient do
   Makes test API calls to verify the access token works.
   """
   @spec test_connection(t(), String.t()) ::
-          :ok | {:error, Req.Response.t()} | {:error, :empty, :apps | :users | :groups}
+          :ok
+          | {:error, Req.Response.t()}
+          | {:error, :empty, :apps | :users | :groups}
+          | {:error, Exception.t()}
   def test_connection(client, access_token) do
     with :ok <- test_apps(client, access_token),
          :ok <- test_users(client, access_token),
@@ -405,15 +408,15 @@ defmodule Portal.Okta.APIClient do
 
     new_request(client, token)
     |> Req.merge(url: endpoint, headers: headers, params: params)
-    |> Req.get!()
+    |> Req.get()
     |> case do
-      %{status: 200, body: [_result]} ->
+      {:ok, %{status: 200, body: [_result]}} ->
         :ok
 
-      %{status: 200, body: []} ->
+      {:ok, %{status: 200, body: []}} ->
         {:error, :empty, resource}
 
-      resp ->
+      {:ok, resp} ->
         Logger.warning(
           "Error during Okta endpoint test",
           endpoint: endpoint,
@@ -423,6 +426,9 @@ defmodule Portal.Okta.APIClient do
         )
 
         {:error, resp}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

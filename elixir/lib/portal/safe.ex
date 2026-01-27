@@ -168,7 +168,7 @@ defmodule Portal.Safe do
   @spec one(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | nil
   def one(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.one(queryable) end)
 
-  @spec one!(Scoped.t()) :: Ecto.Schema.t() | no_return()
+  @spec one!(Scoped.t()) :: Ecto.Schema.t() | term() | no_return()
   def one!(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
         queryable: queryable,
@@ -182,11 +182,11 @@ defmodule Portal.Safe do
     end
   end
 
-  @spec one!(Unscoped.t()) :: Ecto.Schema.t() | no_return()
+  @spec one!(Unscoped.t()) :: Ecto.Schema.t() | term() | no_return()
   def one!(%Unscoped{queryable: queryable, repo: repo}),
     do: safe_repo!(fn -> repo.one!(queryable) end, queryable)
 
-  @spec one!(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | no_return()
+  @spec one!(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | term() | no_return()
   def one!(repo, queryable) when repo == Repo,
     do: safe_repo!(fn -> Repo.one!(queryable) end, queryable)
 
