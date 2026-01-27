@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem>
+          Exported logs now use plain text format instead of JSONL for easier
+          reading.
+        </ChangeItem>
         <ChangeItem pull="11834">
           Fixes an issue where the tunnel might hang or crash on iOS immediately
           after signing in.
