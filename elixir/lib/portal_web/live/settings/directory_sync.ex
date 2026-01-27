@@ -1483,7 +1483,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp parse_google_verification_error({:error, %Req.TransportError{reason: reason}}) do
     Logger.info("Transport error while verifying Google directory", error: inspect(reason))
 
-    "Transport error while attempting to connect to Google.  We're looking in to this"
+    "Transport error while attempting to connect to Google.  We're looking into this"
   end
 
   defp parse_google_verification_error({:error, reason}) when is_exception(reason) do
