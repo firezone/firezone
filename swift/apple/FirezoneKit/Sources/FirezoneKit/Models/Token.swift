@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct Token: CustomStringConvertible {
+public struct Token: CustomStringConvertible, Sendable {
   #if DEBUG
     private static let label = "Firezone token (debug)"
     private static let account = "1 (debug)"
