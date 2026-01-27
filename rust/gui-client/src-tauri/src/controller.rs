@@ -4,7 +4,7 @@ use crate::{
     ipc::{self, SocketId},
     logging::{self, FileCount},
     service,
-    settings::{self, AdvancedSettings, GeneralSettings, MdmSettings},
+    settings::{AdvancedSettings, GeneralSettings, MdmSettings},
     updates, uptime,
     view::{GeneralSettingsForm, SessionViewModel},
 };
@@ -72,6 +72,13 @@ pub trait GuiIntegration {
         title: impl Into<String>,
         body: impl Into<String>,
     ) -> Result<NotificationHandle>;
+
+    fn save_general_settings(&self, settings: &GeneralSettings)
+    -> impl Future<Output = Result<()>>;
+    fn save_advanced_settings(
+        &self,
+        settings: &AdvancedSettings,
+    ) -> impl Future<Output = Result<()>>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
@@ -342,7 +349,9 @@ impl<I: GuiIntegration> Controller<I> {
         let session = self.auth.session().context("Missing session")?;
 
         self.general_settings.account_slug = Some(session.account_slug.clone());
-        settings::save_general(&self.general_settings).await?;
+        self.integration
+            .save_general_settings(&self.general_settings)
+            .await?;
         self.notify_settings_changed()?;
 
         self.refresh_ui_state();
@@ -398,7 +407,9 @@ impl<I: GuiIntegration> Controller<I> {
                 self.advanced_settings = *settings;
 
                 // Save to disk
-                settings::save_advanced(&self.advanced_settings).await?;
+                self.integration
+                    .save_advanced_settings(&self.advanced_settings)
+                    .await?;
 
                 // Tell tunnel about new log level
                 self.send_ipc(&service::ClientMsg::ApplyLogFilter {
@@ -572,7 +583,9 @@ impl<I: GuiIntegration> Controller<I> {
     async fn apply_general_settings(&mut self, settings: GeneralSettings) -> Result<()> {
         self.general_settings = settings;
 
-        settings::save_general(&self.general_settings).await?;
+        self.integration
+            .save_general_settings(&self.general_settings)
+            .await?;
 
         gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
 
@@ -763,7 +776,9 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     async fn update_disabled_resources(&mut self) -> Result<()> {
-        settings::save_general(&self.general_settings).await?;
+        self.integration
+            .save_general_settings(&self.general_settings)
+            .await?;
 
         let state = self.general_settings.internet_resource_enabled();
 
@@ -776,7 +791,9 @@ impl<I: GuiIntegration> Controller<I> {
 
     /// Saves the current settings (including favorites) to disk and refreshes the tray menu
     async fn refresh_favorite_resources(&mut self) -> Result<()> {
-        settings::save_general(&self.general_settings).await?;
+        self.integration
+            .save_general_settings(&self.general_settings)
+            .await?;
         self.refresh_ui_state();
         Ok(())
     }
@@ -1135,6 +1152,14 @@ mod tests {
         fn show_about_page(&self) -> Result<()> {
             self.lock().shown_about_page.push(());
 
+            Ok(())
+        }
+
+        async fn save_general_settings(&self, _: &GeneralSettings) -> Result<()> {
+            Ok(())
+        }
+
+        async fn save_advanced_settings(&self, _: &AdvancedSettings) -> Result<()> {
             Ok(())
         }
     }
