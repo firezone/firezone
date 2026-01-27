@@ -4,7 +4,7 @@ set -euo pipefail
 # Validate required tools
 if ! command -v jq >/dev/null 2>&1; then
     echo "Error: jq is required but not installed." >&2
-    echo "Install it with: brew install jq" >&2
+    echo "On macOS, install it with: brew install jq" >&2
     exit 1
 fi
 
