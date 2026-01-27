@@ -1,5 +1,11 @@
 experimental_monorepo_root = true
 
+[monorepo]
+config_roots = [
+    "kotlin/android",
+    "swift/apple",
+]
+
 [tasks.lint-setup]
 description = "Install linting tools from version-pinned files (managed by Dependabot)"
 run = """
