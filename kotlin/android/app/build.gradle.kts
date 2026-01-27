@@ -1,4 +1,6 @@
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+import groovy.json.JsonSlurper
+import java.io.ByteArrayOutputStream
 
 plugins {
     id("org.mozilla.rust-android-gradle.rust-android")
@@ -270,13 +272,23 @@ val generateUniffiBindings =
             }
 
         val rustDir = layout.projectDirectory.dir("../../../rust")
-
-        // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
-        // all the same from the bindings PoV.
-        val input = rustDir.dir("target/x86_64-linux-android/$profile/libconnlib.so")
         val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get()
 
         doLast {
+            // Get the cargo target directory (respects global cargo config)
+            val output = ByteArrayOutputStream()
+            project.exec {
+                workingDir = rustDir.asFile
+                commandLine("cargo", "metadata", "--format-version", "1")
+                standardOutput = output
+            }
+            val metadata = JsonSlurper().parseText(output.toString()) as Map<*, *>
+            val targetDir = metadata["target_directory"] as String
+
+            // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
+            // all the same from the bindings PoV.
+            val input = "$targetDir/x86_64-linux-android/$profile/libconnlib.so"
+
             // Execute uniffi-bindgen command from the rust directory
             project.exec {
                 // Spawn a shell to run the command; fixes PATH race conditions that can cause
@@ -284,12 +296,11 @@ val generateUniffiBindings =
                 commandLine(
                     "sh",
                     "-c",
-                    "cd ${rustDir.asFile} && cargo run --bin uniffi-bindgen generate --library --language kotlin ${input.asFile} --out-dir ${outDir.asFile}",
+                    "cd ${rustDir.asFile} && cargo run --bin uniffi-bindgen generate --library --language kotlin $input --out-dir ${outDir.asFile}",
                 )
             }
         }
 
-        inputs.file(input)
         outputs.dir(outDir)
     }
 
