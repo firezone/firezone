@@ -69,8 +69,8 @@ pub trait GuiIntegration {
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
     fn show_notification(
         &self,
-        title: impl Into<String>,
-        body: impl Into<String>,
+        title: impl Into<String> + Send,
+        body: impl Into<String> + Send,
     ) -> impl Future<Output = Result<NotificationHandle>> + Send;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
@@ -1111,10 +1111,10 @@ mod tests {
             self.lock().tray_states.push(app_state);
         }
 
-        fn show_notification(
+        async fn show_notification(
             &self,
-            title: impl Into<String>,
-            body: impl Into<String>,
+            title: impl Into<String> + Send,
+            body: impl Into<String> + Send,
         ) -> Result<NotificationHandle> {
             let (tx, rx) = futures::channel::oneshot::channel();
 

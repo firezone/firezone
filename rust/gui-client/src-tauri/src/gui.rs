@@ -159,8 +159,8 @@ impl GuiIntegration for TauriIntegration {
 
     async fn show_notification(
         &self,
-        title: impl Into<String>,
-        body: impl Into<String>,
+        title: impl Into<String> + Send,
+        body: impl Into<String> + Send,
     ) -> Result<NotificationHandle> {
         os::show_notification(title.into(), body.into()).await
     }
