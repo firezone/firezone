@@ -171,7 +171,7 @@ defmodule Portal.DirectorySync.ErrorHandler do
 
   Handles DNS failures, timeouts, TLS errors, and other network issues.
   """
-  @spec format_transport_error(%Req.TransportError{}) :: String.t()
+  @spec format_transport_error(Exception.t()) :: String.t()
   def format_transport_error(%Req.TransportError{reason: reason}) do
     case reason do
       :nxdomain ->
