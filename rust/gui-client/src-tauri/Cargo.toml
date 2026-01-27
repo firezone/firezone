@@ -36,7 +36,6 @@ ip-packet = { workspace = true }
 keyring-core = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
-notify-rust = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
@@ -77,6 +76,7 @@ zip = { workspace = true, features = ["deflate", "time"] }
 dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
 nix = { workspace = true, features = ["user"] }
+notify-rust = { workspace = true }
 sd-notify = { workspace = true }
 tracing-journald = { workspace = true }
 
