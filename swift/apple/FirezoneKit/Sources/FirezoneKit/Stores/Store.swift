@@ -227,7 +227,7 @@ public final class Store: ObservableObject {
       guard let session = try manager().session() else {
         throw VPNConfigurationManagerError.managerNotInitialized
       }
-      try IPCClient.start(session: session)
+      try IPCClient.start(session: session, configuration: configuration.toTunnelConfiguration())
     }
   }
   func installVPNConfiguration() async throws {
@@ -279,7 +279,10 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    try IPCClient.start(session: session, token: authResponse.token)
+    try IPCClient.start(
+      session: session, token: authResponse.token,
+      configuration: configuration.toTunnelConfiguration()
+    )
   }
 
   func signOut() async throws {
