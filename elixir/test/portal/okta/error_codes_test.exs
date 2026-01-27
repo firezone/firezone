@@ -135,7 +135,9 @@ defmodule Portal.Okta.ErrorCodesTest do
 
     test "returns resolution for known authorization errors" do
       assert ErrorCodes.get_resolution("E0000006", 403) =~ "Access denied"
-      assert ErrorCodes.get_resolution("E0000022", 403) =~ "not be available for your Okta organization"
+
+      assert ErrorCodes.get_resolution("E0000022", 403) =~
+               "not be available for your Okta organization"
     end
 
     test "returns resolution for known validation errors" do
@@ -226,5 +228,4 @@ defmodule Portal.Okta.ErrorCodesTest do
       assert ErrorCodes.default_resolution(418) =~ "verify your Okta configuration"
     end
   end
-
 end

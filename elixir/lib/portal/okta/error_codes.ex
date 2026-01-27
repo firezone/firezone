@@ -23,7 +23,8 @@ defmodule Portal.Okta.ErrorCodes do
     # Validation (400)
     "E0000001" => "API validation failed. Check your request parameters.",
     "E0000003" => "The request body was invalid. Please check your configuration.",
-    "E0000021" => "Bad request to Okta API. Please verify your Okta domain and API configuration.",
+    "E0000021" =>
+      "Bad request to Okta API. Please verify your Okta domain and API configuration.",
 
     # Rate Limiting (429)
     "E0000047" => "The Okta API rate limit has been exceeded. Syncs will automatically retry.",
