@@ -1534,6 +1534,96 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       assert html =~ "Assigned groups only"
     end
+
+    test "displays Okta sync error state with error message", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      okta_directory_fixture(
+        account: account,
+        name: "Okta Error Dir",
+        is_disabled: true,
+        disabled_reason: "Sync error",
+        error_message: "User missing required 'email' field"
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert html =~ "Sync has been disabled due to an error"
+      assert html =~ "User missing required &#39;email&#39; field"
+    end
+
+    test "displays Okta sync error for authentication failure", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      okta_directory_fixture(
+        account: account,
+        name: "Okta Auth Error",
+        is_disabled: true,
+        disabled_reason: "Sync error",
+        error_message: "HTTP 401 - Client authentication failed"
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert html =~ "Sync has been disabled due to an error"
+      assert html =~ "HTTP 401 - Client authentication failed"
+    end
+
+    test "displays Entra sync error state with error message", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      entra_directory_fixture(
+        account: account,
+        name: "Entra Error Dir",
+        is_disabled: true,
+        disabled_reason: "Sync error",
+        error_message: "HTTP 403 - Code: Authorization_RequestDenied"
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert html =~ "Sync has been disabled due to an error"
+      assert html =~ "HTTP 403 - Code: Authorization_RequestDenied"
+    end
+
+    test "displays Okta circuit breaker error message", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      okta_directory_fixture(
+        account: account,
+        name: "Okta Circuit Breaker",
+        is_disabled: true,
+        disabled_reason: "Sync error",
+        error_message:
+          "Sync would delete 50 of 52 identities (96.0%). This may indicate the Okta application was misconfigured or removed."
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert html =~ "Sync has been disabled due to an error"
+      assert html =~ "Sync would delete 50 of 52 identities"
+      assert html =~ "Okta application was misconfigured or removed"
+    end
   end
 
   describe "Database module" do

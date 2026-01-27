@@ -1316,27 +1316,33 @@ defmodule PortalWeb.Settings.DirectorySync do
     config = Portal.Config.fetch_env!(:portal, Google.APIClient)
     key = config[:service_account_key] |> JSON.decode!()
 
-    with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
-           Google.APIClient.get_access_token(impersonation_email, key),
-         {:ok, %Req.Response{status: 200, body: body}} <-
-           Google.APIClient.get_customer(access_token),
-         :ok <- Google.APIClient.test_connection(access_token, body["customerDomain"]) do
-      # Merge existing changes with new verification data and re-run validation
-      # This preserves form changes (like name, impersonation_email) while adding domain
-      attrs =
-        changeset.changes
-        |> Map.put(:domain, body["customerDomain"])
-        |> Map.put(:is_verified, true)
-        |> Map.new(fn {k, v} -> {to_string(k), v} end)
+    result =
+      with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
+             Google.APIClient.get_access_token(impersonation_email, key),
+           {:ok, %Req.Response{status: 200, body: body}} <-
+             Google.APIClient.get_customer(access_token),
+           :ok <- Google.APIClient.test_connection(access_token, body["customerDomain"]) do
+        {:ok, body["customerDomain"]}
+      end
 
-      changeset =
-        changeset
-        |> apply_changes()
-        |> changeset(attrs)
+    case result do
+      {:ok, domain} when is_binary(domain) ->
+        # Merge existing changes with new verification data and re-run validation
+        # This preserves form changes (like name, impersonation_email) while adding domain
+        attrs =
+          changeset.changes
+          |> Map.put(:domain, domain)
+          |> Map.put(:is_verified, true)
+          |> Map.new(fn {k, v} -> {to_string(k), v} end)
 
-      {:noreply,
-       assign(socket, form: to_form(changeset), verification_error: nil, verifying: false)}
-    else
+        changeset =
+          changeset
+          |> apply_changes()
+          |> changeset(attrs)
+
+        {:noreply,
+         assign(socket, form: to_form(changeset), verification_error: nil, verifying: false)}
+
       error ->
         msg = parse_google_verification_error(error)
         {:noreply, assign(socket, verification_error: msg, verifying: false)}
@@ -1394,14 +1400,19 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     client = Okta.APIClient.new(okta_domain, client_id, private_key_jwk, kid)
 
-    with {:ok, access_token} <- Okta.APIClient.fetch_access_token(client),
-         :ok <- Okta.APIClient.test_connection(client, access_token) do
-      # Use put_change to preserve existing changes (like client_id) in the changeset
-      changeset = put_change(changeset, :is_verified, true)
+    result =
+      with {:ok, access_token} <- Okta.APIClient.fetch_access_token(client),
+           :ok <- Okta.APIClient.test_connection(client, access_token) do
+        :ok
+      end
 
-      {:noreply,
-       assign(socket, form: to_form(changeset), verification_error: nil, verifying: false)}
-    else
+    case result do
+      :ok ->
+        changeset = put_change(changeset, :is_verified, true)
+
+        {:noreply,
+         assign(socket, form: to_form(changeset), verification_error: nil, verifying: false)}
+
       error ->
         msg = parse_okta_verification_error(error)
         {:noreply, assign(socket, verification_error: msg, verifying: false)}
@@ -1469,6 +1480,16 @@ defmodule PortalWeb.Settings.DirectorySync do
     "Google service is currently unavailable (HTTP #{status}). Please try again later."
   end
 
+  defp parse_google_verification_error({:error, %Req.TransportError{reason: reason}}) do
+    Logger.info("Transport error while verifying Google directory", error: inspect(reason))
+
+    "Transport error while attempting to connect to Google.  We're looking into this"
+  end
+
+  defp parse_google_verification_error({:error, reason}) when is_exception(reason) do
+    "Failed to verify directory access: #{Exception.message(reason)}"
+  end
+
   defp parse_google_verification_error({:error, reason}) do
     "Failed to verify directory access: #{inspect(reason)}"
   end
@@ -1479,53 +1500,13 @@ defmodule PortalWeb.Settings.DirectorySync do
     "Unknown error during verification. Please try again. If the problem persists, contact support."
   end
 
-  defp parse_okta_verification_error({:error, %Req.Response{status: 400, body: body}}) do
-    error_code = body["errorCode"]
-    error_summary = body["errorSummary"]
-
-    cond do
-      error_code == "E0000021" ->
-        "Bad request to Okta PortalAPI. Please verify your Okta domain and API configuration."
-
-      error_code == "E0000001" ->
-        "API validation failed: #{error_summary || "Invalid request parameters"}"
-
-      error_code == "E0000003" ->
-        "The request body was invalid. Please check your configuration."
-
-      error_code == "invalid_client" ->
-        "Invalid client application. Please verify your Client ID is correct."
-
-      error_summary ->
-        "Configuration error: #{error_summary}"
-
-      true ->
-        "HTTP 400 Bad Request. Please verify your Okta domain and Client ID."
-    end
+  # Standard HTTP errors - delegate to ErrorCodes
+  defp parse_okta_verification_error({:error, %Req.Response{status: status, body: body}})
+       when is_map(body) and map_size(body) > 0 do
+    Portal.Okta.ErrorCodes.format_error(status, body)
   end
 
-  defp parse_okta_verification_error({:error, %Req.Response{status: 401, body: body}}) do
-    error_code = body["errorCode"]
-    error_summary = body["errorSummary"]
-
-    cond do
-      error_code == "E0000011" ->
-        "Invalid token. Please ensure your Client ID and private key are correct and the JWT is properly signed."
-
-      error_code == "E0000061" ->
-        "Access denied. The client application is not authorized to use this PortalAPI."
-
-      error_code == "invalid_client" ->
-        "Client authentication failed. Please verify your Client ID and ensure the public key is registered in Okta."
-
-      error_summary ->
-        "Authentication failed: #{error_summary}"
-
-      true ->
-        "HTTP 401 Unauthorized. Please check your Client ID and ensure the public key matches your private key."
-    end
-  end
-
+  # Special case: 403 with empty body has error in WWW-Authenticate header (keep existing logic)
   defp parse_okta_verification_error(
          {:error, %Req.Response{status: 403, body: "", headers: headers}}
        ) do
@@ -1534,62 +1515,31 @@ defmodule PortalWeb.Settings.DirectorySync do
     |> parse_www_authenticate_error()
   end
 
-  defp parse_okta_verification_error({:error, %Req.Response{status: 403, body: body}}) do
-    error_code = body["errorCode"]
-    error_summary = body["errorSummary"]
-
-    cond do
-      error_code == "E0000006" ->
-        "Access denied. You do not have permission to perform this action. Ensure the API service app has the required scopes."
-
-      error_code == "E0000022" ->
-        "API access denied. The feature may not be available for your Okta organization."
-
-      error_summary ->
-        "Permission denied: #{error_summary}"
-
-      true ->
-        "HTTP 403 Forbidden. Ensure the application has okta.users.read and okta.groups.read scopes granted."
-    end
+  defp parse_okta_verification_error({:error, %Req.Response{status: status}}) do
+    Portal.Okta.ErrorCodes.format_error(status, nil)
   end
 
-  defp parse_okta_verification_error({:error, %Req.Response{status: 404, body: body}}) do
-    error_code = body["errorCode"]
-    error_summary = body["errorSummary"]
-
-    cond do
-      error_code == "E0000007" ->
-        "Resource not found. The API endpoint or resource doesn't exist. Please verify your Okta domain."
-
-      error_summary ->
-        "Not found: #{error_summary}"
-
-      true ->
-        "HTTP 404 Not Found. Please verify your Okta domain (e.g., your-domain.okta.com) is correct."
-    end
+  defp parse_okta_verification_error({:error, :empty, resource})
+       when resource in [:apps, :users, :groups] do
+    Portal.Okta.ErrorCodes.empty_resource_message(resource)
   end
 
-  defp parse_okta_verification_error({:error, %Req.Response{status: status}})
-       when status >= 500 do
-    "Okta service is currently unavailable (HTTP #{status}). Please try again later."
+  defp parse_okta_verification_error({:error, %Req.TransportError{} = error}) do
+    Logger.info(Portal.DirectorySync.ErrorHandler.format_transport_error(error))
+    "Transport error while contacting Okta API.  Please try again"
   end
 
-  defp parse_okta_verification_error({:error, :empty, :apps}) do
-    "No apps found in your Okta account. Please ensure the OIDC app is created and that the API service integration app has the okta.apps.read scope granted."
+  defp parse_okta_verification_error({:error, reason}) when is_exception(reason) do
+    "Failed to verify directory access: #{Exception.message(reason)}"
   end
 
-  defp parse_okta_verification_error({:error, :empty, :users}) do
-    "No users found in your Okta account. Please ensure users are assigned to the OIDC app and the API service integration app has the okta.users.read scope granted."
-  end
-
-  defp parse_okta_verification_error({:error, :empty, :groups}) do
-    "No groups found in your Okta account. Please ensure groups are assigned to the OIDC app and the API service integration app has the okta.groups.read scope granted."
+  defp parse_okta_verification_error({:error, reason}) do
+    "Failed to verify directory access: #{inspect(reason)}"
   end
 
   defp parse_okta_verification_error(error) do
     Logger.error("Unknown Okta verification error", error: inspect(error))
-
-    "Unknown error during verification. Please try again. If the problem persists, contact support."
+    "Unknown error during verification. Please try again."
   end
 
   defp directory_identifier("google", directory) do
