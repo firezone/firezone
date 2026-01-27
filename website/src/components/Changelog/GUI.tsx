@@ -44,6 +44,11 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where connections would flap between relayed and
           direct, causing WireGuard connection timeouts.
         </ChangeItem>
+        {os == OS.Linux && (
+          <ChangeItem pull="11813">
+            Fixes an issue where notifications would not always be displayed.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.5.9" date={new Date("2025-12-23")}>
         {os == OS.Linux && (
