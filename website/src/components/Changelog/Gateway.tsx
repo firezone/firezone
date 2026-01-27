@@ -60,6 +60,10 @@ export default function Gateway() {
           Implements retry with exponential backoff on 429 (Too Many Requests)
           responses from the portal.
         </ChangeItem>
+        <ChangeItem pull="11804">
+          Fixes an issue where connections would flap between relayed and
+          direct, causing WireGuard connection timeouts.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.19" date={new Date("2025-12-23")}>
         <ChangeItem pull="10972">

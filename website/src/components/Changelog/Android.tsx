@@ -50,6 +50,10 @@ export default function Android() {
           responses. For example, this allows Firezone to automatically sign-in
           even if Internet Access is gated by a captive portal.
         </ChangeItem>
+        <ChangeItem pull="11804">
+          Fixes an issue where connections would flap between relayed and
+          direct, causing WireGuard connection timeouts.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-12-23")}>
         <ChangeItem pull="11077">

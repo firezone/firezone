@@ -29,6 +29,10 @@ export default function Apple() {
           Prevents unbounded log growth by enforcing a 100 MB log size cap with
           automatic cleanup of oldest files.
         </ChangeItem>
+        <ChangeItem pull="11804">
+          Fixes an issue where connections would flap between relayed and
+          direct, causing WireGuard connection timeouts.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.12" date={new Date("2026-01-20")}>
         <ChangeItem pull="11735">
