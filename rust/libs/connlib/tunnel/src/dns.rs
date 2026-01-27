@@ -216,9 +216,10 @@ impl StubResolver {
         fqdn: dns_types::DomainName,
         resource: Resource,
     ) -> Vec<OwnedRecordData> {
-        self.get_or_assign_ips(fqdn, resource)
+        self.get_or_assign_ips(fqdn, resource.id)
             .into_iter()
             .filter_map(get_v4)
+            .filter(|_| resource.ip_stack.supports_ipv4())
             .map(dns_types::records::a)
             .collect_vec()
     }
@@ -228,9 +229,10 @@ impl StubResolver {
         fqdn: dns_types::DomainName,
         resource: Resource,
     ) -> Vec<OwnedRecordData> {
-        self.get_or_assign_ips(fqdn, resource)
+        self.get_or_assign_ips(fqdn, resource.id)
             .into_iter()
             .filter_map(get_v6)
+            .filter(|_| resource.ip_stack.supports_ipv6())
             .map(dns_types::records::aaaa)
             .collect_vec()
     }
@@ -238,23 +240,17 @@ impl StubResolver {
     fn get_or_assign_ips(
         &mut self,
         fqdn: dns_types::DomainName,
-        resource: Resource,
+        resource: ResourceId,
     ) -> Vec<IpAddr> {
         let mut records_changed = false;
 
         let ips = self
             .fqdn_to_ips
-            .entry((fqdn.clone(), resource.id))
+            .entry((fqdn.clone(), resource))
             .or_insert_with(|| {
                 let mut ips = Vec::with_capacity(8);
-
-                if resource.ip_stack.supports_ipv4() {
-                    ips.extend(self.ip_provider.get_n_ipv4(4));
-                }
-
-                if resource.ip_stack.supports_ipv6() {
-                    ips.extend(self.ip_provider.get_n_ipv6(4));
-                }
+                ips.extend(self.ip_provider.get_n_ipv4(4));
+                ips.extend(self.ip_provider.get_n_ipv6(4));
 
                 tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
 
@@ -264,7 +260,7 @@ impl StubResolver {
             })
             .clone();
         for ip in &ips {
-            self.ips_to_fqdn.insert(*ip, (fqdn.clone(), resource.id));
+            self.ips_to_fqdn.insert(*ip, (fqdn.clone(), resource));
         }
 
         if records_changed {
