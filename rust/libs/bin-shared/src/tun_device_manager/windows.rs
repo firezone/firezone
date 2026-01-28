@@ -438,6 +438,10 @@ fn start_send_thread(
                         // space in the ring buffer.
                         session.send_packet(pkt);
 
+                        if attempts > 0 {
+                            tracing::trace!(%attempts, "Sent packet with delay");
+                        }
+
                         break;
                     }
                     Err(wintun::Error::Io(e))
