@@ -160,24 +160,33 @@ defmodule PortalAPI.Client.Channel do
   def handle_info(:check_relay_presence, socket) do
     cached_relay_ids = socket.assigns[:cached_relay_ids] || MapSet.new()
 
-    # Check current presence state - this is the authoritative CRDT-merged state
-    # Presence is keyed by relay ID
-    current_relay_ids = Presence.Relays.Global.list() |> Map.keys() |> MapSet.new()
+    # Query presence ONCE - use this single snapshot for both determining
+    # disconnected relays and selecting connected relays. This avoids a race
+    # condition where CRDT state changes between queries during rapid
+    # disconnect/reconnect cycles.
+    {:ok, all_online_relays} = Presence.Relays.all_connected_relays()
+    online_relay_ids = MapSet.new(all_online_relays, & &1.id)
 
-    # Find which cached relays are now disconnected (ID no longer in presence)
+    # Find which cached relays are now truly offline (ID no longer in presence)
     disconnected_ids =
       cached_relay_ids
-      |> Enum.reject(&MapSet.member?(current_relay_ids, &1))
+      |> Enum.reject(&MapSet.member?(online_relay_ids, &1))
       |> Enum.to_list()
 
     # Send relays_presence if any cached relays are disconnected OR if we have fewer than 2 relays
     # and more are now available
     needs_update =
       disconnected_ids != [] or
-        (MapSet.size(cached_relay_ids) < 2 and MapSet.size(current_relay_ids) > 0)
+        (MapSet.size(cached_relay_ids) < 2 and MapSet.size(online_relay_ids) > 0)
 
     if needs_update do
-      {:ok, relays} = select_relays(socket)
+      # Select best relays from the SAME snapshot we used for disconnected_ids
+      location = {
+        socket.assigns.client.last_seen_remote_ip_location_lat,
+        socket.assigns.client.last_seen_remote_ip_location_lon
+      }
+
+      relays = load_balance_relays(location, all_online_relays)
       socket = cache_relays(socket, relays)
 
       push(socket, "relays_presence", %{
