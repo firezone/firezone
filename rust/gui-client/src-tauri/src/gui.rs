@@ -157,12 +157,12 @@ impl GuiIntegration for TauriIntegration {
         self.tray.update(app_state)
     }
 
-    async fn show_notification(
+    fn show_notification(
         &self,
-        title: impl Into<String> + Send,
-        body: impl Into<String> + Send,
+        title: impl Into<String>,
+        body: impl Into<String>,
     ) -> Result<NotificationHandle> {
-        os::show_notification(title.into(), body.into()).await
+        os::show_notification(title.into(), body.into())
     }
 
     fn set_window_visible(&self, visible: bool) -> Result<()> {
