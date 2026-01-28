@@ -302,9 +302,14 @@ impl Tun {
 
         set_iface_config(luid, mtu).context("Failed to set interface config")?;
 
+        let capacity = std::env::var("FIREZONE_WINTUN_RINGBUFFER_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(RING_BUFFER_SIZE);
+
         let session = Arc::new(
             adapter
-                .start_session(RING_BUFFER_SIZE)
+                .start_session(capacity)
                 .context("Failed to start session")?,
         );
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
