@@ -1,19 +1,9 @@
-## What
+<!--
+How to write a good PR description:
 
-<!-- Briefly describe what this PR does. -->
-
-## Why
-
-<!-- Explain the motivation. What problem does this solve or what value does it add? -->
-
-## How
-
-<!-- Describe the approach taken. Call out any notable design decisions or trade-offs. -->
-
-## Testing
-
-<!-- How was this tested? Include relevant details: manual steps, new/updated tests, CI checks, etc. -->
-
----
-
-<!-- Fixes / Resolves / Related / Supersedes / Closes -->
+- Summarize WHAT this PR does and WHY it's needed.
+- Call out any notable design decisions, trade-offs, or alternatives considered.
+- Mention how it was tested: manual steps, new/updated tests, CI checks, etc.
+- Link related issues with "Fixes #123", "Closes #123", or "Resolves #123".
+- Keep it concise — a few sentences is often enough for small changes.
+-->
