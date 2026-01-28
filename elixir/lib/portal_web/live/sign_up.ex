@@ -148,96 +148,78 @@ defmodule PortalWeb.SignUp do
 
   def welcome(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <div class="space-y-8">
       <div class="text-center text-neutral-900">
-        <p class="text-xl font-medium">Your account has been created!</p>
-        <p>Please check your email for sign in instructions.</p>
+        <p class="text-xl font-medium mb-2">Your account has been created!</p>
+        <p class="text-neutral-600">Please check your email for sign in instructions.</p>
       </div>
-      <div class="text-center">
-        <div class="px-12">
-          <table class="border-collapse w-full text-sm">
-            <tbody>
-              <tr>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900 font-bold]}>
-                  Account Name:
-                </td>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
-                  {@account.name}
-                </td>
-              </tr>
-              <tr>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900 font-bold]}>
-                  Account Slug:
-                </td>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
-                  {@account.slug}
-                </td>
-              </tr>
-              <tr>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900 font-bold]}>
-                  Sign In URL:
-                </td>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
-                  <.link class={[link_style()]} navigate={~p"/#{@account}"}>
-                    {url(~p"/#{@account}")}
-                  </.link>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="text-center">
-        <div class="px-12">
-          <div class="border-t border-neutral-200 pt-6 mt-2">
-            <p class="text-base font-medium text-neutral-900 mb-4">Next Steps:</p>
-            <div class="space-y-3 text-sm text-neutral-900">
-              <p>
-                <a
-                  href="https://www.firezone.dev/kb/client-apps"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class={[link_style()]}
-                >
-                  Download the Firezone Client
-                </a>
-                for your platform
-              </p>
-              <p>
-                <a
-                  href="https://www.firezone.dev/kb/quickstart"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class={[link_style()]}
-                >
-                  View the Quickstart Guide
-                </a>
-                to get started
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="text-base text-center text-neutral-900">
-        <.form
-          for={%{}}
-          id="resend-email"
-          as={:email}
-          class="inline"
-          action={~p"/#{@account}/sign_in/email_otp/#{@provider}"}
-          method="post"
-        >
-          <.input
-            type="hidden"
-            name="email"
-            value={@actor.email}
-          />
 
-          <.button type="submit" class="w-full">
-            Sign In
-          </.button>
-        </.form>
+      <div class="bg-neutral-50 rounded-lg p-6">
+        <dl class="space-y-4">
+          <div class="flex justify-between items-baseline">
+            <dt class="text-sm font-medium text-neutral-600">Account Name</dt>
+            <dd class="text-sm text-neutral-900">{@account.name}</dd>
+          </div>
+          <div class="flex justify-between items-baseline">
+            <dt class="text-sm font-medium text-neutral-600">Account Slug</dt>
+            <dd class="text-sm text-neutral-900">{@account.slug}</dd>
+          </div>
+          <div class="flex justify-between items-baseline">
+            <dt class="text-sm font-medium text-neutral-600">Sign In URL</dt>
+            <dd class="text-sm">
+              <.link class={[link_style()]} navigate={~p"/#{@account}"}>
+                {url(~p"/#{@account}")}
+              </.link>
+            </dd>
+          </div>
+        </dl>
       </div>
+
+      <div class="bg-accent-50 rounded-lg p-6">
+        <p class="text-sm font-semibold text-neutral-900 mb-4">Next Steps</p>
+        <ul class="space-y-3">
+          <li class="flex items-center gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-accent-100 text-accent-600 rounded-full flex items-center justify-center text-xs font-medium">
+              1
+            </span>
+            <span class="text-sm text-neutral-700">
+              <.website_link path="/kb/client-apps">
+                Download the Firezone Client
+              </.website_link>
+              for your platform
+            </span>
+          </li>
+          <li class="flex items-center gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-accent-100 text-accent-600 rounded-full flex items-center justify-center text-xs font-medium">
+              2
+            </span>
+            <span class="text-sm text-neutral-700">
+              <.website_link path="/kb/quickstart">
+                View the Quickstart Guide
+              </.website_link>
+              to get started
+            </span>
+          </li>
+        </ul>
+      </div>
+
+      <.form
+        for={%{}}
+        id="resend-email"
+        as={:email}
+        action={~p"/#{@account}/sign_in/email_otp/#{@provider}"}
+        method="post"
+      >
+        <.input
+          type="hidden"
+          name="email[email]"
+          value={@actor.email}
+        />
+
+        <.button type="submit" class="w-full">
+          Sign In
+        </.button>
+      </.form>
     </div>
     """
   end

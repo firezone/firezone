@@ -188,7 +188,7 @@
                     </p>
                     <p style="margin: 0 0 8px;">
                       <a
-                        href="https://www.firezone.dev/kb/client-apps"
+                        href="https://www.firezone.dev/kb/client-apps?utm_source=email"
                         style="color: #5e00d6; text-decoration: none; font-weight: 500;"
                       >
                         → Download the Firezone Client
@@ -196,7 +196,7 @@
                     </p>
                     <p style="margin: 0 0 16px;">
                       <a
-                        href="https://www.firezone.dev/kb/quickstart"
+                        href="https://www.firezone.dev/kb/quickstart?utm_source=email"
                         style="color: #5e00d6; text-decoration: none; font-weight: 500;"
                       >
                         → View the Quickstart Guide

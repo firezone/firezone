@@ -7,10 +7,10 @@ You can sign in to your account "<%= @account.name %>" using following link:
 Next Steps:
 
 1. Download the Firezone Client for your platform:
-   https://www.firezone.dev/kb/client-apps
+   https://www.firezone.dev/kb/client-apps?utm_source=email
 
 2. View the Quickstart Guide to get started:
-   https://www.firezone.dev/kb/quickstart
+   https://www.firezone.dev/kb/quickstart?utm_source=email
 
 If you did not request this action and have received this email in error, you can safely ignore
 and discard this email. However, if you continue to receive multiple unsolicited emails of this nature,
