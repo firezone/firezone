@@ -42,7 +42,7 @@ const navbarThemeLight: CustomFlowbiteTheme["navbar"] = {
   },
   collapse: {
     base: "translate-y-0.5 w-full md:block md:w-auto shadow-sm md:shadow-none",
-    list: "mt-4 flex flex-col md:mt-0 md:flex-row md:space-x-8 md:text-md md:font-medium",
+    list: "mt-4 flex flex-col md:mt-0 md:flex-row md:gap-8 md:space-x-0 md:text-md md:font-medium",
     hidden: {
       on: "hidden",
       off: "",
@@ -89,7 +89,7 @@ const navbarThemeDark: CustomFlowbiteTheme["navbar"] = {
   },
   collapse: {
     base: "translate-y-0.5 w-full md:block md:w-auto shadow-sm md:shadow-none",
-    list: "mt-4 flex flex-col md:mt-0 md:flex-row md:space-x-8 md:text-md md:font-medium",
+    list: "mt-4 flex flex-col md:mt-0 md:flex-row md:gap-8 md:space-x-0 md:text-md md:font-medium",
     hidden: {
       on: "hidden",
       off: "",
