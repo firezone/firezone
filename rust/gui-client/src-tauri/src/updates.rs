@@ -4,9 +4,8 @@ use anyhow::{Context, Result};
 use rand::{Rng as _, thread_rng};
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, io::Write, path::PathBuf, str::FromStr, time::Duration};
+use std::{io::Write, path::PathBuf, str::FromStr, time::Duration};
 use tokio::sync::mpsc;
-use url::Url;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Notification {
@@ -22,6 +21,12 @@ pub struct Notification {
 pub struct Release {
     pub download_url: url::Url,
     pub version: Version,
+}
+
+/// Response from the /api/releases endpoint
+#[derive(Debug, Deserialize)]
+struct ApiReleasesResponse {
+    gui: String,
 }
 
 pub async fn checker_task(
@@ -227,26 +232,28 @@ pub(crate) async fn check() -> Result<Release> {
         .header("User-Agent", &user_agent)
         .send()
         .await?;
-    
+
     if !response.status().is_success() {
-        anyhow::bail!("HTTP status: {} from API URL `{}`", response.status(), api_url);
+        anyhow::bail!(
+            "HTTP status: {} from API URL `{}`",
+            response.status(),
+            api_url
+        );
     }
 
-    let versions: HashMap<String, String> = response
+    let api_response: ApiReleasesResponse = response
         .json()
         .await
         .context("Failed to parse JSON response from /api/releases")?;
-    let version_str = versions
-        .get("gui")
-        .context("API response missing 'gui' field")?;
-    let version = Version::parse(version_str)
-        .context("Failed to parse version string from API")?;
+    let version =
+        Version::parse(&api_response.gui).context("Failed to parse version string from API")?;
     tracing::debug!(?version, "Latest GUI version from API");
 
     // Construct the download URL using the redirect endpoint
-    let mut download_url = url::Url::parse("https://www.firezone.dev")
-        .context("Impossible: Hard-coded URL should always be parsable")?;
-    download_url.set_path(&format!("/dl/firezone-client-gui-{os}/latest/{arch}"));
+    let download_url = url::Url::parse(&format!(
+        "https://www.firezone.dev/dl/firezone-client-gui-{os}/{version}/{arch}"
+    ))
+    .context("Impossible: Hard-coded URL should always be parsable")?;
 
     Ok(Release {
         download_url,
@@ -377,10 +384,10 @@ mod tests {
         let version = Version::new(major, minor, patch);
         let arch = std::env::consts::ARCH;
         let os = std::env::consts::OS;
-        let download_url = format!(
+        let download_url = url::Url::parse(&format!(
             "https://www.firezone.dev/dl/firezone-client-gui-{os}/{version}/{arch}"
-        );
-        let download_url = Url::parse(&download_url).unwrap();
+        ))
+        .unwrap();
         Release {
             download_url,
             version,
@@ -388,49 +395,35 @@ mod tests {
     }
 
     #[test]
-    fn test_json_parsing_with_gui_field() {
-        use std::collections::HashMap;
-
+    fn api_releases_response_parsing() {
         // Test that we can parse a valid JSON response with the "gui" field
         let json_str = r#"{"apple":"1.2.3","android":"1.2.4","gui":"1.5.9","headless":"1.5.6","gateway":"1.4.19"}"#;
-        let versions: HashMap<String, String> = serde_json::from_str(json_str).unwrap();
-        
-        assert_eq!(versions.get("gui"), Some(&"1.5.9".to_string()));
-        let version = Version::parse(versions.get("gui").unwrap()).unwrap();
+        let response: ApiReleasesResponse = serde_json::from_str(json_str).unwrap();
+
+        assert_eq!(response.gui, "1.5.9");
+        let version = Version::parse(&response.gui).unwrap();
         assert_eq!(version, Version::new(1, 5, 9));
     }
 
     #[test]
-    fn test_json_parsing_missing_gui_field() {
-        use std::collections::HashMap;
-
+    fn api_releases_response_missing_gui_field() {
         // Test that we handle missing "gui" field appropriately
         let json_str = r#"{"apple":"1.2.3","android":"1.2.4"}"#;
-        let versions: HashMap<String, String> = serde_json::from_str(json_str).unwrap();
-        
-        assert_eq!(versions.get("gui"), None);
+        let result: Result<ApiReleasesResponse, _> = serde_json::from_str(json_str);
+
+        assert!(result.is_err());
     }
 
     #[test]
-    fn test_version_parsing() {
-        // Test various version string formats
-        assert!(Version::parse("1.5.9").is_ok());
-        assert!(Version::parse("1.0.0").is_ok());
-        assert!(Version::parse("2.10.15").is_ok());
-        assert!(Version::parse("1.0.0-pre.14").is_ok());
-        
-        // Invalid version strings should fail
-        assert!(Version::parse("not-a-version").is_err());
-        assert!(Version::parse("").is_err());
-    }
+    fn download_url_construction() {
+        let arch = std::env::consts::ARCH;
+        let os = std::env::consts::OS;
 
-    #[test]
-    fn test_download_url_construction() {
         let release = release(1, 5, 9);
-        let url_str = release.download_url.to_string();
-        
-        // Verify URL contains version
-        assert!(url_str.contains("1.5.9"));
-        assert!(url_str.starts_with("https://www.firezone.dev/dl/firezone-client-gui-"));
+
+        assert_eq!(
+            release.download_url.as_str(),
+            format!("https://www.firezone.dev/dl/firezone-client-gui-{os}/1.5.9/{arch}")
+        );
     }
 }
