@@ -70,6 +70,10 @@ struct FirezoneApp: App {
 #if os(macOS)
   @MainActor
   final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static let softwareUpdateURL = URL(
+      string: "x-apple.systempreferences:com.apple.preferences.softwareupdate"
+    )!  // swiftlint:disable:this force_unwrapping
+
     var menuBar: MenuBar?
     var store: Store?
 
@@ -122,7 +126,7 @@ struct FirezoneApp: App {
       guard runningApps.count > 1 else { return }
 
       for app in runningApps where app != NSRunningApplication.current {
-        DispatchQueue.main.async {
+        Task { @MainActor in
           let alert = NSAlert()
           alert.messageText = "Another Firezone Instance Detected"
           alert.informativeText = """
@@ -134,9 +138,7 @@ struct FirezoneApp: App {
           alert.alertStyle = .warning
           alert.addButton(withTitle: "OK")
 
-          // Show alert
-          SentrySDK.pauseAppHangTracking()
-          alert.runModal()
+          _ = await MacOSAlert.show(alert)
 
           // Exit this instance since we can't terminate the other one
           NSApp.terminate(nil)
@@ -153,29 +155,23 @@ struct FirezoneApp: App {
         return
       }
 
-      let alert = NSAlert()
-      alert.messageText = "macOS Update Required"
-      alert.informativeText =
-        """
-        macOS 15.0 contains a known issue that can prevent Firezone and other VPN
-        apps from functioning correctly. It's highly recommended you upgrade to
-        macOS 15.1 or higher.
-        """
-      alert.addButton(withTitle: "Open System Preferences")
-      alert.addButton(withTitle: "OK")
+      Task { @MainActor in
+        let alert = NSAlert()
+        alert.messageText = "macOS Update Required"
+        alert.informativeText =
+          """
+          macOS 15.0 contains a known issue that can prevent Firezone and other VPN
+          apps from functioning correctly. It's highly recommended you upgrade to
+          macOS 15.1 or higher.
+          """
+        alert.addButton(withTitle: "Open System Preferences")
+        alert.addButton(withTitle: "OK")
 
-      SentrySDK.pauseAppHangTracking()
-      defer { SentrySDK.resumeAppHangTracking() }
-      let response = alert.runModal()
+        let response = await MacOSAlert.show(alert)
 
-      if response == .alertFirstButtonReturn {
-        let softwareUpdateURL = URL(
-          string: "x-apple.systempreferences:com.apple.preferences.softwareupdate"
-        )
-
-        // Static URL literal is guaranteed valid
-        // swiftlint:disable:next force_unwrapping
-        Task { await NSWorkspace.shared.openAsync(softwareUpdateURL!) }
+        if response == .alertFirstButtonReturn {
+          await NSWorkspace.shared.openAsync(Self.softwareUpdateURL)
+        }
       }
     }
   }

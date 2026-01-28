@@ -5,7 +5,6 @@
 //
 
 import Foundation
-import Sentry
 import UserNotifications
 
 #if os(macOS)
@@ -111,16 +110,10 @@ public class SessionNotification: NSObject {
       alert.addButton(withTitle: "Cancel")
       NSApp.activate(ignoringOtherApps: true)
 
-      await withCheckedContinuation { continuation in
-        SentrySDK.pauseAppHangTracking()
-        defer { SentrySDK.resumeAppHangTracking() }
-        let response = alert.runModal()
-
-        if response == NSApplication.ModalResponse.alertFirstButtonReturn {
-          Log.log("\(#function): 'Sign In' clicked in notification")
-          signInHandler()
-        }
-        continuation.resume()
+      let response = await MacOSAlert.show(alert)
+      if response == .alertFirstButtonReturn {
+        Log.log("\(#function): 'Sign In' clicked in notification")
+        signInHandler()
       }
     }
   #endif
