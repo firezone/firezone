@@ -46,7 +46,7 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
               field :stripe_id, :string
             end
 
-            def changeset(metadata \\\\ %__MODULE__{}, attrs) do
+            def changeset(metadata \\ %__MODULE__{}, attrs) do
               metadata
               |> cast(attrs, [:stripe_id])
             end
@@ -66,7 +66,7 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
     ]
 
   @doc false
-  def run(source_file, params \\\\ []) do
+  def run(source_file, params \\ []) do
     issue_meta = IssueMeta.for(source_file, params)
 
     # First pass: collect information about the module

@@ -69,8 +69,7 @@ defmodule Portal.Ops do
   def set_banner(message) do
     clear_banner()
 
-    %Banner{}
-    |> Banner.changeset(message: message)
+    %Banner{message: message}
     |> Database.insert()
   end
 
@@ -91,8 +90,8 @@ defmodule Portal.Ops do
       |> Safe.one!()
     end
 
-    def insert(changeset) do
-      changeset
+    def insert(banner) do
+      banner
       |> Safe.unscoped()
       |> Safe.insert()
     end
@@ -103,8 +102,8 @@ defmodule Portal.Ops do
       |> Safe.delete_all()
     end
 
-    def delete(record) do
-      record
+    def delete(banner) do
+      banner
       |> Safe.unscoped()
       |> Safe.delete()
     end
