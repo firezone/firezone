@@ -282,7 +282,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       Process.sleep(50)
 
-      # Inject a node and then simulate it going stale
+      # Inject a node and then simulate it going stale.
+      # Set started_at in the past to ensure we're past the startup grace period.
       state = :sys.get_state(pid)
       stale_time = System.monotonic_time(:millisecond) - 200
 
@@ -291,7 +292,8 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         | node_timestamps: %{:node1@test => stale_time},
           connected_nodes: [:node1@test],
           missed_heartbeats: 1,
-          below_threshold?: false
+          below_threshold?: false,
+          started_at: System.monotonic_time(:millisecond) - :timer.seconds(60)
       }
 
       :sys.replace_state(pid, fn _ -> new_state end)
@@ -331,6 +333,42 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         end)
 
       assert log =~ "Connected nodes count is back above threshold"
+    end
+
+    test "does not log threshold error during startup grace period" do
+      channel_name = "test_#{System.unique_integer([:positive])}"
+
+      pid =
+        start_supervised!({PostgresStrategy,
+         [
+           build_state(
+             channel_name: channel_name,
+             node_count: 5,
+             # Grace period = 500 * 3 = 1500ms, plenty of time for the test
+             heartbeat_interval: 500,
+             missed_heartbeats: 3
+           )
+         ]})
+
+      # Connect a node via heartbeat, then send goodbye while still in grace period
+      send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
+      _ = :sys.get_state(pid)
+
+      log =
+        capture_log(fn ->
+          send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
+          _ = :sys.get_state(pid)
+          Logger.flush()
+        end)
+
+      # Goodbye should still be processed
+      assert log =~ "Received goodbye from node"
+      # But threshold error should be suppressed during grace period
+      refute log =~ "Connected nodes count is below threshold"
+
+      # Verify below_threshold? stays false during grace period
+      state = :sys.get_state(pid)
+      refute state.below_threshold?
     end
   end
 

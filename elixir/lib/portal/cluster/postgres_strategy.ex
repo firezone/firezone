@@ -99,6 +99,7 @@ defmodule Portal.Cluster.PostgresStrategy do
       |> Map.put(:below_threshold?, false)
       |> Map.put(:listener_pid, nil)
       |> Map.put(:notify_conn, nil)
+      |> Map.put(:started_at, System.monotonic_time(:millisecond))
 
     {:ok, state, {:continue, :connect}}
   end
@@ -300,9 +301,11 @@ defmodule Portal.Cluster.PostgresStrategy do
     end
   end
 
-  # Only log when crossing the threshold boundary to avoid log flooding
+  # Only log when crossing the threshold boundary to avoid log flooding.
+  # Skip threshold checks during the startup grace period — newly started nodes
+  # need time to receive heartbeats from all peers before the count is meaningful.
   defp maybe_log_threshold_error(state, problem_nodes) do
-    if enough_nodes_connected?(state) do
+    if in_startup_grace_period?(state) or enough_nodes_connected?(state) do
       %{state | below_threshold?: false}
     else
       unless state.below_threshold? do
@@ -341,5 +344,10 @@ defmodule Portal.Cluster.PostgresStrategy do
       :error ->
         true
     end
+  end
+
+  defp in_startup_grace_period?(state) do
+    elapsed = System.monotonic_time(:millisecond) - state.started_at
+    elapsed < state.heartbeat_interval * state.missed_heartbeats
   end
 end
