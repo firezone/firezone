@@ -187,32 +187,34 @@ defmodule PortalWeb.SignUp do
           </table>
         </div>
       </div>
-      <div class="text-center text-neutral-900 space-y-4">
-        <div class="border-t border-neutral-200 pt-4">
-          <p class="text-base font-medium mb-2">Next Steps:</p>
-          <div class="space-y-2 text-sm">
-            <p>
-              <a
-                href="https://www.firezone.dev/kb/client-apps"
-                target="_blank"
-                rel="noopener noreferrer"
-                class={[link_style()]}
-              >
-                Download the Firezone Client
-              </a>
-              for your platform
-            </p>
-            <p>
-              <a
-                href="https://www.firezone.dev/kb/quickstart"
-                target="_blank"
-                rel="noopener noreferrer"
-                class={[link_style()]}
-              >
-                View the Quickstart Guide
-              </a>
-              to get started
-            </p>
+      <div class="text-center">
+        <div class="px-12">
+          <div class="border-t border-neutral-200 pt-6 mt-2">
+            <p class="text-base font-medium text-neutral-900 mb-4">Next Steps:</p>
+            <div class="space-y-3 text-sm text-neutral-900">
+              <p>
+                <a
+                  href="https://www.firezone.dev/kb/client-apps"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class={[link_style()]}
+                >
+                  Download the Firezone Client
+                </a>
+                {" "}for your platform
+              </p>
+              <p>
+                <a
+                  href="https://www.firezone.dev/kb/quickstart"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class={[link_style()]}
+                >
+                  View the Quickstart Guide
+                </a>
+                {" "}to get started
+              </p>
+            </div>
           </div>
         </div>
       </div>
