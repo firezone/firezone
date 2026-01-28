@@ -29,8 +29,9 @@ export default function Principles() {
               Collaboration
             </h3>
             <p className="leading-6 tracking-tight text-lg py-8">
-              We work together to achieve our goals, and celebrate our successes
-              as a team. Everyone&apos;s voice is heard and respected.
+              {
+                "We work together to achieve our goals, and celebrate our successes as a team. Everyone's voice is heard and respected."
+              }
             </p>
           </div>
           <div>
@@ -38,8 +39,9 @@ export default function Principles() {
               Sensibility
             </h3>
             <p className="leading-6 tracking-tight text-lg py-8">
-              We don&apos;t believe in hype or buzzwords. We believe in building
-              products that solve real problems for real people.
+              {
+                "We don't believe in hype or buzzwords. We believe in building products that solve real problems for real people."
+              }
             </p>
           </div>
           <div>

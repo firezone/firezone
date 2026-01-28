@@ -92,10 +92,9 @@ export default function Headless({ os }: { os: OS }) {
           the headless client Docker image.
         </ChangeItem>
         <ChangeItem pull="10104">
-          Fixes an issue where DNS resources would resolve to a different IP
-          after signing out and back into Firezone. This would break
-          connectivity for long-running services that don&apos;t re-resolve DNS,
-          like SSH sessions or mongoose.
+          {
+            "Fixes an issue where DNS resources would resolve to a different IP after signing out and back into Firezone. This would break connectivity for long-running services that don't re-resolve DNS, like SSH sessions or mongoose."
+          }
         </ChangeItem>
       </Entry>
       <Entry version="1.5.2" date={new Date("2025-07-28")}>
@@ -329,8 +328,9 @@ export default function Headless({ os }: { os: OS }) {
           </Entry>
           <Entry version="1.3.4" date={new Date("2024-10-02")}>
             <ChangeItem pull="6831">
-              Ensures Firefox doesn&apos;t attempt to use DNS over HTTPS when
-              Firezone is active.
+              {
+                "Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is active."
+              }
             </ChangeItem>
             <ChangeItem pull="6845">
               Fixes connectivity issues on idle connections by entering an
@@ -340,7 +340,7 @@ export default function Headless({ os }: { os: OS }) {
               Adds always-on error reporting using sentry.io.
             </ChangeItem>
             <ChangeItem pull="6857">
-              Sends the motherboard&apos;s hardware ID for device verification.
+              {"Sends the motherboard's hardware ID for device verification."}
             </ChangeItem>
           </Entry>
           <Entry version="1.3.3" date={new Date("2024-09-25")}>
@@ -360,8 +360,9 @@ export default function Headless({ os }: { os: OS }) {
               gets disabled / removed.
             </ChangeItem>
             <ChangeItem pull="6780">
-              Fixes a bug where the Linux Clients didn&apos;t work on ZFS
-              filesystems.
+              {
+                "Fixes a bug where the Linux Clients didn't work on ZFS filesystems."
+              }
             </ChangeItem>
             <ChangeItem pull="6788">
               Fixes an issue where some browsers may fail to route DNS Resources
@@ -384,9 +385,9 @@ export default function Headless({ os }: { os: OS }) {
               Implements glob-like matching of domains for DNS resources.
             </ChangeItem>
             <ChangeItem pull="6361">
-              Connections to Gateways are now sticky for the duration of the
-              Client&apos;s session to fix issues with long-lived TCP
-              connections.
+              {
+                "Connections to Gateways are now sticky for the duration of the Client's session to fix issues with long-lived TCP connections."
+              }
             </ChangeItem>
           </Entry>
           <Entry version="1.1.7" date={new Date("2024-08-13")}>
@@ -436,9 +437,9 @@ export default function Headless({ os }: { os: OS }) {
           </Entry>
           <Entry version="1.1.2" date={new Date("2024-07-03")}>
             <li className="pl-2">
-              Prevents Firezone&apos;s stub resolver from intercepting DNS
-              record types besides A, AAAA, and PTR. These are now forwarded to
-              your upstream DNS resolver.
+              {
+                "Prevents Firezone's stub resolver from intercepting DNS record types besides A, AAAA, and PTR. These are now forwarded to your upstream DNS resolver."
+              }
             </li>
           </Entry>
           <Entry version="1.1.1" date={new Date("2024-06-29")}>
