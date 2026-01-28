@@ -8,7 +8,6 @@ DOS.BinToAtom: Unsafe atom interpolation,lib/portal/account.ex:83,2831B26
 Config.Secrets: Hardcoded Secret,config/config.exs:220,29A4EF2
 Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
 SQL.Query: SQL injection,lib/portal/safe.ex:344,2C3D7F0
-DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:217,3560D02
 SQL.Query: SQL injection,lib/portal/safe.ex:350,3C9C61F
 DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:171,3D848A0
 Config.Headers: Missing Secure Browser Headers,lib/portal_api/router.ex:15,464028
@@ -18,14 +17,15 @@ Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:4,490DB2
 Config.Secrets: Hardcoded Secret,config/config.exs:115,496262
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:20,4C29336
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/email_otp.ex:65,5078E69
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:211,52B9024
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:24,5775968
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:33,58DA1AC
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:66,58F0C9B
-DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:212,5B50F1B
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:403,5BB84FC
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:399,5F2DE06
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/client_auth.ex:42,5F2F213
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,696A7C1
+DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:216,69DCAC0
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:53,7047850
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:13,7269EC9
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:43,7695619
