@@ -343,10 +343,14 @@ requirements. This is achieved through a combination of **load balancing** and
 
 ### Load balancing
 
-When a Client wants to connect to a Resource, Firezone randomly selects a
-healthy Gateway in the Site to handle the request. The Client maintains the
-connection to that Gateway until either the Client disconnects or the Gateway
-becomes unhealthy.
+When a Client wants to connect to a Resource, Firezone automatically selects a
+healthy Gateway in the Site to handle the request based on the Client's
+geolocated IP address. The system calculates the geographic distance to each
+available Gateway and selects the one that is closest to the Client's location.
+This ensures optimal performance with the lowest possible latency.
+
+The Client maintains the connection to that Gateway until either the Client
+disconnects or the Gateway becomes unhealthy.
 
 This effectively shards Client connections across all Gateways in a Site,
 achieving higher overall throughput than otherwise possible with a single

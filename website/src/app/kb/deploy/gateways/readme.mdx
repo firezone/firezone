@@ -91,6 +91,11 @@ latency and highest possible throughput for Client connections, and allows you
 to more easily deploy additional Gateways for other Resources that need to
 handle more Client connections.
 
+When multiple Gateways are deployed within a Site, Firezone automatically
+selects the closest Gateway to route Client traffic based on the Client's
+geolocated IP address. This regional selection helps minimize latency and
+optimize performance by connecting users to the nearest available Gateway.
+
 The downside of deploying Gateways close to Resources is that it increases the
 overall number of Gateways and Sites you need to manage. Firezone's control
 plane is designed to make this as easy as possible, but it's still something to
