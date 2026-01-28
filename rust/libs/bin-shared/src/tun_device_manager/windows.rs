@@ -419,6 +419,8 @@ fn start_send_thread(
                 continue;
             };
 
+            let mut attempts = 0;
+
             loop {
                 let Some(session) = session.upgrade() else {
                     tracing::debug!(
@@ -426,6 +428,8 @@ fn start_send_thread(
                     );
                     return;
                 };
+
+                attempts += 1;
 
                 match session.allocate_send_packet(len) {
                     Ok(mut pkt) => {
@@ -441,7 +445,13 @@ fn start_send_thread(
                             .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
                     {
                         tracing::trace!("WinTUN ring buffer is full");
-                        std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
+
+                        if attempts < 10 {
+                            std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
+                            continue;
+                        }
+
+                        std::thread::sleep(Duration::from_micros(100));
                     }
                     Err(e) => {
                         tracing::error!("Failed to allocate WinTUN packet: {e}");
