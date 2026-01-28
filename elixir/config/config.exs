@@ -32,7 +32,8 @@ config :portal, Portal.Repo,
   queue_interval: 1000,
   migration_timestamps: [type: :timestamptz],
   migration_lock: :pg_advisory_lock,
-  start_apps_before_migration: [:ssl, :logger_json]
+  start_apps_before_migration: [:ssl, :logger_json],
+  parameters: [application_name: "portal"]
 
 config :portal, Portal.Repo.Replica,
   hostname: "localhost",
@@ -42,7 +43,8 @@ config :portal, Portal.Repo.Replica,
   show_sensitive_data_on_connection_error: true,
   pool_size: :erlang.system_info(:logical_processors_available) * 2,
   queue_target: 500,
-  queue_interval: 1000
+  queue_interval: 1000,
+  parameters: [application_name: "replica"]
 
 config :portal, Portal.ChangeLogs.ReplicationConnection,
   replication_slot_name: "change_logs_slot",
@@ -52,7 +54,7 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     hostname: "localhost",
     port: 5432,
     ssl: false,
-    parameters: [],
+    parameters: [application_name: "change_logs"],
     username: "postgres",
     database: "firezone_dev",
     password: "postgres"
@@ -109,7 +111,7 @@ config :portal, Portal.Changes.ReplicationConnection,
     hostname: "localhost",
     port: 5432,
     ssl: false,
-    parameters: [],
+    parameters: [application_name: "changes"],
     username: "postgres",
     database: "firezone_dev",
     password: "postgres"
