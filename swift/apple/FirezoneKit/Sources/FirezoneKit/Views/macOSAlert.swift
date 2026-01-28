@@ -9,7 +9,6 @@
   import SystemExtensions
   import AppKit
   import NetworkExtension
-  import Sentry
 
   protocol UserFriendlyError {
     func userMessage() -> String?
@@ -199,9 +198,104 @@
     }
   }
 
+  /// A floating utility panel for displaying alerts in a menu bar app
+  /// where no main window exists. This avoids blocking the main thread
+  /// with NSAlert.runModal().
   @MainActor
-  struct MacOSAlert {
-    static func show(for error: Error) {
+  final class AlertPanel {
+    static let shared = AlertPanel()
+
+    private static let menuBarOffset: CGFloat = 100
+
+    private var pendingAlertCount = 0
+
+    private lazy var panel: NSPanel = {
+      // Create a minimal panel to host sheets - behaves like a modal alert
+      let panel = NSPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
+        styleMask: [.titled, .closable],
+        backing: .buffered,
+        defer: true
+      )
+      // Modal panel level ensures it stays above other windows
+      panel.level = .modalPanel
+      panel.isReleasedWhenClosed = false
+      panel.hidesOnDeactivate = false
+      // Make transparent so only the sheet is visible
+      panel.isOpaque = false
+      panel.backgroundColor = .clear
+      panel.title = ""
+      return panel
+    }()
+
+    private init() {}
+
+    func showAlert(
+      _ alert: NSAlert,
+      completion: ((NSApplication.ModalResponse) -> Void)? = nil
+    ) {
+      // Position panel at top-center of main screen
+      if let screen = NSScreen.main {
+        let screenFrame = screen.visibleFrame
+        let panelX = screenFrame.midX - panel.frame.width / 2
+        let panelY = screenFrame.maxY - Self.menuBarOffset
+        panel.setFrameOrigin(NSPoint(x: panelX, y: panelY))
+      }
+
+      pendingAlertCount += 1
+
+      if pendingAlertCount == 1 {
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+      }
+
+      alert.beginSheetModal(for: panel) { [weak self] response in
+        // AppKit may invoke this on an arbitrary thread, so dispatch back to MainActor
+        Task { @MainActor in
+          completion?(response)
+          self?.pendingAlertCount -= 1
+          if self?.pendingAlertCount == 0 {
+            self?.panel.orderOut(nil)
+          }
+        }
+      }
+    }
+
+    func showAlert(_ alert: NSAlert) async -> NSApplication.ModalResponse {
+      await withCheckedContinuation { continuation in
+        showAlert(alert) { response in
+          continuation.resume(returning: response)
+        }
+      }
+    }
+  }
+
+  // MARK: - MacOSAlert
+
+  @MainActor
+  public struct MacOSAlert {
+    /// Ensures the alert has the app icon set for consistent branding.
+    private static func applyDefaultStyle(_ alert: NSAlert) {
+      alert.icon = NSApp.applicationIconImage
+    }
+
+    /// Shows an alert non-blockingly. Uses a sheet if a window is available,
+    /// otherwise uses a floating panel.
+    public static func show(_ alert: NSAlert) {
+      Task {
+        _ = await show(alert)
+      }
+    }
+
+    /// Shows an alert and waits for the user's response.
+    /// Always uses AlertPanel for consistent behavior in menu bar apps.
+    public static func show(_ alert: NSAlert) async -> NSApplication.ModalResponse {
+      applyDefaultStyle(alert)
+      return await AlertPanel.shared.showAlert(alert)
+    }
+
+    /// Shows an error alert with a user-friendly message.
+    public static func show(for error: Error) {
       let message = (error as UserFriendlyError).userMessage() ?? "\(error)"
       let alert = NSAlert()
 
@@ -209,9 +303,7 @@
       alert.informativeText = message
       alert.alertStyle = .critical
 
-      SentrySDK.pauseAppHangTracking()
-      defer { SentrySDK.resumeAppHangTracking() }
-      alert.runModal()
+      show(alert)
     }
   }
 
