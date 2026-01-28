@@ -409,10 +409,15 @@ impl<'a> Handler<'a> {
                         let msg = match result {
                             Ok(session) => {
                                 self.session = session;
+                                tracing::debug!("Created new session");
 
                                 ServerMsg::connect_result(Ok(()))
                             }
-                            Err(e) => ServerMsg::connect_result(Err(e)),
+                            Err(e) => {
+                                tracing::debug!("Failed to create new session: {e}");
+
+                                ServerMsg::connect_result(Err(e))
+                            }
                         };
 
                         let _ = self
