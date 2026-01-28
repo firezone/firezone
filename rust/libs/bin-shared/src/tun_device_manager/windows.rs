@@ -440,8 +440,7 @@ fn start_send_thread(
                         if e.raw_os_error()
                             .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
                     {
-                        tracing::debug!("WinTUN ring buffer is full");
-                        std::thread::sleep(Duration::from_millis(10)); // Suspend for a bit to avoid busy-looping.
+                        std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
                     }
                     Err(e) => {
                         tracing::error!("Failed to allocate WinTUN packet: {e}");
