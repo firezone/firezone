@@ -23,7 +23,7 @@ defmodule Portal.Membership do
     field :last_synced_at, :utc_datetime_usec
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> assoc_constraint(:actor)
     |> assoc_constraint(:group)

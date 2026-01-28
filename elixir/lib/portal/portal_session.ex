@@ -32,7 +32,7 @@ defmodule Portal.PortalSession do
     timestamps(updated_at: false)
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)

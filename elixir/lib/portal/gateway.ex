@@ -60,7 +60,7 @@ defmodule Portal.Gateway do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> trim_change(:name)
     |> validate_length(:name, min: 1, max: 255)

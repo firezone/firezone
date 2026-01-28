@@ -34,7 +34,7 @@ defmodule Portal.Policy do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_length(:description, min: 1, max: 1024)
     |> unique_constraint(

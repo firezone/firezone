@@ -11,10 +11,12 @@ Ensures that Ecto schema modules define a `changeset/1` function that accepts an
 **Rationale:** We expect the caller to be able to pass in an already-created changeset for validation, ensuring a consistent pattern across the codebase.
 
 **Exceptions:**
+
 - Embedded schemas (using `embedded_schema do` blocks) typically use `changeset/2` instead
 - Simple schemas that don't accept user input (like audit logs, processed events, or read-only schemas) may not need a changeset function
 
 **Example:**
+
 ```elixir
 defmodule Portal.Account do
   use Ecto.Schema

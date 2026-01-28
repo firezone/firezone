@@ -22,17 +22,11 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
               timestamps()
             end
 
-            def changeset(changeset) do
+            def changeset(%Ecto.Changeset{} = changeset) do
               changeset
               |> validate_required([:name])
               |> validate_length(:name, min: 3, max: 64)
             end
-          end
-
-          # Or with explicit type annotation:
-          def changeset(%Ecto.Changeset{} = changeset) do
-            changeset
-            |> validate_required([:name])
           end
 
       Embedded schemas typically use changeset/2:
@@ -104,7 +98,8 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
   defp collect_info(
          {:defmodule, meta, [{:__aliases__, _, module_parts}, _body]} = ast,
          state
-       ) when is_list(module_parts) do
+       )
+       when is_list(module_parts) do
     module_name = Enum.join(module_parts, ".")
     {ast, %{state | module_name: module_name, defmodule_line: meta[:line]}}
   end
@@ -113,7 +108,8 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
   defp collect_info(
          {:defmodule, meta, [module_name, _body]} = ast,
          state
-       ) when is_atom(module_name) do
+       )
+       when is_atom(module_name) do
     {ast, %{state | module_name: to_string(module_name), defmodule_line: meta[:line]}}
   end
 
@@ -125,12 +121,19 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
     {ast, %{state | is_embedded: true}}
   end
 
-  # Detect changeset/1 function (matches any single-argument changeset function)
+  # Detect changeset/1 function that accepts an Ecto.Changeset
   defp collect_info(
          {:def, _, [{:changeset, _, args}, _body]} = ast,
          state
-       ) when is_list(args) and length(args) == 1 do
-    {ast, %{state | has_changeset: true}}
+       )
+       when is_list(args) and length(args) == 1 do
+    [arg] = args
+
+    if accepts_ecto_changeset?(arg) do
+      {ast, %{state | has_changeset: true}}
+    else
+      {ast, state}
+    end
   end
 
   # Handle changeset with no arguments list (shouldn't happen but be defensive)
@@ -138,13 +141,26 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
          {:def, _, [{:changeset, _, nil}, _body]} = ast,
          state
        ) do
-    # changeset with no args - probably not what we want, so don't mark as has_changeset
+    # changeset with no args - not what we want
     {ast, state}
   end
 
+  # Catch-all for collect_info
   defp collect_info(ast, state) do
     {ast, state}
   end
+
+  # Check if argument is pattern matched against %Ecto.Changeset{}
+  # Matches: %Ecto.Changeset{} = var, var = %Ecto.Changeset{}, or just %Ecto.Changeset{}
+  defp accepts_ecto_changeset?({:=, _, [left, right]}) do
+    is_ecto_changeset_struct?(left) or is_ecto_changeset_struct?(right)
+  end
+
+  defp accepts_ecto_changeset?(arg), do: is_ecto_changeset_struct?(arg)
+
+  # Match %Ecto.Changeset{} or %Ecto.Changeset{...}
+  defp is_ecto_changeset_struct?({:%, _, [{:__aliases__, _, [:Ecto, :Changeset]}, _]}), do: true
+  defp is_ecto_changeset_struct?(_), do: false
 
   # Only issue warning for non-embedded schemas that use Ecto.Schema but don't have changeset/1
   defp should_issue_warning?(state) do
@@ -157,7 +173,8 @@ defmodule Credo.Check.Warning.MissingChangesetFunction do
     format_issue(
       issue_meta,
       message:
-        "Schema module#{module_info} should define a changeset/1 function that accepts an Ecto.Changeset. " <>
+        "Schema module#{module_info} should define a changeset/1 function with signature " <>
+          "`def changeset(%Ecto.Changeset{} = changeset)`. " <>
           "If this schema doesn't accept user input, you can ignore this warning.",
       trigger: "use Ecto.Schema",
       line_no: line_no

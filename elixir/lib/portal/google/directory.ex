@@ -30,7 +30,7 @@ defmodule Portal.Google.Directory do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required([:domain, :is_verified, :name, :impersonation_email])
     |> validate_email(:impersonation_email)
