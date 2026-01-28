@@ -92,6 +92,18 @@ defmodule Portal.DirectorySync.ErrorHandler do
     {:transient, format_transport_error(error)}
   end
 
+  defp classify_error(%{step: :check_deletion_threshold} = cause, _format_fn) do
+    {:client_error, format_deletion_threshold_error(cause)}
+  end
+
+  defp classify_error(%{step: :process_user} = cause, _format_fn) do
+    {:client_error, Map.get(cause, :reason, "User missing required email field")}
+  end
+
+  defp classify_error(%{step: :verify_scopes} = cause, _format_fn) do
+    {:client_error, Map.get(cause, :reason, "Access token missing required scopes")}
+  end
+
   defp classify_error(error, _format_fn) do
     {:transient, format_generic_error(error)}
   end
@@ -201,6 +213,18 @@ defmodule Portal.DirectorySync.ErrorHandler do
       _ ->
         "Network error: #{inspect(reason)}"
     end
+  end
+
+  defp format_deletion_threshold_error(%{resource: resource, total: total, to_delete: to_delete}) do
+    percentage = if total > 0, do: Float.round(to_delete / total * 100, 0), else: 0
+
+    "Sync would delete #{to_delete} of #{total} #{resource} (#{trunc(percentage)}%). " <>
+      "This may indicate your Okta application was misconfigured. " <>
+      "Please verify your Okta configuration and re-verify the directory."
+  end
+
+  defp format_deletion_threshold_error(_cause) do
+    "Deletion threshold exceeded. Please verify your Okta configuration."
   end
 
   defp format_generic_error(error) when is_exception(error) do
