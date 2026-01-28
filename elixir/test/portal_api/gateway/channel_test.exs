@@ -2276,6 +2276,64 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert relay_id == relay1.id
     end
 
+    test "disconnected_ids only contains relays that are truly offline", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      # This test validates that disconnected_ids only contains relays that are
+      # no longer in presence (truly offline), not relays that happen to not be
+      # selected by load balancing.
+      #
+      # The fix uses a single presence snapshot for both:
+      # 1. Determining which cached relays are now offline (disconnected_ids)
+      # 2. Selecting the best relays to send to the gateway (connected)
+      #
+      # This ensures a relay can never appear in both lists due to CRDT
+      # eventual consistency during rapid disconnect/reconnect cycles.
+
+      relay = relay_fixture(%{lat: 37.0, lon: -120.0})
+
+      :ok = Portal.Presence.Relays.connect(relay)
+
+      PortalAPI.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        token_id: token.id,
+        gateway: gateway,
+        site: site,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+
+      assert_push "init", %{relays: [_, _]}
+
+      # Disconnect and immediately reconnect - without the fix, this could cause
+      # the relay to appear in both connected and disconnected_ids
+      Portal.Presence.Relays.disconnect(relay)
+      :ok = Portal.Presence.Relays.connect(relay)
+
+      # If we receive any relays_presence message, verify the invariant:
+      # a relay should NEVER appear in both connected and disconnected_ids
+      receive do
+        %Phoenix.Socket.Message{event: "relays_presence", payload: payload} ->
+          connected_ids = MapSet.new(payload.connected, & &1.id)
+          disconnected_ids = MapSet.new(payload.disconnected_ids)
+
+          intersection = MapSet.intersection(connected_ids, disconnected_ids)
+
+          assert MapSet.size(intersection) == 0,
+                 "Relay IDs #{inspect(MapSet.to_list(intersection))} appear in both " <>
+                   "connected and disconnected_ids - disconnected_ids should only " <>
+                   "contain relays that are truly offline"
+      after
+        100 ->
+          # No message received is also acceptable - relay reconnected before
+          # the presence check ran, so no update was needed
+          :ok
+      end
+    end
+
     test "selects closest relays by distance when gateway has location", %{
       account: account,
       site: site,
