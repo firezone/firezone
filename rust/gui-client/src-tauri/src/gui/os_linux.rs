@@ -32,16 +32,31 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Signature must match other platforms."
+)]
+pub(crate) fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
     let (_, rx) = futures::channel::oneshot::channel();
 
-    let notification = notify_rust::Notification::new()
-        .summary(&title)
-        .body(&body)
-        .show_async()
-        .await?;
+    tokio::spawn(async move {
+        let notification = match notify_rust::Notification::new()
+            .summary(&title)
+            .body(&body)
+            .show_async()
+            .await
+        {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::debug!(%title, "Failed to show notification: {e}");
+                return;
+            }
+        };
 
-    notification.on_close(|| {});
+        tracing::debug!(%title, %body, "Showing notification");
+
+        notification.on_close(|| {});
+    });
 
     Ok(NotificationHandle { on_click: rx })
 }

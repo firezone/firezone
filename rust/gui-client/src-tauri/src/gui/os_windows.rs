@@ -60,11 +60,7 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
 /// - <https://answers.microsoft.com/en-us/windows/forum/all/notifications-not-activating-the-associated-app/7a3b31b0-3a20-4426-9c88-c6e3f2ac62c6>
 ///
 /// Firefox doesn't have this problem. Maybe they're using a different API.
-#[expect(
-    clippy::unused_async,
-    reason = "Signature must match other operating systems"
-)]
-pub(crate) async fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
+pub(crate) fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
     let (tx, rx) = futures::channel::oneshot::channel();
 
     // For some reason `on_activated` is FnMut
@@ -82,7 +78,9 @@ pub(crate) async fn show_notification(title: String, body: String) -> Result<Not
             Ok(())
         })
         .show()
-        .context("Couldn't show clickable URL notification")?;
+        .context("Failed to show notification")?;
+
+    tracing::debug!(%title, %body, "Showing notification");
 
     Ok(NotificationHandle { on_click: rx })
 }
