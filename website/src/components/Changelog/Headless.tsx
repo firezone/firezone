@@ -23,6 +23,11 @@ export default function Headless({ os }: { os: OS }) {
           responses. For example, this allows Firezone to automatically sign-in
           even if Internet Access is gated by a captive portal.
         </ChangeItem>
+        <ChangeItem pull="11891">
+          Fixes an issue where cached IPv6 addresses for a resource got returned
+          for IPv4-only DNS resources if the setting was only changed after a
+          DNS query had already been processed.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.6" date={new Date("2026-01-06")}>
         <ChangeItem pull="11627">
@@ -40,6 +45,10 @@ export default function Headless({ os }: { os: OS }) {
         <ChangeItem pull="11594">
           Implements retry with exponential backoff on 429 (Too Many Requests)
           responses from the portal.
+        </ChangeItem>
+        <ChangeItem pull="11804">
+          Fixes an issue where connections would flap between relayed and
+          direct, causing WireGuard connection timeouts.
         </ChangeItem>
       </Entry>
       <Entry version="1.5.5" date={new Date("2025-12-23")}>

@@ -23,7 +23,7 @@ const customerData = [
   },
   {
     href: new URL("https://beakon.com.au"),
-    desc: `Firezone&apos;s easy-to-setup, sleek, and simple interface makes management
+    desc: `Firezone's easy-to-setup, sleek, and simple interface makes management
       effortless. It perfectly met our zero-trust security needs without the
       complexity found in other products we tested.`,
     authorName: "Mark Sim",
@@ -34,7 +34,7 @@ const customerData = [
   {
     href: new URL("https://www.corrdyn.com/"),
     desc: `After comparing Tailscale, we ultimately chose Firezone to secure access
-      to our data warehouses. Firezone&apos;s ease of configuration and robust
+      to our data warehouses. Firezone's ease of configuration and robust
       policy-based access system made it the clear choice for our needs.`,
     authorName: "James Winegar",
     companyName: "Corrdyn",

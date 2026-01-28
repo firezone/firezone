@@ -3,7 +3,7 @@ defmodule PortalWeb.Plugs.EnsureAdmin do
 
   import Plug.Conn
 
-  alias Portal.Auth.Subject
+  alias Portal.Authentication.Subject
   alias Portal.Actor
 
   @impl true

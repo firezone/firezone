@@ -4,7 +4,7 @@ defmodule PortalWeb.EmailOTPController do
   """
   use PortalWeb, :controller
 
-  alias Portal.Auth
+  alias Portal.Authentication
   alias __MODULE__.Database
   alias PortalWeb.Session.Redirector
 
@@ -68,7 +68,12 @@ defmodule PortalWeb.EmailOTPController do
          {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
          {:ok, passcode} <-
-           Auth.verify_one_time_passcode(account.id, actor_id, passcode_id, entered_code),
+           Authentication.verify_one_time_passcode(
+             account.id,
+             actor_id,
+             passcode_id,
+             entered_code
+           ),
          :ok <- check_admin(passcode.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, passcode.actor, provider, params) do
@@ -108,7 +113,7 @@ defmodule PortalWeb.EmailOTPController do
       execute_with_constant_time(
         fn ->
           with {:ok, actor} <- Database.fetch_actor_by_email(account, email),
-               {:ok, otp} <- Auth.create_one_time_passcode(account, actor),
+               {:ok, otp} <- Authentication.create_one_time_passcode(account, actor),
                {:ok, _} <- send_email_otp(conn, actor, otp.code, auth_provider_id, params) do
             {actor.id, otp.id, nil}
           else
@@ -162,7 +167,11 @@ defmodule PortalWeb.EmailOTPController do
   end
 
   defp check_admin(%Portal.Actor{type: :account_admin_user}, _context_type), do: :ok
-  defp check_admin(%Portal.Actor{type: :account_user}, :client), do: :ok
+
+  defp check_admin(%Portal.Actor{type: :account_user}, t)
+       when t in [:gui_client, :headless_client],
+       do: :ok
+
   defp check_admin(_actor, _context_type), do: {:error, :not_admin}
 
   defp create_session_or_token(conn, actor, provider, params) do
@@ -170,7 +179,7 @@ defmodule PortalWeb.EmailOTPController do
     remote_ip = conn.remote_ip
     type = context_type(params)
     headers = conn.req_headers
-    context = Portal.Auth.Context.build(remote_ip, user_agent, headers, type)
+    context = Portal.Authentication.Context.build(remote_ip, user_agent, headers, type)
 
     # Get the provider schema module to access default values
     schema = provider.__struct__
@@ -178,7 +187,10 @@ defmodule PortalWeb.EmailOTPController do
     # Determine session lifetime based on context type
     session_lifetime_secs =
       case type do
-        :client ->
+        :gui_client ->
+          provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
+
+        :headless_client ->
           provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
 
         :portal ->
@@ -189,14 +201,14 @@ defmodule PortalWeb.EmailOTPController do
 
     case type do
       :portal ->
-        Auth.create_portal_session(
+        Authentication.create_portal_session(
           actor,
           provider.id,
           context,
           expires_at
         )
 
-      :client ->
+      :gui_client ->
         attrs = %{
           type: :client,
           secret_nonce: params["nonce"],
@@ -207,7 +219,20 @@ defmodule PortalWeb.EmailOTPController do
           expires_at: expires_at
         }
 
-        Auth.create_gui_client_token(attrs)
+        Authentication.create_gui_client_token(attrs)
+
+      :headless_client ->
+        attrs = %{
+          type: :client,
+          secret_nonce: "",
+          secret_fragment: Portal.Crypto.random_token(32, encoder: :hex32),
+          account_id: actor.account_id,
+          actor_id: actor.id,
+          auth_provider_id: provider.id,
+          expires_at: expires_at
+        }
+
+        Authentication.create_gui_client_token(attrs)
     end
   end
 
@@ -219,14 +244,26 @@ defmodule PortalWeb.EmailOTPController do
     |> Redirector.portal_signed_in(account, params)
   end
 
-  # Context: :client
+  # Context: :gui_client
   # Store a cookie and redirect to client handler which redirects to the final URL based on platform
-  defp signed_in(conn, :client, account, actor, token, params) do
-    Redirector.client_signed_in(
+  defp signed_in(conn, :gui_client, account, actor, token, params) do
+    Redirector.gui_client_signed_in(
       conn,
       account,
       actor.name,
       actor.email,
+      token,
+      params["state"]
+    )
+  end
+
+  # Context: :headless_client
+  # Show the token to the user to copy manually
+  defp signed_in(conn, :headless_client, account, actor, token, params) do
+    Redirector.headless_client_signed_in(
+      conn,
+      account,
+      actor.name,
       token,
       params["state"]
     )
@@ -291,7 +328,9 @@ defmodule PortalWeb.EmailOTPController do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
   end
 
-  defp context_type(%{"as" => "client"}), do: :client
+  defp context_type(%{"as" => "client"}), do: :gui_client
+  defp context_type(%{"as" => "gui-client"}), do: :gui_client
+  defp context_type(%{"as" => "headless-client"}), do: :headless_client
   defp context_type(_), do: :portal
 
   # Executes a callback in constant time to prevent timing attacks.

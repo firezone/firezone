@@ -56,7 +56,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Dummy start to attach a utun for cleanup later
     if options?["cycleStart"] as? Bool == true {
       Log.info("Cycle start requested - extension awakened and temporarily starting tunnel")
-      return completionHandler(nil)
+      completionHandler(nil)
+      return
     }
 
     // Log version on actual tunnel start
@@ -65,6 +66,19 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
     Log.info("Starting tunnel - Version: \(version), Build: \(build)")
 
+    // Try to load configuration from options first (passed from client at startup)
+    if let configData = options?["configuration"] as? Data {
+      do {
+        let decoder = PropertyListDecoder()
+        let configFromOptions = try decoder.decode(TunnelConfiguration.self, from: configData)
+        // Save it for future fallback (e.g., system-initiated restarts)
+        configFromOptions.save()
+        self.tunnelConfiguration = configFromOptions
+      } catch {
+        Log.error(error)
+      }
+    }
+
     // If the tunnel starts up before the GUI after an upgrade crossing the 1.4.15 version boundary,
     // the old system settings-based config will still be present and the new configuration will be empty.
     // So handle that edge case gracefully.
@@ -72,39 +86,46 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       protocolConfiguration: protocolConfiguration as? NETunnelProviderProtocol
     )
 
+    // Extract token from options before any async work
+    let passedToken = options?["token"] as? String
+
+    // Load token synchronously - Keychain access is thread-safe
+    guard let token = loadToken(passedToken: passedToken)
+    else {
+      completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
+      return
+    }
+
+    // Try to save the token back to the Keychain but continue if we can't
+    handleTokenSave(token)
+
+    // The firezone id should be initialized by now
+    guard let id = UserDefaults.standard.string(forKey: "firezoneId")
+    else {
+      completionHandler(PacketTunnelProviderError.firezoneIdIsInvalid)
+      return
+    }
+
+    guard let apiURL = legacyConfiguration?["apiURL"] ?? tunnelConfiguration?.apiURL,
+      let logFilter = legacyConfiguration?["logFilter"] ?? tunnelConfiguration?.logFilter,
+      let accountSlug = legacyConfiguration?["accountSlug"] ?? tunnelConfiguration?.accountSlug
+    else {
+      completionHandler(PacketTunnelProviderError.tunnelConfigurationIsInvalid)
+      return
+    }
+
+    // Configure telemetry (sync part)
+    Telemetry.setEnvironmentOrClose(apiURL)
+
+    let enabled = legacyConfiguration?["internetResourceEnabled"]
+    let internetResourceEnabled =
+      enabled != nil ? enabled == "true" : (tunnelConfiguration?.internetResourceEnabled ?? false)
+
+    // Create the adapter synchronously - it stores completionHandler internally
+    // and will call it (along with startLogCleanupTask) when startup succeeds
+    let adapter: Adapter
     do {
-      // If we don't have a token, we can't continue.
-      guard let token = loadAndSaveToken(from: options)
-      else {
-        return completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
-      }
-
-      // Try to save the token back to the Keychain but continue if we can't
-      handleTokenSave(token)
-
-      // The firezone id should be initialized by now
-      guard let id = UserDefaults.standard.string(forKey: "firezoneId")
-      else {
-        throw PacketTunnelProviderError.firezoneIdIsInvalid
-      }
-
-      guard let apiURL = legacyConfiguration?["apiURL"] ?? tunnelConfiguration?.apiURL,
-        let logFilter = legacyConfiguration?["logFilter"] ?? tunnelConfiguration?.logFilter,
-        let accountSlug = legacyConfiguration?["accountSlug"] ?? tunnelConfiguration?.accountSlug
-      else {
-        throw PacketTunnelProviderError.tunnelConfigurationIsInvalid
-      }
-
-      // Configure telemetry
-      Telemetry.setEnvironmentOrClose(apiURL)
-      Task { await Telemetry.setAccountSlug(accountSlug) }
-
-      let enabled = legacyConfiguration?["internetResourceEnabled"]
-      let internetResourceEnabled =
-        enabled != nil ? enabled == "true" : (tunnelConfiguration?.internetResourceEnabled ?? false)
-
-      // Create the adapter with all configuration
-      let adapter = try Adapter(
+      adapter = try Adapter(
         apiURL: apiURL,
         token: token,
         deviceId: id,
@@ -114,19 +135,42 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         packetTunnelProvider: self,
         startCompletionHandler: completionHandler
       )
-
-      // Start the adapter
-      try adapter.start()
-
-      self.adapter = adapter
-
-      // Enforce log size cap at startup and schedule hourly cleanup
-      startLogCleanupTask()
-
     } catch {
       Log.error(error)
       completionHandler(error)
+      return
     }
+
+    // Store adapter reference so it's accessible to wake() and stopTunnel()
+    self.adapter = adapter
+
+    // Start the adapter asynchronously. The Task only captures Sendable values:
+    // - adapter: @unchecked Sendable
+    // - completionHandler: @Sendable
+    // - accountSlug: String (Sendable)
+    Task {
+      // Set account slug for telemetry (async)
+      await Telemetry.setAccountSlug(accountSlug)
+
+      do {
+        try await adapter.start()
+        // On success, Adapter internally calls completionHandler(nil) and startLogCleanupTask()
+      } catch {
+        Log.error(error)
+        completionHandler(error)
+      }
+    }
+  }
+
+  /// Loads the token from passed value or Keychain.
+  private func loadToken(passedToken: String?) -> Token? {
+    // Try to load saved token from Keychain, continuing if Keychain is unavailable.
+    let keychainToken: Token? = {
+      do { return try Token.load() } catch { Log.error(error) }
+      return nil
+    }()
+
+    return Token(passedToken) ?? keychainToken
   }
 
   override func wake() {
@@ -197,21 +241,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       Log.error(error)
       completionHandler?(nil)
     }
-  }
-
-  // swiftlint:disable:next discouraged_optional_collection - matches Apple API parameter type
-  func loadAndSaveToken(from options: [String: NSObject]?) -> Token? {
-    let passedToken = options?["token"] as? String
-
-    // Try to load saved token from Keychain, continuing if Keychain is
-    // unavailable.
-    let keychainToken = {
-      do { return try Token.load() } catch { Log.error(error) }
-
-      return nil
-    }()
-
-    return Token(passedToken) ?? keychainToken
   }
 
   func clearLogs(_ completionHandler: (@Sendable (Data?) -> Void)? = nil) {
@@ -301,7 +330,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
-  private func startLogCleanupTask() {
+  func startLogCleanupTask() {
     // Hardcoded 100MB limit for log cleanup
     let maxSizeMb: UInt32 = 100
 

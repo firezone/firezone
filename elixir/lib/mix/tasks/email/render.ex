@@ -183,14 +183,14 @@
 #     new_actor = get_or_create_test_actor(account, :account_user, "New User", "new_user")
 #     new_identity = get_or_create_identity(account, provider, new_actor, "newuser@test.local")
 #
-#     subject = %Auth.Subject{
+#     subject = %Authentication.Subject{
 #       account: account,
 #       actor: admin_actor,
 #       identity: admin_identity,
 #       permissions: MapSet.new(),
 #       token_id: Ecto.UUID.generate(),
 #       expires_at: DateTime.add(DateTime.utc_now(), 3600, :second),
-#       context: %Auth.Context{
+#       context: %Authentication.Context{
 #         type: :browser,
 #         remote_ip: {127, 0, 0, 1},
 #         user_agent: "Mozilla/5.0 (Test)"

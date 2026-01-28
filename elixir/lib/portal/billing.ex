@@ -1,5 +1,5 @@
 defmodule Portal.Billing do
-  alias Portal.Auth
+  alias Portal.Authentication
   alias Portal.Billing.EventHandler
   alias Portal.Billing.Stripe.APIClient
   alias __MODULE__.Database
@@ -13,6 +13,14 @@ defmodule Portal.Billing do
 
   def fetch_webhook_signing_secret! do
     fetch_config!(:webhook_signing_secret)
+  end
+
+  def plan_product_ids do
+    fetch_config!(:plan_product_ids)
+  end
+
+  def adhoc_device_product_id do
+    fetch_config!(:adhoc_device_product_id)
   end
 
   # Limits and Features
@@ -347,7 +355,11 @@ defmodule Portal.Billing do
     end
   end
 
-  def billing_portal_url(%Portal.Account{} = account, return_url, %Auth.Subject{} = subject) do
+  def billing_portal_url(
+        %Portal.Account{} = account,
+        return_url,
+        %Authentication.Subject{} = subject
+      ) do
     secret_key = fetch_config!(:secret_key)
 
     # Only account admins can manage billing

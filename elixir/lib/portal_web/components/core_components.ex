@@ -940,12 +940,11 @@ defmodule PortalWeb.CoreComponents do
   Renders datetime field in a format that is suitable for the user's locale.
   """
   attr :datetime, DateTime, required: true
-  attr :format, :atom, default: :short
 
   def datetime(assigns) do
     ~H"""
     <span title={@datetime}>
-      {Cldr.DateTime.to_string!(@datetime, Portal.CLDR, format: @format)}
+      {PortalWeb.Format.short_datetime(@datetime)}
     </span>
     """
   end
@@ -970,7 +969,7 @@ defmodule PortalWeb.CoreComponents do
           "underline underline-offset-2 decoration-1 decoration-dotted",
           DateTime.compare(@datetime, @relative_to) == :lt && @negative_class
         ]}>
-          {Cldr.DateTime.Relative.to_string!(@datetime, Portal.CLDR, relative_to: @relative_to)
+          {PortalWeb.Format.relative_datetime(@datetime, @relative_to)
           |> String.capitalize()}
         </span>
       </:target>
@@ -979,7 +978,7 @@ defmodule PortalWeb.CoreComponents do
       </:content>
     </.popover>
     <span :if={not @popover}>
-      {Cldr.DateTime.Relative.to_string!(@datetime, Portal.CLDR, relative_to: @relative_to)
+      {PortalWeb.Format.relative_datetime(@datetime, @relative_to)
       |> String.capitalize()}
     </span>
     <span :if={is_nil(@datetime)}>
@@ -1047,7 +1046,7 @@ defmodule PortalWeb.CoreComponents do
         title={
           if @schema.last_seen_at,
             do:
-              "Last started #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Portal.CLDR, relative_to: @relative_to)}",
+              "Last started #{PortalWeb.Format.relative_datetime(@schema.last_seen_at, @relative_to)}",
             else: "Never connected"
         }
       >
@@ -1297,7 +1296,7 @@ defmodule PortalWeb.CoreComponents do
 
     ~H"""
     <span data-value={@number} {@rest}>
-      {Portal.CLDR.Number.Cardinal.pluralize(@number, :en, @opts)}
+      {PortalWeb.Format.cardinal_pluralize(@number, @opts)}
     </span>
     """
   end

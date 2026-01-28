@@ -1,5 +1,5 @@
 defmodule PortalWeb.LiveHooks.EnsureAdmin do
-  alias Portal.Auth.Subject
+  alias Portal.Authentication.Subject
   alias Portal.Actor
 
   def on_mount(

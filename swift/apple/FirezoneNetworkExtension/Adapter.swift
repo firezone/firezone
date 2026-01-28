@@ -183,33 +183,25 @@ class Adapter: @unchecked Sendable {
     // which cancels the Task, triggering onTermination -> monitor.cancel()
   }
 
-  func start() throws {
+  func start() async throws {
     Log.log("Adapter.start: Starting session for account: \(accountSlug)")
 
-    // Get device metadata - synchronously get values from MainActor
+    // Get device metadata - asynchronously get values from MainActor
+    let deviceName: String
     #if os(iOS)
-      let deviceMetadata = LockedState<(String, String?)>(initialState: ("", nil))
+      let identifierForVendor: String?
+      (deviceName, identifierForVendor) = await MainActor.run {
+        (DeviceMetadata.getDeviceName(), DeviceMetadata.getIdentifierForVendor())
+      }
     #else
-      let deviceMetadata = LockedState<String>(initialState: "")
+      deviceName = await MainActor.run {
+        DeviceMetadata.getDeviceName()
+      }
     #endif
-    let semaphore = DispatchSemaphore(value: 0)
-
-    Task { @MainActor in
-      let name = DeviceMetadata.getDeviceName()
-      #if os(iOS)
-        let identifier = DeviceMetadata.getIdentifierForVendor()
-        deviceMetadata.withLock { $0 = (name, identifier) }
-      #else
-        deviceMetadata.withLock { $0 = name }
-      #endif
-      semaphore.signal()
-    }
-    semaphore.wait()
 
     let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
 
     #if os(iOS)
-      let (deviceName, identifierForVendor) = deviceMetadata.withLock { $0 }
       let deviceInfo = DeviceInfo(
         firebaseInstallationId: nil,
         deviceUuid: nil,
@@ -217,7 +209,6 @@ class Adapter: @unchecked Sendable {
         identifierForVendor: identifierForVendor
       )
     #else
-      let deviceName = deviceMetadata.withLock { $0 }
       let deviceInfo = DeviceInfo(
         firebaseInstallationId: nil,
         deviceUuid: getDeviceUuid(),
@@ -431,6 +422,7 @@ class Adapter: @unchecked Sendable {
         self.applyNetworkSettings(tunnelNetworkSettings) {
           if firstStart {
             self.startCompletionHandler(nil)
+            self.packetTunnelProvider?.startLogCleanupTask()
           }
         }
       }
@@ -537,59 +529,42 @@ class Adapter: @unchecked Sendable {
 
   // MARK: - Resource conversion (uniffi → FirezoneKit)
 
-  private func convertResource(_ resource: Resource) -> FirezoneKit.Resource {
-    switch resource {
-    case .dns(let dnsResource):
-      return FirezoneKit.Resource(
-        id: dnsResource.id,
-        name: dnsResource.name,
-        address: dnsResource.address,
-        addressDescription: dnsResource.addressDescription,
-        status: convertResourceStatus(dnsResource.status),
-        sites: dnsResource.sites.map { convertSite($0) },
-        type: .dns
-      )
-    case .cidr(let cidrResource):
-      return FirezoneKit.Resource(
-        id: cidrResource.id,
-        name: cidrResource.name,
-        address: cidrResource.address,
-        addressDescription: cidrResource.addressDescription,
-        status: convertResourceStatus(cidrResource.status),
-        sites: cidrResource.sites.map { convertSite($0) },
-        type: .cidr
-      )
-    case .internet(let internetResource):
-      return FirezoneKit.Resource(
-        id: internetResource.id,
-        name: internetResource.name,
-        address: nil,
-        addressDescription: nil,
-        status: convertResourceStatus(internetResource.status),
-        sites: internetResource.sites.map { convertSite($0) },
-        type: .internet
-      )
+  private func convertResource(_ uniffiResource: Resource) -> FirezoneKit.Resource {
+    switch uniffiResource {
+    case .dns(let resource):
+      FirezoneKit.Resource(
+        id: resource.id, name: resource.name, address: resource.address,
+        addressDescription: resource.addressDescription,
+        status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .dns)
+    case .cidr(let resource):
+      FirezoneKit.Resource(
+        id: resource.id, name: resource.name, address: resource.address,
+        addressDescription: resource.addressDescription,
+        status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .cidr)
+    case .internet(let resource):
+      FirezoneKit.Resource(
+        id: resource.id, name: resource.name, address: nil, addressDescription: nil,
+        status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .internet)
     }
   }
+}
 
-  private func convertSite(_ site: Site) -> FirezoneKit.Site {
-    return FirezoneKit.Site(
-      id: site.id,
-      name: site.name
-    )
+// MARK: - UniFFI → FirezoneKit type conversions
+
+extension FirezoneKit.Site {
+  init(_ site: Site) {
+    self.init(id: site.id, name: site.name)
   }
+}
 
-  private func convertResourceStatus(_ status: ResourceStatus) -> FirezoneKit.ResourceStatus {
+extension FirezoneKit.ResourceStatus {
+  init(_ status: ResourceStatus) {
     switch status {
-    case .unknown:
-      return .unknown
-    case .online:
-      return .online
-    case .offline:
-      return .offline
+    case .unknown: self = .unknown
+    case .online: self = .online
+    case .offline: self = .offline
     }
   }
-
 }
 
 extension Network.NWPath {

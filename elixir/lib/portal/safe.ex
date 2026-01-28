@@ -7,7 +7,7 @@ defmodule Portal.Safe do
   import Ecto.Changeset
   require Logger
 
-  alias Portal.{Auth.Subject, Repo}
+  alias Portal.{Authentication.Subject, Repo}
 
   defmodule Scoped do
     @moduledoc """
@@ -15,10 +15,11 @@ defmodule Portal.Safe do
     """
     @type t :: %__MODULE__{
             subject: Subject.t(),
-            queryable: Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t() | nil
+            queryable: Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t() | nil,
+            repo: module()
           }
 
-    defstruct [:subject, :queryable]
+    defstruct [:subject, :queryable, repo: Portal.Repo]
   end
 
   defmodule Unscoped do
@@ -26,15 +27,16 @@ defmodule Portal.Safe do
     Unscoped context for operations without authorization.
     """
     @type t :: %__MODULE__{
-            queryable: Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t() | nil
+            queryable: Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t() | nil,
+            repo: module()
           }
 
-    defstruct [:queryable]
+    defstruct [:queryable, repo: Portal.Repo]
   end
 
   @doc """
   Returns a scoped context for operations with authorization and account filtering.
-  Can optionally accept a queryable to enable chaining.
+  Can optionally accept a queryable to enable chaining and a repo module.
 
   ## Examples
 
@@ -43,38 +45,70 @@ defmodule Portal.Safe do
 
       # Chainable style
       query |> Safe.scoped(subject) |> Safe.one()
+
+      # With replica
+      Safe.scoped(subject, Portal.Repo.Replica) |> Safe.one(query)
+      query |> Safe.scoped(subject, Portal.Repo.Replica) |> Safe.one()
   """
   @spec scoped(Subject.t()) :: Scoped.t()
   def scoped(%Subject{} = subject) do
-    %Scoped{subject: subject, queryable: nil}
+    %Scoped{subject: subject, queryable: nil, repo: Repo}
+  end
+
+  @spec scoped(Subject.t(), module()) :: Scoped.t()
+  def scoped(%Subject{} = subject, repo) when is_atom(repo) do
+    %Scoped{subject: subject, queryable: nil, repo: repo}
   end
 
   @spec scoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), Subject.t()) ::
           Scoped.t()
   def scoped(queryable, %Subject{} = subject) do
-    %Scoped{subject: subject, queryable: queryable}
+    %Scoped{subject: subject, queryable: queryable, repo: Repo}
+  end
+
+  @spec scoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), Subject.t(), module()) ::
+          Scoped.t()
+  def scoped(queryable, %Subject{} = subject, repo) do
+    %Scoped{subject: subject, queryable: queryable, repo: repo}
   end
 
   @doc """
   Returns an unscoped context for operations without authorization or filtering.
-  Can optionally accept a queryable to enable chaining.
+  Can optionally accept a queryable to enable chaining and a repo module.
 
   ## Examples
 
       # Traditional style
       Safe.unscoped() |> Safe.one(query)
 
+      # With replica
+      Safe.unscoped(Portal.Repo.Replica) |> Safe.one(query)
+
       # Chainable style
       query |> Safe.unscoped() |> Safe.one()
+
+      # Chainable with replica
+      query |> Safe.unscoped(Portal.Repo.Replica) |> Safe.one()
   """
   @spec unscoped() :: Unscoped.t()
   def unscoped do
-    %Unscoped{queryable: nil}
+    %Unscoped{queryable: nil, repo: Repo}
+  end
+
+  @spec unscoped(module()) :: Unscoped.t()
+  def unscoped(repo) when is_atom(repo) do
+    %Unscoped{queryable: nil, repo: repo}
   end
 
   @spec unscoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t()) :: Unscoped.t()
   def unscoped(queryable) do
-    %Unscoped{queryable: queryable}
+    %Unscoped{queryable: queryable, repo: Repo}
+  end
+
+  @spec unscoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), module()) ::
+          Unscoped.t()
+  def unscoped(queryable, repo) do
+    %Unscoped{queryable: queryable, repo: repo}
   end
 
   defp safe_repo(fun) when is_function(fun, 0) do
@@ -111,65 +145,10 @@ defmodule Portal.Safe do
 
   # Query operations
   @spec one(Scoped.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
-  def one(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
-    schema = get_schema_module(queryable)
-
-    with :ok <- permit(:read, schema, subject) do
-      safe_repo(fn ->
-        queryable
-        |> apply_account_filter(schema, account_id)
-        |> Repo.one()
-      end)
-    end
-  end
-
-  @spec one(Unscoped.t()) :: Ecto.Schema.t() | nil
-  def one(%Unscoped{queryable: queryable}), do: safe_repo(fn -> Repo.one(queryable) end)
-
-  @spec one(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | nil
-  def one(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.one(queryable) end)
-
-  @spec one!(Scoped.t()) :: Ecto.Schema.t() | no_return()
-  def one!(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
-    schema = get_schema_module(queryable)
-
-    with :ok <- permit(:read, schema, subject) do
-      filtered_query = apply_account_filter(queryable, schema, account_id)
-      safe_repo!(fn -> Repo.one!(filtered_query) end, filtered_query)
-    end
-  end
-
-  @spec one!(Unscoped.t()) :: Ecto.Schema.t() | no_return()
-  def one!(%Unscoped{queryable: queryable}),
-    do: safe_repo!(fn -> Repo.one!(queryable) end, queryable)
-
-  @spec one!(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | no_return()
-  def one!(repo, queryable) when repo == Repo,
-    do: safe_repo!(fn -> Repo.one!(queryable) end, queryable)
-
-  @spec all(Scoped.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
-  def all(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
-    schema = get_schema_module(queryable)
-
-    with :ok <- permit(:read, schema, subject) do
-      safe_repo(fn ->
-        queryable
-        |> apply_account_filter(schema, account_id)
-        |> Repo.all()
-      end) || []
-    end
-  end
-
-  @spec all(Unscoped.t()) :: [Ecto.Schema.t()]
-  def all(%Unscoped{queryable: queryable}), do: safe_repo(fn -> Repo.all(queryable) end) || []
-
-  @spec all(Portal.Repo, Ecto.Queryable.t()) :: [Ecto.Schema.t()]
-  def all(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.all(queryable) end) || []
-
-  @spec exists?(Scoped.t()) :: boolean() | {:error, :unauthorized}
-  def exists?(%Scoped{
+  def one(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
-        queryable: queryable
+        queryable: queryable,
+        repo: repo
       }) do
     schema = get_schema_module(queryable)
 
@@ -177,14 +156,84 @@ defmodule Portal.Safe do
       safe_repo(fn ->
         queryable
         |> apply_account_filter(schema, account_id)
-        |> Repo.exists?()
+        |> repo.one()
+      end)
+    end
+  end
+
+  @spec one(Unscoped.t()) :: Ecto.Schema.t() | nil
+  def one(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo(fn -> repo.one(queryable) end)
+
+  @spec one(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | nil
+  def one(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.one(queryable) end)
+
+  @spec one!(Scoped.t()) :: Ecto.Schema.t() | term() | no_return()
+  def one!(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable,
+        repo: repo
+      }) do
+    schema = get_schema_module(queryable)
+
+    with :ok <- permit(:read, schema, subject) do
+      filtered_query = apply_account_filter(queryable, schema, account_id)
+      safe_repo!(fn -> repo.one!(filtered_query) end, filtered_query)
+    end
+  end
+
+  @spec one!(Unscoped.t()) :: Ecto.Schema.t() | term() | no_return()
+  def one!(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo!(fn -> repo.one!(queryable) end, queryable)
+
+  @spec one!(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | term() | no_return()
+  def one!(repo, queryable) when repo == Repo,
+    do: safe_repo!(fn -> Repo.one!(queryable) end, queryable)
+
+  @spec all(Scoped.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
+  def all(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable,
+        repo: repo
+      }) do
+    schema = get_schema_module(queryable)
+
+    with :ok <- permit(:read, schema, subject) do
+      safe_repo(fn ->
+        queryable
+        |> apply_account_filter(schema, account_id)
+        |> repo.all()
+      end) || []
+    end
+  end
+
+  @spec all(Unscoped.t()) :: [Ecto.Schema.t()]
+  def all(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo(fn -> repo.all(queryable) end) || []
+
+  @spec all(Portal.Repo, Ecto.Queryable.t()) :: [Ecto.Schema.t()]
+  def all(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.all(queryable) end) || []
+
+  @spec exists?(Scoped.t()) :: boolean() | {:error, :unauthorized}
+  def exists?(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable,
+        repo: repo
+      }) do
+    schema = get_schema_module(queryable)
+
+    with :ok <- permit(:read, schema, subject) do
+      safe_repo(fn ->
+        queryable
+        |> apply_account_filter(schema, account_id)
+        |> repo.exists?()
       end) || false
     end
   end
 
   @spec exists?(Unscoped.t()) :: boolean()
-  def exists?(%Unscoped{queryable: queryable}),
-    do: safe_repo(fn -> Repo.exists?(queryable) end) || false
+  def exists?(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo(fn -> repo.exists?(queryable) end) || false
 
   @spec exists?(Portal.Repo, Ecto.Queryable.t()) :: boolean()
   def exists?(repo, queryable) when repo == Repo,
@@ -202,7 +251,11 @@ defmodule Portal.Safe do
   @spec list(Scoped.t(), module(), Keyword.t()) ::
           {:ok, [Ecto.Schema.t()], map()} | {:error, :unauthorized}
   def list(
-        %Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable},
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: queryable,
+          repo: repo
+        },
         query_module,
         opts \\ []
       ) do
@@ -212,20 +265,25 @@ defmodule Portal.Safe do
       safe_repo(fn ->
         queryable
         |> apply_account_filter(schema, account_id)
-        |> Repo.list(query_module, opts)
+        |> repo.list(query_module, opts)
       end) || {:ok, [], %{}}
     end
   end
 
   @spec stream(Unscoped.t(), Keyword.t()) :: Enum.t()
-  def stream(%Unscoped{queryable: queryable}, opts \\ []), do: Repo.stream(queryable, opts)
+  def stream(%Unscoped{queryable: queryable, repo: repo}, opts \\ []),
+    do: repo.stream(queryable, opts)
 
   @spec stream(Portal.Repo, Ecto.Queryable.t(), Keyword.t()) :: Enum.t()
   def stream(repo, queryable, opts) when repo == Repo, do: Repo.stream(queryable, opts)
 
   @spec aggregate(Scoped.t(), atom()) :: term() | {:error, :unauthorized}
   def aggregate(
-        %Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable},
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: queryable,
+          repo: repo
+        },
         aggregate
       ) do
     schema = get_schema_module(queryable)
@@ -234,25 +292,26 @@ defmodule Portal.Safe do
       safe_repo(fn ->
         queryable
         |> apply_account_filter(schema, account_id)
-        |> Repo.aggregate(aggregate)
+        |> repo.aggregate(aggregate)
       end) || 0
     end
   end
 
   @spec aggregate(Unscoped.t(), atom()) :: term()
-  def aggregate(%Unscoped{queryable: queryable}, aggregate),
-    do: safe_repo(fn -> Repo.aggregate(queryable, aggregate) end) || 0
+  def aggregate(%Unscoped{queryable: queryable, repo: repo}, aggregate),
+    do: safe_repo(fn -> repo.aggregate(queryable, aggregate) end) || 0
 
   @spec aggregate(Unscoped.t(), atom(), atom()) :: term()
-  def aggregate(%Unscoped{queryable: queryable}, aggregate, field),
-    do: safe_repo(fn -> Repo.aggregate(queryable, aggregate, field) end) || 0
+  def aggregate(%Unscoped{queryable: queryable, repo: repo}, aggregate, field),
+    do: safe_repo(fn -> repo.aggregate(queryable, aggregate, field) end) || 0
 
   @spec load(module(), {list(), list()}) :: Ecto.Schema.t()
   def load(schema, data) when is_atom(schema), do: Repo.load(schema, data)
 
-  @spec preload(Ecto.Schema.t() | [Ecto.Schema.t()], term()) ::
+  @spec preload(Ecto.Schema.t() | [Ecto.Schema.t()], term(), module()) ::
           Ecto.Schema.t() | [Ecto.Schema.t()]
-  def preload(struct_or_structs, preloads), do: Repo.preload(struct_or_structs, preloads)
+  def preload(struct_or_structs, preloads, repo \\ Repo),
+    do: repo.preload(struct_or_structs, preloads)
 
   @doc """
   Executes a transaction using either a function or an Ecto.Multi struct.

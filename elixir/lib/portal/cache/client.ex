@@ -52,7 +52,7 @@ defmodule Portal.Cache.Client do
 
   """
 
-  alias Portal.{Auth, Client, Cache, Resource, Policy, Version}
+  alias Portal.{Authentication, Client, Cache, Resource, Policy, Version}
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.UUID, only: [dump!: 1, load!: 1]
@@ -86,7 +86,7 @@ defmodule Portal.Cache.Client do
     the resource is not authorized for the client.
   """
 
-  @spec authorize_resource(t(), Portal.Client.t(), Ecto.UUID.t(), Auth.Subject.t()) ::
+  @spec authorize_resource(t(), Portal.Client.t(), Ecto.UUID.t(), Authentication.Subject.t()) ::
           {:ok, Cache.Cacheable.Resource.t(), Ecto.UUID.t(), Ecto.UUID.t(), non_neg_integer()}
           | {:error, :not_found}
           | {:error, {:forbidden, violated_properties: [atom()]}}
@@ -147,7 +147,7 @@ defmodule Portal.Cache.Client do
   @spec recompute_connectable_resources(
           t() | nil,
           Portal.Client.t(),
-          Auth.Subject.t(),
+          Authentication.Subject.t(),
           Keyword.t()
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
@@ -190,7 +190,7 @@ defmodule Portal.Cache.Client do
     yield deleted IDs, so we send those back.
   """
 
-  @spec add_membership(t(), Portal.Client.t(), Auth.Subject.t()) ::
+  @spec add_membership(t(), Portal.Client.t(), Authentication.Subject.t()) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def add_membership(cache, client, subject) do
@@ -211,7 +211,12 @@ defmodule Portal.Cache.Client do
     Removes all policies, resources, and memberships associated with the given group_id from the cache.
   """
 
-  @spec delete_membership(t(), Portal.Membership.t(), Portal.Client.t(), Auth.Subject.t()) ::
+  @spec delete_membership(
+          t(),
+          Portal.Membership.t(),
+          Portal.Client.t(),
+          Authentication.Subject.t()
+        ) ::
           {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def delete_membership(cache, membership, client, subject) do
@@ -252,7 +257,7 @@ defmodule Portal.Cache.Client do
           t(),
           Portal.Site.t(),
           Portal.Client.t(),
-          Auth.Subject.t()
+          Authentication.Subject.t()
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
@@ -289,7 +294,7 @@ defmodule Portal.Cache.Client do
     otherwise we just return the updated cache.
   """
 
-  @spec add_policy(t(), Policy.t(), Portal.Client.t(), Auth.Subject.t()) ::
+  @spec add_policy(t(), Policy.t(), Portal.Client.t(), Authentication.Subject.t()) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def add_policy(cache, %{resource_id: resource_id} = policy, client, subject) do
@@ -336,7 +341,7 @@ defmodule Portal.Cache.Client do
     Removes a policy from the cache. If we can't find another policy granting access to the resource,
     we return the deleted resource ID.
   """
-  @spec delete_policy(t(), Policy.t(), Portal.Client.t(), Auth.Subject.t()) ::
+  @spec delete_policy(t(), Policy.t(), Portal.Client.t(), Authentication.Subject.t()) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
   def delete_policy(cache, policy, client, subject) do
     policy = Portal.Cache.Cacheable.to_cache(policy)
@@ -378,7 +383,7 @@ defmodule Portal.Cache.Client do
     we return only the updated cache.
   """
 
-  @spec update_resource(t(), Portal.Resource.t(), Portal.Client.t(), Auth.Subject.t()) ::
+  @spec update_resource(t(), Portal.Resource.t(), Portal.Client.t(), Authentication.Subject.t()) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def update_resource(cache, %Portal.Resource{} = changed_resource, client, subject) do
@@ -558,6 +563,8 @@ defmodule Portal.Cache.Client do
     import Ecto.Query
     alias Portal.Safe
 
+    defp repo, do: Portal.Config.fetch_env!(:portal, :replica_repo)
+
     def all_policies_for_actor_id!(actor_id, subject) do
       # Service accounts don't get access to the "Everyone" group - they must have explicit memberships
       include_everyone_group = subject.actor.type in [:account_user, :account_admin_user]
@@ -584,7 +591,7 @@ defmodule Portal.Cache.Client do
              ag.name == "Everyone")
       )
       |> preload(resource: :site)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, repo())
       |> Safe.all()
     end
 
@@ -592,7 +599,7 @@ defmodule Portal.Cache.Client do
       # Get real memberships
       memberships =
         from(m in Portal.Membership, where: m.actor_id == ^actor_id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, repo())
         |> Safe.all()
         |> case do
           {:error, :unauthorized} -> []
@@ -609,7 +616,7 @@ defmodule Portal.Cache.Client do
                 g.name == "Everyone" and
                 g.account_id == ^subject.account.id
           )
-          |> Safe.scoped(subject)
+          |> Safe.scoped(subject, repo())
           |> Safe.one()
 
         # Append a synthetic membership for the Everyone group
@@ -631,7 +638,7 @@ defmodule Portal.Cache.Client do
     def fetch_resource_by_id(id, subject) do
       result =
         from(r in Portal.Resource, where: r.id == ^id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, repo())
         |> Safe.one()
 
       case result do
@@ -642,7 +649,7 @@ defmodule Portal.Cache.Client do
     end
 
     def preload_site(resource) do
-      Safe.preload(resource, :site)
+      Safe.preload(resource, :site, repo())
     end
 
     def get_site(nil, _subject), do: nil
@@ -651,7 +658,7 @@ defmodule Portal.Cache.Client do
       id = Ecto.UUID.load!(site.id)
 
       from(s in Portal.Site, where: s.id == ^id)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, repo())
       |> Safe.one()
     end
 
@@ -659,7 +666,7 @@ defmodule Portal.Cache.Client do
       id = Ecto.UUID.load!(site_id)
 
       from(s in Portal.Site, where: s.id == ^id)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, repo())
       |> Safe.one()
     end
   end

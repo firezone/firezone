@@ -271,7 +271,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
   end
 
   describe "threshold logging" do
-    test "logs error when falling below threshold" do
+    test "does not log error on first threshold violation" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
       pid =
@@ -282,7 +282,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       Process.sleep(50)
 
-      # Inject a node and then simulate it going stale
+      # Inject a stale node
       state = :sys.get_state(pid)
       stale_time = System.monotonic_time(:millisecond) - 200
 
@@ -303,7 +303,49 @@ defmodule Portal.Cluster.PostgresStrategyTest do
           Logger.flush()
         end)
 
+      # Should NOT log on first violation — enters pending state instead
+      refute log =~ "Connected nodes count is below threshold"
+
+      state = :sys.get_state(pid)
+      assert match?({:pending, _}, state.below_threshold?)
+    end
+
+    test "logs error after sustained threshold violation" do
+      channel_name = "test_#{System.unique_integer([:positive])}"
+
+      pid =
+        start_supervised!(
+          {PostgresStrategy,
+           [build_state(channel_name: channel_name, node_count: 5, heartbeat_interval: 50)]}
+        )
+
+      Process.sleep(50)
+
+      # Inject a stale node with below_threshold? already pending from the past
+      state = :sys.get_state(pid)
+      stale_time = System.monotonic_time(:millisecond) - 200
+
+      new_state = %{
+        state
+        | node_timestamps: %{:node1@test => stale_time},
+          connected_nodes: [:node1@test],
+          missed_heartbeats: 1,
+          below_threshold?: {:pending, System.monotonic_time(:millisecond) - :timer.seconds(60)}
+      }
+
+      :sys.replace_state(pid, fn _ -> new_state end)
+
+      log =
+        capture_log(fn ->
+          send(pid, :heartbeat)
+          _ = :sys.get_state(pid)
+          Logger.flush()
+        end)
+
       assert log =~ "Connected nodes count is below threshold"
+
+      state = :sys.get_state(pid)
+      assert state.below_threshold? == true
     end
 
     test "logs recovery when coming back above threshold" do
@@ -316,21 +358,54 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       Process.sleep(50)
 
-      # Set state to below threshold
+      # Set state to below threshold (sustained violation already logged)
       state = :sys.get_state(pid)
       new_state = %{state | below_threshold?: true, connected_nodes: []}
       :sys.replace_state(pid, fn _ -> new_state end)
 
       log =
         capture_log(fn ->
-          # Simulate successful heartbeat from another node
           send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-          # Ensure GenServer processed the message before ending capture
           _ = :sys.get_state(pid)
           Logger.flush()
         end)
 
       assert log =~ "Connected nodes count is back above threshold"
+    end
+
+    test "does not log recovery from pending state" do
+      channel_name = "test_#{System.unique_integer([:positive])}"
+
+      pid =
+        start_supervised!(
+          {PostgresStrategy, [build_state(channel_name: channel_name, node_count: 1)]}
+        )
+
+      Process.sleep(50)
+
+      # Set state to pending (error was never logged)
+      state = :sys.get_state(pid)
+
+      new_state = %{
+        state
+        | below_threshold?: {:pending, System.monotonic_time(:millisecond)},
+          connected_nodes: []
+      }
+
+      :sys.replace_state(pid, fn _ -> new_state end)
+
+      log =
+        capture_log(fn ->
+          send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
+          _ = :sys.get_state(pid)
+          Logger.flush()
+        end)
+
+      # Should NOT log recovery since the error was never logged
+      refute log =~ "Connected nodes count is back above threshold"
+
+      state = :sys.get_state(pid)
+      assert state.below_threshold? == false
     end
   end
 

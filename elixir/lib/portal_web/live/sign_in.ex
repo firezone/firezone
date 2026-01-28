@@ -23,7 +23,7 @@ defmodule PortalWeb.SignIn do
       assign(socket,
         page_title: "Sign In",
         account: account,
-        params: PortalWeb.Auth.take_sign_in_params(params),
+        params: PortalWeb.Authentication.take_sign_in_params(params),
         google_auth_providers: auth_providers(account, Google.AuthProvider),
         okta_auth_providers: auth_providers(account, Okta.AuthProvider),
         entra_auth_providers: auth_providers(account, Entra.AuthProvider),
@@ -182,7 +182,9 @@ defmodule PortalWeb.SignIn do
   end
 
   # We allow signing in to Web UI even for disabled accounts
-  def disabled?(account, %{"as" => "client"}), do: not Portal.Account.active?(account)
+  def disabled?(account, %{"as" => as}) when as in ["client", "gui-client", "headless-client"],
+    do: not Portal.Account.active?(account)
+
   def disabled?(_account, _params), do: false
 
   def separator(assigns) do

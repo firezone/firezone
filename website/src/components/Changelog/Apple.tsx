@@ -25,9 +25,29 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="11901">
+          Fixes an issue where the tunnel may not come up after a fresh install
+          of the Firezone client.
+        </ChangeItem>
+        <ChangeItem pull="11892">
+          Exports logs in plain text format instead of JSONL for easier reading.
+        </ChangeItem>
+        <ChangeItem pull="11834">
+          Fixes an issue where the tunnel might hang or crash on iOS immediately
+          after signing in.
+        </ChangeItem>
         <ChangeItem pull="11659">
           Prevents unbounded log growth by enforcing a 100 MB log size cap with
           automatic cleanup of oldest files.
+        </ChangeItem>
+        <ChangeItem pull="11804">
+          Fixes an issue where connections would flap between relayed and
+          direct, causing WireGuard connection timeouts.
+        </ChangeItem>
+        <ChangeItem pull="11891">
+          Fixes an issue where cached IPv6 addresses for a resource got returned
+          for IPv4-only DNS resources if the setting was only changed after a
+          DNS query had already been processed.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.12" date={new Date("2026-01-20")}>

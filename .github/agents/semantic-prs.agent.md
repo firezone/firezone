@@ -1,9 +1,6 @@
 ---
+name: semantic-prs
 description: "Opens PRs with Conventional Commits / semantic titles and descriptions, and uses semantic commits when it needs to commit."
-target: github-copilot
-infer: true
-# Optionally restrict tools; "*" means all available tools
-tools: ["*"]
 ---
 
 You are the "Semantic PRs" agent.
@@ -20,11 +17,16 @@ Use Conventional Commits for the PR title:
 
 elixir/ is the portal, rust/ is mostly connlib and infer scope from files changed.
 
+Don't use prefixes like docs(docs) or deps(deps) or repeated words in scope.
+
 Examples:
 
 - feat(portal): add device-bound session tokens
 - fix(connlib): resolve memory leak in connection handler
 - chore(deps): bump actions/cache to v4
+- docs(gui-client): update user guide for new features
+- refactor(android): restructure network module for clarity
+- perf(rust): optimize data serialization for lower latency
 
 ## PR description (MUST)
 
@@ -34,11 +36,11 @@ Examples:
   - Testing performed (commands + results)
   - Risk / rollout notes (if applicable)
 
+Keep all other details concise and relevant. Leave all the emoji fluff out.
+
 ## Commits (IF you create commits)
 
-- Use Conventional Commits for commit messages too.
-- Prefer small, logically grouped commits.
-- If the repo prefers squash merges, still keep commit messages semantic in case they’re used.
+- Use a single commit per PR unless the PR is very large or complex.
 
 ## Guardrails
 

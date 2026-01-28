@@ -33,15 +33,25 @@ enum IPCClient {
 
   // Auto-connect
   @MainActor
-  static func start(session: NETunnelProviderSession) throws {
-    try session.startTunnel()
+  static func start(
+    session: NETunnelProviderSession, configuration: TunnelConfiguration
+  ) throws {
+    let configData = try encoder.encode(configuration)
+    let options: [String: NSObject] = [
+      "configuration": configData as NSObject
+    ]
+    try session.startTunnel(options: options)
   }
 
   // Sign in
   @MainActor
-  static func start(session: NETunnelProviderSession, token: String) throws {
+  static func start(
+    session: NETunnelProviderSession, token: String, configuration: TunnelConfiguration
+  ) throws {
+    let configData = try encoder.encode(configuration)
     let options: [String: NSObject] = [
-      "token": token as NSObject
+      "token": token as NSObject,
+      "configuration": configData as NSObject,
     ]
 
     try session.startTunnel(options: options)

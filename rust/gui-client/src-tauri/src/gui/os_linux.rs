@@ -1,6 +1,4 @@
 use anyhow::{Context as _, Result};
-use tauri::AppHandle;
-use tauri_plugin_notification::NotificationExt as _;
 
 use crate::controller::NotificationHandle;
 
@@ -34,18 +32,31 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn show_notification(
-    app: &AppHandle,
-    title: String,
-    body: String,
-) -> Result<NotificationHandle> {
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Signature must match other platforms."
+)]
+pub(crate) fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
     let (_, rx) = futures::channel::oneshot::channel();
 
-    app.notification()
-        .builder()
-        .title(&title)
-        .body(&body)
-        .show()?;
+    tokio::spawn(async move {
+        let notification = match notify_rust::Notification::new()
+            .summary(&title)
+            .body(&body)
+            .show_async()
+            .await
+        {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::debug!(%title, "Failed to show notification: {e}");
+                return;
+            }
+        };
+
+        tracing::debug!(%title, %body, "Showing notification");
+
+        notification.on_close(|| {});
+    });
 
     Ok(NotificationHandle { on_click: rx })
 }

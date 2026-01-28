@@ -82,29 +82,31 @@ h6 {
   font-family: var(--font-manrope);
 }
 
-/* Fix inline headings */
-*:is(h1, h2, h3, h4, h5, h6) {
-  @apply flex items-center gap-1;
-}
+@layer base {
+  /* Fix inline headings */
+  *:is(h1, h2, h3, h4, h5, h6) {
+    @apply flex items-center gap-1;
+  }
 
-/* Fix anchor slug links and scroll position due to fixed navbar */
-*:is(h1, h2, h3, h4, h5, h6, li[id^="user-content-"]) {
-  @apply scroll-mt-20;
-}
+  /* Fix anchor slug links and scroll position due to fixed navbar */
+  *:is(h1, h2, h3, h4, h5, h6, li[id^="user-content-"]) {
+    @apply scroll-mt-20;
+  }
 
-/* Remove styling for anchors inside headings */
-*:is(h1, h2, h3, h4, h5, h6) a {
-  text-decoration: none !important;
-  font-weight: 700 !important;
-  color: var(--color-neutral-800) !important;
-}
+  /* Remove styling for anchors inside headings */
+  *:is(h1, h2, h3, h4, h5, h6) a {
+    text-decoration: none !important;
+    font-weight: 700 !important;
+    color: var(--color-neutral-800) !important;
+  }
 
-*:is(h1, h2, h3, h4, h5, h6) a:hover {
-  text-decoration: underline !important;
-}
+  *:is(h1, h2, h3, h4, h5, h6) a:hover {
+    text-decoration: underline !important;
+  }
 
-*:is(code) {
-  @apply overflow-x-auto rounded-sm text-sm;
+  *:is(code) {
+    @apply overflow-x-auto rounded-sm text-sm;
+  }
 }
 
 /* Default hr color for Tailwind v4 compatibility */

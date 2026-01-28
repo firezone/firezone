@@ -16,6 +16,7 @@ config :portal, ecto_repos: [Portal.Repo, Portal.Repo.Replica]
 config :portal, generators: [binary_id: true]
 
 config :portal, sql_sandbox: false
+config :portal, replica_repo: Portal.Repo.Replica
 
 # Don't run manual migrations by default
 config :portal, run_manual_migrations: false
@@ -217,7 +218,18 @@ config :portal, Portal.Billing,
   enabled: true,
   secret_key: "sk_test_1111",
   webhook_signing_secret: "whsec_test_1111",
-  default_price_id: "price_1OkUIcADeNU9NGxvTNA4PPq6"
+  default_price_id: "price_1OkUIcADeNU9NGxvTNA4PPq6",
+  # Stripe sandbox/test mode product IDs
+  plan_product_ids: [
+    # Starter
+    "prod_PZdZiSBX1HdXO2",
+    # Team
+    "prod_PZdbLazRNU3Bdi",
+    # Enterprise
+    "prod_PZdb7NJhcdyjRV"
+  ],
+  # Adhoc Device
+  adhoc_device_product_id: "prod_TrPXF2LVHSJpMk"
 
 config :portal,
   platform_adapter: nil,
@@ -350,9 +362,6 @@ config :portal,
 
 config :openid_connect,
   finch_transport_opts: []
-
-config :ex_cldr,
-  default_locale: "en"
 
 config :mime, :types, %{
   "application/xml" => ["xml"]

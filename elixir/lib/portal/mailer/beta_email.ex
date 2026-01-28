@@ -7,7 +7,7 @@ defmodule Portal.Mailer.BetaEmail do
 
   def rest_api_beta_email(
         %Portal.Account{} = account,
-        %Portal.Auth.Subject{} = subject
+        %Portal.Authentication.Subject{} = subject
       ) do
     default_email()
     |> subject("REST API Beta Request - #{account.id}")

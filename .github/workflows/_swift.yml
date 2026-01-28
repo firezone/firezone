@@ -29,11 +29,11 @@ jobs:
   test:
     runs-on: macos-15
     env:
-      XCODE_VERSION: "26.0"
+      XCODE_VERSION: "26.2"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
-      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3.5.1
+      - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
         with:
           install_args: --cd swift/apple
       - run: mise run //swift/apple:test-coverage
@@ -49,11 +49,11 @@ jobs:
   static-analysis:
     runs-on: macos-15
     env:
-      XCODE_VERSION: "26.0"
+      XCODE_VERSION: "26.2"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
-      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3.5.1
+      - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
         with:
           install_args: --cd swift/apple
       - name: Check Swift formatting and linting
@@ -66,7 +66,7 @@ jobs:
     needs: update-release-draft
     runs-on: macos-15
     env:
-      XCODE_VERSION: "26.0"
+      XCODE_VERSION: "26.2"
       MISE_EXPERIMENTAL: "1"
     permissions:
       contents: write # for attaching the build artifacts to the release
@@ -103,7 +103,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
-      - uses: jdx/mise-action@146a28175021df8ca24f8ee1828cc2a60f980bd5 # v3.5.1
+      - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
         with:
           install_args: --cd swift/apple
       - uses: ./.github/actions/setup-rust-stable

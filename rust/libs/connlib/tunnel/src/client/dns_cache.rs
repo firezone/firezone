@@ -140,7 +140,10 @@ impl fmt::Debug for FmtFriendlyRecord<'_> {
 mod tests {
     use std::{iter, net::Ipv4Addr};
 
+    use connlib_model::{IpStack, ResourceId};
     use dns_types::{RecordType, ResponseCode, records};
+
+    use crate::dns::{ResolveStrategy, StubResolver};
 
     use super::*;
 
@@ -202,5 +205,28 @@ mod tests {
         let ttls: Vec<_> = response.records().map(|r| r.ttl().as_secs()).collect();
 
         assert_eq!(ttls, vec![1700, 3500]);
+    }
+
+    #[test]
+    fn does_not_cache_response_from_stub_resolver() {
+        let mut resolver = StubResolver::default();
+        let mut cache = DnsCache::default();
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Dual,
+        );
+
+        let query = Query::new("example.com".parse().unwrap(), RecordType::A);
+
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+            panic!("Unexpected result")
+        };
+        cache.insert("example.com".parse().unwrap(), &response, Instant::now());
+
+        let result = cache.try_answer(&query, Instant::now());
+
+        assert!(result.is_none());
     }
 }

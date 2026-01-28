@@ -44,6 +44,40 @@ defmodule PortalWeb.LiveHooks.RedirectIfAuthenticatedTest do
       assert is_nil(returned_socket.redirected)
     end
 
+    test "continues when as=gui-client param is set even with authenticated user", %{
+      account: account
+    } do
+      subject = admin_subject_fixture(account: account)
+      socket = build_socket(%{account: account, subject: subject})
+
+      assert {:cont, returned_socket} =
+               RedirectIfAuthenticated.on_mount(
+                 :default,
+                 %{"as" => "gui-client"},
+                 %{},
+                 socket
+               )
+
+      assert is_nil(returned_socket.redirected)
+    end
+
+    test "continues when as=headless-client param is set even with authenticated user", %{
+      account: account
+    } do
+      subject = admin_subject_fixture(account: account)
+      socket = build_socket(%{account: account, subject: subject})
+
+      assert {:cont, returned_socket} =
+               RedirectIfAuthenticated.on_mount(
+                 :default,
+                 %{"as" => "headless-client"},
+                 %{},
+                 socket
+               )
+
+      assert is_nil(returned_socket.redirected)
+    end
+
     test "continues when user is not authenticated", %{account: account} do
       socket = build_socket(%{account: account})
 
@@ -76,6 +110,34 @@ defmodule PortalWeb.LiveHooks.RedirectIfAuthenticatedTest do
         |> live(~p"/#{account.slug}?as=client&nonce=test-nonce&state=test-state")
 
       # Should render the sign-in page, not redirect to /sites
+      assert html =~ "Sign In"
+    end
+
+    test "integration: LiveView with as=headless-client does not redirect authenticated user", %{
+      conn: conn,
+      account: account
+    } do
+      actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
+
+      {:ok, _view, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account.slug}?as=headless-client&state=test-state")
+
+      assert html =~ "Sign In"
+    end
+
+    test "integration: LiveView with as=gui-client does not redirect authenticated user", %{
+      conn: conn,
+      account: account
+    } do
+      actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
+
+      {:ok, _view, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account.slug}?as=gui-client&nonce=test-nonce&state=test-state")
+
       assert html =~ "Sign In"
     end
 
