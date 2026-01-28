@@ -119,8 +119,8 @@ config :portal, PortalWeb.Endpoint,
   url: [scheme: "https", host: "localhost", port: web_port],
   https: [
     port: web_port,
-    certfile: "priv/cert/selfsigned.pem",
-    keyfile: "priv/cert/selfsigned_key.pem"
+    certfile: System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem"),
+    keyfile: System.get_env("KEYFILE_PATH", "priv/cert/selfsigned_key.pem")
   ],
   code_reloader: true,
   debug_errors: true,
