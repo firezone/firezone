@@ -402,68 +402,76 @@ fn start_send_thread(
     // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
     const ERROR_BUFFER_OVERFLOW: i32 = 0x6F;
 
+    /// How many attempts we make at passing the IP packet to WinTUN.
+    ///
+    /// 1000 attempts where we suspend for 100 microseconds results in a total wait of 100ms.
+    /// That delay will hopefully throttle the remote's congestion controller to stop sending us that many packets.
+    const MAX_ATTEMPTS: u32 = 1000 + SPIN_ATTEMPTS;
+    /// How many times we busy-loop before suspending the thread temporarily.
+    const SPIN_ATTEMPTS: u32 = 10;
+
     std::thread::Builder::new()
         .name("TUN send".into())
-        .spawn(move || loop {
-            let Some(packet) = packet_rx.blocking_recv() else {
-                tracing::debug!(
-                    "Stopping TUN send worker thread because the packet channel closed"
-                );
-                break;
-            };
-
-            let bytes = packet.packet();
-
-            let Ok(len) = bytes.len().try_into() else {
-                tracing::warn!("Packet too large; length does not fit into u16");
-                continue;
-            };
-
-            let mut attempts = 0;
-
+        .spawn(move || {
             loop {
-                let Some(session) = session.upgrade() else {
+                let Some(packet) = packet_rx.blocking_recv() else {
                     tracing::debug!(
-                        "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                        "Stopping TUN send worker thread because the packet channel closed"
                     );
-                    return;
+                    break;
                 };
 
-                attempts += 1;
+                let bytes = packet.packet();
 
-                match session.allocate_send_packet(len) {
-                    Ok(mut pkt) => {
-                        pkt.bytes_mut().copy_from_slice(bytes);
-                        // `send_packet` cannot fail to enqueue the packet, since we already allocated
-                        // space in the ring buffer.
-                        session.send_packet(pkt);
+                let Ok(len) = bytes.len().try_into() else {
+                    tracing::warn!("Packet too large; length does not fit into u16");
+                    continue;
+                };
 
-                        if attempts > 0 {
-                            tracing::trace!(%attempts, "Sent packet with delay");
+                for attempt in 0..MAX_ATTEMPTS {
+                    let Some(session) = session.upgrade() else {
+                        tracing::debug!(
+                            "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                        );
+                        return;
+                    };
+
+                    match session.allocate_send_packet(len) {
+                        Ok(mut pkt) => {
+                            pkt.bytes_mut().copy_from_slice(bytes);
+                            // `send_packet` cannot fail to enqueue the packet, since we already allocated
+                            // space in the ring buffer.
+                            session.send_packet(pkt);
+
+                            if attempt > 0 {
+                                tracing::trace!(%attempt, "Sent packet with delay");
+                            }
+
+                            break;
                         }
+                        Err(wintun::Error::Io(e))
+                            if e.raw_os_error()
+                                .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
+                        {
+                            if attempt == 0 {
+                                tracing::trace!("WinTUN ring buffer is full");
+                            }
 
-                        break;
-                    }
-                    Err(wintun::Error::Io(e))
-                        if e.raw_os_error()
-                            .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
-                    {
-                        if attempts == 0 {
-                            tracing::trace!("WinTUN ring buffer is full");
+                            if attempt < SPIN_ATTEMPTS {
+                                std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
+                                continue;
+                            }
+
+                            std::thread::sleep(Duration::from_micros(100));
                         }
-
-                        if attempts < 10 {
-                            std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
-                            continue;
+                        Err(e) => {
+                            tracing::error!("Failed to allocate WinTUN packet: {e}");
+                            break;
                         }
-
-                        std::thread::sleep(Duration::from_micros(100));
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to allocate WinTUN packet: {e}");
-                        break;
                     }
                 }
+
+                tracing::warn!(num_attempts = %MAX_ATTEMPTS, "Exhausted all attempts to pass IP packet to WinTUN");
             }
         })
 }
