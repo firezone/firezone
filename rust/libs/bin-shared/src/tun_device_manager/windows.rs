@@ -444,7 +444,9 @@ fn start_send_thread(
                         if e.raw_os_error()
                             .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
                     {
-                        tracing::trace!("WinTUN ring buffer is full");
+                        if attempts == 0 {
+                            tracing::trace!("WinTUN ring buffer is full");
+                        }
 
                         if attempts < 10 {
                             std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
