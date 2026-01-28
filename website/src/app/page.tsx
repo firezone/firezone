@@ -46,7 +46,7 @@ export default function Page() {
             </Banner>
             <h1
               className={
-                "mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-tight bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
+                "mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-none bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
               }
             >
               Upgrade your VPN to zero-trust access
