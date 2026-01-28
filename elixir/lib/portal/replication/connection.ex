@@ -517,7 +517,7 @@ defmodule Portal.Replication.Connection do
       end
 
       defp maybe_flush(%{flush_buffer: buffer, flush_buffer_size: size} = state)
-           when size > 0 and map_size(buffer) >= size do
+           when map_size(buffer) >= size do
         on_flush(state)
       end
 

@@ -54,7 +54,7 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     hostname: "localhost",
     port: 5432,
     ssl: false,
-    parameters: [application_name: "change_log"],
+    parameters: [application_name: "change_logs"],
     username: "postgres",
     database: "firezone_dev",
     password: "postgres"
