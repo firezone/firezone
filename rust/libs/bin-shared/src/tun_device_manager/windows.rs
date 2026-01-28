@@ -412,7 +412,7 @@ fn start_send_thread(
 
     std::thread::Builder::new()
         .name("TUN send".into())
-        .spawn(move || loop {
+        .spawn(move || 'next_packet: loop {
             let Some(packet) = packet_rx.blocking_recv() else {
                 tracing::debug!(
                     "Stopping TUN send worker thread because the packet channel closed"
@@ -427,7 +427,7 @@ fn start_send_thread(
                 continue;
             };
 
-            for attempt in 0..MAX_ATTEMPTS {
+            'next_attempt: for attempt in 0..MAX_ATTEMPTS {
                 let Some(session) = session.upgrade() else {
                     tracing::debug!(
                         "Stopping TUN send worker thread because the `wintun::Session` was dropped"
@@ -446,7 +446,7 @@ fn start_send_thread(
                             tracing::trace!(%attempt, "Sent packet with delay");
                         }
 
-                        break;
+                        continue 'next_packet;
                     }
                     Err(wintun::Error::Io(e))
                         if e.raw_os_error()
@@ -458,14 +458,14 @@ fn start_send_thread(
 
                         if attempt < SPIN_ATTEMPTS {
                             std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
-                            continue;
+                            continue 'next_attempt;
                         }
 
                         std::thread::sleep(Duration::from_micros(100));
                     }
                     Err(e) => {
                         tracing::error!("Failed to allocate WinTUN packet: {e}");
-                        break;
+                        continue 'next_packet;
                     }
                 }
             }
