@@ -137,14 +137,26 @@ defmodule Portal.Application do
   end
 
   defp verify_geolix_databases do
+    # Geolix loads databases asynchronously via handle_continue, so they may
+    # not be ready by the time Portal.Application.start/2 runs. Wait for the
+    # async load to finish before proceeding with supervision tree startup.
     for %{id: id, source: source} <- Portal.Config.get_env(:geolix, :databases, []) do
-      case Geolix.metadata(where: id) do
-        nil ->
-          Logger.error("Geolix database #{inspect(id)} failed to load from #{source}")
+      await_geolix_database(id, source, _retries = 50)
+    end
+  end
 
-        _metadata ->
-          :ok
-      end
+  defp await_geolix_database(id, source, 0) do
+    Logger.error("Geolix database #{inspect(id)} failed to load from #{source}")
+  end
+
+  defp await_geolix_database(id, source, retries) do
+    case Geolix.metadata(where: id) do
+      nil ->
+        Process.sleep(100)
+        await_geolix_database(id, source, retries - 1)
+
+      _metadata ->
+        :ok
     end
   end
 end

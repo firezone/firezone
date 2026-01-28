@@ -1,6 +1,15 @@
 defmodule Portal.ApplicationTest do
   use ExUnit.Case, async: true
 
+  describe "start/2" do
+    test "geolix databases are loaded before supervision tree starts" do
+      for %{id: id} <- Portal.Config.get_env(:geolix, :databases, []) do
+        assert Geolix.metadata(where: id) != nil,
+               "expected Geolix database #{inspect(id)} to be loaded"
+      end
+    end
+  end
+
   describe "stop/1" do
     test "removes logger handler without crashing" do
       # Use a unique handler ID to avoid conflicts with parallel tests
