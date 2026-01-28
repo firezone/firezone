@@ -13,6 +13,11 @@ Sites represent a shared network environment that Gateways and Resources exist
 within. All Gateways and Resources in a Site must have **unobstructed network
 connectivity** to each other.
 
+When multiple Gateways are deployed within a Site, Firezone automatically
+selects the closest Gateway to route Client traffic based on the Client's
+geolocated IP address. This ensures optimal performance and low latency for your
+users.
+
 ## What is a Site?
 
 A Site is a collection of Resources and Gateways that are logically grouped
