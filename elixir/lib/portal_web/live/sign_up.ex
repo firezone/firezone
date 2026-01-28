@@ -201,7 +201,7 @@ defmodule PortalWeb.SignUp do
                 >
                   Download the Firezone Client
                 </a>
-                {" "}for your platform
+                for your platform
               </p>
               <p>
                 <a
@@ -212,7 +212,7 @@ defmodule PortalWeb.SignUp do
                 >
                   View the Quickstart Guide
                 </a>
-                {" "}to get started
+                to get started
               </p>
             </div>
           </div>
