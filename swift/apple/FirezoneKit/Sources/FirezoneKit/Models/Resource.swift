@@ -8,6 +8,10 @@
 
 import Foundation
 
+#if os(macOS)
+  import AppKit
+#endif
+
 class StatusSymbol {
   static let enabled: String = "<->"
   static let disabled: String = "—"
@@ -89,6 +93,20 @@ public enum ResourceStatus: String, Codable, Sendable {
         """
     }
   }
+
+  #if os(macOS)
+    /// Returns the system status icon for this resource status
+    public var statusIcon: NSImage? {
+      switch self {
+      case .online:
+        return NSImage(named: NSImage.statusAvailableName)
+      case .offline:
+        return NSImage(named: NSImage.statusUnavailableName)
+      case .unknown:
+        return NSImage(named: NSImage.statusNoneName)
+      }
+    }
+  #endif
 }
 
 public enum ResourceType: String, Codable, Sendable {
