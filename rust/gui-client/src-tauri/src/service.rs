@@ -414,7 +414,7 @@ impl<'a> Handler<'a> {
                                 ServerMsg::connect_result(Ok(()))
                             }
                             Err(e) => {
-                                tracing::debug!("Failed to create new session: {e}");
+                                tracing::debug!("Failed to create new session: {e:#}");
 
                                 ServerMsg::connect_result(Err(e))
                             }
