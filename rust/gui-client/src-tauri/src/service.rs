@@ -406,25 +406,7 @@ impl<'a> Handler<'a> {
                             continue;
                         }
 
-                        let msg = match result {
-                            Ok(session) => {
-                                self.session = session;
-                                tracing::debug!("Created new session");
-
-                                ServerMsg::connect_result(Ok(()))
-                            }
-                            Err(e) => {
-                                tracing::debug!("Failed to create new session: {e:#}");
-
-                                ServerMsg::connect_result(Err(e))
-                            }
-                        };
-
-                        let _ = self
-                            .ipc_tx
-                            .send(&msg)
-                            .await
-                            .context("Failed to send `ConnectResult`");
+                        let _ = self.handle_connect_result(result).await;
                     }
                     Session::None => continue,
                 },
@@ -553,16 +535,7 @@ impl<'a> Handler<'a> {
                     return Ok(());
                 }
 
-                let msg = match result {
-                    Ok(session) => {
-                        self.session = session;
-
-                        ServerMsg::connect_result(Ok(()))
-                    }
-                    Err(e) => ServerMsg::connect_result(Err(e)),
-                };
-
-                self.send_ipc(msg).await?;
+                self.handle_connect_result(result).await?;
             }
             ClientMsg::Disconnect => {
                 self.session = Session::None;
@@ -689,6 +662,26 @@ impl<'a> Handler<'a> {
             connlib,
             started_at,
         })
+    }
+
+    async fn handle_connect_result(&mut self, result: Result<Session>) -> Result<()> {
+        let msg = match result {
+            Ok(session) => {
+                self.session = session;
+                tracing::debug!("Created new session");
+
+                ServerMsg::connect_result(Ok(()))
+            }
+            Err(e) => {
+                tracing::debug!("Failed to create new session: {e:#}");
+
+                ServerMsg::connect_result(Err(e))
+            }
+        };
+
+        self.send_ipc(msg).await?;
+
+        Ok(())
     }
 
     async fn send_ipc(&mut self, msg: ServerMsg) -> Result<()> {
