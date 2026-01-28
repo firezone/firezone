@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 
-// This middleware is needed because NextJS doesn't populate params in the destination
+// This proxy is needed because NextJS doesn't populate params in the destination
 // more than once. See https://github.com/vercel/next.js/issues/66891
 const versionedRedirects = [
   {
@@ -88,7 +88,7 @@ export const config = {
   ],
 };
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   for (const redirect of versionedRedirects) {
