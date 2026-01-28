@@ -99,7 +99,6 @@ defmodule Portal.Cluster.PostgresStrategy do
       |> Map.put(:below_threshold?, false)
       |> Map.put(:listener_pid, nil)
       |> Map.put(:notify_conn, nil)
-      |> Map.put(:started_at, System.monotonic_time(:millisecond))
 
     {:ok, state, {:continue, :connect}}
   end
@@ -112,7 +111,7 @@ defmodule Portal.Cluster.PostgresStrategy do
         {:noreply, %{state | listener_pid: listener_pid, notify_conn: notify_conn}}
 
       {:error, reason} ->
-        Logger.error("Failed to start PostgreSQL connections", reason: inspect(reason))
+        Logger.error("Failed to start PostgreSQL connections", reason: reason)
         Process.send_after(self(), :retry_connect, state.heartbeat_interval)
         {:noreply, state}
     end
@@ -141,13 +140,13 @@ defmodule Portal.Cluster.PostgresStrategy do
   end
 
   def handle_info({:DOWN, _ref, :process, pid, reason}, %{listener_pid: pid} = state) do
-    Logger.warning("PostgreSQL listener died, reconnecting", reason: inspect(reason))
+    Logger.warning("PostgreSQL listener died, reconnecting", reason: reason)
     Process.send_after(self(), :retry_connect, state.heartbeat_interval)
     {:noreply, %{state | listener_pid: nil}}
   end
 
   def handle_info({:DOWN, _ref, :process, pid, reason}, %{notify_conn: pid} = state) do
-    Logger.warning("PostgreSQL notify connection died, reconnecting", reason: inspect(reason))
+    Logger.warning("PostgreSQL notify connection died, reconnecting", reason: reason)
     Process.send_after(self(), :retry_connect, state.heartbeat_interval)
     {:noreply, %{state | notify_conn: nil}}
   end
@@ -202,10 +201,10 @@ defmodule Portal.Cluster.PostgresStrategy do
         :ok
 
       {:error, reason} ->
-        Logger.error("Failed to send cluster notification", reason: inspect(reason))
+        Logger.error("Failed to send cluster notification", reason: reason)
     end
   catch
-    :exit, reason -> Logger.error("Failed to send cluster notification", reason: inspect(reason))
+    :exit, reason -> Logger.error("Failed to send cluster notification", reason: reason)
   end
 
   defp handle_notification("heartbeat:" <> node_name, state) do
@@ -233,8 +232,8 @@ defmodule Portal.Cluster.PostgresStrategy do
         problem_nodes = Enum.map(bad_nodes, &elem(&1, 0))
 
         Logger.info("Error connecting to nodes",
-          connected_nodes: inspect(state.connected_nodes),
-          problem_nodes: inspect(problem_nodes)
+          connected_nodes: state.connected_nodes,
+          problem_nodes: problem_nodes
         )
 
         maybe_log_threshold_error(state, problem_nodes)
@@ -281,7 +280,7 @@ defmodule Portal.Cluster.PostgresStrategy do
       nodes_to_disconnect = Enum.filter(stale_nodes, &(&1 in state.connected_nodes))
 
       if nodes_to_disconnect != [] do
-        Logger.info("Disconnecting stale nodes", nodes: inspect(nodes_to_disconnect))
+        Logger.info("Disconnecting stale nodes", nodes: nodes_to_disconnect)
 
         Cluster.Strategy.disconnect_nodes(
           state.topology,
@@ -301,31 +300,49 @@ defmodule Portal.Cluster.PostgresStrategy do
     end
   end
 
-  # Only log when crossing the threshold boundary to avoid log flooding.
-  # Skip threshold checks during the startup grace period — newly started nodes
-  # need time to receive heartbeats from all peers before the count is meaningful.
+  # Only log after sustained threshold violation to avoid transient alerts during
+  # deploys. When a node departs (goodbye or stale), the count may briefly dip below
+  # the threshold before the replacement node's heartbeats are processed.
+  #
+  # below_threshold? states:
+  #   false               — at or above threshold
+  #   {:pending, mono_ms} — first dropped below threshold at this time, waiting
+  #   true                — sustained violation confirmed, error already logged
   defp maybe_log_threshold_error(state, problem_nodes) do
-    if in_startup_grace_period?(state) or enough_nodes_connected?(state) do
+    if enough_nodes_connected?(state) do
       %{state | below_threshold?: false}
     else
-      unless state.below_threshold? do
-        Logger.error("Connected nodes count is below threshold",
-          connected_nodes: inspect(state.connected_nodes),
-          problem_nodes: inspect(problem_nodes),
-          config: inspect(state.config)
-        )
-      end
+      now = System.monotonic_time(:millisecond)
+      sustained_period = state.heartbeat_interval * state.missed_heartbeats
 
-      %{state | below_threshold?: true}
+      case state.below_threshold? do
+        false ->
+          %{state | below_threshold?: {:pending, now}}
+
+        {:pending, since} when now - since >= sustained_period ->
+          Logger.error("Connected nodes count is below threshold",
+            connected_nodes: state.connected_nodes,
+            problem_nodes: problem_nodes,
+            config: state.config
+          )
+
+          %{state | below_threshold?: true}
+
+        {:pending, _} ->
+          state
+
+        true ->
+          state
+      end
     end
   end
 
   defp maybe_log_threshold_recovery(state) do
     if enough_nodes_connected?(state) do
-      if state.below_threshold? do
+      if state.below_threshold? == true do
         Logger.info("Connected nodes count is back above threshold",
-          connected_nodes: inspect(state.connected_nodes),
-          config: inspect(state.config)
+          connected_nodes: state.connected_nodes,
+          config: state.config
         )
       end
 
@@ -344,10 +361,5 @@ defmodule Portal.Cluster.PostgresStrategy do
       :error ->
         true
     end
-  end
-
-  defp in_startup_grace_period?(state) do
-    elapsed = System.monotonic_time(:millisecond) - state.started_at
-    elapsed < state.heartbeat_interval * state.missed_heartbeats
   end
 end
