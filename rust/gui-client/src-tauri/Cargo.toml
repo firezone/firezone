@@ -32,8 +32,8 @@ derive_more = { workspace = true, features = ["debug"] }
 futures = { workspace = true }
 hex = { workspace = true }
 humantime = { workspace = true }
-ip_network = { workspace = true }
 ip-packet = { workspace = true }
+ip_network = { workspace = true }
 keyring-core = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
