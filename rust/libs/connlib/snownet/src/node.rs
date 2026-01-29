@@ -2119,7 +2119,7 @@ where
 }
 
 fn new_client_agent() -> IceAgent {
-    let mut agent = IceAgent::new();
+    let mut agent = IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER);
     agent.set_controlling(true);
     agent.set_timing_advance(Duration::ZERO);
 
@@ -2129,7 +2129,7 @@ fn new_client_agent() -> IceAgent {
 }
 
 fn new_server_agent() -> IceAgent {
-    let mut agent = IceAgent::new();
+    let mut agent = IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER);
     agent.set_controlling(false);
     agent.set_timing_advance(Duration::ZERO);
 
@@ -2228,7 +2228,7 @@ mod tests {
         let srvflx =
             Candidate::server_reflexive(SocketAddr::new(addr, 40000), base, "udp").unwrap();
 
-        let mut agent = IceAgent::new();
+        let mut agent = IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER);
         agent.add_remote_candidate(host);
         agent.add_remote_candidate(srvflx);
 
@@ -2254,7 +2254,7 @@ mod tests {
         let srvflx =
             Candidate::server_reflexive(SocketAddr::new(addr, 40000), base, "udp").unwrap();
 
-        let mut agent = IceAgent::new();
+        let mut agent = IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER);
         agent.add_remote_candidate(host);
         agent.add_remote_candidate(srvflx);
 
@@ -2281,7 +2281,7 @@ mod tests {
         let srflx3 =
             Candidate::server_reflexive(SocketAddr::new(addr3, 40000), base, "udp").unwrap();
 
-        let mut agent = IceAgent::new();
+        let mut agent = IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER);
         agent.add_remote_candidate(host);
         agent.add_remote_candidate(srflx1);
         agent.add_remote_candidate(srflx2);
