@@ -486,13 +486,12 @@ impl<'a> Handler<'a> {
                 self.dns_controller
                     .set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain)
                     .await?;
-
-                let routes = config.routes.into_iter().filter(|r| match r {
-                    IpNetwork::V4(_) => tun_ip_stack.supports_ipv4(),
-                    IpNetwork::V6(_) => tun_ip_stack.supports_ipv6(),
-                });
-
-                self.tun_device.set_routes(routes).await?;
+                self.tun_device
+                    .set_routes(config.routes.into_iter().filter(|r| match r {
+                        IpNetwork::V4(_) => tun_ip_stack.supports_ipv4(),
+                        IpNetwork::V6(_) => tun_ip_stack.supports_ipv6(),
+                    }))
+                    .await?;
                 self.dns_controller.flush()?;
             }
             client_shared::Event::ResourcesUpdated(resources) => {
