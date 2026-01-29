@@ -417,14 +417,14 @@ fn start_send_thread(
                 tracing::debug!(
                     "Stopping TUN send worker thread because the packet channel closed"
                 );
-                break;
+                break 'next_packet;
             };
 
             let bytes = packet.packet();
 
             let Ok(len) = bytes.len().try_into() else {
                 tracing::warn!("Packet too large; length does not fit into u16");
-                continue;
+                continue 'next_packet;
             };
 
             'next_attempt: for attempt in 0..MAX_ATTEMPTS {
