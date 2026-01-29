@@ -481,11 +481,17 @@ impl<'a> Handler<'a> {
             client_shared::Event::TunInterfaceUpdated(config) => {
                 self.session.transition_to_connected()?;
 
-                self.tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
+                let tun_ip_stack = self.tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
                 self.dns_controller
                     .set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain)
                     .await?;
-                self.tun_device.set_routes(config.routes).await?;
+
+                let routes = config.routes.into_iter().filter(|r| match r {
+                    IpNetwork::V4(_) => tun_ip_stack.supports_ipv4(),
+                    IpNetwork::V6(_) => tun_ip_stack.supports_ipv6(),
+                });
+
+                self.tun_device.set_routes(routes).await?;
                 self.dns_controller.flush()?;
             }
             client_shared::Event::ResourcesUpdated(resources) => {

@@ -429,8 +429,14 @@ impl Eventloop {
 
                 tracing::debug!(stack = %tun_ip_stack, "Initialized TUN device");
 
+                let routes = match tun_ip_stack {
+                    bin_shared::TunIpStack::V4Only => vec![IPV4_TUNNEL.into()],
+                    bin_shared::TunIpStack::V6Only => vec![IPV6_TUNNEL.into()],
+                    bin_shared::TunIpStack::Dual => vec![IPV4_TUNNEL.into(), IPV6_TUNNEL.into()],
+                };
+
                 self.tun_device_manager
-                    .set_routes(vec![IPV4_TUNNEL.into(), IPV6_TUNNEL.into()])
+                    .set_routes(routes)
                     .await
                     .context("Failed to set TUN routes")?;
 
