@@ -696,7 +696,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 <p class="mt-1 text-sm">{@directory.error_message}</p>
               <% end %>
               <p class="mt-2 text-sm">
-                Sync will automatically retry. If issues persist for 24 hours, the directory will be disabled.
+                Sync will automatically retry. If issues persist for 24 hours, directory sync will be disabled.
               </p>
             </.flash>
           <% end %>
