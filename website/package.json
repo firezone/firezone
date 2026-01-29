@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "setup": "pnpm install && bash ./timestamps.sh",
+    "predev": "bash ./timestamps.sh",
     "dev": "next dev --webpack",
     "prebuild": "pnpm lint && bash ./timestamps.sh",
     "build": "next build --webpack",
