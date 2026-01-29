@@ -3,6 +3,8 @@ defmodule Portal.Account do
   import Ecto.Changeset
   alias Portal.Config
 
+  @type t :: %__MODULE__{}
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
@@ -58,8 +60,14 @@ defmodule Portal.Account do
     has_one :email_otp_auth_provider, Portal.EmailOTP.AuthProvider
     has_one :userpass_auth_provider, Portal.Userpass.AuthProvider
 
-    field :warning, :string
-    field :warning_delivery_attempts, :integer, default: 0
+    # Billing limit exceeded flags - set by CheckAccountLimits worker and Stripe event processing
+    field :users_limit_exceeded, :boolean, default: false
+    field :seats_limit_exceeded, :boolean, default: false
+    field :service_accounts_limit_exceeded, :boolean, default: false
+    field :sites_limit_exceeded, :boolean, default: false
+    field :admins_limit_exceeded, :boolean, default: false
+
+    # Tracks when the last limit exceeded email was sent (for throttling)
     field :warning_last_sent_at, :utc_datetime_usec
 
     field :disabled_reason, :string
@@ -76,8 +84,44 @@ defmodule Portal.Account do
     |> unique_constraint(:slug, name: :accounts_slug_index)
   end
 
+  @spec active?(t()) :: boolean()
   def active?(%__MODULE__{disabled_at: nil}), do: true
   def active?(%__MODULE__{}), do: false
+
+  @doc """
+  Returns true if any billing limit is exceeded.
+  """
+  @spec any_limit_exceeded?(t()) :: boolean()
+  def any_limit_exceeded?(%__MODULE__{} = account) do
+    account.users_limit_exceeded or
+      account.seats_limit_exceeded or
+      account.service_accounts_limit_exceeded or
+      account.sites_limit_exceeded or
+      account.admins_limit_exceeded
+  end
+
+  @doc """
+  Builds a human-readable warning message from the exceeded limit flags.
+  Returns nil if no limits are exceeded.
+  """
+  @spec build_limits_exceeded_message(t()) :: String.t() | nil
+  def build_limits_exceeded_message(%__MODULE__{} = account) do
+    limits =
+      []
+      |> maybe_add("users", account.users_limit_exceeded)
+      |> maybe_add("monthly active users", account.seats_limit_exceeded)
+      |> maybe_add("service accounts", account.service_accounts_limit_exceeded)
+      |> maybe_add("sites", account.sites_limit_exceeded)
+      |> maybe_add("account admins", account.admins_limit_exceeded)
+
+    case limits do
+      [] -> nil
+      limits -> "You have exceeded the following limits: #{Enum.join(limits, ", ")}"
+    end
+  end
+
+  defp maybe_add(list, label, true), do: list ++ [label]
+  defp maybe_add(list, _label, false), do: list
 
   for feature <- Portal.Accounts.Features.__schema__(:fields) do
     def unquote(:"#{feature}_enabled?")(account) do

@@ -26,4 +26,11 @@ defmodule Portal.Mailer.Notifications do
       latest_version: Portal.ComponentVersions.gateway_version()
     )
   end
+
+  def limits_exceeded_email(warning, email) do
+    default_email()
+    |> subject("Firezone Account Limits Exceeded")
+    |> to(email)
+    |> render_body(__MODULE__, :limits_exceeded, warning: warning)
+  end
 end
