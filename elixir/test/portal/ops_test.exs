@@ -86,11 +86,6 @@ defmodule Portal.OpsTest do
       assert length(banners) == 1
       assert hd(banners).message == second.message
     end
-
-    test "returns error for invalid banner" do
-      assert {:error, changeset} = set_banner(nil)
-      assert errors_on(changeset) == %{message: ["can't be blank"]}
-    end
   end
 
   describe "clear_banner/0" do

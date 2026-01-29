@@ -7,9 +7,7 @@ defmodule Portal.BannerFixtures do
     attrs = Enum.into(attrs, %{})
 
     {:ok, banner} =
-      %Portal.Actor{}
-      |> Ecto.Changeset.cast(attrs, [:message])
-      |> Portal.Banner.changeset()
+      struct(Portal.Banner, attrs)
       |> Portal.Repo.insert()
 
     banner
