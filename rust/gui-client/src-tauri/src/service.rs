@@ -19,6 +19,7 @@ use futures::{
     stream::{self, BoxStream},
     task::{Context, Poll},
 };
+use ip_network::IpNetwork;
 use logging::{FilterReloadHandle, err_with_src};
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
