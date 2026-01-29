@@ -9,7 +9,7 @@ use std::process::ExitCode;
 use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
-use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
+use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging, settings};
 use settings::AdvancedSettingsLegacy;
 use telemetry::Telemetry;
 use tokio::runtime::Runtime;
@@ -113,7 +113,7 @@ fn try_main(
             Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
             #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
             Err(error) => {
-                show_error_dialog(&error.user_friendly_msg())?;
+                dialog::error(&error.user_friendly_msg())?;
 
                 return Err(error.into());
             }
@@ -163,7 +163,7 @@ fn try_main(
                 .find_map(|e| e.downcast_ref::<tauri_runtime::Error>())
                 .is_some_and(|e| matches!(e, tauri_runtime::Error::CreateWebview(_)))
             {
-                show_error_dialog(
+                dialog::error(
                     "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-gui-client>.",
                 )?;
                 return Err(anyhow);
@@ -174,27 +174,25 @@ fn try_main(
             }
 
             if anyhow.any_is::<gui::NewInstanceHandshakeFailed>() {
-                show_error_dialog(
+                dialog::error(
                     "Firezone is already running but not responding. Please force-stop it first.",
                 )?;
                 return Err(anyhow);
             }
 
             if anyhow.any_is::<firezone_gui_client::ipc::NotFound>() {
-                show_error_dialog(
-                    "Couldn't find Firezone Tunnel service. Is the service running?",
-                )?;
+                dialog::error("Couldn't find Firezone Tunnel service. Is the service running?")?;
                 return Err(anyhow);
             }
 
             if anyhow.any_is::<controller::FailedToReceiveHello>() {
-                show_error_dialog(
+                dialog::error(
                     "The Firezone Tunnel service is not responding. If the issue persists, contact your administrator.",
                 )?;
                 return Err(anyhow);
             }
 
-            show_error_dialog(
+            dialog::error(
                 "An unexpected error occurred. Please try restarting Firezone. If the issue persists, contact your administrator.",
             )?;
 
@@ -212,28 +210,10 @@ fn fix_log_filter(settings: &mut AdvancedSettingsLegacy) -> Result<()> {
     }
     settings.log_filter = AdvancedSettingsLegacy::default().log_filter;
 
-    native_dialog::DialogBuilder::message()
-        .set_title("Log filter error")
-        .set_text("The custom log filter is not parsable. Using the default log filter.")
-        .set_type(native_dialog::MessageLevel::Error)
-        .show_alert()
-        .context("Can't show log filter error dialog")?;
+    firezone_gui_client::dialog::error(
+        "The custom log filter is not parsable. Using the default log filter.",
+    )?;
 
-    Ok(())
-}
-
-/// Blocks the thread and shows an error dialog
-///
-/// Doesn't play well with async, only use this if we're bailing out of the
-/// entire process.
-fn show_error_dialog(msg: &str) -> Result<()> {
-    // I tried the Tauri dialogs and for some reason they don't show our
-    // app icon.
-    native_dialog::DialogBuilder::message()
-        .set_title("Firezone Error")
-        .set_text(msg)
-        .set_type(native_dialog::MessageLevel::Error)
-        .show_alert()?;
     Ok(())
 }
 
