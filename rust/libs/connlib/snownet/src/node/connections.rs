@@ -463,7 +463,7 @@ mod tests {
         let new_local = Index::new_local(idx);
 
         Connection {
-            agent: IceAgent::new(),
+            agent: IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER),
             index: new_local,
             tunnel: Tunn::new_at(
                 private,
