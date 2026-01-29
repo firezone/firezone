@@ -335,20 +335,17 @@ defmodule Portal.Okta.APIClient do
                 {ok_items, :halt}
               end
 
-            %{status: 401} ->
-              {[{:error, "Authentication Error"}], :halt}
+            %{status: status} = response when status in [401, 403] ->
+              {[{:error, response}], :halt}
 
-            %{status: 403} ->
-              {[{:error, "Authorization Error"}], :halt}
-
-            %{status: status, headers: headers, body: body} ->
+            %{status: status, headers: headers, body: body} = response ->
               Logger.warning("Unexpected response while making Okta API request",
                 status: status,
                 headers: inspect(headers),
                 response: inspect(body)
               )
 
-              {[{:error, "Unexpected response with status #{status}"}], :halt}
+              {[{:error, response}], :halt}
           end
       end,
       # After function - (nothing needed here)
