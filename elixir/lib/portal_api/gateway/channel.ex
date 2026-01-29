@@ -110,61 +110,90 @@ defmodule PortalAPI.Gateway.Channel do
         },
         socket
       ) do
+    # Cancel any existing debounce timer to implement true debouncing
+    # (only the last event in a burst triggers the check)
+    if timer_ref = socket.assigns[:relay_presence_timer_ref] do
+      Process.cancel_timer(timer_ref)
+    end
+
+    # Use a unique reference to identify this timer. When handling the message,
+    # we check if it matches the current ref to prevent processing stale messages
+    # that were already in the mailbox when the timer was cancelled.
+    ref = make_ref()
     debounce_ms = Portal.Config.get_env(:portal, :relay_presence_debounce_ms, 1_000)
-    Process.send_after(self(), :check_relay_presence, debounce_ms)
+    timer_ref = Process.send_after(self(), {:check_relay_presence, ref}, debounce_ms)
+
+    socket =
+      socket
+      |> assign(:relay_presence_timer_ref, timer_ref)
+      |> assign(:relay_presence_ref, ref)
+
     {:noreply, socket}
   end
 
   # Debounced relay presence check - queries the CRDT state after the debounce period.
   # cached_relay_ids is a MapSet of relay IDs we've sent to the gateway.
   # Presence is keyed by relay ID.
-  def handle_info(:check_relay_presence, socket) do
-    cached_relay_ids = socket.assigns[:cached_relay_ids] || MapSet.new()
-
-    # Query presence ONCE - use this single snapshot for both determining
-    # disconnected relays and selecting connected relays. This avoids a race
-    # condition where CRDT state changes between queries during rapid
-    # disconnect/reconnect cycles.
-    {:ok, all_online_relays} = Presence.Relays.all_connected_relays()
-    online_relay_ids = MapSet.new(all_online_relays, & &1.id)
-
-    # Find which cached relays are now truly offline (ID no longer in presence)
-    disconnected_ids =
-      cached_relay_ids
-      |> Enum.reject(&MapSet.member?(online_relay_ids, &1))
-      |> Enum.to_list()
-
-    # Send relays_presence if any cached relays are disconnected OR if we have fewer than 2 relays
-    # and more are now available
-    needs_update =
-      disconnected_ids != [] or
-        (MapSet.size(cached_relay_ids) < 2 and MapSet.size(online_relay_ids) > 0)
-
-    if needs_update do
-      # Select best relays from the SAME snapshot we used for disconnected_ids
-      location = {
-        socket.assigns.gateway.last_seen_remote_ip_location_lat,
-        socket.assigns.gateway.last_seen_remote_ip_location_lon
-      }
-
-      relays = load_balance_relays(location, all_online_relays)
-      socket = cache_relays(socket, relays)
-
-      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
-
-      push(socket, "relays_presence", %{
-        disconnected_ids: disconnected_ids,
-        connected:
-          Views.Relay.render_many(
-            relays,
-            socket.assigns.gateway.public_key,
-            relay_credentials_expire_at
-          )
-      })
-
+  def handle_info({:check_relay_presence, ref}, socket) do
+    # Only process if the ref matches the current active timer.
+    # This prevents processing stale messages that were already in the mailbox
+    # when Process.cancel_timer/1 was called.
+    if ref != socket.assigns[:relay_presence_ref] do
       {:noreply, socket}
     else
-      {:noreply, socket}
+      # Clear the timer references since we're processing now
+      socket =
+        socket
+        |> assign(:relay_presence_timer_ref, nil)
+        |> assign(:relay_presence_ref, nil)
+
+      cached_relay_ids = socket.assigns[:cached_relay_ids] || MapSet.new()
+
+      # Query presence ONCE - use this single snapshot for both determining
+      # disconnected relays and selecting connected relays. This avoids a race
+      # condition where CRDT state changes between queries during rapid
+      # disconnect/reconnect cycles.
+      {:ok, all_online_relays} = Presence.Relays.all_connected_relays()
+      online_relay_ids = MapSet.new(all_online_relays, & &1.id)
+
+      # Find which cached relays are now truly offline (ID no longer in presence)
+      disconnected_ids =
+        cached_relay_ids
+        |> Enum.reject(&MapSet.member?(online_relay_ids, &1))
+        |> Enum.to_list()
+
+      # Send relays_presence if any cached relays are disconnected OR if we have fewer than 2 relays
+      # and more are now available
+      needs_update =
+        disconnected_ids != [] or
+          (MapSet.size(cached_relay_ids) < 2 and MapSet.size(online_relay_ids) > 0)
+
+      if needs_update do
+        # Select best relays from the SAME snapshot we used for disconnected_ids
+        location = {
+          socket.assigns.gateway.last_seen_remote_ip_location_lat,
+          socket.assigns.gateway.last_seen_remote_ip_location_lon
+        }
+
+        relays = load_balance_relays(location, all_online_relays)
+        socket = cache_relays(socket, relays)
+
+        relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
+
+        push(socket, "relays_presence", %{
+          disconnected_ids: disconnected_ids,
+          connected:
+            Views.Relay.render_many(
+              relays,
+              socket.assigns.gateway.public_key,
+              relay_credentials_expire_at
+            )
+        })
+
+        {:noreply, socket}
+      else
+        {:noreply, socket}
+      end
     end
   end
 
