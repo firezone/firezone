@@ -40,4 +40,8 @@ defmodule Portal.ApplicationTest do
       assert {:error, {:not_found, ^handler_id}} = :logger.remove_handler(handler_id)
     end
   end
+
+  # Note: prep_stop/1 cannot be unit tested because it calls
+  # Ecto.Adapters.SQL.disconnect_all/2 which is not supported in the test
+  # environment's DBConnection.Ownership sandbox mode.
 end

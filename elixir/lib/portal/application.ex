@@ -23,6 +23,21 @@ defmodule Portal.Application do
   end
 
   @impl true
+  def prep_stop(state) do
+    # Disconnect all database connections before the supervision tree stops.
+    # This prevents Postgrex.SCRAM.LockedCache errors during shutdown when
+    # DBConnection tries to reconnect after postgrex has already been stopped.
+    Logger.info("Disconnecting database connections for graceful shutdown")
+
+    # Give connections 5 seconds to disconnect gracefully
+    disconnect_timeout = :timer.seconds(5)
+    Ecto.Adapters.SQL.disconnect_all(Portal.Repo, disconnect_timeout)
+    Ecto.Adapters.SQL.disconnect_all(Portal.Repo.Replica, disconnect_timeout)
+
+    state
+  end
+
+  @impl true
   def stop(_state) do
     # Remove the Sentry logger handler before Sentry.Supervisor terminates
     # to avoid noproc errors during shutdown
