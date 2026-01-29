@@ -9,14 +9,14 @@ use crate::{
     view::{GeneralSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
-use connlib_model::ResourceView;
+use connlib_model::{ResourceId, ResourceView, Site, SiteId};
 use futures::{
     SinkExt, StreamExt,
     stream::{self, BoxStream},
 };
 use logging::FilterReloadHandle;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
+use std::{collections::HashSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
 use telemetry::Telemetry;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
@@ -42,6 +42,9 @@ pub struct Controller<I: GuiIntegration> {
     status: Status,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
+
+    /// Sites we have tried to access, failed and showed a notification as a result.
+    unreachable_sites: HashSet<SiteId>,
 
     gui_ipc_clients: BoxStream<
         'static,
@@ -208,6 +211,7 @@ impl<I: GuiIntegration> Controller<I> {
                 Some((result, gui_ipc))
             })
             .boxed(),
+            unreachable_sites: Default::default(),
         };
 
         controller.main_loop().await?;
@@ -653,10 +657,33 @@ impl<I: GuiIntegration> Controller<I> {
                 return Ok(ControlFlow::Break(()));
             }
             service::ServerMsg::Hello => {}
+            service::ServerMsg::GatewayVersionMismatch { resource_id } => {
+                let (resource, site) = self.resource_by_id(resource_id)?;
+
+                if !self.unreachable_sites.insert(site.id) {
+                    return Ok(ControlFlow::Continue(()));
+                }
+
+                self.integration.show_notification(
+                    format!("Failed to connect to '{}'", resource.name()),
+                    format!("Your Firezone Client is incompatible with all Gateways in the site '{}'. Please update your Client to the latest version and contact your administrator if the issue persists.", site.name)
+                )?;
+            }
+            service::ServerMsg::AllGatewaysOffline { resource_id } => {
+                let (resource, site) = self.resource_by_id(resource_id)?;
+
+                if !self.unreachable_sites.insert(site.id) {
+                    return Ok(ControlFlow::Continue(()));
+                }
+
+                self.integration.show_notification(
+                    format!("Failed to connect to '{}'", resource.name()),
+                    format!("All Gateways in the site '{}' are offline. Contact your administrator to resolve this issue.", site.name),
+                )?;
+            }
         }
         Ok(ControlFlow::Continue(()))
     }
-
     async fn handle_gui_ipc_msg(
         &mut self,
         maybe_msg: Option<Result<gui::ClientMsg>>,
@@ -859,12 +886,30 @@ impl<I: GuiIntegration> Controller<I> {
         }
         self.auth.sign_out()?;
         self.status = Status::Disconnected;
+        self.unreachable_sites.clear();
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
         // connlib already disconnected itself.
         self.send_ipc(&service::ClientMsg::Disconnect).await?;
         self.refresh_ui_state();
         Ok(())
+    }
+
+    fn resource_by_id(&self, resource_id: ResourceId) -> Result<(ResourceView, Site)> {
+        let Status::TunnelReady { resources } = &self.status else {
+            anyhow::bail!(
+                "No resource list available, cannot show notification about unreachable resource"
+            )
+        };
+
+        let resource = resources
+            .iter()
+            .find(|r| r.id() == resource_id)
+            .context("Unknown resource")?;
+
+        let site = resource.sites().first().context("No site")?;
+
+        Ok((resource.clone(), site.clone()))
     }
 
     async fn send_ipc(&mut self, msg: &service::ClientMsg) -> Result<()> {

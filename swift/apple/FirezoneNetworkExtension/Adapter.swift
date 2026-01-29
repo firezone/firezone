@@ -141,6 +141,9 @@ class Adapter: @unchecked Sendable {
   /// Keep track of resources for UI
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
 
+  /// Resources we couldn't connect to
+  private var unreachableResources: Set<UnreachableResource>
+
   /// Starting parameters
   private let apiURL: String
   private let token: Token
@@ -166,6 +169,7 @@ class Adapter: @unchecked Sendable {
     self.packetTunnelProvider = packetTunnelProvider
     self.startCompletionHandler = startCompletionHandler
     self.networkSettings = NetworkSettings()
+    self.unreachableResources = Set()
     self.systemConfigurationResolvers = try SystemConfigurationResolvers()
   }
 
@@ -300,9 +304,9 @@ class Adapter: @unchecked Sendable {
     // No need to cancel them here - they'll clean up via their defer blocks
   }
 
-  /// Get the current set of resources in the completionHandler, only returning
-  /// them if the resource list has changed.
-  func getResourcesIfVersionDifferentFrom(
+  /// Get the current state in the completionHandler, only returning
+  /// them if the content has changed.
+  func getStateIfVersionDifferentFrom(
     hash: Data, completionHandler: @escaping @Sendable (Data?) -> Void
   ) {
     Task { [weak self] in
@@ -311,18 +315,13 @@ class Adapter: @unchecked Sendable {
         return
       }
 
-      // Convert uniffi resources to FirezoneKit resources and encode with PropertyList
-      guard let uniffiResources = self.resources
-      else {
-        completionHandler(nil)
-        return
-      }
+      let state = ConnlibState(
+        resources: self.resources?.map { self.convertResource($0) },
+        unreachableResources: self.unreachableResources)
 
-      let firezoneResources = uniffiResources.map { self.convertResource($0) }
-
-      guard let encoded = try? PropertyListEncoder().encode(firezoneResources)
+      guard let encoded = try? PropertyListEncoder().encode(state)
       else {
-        Log.log("Failed to encode resources as PropertyList")
+        Log.log("Failed to encode state as PropertyList")
         completionHandler(nil)
         return
       }
@@ -468,6 +467,14 @@ class Adapter: @unchecked Sendable {
       } else {
         provider.cancelTunnelWithError(nil)
       }
+
+    case .allGatewaysOffline(let resourceId):
+      self.unreachableResources.insert(
+        UnreachableResource(resourceId: resourceId, reason: UnreachableReason.offline))
+
+    case .gatewayVersionMismatch(let resourceId):
+      self.unreachableResources.insert(
+        UnreachableResource(resourceId: resourceId, reason: UnreachableReason.versionMismatch))
     }
   }
 
