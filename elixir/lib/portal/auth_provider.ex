@@ -64,7 +64,7 @@ defmodule Portal.AuthProvider do
     end
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required(~w[type]a)
     |> assoc_constraint(:account)

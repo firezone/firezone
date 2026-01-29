@@ -3,6 +3,7 @@ defmodule Portal.Billing.Stripe.ProcessedEvents.ProcessedEvent do
   Schema for tracking processed Stripe webhook events.
   Ensures idempotency and chronological ordering of event processing.
   """
+  # credo:disable-for-this-file Credo.Check.Warning.MissingChangesetFunction
   use Ecto.Schema
 
   @primary_key {:stripe_event_id, :string, []}

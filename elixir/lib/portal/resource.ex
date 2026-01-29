@@ -50,7 +50,7 @@ defmodule Portal.Resource do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     fields = ~w[address address_description name type ip_stack site_id]a
 
     changeset
