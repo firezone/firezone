@@ -1354,7 +1354,7 @@ dependencies = [
  "futures",
  "ip-packet",
  "ip_network",
- "itertools 0.14.0",
+ "itertools",
  "libc",
  "log",
  "logging",
