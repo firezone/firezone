@@ -67,6 +67,16 @@ defmodule Portal.Replication.Manager do
     {:noreply, state}
   end
 
+  @impl true
+  def terminate(_reason, %{connection_pid: pid}) when is_pid(pid) do
+    # Send shutdown message to the replication connection so it disconnects
+    # gracefully without trying to reconnect
+    send(pid, :shutdown)
+    :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
+
   defp start_connection(%{connection_module: connection_module} = state) do
     case connection_module.start_link(replication_child_spec(connection_module)) do
       {:ok, pid} ->
