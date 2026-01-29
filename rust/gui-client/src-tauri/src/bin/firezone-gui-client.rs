@@ -52,6 +52,10 @@ fn try_main(
     bootstrap_log_guard: &mut Option<DefaultGuard>,
     telemetry: &mut Telemetry,
 ) -> Result<()> {
+    if cli.test_error_dialog {
+        dialog::error("Dialogs are working!")?;
+    }
+
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
         debug_update_check: cli.debug_update_check,
@@ -250,6 +254,9 @@ struct Cli {
     /// If true, show a fake update notification that opens the Firezone release page when clicked
     #[arg(long, hide = true)]
     test_update_notification: bool,
+    /// If true, show a fake error dialog on startup
+    #[arg(long, hide = true)]
+    test_error_dialog: bool,
     /// For headless CI, disable deep links.
     #[arg(long, hide = true)]
     no_deep_links: bool,
