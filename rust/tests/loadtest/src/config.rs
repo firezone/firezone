@@ -160,18 +160,8 @@ pub struct WebsocketConfig {
     pub concurrent: Range,
     /// How long to hold connections in seconds.
     pub duration_secs: Range,
-    /// Connection timeout in seconds.
-    pub timeout_secs: Range,
-    /// Ping interval in seconds. Ignored in echo mode.
-    pub ping_interval_secs: Range,
-    /// Enable echo mode for payload verification.
-    pub echo_mode: bool,
-    /// Echo payload size in bytes.
-    pub echo_payload_size: Range,
-    /// Interval between echo messages in seconds.
-    pub echo_interval_secs: Range,
-    /// Timeout for reading echo responses in seconds.
-    pub echo_read_timeout_secs: Range,
+    /// How long to at most wait between messages. Zero means we won't send any messages.
+    pub max_echo_interval_secs: u64,
 }
 
 impl WebsocketConfig {
