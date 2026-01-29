@@ -1117,7 +1117,7 @@ mod tests {
                 return val;
             }
 
-            panic!("Timeout while waiting for `TestIntegration` to change")
+            panic!("Timeout while waiting for `MockIntegration` to change")
         }
     }
 
@@ -1140,9 +1140,9 @@ mod tests {
 
     impl MockIntegration {
         fn nth_notification(&self, idx: usize) -> Option<(String, String)> {
-            let (body, title, _) = self.notifications.get(idx)?;
+            let (title, body, _) = self.notifications.get(idx)?;
 
-            Some((body.clone(), title.clone()))
+            Some((title.clone(), body.clone()))
         }
     }
 
