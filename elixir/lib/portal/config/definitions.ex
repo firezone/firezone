@@ -680,6 +680,8 @@ defmodule Portal.Config.Definitions do
   defconfig(:stripe_secret_key, :string, sensitive: true, default: nil)
   defconfig(:stripe_webhook_signing_secret, :string, sensitive: true, default: nil)
   defconfig(:stripe_default_price_id, :string, default: nil)
+  defconfig(:stripe_plan_product_ids, {:json_array, :string}, default: [])
+  defconfig(:stripe_adhoc_device_product_id, :string, default: nil)
 
   ##############################################
   ## Local development and Staging Helpers
