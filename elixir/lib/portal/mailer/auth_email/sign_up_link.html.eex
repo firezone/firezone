@@ -177,6 +177,38 @@
                     >
                       &zwj;
                     </div>
+                    <h2
+                      class="sm-leading-8"
+                      style="margin: 0 0 24px; font-size: 20px; font-weight: 600; color: #000000"
+                    >
+                      Next Steps:
+                    </h2>
+                    <p style="margin: 0 0 16px; line-height: 24px">
+                      Get started with Firezone by downloading the client for your platform:
+                    </p>
+                    <p style="margin: 0 0 8px;">
+                      <a
+                        href="https://www.firezone.dev/kb/client-apps?utm_source=email"
+                        style="color: #5e00d6; text-decoration: none; font-weight: 500;"
+                      >
+                        → Download the Firezone Client
+                      </a>
+                    </p>
+                    <p style="margin: 0 0 16px;">
+                      <a
+                        href="https://www.firezone.dev/kb/quickstart?utm_source=email"
+                        style="color: #5e00d6; text-decoration: none; font-weight: 500;"
+                      >
+                        → View the Quickstart Guide
+                      </a>
+                    </p>
+                    <div
+                      role="separator"
+                      class="separator"
+                      style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0;"
+                    >
+                      &zwj;
+                    </div>
                     <p style="margin: 0;">
                       If you didn't sign up for Firezone, you can safely ignore this email. <br />
                       <br /> Thanks, <br />The Firezone Team
