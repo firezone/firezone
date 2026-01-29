@@ -42,7 +42,9 @@ defmodule Portal.MixProject do
         :logger,
         :runtime_tools,
         :crypto,
-        :dialyzer
+        :dialyzer,
+        # Ensure Postgrex.SCRAM.LockedCache is started before any database connections
+        :postgrex
       ]
     ]
   end
