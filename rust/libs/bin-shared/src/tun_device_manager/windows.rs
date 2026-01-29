@@ -111,20 +111,12 @@ impl TunDeviceManager {
     }
 
     #[expect(clippy::unused_async, reason = "Must match Linux API")]
-    pub async fn set_routes(
-        &mut self,
-        v4: impl IntoIterator<Item = Ipv4Network>,
-        v6: impl IntoIterator<Item = Ipv6Network>,
-    ) -> Result<()> {
+    pub async fn set_routes(&mut self, routes: impl IntoIterator<Item = IpNetwork>) -> Result<()> {
         let iface_idx = self
             .iface_idx
             .context("Cannot set routes without having created TUN device")?;
 
-        let new_routes = HashSet::from_iter(
-            v4.into_iter()
-                .map(IpNetwork::from)
-                .chain(v6.into_iter().map(IpNetwork::from)),
-        );
+        let new_routes = HashSet::from_iter(routes);
 
         for old_route in self.routes.difference(&new_routes) {
             remove_route(*old_route, iface_idx);

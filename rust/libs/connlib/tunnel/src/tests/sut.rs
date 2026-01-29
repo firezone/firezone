@@ -928,8 +928,7 @@ impl TunnelTest {
             }
             ClientEvent::TunInterfaceUpdated(config) => {
                 if self.client.inner().dns_mapping() == &config.dns_by_sentinel
-                    && self.client.inner().ipv4_routes == config.ipv4_routes
-                    && self.client.inner().ipv6_routes == config.ipv6_routes
+                    && self.client.inner().routes == config.routes
                     && self.client.inner().search_domain == config.search_domain
                 {
                     tracing::error!(
@@ -956,8 +955,7 @@ impl TunnelTest {
 
                 self.client.exec_mut(|c| {
                     c.set_new_dns_servers(config.dns_by_sentinel);
-                    c.ipv4_routes = config.ipv4_routes;
-                    c.ipv6_routes = config.ipv6_routes;
+                    c.routes = config.routes;
                     c.search_domain = config.search_domain;
                     c.tcp_dns_client
                         .set_source_interface(config.ip.v4, config.ip.v6);

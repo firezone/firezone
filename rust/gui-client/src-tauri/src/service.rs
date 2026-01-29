@@ -485,9 +485,7 @@ impl<'a> Handler<'a> {
                 self.dns_controller
                     .set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain)
                     .await?;
-                self.tun_device
-                    .set_routes(config.ipv4_routes, config.ipv6_routes)
-                    .await?;
+                self.tun_device.set_routes(config.routes).await?;
                 self.dns_controller.flush()?;
             }
             client_shared::Event::ResourcesUpdated(resources) => {

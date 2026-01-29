@@ -22,6 +22,7 @@ ip_network = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
 logging = { workspace = true }
+itertools = { workspace = true }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }

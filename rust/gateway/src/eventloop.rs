@@ -430,7 +430,7 @@ impl Eventloop {
                 tracing::debug!(stack = %tun_ip_stack, "Initialized TUN device");
 
                 self.tun_device_manager
-                    .set_routes(vec![IPV4_TUNNEL], vec![IPV6_TUNNEL])
+                    .set_routes(vec![IPV4_TUNNEL.into(), IPV6_TUNNEL.into()])
                     .await
                     .context("Failed to set TUN routes")?;
 

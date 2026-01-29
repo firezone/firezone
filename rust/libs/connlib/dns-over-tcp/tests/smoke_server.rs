@@ -30,10 +30,11 @@ async fn smoke() {
     let tun = device_manager.make_tun().unwrap();
     device_manager.set_ips(ipv4, ipv6).await.unwrap();
     device_manager
-        .set_routes(
-            vec![Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap()],
-            vec![],
-        )
+        .set_routes(vec![
+            Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24)
+                .unwrap()
+                .into(),
+        ])
         .await
         .unwrap();
 

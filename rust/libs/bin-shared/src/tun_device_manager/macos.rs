@@ -1,7 +1,7 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use anyhow::{Result, bail};
-use ip_network::{Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
 use tun::Tun;
 
 use crate::tun_device_manager::TunIpStack;
@@ -29,11 +29,7 @@ impl TunDeviceManager {
         clippy::unused_async,
         reason = "Signture must match other operating systems"
     )]
-    pub async fn set_routes(
-        &mut self,
-        _ipv4: impl IntoIterator<Item = Ipv4Network>,
-        _ipv6: impl IntoIterator<Item = Ipv6Network>,
-    ) -> Result<()> {
+    pub async fn set_routes(&mut self, _routes: impl IntoIterator<Item = IpNetwork>) -> Result<()> {
         bail!("Not implemented")
     }
 }
