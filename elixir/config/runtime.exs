@@ -131,11 +131,22 @@ if config_env() == :prod do
 
   config :portal, Portal.Billing.Stripe.APIClient, endpoint: "https://api.stripe.com"
 
-  config :portal, Portal.Billing,
-    enabled: env_var_to_config!(:billing_enabled),
-    secret_key: env_var_to_config!(:stripe_secret_key),
-    webhook_signing_secret: env_var_to_config!(:stripe_webhook_signing_secret),
-    default_price_id: env_var_to_config!(:stripe_default_price_id)
+  config :portal,
+         Portal.Billing,
+         [
+           enabled: env_var_to_config!(:billing_enabled),
+           secret_key: env_var_to_config!(:stripe_secret_key),
+           webhook_signing_secret: env_var_to_config!(:stripe_webhook_signing_secret),
+           default_price_id: env_var_to_config!(:stripe_default_price_id)
+         ] ++
+           if(env_var_to_config(:stripe_plan_product_ids) != [],
+             do: [plan_product_ids: env_var_to_config!(:stripe_plan_product_ids)],
+             else: []
+           ) ++
+           if(env_var_to_config(:stripe_adhoc_device_product_id),
+             do: [adhoc_device_product_id: env_var_to_config!(:stripe_adhoc_device_product_id)],
+             else: []
+           )
 
   config :portal, platform_adapter: env_var_to_config!(:platform_adapter)
 
