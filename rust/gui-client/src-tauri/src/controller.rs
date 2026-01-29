@@ -966,8 +966,7 @@ mod tests {
         let mut test_controller = Controller::start_for_test();
 
         // Accept the IPC connection
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel.send_hello().await;
+        let _mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
 
         let start_error = tokio::time::timeout(Duration::from_secs(6), test_controller.join_handle)
             .await
