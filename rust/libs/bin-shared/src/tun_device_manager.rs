@@ -27,6 +27,22 @@ pub enum TunIpStack {
     Dual,
 }
 
+impl TunIpStack {
+    pub fn supports_ipv4(&self) -> bool {
+        match self {
+            TunIpStack::V4Only | TunIpStack::Dual => true,
+            TunIpStack::V6Only => false,
+        }
+    }
+
+    pub fn supports_ipv6(&self) -> bool {
+        match self {
+            TunIpStack::V6Only | TunIpStack::Dual => true,
+            TunIpStack::V4Only => false,
+        }
+    }
+}
+
 impl fmt::Display for TunIpStack {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

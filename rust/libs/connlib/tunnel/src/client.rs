@@ -983,25 +983,16 @@ impl ClientState {
                 },
                 dns_by_sentinel: self.dns_config.mapping(),
                 search_domain: config.search_domain.clone(),
-                ipv4_routes: existing.ipv4_routes.clone(),
-                ipv6_routes: existing.ipv6_routes.clone(),
+                routes: existing.routes.clone(),
             })
-            .unwrap_or_else(|| {
-                let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {
-                    IpNetwork::V4(v4) => itertools::Either::Left(v4),
-                    IpNetwork::V6(v6) => itertools::Either::Right(v6),
-                });
-
-                TunConfig {
-                    ip: IpConfig {
-                        v4: config.ipv4,
-                        v6: config.ipv6,
-                    },
-                    dns_by_sentinel: self.dns_config.mapping(),
-                    search_domain: config.search_domain.clone(),
-                    ipv4_routes,
-                    ipv6_routes,
-                }
+            .unwrap_or_else(|| TunConfig {
+                ip: IpConfig {
+                    v4: config.ipv4,
+                    v6: config.ipv6,
+                },
+                dns_by_sentinel: self.dns_config.mapping(),
+                search_domain: config.search_domain.clone(),
+                routes: BTreeSet::from_iter(self.routes()),
             });
 
         // Apply the new `TunConfig` if it differs from the existing one.
@@ -1403,14 +1394,8 @@ impl ClientState {
             return;
         };
 
-        let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {
-            IpNetwork::V4(v4) => itertools::Either::Left(v4),
-            IpNetwork::V6(v6) => itertools::Either::Right(v6),
-        });
-
         let new_tun_config = TunConfig {
-            ipv4_routes,
-            ipv6_routes,
+            routes: BTreeSet::from_iter(self.routes()),
             ..config.clone()
         };
 

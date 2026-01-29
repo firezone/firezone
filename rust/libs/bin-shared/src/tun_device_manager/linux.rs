@@ -224,16 +224,8 @@ impl TunDeviceManager {
         Ok(tun_ip_stack)
     }
 
-    pub async fn set_routes(
-        &mut self,
-        ipv4: impl IntoIterator<Item = Ipv4Network>,
-        ipv6: impl IntoIterator<Item = Ipv6Network>,
-    ) -> Result<()> {
-        let new_routes = ipv4
-            .into_iter()
-            .map(IpNetwork::from)
-            .chain(ipv6.into_iter().map(IpNetwork::from))
-            .collect::<BTreeSet<_>>();
+    pub async fn set_routes(&mut self, routes: impl IntoIterator<Item = IpNetwork>) -> Result<()> {
+        let new_routes = BTreeSet::from_iter(routes);
 
         tracing::info!(new_routes = %DisplayBTreeSet(&new_routes), "Setting new routes");
 

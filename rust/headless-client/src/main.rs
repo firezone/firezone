@@ -11,6 +11,7 @@ use bin_shared::{
     signals,
 };
 use clap::Parser;
+use ip_network::IpNetwork;
 use opentelemetry_otlp::WithExportConfig as _;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::PhoenixChannel;
@@ -413,9 +414,12 @@ fn try_main() -> Result<()> {
                     dns_controller.flush()?;
                 }
                 client_shared::Event::TunInterfaceUpdated(config) => {
-                    tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
+                    let tun_ip_stack = tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
                     dns_controller.set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain).await?;
-                    tun_device.set_routes(config.ipv4_routes, config.ipv6_routes).await?;
+                    tun_device.set_routes(config.routes.into_iter().filter(|r| match r {
+                        IpNetwork::V4(_) => tun_ip_stack.supports_ipv4(),
+                        IpNetwork::V6(_) => tun_ip_stack.supports_ipv6(),
+                    })).await?;
 
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
                     // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>

@@ -14,7 +14,7 @@ use dns_types::DomainName;
 use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
-use ip_network::{Ipv4Network, Ipv6Network};
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use logging::DisplayBTreeSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -610,10 +610,8 @@ pub struct TunConfig {
     pub dns_by_sentinel: DnsMapping,
     pub search_domain: Option<DomainName>,
 
-    #[debug("{}", DisplayBTreeSet(ipv4_routes))]
-    pub ipv4_routes: BTreeSet<Ipv4Network>,
-    #[debug("{}", DisplayBTreeSet(ipv6_routes))]
-    pub ipv6_routes: BTreeSet<Ipv6Network>,
+    #[debug("{}", DisplayBTreeSet(routes))]
+    pub routes: BTreeSet<IpNetwork>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

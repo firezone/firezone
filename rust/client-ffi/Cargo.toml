@@ -19,6 +19,7 @@ flume = { workspace = true }
 futures = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
+itertools = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
 logging = { workspace = true }

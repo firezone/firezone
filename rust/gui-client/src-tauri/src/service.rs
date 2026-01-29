@@ -19,6 +19,7 @@ use futures::{
     stream::{self, BoxStream},
     task::{Context, Poll},
 };
+use ip_network::IpNetwork;
 use logging::{FilterReloadHandle, err_with_src};
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
@@ -481,12 +482,15 @@ impl<'a> Handler<'a> {
             client_shared::Event::TunInterfaceUpdated(config) => {
                 self.session.transition_to_connected()?;
 
-                self.tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
+                let tun_ip_stack = self.tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
                 self.dns_controller
                     .set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain)
                     .await?;
                 self.tun_device
-                    .set_routes(config.ipv4_routes, config.ipv6_routes)
+                    .set_routes(config.routes.into_iter().filter(|r| match r {
+                        IpNetwork::V4(_) => tun_ip_stack.supports_ipv4(),
+                        IpNetwork::V6(_) => tun_ip_stack.supports_ipv6(),
+                    }))
                     .await?;
                 self.dns_controller.flush()?;
             }

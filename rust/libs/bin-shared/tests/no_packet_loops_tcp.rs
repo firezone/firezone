@@ -21,10 +21,9 @@ async fn no_packet_loops_tcp() {
 
     // Configure `0.0.0.0/0` route.
     device_manager
-        .set_routes(
-            vec![Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0).unwrap()],
-            vec![],
-        )
+        .set_routes(vec![
+            Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0).unwrap().into(),
+        ])
         .await
         .unwrap();
 
