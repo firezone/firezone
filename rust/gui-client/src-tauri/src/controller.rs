@@ -1,5 +1,5 @@
 use crate::{
-    auth, deep_link,
+    auth, deep_link, dialog,
     gui::{self, system_tray},
     ipc::{self, SocketId},
     logging::{self, FileCount},
@@ -617,12 +617,8 @@ impl<I: GuiIntegration> Controller<I> {
                     )?;
                 } else {
                     tracing::error!("Connlib disconnected: {error_msg}");
-                    native_dialog::MessageDialog::new()
-                        .set_title("Firezone Error")
-                        .set_text(&error_msg)
-                        .set_type(native_dialog::MessageType::Error)
-                        .show_alert()
-                        .context("Couldn't show Disconnected alert")?;
+
+                    dialog::error(&error_msg)?;
                 }
             }
             service::ServerMsg::OnUpdateResources(resources) => {
