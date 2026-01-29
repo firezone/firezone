@@ -32,7 +32,7 @@
     "highlight.js": "^11.11.1",
     "md5": "^2.3.0",
     "mixpanel-browser": "^2.73.0",
-    "next": "^16.1.3",
+    "next": "^16.1.6",
     "next-hubspot": "^2.0.1",
     "next-sitemap": "^4.2.3",
     "postcss": "8.5.6",
