@@ -615,9 +615,9 @@ defmodule Portal.Okta.SyncTest do
       base_directory =
         Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
 
-      # Create 10 existing identities
+      # Create 5 existing identities
       # All with last_synced_at in the past, so they would all be deleted
-      for i <- 1..10 do
+      for i <- 1..5 do
         actor =
           Portal.ActorFixtures.actor_fixture(
             account: account,
@@ -665,7 +665,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should raise SyncError due to circuit breaker
-      assert_raise SyncError, ~r/Sync would delete 10 of 10 identities/, fn ->
+      assert_raise SyncError, ~r/Sync would delete all identities/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
 
@@ -677,10 +677,10 @@ defmodule Portal.Okta.SyncTest do
         )
         |> Repo.one!()
 
-      assert identity_count == 10
+      assert identity_count == 5
     end
 
-    test "raises SyncError when group deletion exceeds 90% threshold" do
+    test "raises SyncError when group deletion is 100%" do
       account = account_fixture(features: %{idp_sync: true})
 
       past_sync_time = DateTime.utc_now() |> DateTime.add(-3600, :second)
@@ -697,7 +697,7 @@ defmodule Portal.Okta.SyncTest do
         Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
 
       # Create 12 existing groups
-      for i <- 1..12 do
+      for i <- 1..5 do
         Portal.GroupFixtures.group_fixture(
           account: account,
           directory: base_directory,
@@ -774,7 +774,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should raise SyncError due to circuit breaker on groups
-      assert_raise SyncError, ~r/Sync would delete 12 of 12 groups/, fn ->
+      assert_raise SyncError, ~r/Sync would delete all groups/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
 
@@ -786,7 +786,7 @@ defmodule Portal.Okta.SyncTest do
         )
         |> Repo.one!()
 
-      assert group_count == 12
+      assert group_count == 5
     end
 
     test "allows deletion below threshold" do

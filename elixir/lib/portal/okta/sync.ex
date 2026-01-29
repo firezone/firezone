@@ -513,8 +513,6 @@ defmodule Portal.Okta.Sync do
 
   # Circuit breaker protection against accidental mass deletion
   # This can happen if someone misconfigures or removes the Okta app
-  @deletion_threshold 0.90
-
   defp check_deletion_threshold!(directory, synced_at) do
     # Skip check on first sync - there's nothing to delete
     if is_nil(directory.synced_at) do
@@ -557,29 +555,20 @@ defmodule Portal.Okta.Sync do
   defp check_resource_threshold!(counts, resource_name, directory) do
     %{total: total, to_delete: to_delete} = counts
 
-    deletion_percentage = to_delete / total
-
-    if deletion_percentage >= @deletion_threshold do
+    if to_delete == total do
       Logger.error(
         "Deletion threshold exceeded for #{resource_name}",
-        okta_directory_id: directory.id,
-        total: total,
-        to_delete: to_delete,
-        percentage: Float.round(deletion_percentage * 100, 1)
+        okta_directory_id: directory.id
       )
 
       raise Okta.SyncError,
         reason:
-          "Sync would delete #{to_delete} of #{total} #{resource_name} " <>
-            "(#{Float.round(deletion_percentage * 100, 0)}%). " <>
+          "Sync would delete all #{resource_name} " <>
             "This may indicate the Okta application was misconfigured or removed. " <>
             "Please verify your Okta configuration and re-verify the directory connection.",
         cause: %{
           step: :check_deletion_threshold,
-          resource: resource_name,
-          total: total,
-          to_delete: to_delete,
-          threshold: @deletion_threshold
+          resource: resource_name
         },
         directory_id: directory.id,
         step: :check_deletion_threshold
