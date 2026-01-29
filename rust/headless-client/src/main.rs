@@ -11,6 +11,7 @@ use bin_shared::{
     signals,
 };
 use clap::Parser;
+use ip_network::IpNetwork;
 use opentelemetry_otlp::WithExportConfig as _;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::PhoenixChannel;
@@ -415,7 +416,7 @@ fn try_main() -> Result<()> {
                 client_shared::Event::TunInterfaceUpdated(config) => {
                     let tun_ip_stack = tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
                     dns_controller.set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain).await?;
-                    self.tun_device.set_routes(config.routes.into_iter().filter(|r| match r {
+                    tun_device.set_routes(config.routes.into_iter().filter(|r| match r {
                         IpNetwork::V4(_) => tun_ip_stack.supports_ipv4(),
                         IpNetwork::V6(_) => tun_ip_stack.supports_ipv6(),
                     })).await?;
