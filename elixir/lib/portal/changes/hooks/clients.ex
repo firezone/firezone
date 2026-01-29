@@ -39,6 +39,7 @@ defmodule Portal.Changes.Hooks.Clients do
       from(f in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: f], f.account_id == ^client.account_id)
       |> where([policy_authorizations: f], f.client_id == ^client.id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

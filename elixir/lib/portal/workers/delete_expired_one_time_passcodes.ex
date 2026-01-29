@@ -29,6 +29,7 @@ defmodule Portal.Workers.DeleteExpiredOneTimePasscodes do
     def delete_expired_passcodes do
       from(p in OneTimePasscode, as: :passcodes)
       |> where([passcodes: p], p.expires_at <= ^DateTime.utc_now())
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

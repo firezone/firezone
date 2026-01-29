@@ -117,6 +117,7 @@ defmodule PortalAPI.Gateway.Socket do
     def fetch_site(id) do
       result =
         from(s in Site, where: s.id == ^id)
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         |> Safe.unscoped()
         |> Safe.one()
 
@@ -143,6 +144,7 @@ defmodule PortalAPI.Gateway.Socket do
               where: g.external_id == ^external_id,
               preload: [:ipv4_address, :ipv6_address]
             )
+            # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
             |> Safe.unscoped()
             |> Safe.one()
           end

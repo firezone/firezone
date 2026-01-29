@@ -54,6 +54,7 @@ defmodule Portal.Changes.Hooks.Resources do
       from(f in Portal.PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: f], f.account_id == ^resource.account_id)
       |> where([policy_authorizations: f], f.resource_id == ^resource.id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

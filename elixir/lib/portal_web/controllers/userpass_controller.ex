@@ -216,6 +216,7 @@ defmodule PortalWeb.UserpassController do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       query |> Safe.unscoped() |> Safe.one()
     end
 
@@ -223,6 +224,7 @@ defmodule PortalWeb.UserpassController do
       from(p in Userpass.AuthProvider,
         where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
@@ -231,6 +233,7 @@ defmodule PortalWeb.UserpassController do
       from(a in Portal.Actor,
         where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at)
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end

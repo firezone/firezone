@@ -1702,6 +1702,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           where: fragment("?->>'directory_id'", j.args) in ^directory_ids,
           order_by: [desc: j.inserted_at]
         )
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         |> Safe.unscoped()
         |> Safe.all()
         |> Enum.map(fn job -> {job.args["directory_id"], job} end)
@@ -1715,6 +1716,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           where: fragment("?->>'directory_id'", j.args) in ^directory_ids,
           order_by: [desc: j.completed_at]
         )
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         |> Safe.unscoped()
         |> Safe.all()
         |> Enum.uniq_by(& &1.args["directory_id"])

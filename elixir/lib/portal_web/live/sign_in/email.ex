@@ -205,6 +205,7 @@ defmodule PortalWeb.SignIn.Email do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       query |> Safe.unscoped() |> Safe.one()
     end
   end

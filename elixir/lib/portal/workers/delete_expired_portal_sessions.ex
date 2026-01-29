@@ -29,6 +29,7 @@ defmodule Portal.Workers.DeleteExpiredPortalSessions do
     def delete_expired_sessions do
       from(s in PortalSession, as: :sessions)
       |> where([sessions: s], s.expires_at <= ^DateTime.utc_now())
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

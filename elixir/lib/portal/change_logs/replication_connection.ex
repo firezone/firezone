@@ -178,6 +178,7 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     alias Portal.{Safe, ChangeLog}
 
     def bulk_insert(list_of_attrs) do
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       Safe.unscoped()
       |> Safe.insert_all(ChangeLog, list_of_attrs,
         on_conflict: :nothing,

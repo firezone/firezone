@@ -1,4 +1,4 @@
-defmodule Credo.Check.Warning.CrossModuleDBCall do
+defmodule Credo.Check.Warning.CrossModuleDatabaseCall do
   use Credo.Check,
     base_priority: :high,
     category: :warning,

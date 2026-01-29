@@ -54,6 +54,7 @@ defmodule PortalWeb.HomeController do
 
     def get_accounts_by_ids(account_ids) do
       from(a in Portal.Account, where: a.id in ^account_ids)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
     end

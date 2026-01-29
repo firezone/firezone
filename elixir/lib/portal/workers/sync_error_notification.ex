@@ -132,6 +132,7 @@ defmodule Portal.Workers.SyncErrorNotification do
     def errored_disabled_directories(schema, frequency) do
       schema
       |> errored_disabled_directories_query(frequency)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
     end
@@ -170,6 +171,7 @@ defmodule Portal.Workers.SyncErrorNotification do
 
     def update_directory(changeset) do
       changeset
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.update()
     end
@@ -180,6 +182,7 @@ defmodule Portal.Workers.SyncErrorNotification do
         where: a.type == :account_admin_user,
         where: is_nil(a.disabled_at)
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
     end

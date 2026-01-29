@@ -119,6 +119,7 @@ defmodule Portal.Workers.OutdatedGateways do
               a.config
             )
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
     end
@@ -128,12 +129,14 @@ defmodule Portal.Workers.OutdatedGateways do
       |> where([actors: a], is_nil(a.disabled_at))
       |> where([actors: a], a.account_id == ^account.id)
       |> where([actors: a], a.type == :account_admin_user)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
     end
 
     def update_account(changeset) do
       changeset
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.update()
     end
@@ -155,6 +158,7 @@ defmodule Portal.Workers.OutdatedGateways do
         as: :actor
       )
       |> where([actor: a], is_nil(a.disabled_at))
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
@@ -163,6 +167,7 @@ defmodule Portal.Workers.OutdatedGateways do
       from(g in Portal.Gateway,
         where: g.account_id == ^account.id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
     end
@@ -171,6 +176,7 @@ defmodule Portal.Workers.OutdatedGateways do
       from(g in Portal.Site,
         where: g.account_id == ^account.id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
     end

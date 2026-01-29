@@ -36,6 +36,7 @@ defmodule Portal.Changes.Hooks.AuthProviders do
       from(c in ClientToken,
         where: c.account_id == ^account_id and c.auth_provider_id == ^provider_id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end
@@ -45,6 +46,7 @@ defmodule Portal.Changes.Hooks.AuthProviders do
       from(p in PortalSession,
         where: p.account_id == ^account_id and p.auth_provider_id == ^provider_id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

@@ -29,6 +29,7 @@ defmodule Portal.Workers.DeleteExpiredClientTokens do
     def delete_expired_client_tokens do
       from(c in ClientToken, as: :client_tokens)
       |> where([client_tokens: c], c.expires_at <= ^DateTime.utc_now())
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

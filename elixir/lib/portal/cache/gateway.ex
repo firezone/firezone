@@ -239,6 +239,7 @@ defmodule Portal.Cache.Gateway do
         [policy_authorizations: f],
         {{f.client_id, f.resource_id}, {f.id, f.expires_at}}
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped(repo())
       |> Safe.all()
     end
@@ -246,6 +247,7 @@ defmodule Portal.Cache.Gateway do
     def fetch_client_by_id!(id, _opts \\ []) do
       from(c in Portal.Client, as: :clients)
       |> where([clients: c], c.id == ^id)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
     end
@@ -254,6 +256,7 @@ defmodule Portal.Cache.Gateway do
       result =
         from(g in Portal.Gateway, as: :gateways)
         |> where([gateways: g], g.id == ^id)
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         |> Safe.unscoped()
         |> Safe.one()
 
@@ -270,6 +273,7 @@ defmodule Portal.Cache.Gateway do
           where: t.id == ^id,
           where: t.expires_at > ^DateTime.utc_now()
         )
+        # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
         |> Safe.unscoped()
         |> Safe.one()
 
@@ -285,6 +289,7 @@ defmodule Portal.Cache.Gateway do
         where: m.actor_id == ^actor_id,
         where: m.group_id == ^group_id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.one()
       |> case do
@@ -302,6 +307,7 @@ defmodule Portal.Cache.Gateway do
             g.name == "Everyone" and
             g.account_id == ^account_id
       )
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.exists?()
     end
@@ -347,12 +353,14 @@ defmodule Portal.Cache.Gateway do
              ag.account_id == a.account_id)
       )
       |> preload(resource: :site)
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.all()
     end
 
     def insert_policy_authorization(changeset) do
       changeset
+      # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
       |> Safe.unscoped()
       |> Safe.insert()
     end
@@ -398,6 +406,7 @@ defmodule Portal.Cache.Gateway do
                gateway_remote_ip: policy_authorization.gateway_remote_ip,
                expires_at: expires_at
              })
+             # credo:disable-for-next-line Credo.Check.Warning.SafeUnscopedUsage
              |> Safe.unscoped()
              |> Safe.insert() do
         Logger.info("Reauthorized policy_authorization",
