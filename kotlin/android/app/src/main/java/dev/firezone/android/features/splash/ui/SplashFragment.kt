@@ -6,11 +6,15 @@ import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSplashBinding
 import dev.firezone.android.features.session.ui.SessionActivity
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 internal class SplashFragment : Fragment(R.layout.fragment_splash) {
@@ -47,26 +51,33 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
     }
 
     private fun setupActionObservers() {
-        viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
-            when (action) {
-                SplashViewModel.ViewAction.NavigateToVpnPermission ->
-                    findNavController().navigate(
-                        R.id.vpnPermissionActivity,
-                    )
-                SplashViewModel.ViewAction.NavigateToSignIn ->
-                    findNavController().navigate(
-                        R.id.signInFragment,
-                    )
-                SplashViewModel.ViewAction.NavigateToSettings ->
-                    findNavController().navigate(
-                        R.id.settingsActivity,
-                    )
-                SplashViewModel.ViewAction.NavigateToSession ->
-                    startActivity(
-                        Intent(requireContext(), SessionActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                        },
-                    )
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.actionStateFlow.collect { action ->
+                    action?.let {
+                        viewModel.clearAction()
+                        when (it) {
+                            SplashViewModel.ViewAction.NavigateToVpnPermission ->
+                                findNavController().navigate(
+                                    R.id.vpnPermissionActivity,
+                                )
+                            SplashViewModel.ViewAction.NavigateToSignIn ->
+                                findNavController().navigate(
+                                    R.id.signInFragment,
+                                )
+                            SplashViewModel.ViewAction.NavigateToSettings ->
+                                findNavController().navigate(
+                                    R.id.settingsActivity,
+                                )
+                            SplashViewModel.ViewAction.NavigateToSession ->
+                                startActivity(
+                                    Intent(requireContext(), SessionActivity::class.java).apply {
+                                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                    },
+                                )
+                        }
+                    }
+                }
             }
         }
     }

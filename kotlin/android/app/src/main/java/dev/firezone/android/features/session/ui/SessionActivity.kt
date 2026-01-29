@@ -10,7 +10,9 @@ import android.os.IBinder
 import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
@@ -40,8 +42,8 @@ class SessionActivity : AppCompatActivity() {
 
                 tunnelService?.let {
                     serviceBound = true
-                    it.setServiceStateLiveData(viewModel.serviceStatusLiveData)
-                    it.setResourcesLiveData(viewModel.resourcesLiveData)
+                    it.setServiceStateMutableStateFlow(viewModel.getServiceStatusMutableStateFlow())
+                    it.setResourcesMutableStateFlow(viewModel.getResourcesMutableStateFlow())
                 }
             }
 
@@ -133,14 +135,22 @@ class SessionActivity : AppCompatActivity() {
 
     private fun setupObservers() {
         // Go back to MainActivity if the service dies
-        viewModel.serviceStatusLiveData.observe(this) { tunnelState ->
-            if (tunnelState == TunnelService.Companion.State.DOWN) {
-                finish()
-            }
-        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    viewModel.serviceStatusStateFlow.collect { tunnelState ->
+                        if (tunnelState == TunnelService.Companion.State.DOWN) {
+                            finish()
+                        }
+                    }
+                }
 
-        viewModel.resourcesLiveData.observe(this) {
-            refreshList()
+                launch {
+                    viewModel.resourcesStateFlow.collect {
+                        refreshList()
+                    }
+                }
+            }
         }
 
         // This coroutine could still resume while the Activity is not shown, but this is probably

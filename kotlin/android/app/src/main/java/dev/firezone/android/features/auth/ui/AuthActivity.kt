@@ -10,10 +10,14 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.databinding.ActivityAuthBinding
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
@@ -40,10 +44,16 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     }
 
     private fun setupActionObservers() {
-        viewModel.actionLiveData.observe(this) { action ->
-            when (action) {
-                is AuthViewModel.ViewAction.LaunchAuthFlow -> setupWebView(action.url)
-                else -> {}
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.actionStateFlow.collect { action ->
+                    action?.let {
+                        viewModel.clearAction()
+                        when (it) {
+                            is AuthViewModel.ViewAction.LaunchAuthFlow -> setupWebView(it.url)
+                        }
+                    }
+                }
             }
         }
     }

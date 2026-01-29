@@ -9,9 +9,13 @@ import androidx.appcompat.widget.TooltipCompat
 import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.databinding.FragmentSettingsGeneralBinding
+import kotlinx.coroutines.launch
 
 class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
     private var _binding: FragmentSettingsGeneralBinding? = null
@@ -55,25 +59,32 @@ class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
     }
 
     private fun setupActionObservers() {
-        viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
-            when (action) {
-                is SettingsViewModel.ViewAction.NavigateBack ->
-                    requireActivity().finish()
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.actionStateFlow.collect { action ->
+                    action?.let {
+                        viewModel.clearAction()
+                        when (it) {
+                            is SettingsViewModel.ViewAction.NavigateBack ->
+                                requireActivity().finish()
 
-                is SettingsViewModel.ViewAction.FillSettings -> {
-                    binding.etAccountSlugInput.apply {
-                        setText(action.config.accountSlug)
+                            is SettingsViewModel.ViewAction.FillSettings -> {
+                                binding.etAccountSlugInput.apply {
+                                    setText(it.config.accountSlug)
+                                }
+
+                                binding.switchStartOnLogin.apply {
+                                    isChecked = it.config.startOnLogin
+                                }
+
+                                binding.switchConnectOnStart.apply {
+                                    isChecked = it.config.connectOnStart
+                                }
+
+                                applyManagedStatus(it.managedStatus)
+                            }
+                        }
                     }
-
-                    binding.switchStartOnLogin.apply {
-                        isChecked = action.config.startOnLogin
-                    }
-
-                    binding.switchConnectOnStart.apply {
-                        isChecked = action.config.connectOnStart
-                    }
-
-                    applyManagedStatus(action.managedStatus)
                 }
             }
         }
