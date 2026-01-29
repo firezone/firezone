@@ -10,6 +10,8 @@ use std::{
 
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
+use ip_network::IpNetwork;
+use itertools::Itertools as _;
 use logging::sentry_layer;
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
@@ -380,23 +382,20 @@ impl Session {
                     .map(|ip| ip.to_string())
                     .collect();
 
-                let ipv4_routes: Vec<Cidr> = config
-                    .ipv4_routes
-                    .into_iter()
-                    .map(|network| Cidr {
-                        address: network.network_address().to_string(),
-                        prefix: network.netmask(),
-                    })
-                    .collect();
-
-                let ipv6_routes: Vec<Cidr> = config
-                    .ipv6_routes
-                    .into_iter()
-                    .map(|network| Cidr {
-                        address: network.network_address().to_string(),
-                        prefix: network.netmask(),
-                    })
-                    .collect();
+                let (ipv4_routes, ipv6_routes) =
+                    config
+                        .routes
+                        .into_iter()
+                        .partition_map(|route| match route {
+                            IpNetwork::V4(v4) => itertools::Either::Left(Cidr {
+                                address: v4.network_address().to_string(),
+                                prefix: v4.netmask(),
+                            }),
+                            IpNetwork::V6(v6) => itertools::Either::Right(Cidr {
+                                address: v6.network_address().to_string(),
+                                prefix: v6.netmask(),
+                            }),
+                        });
 
                 Some(Event::TunInterfaceUpdated {
                     ipv4: config.ip.v4.to_string(),

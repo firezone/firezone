@@ -53,8 +53,7 @@ pub(crate) struct SimClient {
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     dns_by_sentinel: DnsMapping,
 
-    pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
-    pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
+    pub(crate) routes: BTreeSet<IpNetwork>,
 
     /// The search-domain emitted by connlib.
     pub(crate) search_domain: Option<DomainName>,
@@ -95,8 +94,7 @@ impl SimClient {
             received_icmp_replies: Default::default(),
             sent_udp_requests: Default::default(),
             received_udp_replies: Default::default(),
-            ipv4_routes: Default::default(),
-            ipv6_routes: Default::default(),
+            routes: Default::default(),
             search_domain: Default::default(),
             resource_status: Default::default(),
             tcp_dns_client: dns_over_tcp::Client::new(now, [0u8; 32]),
@@ -133,8 +131,7 @@ impl SimClient {
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
-        self.ipv4_routes.clear();
-        self.ipv6_routes.clear();
+        self.routes.clear();
     }
 
     /// Returns the _effective_ DNS servers that connlib is using.
@@ -436,8 +433,7 @@ pub struct RefClient {
     /// The search-domain configured in the portal.
     pub(crate) search_domain: Option<DomainName>,
 
-    ipv4_routes: BTreeMap<ResourceId, Ipv4Network>,
-    ipv6_routes: BTreeMap<ResourceId, Ipv6Network>,
+    routes: Vec<(ResourceId, IpNetwork)>,
 
     /// Tracks all resources in the order they have been added in.
     ///
@@ -525,8 +521,7 @@ impl RefClient {
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
-        self.ipv4_routes.remove(resource);
-        self.ipv6_routes.remove(resource);
+        for _ in self.routes.extract_if(.., |(r, _)| r == resource) {}
 
         self.connected_cidr_resources.remove(resource);
         self.connected_dns_resources.remove(resource);
@@ -569,10 +564,10 @@ impl RefClient {
         };
 
         if active {
-            self.ipv4_routes
-                .insert(resource.id(), Ipv4Network::DEFAULT_ROUTE);
-            self.ipv6_routes
-                .insert(resource.id(), Ipv6Network::DEFAULT_ROUTE);
+            self.routes
+                .push((resource.id(), Ipv4Network::DEFAULT_ROUTE.into()));
+            self.routes
+                .push((resource.id(), Ipv6Network::DEFAULT_ROUTE.into()));
         } else {
             self.disconnect_resource(&resource.id());
         }
@@ -626,8 +621,7 @@ impl RefClient {
 
     pub(crate) fn restart(&mut self, key: PrivateKey) {
         self.search_domain = None;
-        self.ipv4_routes.clear();
-        self.ipv6_routes.clear();
+        self.routes.clear();
 
         self.key = key;
 
@@ -649,10 +643,10 @@ impl RefClient {
         self.resources.push(Resource::Internet(resource.clone()));
 
         if self.internet_resource_active {
-            self.ipv4_routes
-                .insert(resource.id, Ipv4Network::DEFAULT_ROUTE);
-            self.ipv6_routes
-                .insert(resource.id, Ipv6Network::DEFAULT_ROUTE);
+            self.routes
+                .push((resource.id, Ipv4Network::DEFAULT_ROUTE.into()));
+            self.routes
+                .push((resource.id, Ipv6Network::DEFAULT_ROUTE.into()));
         }
     }
 
@@ -669,15 +663,7 @@ impl RefClient {
 
         self.resources.push(r);
         self.cidr_resources = self.recalculate_cidr_routes();
-
-        match address {
-            IpNetwork::V4(v4) => {
-                self.ipv4_routes.insert(rid, v4);
-            }
-            IpNetwork::V6(v6) => {
-                self.ipv6_routes.insert(rid, v6);
-            }
-        }
+        self.routes.push((rid, address));
 
         if self.expected_tcp_connections.values().contains(&rid) {
             self.set_resource_online(rid);
@@ -1111,19 +1097,12 @@ impl RefClient {
         self.search_domain.clone()
     }
 
-    pub(crate) fn expected_routes(&self) -> (BTreeSet<Ipv4Network>, BTreeSet<Ipv6Network>) {
-        (
-            self.ipv4_routes
-                .values()
-                .cloned()
-                .chain(default_routes_v4())
-                .collect(),
-            self.ipv6_routes
-                .values()
-                .cloned()
-                .chain(default_routes_v6())
-                .collect(),
-        )
+    pub(crate) fn expected_routes(&self) -> BTreeSet<IpNetwork> {
+        iter::empty()
+            .chain(self.routes.iter().map(|(_, r)| *r))
+            .chain(default_routes_v4())
+            .chain(default_routes_v6())
+            .collect()
     }
 
     pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
@@ -1381,8 +1360,7 @@ fn ref_client(
                     expected_udp_dns_handshakes: Default::default(),
                     expected_tcp_dns_handshakes: Default::default(),
                     resources: Default::default(),
-                    ipv4_routes: Default::default(),
-                    ipv6_routes: Default::default(),
+                    routes: Default::default(),
                     site_status: Default::default(),
                 }
             },
@@ -1397,26 +1375,32 @@ fn listening_port() -> impl Strategy<Value = u16> {
     ]
 }
 
-fn default_routes_v4() -> Vec<Ipv4Network> {
+fn default_routes_v4() -> Vec<IpNetwork> {
     vec![
-        Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11).unwrap(),
-        Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap(),
-        Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap(),
+        IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11).unwrap()),
+        IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap()),
+        IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap()),
     ]
 }
 
-fn default_routes_v6() -> Vec<Ipv6Network> {
+fn default_routes_v6() -> Vec<IpNetwork> {
     vec![
-        Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107).unwrap(),
-        Ipv6Network::new(
-            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
-            107,
-        )
-        .unwrap(),
-        Ipv6Network::new(
-            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
-            120,
-        )
-        .unwrap(),
+        IpNetwork::V6(
+            Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107).unwrap(),
+        ),
+        IpNetwork::V6(
+            Ipv6Network::new(
+                Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
+                107,
+            )
+            .unwrap(),
+        ),
+        IpNetwork::V6(
+            Ipv6Network::new(
+                Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
+                120,
+            )
+            .unwrap(),
+        ),
     ]
 }
