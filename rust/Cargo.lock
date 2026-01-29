@@ -2486,6 +2486,7 @@ dependencies = [
  "hex",
  "humantime",
  "ip-packet",
+ "ip_network",
  "keyring-core",
  "logging",
  "native-dialog",
