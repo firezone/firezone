@@ -39,7 +39,7 @@ defmodule Portal.Userpass.AuthProvider do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required([:name, :context])
     |> validate_number(:portal_session_lifetime_secs,

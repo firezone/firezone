@@ -39,7 +39,7 @@ defmodule Portal.ExternalIdentity do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> assoc_constraint(:actor)
     |> assoc_constraint(:account)

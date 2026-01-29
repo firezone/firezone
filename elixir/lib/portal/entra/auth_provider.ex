@@ -43,7 +43,7 @@ defmodule Portal.Entra.AuthProvider do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required([:name, :context, :issuer, :is_verified])
     |> validate_acceptance(:is_verified)

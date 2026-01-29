@@ -36,7 +36,7 @@ defmodule Portal.Actor do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required(~w[name type]a)
     |> trim_change(~w[name email]a)

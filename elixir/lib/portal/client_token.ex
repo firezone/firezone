@@ -39,7 +39,7 @@ defmodule Portal.ClientToken do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)

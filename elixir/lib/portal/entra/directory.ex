@@ -28,7 +28,7 @@ defmodule Portal.Entra.Directory do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required([:name, :tenant_id, :is_verified])
     |> validate_length(:tenant_id, min: 1, max: 255)

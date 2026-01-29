@@ -34,7 +34,7 @@ defmodule Portal.Group do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     import Ecto.Changeset
 
     changeset

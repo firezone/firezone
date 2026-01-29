@@ -44,7 +44,7 @@ defmodule Portal.PolicyAuthorization do
     timestamps(updated_at: false)
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> assoc_constraint(:token)
     |> assoc_constraint(:policy)

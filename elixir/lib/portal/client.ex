@@ -76,7 +76,7 @@ defmodule Portal.Client do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> trim_change(~w[name external_id]a)
     |> validate_length(:name, min: 1, max: 255)

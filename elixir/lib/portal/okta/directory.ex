@@ -49,7 +49,7 @@ defmodule Portal.Okta.Directory do
     timestamps()
   end
 
-  def changeset(changeset) do
+  def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required([
       :name,

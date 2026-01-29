@@ -3,15 +3,17 @@ defmodule Portal.BannerFixtures do
   Test helpers for creating banners and related data.
   """
 
+  def valid_banner_attrs do
+    %{
+      message: "This is a test banner message."
+    }
+  end
+
   def banner_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
+    attrs = Enum.into(attrs, valid_banner_attrs())
 
-    {:ok, banner} =
-      %Portal.Actor{}
-      |> Ecto.Changeset.cast(attrs, [:message])
-      |> Portal.Banner.changeset()
-      |> Portal.Repo.insert()
-
-    banner
+    %Portal.Banner{}
+    |> Ecto.Changeset.cast(attrs, [:message])
+    |> Portal.Repo.insert!()
   end
 end
