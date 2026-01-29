@@ -46,6 +46,26 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn set_token_permissions(path: &Path) -> Result<()> {
+    use nix::sys::stat::Mode;
+    use nix::unistd::{Gid, Uid, chown};
+
+    chown(
+        path,
+        Some(Uid::from_raw(ROOT_USER)),
+        Some(Gid::from_raw(ROOT_GROUP)),
+    )?;
+
+    nix::sys::stat::fchmodat(
+        AT_FDCWD,
+        path,
+        Mode::S_IRUSR | Mode::S_IWUSR,
+        nix::sys::stat::FchmodatFlags::FollowSymlink,
+    )?;
+
+    Ok(())
+}
+
 pub(crate) fn notify_service_controller() -> Result<()> {
     Ok(sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?)
 }
