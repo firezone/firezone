@@ -9,6 +9,7 @@ mod view;
 pub mod auth;
 pub mod controller;
 pub mod deep_link;
+pub mod dialog;
 pub mod elevation;
 pub mod gui;
 pub mod ipc;
