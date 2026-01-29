@@ -110,9 +110,9 @@ export default function _Page() {
         </h2>
         <hr />
         <p className="text-md md:text-lg mt-8">
-          Didn&apos;t find what you were looking for? We build Firezone in the
-          open -- there&apos;s a good chance someone&apos;s already opened an
-          issue.
+          {
+            "Didn't find what you were looking for? We build Firezone in the open -- there's a good chance someone's already opened an issue."
+          }
         </p>
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           <Link
@@ -136,8 +136,9 @@ export default function _Page() {
               Product roadmap
             </h3>
             <p className="mt-8">
-              View our public roadmap for a glimpse into what we&apos;ve
-              recently shipped and what&apos;s coming soon.
+              {
+                "View our public roadmap for a glimpse into what we've recently shipped and what's coming soon."
+              }
             </p>
           </Link>
           <Link

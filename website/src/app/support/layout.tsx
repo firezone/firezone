@@ -20,8 +20,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             Support
           </h1>
           <p className="text-center text-md md:text-lg lg:text-xl mt-2 md:mt-4 tracking-tight">
-            Need help? We&apos;ve got you covered. See our support options
-            below.
+            {"Need help? We've got you covered. See our support options below."}
           </p>
         </div>
       </div>
