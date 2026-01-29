@@ -391,7 +391,7 @@ impl Session {
                                 address: v4.network_address().to_string(),
                                 prefix: v4.netmask(),
                             }),
-                            IpNetwork::V6(v6) => itertools::Either::Left(Cidr {
+                            IpNetwork::V6(v6) => itertools::Either::Right(Cidr {
                                 address: v6.network_address().to_string(),
                                 prefix: v6.netmask(),
                             }),
