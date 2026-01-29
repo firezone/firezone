@@ -24,10 +24,10 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::try_parse()?;
 
     match cli.command {
-        Cmd::Install => service::install(),
-        Cmd::Run => service::run(cli.log_dir, cli.dns_control),
-        Cmd::RunDebug => service::run_debug(cli.dns_control),
-        Cmd::RunSmokeTest => service::run_smoke_test(),
+        Some(Cmd::Install) => service::install(),
+        None | Some(Cmd::Run { interactive: false }) => service::run(cli.log_dir, cli.dns_control),
+        Some(Cmd::Run { interactive: true }) => service::run_interactive(cli.dns_control),
+        Some(Cmd::RunSmokeTest) => service::run_smoke_test(),
     }
 }
 
@@ -35,7 +35,7 @@ fn main() -> anyhow::Result<()> {
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
-    command: Cmd,
+    command: Option<Cmd>,
 
     #[cfg(target_os = "linux")]
     #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "systemd-resolved")]
@@ -59,14 +59,15 @@ pub struct Cli {
     max_partition_time: Option<humantime::Duration>,
 }
 
-#[derive(clap::Subcommand, Default)]
+#[derive(clap::Subcommand)]
 enum Cmd {
     /// Needed to test the Tunnel service on aarch64 Windows,
     /// where the Tauri MSI bundler doesn't work yet
     Install,
-    #[default]
-    Run,
-    RunDebug,
+    Run {
+        #[arg(long, hide = true, default_value = "false")]
+        interactive: bool,
+    },
     RunSmokeTest,
 }
 
@@ -82,12 +83,27 @@ mod tests {
     // Also these are examples
     #[test]
     fn cli() {
-        let actual =
-            Cli::try_parse_from([EXE_NAME, "--log-dir", "bogus_log_dir", "run-debug"]).unwrap();
-        assert!(matches!(actual.command, Cmd::RunDebug));
+        let actual = Cli::try_parse_from([
+            EXE_NAME,
+            "--log-dir",
+            "bogus_log_dir",
+            "run",
+            "--interactive",
+        ])
+        .unwrap();
+        assert!(matches!(
+            actual.command,
+            Some(Cmd::Run { interactive: true })
+        ));
         assert_eq!(actual.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
         let actual = Cli::try_parse_from([EXE_NAME, "run"]).unwrap();
-        assert!(matches!(actual.command, Cmd::Run));
+        assert!(matches!(
+            actual.command,
+            Some(Cmd::Run { interactive: false })
+        ));
+
+        let actual = Cli::try_parse_from([EXE_NAME]).unwrap();
+        assert!(actual.command.is_none());
     }
 }

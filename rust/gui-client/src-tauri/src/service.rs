@@ -698,7 +698,7 @@ impl<'a> Handler<'a> {
     }
 }
 
-pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
+pub fn run_interactive(dns_control: DnsControlMethod) -> Result<()> {
     let log_filter_reloader = logging::setup_stdout()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
