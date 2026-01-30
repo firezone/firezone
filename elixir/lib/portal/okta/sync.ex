@@ -11,6 +11,7 @@ defmodule Portal.Okta.Sync do
       keys: [:directory_id]
     ]
 
+  alias Portal.DirectorySync.SyncError.Context
   alias Portal.Okta
   alias __MODULE__.Database
 
@@ -99,7 +100,7 @@ defmodule Portal.Okta.Sync do
 
         raise Okta.SyncError,
           reason: "Failed to get access token",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :get_access_token
     end
@@ -118,12 +119,7 @@ defmodule Portal.Okta.Sync do
         if missing_scopes != [] do
           raise Okta.SyncError,
             reason: "Access token missing required scopes: #{Enum.join(missing_scopes, ", ")}",
-            cause: %{
-              step: :verify_scopes,
-              missing_scopes: missing_scopes,
-              reason:
-                "Grant the following scopes to your Okta application: #{Enum.join(missing_scopes, ", ")}"
-            },
+            context: %Context{type: :scopes, data: %{missing: missing_scopes}},
             directory_id: directory.id,
             step: :verify_scopes
         end
@@ -131,11 +127,7 @@ defmodule Portal.Okta.Sync do
       _ ->
         raise Okta.SyncError,
           reason: "Could not verify access token scopes",
-          cause: %{
-            step: :verify_scopes,
-            reason:
-              "Unable to parse scopes from access token. Ensure your Okta application has the required scopes configured."
-          },
+          context: %Context{type: :scopes, data: %{missing: @required_scopes}},
           directory_id: directory.id,
           step: :verify_scopes
     end
@@ -161,7 +153,7 @@ defmodule Portal.Okta.Sync do
 
         raise Okta.SyncError,
           reason: "Failed to fetch apps",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :list_apps
     end
@@ -220,7 +212,7 @@ defmodule Portal.Okta.Sync do
       [error | _] ->
         raise Okta.SyncError,
           reason: "Failed to stream app users",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_app_users
 
@@ -263,7 +255,7 @@ defmodule Portal.Okta.Sync do
 
             raise Okta.SyncError,
               reason: "Failed to upsert identities",
-              cause: reason,
+              context: Context.from_error(reason),
               directory_id: directory.id,
               step: :batch_upsert_identities
         end
@@ -302,7 +294,7 @@ defmodule Portal.Okta.Sync do
       [error | _] ->
         raise Okta.SyncError,
           reason: "Failed to stream app groups",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_app_groups
 
@@ -399,7 +391,7 @@ defmodule Portal.Okta.Sync do
 
         raise Okta.SyncError,
           reason: "Failed to upsert memberships",
-          cause: reason,
+          context: Context.from_error(reason),
           directory_id: directory_id,
           step: :batch_upsert_memberships
     end
@@ -418,7 +410,7 @@ defmodule Portal.Okta.Sync do
       {:error, reason}, _acc ->
         raise Okta.SyncError,
           reason: "Failed to stream group members",
-          cause: reason,
+          context: Context.from_error(reason),
           directory_id: directory_id,
           step: :stream_group_members
     end)
@@ -437,11 +429,7 @@ defmodule Portal.Okta.Sync do
     unless email do
       raise Okta.SyncError,
         reason: "User '#{user["id"]}' missing required 'email' field",
-        cause: %{
-          step: :process_user,
-          reason: "User '#{user["id"]}' missing required email field",
-          user_id: user["id"]
-        },
+        context: %Context{type: :validation, data: %{entity: :user, id: user["id"], field: :email}},
         directory_id: directory_id,
         step: :process_user
     end
@@ -563,13 +551,10 @@ defmodule Portal.Okta.Sync do
 
       raise Okta.SyncError,
         reason:
-          "Sync would delete all #{resource_name} " <>
+          "Sync would delete all #{resource_name}. " <>
             "This may indicate the Okta application was misconfigured or removed. " <>
             "Please verify your Okta configuration and re-verify the directory connection.",
-        cause: %{
-          step: :check_deletion_threshold,
-          resource: resource_name
-        },
+        context: %Context{type: :circuit_breaker, data: %{resource: resource_name}},
         directory_id: directory.id,
         step: :check_deletion_threshold
     end

@@ -11,6 +11,7 @@ defmodule Portal.Entra.Sync do
       keys: [:directory_id]
     ]
 
+  alias Portal.DirectorySync.SyncError.Context
   alias Portal.Entra
   alias __MODULE__.Database
   require Logger
@@ -93,7 +94,7 @@ defmodule Portal.Entra.Sync do
 
         raise Entra.SyncError,
           reason: "Invalid access token response",
-          cause: response,
+          context: Context.from_error(response),
           directory_id: directory.id,
           step: :get_access_token
 
@@ -105,7 +106,7 @@ defmodule Portal.Entra.Sync do
 
         raise Entra.SyncError,
           reason: "Failed to get access token",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :get_access_token
     end
@@ -137,7 +138,7 @@ defmodule Portal.Entra.Sync do
 
         raise Entra.SyncError,
           reason: "Failed to stream app role assignments",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_app_role_assignments
 
@@ -180,7 +181,7 @@ defmodule Portal.Entra.Sync do
 
         raise Entra.SyncError,
           reason: "Service principal not found",
-          cause: response,
+          context: Context.from_error(response),
           directory_id: directory.id,
           step: :get_service_principal
 
@@ -192,7 +193,7 @@ defmodule Portal.Entra.Sync do
 
         raise Entra.SyncError,
           reason: "Failed to get service principal",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :get_service_principal
     end
@@ -228,7 +229,7 @@ defmodule Portal.Entra.Sync do
       unless assignment["principalId"] do
         raise Entra.SyncError,
           reason: "Assignment missing required 'principalId' field",
-          cause: assignment,
+          context: %Context{type: :validation, data: %{entity: :assignment, field: :principalId}},
           directory_id: directory_id,
           step: :process_assignment
       end
@@ -236,7 +237,7 @@ defmodule Portal.Entra.Sync do
       unless assignment["principalType"] do
         raise Entra.SyncError,
           reason: "Assignment missing required 'principalType' field",
-          cause: assignment,
+          context: %Context{type: :validation, data: %{entity: :assignment, id: assignment["principalId"], field: :principalType}},
           directory_id: directory_id,
           step: :process_assignment
       end
@@ -244,7 +245,7 @@ defmodule Portal.Entra.Sync do
       unless assignment["principalDisplayName"] do
         raise Entra.SyncError,
           reason: "Assignment missing required 'principalDisplayName' field",
-          cause: assignment,
+          context: %Context{type: :validation, data: %{entity: :assignment, id: assignment["principalId"], field: :principalDisplayName}},
           directory_id: directory_id,
           step: :process_assignment
       end
@@ -296,7 +297,7 @@ defmodule Portal.Entra.Sync do
       {:error, error} ->
         raise Entra.SyncError,
           reason: "Failed to batch fetch users",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :batch_get_users
     end
@@ -342,7 +343,7 @@ defmodule Portal.Entra.Sync do
       {:error, error} ->
         raise Entra.SyncError,
           reason: "Failed to stream group transitive members for #{group_name}",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_group_transitive_members
 
@@ -370,7 +371,7 @@ defmodule Portal.Entra.Sync do
       unless member["id"] do
         raise Entra.SyncError,
           reason: "User member missing required 'id' field in group #{group_name}",
-          cause: member,
+          context: %Context{type: :validation, data: %{entity: :user, field: :id}},
           directory_id: directory.id,
           step: :process_group_member
       end
@@ -406,7 +407,7 @@ defmodule Portal.Entra.Sync do
 
         raise Entra.SyncError,
           reason: "Failed to stream groups",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_groups
 
@@ -421,7 +422,7 @@ defmodule Portal.Entra.Sync do
           unless group["id"] do
             raise Entra.SyncError,
               reason: "Group missing required 'id' field",
-              cause: group,
+              context: %Context{type: :validation, data: %{entity: :group, field: :id}},
               directory_id: directory.id,
               step: :process_group
           end
@@ -429,7 +430,7 @@ defmodule Portal.Entra.Sync do
           unless group["displayName"] do
             raise Entra.SyncError,
               reason: "Group missing required 'displayName' field",
-              cause: group,
+              context: %Context{type: :validation, data: %{entity: :group, id: group["id"], field: :displayName}},
               directory_id: directory.id,
               step: :process_group
           end
@@ -478,7 +479,7 @@ defmodule Portal.Entra.Sync do
       {:error, error} ->
         raise Entra.SyncError,
           reason: "Failed to stream group transitive members",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_group_transitive_members
 
@@ -506,7 +507,7 @@ defmodule Portal.Entra.Sync do
       unless member["id"] do
         raise Entra.SyncError,
           reason: "User member missing required 'id' field in group #{group_name}",
-          cause: member,
+          context: %Context{type: :validation, data: %{entity: :user, field: :id}},
           directory_id: directory.id,
           step: :process_group_member
       end
@@ -643,7 +644,7 @@ defmodule Portal.Entra.Sync do
     unless user["id"] do
       raise Entra.SyncError,
         reason: "User missing required 'id' field",
-        cause: user,
+        context: %Context{type: :validation, data: %{entity: :user, field: :id}},
         directory_id: directory_id,
         step: :process_user
     end
@@ -653,7 +654,7 @@ defmodule Portal.Entra.Sync do
     unless primary_email do
       raise Entra.SyncError,
         reason: "User missing both 'mail' and 'userPrincipalName' fields",
-        cause: user,
+        context: %Context{type: :validation, data: %{entity: :user, id: user["id"], field: :mail}},
         directory_id: directory_id,
         step: :process_user
     end

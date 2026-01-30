@@ -2,6 +2,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
   use Portal.DataCase, async: true
 
   alias Portal.DirectorySync.ErrorHandler
+  alias Portal.DirectorySync.SyncError.Context
 
   import Portal.AccountFixtures
   import Portal.OktaDirectoryFixtures
@@ -95,12 +96,9 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       error = %Portal.Okta.SyncError{
         reason: "Deletion threshold exceeded",
-        cause: %{
-          step: :check_deletion_threshold,
-          resource: "identities",
-          total: 100,
-          to_delete: 95,
-          threshold: 0.9
+        context: %Context{
+          type: :circuit_breaker,
+          data: %{resource: "identities"}
         },
         directory_id: directory.id,
         step: :check_deletion_threshold
@@ -114,8 +112,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       assert updated_directory.is_disabled == true
       assert updated_directory.disabled_reason == "Sync error"
       assert updated_directory.is_verified == false
-      assert updated_directory.error_message =~ "Sync would delete 95 of 100 identities"
-      assert updated_directory.error_message =~ "95%"
+      assert updated_directory.error_message =~ "Sync would delete all identities"
     end
 
     test "classifies process_user errors as client_error and disables directory",
@@ -127,10 +124,9 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       error = %Portal.Okta.SyncError{
         reason: "User 'user_123' missing required 'email' field",
-        cause: %{
-          step: :process_user,
-          reason: "User 'user_123' missing required email field",
-          user_id: "user_123"
+        context: %Context{
+          type: :validation,
+          data: %{entity: :user, id: "user_123", field: :email}
         },
         directory_id: directory.id,
         step: :process_user
@@ -156,11 +152,14 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       error = %Portal.Okta.SyncError{
         reason: "Permission denied",
-        cause: %Req.Response{
-          status: 403,
-          body: %{
-            "errorCode" => "E0000006",
-            "errorSummary" => "Access denied"
+        context: %Context{
+          type: :http,
+          data: %{
+            status: 403,
+            body: %{
+              "errorCode" => "E0000006",
+              "errorSummary" => "Access denied"
+            }
           }
         },
         directory_id: directory.id,
@@ -187,7 +186,10 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       error = %Portal.Okta.SyncError{
         reason: "Server error",
-        cause: %Req.Response{status: 503, body: %{"error" => "Service unavailable"}},
+        context: %Context{
+          type: :http,
+          data: %{status: 503, body: %{"error" => "Service unavailable"}}
+        },
         directory_id: directory.id,
         step: :list_apps
       }
@@ -210,7 +212,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       error = %Portal.Okta.SyncError{
         reason: "Network error",
-        cause: %Req.TransportError{reason: :timeout},
+        context: %Context{type: :network, data: %{reason: :timeout}},
         directory_id: directory.id,
         step: :get_access_token
       }
@@ -234,10 +236,9 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       error = %Portal.Okta.SyncError{
         reason: "Access token missing required scopes: okta.users.read",
-        cause: %{
-          step: :verify_scopes,
-          missing_scopes: ["okta.users.read"],
-          reason: "Grant the following scopes to your Okta application: okta.users.read"
+        context: %Context{
+          type: :scopes,
+          data: %{missing: ["okta.users.read"]}
         },
         directory_id: directory.id,
         step: :verify_scopes

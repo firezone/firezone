@@ -6,12 +6,12 @@ defmodule Portal.Okta.SyncError do
   with full context about the directory and the failure reason.
   """
 
-  defexception [:message, :reason, :cause, :directory_id, :step]
+  defexception [:message, :reason, :context, :directory_id, :step]
 
   @impl true
   def exception(opts) do
     reason = Keyword.fetch!(opts, :reason)
-    cause = Keyword.get(opts, :cause, reason)
+    context = Keyword.get(opts, :context)
     directory_id = Keyword.fetch!(opts, :directory_id)
     step = Keyword.fetch!(opts, :step)
 
@@ -20,7 +20,7 @@ defmodule Portal.Okta.SyncError do
     %__MODULE__{
       message: message,
       reason: reason,
-      cause: cause,
+      context: context,
       directory_id: directory_id,
       step: step
     }
