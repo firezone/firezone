@@ -12,6 +12,21 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
+      title: "December 2025 Devlog",
+      date: "December 31, 2025",
+      href: "/blog/devlog/2025-12",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Engineering",
+      description: (
+        <p className="mb-2">
+          Major portal architecture refactor collapsing umbrella apps,
+          authentication system restructuring, relay connection reliability
+          improvements, and database performance optimizations.
+        </p>
+      ),
+    },
+    {
       title: "November 2025 Devlog",
       date: "November 30, 2025",
       href: "/blog/devlog/2025-11",
