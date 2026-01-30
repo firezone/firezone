@@ -11,6 +11,7 @@ defmodule Portal.Google.Sync do
       keys: [:directory_id]
     ]
 
+  alias Portal.DirectorySync.SyncError.Context
   alias Portal.Google
   alias __MODULE__.Database
   require Logger
@@ -93,7 +94,7 @@ defmodule Portal.Google.Sync do
 
         raise Google.SyncError,
           reason: "Invalid access token response",
-          cause: response,
+          context: Context.from_error(response),
           directory_id: directory.id,
           step: :get_access_token
 
@@ -105,7 +106,7 @@ defmodule Portal.Google.Sync do
 
         raise Google.SyncError,
           reason: "Failed to get access token",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :get_access_token
     end
@@ -148,7 +149,7 @@ defmodule Portal.Google.Sync do
 
         raise Google.SyncError,
           reason: "Failed to stream users",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_users
 
@@ -165,7 +166,7 @@ defmodule Portal.Google.Sync do
             unless user["id"] do
               raise Google.SyncError,
                 reason: "User missing required 'id' field",
-                cause: user,
+                context: %Context{type: :validation, data: %{entity: :user, field: :id}},
                 directory_id: directory.id,
                 step: :process_user
             end
@@ -193,7 +194,7 @@ defmodule Portal.Google.Sync do
 
         raise Google.SyncError,
           reason: "Failed to stream groups",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_groups
 
@@ -210,7 +211,7 @@ defmodule Portal.Google.Sync do
             unless group["id"] do
               raise Google.SyncError,
                 reason: "Group missing required 'id' field",
-                cause: group,
+                context: %Context{type: :validation, data: %{entity: :group, field: :id}},
                 directory_id: directory.id,
                 step: :process_group
             end
@@ -218,7 +219,7 @@ defmodule Portal.Google.Sync do
             unless group["name"] || group["email"] do
               raise Google.SyncError,
                 reason: "Group missing both 'name' and 'email' fields",
-                cause: group,
+                context: %Context{type: :validation, data: %{entity: :group, id: group["id"], field: :name}},
                 directory_id: directory.id,
                 step: :process_group
             end
@@ -263,7 +264,7 @@ defmodule Portal.Google.Sync do
 
         raise Google.SyncError,
           reason: "Failed to stream group members for #{group_name}",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_group_members
 
@@ -289,7 +290,7 @@ defmodule Portal.Google.Sync do
         unless member["id"] do
           raise Google.SyncError,
             reason: "Member missing required 'id' field in group #{group_name}",
-            cause: member,
+            context: %Context{type: :validation, data: %{entity: :member, field: :id}},
             directory_id: directory.id,
             step: :process_member
         end
@@ -315,7 +316,7 @@ defmodule Portal.Google.Sync do
 
         raise Google.SyncError,
           reason: "Failed to stream organization units",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_org_units
 
@@ -331,7 +332,7 @@ defmodule Portal.Google.Sync do
             unless org_unit["orgUnitId"] do
               raise Google.SyncError,
                 reason: "Organization unit missing required 'orgUnitId' field",
-                cause: org_unit,
+                context: %Context{type: :validation, data: %{entity: :org_unit, field: :orgUnitId}},
                 directory_id: directory.id,
                 step: :process_org_unit
             end
@@ -339,7 +340,7 @@ defmodule Portal.Google.Sync do
             unless org_unit["name"] do
               raise Google.SyncError,
                 reason: "Organization unit missing required 'name' field",
-                cause: org_unit,
+                context: %Context{type: :validation, data: %{entity: :org_unit, id: org_unit["orgUnitId"], field: :name}},
                 directory_id: directory.id,
                 step: :process_org_unit
             end
@@ -347,7 +348,7 @@ defmodule Portal.Google.Sync do
             unless org_unit["orgUnitPath"] do
               raise Google.SyncError,
                 reason: "Organization unit missing required 'orgUnitPath' field",
-                cause: org_unit,
+                context: %Context{type: :validation, data: %{entity: :org_unit, id: org_unit["orgUnitId"], field: :orgUnitPath}},
                 directory_id: directory.id,
                 step: :process_org_unit
             end
@@ -395,7 +396,7 @@ defmodule Portal.Google.Sync do
 
         raise Google.SyncError,
           reason: "Failed to stream org unit users for #{org_unit_name}",
-          cause: error,
+          context: Context.from_error(error),
           directory_id: directory.id,
           step: :stream_org_unit_members
 
@@ -418,7 +419,7 @@ defmodule Portal.Google.Sync do
         unless user["id"] do
           raise Google.SyncError,
             reason: "User missing required 'id' field in organization unit #{org_unit_name}",
-            cause: user,
+            context: %Context{type: :validation, data: %{entity: :user, field: :id}},
             directory_id: directory.id,
             step: :process_org_unit_member
         end
@@ -542,7 +543,7 @@ defmodule Portal.Google.Sync do
     unless primary_email do
       raise Google.SyncError,
         reason: "User missing required 'primaryEmail' field",
-        cause: user,
+        context: %Context{type: :validation, data: %{entity: :user, id: user["id"], field: :primaryEmail}},
         directory_id: directory_id,
         step: :process_user
     end

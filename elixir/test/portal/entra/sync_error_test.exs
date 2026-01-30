@@ -16,7 +16,7 @@ defmodule Portal.Entra.SyncErrorTest do
 
       assert %SyncError{
                reason: "Failed to authenticate",
-               cause: "Failed to authenticate",
+               context: nil,
                directory_id: @test_directory_id,
                step: :get_access_token
              } = exception
@@ -33,14 +33,14 @@ defmodule Portal.Entra.SyncErrorTest do
       exception =
         SyncError.exception(
           reason: "Connection failed",
-          cause: original_error,
+          context: original_error,
           directory_id: @test_directory_id,
           step: :stream_groups
         )
 
       assert %SyncError{
                reason: "Connection failed",
-               cause: %RuntimeError{message: "Network timeout"},
+               context: %RuntimeError{message: "Network timeout"},
                directory_id: @test_directory_id,
                step: :stream_groups
              } = exception
@@ -112,18 +112,18 @@ defmodule Portal.Entra.SyncErrorTest do
     end
 
     test "stores all fields correctly" do
-      cause_error = %RuntimeError{message: "Original error"}
+      context_error = %RuntimeError{message: "Original error"}
 
       exception =
         SyncError.exception(
           reason: "Sync failed",
-          cause: cause_error,
+          context: context_error,
           directory_id: @test_directory_id,
           step: :sync_all_groups
         )
 
       assert exception.reason == "Sync failed"
-      assert exception.cause == cause_error
+      assert exception.context == context_error
       assert exception.directory_id == @test_directory_id
       assert exception.step == :sync_all_groups
       assert is_binary(exception.message)
