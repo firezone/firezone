@@ -24,7 +24,8 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.13" date={new Date("2026-01-30")}>
         <ChangeItem pull="11901">
           Fixes an issue where the tunnel may not come up after a fresh install
           of the Firezone client.
@@ -49,7 +50,7 @@ export default function Apple() {
           for IPv4-only DNS resources if the setting was only changed after a
           DNS query had already been processed.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.12" date={new Date("2026-01-20")}>
         <ChangeItem pull="11735">
           Fixes an issue on iOS where the system resolvers could not be reliably
