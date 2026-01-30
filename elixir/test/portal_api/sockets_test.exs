@@ -93,6 +93,18 @@ defmodule PortalAPI.SocketsTest do
       assert result.resp_body == "Missing token"
     end
 
+    test "returns 402 for seats_limit_exceeded" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :limits_exceeded)
+
+      assert result.status == 402
+
+      assert result.resp_body ==
+               "This account is temporarily suspended from client authentication " <>
+                 "due to exceeding billing limits. Please contact your administrator to add more seats."
+    end
+
     test "returns 403 for account_disabled" do
       conn = Plug.Test.conn(:get, "/")
 

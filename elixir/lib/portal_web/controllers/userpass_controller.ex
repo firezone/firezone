@@ -26,9 +26,11 @@ defmodule PortalWeb.UserpassController do
 
     with %Portal.Account{} = account <- Database.get_account_by_id_or_slug(account_id_or_slug),
          %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
+         false <- client_sign_in_restricted?(account, context_type),
          %Portal.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
          {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
+         :ok = log_seats_limit_exceeded(account, actor, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, actor, provider, params) do
       signed_in(conn, context_type, account, actor, session_or_token, params)
     else
@@ -63,6 +65,20 @@ defmodule PortalWeb.UserpassController do
        do: :ok
 
   defp check_admin(_actor, _context_type), do: {:error, :not_admin}
+
+  defp client_sign_in_restricted?(account, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    Portal.Billing.client_sign_in_restricted?(account)
+  end
+
+  defp client_sign_in_restricted?(_account, _context_type), do: false
+
+  defp log_seats_limit_exceeded(account, actor, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    Portal.Billing.log_seats_limit_exceeded(account, actor.id)
+  end
+
+  defp log_seats_limit_exceeded(_account, _actor, _context_type), do: :ok
 
   defp create_session_or_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]
@@ -175,6 +191,15 @@ defmodule PortalWeb.UserpassController do
 
   defp handle_error(conn, {:error, :not_admin}, params) do
     error = "This action requires admin privileges."
+    path = ~p"/#{params["account_id_or_slug"]}"
+    redirect_for_error(conn, error, path)
+  end
+
+  defp handle_error(conn, true, params) do
+    error =
+      "This account is temporarily suspended from client authentication " <>
+        "due to exceeding billing limits. Please contact your administrator to add more seats."
+
     path = ~p"/#{params["account_id_or_slug"]}"
     redirect_for_error(conn, error, path)
   end

@@ -1,0 +1,22 @@
+Account Limits Exceeded
+
+Your Firezone account has exceeded the following limits:
+
+<%= @warning %>
+
+Please upgrade your plan or remove resources to resolve this issue.
+
+What happens next?
+- Your existing connections will continue to work
+- New client sign-ins will be blocked until limits are resolved
+- Account administrators can still access the admin portal
+
+To resolve this:
+1. Log into your Firezone admin portal
+2. Navigate to Settings -> Billing to upgrade your plan
+3. Or remove excess resources to get back within your limits
+
+If you have any questions, please contact our support team.
+
+Thanks,
+The Firezone Team
