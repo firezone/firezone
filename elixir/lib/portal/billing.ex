@@ -119,6 +119,84 @@ defmodule Portal.Billing do
          api_tokens_count < account.limits.api_tokens_per_client_count)
   end
 
+  @doc """
+  Checks if a UI client sign-in should be blocked for the given account.
+
+  Returns `true` if sign-in should be blocked (users limit exceeded),
+  `false` otherwise.
+
+  Note: seats_limit_exceeded is not checked here - it only triggers a warning log.
+  Use `log_seats_limit_exceeded/3` after user identity is resolved.
+  """
+  @spec client_sign_in_restricted?(Portal.Account.t()) :: boolean()
+  def client_sign_in_restricted?(%Portal.Account{} = account) do
+    account.users_limit_exceeded
+  end
+
+  @doc """
+  Logs an error if the account has exceeded its seats limit.
+
+  This should be called after user identity is resolved during sign-in flows.
+  """
+  @spec log_seats_limit_exceeded(Portal.Account.t(), String.t()) :: :ok
+  def log_seats_limit_exceeded(%Portal.Account{} = account, actor_id) do
+    if account.seats_limit_exceeded do
+      Logger.error("Account seats limit exceeded",
+        account_id: account.id,
+        account_slug: account.slug,
+        actor_id: actor_id
+      )
+    end
+
+    :ok
+  end
+
+  @doc """
+  Checks if an API client connection should be blocked for the given account.
+
+  Returns `true` if connection should be blocked (users or service accounts
+  limits exceeded), `false` otherwise.
+
+  Note: seats_limit_exceeded is not checked here - it only triggers a warning log.
+  Use `log_seats_limit_exceeded/2` after connection is established.
+  """
+  @spec client_connect_restricted?(Portal.Account.t()) :: boolean()
+  def client_connect_restricted?(%Portal.Account{} = account) do
+    account.users_limit_exceeded or account.service_accounts_limit_exceeded
+  end
+
+  @doc """
+  Evaluates account limits and updates the limit exceeded flags accordingly.
+
+  This should be called after subscription updates to immediately reflect
+  any changes in limits (e.g., when seats are added/removed).
+  """
+  @spec evaluate_account_limits(Portal.Account.t()) ::
+          {:ok, Portal.Account.t()} | {:error, term()}
+  def evaluate_account_limits(%Portal.Account{} = account) do
+    if account_provisioned?(account) do
+      limit_flags = %{
+        users_limit_exceeded:
+          users_limit_exceeded?(account, Database.count_users_for_account(account)),
+        seats_limit_exceeded:
+          seats_limit_exceeded?(account, Database.count_1m_active_users_for_account(account)),
+        service_accounts_limit_exceeded:
+          service_accounts_limit_exceeded?(
+            account,
+            Database.count_service_accounts_for_account(account)
+          ),
+        sites_limit_exceeded:
+          sites_limit_exceeded?(account, Database.count_sites_for_account(account)),
+        admins_limit_exceeded:
+          admins_limit_exceeded?(account, Database.count_account_admin_users_for_account(account))
+      }
+
+      Database.update_account_limit_flags(account, limit_flags)
+    else
+      {:ok, account}
+    end
+  end
+
   # API wrappers
 
   def create_customer(%Portal.Account{} = account) do
@@ -138,15 +216,6 @@ defmodule Portal.Billing do
       })
       |> Database.update()
     else
-      {:ok, {status, body}} ->
-        :ok =
-          Logger.error("Cannot create Stripe customer",
-            status: status,
-            body: inspect(body)
-          )
-
-        {:error, :retry_later}
-
       {:error, reason} ->
         :ok =
           Logger.error("Cannot create Stripe customer",
@@ -203,15 +272,6 @@ defmodule Portal.Billing do
            APIClient.fetch_customer(secret_key, customer_id) do
       {:ok, account_id}
     else
-      {:ok, {status, body}} ->
-        :ok =
-          Logger.error("Cannot fetch Stripe customer",
-            status: status,
-            body: inspect(body)
-          )
-
-        {:error, :retry_later}
-
       {:ok, params} ->
         :ok =
           Logger.info("Stripe customer does not have account_id in metadata",
@@ -247,15 +307,6 @@ defmodule Portal.Billing do
       |> update_account_metadata_changeset(%{subscription_id: subscription_id})
       |> Database.update()
     else
-      {:ok, {status, body}} ->
-        :ok =
-          Logger.error("Cannot create Stripe subscription",
-            status: status,
-            body: inspect(body)
-          )
-
-        {:error, :retry_later}
-
       {:error, reason} ->
         :ok =
           Logger.error("Cannot create Stripe subscription",
@@ -408,6 +459,7 @@ defmodule Portal.Billing do
 
   defmodule Database do
     import Ecto.Query
+    import Ecto.Changeset
     alias Portal.Safe
     alias Portal.Account
     alias Portal.Actor
@@ -415,6 +467,21 @@ defmodule Portal.Billing do
 
     def update(changeset) do
       changeset
+      |> Safe.unscoped()
+      |> Safe.update()
+    end
+
+    def update_account_limit_flags(%Account{} = account, attrs) do
+      fields = [
+        :users_limit_exceeded,
+        :seats_limit_exceeded,
+        :service_accounts_limit_exceeded,
+        :sites_limit_exceeded,
+        :admins_limit_exceeded
+      ]
+
+      account
+      |> cast(attrs, fields)
       |> Safe.unscoped()
       |> Safe.update()
     end

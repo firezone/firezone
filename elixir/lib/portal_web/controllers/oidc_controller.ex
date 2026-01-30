@@ -60,12 +60,14 @@ defmodule PortalWeb.OIDCController do
          account = Database.get_account_by_id_or_slug!(cookie.account_id),
          provider = get_provider!(account, cookie),
          :ok <- validate_context(provider, context_type),
+         false <- client_sign_in_restricted?(account, context_type),
          {:ok, tokens} <-
            PortalWeb.OIDC.exchange_code(provider, code, cookie.verifier),
          {:ok, claims} <- PortalWeb.OIDC.verify_token(provider, tokens["id_token"]),
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
          {:ok, identity} <- upsert_identity(account, claims, userinfo),
          :ok <- check_admin(identity, context_type),
+         :ok = log_seats_limit_exceeded(account, identity, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, identity, provider, cookie.params) do
       signed_in(
@@ -403,6 +405,20 @@ defmodule PortalWeb.OIDCController do
 
   defp validate_context(_provider, _context_type), do: {:error, :invalid_context}
 
+  defp client_sign_in_restricted?(account, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    Portal.Billing.client_sign_in_restricted?(account)
+  end
+
+  defp client_sign_in_restricted?(_account, _context_type), do: false
+
+  defp log_seats_limit_exceeded(account, identity, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    Portal.Billing.log_seats_limit_exceeded(account, identity.actor_id)
+  end
+
+  defp log_seats_limit_exceeded(_account, _identity, _context_type), do: :ok
+
   defp create_session_or_token(conn, identity, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
@@ -536,6 +552,18 @@ defmodule PortalWeb.OIDCController do
   defp handle_error(conn, {:error, :invalid_context}) do
     {account_slug, original_params} = fetch_error_context(conn)
     error = "This authentication method is not available for your sign-in context."
+    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
+
+    redirect_for_error(conn, error, path)
+  end
+
+  defp handle_error(conn, true) do
+    {account_slug, original_params} = fetch_error_context(conn)
+
+    error =
+      "This account is temporarily suspended from client authentication " <>
+        "due to exceeding billing limits. Please contact your administrator to add more seats."
+
     path = ~p"/#{account_slug}?#{sanitize(original_params)}"
 
     redirect_for_error(conn, error, path)

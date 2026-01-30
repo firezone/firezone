@@ -67,6 +67,7 @@ defmodule PortalWeb.EmailOTPController do
     with {:ok, actor_id, passcode_id, email} <- fetch_state(conn),
          {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
+         false <- client_sign_in_restricted?(account, context_type),
          {:ok, passcode} <-
            Authentication.verify_one_time_passcode(
              account.id,
@@ -75,6 +76,7 @@ defmodule PortalWeb.EmailOTPController do
              entered_code
            ),
          :ok <- check_admin(passcode.actor, context_type),
+         :ok = log_seats_limit_exceeded(account, passcode.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, passcode.actor, provider, params) do
       {:ok,
@@ -173,6 +175,20 @@ defmodule PortalWeb.EmailOTPController do
        do: :ok
 
   defp check_admin(_actor, _context_type), do: {:error, :not_admin}
+
+  defp client_sign_in_restricted?(account, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    Portal.Billing.client_sign_in_restricted?(account)
+  end
+
+  defp client_sign_in_restricted?(_account, _context_type), do: false
+
+  defp log_seats_limit_exceeded(account, actor, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    Portal.Billing.log_seats_limit_exceeded(account, actor.id)
+  end
+
+  defp log_seats_limit_exceeded(_account, _actor, _context_type), do: :ok
 
   defp create_session_or_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]
@@ -283,6 +299,15 @@ defmodule PortalWeb.EmailOTPController do
 
   defp handle_error(conn, {:error, :not_admin}, params) do
     error = "This action requires admin privileges."
+    path = ~p"/#{params["account_id_or_slug"]}"
+    redirect_for_error(conn, error, path)
+  end
+
+  defp handle_error(conn, true, params) do
+    error =
+      "This account is temporarily suspended from client authentication " <>
+        "due to exceeding billing limits. Please contact your administrator to add more seats."
+
     path = ~p"/#{params["account_id_or_slug"]}"
     redirect_for_error(conn, error, path)
   end

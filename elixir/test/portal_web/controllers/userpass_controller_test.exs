@@ -1,6 +1,7 @@
 defmodule PortalWeb.UserpassControllerTest do
   use PortalWeb.ConnCase, async: true
 
+  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
@@ -237,6 +238,148 @@ defmodule PortalWeb.UserpassControllerTest do
       # account_user should be allowed in gui-client context
       assert conn.status == 200
       assert conn.resp_body =~ "client_redirect"
+    end
+
+    test "rejects client sign-in when account has exceeded user limits", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      # Set limit exceeded flag on the account
+      update_account(account, %{users_limit_exceeded: true})
+
+      actor =
+        create_actor_with_password(
+          %{type: :account_user, account: account},
+          password_hash
+        )
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "client",
+          "state" => "test-state",
+          "nonce" => "test-nonce"
+        })
+
+      assert redirected_to(conn) =~ "/#{account.id}"
+      assert flash(conn, :error) =~ "exceeding billing limits"
+    end
+
+    test "logs error and allows gui-client sign-in when account has exceeded monthly active users limits",
+         %{
+           conn: conn,
+           account: account,
+           provider: provider,
+           password_hash: password_hash
+         } do
+      # Set limit exceeded flag on the account (seats_limit_exceeded is used for monthly active users)
+      update_account(account, %{seats_limit_exceeded: true})
+
+      actor =
+        create_actor_with_password(
+          %{type: :account_user, account: account},
+          password_hash
+        )
+
+      log =
+        capture_log(fn ->
+          conn =
+            post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+              "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+              "as" => "gui-client",
+              "state" => "test-state",
+              "nonce" => "test-nonce"
+            })
+
+          # Sign-in should still succeed
+          assert conn.status == 200
+          assert conn.resp_body =~ "client_redirect"
+        end)
+
+      assert log =~ "Account seats limit exceeded"
+      assert log =~ "account_id=#{account.id}"
+      assert log =~ "account_slug=#{account.slug}"
+      assert log =~ "actor_id=#{actor.id}"
+    end
+
+    test "rejects headless-client sign-in when account has exceeded limits", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      # Set multiple limit exceeded flags including users
+      update_account(account, %{users_limit_exceeded: true, sites_limit_exceeded: true})
+
+      actor =
+        create_actor_with_password(
+          %{type: :account_user, account: account},
+          password_hash
+        )
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "headless-client",
+          "state" => "test-state"
+        })
+
+      assert redirected_to(conn) =~ "/#{account.id}"
+      assert flash(conn, :error) =~ "exceeding billing limits"
+    end
+
+    test "allows client sign-in when account warning does not include user limits", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      # Set a limit flag that doesn't include users or seats
+      update_account(account, %{sites_limit_exceeded: true})
+
+      actor =
+        create_actor_with_password(
+          %{type: :account_user, account: account},
+          password_hash
+        )
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "client",
+          "state" => "test-state",
+          "nonce" => "test-nonce"
+        })
+
+      # Should be allowed - sites warning doesn't block client auth
+      assert conn.status == 200
+      assert conn.resp_body =~ "client_redirect"
+    end
+
+    test "allows portal sign-in when account has exceeded user limits", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      # Set limit exceeded flag on the account
+      update_account(account, %{users_limit_exceeded: true})
+
+      actor =
+        create_actor_with_password(
+          %{type: :account_admin_user, account: account},
+          password_hash
+        )
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password}
+        })
+
+      # Portal sign-in should still be allowed so admins can manage billing
+      assert redirected_to(conn) =~ "/sites"
     end
   end
 end

@@ -1,5 +1,6 @@
 defmodule PortalAPI.Client.SocketTest do
   use PortalAPI.ChannelCase, async: true
+  import ExUnit.CaptureLog
   import PortalAPI.Client.Socket, only: [id: 1]
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -287,6 +288,84 @@ defmodule PortalAPI.Client.SocketTest do
       # Both connections with different tokens should succeed
       assert {:ok, _socket} = connect(Socket, attrs1, connect_info: connect_info_1)
       assert {:ok, _socket} = connect(Socket, attrs2, connect_info: connect_info_2)
+    end
+
+    test "returns error when users_limit_exceeded is true" do
+      account = account_fixture()
+      update_account(account, %{users_limit_exceeded: true})
+
+      actor = actor_fixture(account: account, type: :account_user)
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(token: encoded_token)
+
+      assert connect(Socket, attrs, connect_info: connect_info) == {:error, :limits_exceeded}
+    end
+
+    test "logs error and allows connection when seats_limit_exceeded is true" do
+      account = account_fixture()
+      update_account(account, %{seats_limit_exceeded: true})
+
+      actor = actor_fixture(account: account, type: :account_user)
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(token: encoded_token)
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
+        end)
+
+      assert log =~ "Account seats limit exceeded"
+      assert log =~ "account_id=#{account.id}"
+      assert log =~ "account_slug=#{account.slug}"
+      assert log =~ "actor_id=#{actor.id}"
+    end
+
+    test "returns error when service_accounts_limit_exceeded is true" do
+      account = account_fixture()
+      update_account(account, %{service_accounts_limit_exceeded: true})
+
+      actor = actor_fixture(account: account, type: :account_user)
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(token: encoded_token)
+
+      assert connect(Socket, attrs, connect_info: connect_info) == {:error, :limits_exceeded}
+    end
+
+    test "allows connection when only sites_limit_exceeded is true" do
+      account = account_fixture()
+      update_account(account, %{sites_limit_exceeded: true})
+
+      actor = actor_fixture(account: account, type: :account_user)
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(token: encoded_token)
+
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
+    end
+
+    test "allows connection when only admins_limit_exceeded is true" do
+      account = account_fixture()
+      update_account(account, %{admins_limit_exceeded: true})
+
+      actor = actor_fixture(account: account, type: :account_user)
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(token: encoded_token)
+
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
     end
   end
 

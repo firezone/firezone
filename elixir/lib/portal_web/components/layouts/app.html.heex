@@ -117,8 +117,8 @@
   >
     {Phoenix.HTML.raw(banner.message)}
   </div>
-  <.flash :if={@account.warning} kind={:warning} class="m-1">
-    {@account.warning}.
+  <.flash :if={Portal.Account.any_limit_exceeded?(@account)} kind={:warning} class="m-1">
+    {Portal.Account.build_limits_exceeded_message(@account)}.
     <span :if={Portal.Billing.account_provisioned?(@account)}>
       Please
       <.link navigate={~p"/#{@account}/settings/billing"} class={link_style()}>

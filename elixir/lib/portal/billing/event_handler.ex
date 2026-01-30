@@ -230,8 +230,10 @@ defmodule Portal.Billing.EventHandler do
   defp handle_subscription_active(subscription_data) do
     customer_id = Map.get(subscription_data, "customer")
 
-    with {:ok, attrs} <- build_subscription_update_attrs(subscription_data) do
-      update_account(customer_id, attrs)
+    with {:ok, attrs} <- build_subscription_update_attrs(subscription_data),
+         {:ok, account} <- update_account_and_return(customer_id, attrs),
+         {:ok, _account} <- Billing.evaluate_account_limits(account) do
+      :ok
     else
       {:error, reason} ->
         Logger.error("Failed to build subscription update attrs",
@@ -334,6 +336,21 @@ defmodule Portal.Billing.EventHandler do
     case update_account_by_stripe_customer_id(customer_id, attrs) do
       {:ok, _account} ->
         :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to update account on Stripe subscription event",
+          customer_id: customer_id,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
+    end
+  end
+
+  defp update_account_and_return(customer_id, attrs) do
+    case update_account_by_stripe_customer_id(customer_id, attrs) do
+      {:ok, account} ->
+        {:ok, account}
 
       {:error, reason} ->
         Logger.error("Failed to update account on Stripe subscription event",

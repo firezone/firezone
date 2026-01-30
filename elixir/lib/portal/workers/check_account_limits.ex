@@ -1,6 +1,6 @@
 defmodule Portal.Workers.CheckAccountLimits do
   @moduledoc """
-  Oban worker that checks account limits and updates warning messages.
+  Oban worker that checks account limits and updates limit exceeded flags.
   Runs every 30 minutes.
 
   Optimized to use batched GROUP BY queries instead of per-account queries
@@ -12,8 +12,15 @@ defmodule Portal.Workers.CheckAccountLimits do
     max_attempts: 3,
     unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
 
+  alias Portal.Account
   alias Portal.Billing
+  alias Portal.Mailer
+  alias Portal.Mailer.Notifications
   alias __MODULE__.Database
+  require Logger
+
+  # Send email reminder every 3 days
+  @email_reminder_interval_days 3
 
   @batch_size 100
 
@@ -40,97 +47,127 @@ defmodule Portal.Workers.CheckAccountLimits do
   defp check_account_limits(account, counts) do
     if Billing.account_provisioned?(account) do
       account_counts = Map.get(counts, account.id, %{})
+      flags = limit_flags(account, account_counts)
 
-      []
-      |> check_users_limit(account, account_counts)
-      |> check_seats_limit(account, account_counts)
-      |> check_service_accounts_limit(account, account_counts)
-      |> check_sites_limit(account, account_counts)
-      |> check_admin_limit(account, account_counts)
-      |> case do
-        [] ->
-          {:ok, _account} =
-            update_account_warning(account, %{
-              warning: nil,
-              warning_delivery_attempts: 0,
-              warning_last_sent_at: nil
-            })
-
-          :ok
-
-        limits_exceeded ->
-          warning =
-            "You have exceeded the following limits: #{Enum.join(limits_exceeded, ", ")}"
-
-          {:ok, _account} =
-            update_account_warning(account, %{
-              warning: warning,
-              warning_delivery_attempts: 0,
-              warning_last_sent_at: DateTime.utc_now()
-            })
-
-          :ok
+      if any_exceeded?(flags) do
+        handle_exceeded_limits(account, flags)
+      else
+        update_account_limits(account, cleared_flags())
       end
-    else
-      :ok
+    end
+
+    :ok
+  end
+
+  defp limit_flags(account, account_counts) do
+    users = Map.get(account_counts, :users, 0)
+    active_users = Map.get(account_counts, :active_users, 0)
+    service_accounts = Map.get(account_counts, :service_accounts, 0)
+    sites = Map.get(account_counts, :sites, 0)
+    admins = Map.get(account_counts, :admins, 0)
+
+    %{
+      users_limit_exceeded: Billing.users_limit_exceeded?(account, users),
+      seats_limit_exceeded: Billing.seats_limit_exceeded?(account, active_users),
+      service_accounts_limit_exceeded:
+        Billing.service_accounts_limit_exceeded?(account, service_accounts),
+      sites_limit_exceeded: Billing.sites_limit_exceeded?(account, sites),
+      admins_limit_exceeded: Billing.admins_limit_exceeded?(account, admins)
+    }
+  end
+
+  defp any_exceeded?(flags), do: Enum.any?(flags, fn {_k, v} -> v end)
+
+  defp handle_exceeded_limits(account, flags) do
+    send_email? = should_send_email?(account)
+    flags = maybe_put_sent_at(flags, send_email?)
+
+    {:ok, updated_account} = update_account_limits(account, flags)
+
+    if send_email? do
+      warning = Account.build_limits_exceeded_message(updated_account)
+      send_limit_exceeded_emails(updated_account, warning)
     end
   end
 
-  defp check_users_limit(limits_exceeded, account, counts) do
-    users_count = Map.get(counts, :users, 0)
+  defp maybe_put_sent_at(flags, true),
+    do: Map.put(flags, :warning_last_sent_at, DateTime.utc_now())
 
-    if Billing.users_limit_exceeded?(account, users_count) do
-      limits_exceeded ++ ["users"]
-    else
-      limits_exceeded
+  defp maybe_put_sent_at(flags, false), do: flags
+
+  defp cleared_flags do
+    [
+      :users_limit_exceeded,
+      :seats_limit_exceeded,
+      :service_accounts_limit_exceeded,
+      :sites_limit_exceeded,
+      :admins_limit_exceeded
+    ]
+    |> Map.new(fn k -> {k, false} end)
+    |> Map.put(:warning_last_sent_at, nil)
+  end
+
+  defp should_send_email?(%{warning_last_sent_at: nil}), do: true
+
+  defp should_send_email?(%{warning_last_sent_at: last_sent_at}) do
+    days_since_last_email = DateTime.diff(DateTime.utc_now(), last_sent_at, :day)
+    days_since_last_email >= @email_reminder_interval_days
+  end
+
+  defp send_limit_exceeded_emails(account, warning) do
+    admins = Database.get_account_admin_actors(account.id)
+
+    case admins do
+      [] ->
+        Logger.warning("No admin actors found for account",
+          account_id: account.id
+        )
+
+      admins ->
+        Enum.each(admins, fn admin ->
+          send_limit_exceeded_email(admin, warning, account.id)
+        end)
     end
   end
 
-  defp check_seats_limit(limits_exceeded, account, counts) do
-    active_users_count = Map.get(counts, :active_users, 0)
+  defp send_limit_exceeded_email(admin, warning, account_id) do
+    Logger.info("Sending limits exceeded email",
+      to: admin.email,
+      account_id: account_id
+    )
 
-    if Billing.seats_limit_exceeded?(account, active_users_count) do
-      limits_exceeded ++ ["monthly active users"]
-    else
-      limits_exceeded
+    Notifications.limits_exceeded_email(warning, admin.email)
+    |> Mailer.deliver()
+    |> case do
+      {:ok, _result} ->
+        Logger.info("Limits exceeded email sent successfully",
+          to: admin.email,
+          account_id: account_id
+        )
+
+      {:error, reason} ->
+        Logger.error("Failed to send limits exceeded email",
+          to: admin.email,
+          reason: inspect(reason),
+          account_id: account_id
+        )
     end
   end
 
-  defp check_service_accounts_limit(limits_exceeded, account, counts) do
-    service_accounts_count = Map.get(counts, :service_accounts, 0)
-
-    if Billing.service_accounts_limit_exceeded?(account, service_accounts_count) do
-      limits_exceeded ++ ["service accounts"]
-    else
-      limits_exceeded
-    end
-  end
-
-  defp check_sites_limit(limits_exceeded, account, counts) do
-    sites_count = Map.get(counts, :sites, 0)
-
-    if Billing.sites_limit_exceeded?(account, sites_count) do
-      limits_exceeded ++ ["sites"]
-    else
-      limits_exceeded
-    end
-  end
-
-  defp check_admin_limit(limits_exceeded, account, counts) do
-    account_admins_count = Map.get(counts, :admins, 0)
-
-    if Billing.admins_limit_exceeded?(account, account_admins_count) do
-      limits_exceeded ++ ["account admins"]
-    else
-      limits_exceeded
-    end
-  end
-
-  defp update_account_warning(account, attrs) do
+  defp update_account_limits(account, attrs) do
     import Ecto.Changeset
 
+    fields = [
+      :users_limit_exceeded,
+      :seats_limit_exceeded,
+      :service_accounts_limit_exceeded,
+      :sites_limit_exceeded,
+      :admins_limit_exceeded,
+      :warning_last_sent_at
+    ]
+
     account
-    |> cast(attrs, [:warning, :warning_delivery_attempts, :warning_last_sent_at])
+    |> cast(attrs, fields)
     |> Database.update()
   end
 
@@ -290,6 +327,16 @@ defmodule Portal.Workers.CheckAccountLimits do
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
+    end
+
+    def get_account_admin_actors(account_id) do
+      from(a in Actor,
+        where: a.account_id == ^account_id,
+        where: a.type == :account_admin_user,
+        where: is_nil(a.disabled_at)
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
     end
   end
 end

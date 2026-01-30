@@ -691,6 +691,89 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) == "/#{ctx.account.slug}"
       assert flash(conn, :error) == "This action requires admin privileges."
     end
+
+    test "rejects client sign-in when users_limit_exceeded is true", ctx do
+      actor = actor_fixture(account: ctx.account, email: "user@example.com")
+      setup_successful_auth(ctx, actor, sub: "regular-user-123")
+
+      update_account(ctx.account, %{users_limit_exceeded: true})
+
+      cookie = build_oidc_cookie(ctx.account, ctx.provider, params: client_params())
+      conn = perform_callback(ctx.conn, cookie)
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}"
+      assert flash(conn, :error) =~ "exceeding billing limits"
+    end
+
+    test "logs error and allows gui-client sign-in when seats_limit_exceeded is true", ctx do
+      actor = actor_fixture(account: ctx.account, email: "user@example.com")
+      setup_successful_auth(ctx, actor, sub: "regular-user-123")
+
+      update_account(ctx.account, %{seats_limit_exceeded: true})
+
+      cookie =
+        build_oidc_cookie(ctx.account, ctx.provider,
+          params: %{"as" => "gui-client", "nonce" => "client-nonce", "state" => "client-state"}
+        )
+
+      log =
+        capture_log(fn ->
+          conn = perform_callback(ctx.conn, cookie)
+
+          # Sign-in should still succeed
+          assert conn.status == 200
+          assert conn.resp_body =~ "client_redirect"
+        end)
+
+      assert log =~ "Account seats limit exceeded"
+      assert log =~ "account_id=#{ctx.account.id}"
+      assert log =~ "account_slug=#{ctx.account.slug}"
+      assert log =~ "actor_id=#{actor.id}"
+    end
+
+    test "rejects headless-client sign-in when users_limit_exceeded is true", ctx do
+      actor = actor_fixture(account: ctx.account, email: "user@example.com")
+      setup_successful_auth(ctx, actor, sub: "regular-user-123")
+
+      update_account(ctx.account, %{users_limit_exceeded: true})
+
+      cookie =
+        build_oidc_cookie(ctx.account, ctx.provider,
+          params: %{"as" => "headless-client", "state" => "client-state"}
+        )
+
+      conn = perform_callback(ctx.conn, cookie)
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}"
+      assert flash(conn, :error) =~ "exceeding billing limits"
+    end
+
+    test "allows client sign-in when only sites_limit_exceeded is true", ctx do
+      actor = actor_fixture(account: ctx.account, email: "user@example.com")
+      setup_successful_auth(ctx, actor, sub: "regular-user-123")
+
+      # Sites limit doesn't block client sign-in
+      update_account(ctx.account, %{sites_limit_exceeded: true})
+
+      cookie = build_oidc_cookie(ctx.account, ctx.provider, params: client_params())
+      conn = perform_callback(ctx.conn, cookie)
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "client_redirect"
+    end
+
+    test "allows portal sign-in when users_limit_exceeded is true", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      setup_successful_auth(ctx, actor)
+
+      update_account(ctx.account, %{users_limit_exceeded: true})
+
+      cookie = build_oidc_cookie(ctx.account, ctx.provider)
+      conn = perform_callback(ctx.conn, cookie)
+
+      # Portal sign-in should still be allowed so admins can manage billing
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+    end
   end
 
   describe "callback/2 with userinfo fetch failure" do

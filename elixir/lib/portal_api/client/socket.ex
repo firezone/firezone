@@ -93,6 +93,8 @@ defmodule PortalAPI.Client.Socket do
 
     with {:ok, %{credential: %{type: :client_token, id: token_id}} = subject} <-
            Authentication.authenticate(token, context),
+         false <- Portal.Billing.client_connect_restricted?(subject.account),
+         :ok = Portal.Billing.log_seats_limit_exceeded(subject.account, subject.actor.id),
          changeset = upsert_changeset(subject.actor, subject, attrs),
          {:ok, client} <- Database.upsert_client(changeset, subject) do
       OpenTelemetry.Tracer.set_attributes(%{
@@ -116,6 +118,10 @@ defmodule PortalAPI.Client.Socket do
       {:error, :unauthorized} ->
         OpenTelemetry.Tracer.set_status(:error, "unauthorized")
         {:error, :invalid_token}
+
+      true ->
+        OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")
+        {:error, :limits_exceeded}
 
       {:error, reason} ->
         OpenTelemetry.Tracer.set_status(:error, inspect(reason))
