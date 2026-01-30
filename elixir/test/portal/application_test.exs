@@ -41,7 +41,7 @@ defmodule Portal.ApplicationTest do
     end
   end
 
-  # Note: prep_stop/1 cannot be unit tested because it calls
-  # Ecto.Adapters.SQL.disconnect_all/2 which is not supported in the test
+  # Note: prep_stop/1 cannot be easily unit tested because it calls
+  # Supervisor.stop/3 on the Repo processes, which would break the test
   # environment's DBConnection.Ownership sandbox mode.
 end
