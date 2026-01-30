@@ -24,17 +24,40 @@ defmodule Portal.Application do
 
   @impl true
   def prep_stop(state) do
-    # Disconnect all database connections before the supervision tree stops.
-    # This prevents Postgrex.SCRAM.LockedCache errors during shutdown when
-    # DBConnection tries to reconnect after postgrex has already been stopped.
-    Logger.info("Disconnecting database connections for graceful shutdown")
+    # Stop database pool supervisors entirely before the supervision tree shuts down.
+    #
+    # Previously we used Ecto.Adapters.SQL.disconnect_all/2, but that only disconnects
+    # connections while leaving the pool supervisor alive. DBConnection's default behavior
+    # is to reconnect when connections are lost, which causes SCRAM authentication attempts
+    # after the :postgrex application has stopped (killing Postgrex.SCRAM.LockedCache).
+    #
+    # By stopping the pool supervisors entirely, we prevent any reconnection attempts
+    # during the shutdown window.
+    Logger.info("Stopping database pools for graceful shutdown")
 
-    # Give connections 5 seconds to disconnect gracefully
-    disconnect_timeout = :timer.seconds(5)
-    Ecto.Adapters.SQL.disconnect_all(Portal.Repo, disconnect_timeout)
-    Ecto.Adapters.SQL.disconnect_all(Portal.Repo.Replica, disconnect_timeout)
+    stop_timeout = :timer.seconds(5)
+    stop_process(Portal.Repo, stop_timeout)
+    stop_process(Portal.Repo.Replica, stop_timeout)
+
+    # Note: Replication connections are managed by Portal.Replication.Manager which
+    # handles shutdown gracefully via its terminate/2 callback, sending :shutdown
+    # to the Postgrex.ReplicationConnection which disconnects cleanly.
 
     state
+  end
+
+  defp stop_process(name, timeout) do
+    case Process.whereis(name) do
+      nil ->
+        :ok
+
+      pid ->
+        try do
+          Supervisor.stop(pid, :shutdown, timeout)
+        catch
+          :exit, _ -> :ok
+        end
+    end
   end
 
   @impl true
