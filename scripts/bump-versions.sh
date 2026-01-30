@@ -100,8 +100,8 @@ function update_version_variables() {
 # 6. Run `scripts/bump-versions.sh apple` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function apple() {
-    current_apple_client_version="1.5.12"
-    next_apple_client_version="1.5.13"
+    current_apple_client_version="1.5.13"
+    next_apple_client_version="1.5.14"
 
     update_changelog "website/src/components/Changelog/Apple.tsx" "$current_apple_client_version"
     update_version_marker "mark:current-apple-version" "$current_apple_client_version"
