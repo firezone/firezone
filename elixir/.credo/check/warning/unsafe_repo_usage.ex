@@ -24,11 +24,11 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
 
     cond do
       # Allow in Portal.Safe module
-      String.ends_with?(file_path, "domain/lib/domain/safe.ex") ->
+      String.ends_with?(file_path, "lib/portal/safe.ex") ->
         []
 
       # Allow in Portal.Repo itself and its submodules (Preloader, Paginator, Filter, Query)
-      String.contains?(file_path, "domain/lib/domain/repo") ->
+      String.contains?(file_path, "lib/portal/repo") ->
         []
 
       # Allow in seeds.exs files
@@ -69,6 +69,24 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
          issue_meta
        ) do
     {ast, [issue_for(ast, meta[:line], issue_meta) | issues]}
+  end
+
+  # Allow Portal.Repo.valid_uuid? - it's a utility function, not a database operation
+  defp traverse(
+         {{:., _meta, [{:__aliases__, _, [:Portal, :Repo]}, :valid_uuid?]}, _, _} = ast,
+         issues,
+         _issue_meta
+       ) do
+    {ast, issues}
+  end
+
+  # Allow Repo.valid_uuid? (when aliased)
+  defp traverse(
+         {{:., _meta, [{:__aliases__, _, [:Repo]}, :valid_uuid?]}, _, _} = ast,
+         issues,
+         _issue_meta
+       ) do
+    {ast, issues}
   end
 
   # Check for direct Portal.Repo calls
