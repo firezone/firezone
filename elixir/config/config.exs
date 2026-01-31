@@ -12,7 +12,7 @@ import Config
 ##### Portal ##################
 ###############################
 
-config :portal, ecto_repos: [Portal.Repo, Portal.Repo.Replica]
+config :portal, ecto_repos: [Portal.Repo]
 config :portal, generators: [binary_id: true]
 
 config :portal, sql_sandbox: false
@@ -401,7 +401,7 @@ config :esbuild,
       "--external:/images/*"
     ],
     cd: Path.expand("../assets", __DIR__),
-    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+    env: %{"NODE_PATH" => System.get_env("MIX_DEPS_PATH", Path.expand("../deps", __DIR__))}
   ]
 
 # Configure tailwind (the version is required)
