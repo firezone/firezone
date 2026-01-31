@@ -1,0 +1,111 @@
+December was largely about paying down technical debt and addressing operational pain points that have accumulated over the past year.
+
+## Portal Architecture Overhaul
+
+The most significant change this month was collapsing the Elixir umbrella structure into a single application.[^1]
+The original three-app design—domain, web, and api—made sense early on when we wanted strict separation between business logic and presentation layers.
+In practice, though, it created more friction than it solved: verified routes couldn't cross app boundaries, configuration had to be carefully scoped, and we were building three nearly identical Docker images.
+The unified codebase eliminates these issues and should make future development noticeably smoother.
+
+## Authentication System Refactoring
+
+With the architecture simplified, we turned to the `tokens` table, which had become a dumping ground for every kind of credential in the system.
+Browser sessions, gateway tokens, relay tokens, API keys, email verification codes—all lived in one table with a `type` column to distinguish them.
+This made the authentication code harder to reason about than it needed to be.
+
+Over several PRs, we decomposed this into purpose-built tables: `portal_sessions` for browser sessions,[^2] dedicated tables for gateway[^3] and relay[^4] tokens, and a new `one_time_passcodes` system backed by argon2 for email verification.[^5]
+API tokens were similarly extracted,[^6] leaving the original table to hold only client tokens—renamed accordingly.[^7]
+Beyond the organizational benefits, this refactor enabled a security improvement we'd been wanting: modifying an authentication provider now automatically invalidates all associated sessions and tokens.[^8]
+
+## Relay Connection Reliability
+
+Relays have historically been one of the noisier parts of our system.
+WebSocket connections drop and reconnect for all sorts of reasons—load balancer timeouts, network blips, deploys—and each reconnection was generating presence events that rippled through the system.
+
+We addressed this from two angles.
+First, relays no longer persist to the database at all; we track them entirely through Phoenix Presence CRDT, which handles the distributed state management we need without the write overhead.[^9]
+Second, we added a debouncing layer that delays reactions to presence events by one second.[^10]
+If a relay drops and reconnects within that window, downstream systems never see the interruption.
+We also fixed a couple of edge cases: duplicate relays can no longer appear in the system,[^11] and the "nearest relay" selection now works correctly even when two relays share identical coordinates.[^12]
+
+## Database Performance
+
+A few targeted optimizations addressed specific bottlenecks we'd been seeing in production.
+TUN address allocation—assigning unique IPs to clients and gateways—was running in O(n) time because the previous algorithm scanned for gaps in the address space.
+The new approach increments a counter and handles collisions, bringing it down to O(1).[^13]
+
+Fulltext search in the admin portal was hitting sequential scans on several tables; adding GIN indexes fixed that.[^14]
+Billing limit checks, which previously iterated per-account, now run as a single batch query.[^15]
+And for smoother deploys, we added a `/readyz` endpoint that signals to load balancers when a node is draining, enabling proper graceful shutdown during rolling updates.[^16]
+
+## Client Improvements
+
+On the client side, we tracked down a frustrating issue where browsers like Chrome would intermittently show ERR_NETWORK_CHANGED errors.
+The culprit was our Apple clients applying NetworkSettings too eagerly—even when nothing had actually changed—which Chrome interprets as a network transition.
+The fix accumulates changes internally and only applies them when necessary.[^17]
+We made a similar change in connlib itself, which now tracks whether the resource list has actually changed before emitting updates.[^18]
+
+WebSocket connections also gained happy eyeballs support.
+Some systems report IPv6 connectivity without actually being able to route IPv6 traffic, causing connections to hang until timeout.
+We now attempt all resolved addresses in parallel and use whichever responds first.[^19]
+
+## Admin Portal and Gateway
+
+The admin portal picked up several visibility improvements: real-time online status for clients, sessions, and tokens;[^20] synced entity counts on directory configurations;[^21] group memberships on actor detail pages;[^22] and a search field on the clients table.[^23]
+
+On the gateway side, DNS server binding now retries up to three times to handle transient failures during reconnection,[^24] and event-loop errors are reported to Sentry for better production visibility.[^25]
+We also removed the restriction on concurrent `create_flow` messages, which was hurting time-to-first-byte when establishing multiple connections within the same site.[^26]
+
+---
+
+[^1]: [refactor(portal): collapse umbrella into single app](https://github.com/firezone/firezone/pull/11517)
+
+[^2]: [refactor(portal): move browser tokens to portal_sessions](https://github.com/firezone/firezone/pull/11127)
+
+[^3]: [refactor(portal): move gateway tokens to dedicated table](https://github.com/firezone/firezone/pull/11104)
+
+[^4]: [refactor(portal): move relay tokens to separate table](https://github.com/firezone/firezone/pull/11101)
+
+[^5]: [refactor(portal): move email tokens to one_time_passcodes](https://github.com/firezone/firezone/pull/11109)
+
+[^6]: [refactor(portal): move api_tokens to dedicated table](https://github.com/firezone/firezone/pull/11166)
+
+[^7]: [refactor(portal): rename tokens to client_tokens](https://github.com/firezone/firezone/pull/11202)
+
+[^8]: [fix(portal): invalidate tokens/sessions on auth_provider changes](https://github.com/firezone/firezone/pull/11293)
+
+[^9]: [refactor(portal): ephemeral relays](https://github.com/firezone/firezone/pull/11587)
+
+[^10]: [fix(portal): delay reactions to relay presence events](https://github.com/firezone/firezone/pull/11549)
+
+[^11]: [fix(portal): prevent two identical relays from connecting](https://github.com/firezone/firezone/pull/11567)
+
+[^12]: [fix(portal): always select nearest relays](https://github.com/firezone/firezone/pull/11545)
+
+[^13]: [fix(portal): allocate tun addresses in O(1) time](https://github.com/firezone/firezone/pull/11154)
+
+[^14]: [fix(portal): use gin indexes for fulltext_search](https://github.com/firezone/firezone/pull/11276)
+
+[^15]: [refactor(portal): check billing limits more efficiently](https://github.com/firezone/firezone/pull/11550)
+
+[^16]: [refactor(portal): use dedicated /readyz probe](https://github.com/firezone/firezone/pull/11533)
+
+[^17]: [fix(apple): accumulate changes to NetworkSettings](https://github.com/firezone/firezone/pull/11191)
+
+[^18]: [fix(connlib): only emit resource list on changes](https://github.com/firezone/firezone/pull/11129)
+
+[^19]: [fix(phoenix-channel): try all addresses in parallel](https://github.com/firezone/firezone/pull/11115)
+
+[^20]: [feat(portal): show client/session/token online status](https://github.com/firezone/firezone/pull/11240)
+
+[^21]: [feat(portal): show synced entity counts](https://github.com/firezone/firezone/pull/11272)
+
+[^22]: [feat(portal): show groups for each actor](https://github.com/firezone/firezone/pull/11419)
+
+[^23]: [feat(portal): allow filtering clients by name + actor](https://github.com/firezone/firezone/pull/11257)
+
+[^24]: [fix(gateway): retry binding DNS servers on TUN interface](https://github.com/firezone/firezone/pull/11208)
+
+[^25]: [feat(gateway): report event-loop errors to Sentry](https://github.com/firezone/firezone/pull/11209)
+
+[^26]: [fix(connlib): allow concurrent create_flow messages](https://github.com/firezone/firezone/pull/11438)
