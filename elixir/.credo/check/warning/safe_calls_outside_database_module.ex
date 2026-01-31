@@ -1,4 +1,4 @@
-defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
+defmodule Credo.Check.Warning.SafeCallsOutsideDatabaseModule do
   use Credo.Check,
     base_priority: :high,
     category: :warning,
@@ -17,7 +17,7 @@ defmodule Credo.Check.Warning.SafeCallsOutsideDBModule do
     issue_meta = IssueMeta.for(source_file, params)
 
     # Skip checking the Portal.Safe module itself
-    if String.ends_with?(source_file.filename, "domain/lib/domain/safe.ex") do
+    if String.ends_with?(source_file.filename, "lib/portal/safe.ex") do
       []
     else
       source_file

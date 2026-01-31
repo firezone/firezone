@@ -1,7 +1,7 @@
 defmodule Portal.IPv6Address do
   use Ecto.Schema
   import Ecto.Changeset
-  alias Portal.Safe
+  alias __MODULE__.Database
   require Logger
 
   @primary_key false
@@ -71,11 +71,7 @@ defmodule Portal.IPv6Address do
     client_id_binary = if client_id, do: Ecto.UUID.dump!(client_id)
     gateway_id_binary = if gateway_id, do: Ecto.UUID.dump!(gateway_id)
 
-    case Safe.query(
-           Safe.unscoped(),
-           "SELECT * FROM allocate_address($1, $2, $3, $4, $5)",
-           [account_id_binary, "ipv6", cidr, client_id_binary, gateway_id_binary]
-         ) do
+    case Database.allocate_address(account_id_binary, cidr, client_id_binary, gateway_id_binary) do
       {:ok, %Postgrex.Result{rows: [[account_id, address, client_id, gateway_id, inserted_at]]}} ->
         {:ok,
          %__MODULE__{
@@ -89,6 +85,18 @@ defmodule Portal.IPv6Address do
       {:error, error} ->
         Logger.error("Failed to allocate IPv6 address", account_id: account_id, error: error)
         {:error, error}
+    end
+  end
+
+  defmodule Database do
+    alias Portal.Safe
+
+    def allocate_address(account_id_binary, cidr, client_id_binary, gateway_id_binary) do
+      Safe.query(
+        Safe.unscoped(),
+        "SELECT * FROM allocate_address($1, $2, $3, $4, $5)",
+        [account_id_binary, "ipv6", cidr, client_id_binary, gateway_id_binary]
+      )
     end
   end
 end
