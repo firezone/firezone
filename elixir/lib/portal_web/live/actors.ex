@@ -17,7 +17,7 @@ defmodule PortalWeb.Actors do
       socket
       |> assign(page_title: "Actors")
       |> assign_live_table("actors",
-        query_module: DB,
+        query_module: Database,
         sortable_fields: [
           {:actors, :name},
           {:actors, :email},

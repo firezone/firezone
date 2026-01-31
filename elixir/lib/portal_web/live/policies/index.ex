@@ -13,7 +13,7 @@ defmodule PortalWeb.Policies.Index do
       |> assign(stale: false)
       |> assign(page_title: "Policies")
       |> assign_live_table("policies",
-        query_module: DB,
+        query_module: Database,
         sortable_fields: [],
         hide_filters: [
           :group_id,

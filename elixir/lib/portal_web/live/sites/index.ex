@@ -17,7 +17,7 @@ defmodule PortalWeb.Sites.Index do
       |> assign(internet_resource: internet_resource)
       |> assign(internet_site: internet_resource.site)
       |> assign_live_table("sites",
-        query_module: DB,
+        query_module: Database,
         sortable_fields: [
           {:sites, :name}
         ],

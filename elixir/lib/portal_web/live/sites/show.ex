@@ -26,7 +26,7 @@ defmodule PortalWeb.Sites.Show do
       socket
       |> assign(resource: resource)
       |> assign_live_table("gateways",
-        query_module: DB,
+        query_module: Database,
         enforce_filters: [
           {:site_id, site.id}
         ],
@@ -51,7 +51,7 @@ defmodule PortalWeb.Sites.Show do
     socket =
       socket
       |> assign_live_table("gateways",
-        query_module: DB,
+        query_module: Database,
         enforce_filters: [
           {:site_id, site.id}
         ],
