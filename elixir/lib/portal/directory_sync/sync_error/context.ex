@@ -61,7 +61,7 @@ defmodule Portal.DirectorySync.SyncError.Context do
       iex> Context.from_transport_error(%Req.TransportError{reason: :timeout})
       %Context{type: :network, data: %{reason: :timeout}}
   """
-  @spec from_transport_error(Req.TransportError.t()) :: t()
+  @spec from_transport_error(Exception.t()) :: t()
   def from_transport_error(%Req.TransportError{reason: reason}) do
     %__MODULE__{type: :network, data: %{reason: reason}}
   end
@@ -79,7 +79,7 @@ defmodule Portal.DirectorySync.SyncError.Context do
       iex> Context.from_error(%Req.TransportError{reason: :timeout})
       %Context{type: :network, data: %{reason: :timeout}}
   """
-  @spec from_error(Req.Response.t() | Req.TransportError.t()) :: t()
+  @spec from_error(Req.Response.t() | Exception.t()) :: t()
   def from_error(%Req.Response{} = resp), do: from_response(resp)
   def from_error(%Req.TransportError{} = err), do: from_transport_error(err)
 end

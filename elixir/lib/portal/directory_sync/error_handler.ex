@@ -11,7 +11,7 @@ defmodule Portal.DirectorySync.ErrorHandler do
   - 4xx HTTP errors: Disable directory immediately (user action required)
   - 5xx HTTP errors: Record error, disable after 24 hours (transient)
   - Network/transport errors: Treat as transient (5xx behavior)
-  - Validation errors: Disable directory immediately (bad data in IdP)
+  - Validation errors: Disable directory immediately (user action required)
   - Missing scopes: Disable directory immediately (user action required)
   - Circuit breaker: Disable directory immediately (user action required)
   - Other errors: Treat as transient (5xx behavior)
@@ -116,7 +116,10 @@ defmodule Portal.DirectorySync.ErrorHandler do
 
   # Error formatting - Provider-specific HTTP error formatting
 
-  defp format_entra_error(%Context{type: :http, data: %{status: status, body: %{"error" => error_obj}}}) do
+  defp format_entra_error(%Context{
+         type: :http,
+         data: %{status: status, body: %{"error" => error_obj}}
+       }) do
     code = Map.get(error_obj, "code")
     message = Map.get(error_obj, "message")
     inner_code = get_in(error_obj, ["innerError", "code"])
@@ -133,7 +136,8 @@ defmodule Portal.DirectorySync.ErrorHandler do
     Enum.join(parts, " - ")
   end
 
-  defp format_entra_error(%Context{type: :http, data: %{status: status, body: body}}) when is_binary(body) do
+  defp format_entra_error(%Context{type: :http, data: %{status: status, body: body}})
+       when is_binary(body) do
     "HTTP #{status} - #{body}"
   end
 
@@ -145,7 +149,10 @@ defmodule Portal.DirectorySync.ErrorHandler do
     format_context_error(ctx)
   end
 
-  defp format_google_error(%Context{type: :http, data: %{status: status, body: %{"error" => error_obj}}})
+  defp format_google_error(%Context{
+         type: :http,
+         data: %{status: status, body: %{"error" => error_obj}}
+       })
        when is_map(error_obj) do
     code = Map.get(error_obj, "code")
     message = Map.get(error_obj, "message")
@@ -168,7 +175,8 @@ defmodule Portal.DirectorySync.ErrorHandler do
     Enum.join(parts, " - ")
   end
 
-  defp format_google_error(%Context{type: :http, data: %{status: status, body: body}}) when is_binary(body) do
+  defp format_google_error(%Context{type: :http, data: %{status: status, body: body}})
+       when is_binary(body) do
     "HTTP #{status} - #{body}"
   end
 
@@ -180,11 +188,13 @@ defmodule Portal.DirectorySync.ErrorHandler do
     format_context_error(ctx)
   end
 
-  defp format_okta_error(%Context{type: :http, data: %{status: status, body: body}}) when is_map(body) do
+  defp format_okta_error(%Context{type: :http, data: %{status: status, body: body}})
+       when is_map(body) do
     Portal.Okta.ErrorCodes.format_error(status, body)
   end
 
-  defp format_okta_error(%Context{type: :http, data: %{status: status, body: body}}) when is_binary(body) do
+  defp format_okta_error(%Context{type: :http, data: %{status: status, body: body}})
+       when is_binary(body) do
     Portal.Okta.ErrorCodes.format_error(status, body)
   end
 
@@ -200,7 +210,9 @@ defmodule Portal.DirectorySync.ErrorHandler do
   defp format_context_error(%Context{type: :network} = ctx), do: format_network_error(ctx)
   defp format_context_error(%Context{type: :validation} = ctx), do: format_validation_error(ctx)
   defp format_context_error(%Context{type: :scopes} = ctx), do: format_scopes_error(ctx)
-  defp format_context_error(%Context{type: :circuit_breaker} = ctx), do: format_circuit_breaker_error(ctx)
+
+  defp format_context_error(%Context{type: :circuit_breaker} = ctx),
+    do: format_circuit_breaker_error(ctx)
 
   @doc """
   Format network/transport errors into user-friendly messages.

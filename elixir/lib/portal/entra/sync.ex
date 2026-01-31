@@ -237,7 +237,10 @@ defmodule Portal.Entra.Sync do
       unless assignment["principalType"] do
         raise Entra.SyncError,
           reason: "Assignment missing required 'principalType' field",
-          context: %Context{type: :validation, data: %{entity: :assignment, id: assignment["principalId"], field: :principalType}},
+          context: %Context{
+            type: :validation,
+            data: %{entity: :assignment, id: assignment["principalId"], field: :principalType}
+          },
           directory_id: directory_id,
           step: :process_assignment
       end
@@ -245,7 +248,14 @@ defmodule Portal.Entra.Sync do
       unless assignment["principalDisplayName"] do
         raise Entra.SyncError,
           reason: "Assignment missing required 'principalDisplayName' field",
-          context: %Context{type: :validation, data: %{entity: :assignment, id: assignment["principalId"], field: :principalDisplayName}},
+          context: %Context{
+            type: :validation,
+            data: %{
+              entity: :assignment,
+              id: assignment["principalId"],
+              field: :principalDisplayName
+            }
+          },
           directory_id: directory_id,
           step: :process_assignment
       end
@@ -430,7 +440,10 @@ defmodule Portal.Entra.Sync do
           unless group["displayName"] do
             raise Entra.SyncError,
               reason: "Group missing required 'displayName' field",
-              context: %Context{type: :validation, data: %{entity: :group, id: group["id"], field: :displayName}},
+              context: %Context{
+                type: :validation,
+                data: %{entity: :group, id: group["id"], field: :displayName}
+              },
               directory_id: directory.id,
               step: :process_group
           end

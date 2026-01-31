@@ -254,8 +254,8 @@ defmodule Portal.Okta.Sync do
             )
 
             raise Okta.SyncError,
-              reason: "Failed to upsert identities",
-              context: Context.from_error(reason),
+              reason: "Failed to upsert identities: #{inspect(reason)}",
+              context: nil,
               directory_id: directory.id,
               step: :batch_upsert_identities
         end
@@ -390,8 +390,8 @@ defmodule Portal.Okta.Sync do
         )
 
         raise Okta.SyncError,
-          reason: "Failed to upsert memberships",
-          context: Context.from_error(reason),
+          reason: "Failed to upsert memberships: #{inspect(reason)}",
+          context: nil,
           directory_id: directory_id,
           step: :batch_upsert_memberships
     end
@@ -429,7 +429,10 @@ defmodule Portal.Okta.Sync do
     unless email do
       raise Okta.SyncError,
         reason: "User '#{user["id"]}' missing required 'email' field",
-        context: %Context{type: :validation, data: %{entity: :user, id: user["id"], field: :email}},
+        context: %Context{
+          type: :validation,
+          data: %{entity: :user, id: user["id"], field: :email}
+        },
         directory_id: directory_id,
         step: :process_user
     end
