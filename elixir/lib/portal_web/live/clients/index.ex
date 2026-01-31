@@ -13,7 +13,7 @@ defmodule PortalWeb.Clients.Index do
       socket
       |> assign(page_title: "Clients")
       |> assign_live_table("clients",
-        query_module: DB,
+        query_module: Database,
         sortable_fields: [
           {:clients, :name},
           {:clients, :last_seen_version},

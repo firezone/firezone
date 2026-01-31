@@ -13,7 +13,7 @@ defmodule PortalWeb.Resources.Index do
       |> assign(stale: false)
       |> assign(page_title: "Resources")
       |> assign_live_table("resources",
-        query_module: DB,
+        query_module: Database,
         sortable_fields: [
           {:resources, :name},
           {:resources, :address}
