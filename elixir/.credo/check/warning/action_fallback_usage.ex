@@ -11,7 +11,7 @@ defmodule Credo.Check.Warning.ActionFallbackUsage do
       centralized Error module:
 
 
-        with {:ok, resource} <- DB.fetch_resource(id, subject) do
+        with {:ok, resource} <- Database.fetch_resource(id, subject) do
           render(conn, :show, resource: resource)
         else
           error -> Error.handle(conn, error)

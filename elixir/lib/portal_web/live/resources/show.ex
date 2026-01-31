@@ -26,7 +26,7 @@ defmodule PortalWeb.Resources.Show do
         callback: &handle_policy_authorizations_update!/2
       )
       |> assign_live_table("policies",
-        query_module: DB,
+        query_module: Database,
         hide_filters: [
           :group_id,
           :resource_name,
@@ -444,7 +444,7 @@ defmodule PortalWeb.Resources.Show do
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)
       |> Safe.scoped(subject)
-      |> Safe.list(DB, opts)
+      |> Safe.list(Database, opts)
     end
 
     # Pagination support for policies

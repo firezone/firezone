@@ -27,7 +27,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         |> assign(page_title: "API Clients")
         |> assign(api_url: Portal.Config.get_env(:portal, :api_external_url))
         |> assign_live_table("actors",
-          query_module: DB,
+          query_module: Database,
           sortable_fields: [
             {:actors, :name},
             {:actors, :status}

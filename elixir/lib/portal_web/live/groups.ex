@@ -10,7 +10,7 @@ defmodule PortalWeb.Groups do
       socket
       |> assign(page_title: "Groups")
       |> assign_live_table("groups",
-        query_module: DB,
+        query_module: Database,
         sortable_fields: [
           {:groups, :name},
           {:member_counts, :count},

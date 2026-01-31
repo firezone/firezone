@@ -16,7 +16,7 @@ defmodule PortalWeb.Sites.Gateways.Index do
         site: site
       )
       |> assign_live_table("gateways",
-        query_module: DB,
+        query_module: Database,
         enforce_filters: [
           {:site_id, site.id}
         ],

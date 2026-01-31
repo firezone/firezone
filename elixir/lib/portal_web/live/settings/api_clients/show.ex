@@ -14,7 +14,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
           page_title: "API Client #{actor.name}"
         )
         |> assign_live_table("tokens",
-          query_module: DB,
+          query_module: Database,
           sortable_fields: [],
           callback: &handle_tokens_update!/2
         )
