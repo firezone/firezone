@@ -219,7 +219,10 @@ defmodule Portal.Google.Sync do
             unless group["name"] || group["email"] do
               raise Google.SyncError,
                 reason: "Group missing both 'name' and 'email' fields",
-                context: %Context{type: :validation, data: %{entity: :group, id: group["id"], field: :name}},
+                context: %Context{
+                  type: :validation,
+                  data: %{entity: :group, id: group["id"], field: :name}
+                },
                 directory_id: directory.id,
                 step: :process_group
             end
@@ -332,7 +335,10 @@ defmodule Portal.Google.Sync do
             unless org_unit["orgUnitId"] do
               raise Google.SyncError,
                 reason: "Organization unit missing required 'orgUnitId' field",
-                context: %Context{type: :validation, data: %{entity: :org_unit, field: :orgUnitId}},
+                context: %Context{
+                  type: :validation,
+                  data: %{entity: :org_unit, field: :orgUnitId}
+                },
                 directory_id: directory.id,
                 step: :process_org_unit
             end
@@ -340,7 +346,10 @@ defmodule Portal.Google.Sync do
             unless org_unit["name"] do
               raise Google.SyncError,
                 reason: "Organization unit missing required 'name' field",
-                context: %Context{type: :validation, data: %{entity: :org_unit, id: org_unit["orgUnitId"], field: :name}},
+                context: %Context{
+                  type: :validation,
+                  data: %{entity: :org_unit, id: org_unit["orgUnitId"], field: :name}
+                },
                 directory_id: directory.id,
                 step: :process_org_unit
             end
@@ -348,7 +357,10 @@ defmodule Portal.Google.Sync do
             unless org_unit["orgUnitPath"] do
               raise Google.SyncError,
                 reason: "Organization unit missing required 'orgUnitPath' field",
-                context: %Context{type: :validation, data: %{entity: :org_unit, id: org_unit["orgUnitId"], field: :orgUnitPath}},
+                context: %Context{
+                  type: :validation,
+                  data: %{entity: :org_unit, id: org_unit["orgUnitId"], field: :orgUnitPath}
+                },
                 directory_id: directory.id,
                 step: :process_org_unit
             end
@@ -543,7 +555,10 @@ defmodule Portal.Google.Sync do
     unless primary_email do
       raise Google.SyncError,
         reason: "User missing required 'primaryEmail' field",
-        context: %Context{type: :validation, data: %{entity: :user, id: user["id"], field: :primaryEmail}},
+        context: %Context{
+          type: :validation,
+          data: %{entity: :user, id: user["id"], field: :primaryEmail}
+        },
         directory_id: directory_id,
         step: :process_user
     end

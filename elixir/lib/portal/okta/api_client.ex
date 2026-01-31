@@ -162,7 +162,7 @@ defmodule Portal.Okta.APIClient do
 
   Returns all apps in a list. For large result sets, consider using stream_apps/2 instead.
   """
-  @spec list_apps(t(), String.t()) :: {:ok, [map()]} | {:error, String.t()}
+  @spec list_apps(t(), String.t()) :: {:ok, [map()]} | {:error, Req.Response.t()}
   def list_apps(client, access_token) do
     stream_apps(client, access_token) |> collect_stream_results()
   end
@@ -284,7 +284,7 @@ defmodule Portal.Okta.APIClient do
 
   # Collects a stream of {:ok, item} or {:error, reason} tuples into a result.
   # Returns {:ok, [items]} if all successful, or {:error, reason} on first error.
-  @spec collect_stream_results(Enumerable.t()) :: {:ok, [term()]} | {:error, String.t()}
+  @spec collect_stream_results(Enumerable.t()) :: {:ok, [term()]} | {:error, Req.Response.t()}
   defp collect_stream_results(stream) do
     stream
     |> Enum.reduce_while({:ok, []}, fn
