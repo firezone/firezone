@@ -391,18 +391,27 @@ defmodule Portal.Cache.Client do
 
     if Map.has_key?(cache.resources, resource.id) do
       cached_resource = Map.get(cache.resources, resource.id)
-      site_id = Ecto.UUID.dump!(changed_resource.site_id)
-      site_changed? = cached_resource.site.id != site_id
+      site_id_bytes = if changed_resource.site_id, do: Ecto.UUID.dump!(changed_resource.site_id)
 
-      # We need to hydrate the new site name if the site has changed
-      site =
-        if site_changed? do
-          case Database.get_site_by_id(site_id, subject) do
-            %Portal.Site{} = site -> Portal.Cache.Cacheable.to_cache(site)
-            nil -> nil
-          end
-        else
-          cached_resource.site
+      # Check if we can reuse the cached site or need to fetch from DB.
+      # site_id can be nil when site is deleted (ON DELETE SET NULL).
+      # cached site can be nil if hydration failed to load it.
+      {site, site_changed?} =
+        cond do
+          is_nil(site_id_bytes) ->
+            {nil, not is_nil(cached_resource.site)}
+
+          cached_resource.site && cached_resource.site.id == site_id_bytes ->
+            {cached_resource.site, false}
+
+          true ->
+            site =
+              case Database.get_site_by_id(site_id_bytes, subject) do
+                %Portal.Site{} = site -> Portal.Cache.Cacheable.to_cache(site)
+                nil -> nil
+              end
+
+            {site, not is_nil(cached_resource.site)}
         end
 
       resource = %{resource | site: site}
