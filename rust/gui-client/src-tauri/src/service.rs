@@ -708,7 +708,9 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_current_thread()
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .thread_name("connlib")
         .enable_all()
         .build()?;
     let _guard = rt.enter();
