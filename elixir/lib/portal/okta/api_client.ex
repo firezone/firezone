@@ -162,7 +162,7 @@ defmodule Portal.Okta.APIClient do
 
   Returns all apps in a list. For large result sets, consider using stream_apps/2 instead.
   """
-  @spec list_apps(t(), String.t()) :: {:ok, [map()]} | {:error, String.t()}
+  @spec list_apps(t(), String.t()) :: {:ok, [map()]} | {:error, Req.Response.t()}
   def list_apps(client, access_token) do
     stream_apps(client, access_token) |> collect_stream_results()
   end
@@ -284,7 +284,7 @@ defmodule Portal.Okta.APIClient do
 
   # Collects a stream of {:ok, item} or {:error, reason} tuples into a result.
   # Returns {:ok, [items]} if all successful, or {:error, reason} on first error.
-  @spec collect_stream_results(Enumerable.t()) :: {:ok, [term()]} | {:error, String.t()}
+  @spec collect_stream_results(Enumerable.t()) :: {:ok, [term()]} | {:error, Req.Response.t()}
   defp collect_stream_results(stream) do
     stream
     |> Enum.reduce_while({:ok, []}, fn
@@ -335,20 +335,17 @@ defmodule Portal.Okta.APIClient do
                 {ok_items, :halt}
               end
 
-            %{status: 401} ->
-              {[{:error, "Authentication Error"}], :halt}
+            %{status: status} = response when status in [401, 403] ->
+              {[{:error, response}], :halt}
 
-            %{status: 403} ->
-              {[{:error, "Authorization Error"}], :halt}
-
-            %{status: status, headers: headers, body: body} ->
+            %{status: status, headers: headers, body: body} = response ->
               Logger.warning("Unexpected response while making Okta API request",
                 status: status,
                 headers: inspect(headers),
                 response: inspect(body)
               )
 
-              {[{:error, "Unexpected response with status #{status}"}], :halt}
+              {[{:error, response}], :halt}
           end
       end,
       # After function - (nothing needed here)

@@ -257,7 +257,7 @@ defmodule Portal.Okta.APIClientTest do
         Plug.Conn.send_resp(conn, 401, JSON.encode!(%{"error" => "unauthorized"}))
       end)
 
-      assert {:error, "Authentication Error"} = APIClient.list_apps(client, "test_token")
+      assert {:error, %Req.Response{status: 401}} = APIClient.list_apps(client, "test_token")
     end
   end
 
@@ -429,7 +429,19 @@ defmodule Portal.Okta.APIClientTest do
         APIClient.stream_groups(client, "test_token")
         |> Enum.to_list()
 
-      assert [{:error, "Authentication Error"}] = results
+      assert [{:error, %Req.Response{status: 401}}] = results
+    end
+
+    test "handles authorization errors in stream", %{client: client} do
+      Req.Test.stub(APIClient, fn conn ->
+        Plug.Conn.send_resp(conn, 403, JSON.encode!(%{"error" => "forbidden"}))
+      end)
+
+      results =
+        APIClient.stream_groups(client, "test_token")
+        |> Enum.to_list()
+
+      assert [{:error, %Req.Response{status: 403}}] = results
     end
 
     test "handles server errors in stream", %{client: client} do
@@ -441,8 +453,7 @@ defmodule Portal.Okta.APIClientTest do
         APIClient.stream_groups(client, "test_token")
         |> Enum.to_list()
 
-      assert [{:error, reason}] = results
-      assert reason =~ "Unexpected response with status 500"
+      assert [{:error, %Req.Response{status: 500}}] = results
     end
   end
 

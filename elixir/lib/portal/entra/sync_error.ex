@@ -2,19 +2,19 @@ defmodule Portal.Entra.SyncError do
   @moduledoc """
   Wrapper exception for Entra directory sync failures.
 
-  This exception wraps the underlying cause and adds the directory_id
+  This exception wraps the underlying context and adds the directory_id
   and sync step that are extracted by the Oban telemetry reporter and sent to Sentry.
 
-  The `reason` field is a human-readable message, while `cause` preserves
-  the complete underlying error (e.g., Req.Response, Req.TransportError, Postgrex.Error).
+  The `reason` field is a human-readable message, while `context` preserves
+  structured error context for classification and debugging.
   """
 
-  defexception [:message, :reason, :cause, :directory_id, :step]
+  defexception [:message, :reason, :context, :directory_id, :step]
 
   @impl true
   def exception(opts) do
     reason = Keyword.fetch!(opts, :reason)
-    cause = Keyword.get(opts, :cause, reason)
+    context = Keyword.get(opts, :context)
     directory_id = Keyword.fetch!(opts, :directory_id)
     step = Keyword.fetch!(opts, :step)
 
@@ -23,7 +23,7 @@ defmodule Portal.Entra.SyncError do
     %__MODULE__{
       message: message,
       reason: reason,
-      cause: cause,
+      context: context,
       directory_id: directory_id,
       step: step
     }
