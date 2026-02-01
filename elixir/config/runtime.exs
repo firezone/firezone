@@ -77,7 +77,7 @@ if config_env() == :prod do
         ) ++
         if(env_var_to_config(:database_socket_dir),
           do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
-          else: [{:hostname, env_var_to_config!(:database_host)}]
+          else: [{:hostname, env_var_to_config!(:database_host_replica)}]
         )
 
   config :portal, Portal.Changes.ReplicationConnection,
@@ -103,7 +103,7 @@ if config_env() == :prod do
         ) ++
         if(env_var_to_config(:database_socket_dir),
           do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
-          else: [{:hostname, env_var_to_config!(:database_host)}]
+          else: [{:hostname, env_var_to_config!(:database_host_replica)}]
         )
 
   config :portal, Portal.Tokens,
