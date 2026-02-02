@@ -78,7 +78,7 @@ jobs:
 
       - name: Restore PLT cache
         id: plt_cache
-        uses: actions/cache/restore@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: elixir/priv/plts
           key: dialyzer-ubuntu-24.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('elixir/mix.lock') }}
@@ -91,7 +91,7 @@ jobs:
 
       - name: Save PLT cache
         if: github.ref_name == 'main'
-        uses: actions/cache/save@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+        uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           key: ${{ steps.plt_cache.outputs.cache-primary-key }}
           path: elixir/priv/plts
