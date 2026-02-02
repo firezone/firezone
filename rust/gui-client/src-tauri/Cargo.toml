@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gui-client"
 # mark:next-gui-version
-version = "1.5.10"
+version = "1.5.11"
 description = "Firezone"
 edition = { workspace = true }
 default-run = "firezone-gui-client"
