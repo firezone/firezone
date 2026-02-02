@@ -12,7 +12,7 @@ permissions:
   id-token: "write"
 
 env:
-  RUSTFLAGS: "--cfg tokio_unstable --deny warnings"
+  RUSTFLAGS: "--cfg tokio_unstable -D warnings"
 
 jobs:
   static-analysis:
