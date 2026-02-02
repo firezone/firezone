@@ -201,7 +201,7 @@ tempfile = "3.24.0"
 test-case = "3.3.1"
 test-strategy = "0.4.3"
 thiserror = "2.0.18"
-time = "0.3.45"
+time = "0.3.46"
 tokio = "1.49.0"
 tokio-rustls = { version = "0.26.4", default-features = false }
 tokio-stream = "0.1.18"
