@@ -22,7 +22,8 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.0" date={new Date("2026-02-02")}>
         <ChangeItem pull="11771">
           BREAKING: Remove support for Firezone 1.3.x Clients and lower.
         </ChangeItem>
@@ -64,7 +65,7 @@ export default function Gateway() {
           Fixes an issue where connections would flap between relayed and
           direct, causing WireGuard connection timeouts.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.19" date={new Date("2025-12-23")}>
         <ChangeItem pull="10972">
           Fixes an issue where IPv6-only DNS resources could not be reached.

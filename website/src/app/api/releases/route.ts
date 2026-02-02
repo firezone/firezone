@@ -13,7 +13,7 @@ export async function GET() {
     // mark:current-headless-version
     headless: "1.5.6",
     // mark:current-gateway-version
-    gateway: "1.4.19",
+    gateway: "1.5.0",
   };
 
   return NextResponse.json(versions, {

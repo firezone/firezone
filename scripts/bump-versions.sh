@@ -201,8 +201,8 @@ function headless() {
 # 3. Run `scripts/bump-versions.sh gateway` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function gateway() {
-    current_gateway_version="1.4.19"
-    next_gateway_version="1.5.0"
+    current_gateway_version="1.5.0"
+    next_gateway_version="1.5.1"
 
     update_changelog "website/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
     update_version_marker "mark:current-gateway-version" "$current_gateway_version"
