@@ -3654,7 +3654,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.2",
  "tokio",
  "tower-service",
  "tracing",
@@ -8031,9 +8031,9 @@ dependencies = [
 
 [[package]]
 name = "test-strategy"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43b12f9683de37f9980e485167ee624bfaa0b6b04da661e98e25ef9c2669bc1b"
+checksum = "c572af0dd6da9b0b5c1c2393c0be69f8e3b96302b20e4444c3fcf627efc31067"
 dependencies = [
  "derive-ex",
  "proc-macro2",

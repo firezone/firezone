@@ -199,7 +199,7 @@ tauri-utils = "2.8.0"
 telemetry = { path = "libs/telemetry" }
 tempfile = "3.24.0"
 test-case = "3.3.1"
-test-strategy = "0.4.3"
+test-strategy = "0.4.4"
 thiserror = "2.0.18"
 time = "0.3.46"
 tokio = "1.49.0"
