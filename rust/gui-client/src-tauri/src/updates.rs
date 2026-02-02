@@ -26,7 +26,7 @@ pub struct Release {
 /// Response from the /api/releases endpoint
 #[derive(Debug, Deserialize)]
 struct ApiReleasesResponse {
-    gui: String,
+    gui: Version,
 }
 
 pub async fn checker_task(
@@ -233,27 +233,24 @@ pub(crate) async fn check() -> Result<Release> {
         .send()
         .await?;
 
-    if !response.status().is_success() {
-        anyhow::bail!(
-            "HTTP status: {} from API URL `{}`",
-            response.status(),
-            api_url
-        );
+    let response_status = response.status();
+
+    if !response_status.is_success() {
+        anyhow::bail!("HTTP status: {response_status} from API URL `{api_url}`");
     }
 
     let api_response: ApiReleasesResponse = response
         .json()
         .await
         .context("Failed to parse JSON response from /api/releases")?;
-    let version =
-        Version::parse(&api_response.gui).context("Failed to parse version string from API")?;
+    let version = api_response.gui;
     tracing::debug!(?version, "Latest GUI version from API");
 
     // Construct the download URL using the redirect endpoint
     let download_url = url::Url::parse(&format!(
         "https://www.firezone.dev/dl/firezone-client-gui-{os}/{version}/{arch}"
     ))
-    .context("Impossible: Hard-coded URL should always be parsable")?;
+    .context("Failed to create download URL")?;
 
     Ok(Release {
         download_url,
@@ -400,9 +397,7 @@ mod tests {
         let json_str = r#"{"apple":"1.2.3","android":"1.2.4","gui":"1.5.9","headless":"1.5.6","gateway":"1.4.19"}"#;
         let response: ApiReleasesResponse = serde_json::from_str(json_str).unwrap();
 
-        assert_eq!(response.gui, "1.5.9");
-        let version = Version::parse(&response.gui).unwrap();
-        assert_eq!(version, Version::new(1, 5, 9));
+        assert_eq!(response.gui, Version::new(1, 5, 9));
     }
 
     #[test]
