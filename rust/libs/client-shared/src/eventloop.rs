@@ -108,12 +108,13 @@ impl Eventloop {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
 
-        let tunnel = ClientTunnel::new(
+        let mut tunnel = ClientTunnel::new(
             tcp_socket_factory,
             udp_socket_factory.clone(),
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
         );
+        tunnel.update_system_resolvers(dns_servers.clone());
 
         tokio::spawn(phoenix_channel_event_loop(
             portal,
