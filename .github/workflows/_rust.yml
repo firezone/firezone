@@ -27,8 +27,6 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust-stable
-      - uses: ./.github/actions/setup-rust-nightly
-        id: setup-rust-nightly
       - uses: ./.github/actions/setup-rust-target-dependency-cache
         with:
           # save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -40,7 +38,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tool: cargo-udeps,cargo-deny
+          tool: cargo-deny
       - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
         if: ${{ runner.os == 'Linux' }}
         env:
@@ -55,10 +53,39 @@ jobs:
         name: cargo doc
         shell: bash
       - run: cargo fmt -- --check
-      - run: cargo +${{ steps.setup-rust-nightly.outputs.nightly_version }} udeps --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
-        name: cargo udeps
       - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
         shell: bash
+
+  unused-dependencies:
+    name: unused-dependencies-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        # TODO: https://github.com/rust-lang/cargo/issues/5220
+        runs-on: [ubuntu-24.04, macos-14, windows-2022]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/setup-rust-nightly
+        id: setup-rust-nightly
+      - uses: ./.github/actions/setup-rust-target-dependency-cache
+        with:
+          # save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: true
+          key: ${{ steps.setup-rust-nightly.outputs.nightly_version }}
+      - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: cargo-udeps
+      - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
+        if: ${{ runner.os == 'Linux' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: bpf-linker
+      - run: cargo +${{ steps.setup-rust-nightly.outputs.nightly_version }} udeps --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
+        name: cargo udeps
 
   monitor-static-analysis:
     needs: [static-analysis]
