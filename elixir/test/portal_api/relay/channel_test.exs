@@ -96,6 +96,7 @@ defmodule PortalAPI.Relay.ChannelTest do
 
   describe "handle_in/3 for unknown messages" do
     test "it doesn't crash", %{socket: socket} do
+      assert_push "init", %{}
       ref = push(socket, "unknown_message", %{})
 
       assert_reply ref, :error, %{reason: :unknown_message}, 1000
