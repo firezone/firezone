@@ -209,6 +209,18 @@ impl GuiIntegration for TauriIntegration {
 
         Ok(())
     }
+
+    async fn save_general_settings(&self, settings: &GeneralSettings) -> Result<()> {
+        settings::save_general(settings).await?;
+
+        Ok(())
+    }
+
+    async fn save_advanced_settings(&self, settings: &AdvancedSettings) -> Result<()> {
+        settings::save_advanced(settings).await?;
+
+        Ok(())
+    }
 }
 
 pub struct RunConfig {
