@@ -90,7 +90,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: bpf-linker
-      - run: cargo +${{ steps.setup-rust-nightly.outputs.nightly_version }} udeps --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
+      - run: cargo +${{ steps.setup-rust-nightly.outputs.nightly_version }} udeps --verbose --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
         name: cargo udeps
 
   monitor-static-analysis:
