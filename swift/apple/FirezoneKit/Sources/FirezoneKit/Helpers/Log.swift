@@ -230,7 +230,7 @@ internal final class LogWriter: @unchecked Sendable {
       guard let self = self else { return }
       guard let handle = self.ensureFileExists() else { return }
 
-      handle.write(Data(line.utf8))
+      try? handle.write(contentsOf: Data(line.utf8))
     }
   }
 }
