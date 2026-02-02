@@ -1850,6 +1850,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
   describe "handle_in/3" do
     test "for unknown messages it doesn't crash", %{gateway: gateway, site: site, token: token} do
       socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
 
       ref = push(socket, "unknown_message", %{})
       assert_reply ref, :error, %{reason: :unknown_message}
@@ -1867,6 +1868,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1932,6 +1934,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
 
       push_ref =
         push(socket, "flow_authorized", %{
@@ -1953,6 +1956,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
 
       policy_authorization =
         policy_authorization_fixture(
@@ -2022,6 +2026,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
 
       push_ref =
         push(socket, "connection_ready", %{
@@ -2039,6 +2044,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       account: account
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
 
       candidates = ["foo", "bar"]
 
@@ -2062,6 +2068,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       account: account
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
 
       candidates = ["foo", "bar"]
 
@@ -2098,6 +2105,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       account: account
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
 
       candidates = ["foo", "bar"]
 
@@ -2121,6 +2129,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       account: account
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
 
       candidates = ["foo", "bar"]
 
