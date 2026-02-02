@@ -29,7 +29,10 @@ jobs:
         id: setup-rust-stable
       - uses: ./.github/actions/setup-rust-nightly
         id: setup-rust-nightly
-      - uses: ./.github/actions/setup-rust-sccache
+      - uses: ./.github/actions/setup-rust-target-dependency-cache
+        with:
+          save-if: ${{ github.event_name == 'merge_group' || github.ref == 'refs/heads/main' }}
+          key: ${{ steps.setup-rust-nightly.outputs.nightly_version }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
       - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
