@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::{io::Write, path::PathBuf, str::FromStr, time::Duration};
 use tokio::sync::mpsc;
 
+const BASE_URL: &str = "https://www.firezone.dev";
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Notification {
     pub release: Release,
@@ -75,9 +77,6 @@ pub async fn checker_task(
 }
 
 /// Reads the latest version and download URL we've seen, from disk
-///
-/// The URL is not used but the code was near merging so I didn't
-/// want to remove it and break compat with my dev systems.
 async fn read_latest_release_file() -> Option<Release> {
     tokio::fs::read_to_string(version_file_path().ok()?)
         .await
@@ -145,17 +144,13 @@ enum State {
 
 impl Checker {
     fn new(ours: Version, latest_seen: Option<Release>) -> Self {
-        let notification = match &latest_seen {
-            Some(latest_seen) if latest_seen.version > ours => {
-                Some(Notification {
-                    release: latest_seen.clone(),
-                    // Never show a pop-up right at startup.
-                    tell_user: false,
-                })
-            }
-            Some(_) => None,
-            None => None,
-        };
+        let notification = latest_seen
+            .filter(|r| r.version > ours)
+            .map(|release| Notification {
+                release,
+                // Never show a pop-up right at startup.
+                tell_user: false,
+            });
         let notification_dirty = notification.is_some();
 
         Self {
@@ -217,18 +212,18 @@ fn version_file_path() -> Result<PathBuf> {
 
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release> {
-    let client = reqwest::Client::builder().build()?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()?;
     let arch = std::env::consts::ARCH;
     let os = std::env::consts::OS;
 
     let user_agent = format!("Firezone Client/{:?} ({os}; {arch})", current_version());
 
-    // Check the API for the latest version
-    let api_url = url::Url::parse("https://www.firezone.dev/api/releases")
-        .context("Impossible: Hard-coded URL should always be parsable")?;
+    let api_url = format!("{BASE_URL}/api/releases");
 
     let response = client
-        .get(api_url.clone())
+        .get(&api_url)
         .header("User-Agent", &user_agent)
         .send()
         .await?;
@@ -246,11 +241,10 @@ pub(crate) async fn check() -> Result<Release> {
     let version = api_response.gui;
     tracing::debug!(?version, "Latest GUI version from API");
 
-    // Construct the download URL using the redirect endpoint
     let download_url = url::Url::parse(&format!(
-        "https://www.firezone.dev/dl/firezone-client-gui-{os}/{version}/{arch}"
+        "{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}"
     ))
-    .context("Failed to create download URL")?;
+    .expect("download URL is valid");
 
     Ok(Release {
         download_url,
@@ -382,7 +376,7 @@ mod tests {
         let arch = std::env::consts::ARCH;
         let os = std::env::consts::OS;
         let download_url = url::Url::parse(&format!(
-            "https://www.firezone.dev/dl/firezone-client-gui-{os}/{version}/{arch}"
+            "{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}"
         ))
         .unwrap();
         Release {
@@ -418,7 +412,7 @@ mod tests {
 
         assert_eq!(
             release.download_url.as_str(),
-            format!("https://www.firezone.dev/dl/firezone-client-gui-{os}/1.5.9/{arch}")
+            format!("{BASE_URL}/dl/firezone-client-gui-{os}/1.5.9/{arch}")
         );
     }
 }
