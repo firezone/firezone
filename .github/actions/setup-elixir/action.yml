@@ -34,7 +34,7 @@ runs:
         mix local.rebar --force
 
     # Dependencies cache - keyed by mix.lock only (stable across source changes)
-    - uses: actions/cache/restore@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+    - uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
       name: Restore Elixir Deps Cache
       id: deps-cache
       with:
@@ -48,7 +48,7 @@ runs:
       run: mix deps.get --only ${{ inputs.mix_env }}
 
     # Build cache - keyed by source files for incremental compilation
-    - uses: actions/cache/restore@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+    - uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
       name: Restore Elixir Build Cache
       id: build-cache
       with:
@@ -63,14 +63,14 @@ runs:
       working-directory: ./elixir
       run: mix deps.compile --skip-umbrella-children
 
-    - uses: actions/cache/save@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+    - uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
       name: Save Elixir Deps Cache
       if: ${{ github.ref_name == 'main' && steps.deps-cache.outputs.cache-hit != 'true' }}
       with:
         path: elixir/deps
         key: ${{ steps.deps-cache.outputs.cache-primary-key }}
 
-    - uses: actions/cache/save@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+    - uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
       name: Save Elixir Build Cache
       if: ${{ github.ref_name == 'main' }}
       with:
