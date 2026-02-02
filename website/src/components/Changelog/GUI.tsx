@@ -10,7 +10,8 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.10" date={new Date("2026-02-02")}>
         <ChangeItem pull="11625">
           Fails faster when the initial connection to the control plane cannot
           be established, allowing the user to retry sooner.
@@ -54,7 +55,7 @@ export default function GUI({ os }: { os: OS }) {
           for IPv4-only DNS resources if the setting was only changed after a
           DNS query had already been processed.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.9" date={new Date("2025-12-23")}>
         {os == OS.Linux && (
           <ChangeItem pull="10742">
