@@ -148,7 +148,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     self.adapter = adapter
 
     // Start command consumer loop
-    let handler = CommandHandler(self)
+    let handler = PacketTunnelProviderActorBridge(self)
     commandConsumerTask = CancellableTask { @Sendable in
       for await command in commandReceiver.stream {
         handler.handle(command)
@@ -433,44 +433,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   #endif
 
-  // MARK: - Provider command handling
-
-  /// Sendable wrapper for handling provider commands from a concurrent task.
-  ///
-  /// Nested inside PacketTunnelProvider to make the coupling explicit and ensure
-  /// it can only be created with a valid provider reference. Marked @unchecked Sendable
-  /// because PacketTunnelProvider is not Sendable (framework limitation), but the
-  /// methods called (cancelTunnelWithError, setTunnelNetworkSettings, reasserting)
-  /// are designed for cross-thread access by NEPacketTunnelProvider.
-  final class CommandHandler: @unchecked Sendable {
-    private weak var provider: PacketTunnelProvider?
-
-    fileprivate init(_ provider: PacketTunnelProvider) {
-      self.provider = provider
-    }
-
-    func handle(_ command: ProviderCommand) {
-      guard let provider else {
-        Log.warning("CommandHandler: provider deallocated, dropping command")
-        // Respond to channels to prevent callers from hanging indefinitely
-        switch command {
-        case .getReasserting(let sender):
-          sender.send(false)
-        case .applyNetworkSettings(_, let sender):
-          sender.send("Provider unavailable")
-        case .cancelWithError, .setReasserting, .startLogCleanupTask:
-          break  // Fire-and-forget commands, no response needed
-        }
-        return
-      }
-      // NEPacketTunnelProvider properties like `reasserting` require main-thread access.
-      // Without this, property reads silently fail and channel responses never arrive.
-      DispatchQueue.main.async {
-        provider.handleProviderCommand(command)
-      }
-    }
-  }
-
   /// Handle commands from the Adapter via channel.
   private func handleProviderCommand(_ command: ProviderCommand) {
     switch command {
@@ -501,6 +463,42 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       setTunnelNetworkSettings(neSettings) { error in
         responseSender.send(error?.localizedDescription)
       }
+    }
+  }
+}
+
+// MARK: - PacketTunnelProviderActorBridge
+
+/// Sendable wrapper for handling provider commands from a concurrent task.
+///
+/// Marked @unchecked Sendable because PacketTunnelProvider is not Sendable (framework
+/// limitation), but the methods called (cancelTunnelWithError, setTunnelNetworkSettings,
+/// reasserting) are designed for cross-thread access by NEPacketTunnelProvider.
+private final class PacketTunnelProviderActorBridge: @unchecked Sendable {
+  private weak var provider: PacketTunnelProvider?
+
+  fileprivate init(_ provider: PacketTunnelProvider) {
+    self.provider = provider
+  }
+
+  func handle(_ command: ProviderCommand) {
+    guard let provider else {
+      Log.warning("CommandHandler: provider deallocated, dropping command")
+      // Respond to channels to prevent callers from hanging indefinitely
+      switch command {
+      case .getReasserting(let sender):
+        sender.send(false)
+      case .applyNetworkSettings(_, let sender):
+        sender.send("Provider unavailable")
+      case .cancelWithError, .setReasserting, .startLogCleanupTask:
+        break  // Fire-and-forget commands, no response needed
+      }
+      return
+    }
+    // NEPacketTunnelProvider properties like `reasserting` require main-thread access.
+    // Without this, property reads silently fail and channel responses never arrive.
+    DispatchQueue.main.async {
+      provider.handleProviderCommand(command)
     }
   }
 }
