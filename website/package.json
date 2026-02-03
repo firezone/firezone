@@ -52,7 +52,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@typescript-eslint/typescript-estree": "^8.46.1"
+      "@typescript-eslint/typescript-estree": "^8.46.1",
+      "webpack": "^5.94.0"
     }
   },
   "devDependencies": {
