@@ -142,6 +142,9 @@ actor Adapter {
     self.internetResourceEnabled = internetResourceEnabled
     self.providerCommandSender = providerCommandSender
     self.systemConfigurationResolvers = try SystemConfigurationResolvers()
+
+    // Start log cleanup immediately - doesn't depend on tunnel being connected
+    providerCommandSender.send(.startLogCleanupTask)
   }
 
   func start() async throws {
@@ -396,7 +399,6 @@ actor Adapter {
       if firstStart {
         if applySucceeded {
           resumeStartContinuation()
-          providerCommandSender.send(.startLogCleanupTask)
         } else {
           // Settings failed to apply on first start - signal error
           Log.warning("Failed to apply network settings on first start")
