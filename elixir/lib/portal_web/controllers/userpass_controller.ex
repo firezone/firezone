@@ -30,7 +30,6 @@ defmodule PortalWeb.UserpassController do
          %Portal.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
          {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
-         :ok = log_seats_limit_exceeded(account, actor, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, actor, provider, params) do
       signed_in(conn, context_type, account, actor, session_or_token, params)
     else
@@ -72,13 +71,6 @@ defmodule PortalWeb.UserpassController do
   end
 
   defp client_sign_in_restricted?(_account, _context_type), do: false
-
-  defp log_seats_limit_exceeded(account, actor, context_type)
-       when context_type in [:gui_client, :headless_client] do
-    Portal.Billing.log_seats_limit_exceeded(account, actor.id)
-  end
-
-  defp log_seats_limit_exceeded(_account, _actor, _context_type), do: :ok
 
   defp create_session_or_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]

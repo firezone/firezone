@@ -76,7 +76,6 @@ defmodule PortalWeb.EmailOTPController do
              entered_code
            ),
          :ok <- check_admin(passcode.actor, context_type),
-         :ok = log_seats_limit_exceeded(account, passcode.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, passcode.actor, provider, params) do
       {:ok,
@@ -182,13 +181,6 @@ defmodule PortalWeb.EmailOTPController do
   end
 
   defp client_sign_in_restricted?(_account, _context_type), do: false
-
-  defp log_seats_limit_exceeded(account, actor, context_type)
-       when context_type in [:gui_client, :headless_client] do
-    Portal.Billing.log_seats_limit_exceeded(account, actor.id)
-  end
-
-  defp log_seats_limit_exceeded(_account, _actor, _context_type), do: :ok
 
   defp create_session_or_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]

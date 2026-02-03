@@ -71,16 +71,14 @@
                     Account Limits Exceeded
                   </h1>
                   <p style="margin: 0; line-height: 24px">
-                    Your Firezone account has exceeded the following limits:
+                    Your Firezone account <strong><%= @account.slug %></strong> (<code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @account.id %></code>) has exceeded the following limits:
                   </p>
                   <div role="separator" style="line-height: 16px">&zwj;</div>
-                  <p style="margin: 0; padding: 16px; background-color: #fef2f2; border-radius: 4px; color: #991b1b; font-weight: 500; line-height: 24px">
-                    <%= @warning %>
-                  </p>
-                  <div role="separator" style="line-height: 16px">&zwj;</div>
-                  <p style="margin: 0; line-height: 24px">
-                    Please upgrade your plan or remove resources to resolve this issue.
-                  </p>
+                  <div style="margin: 0; padding: 16px; background-color: #fef2f2; border-radius: 4px; color: #991b1b; font-weight: 500; line-height: 24px">
+                    <%= for line <- String.split(@warning, "\n") do %>
+                      <div><%= line %></div>
+                    <% end %>
+                  </div>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
                   <p style="margin: 0 0 16px 0; line-height: 24px;">
                     <span style="font-weight: 600">What happens next?</span>
@@ -94,11 +92,26 @@
                   <p style="margin: 0 0 16px 0; line-height: 24px;">
                     <span style="font-weight: 600">To resolve this:</span>
                   </p>
+                  <%= case @plan_type do %>
+                  <% :enterprise -> %>
+                  <p style="margin: 0; line-height: 24px">
+                    Please contact your account manager to increase these limits, or remove excess resources to get back within your current limits.
+                  </p>
+                  <% :team -> %>
+                  <p style="margin: 0; line-height: 24px">
+                    You can change your paid users by going to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Billing</a> in the admin portal and clicking the "Manage" button in the upper-right. Or remove excess resources to get back within your current limits.
+                  </p>
+                  <% :starter -> %>
+                  <p style="margin: 0; line-height: 24px">
+                    You can upgrade to Team by going to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Billing</a> in the admin portal. Or remove excess resources to get back within your current limits.
+                  </p>
+                  <% _ -> %>
                   <ol style="margin: 0; padding-left: 24px; line-height: 24px">
                     <li>Log into your Firezone admin portal</li>
-                    <li>Navigate to Settings -> Billing to upgrade your plan</li>
+                    <li>Navigate to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Billing</a> to upgrade your plan</li>
                     <li>Or remove excess resources to get back within your limits</li>
                   </ol>
+                  <% end %>
                   <div role="separator" style="line-height: 24px">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
                     If you have any questions, please contact our support team.

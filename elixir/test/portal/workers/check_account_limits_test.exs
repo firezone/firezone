@@ -2,6 +2,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
 
@@ -86,6 +87,13 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert first_email.subject == "Firezone Account Limits Exceeded"
       assert first_email.text_body =~ "exceeded the following limits"
       assert first_email.text_body =~ "account admins"
+
+      # Verify account_id and account_slug are present
+      assert first_email.text_body =~ account.id
+      assert first_email.text_body =~ account.slug
+
+      # Verify count/limit format (3 admins / 1 limit)
+      assert first_email.text_body =~ "account admins (3 / 1)"
     end
 
     test "does not send email if warning_last_sent_at is less than 3 days ago" do
@@ -180,7 +188,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert :ok = perform_job(CheckAccountLimits, %{})
 
       account = Repo.get!(Portal.Account, account.id)
-      refute Portal.Account.any_limit_exceeded?(account)
+      refute Portal.Billing.any_limit_exceeded?(account)
       refute_email_sent()
     end
 
@@ -203,7 +211,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert :ok = perform_job(CheckAccountLimits, %{})
 
       account = Repo.get!(Portal.Account, account.id)
-      refute Portal.Account.any_limit_exceeded?(account)
+      refute Portal.Billing.any_limit_exceeded?(account)
       refute_email_sent()
     end
 
@@ -244,24 +252,156 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert admin2.email in email_recipients
       refute disabled_admin.email in email_recipients
     end
+
+    test "email shows multiple exceeded limits with count/limit format" do
+      account = provisioned_account_fixture()
+      # Create 3 admins (exceed limit of 1)
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      # Create 2 service accounts (exceed limit of 1)
+      actor_fixture(account: account, type: :service_account)
+      actor_fixture(account: account, type: :service_account)
+
+      update_account(account, %{
+        limits: %{
+          account_admin_users_count: 1,
+          service_accounts_count: 1
+        }
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      emails_sent = collect_sent_emails()
+      [first_email | _] = emails_sent
+
+      # Verify multiple limits with counts
+      assert first_email.text_body =~ "service accounts (2 / 1)"
+      assert first_email.text_body =~ "account admins (3 / 1)"
+    end
+
+    test "email shows Team plan CTA for Team accounts" do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Team"}}})
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      update_account(account, %{limits: %{account_admin_users_count: 1}})
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      [first_email | _] = collect_sent_emails()
+      assert first_email.text_body =~ "change your paid users"
+      assert first_email.text_body =~ "Settings"
+      assert first_email.text_body =~ "Billing"
+      assert first_email.text_body =~ "Manage"
+    end
+
+    test "email shows Starter plan CTA for Starter accounts" do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Starter"}}})
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      update_account(account, %{limits: %{account_admin_users_count: 1}})
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      [first_email | _] = collect_sent_emails()
+      assert first_email.text_body =~ "upgrade to Team"
+      assert first_email.text_body =~ "Settings"
+      assert first_email.text_body =~ "Billing"
+    end
+
+    test "email shows Enterprise plan CTA for Enterprise accounts" do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      update_account(account, %{limits: %{account_admin_users_count: 1}})
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      [first_email | _] = collect_sent_emails()
+      assert first_email.text_body =~ "contact your account manager"
+    end
+
+    test "logs warning when seats_limit_exceeded transitions from false to true" do
+      account = provisioned_account_fixture()
+      admin = admin_actor_fixture(account: account)
+
+      # Create a client with recent activity to count as active user
+      client = Portal.ClientFixtures.client_fixture(account: account, actor: admin)
+
+      client
+      |> Ecto.Changeset.change(last_seen_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      # Set a low monthly_active_users_count limit
+      update_account(account, %{
+        seats_limit_exceeded: false,
+        limits: %{monthly_active_users_count: 0}
+      })
+
+      log =
+        capture_log(fn ->
+          assert :ok = perform_job(CheckAccountLimits, %{})
+        end)
+
+      assert log =~ "Account seats limit exceeded"
+      assert log =~ account.id
+      assert log =~ account.slug
+
+      # Verify the flag was set
+      account = Repo.get!(Portal.Account, account.id)
+      assert account.seats_limit_exceeded
+    end
+
+    test "does not log warning when seats_limit_exceeded remains true" do
+      account = provisioned_account_fixture()
+      admin = admin_actor_fixture(account: account)
+
+      # Create a client with recent activity
+      client = Portal.ClientFixtures.client_fixture(account: account, actor: admin)
+
+      client
+      |> Ecto.Changeset.change(last_seen_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      # Set the flag as already exceeded
+      update_account(account, %{
+        seats_limit_exceeded: true,
+        warning_last_sent_at: DateTime.utc_now(),
+        limits: %{monthly_active_users_count: 0}
+      })
+
+      log =
+        capture_log(fn ->
+          assert :ok = perform_job(CheckAccountLimits, %{})
+        end)
+
+      refute log =~ "Account seats limit exceeded"
+
+      # Flag should still be true
+      account = Repo.get!(Portal.Account, account.id)
+      assert account.seats_limit_exceeded
+    end
   end
 
   defp provisioned_account_fixture(attrs \\ %{}) do
     account = account_fixture(attrs)
 
+    stripe_attrs =
+      Map.merge(
+        %{
+          customer_id: "cus_#{System.unique_integer([:positive])}",
+          subscription_id: "sub_#{System.unique_integer([:positive])}",
+          product_name: "Team"
+        },
+        get_in(attrs, [:metadata, :stripe]) || %{}
+      )
+
     account
-    |> Ecto.Changeset.cast(
-      %{
-        metadata: %{
-          stripe: %{
-            customer_id: "cus_#{System.unique_integer([:positive])}",
-            subscription_id: "sub_#{System.unique_integer([:positive])}",
-            product_name: "Team"
-          }
-        }
-      },
-      []
-    )
+    |> Ecto.Changeset.cast(%{metadata: %{stripe: stripe_attrs}}, [])
     |> Ecto.Changeset.cast_embed(:metadata)
     |> Repo.update!()
   end

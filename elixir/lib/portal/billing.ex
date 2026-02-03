@@ -25,6 +25,94 @@ defmodule Portal.Billing do
 
   # Limits and Features
 
+  @doc """
+  Returns true if any billing limit is exceeded.
+  """
+  @spec any_limit_exceeded?(Portal.Account.t()) :: boolean()
+  def any_limit_exceeded?(%Portal.Account{} = account) do
+    account.users_limit_exceeded or
+      account.seats_limit_exceeded or
+      account.service_accounts_limit_exceeded or
+      account.sites_limit_exceeded or
+      account.admins_limit_exceeded
+  end
+
+  @doc """
+  Builds a human-readable warning message from the exceeded limit flags.
+  Returns nil if no limits are exceeded.
+
+  When counts are provided, displays each exceeded limit in the format:
+  "label (count / limit)"
+  """
+  @spec build_limits_exceeded_message(Portal.Account.t(), map()) :: String.t() | nil
+  def build_limits_exceeded_message(%Portal.Account{} = account, counts \\ %{}) do
+    limits =
+      []
+      |> maybe_add_with_counts(
+        "users",
+        account.users_limit_exceeded,
+        counts[:users],
+        account.limits && account.limits.users_count
+      )
+      |> maybe_add_with_counts(
+        "monthly active users",
+        account.seats_limit_exceeded,
+        counts[:active_users],
+        account.limits && account.limits.monthly_active_users_count
+      )
+      |> maybe_add_with_counts(
+        "service accounts",
+        account.service_accounts_limit_exceeded,
+        counts[:service_accounts],
+        account.limits && account.limits.service_accounts_count
+      )
+      |> maybe_add_with_counts(
+        "sites",
+        account.sites_limit_exceeded,
+        counts[:sites],
+        account.limits && account.limits.sites_count
+      )
+      |> maybe_add_with_counts(
+        "account admins",
+        account.admins_limit_exceeded,
+        counts[:admins],
+        account.limits && account.limits.account_admin_users_count
+      )
+
+    case limits do
+      [] -> nil
+      limits -> Enum.join(limits, "\n")
+    end
+  end
+
+  defp maybe_add_with_counts(list, label, true, count, limit)
+       when is_integer(count) and is_integer(limit) do
+    list ++ ["#{label} (#{count} / #{limit})"]
+  end
+
+  defp maybe_add_with_counts(list, label, true, _count, _limit) do
+    list ++ [label]
+  end
+
+  defp maybe_add_with_counts(list, _label, false, _count, _limit), do: list
+
+  @doc """
+  Returns the plan type for the account based on the Stripe product name.
+  Returns :enterprise, :team, :starter, or :unknown.
+  """
+  @spec plan_type(Portal.Account.t()) :: :enterprise | :team | :starter | :unknown
+  def plan_type(%Portal.Account{metadata: %{stripe: %{product_name: product_name}}})
+      when is_binary(product_name) do
+    cond do
+      String.starts_with?(product_name, "Enterprise") -> :enterprise
+      product_name == "Team" -> :team
+      product_name == "Starter" -> :starter
+      true -> :unknown
+    end
+  end
+
+  def plan_type(%Portal.Account{}), do: :unknown
+
   def users_limit_exceeded?(%Portal.Account{} = account, users_count) do
     not is_nil(account.limits.users_count) and
       users_count > account.limits.users_count
@@ -125,30 +213,12 @@ defmodule Portal.Billing do
   Returns `true` if sign-in should be blocked (users limit exceeded),
   `false` otherwise.
 
-  Note: seats_limit_exceeded is not checked here - it only triggers a warning log.
-  Use `log_seats_limit_exceeded/3` after user identity is resolved.
+  Note: seats_limit_exceeded is a soft limit - it doesn't block sign-ins.
+  A warning is logged by CheckAccountLimits worker when first exceeded.
   """
   @spec client_sign_in_restricted?(Portal.Account.t()) :: boolean()
   def client_sign_in_restricted?(%Portal.Account{} = account) do
     account.users_limit_exceeded
-  end
-
-  @doc """
-  Logs an error if the account has exceeded its seats limit.
-
-  This should be called after user identity is resolved during sign-in flows.
-  """
-  @spec log_seats_limit_exceeded(Portal.Account.t(), String.t()) :: :ok
-  def log_seats_limit_exceeded(%Portal.Account{} = account, actor_id) do
-    if account.seats_limit_exceeded do
-      Logger.error("Account seats limit exceeded",
-        account_id: account.id,
-        account_slug: account.slug,
-        actor_id: actor_id
-      )
-    end
-
-    :ok
   end
 
   @doc """
@@ -157,8 +227,8 @@ defmodule Portal.Billing do
   Returns `true` if connection should be blocked (users or service accounts
   limits exceeded), `false` otherwise.
 
-  Note: seats_limit_exceeded is not checked here - it only triggers a warning log.
-  Use `log_seats_limit_exceeded/2` after connection is established.
+  Note: seats_limit_exceeded is a soft limit - it doesn't block connections.
+  A warning is logged by CheckAccountLimits worker when first exceeded.
   """
   @spec client_connect_restricted?(Portal.Account.t()) :: boolean()
   def client_connect_restricted?(%Portal.Account{} = account) do

@@ -50,7 +50,7 @@ defmodule Portal.Workers.CheckAccountLimits do
       flags = limit_flags(account, account_counts)
 
       if any_exceeded?(flags) do
-        handle_exceeded_limits(account, flags)
+        handle_exceeded_limits(account, flags, account_counts)
       else
         update_account_limits(account, cleared_flags())
       end
@@ -78,14 +78,26 @@ defmodule Portal.Workers.CheckAccountLimits do
 
   defp any_exceeded?(flags), do: Enum.any?(flags, fn {_k, v} -> v end)
 
-  defp handle_exceeded_limits(account, flags) do
+  defp handle_exceeded_limits(account, flags, counts) do
+    # Log when seats limit transitions from not-exceeded to exceeded.
+    # Unlike other limits, seats is a "soft" limit that doesn't block sign-ins,
+    # so we log here to have visibility into when accounts exceed it.
+    if not account.seats_limit_exceeded and flags.seats_limit_exceeded do
+      Logger.warning("Account seats limit exceeded",
+        account_id: account.id,
+        account_slug: account.slug,
+        count: counts[:active_users],
+        limit: account.limits && account.limits.monthly_active_users_count
+      )
+    end
+
     send_email? = should_send_email?(account)
     flags = maybe_put_sent_at(flags, send_email?)
 
     {:ok, updated_account} = update_account_limits(account, flags)
 
     if send_email? do
-      warning = Account.build_limits_exceeded_message(updated_account)
+      warning = Billing.build_limits_exceeded_message(updated_account, counts)
       send_limit_exceeded_emails(updated_account, warning)
     end
   end
@@ -125,31 +137,31 @@ defmodule Portal.Workers.CheckAccountLimits do
 
       admins ->
         Enum.each(admins, fn admin ->
-          send_limit_exceeded_email(admin, warning, account.id)
+          send_limit_exceeded_email(account, admin, warning)
         end)
     end
   end
 
-  defp send_limit_exceeded_email(admin, warning, account_id) do
+  defp send_limit_exceeded_email(account, admin, warning) do
     Logger.info("Sending limits exceeded email",
       to: admin.email,
-      account_id: account_id
+      account_id: account.id
     )
 
-    Notifications.limits_exceeded_email(warning, admin.email)
+    Notifications.limits_exceeded_email(account, warning, admin.email)
     |> Mailer.deliver()
     |> case do
       {:ok, _result} ->
         Logger.info("Limits exceeded email sent successfully",
           to: admin.email,
-          account_id: account_id
+          account_id: account.id
         )
 
       {:error, reason} ->
         Logger.error("Failed to send limits exceeded email",
           to: admin.email,
           reason: inspect(reason),
-          account_id: account_id
+          account_id: account.id
         )
     end
   end

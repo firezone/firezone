@@ -705,7 +705,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert flash(conn, :error) =~ "exceeding billing limits"
     end
 
-    test "logs error and allows gui-client sign-in when seats_limit_exceeded is true", ctx do
+    test "allows gui-client sign-in when seats_limit_exceeded is true (soft limit)", ctx do
       actor = actor_fixture(account: ctx.account, email: "user@example.com")
       setup_successful_auth(ctx, actor, sub: "regular-user-123")
 
@@ -716,19 +716,11 @@ defmodule PortalWeb.OIDCControllerTest do
           params: %{"as" => "gui-client", "nonce" => "client-nonce", "state" => "client-state"}
         )
 
-      log =
-        capture_log(fn ->
-          conn = perform_callback(ctx.conn, cookie)
+      # Sign-in should still succeed since seats is a soft limit
+      conn = perform_callback(ctx.conn, cookie)
 
-          # Sign-in should still succeed
-          assert conn.status == 200
-          assert conn.resp_body =~ "client_redirect"
-        end)
-
-      assert log =~ "Account seats limit exceeded"
-      assert log =~ "account_id=#{ctx.account.id}"
-      assert log =~ "account_slug=#{ctx.account.slug}"
-      assert log =~ "actor_id=#{actor.id}"
+      assert conn.status == 200
+      assert conn.resp_body =~ "client_redirect"
     end
 
     test "rejects headless-client sign-in when users_limit_exceeded is true", ctx do

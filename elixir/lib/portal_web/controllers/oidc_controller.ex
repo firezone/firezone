@@ -67,7 +67,6 @@ defmodule PortalWeb.OIDCController do
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
          {:ok, identity} <- upsert_identity(account, claims, userinfo),
          :ok <- check_admin(identity, context_type),
-         :ok = log_seats_limit_exceeded(account, identity, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, identity, provider, cookie.params) do
       signed_in(
@@ -411,13 +410,6 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp client_sign_in_restricted?(_account, _context_type), do: false
-
-  defp log_seats_limit_exceeded(account, identity, context_type)
-       when context_type in [:gui_client, :headless_client] do
-    Portal.Billing.log_seats_limit_exceeded(account, identity.actor_id)
-  end
-
-  defp log_seats_limit_exceeded(_account, _identity, _context_type), do: :ok
 
   defp create_session_or_token(conn, identity, provider, params) do
     user_agent = conn.assigns[:user_agent]
