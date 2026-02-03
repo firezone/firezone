@@ -310,29 +310,11 @@ defmodule Portal.DirectorySync.ErrorHandler do
     |> Map.put(:directory_id, directory_id)
     |> Map.put(:step, step)
     |> Map.put(:reason, reason)
-    |> Map.put(:context, format_context(context))
+    |> Map.put(:context, inspect(context))
   end
 
   defp build_sentry_context(_reason, job) do
     Map.take(job, [:id, :args, :meta, :queue, :worker])
-  end
-
-  defp format_context(%Req.Response{} = response) do
-    Map.from_struct(response)
-  end
-
-  defp format_context(%Req.TransportError{} = error) do
-    Map.from_struct(error)
-  end
-
-  defp format_context(context) when is_exception(context) do
-    %{type: inspect(context.__struct__), message: Exception.message(context)}
-  end
-
-  defp format_context(nil), do: nil
-
-  defp format_context(context) do
-    inspect(context)
   end
 
   defmodule Database do

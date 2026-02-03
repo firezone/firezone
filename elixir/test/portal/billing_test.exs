@@ -1,7 +1,6 @@
 defmodule Portal.BillingTest do
   use Portal.DataCase, async: true
 
-  import ExUnit.CaptureLog
   import Portal.Billing
   import Portal.AccountFixtures
   import Portal.ActorFixtures

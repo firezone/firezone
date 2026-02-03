@@ -1,7 +1,6 @@
 defmodule PortalWeb.EmailOTPControllerTest do
   use PortalWeb.ConnCase, async: true
 
-  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
