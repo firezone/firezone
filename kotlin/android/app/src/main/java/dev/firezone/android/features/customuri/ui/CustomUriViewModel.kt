@@ -3,14 +3,14 @@ package dev.firezone.android.features.customuri.ui
 
 import android.content.Intent
 import android.util.Log
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -22,8 +22,8 @@ internal class CustomUriViewModel
     constructor(
         private val repo: Repository,
     ) : ViewModel() {
-        private val actionMutableLiveData = MutableLiveData<ViewAction>()
-        val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
+        private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
+        val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
         fun parseCustomUri(intent: Intent) {
             viewModelScope.launch {
@@ -62,11 +62,15 @@ internal class CustomUriViewModel
                     else -> error("Unknown path segment: ${intent.data?.lastPathSegment}")
                 }
                 if (accumulatedErrors.isNotEmpty()) {
-                    actionMutableLiveData.postValue(ViewAction.AuthFlowError(accumulatedErrors))
+                    actionMutableStateFlow.value = ViewAction.AuthFlowError(accumulatedErrors)
                 } else {
-                    actionMutableLiveData.postValue(ViewAction.AuthFlowComplete)
+                    actionMutableStateFlow.value = ViewAction.AuthFlowComplete
                 }
             }
+        }
+
+        fun clearAction() {
+            actionMutableStateFlow.value = null
         }
 
         companion object {
