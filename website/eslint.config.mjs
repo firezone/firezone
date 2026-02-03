@@ -16,39 +16,27 @@ const noHtmlEntityApostrophe = {
     schema: [],
   },
   create(context) {
+    function checkForEntityApostrophe(node, text) {
+      for (const pattern of [/&apos;/g, /&#39;/g]) {
+        let match;
+        while ((match = pattern.exec(text)) !== null) {
+          context.report({
+            node,
+            messageId: "noEntityApostrophe",
+            data: { entity: match[0] },
+          });
+        }
+      }
+    }
+
     return {
       JSXText(node) {
-        const text = node.raw;
-        const patterns = [/&apos;/g, /&#39;/g];
-
-        for (const pattern of patterns) {
-          let match;
-          while ((match = pattern.exec(text)) !== null) {
-            context.report({
-              node,
-              messageId: "noEntityApostrophe",
-              data: { entity: match[0] },
-            });
-          }
-        }
+        checkForEntityApostrophe(node, node.raw);
       },
       Literal(node) {
         if (typeof node.value !== "string") return;
         if (!node.parent || node.parent.type !== "JSXAttribute") return;
-
-        const text = node.raw;
-        const patterns = [/&apos;/g, /&#39;/g];
-
-        for (const pattern of patterns) {
-          let match;
-          while ((match = pattern.exec(text)) !== null) {
-            context.report({
-              node,
-              messageId: "noEntityApostrophe",
-              data: { entity: match[0] },
-            });
-          }
-        }
+        checkForEntityApostrophe(node, node.raw);
       },
     };
   },

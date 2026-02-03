@@ -19,11 +19,10 @@ repos:
         pass_filenames: false
       - id: website-eslint
         name: "website: eslint"
-        entry: bash -c 'cd website && pnpm exec eslint "$@"' --
+        entry: bash -c 'cd website && pnpm exec eslint .'
         language: system
-        types_or: [ts, tsx, javascript, jsx]
-        files: ^website/
-
+        pass_filenames: false
+        files: ^website/.*\.(js|jsx|ts|tsx)$
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
