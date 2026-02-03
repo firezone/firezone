@@ -11,6 +11,9 @@ defmodule Portal.DirectorySync.ErrorHandler do
   - 4xx HTTP errors: Disable directory immediately (user action required)
   - 5xx HTTP errors: Record error, disable after 24 hours (transient)
   - Network/transport errors: Treat as transient (5xx behavior)
+  - Validation errors: Disable directory immediately (user action required)
+  - Missing scopes: Disable directory immediately (user action required)
+  - Circuit breaker: Disable directory immediately (user action required)
   - Other errors: Treat as transient (5xx behavior)
   """
 
@@ -38,8 +41,8 @@ defmodule Portal.DirectorySync.ErrorHandler do
 
   # Entra error handling
 
-  defp handle_entra_error(%Portal.Entra.SyncError{cause: cause}, directory_id) do
-    {error_type, message} = classify_error(cause, &format_entra_error/1)
+  defp handle_entra_error(%Portal.Entra.SyncError{context: context}, directory_id) do
+    {error_type, message} = classify_error(context, &format_entra_error/1)
     update_directory(:entra, directory_id, error_type, message)
   end
 
@@ -50,8 +53,8 @@ defmodule Portal.DirectorySync.ErrorHandler do
 
   # Google error handling
 
-  defp handle_google_error(%Portal.Google.SyncError{cause: cause}, directory_id) do
-    {error_type, message} = classify_error(cause, &format_google_error/1)
+  defp handle_google_error(%Portal.Google.SyncError{context: context}, directory_id) do
+    {error_type, message} = classify_error(context, &format_google_error/1)
     update_directory(:google, directory_id, error_type, message)
   end
 
@@ -62,8 +65,8 @@ defmodule Portal.DirectorySync.ErrorHandler do
 
   # Okta error handling
 
-  defp handle_okta_error(%Portal.Okta.SyncError{cause: cause}, directory_id) do
-    {error_type, message} = classify_error(cause, &format_okta_error/1)
+  defp handle_okta_error(%Portal.Okta.SyncError{context: context}, directory_id) do
+    {error_type, message} = classify_error(context, &format_okta_error/1)
     update_directory(:okta, directory_id, error_type, message)
   end
 
@@ -72,33 +75,45 @@ defmodule Portal.DirectorySync.ErrorHandler do
     update_directory(:okta, directory_id, :transient, message)
   end
 
-  # Error classification
+  # Error classification - pattern matches on raw errors
 
-  defp classify_error(%Req.Response{status: status} = response, format_fn)
+  # HTTP 4xx -> client_error (disable immediately)
+  defp classify_error(%Req.Response{status: status} = resp, format_fn)
        when status >= 400 and status < 500 do
-    {:client_error, format_fn.(response)}
+    {:client_error, format_fn.(resp)}
   end
 
-  defp classify_error(%Req.Response{status: status} = response, format_fn)
-       when status >= 500 do
-    {:transient, format_fn.(response)}
+  # HTTP 5xx -> transient
+  defp classify_error(%Req.Response{} = resp, format_fn) do
+    {:transient, format_fn.(resp)}
   end
 
-  defp classify_error(%Req.Response{} = response, format_fn) do
-    {:transient, format_fn.(response)}
+  # Network errors -> transient
+  defp classify_error(%Req.TransportError{} = err, _format_fn) do
+    {:transient, format_transport_error(err)}
   end
 
-  defp classify_error(%Req.TransportError{} = error, _format_fn) do
-    {:transient, format_transport_error(error)}
+  # String contexts starting with special prefixes -> client_error
+  defp classify_error("validation: " <> _ = msg, _format_fn), do: {:client_error, msg}
+  defp classify_error("scopes: " <> _ = msg, _format_fn), do: {:client_error, msg}
+  defp classify_error("circuit_breaker: " <> _ = msg, _format_fn), do: {:client_error, msg}
+
+  # nil context -> transient with generic message
+  defp classify_error(nil, _format_fn) do
+    {:transient, "Unknown error occurred"}
   end
 
-  defp classify_error(error, _format_fn) do
-    {:transient, format_generic_error(error)}
+  # Other string contexts -> transient
+  defp classify_error(msg, _format_fn) when is_binary(msg) do
+    {:transient, msg}
   end
 
-  # Error formatting
+  # Error formatting - Provider-specific HTTP error formatting
 
-  defp format_entra_error(%Req.Response{status: status, body: %{"error" => error_obj}}) do
+  defp format_entra_error(%Req.Response{
+         status: status,
+         body: %{"error" => error_obj}
+       }) do
     code = Map.get(error_obj, "code")
     message = Map.get(error_obj, "message")
     inner_code = get_in(error_obj, ["innerError", "code"])
@@ -115,7 +130,8 @@ defmodule Portal.DirectorySync.ErrorHandler do
     Enum.join(parts, " - ")
   end
 
-  defp format_entra_error(%Req.Response{status: status, body: body}) when is_binary(body) do
+  defp format_entra_error(%Req.Response{status: status, body: body})
+       when is_binary(body) do
     "HTTP #{status} - #{body}"
   end
 
@@ -123,7 +139,10 @@ defmodule Portal.DirectorySync.ErrorHandler do
     "Entra API returned HTTP #{status}"
   end
 
-  defp format_google_error(%Req.Response{status: status, body: %{"error" => error_obj}})
+  defp format_google_error(%Req.Response{
+         status: status,
+         body: %{"error" => error_obj}
+       })
        when is_map(error_obj) do
     code = Map.get(error_obj, "code")
     message = Map.get(error_obj, "message")
@@ -146,7 +165,8 @@ defmodule Portal.DirectorySync.ErrorHandler do
     Enum.join(parts, " - ")
   end
 
-  defp format_google_error(%Req.Response{status: status, body: body}) when is_binary(body) do
+  defp format_google_error(%Req.Response{status: status, body: body})
+       when is_binary(body) do
     "HTTP #{status} - #{body}"
   end
 
@@ -154,11 +174,13 @@ defmodule Portal.DirectorySync.ErrorHandler do
     "Google API returned HTTP #{status}"
   end
 
-  defp format_okta_error(%Req.Response{status: status, body: body}) when is_map(body) do
+  defp format_okta_error(%Req.Response{status: status, body: body})
+       when is_map(body) do
     Portal.Okta.ErrorCodes.format_error(status, body)
   end
 
-  defp format_okta_error(%Req.Response{status: status, body: body}) when is_binary(body) do
+  defp format_okta_error(%Req.Response{status: status, body: body})
+       when is_binary(body) do
     Portal.Okta.ErrorCodes.format_error(status, body)
   end
 
@@ -173,6 +195,10 @@ defmodule Portal.DirectorySync.ErrorHandler do
   """
   @spec format_transport_error(Exception.t()) :: String.t()
   def format_transport_error(%Req.TransportError{reason: reason}) do
+    format_transport_reason(reason)
+  end
+
+  defp format_transport_reason(reason) do
     case reason do
       :nxdomain ->
         "DNS lookup failed."
@@ -272,7 +298,7 @@ defmodule Portal.DirectorySync.ErrorHandler do
          %{
            __struct__: struct,
            reason: reason,
-           cause: cause,
+           context: context,
            directory_id: directory_id,
            step: step
          },
@@ -284,35 +310,11 @@ defmodule Portal.DirectorySync.ErrorHandler do
     |> Map.put(:directory_id, directory_id)
     |> Map.put(:step, step)
     |> Map.put(:reason, reason)
-    |> Map.put(:cause, format_cause(cause))
+    |> Map.put(:context, inspect(context))
   end
 
   defp build_sentry_context(_reason, job) do
     Map.take(job, [:id, :args, :meta, :queue, :worker])
-  end
-
-  defp format_cause(%Req.Response{status: status, body: body}) when is_map(body) do
-    %{type: "Req.Response", status: status, body: body}
-  end
-
-  defp format_cause(%Req.Response{status: status, body: body}) when is_binary(body) do
-    %{type: "Req.Response", status: status, body: String.slice(body, 0, 500)}
-  end
-
-  defp format_cause(%Req.Response{status: status}) do
-    %{type: "Req.Response", status: status}
-  end
-
-  defp format_cause(%Req.TransportError{reason: reason}) do
-    %{type: "Req.TransportError", reason: inspect(reason)}
-  end
-
-  defp format_cause(cause) when is_exception(cause) do
-    %{type: inspect(cause.__struct__), message: Exception.message(cause)}
-  end
-
-  defp format_cause(cause) do
-    inspect(cause)
   end
 
   defmodule Database do

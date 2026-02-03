@@ -16,6 +16,22 @@ defmodule Portal.Okta.SyncTest do
   @test_jwk JOSE.JWK.generate_key({:rsa, 1024})
   @test_private_key_jwk @test_jwk |> JOSE.JWK.to_map() |> elem(1)
 
+  # Generate a valid test JWT with required scopes for Okta sync
+  @test_access_token (
+                       payload = %{
+                         "scp" => ["okta.apps.read", "okta.users.read", "okta.groups.read"],
+                         "iat" => System.system_time(:second),
+                         "exp" => System.system_time(:second) + 3600
+                       }
+
+                       {_, jwt} =
+                         @test_jwk
+                         |> JOSE.JWT.sign(%{"alg" => "RS256"}, payload)
+                         |> JOSE.JWS.compact()
+
+                       jwt
+                     )
+
   describe "perform/1" do
     setup do
       Req.Test.stub(APIClient, fn conn ->
@@ -40,9 +56,15 @@ defmodule Portal.Okta.SyncTest do
         cond do
           String.ends_with?(path, "/oauth2/v1/token") ->
             Req.Test.json(conn, %{
-              "access_token" => "test_token",
+              "access_token" => @test_access_token,
               "token_type" => "DPoP",
               "expires_in" => 3600
+            })
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
             })
 
           String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
@@ -163,9 +185,15 @@ defmodule Portal.Okta.SyncTest do
         cond do
           String.ends_with?(path, "/oauth2/v1/token") ->
             Req.Test.json(conn, %{
-              "access_token" => "test_token",
+              "access_token" => @test_access_token,
               "token_type" => "DPoP",
               "expires_in" => 3600
+            })
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
             })
 
           String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
@@ -201,7 +229,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should raise SyncError with appropriate message
-      assert_raise SyncError, ~r/User missing required 'email' field/, fn ->
+      assert_raise SyncError, ~r/missing required 'email' field/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
     end
@@ -221,9 +249,15 @@ defmodule Portal.Okta.SyncTest do
         cond do
           String.ends_with?(path, "/oauth2/v1/token") ->
             Req.Test.json(conn, %{
-              "access_token" => "test_token",
+              "access_token" => @test_access_token,
               "token_type" => "DPoP",
               "expires_in" => 3600
+            })
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
             })
 
           String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
@@ -259,7 +293,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should raise SyncError with appropriate message
-      assert_raise SyncError, ~r/User missing required 'email' field/, fn ->
+      assert_raise SyncError, ~r/missing required 'email' field/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
     end
@@ -286,6 +320,43 @@ defmodule Portal.Okta.SyncTest do
       end
     end
 
+    test "raises SyncError when access token is missing required scopes" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      # Mock successful token but introspect returns missing scopes
+      Req.Test.expect(APIClient, 10, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{
+              "access_token" => @test_access_token,
+              "token_type" => "DPoP",
+              "expires_in" => 3600
+            })
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            # Only return okta.apps.read - missing users.read and groups.read
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read"
+            })
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert_raise SyncError, ~r/missing required scopes.*okta\.users\.read/, fn ->
+        perform_job(Sync, %{directory_id: directory.id})
+      end
+    end
+
     test "raises SyncError when apps fetch fails" do
       account = account_fixture(features: %{idp_sync: true})
 
@@ -300,7 +371,13 @@ defmodule Portal.Okta.SyncTest do
       Req.Test.expect(APIClient, 10, fn %{request_path: path} = conn ->
         cond do
           String.ends_with?(path, "/oauth2/v1/token") ->
-            Req.Test.json(conn, %{"access_token" => "test_token"})
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
 
           String.ends_with?(path, "/apps") ->
             conn
@@ -334,7 +411,13 @@ defmodule Portal.Okta.SyncTest do
       Req.Test.expect(APIClient, 10, fn %{request_path: path} = conn ->
         cond do
           String.ends_with?(path, "/oauth2/v1/token") ->
-            Req.Test.json(conn, %{"access_token" => "test_token"})
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
 
           String.ends_with?(path, "/apps") and not String.contains?(path, "/users") ->
             Req.Test.json(conn, [%{"id" => "app_123"}])
@@ -385,7 +468,13 @@ defmodule Portal.Okta.SyncTest do
       Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
         cond do
           String.ends_with?(path, "/oauth2/v1/token") ->
-            Req.Test.json(conn, %{"access_token" => "test_token"})
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
 
           String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
               not String.contains?(path, "/groups") ->
@@ -437,6 +526,66 @@ defmodule Portal.Okta.SyncTest do
       assert updated_directory.error_message =~ "user_123"
       assert updated_directory.errored_at != nil
     end
+
+    test "ErrorHandler classifies 403 as client_error and disables directory" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      # Mock successful token, 403 on apps
+      Req.Test.expect(APIClient, 10, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
+
+          String.ends_with?(path, "/apps") ->
+            conn
+            |> Plug.Conn.put_status(403)
+            |> Req.Test.json(%{
+              "errorCode" => "E0000006",
+              "errorSummary" => "Access denied"
+            })
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      # Capture the raised exception
+      exception =
+        assert_raise SyncError, fn ->
+          perform_job(Sync, %{directory_id: directory.id})
+        end
+
+      # Simulate Oban telemetry error handling
+      job = %Oban.Job{
+        id: 1,
+        args: %{"directory_id" => directory.id},
+        worker: "Portal.Okta.Sync",
+        queue: "okta_sync",
+        meta: %{}
+      }
+
+      meta = %{reason: exception, job: job}
+      Portal.DirectorySync.ErrorHandler.handle_error(meta)
+
+      updated_directory = Repo.get(Portal.Okta.Directory, directory.id)
+      assert updated_directory.is_disabled == true
+      assert updated_directory.disabled_reason == "Sync error"
+      assert updated_directory.is_verified == false
+      assert updated_directory.error_message =~ "Access denied"
+    end
   end
 
   describe "circuit breaker protection" do
@@ -448,7 +597,7 @@ defmodule Portal.Okta.SyncTest do
       :ok
     end
 
-    test "raises SyncError when identity deletion exceeds 90% threshold" do
+    test "raises SyncError when identity deletion is 100%" do
       account = account_fixture(features: %{idp_sync: true})
 
       # Create directory that has already been synced (not a first sync)
@@ -466,9 +615,9 @@ defmodule Portal.Okta.SyncTest do
       base_directory =
         Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
 
-      # Create 15 existing identities (above the 10-record minimum threshold)
+      # Create 5 existing identities
       # All with last_synced_at in the past, so they would all be deleted
-      for i <- 1..15 do
+      for i <- 1..5 do
         actor =
           Portal.ActorFixtures.actor_fixture(
             account: account,
@@ -491,7 +640,13 @@ defmodule Portal.Okta.SyncTest do
       Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
         cond do
           String.ends_with?(path, "/oauth2/v1/token") ->
-            Req.Test.json(conn, %{"access_token" => "test_token"})
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
 
           String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
               not String.contains?(path, "/groups") ->
@@ -510,7 +665,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should raise SyncError due to circuit breaker
-      assert_raise SyncError, ~r/Sync would delete 15 of 15 identities/, fn ->
+      assert_raise SyncError, ~r/Sync would delete all identities/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
 
@@ -522,10 +677,10 @@ defmodule Portal.Okta.SyncTest do
         )
         |> Repo.one!()
 
-      assert identity_count == 15
+      assert identity_count == 5
     end
 
-    test "raises SyncError when group deletion exceeds 90% threshold" do
+    test "raises SyncError when group deletion is 100%" do
       account = account_fixture(features: %{idp_sync: true})
 
       past_sync_time = DateTime.utc_now() |> DateTime.add(-3600, :second)
@@ -542,7 +697,7 @@ defmodule Portal.Okta.SyncTest do
         Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
 
       # Create 12 existing groups
-      for i <- 1..12 do
+      for i <- 1..5 do
         Portal.GroupFixtures.group_fixture(
           account: account,
           directory: base_directory,
@@ -576,7 +731,13 @@ defmodule Portal.Okta.SyncTest do
       Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
         cond do
           String.ends_with?(path, "/oauth2/v1/token") ->
-            Req.Test.json(conn, %{"access_token" => "test_token"})
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
 
           String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
               not String.contains?(path, "/groups") ->
@@ -613,7 +774,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should raise SyncError due to circuit breaker on groups
-      assert_raise SyncError, ~r/Sync would delete 12 of 12 groups/, fn ->
+      assert_raise SyncError, ~r/Sync would delete all groups/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
 
@@ -625,7 +786,7 @@ defmodule Portal.Okta.SyncTest do
         )
         |> Repo.one!()
 
-      assert group_count == 12
+      assert group_count == 5
     end
 
     test "allows deletion below threshold" do
@@ -668,7 +829,13 @@ defmodule Portal.Okta.SyncTest do
       Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
         cond do
           String.ends_with?(path, "/oauth2/v1/token") ->
-            Req.Test.json(conn, %{"access_token" => "test_token"})
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
 
           String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
               not String.contains?(path, "/groups") ->
@@ -733,7 +900,13 @@ defmodule Portal.Okta.SyncTest do
       Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
         cond do
           String.ends_with?(path, "/oauth2/v1/token") ->
-            Req.Test.json(conn, %{"access_token" => "test_token"})
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
 
           String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
               not String.contains?(path, "/groups") ->
@@ -752,77 +925,6 @@ defmodule Portal.Okta.SyncTest do
 
       # Should succeed even though nothing is returned (first sync)
       assert :ok = perform_job(Sync, %{directory_id: directory.id})
-    end
-
-    test "skips threshold check for directories with fewer than 10 records" do
-      account = account_fixture(features: %{idp_sync: true})
-
-      past_sync_time = DateTime.utc_now() |> DateTime.add(-3600, :second)
-
-      directory =
-        okta_directory_fixture(
-          account: account,
-          private_key_jwk: @test_private_key_jwk,
-          kid: "test_kid",
-          synced_at: past_sync_time
-        )
-
-      base_directory =
-        Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
-
-      # Create only 5 identities (below the 10-record minimum)
-      for i <- 1..5 do
-        actor =
-          Portal.ActorFixtures.actor_fixture(
-            account: account,
-            type: :account_user,
-            email: "user#{i}@example.com"
-          )
-
-        Portal.IdentityFixtures.identity_fixture(
-          account: account,
-          actor: actor,
-          directory: base_directory,
-          idp_id: "okta_user_#{i}",
-          issuer: "https://#{directory.okta_domain}",
-          email: "user#{i}@example.com",
-          last_synced_at: past_sync_time
-        )
-      end
-
-      # Mock API to return zero users (100% deletion, but below threshold)
-      Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
-        cond do
-          String.ends_with?(path, "/oauth2/v1/token") ->
-            Req.Test.json(conn, %{"access_token" => "test_token"})
-
-          String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
-              not String.contains?(path, "/groups") ->
-            Req.Test.json(conn, [%{"id" => "app_123"}])
-
-          String.contains?(path, "/apps/app_123/users") ->
-            Req.Test.json(conn, [])
-
-          String.contains?(path, "/apps/app_123/groups") ->
-            Req.Test.json(conn, [])
-
-          true ->
-            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
-        end
-      end)
-
-      # Should succeed - below minimum record threshold
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
-
-      # Verify all identities were deleted
-      identity_count =
-        from(i in Portal.ExternalIdentity,
-          where: i.directory_id == ^directory.id,
-          select: count(i.id)
-        )
-        |> Repo.one!()
-
-      assert identity_count == 0
     end
   end
 end
