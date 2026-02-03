@@ -689,6 +689,17 @@ defmodule PortalWeb.Settings.DirectorySync do
             </p>
           </.flash>
         <% else %>
+          <%= if not @directory.is_disabled and @directory.errored_at do %>
+            <.flash kind={:warning_inline}>
+              <p class="font-semibold">Sync encountered a temporary error</p>
+              <%= if @directory.error_message do %>
+                <p class="mt-1 text-sm">{@directory.error_message}</p>
+              <% end %>
+              <p class="mt-2 text-sm">
+                Sync will automatically retry. If issues persist for 24 hours, directory sync will be disabled.
+              </p>
+            </.flash>
+          <% end %>
           <%= if @directory.is_disabled do %>
             <div class="flex items-center gap-2">
               <.icon
@@ -1506,7 +1517,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     Portal.Okta.ErrorCodes.format_error(status, body)
   end
 
-  # Special case: 403 with empty body has error in WWW-Authenticate header (keep existing logic)
+  # Special case: 403 with empty body has error in WWW-Authenticate header
   defp parse_okta_verification_error(
          {:error, %Req.Response{status: 403, body: "", headers: headers}}
        ) do
@@ -1569,7 +1580,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp parse_www_authenticate_error(%{"error" => "insufficient_scope"}) do
-    "The access token provided does not contain the required scopes."
+    "The access token does not contain the required scopes."
   end
 
   defp parse_www_authenticate_error(%{"error_description" => description})

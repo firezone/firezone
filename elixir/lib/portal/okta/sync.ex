@@ -57,6 +57,7 @@ defmodule Portal.Okta.Sync do
   defp sync(%Okta.Directory{} = directory) do
     client = Okta.APIClient.new(directory)
     access_token = get_access_token!(client, directory)
+    verify_access_token!(client, access_token, directory)
     synced_at = DateTime.utc_now()
 
     apps = get_apps!(client, access_token, directory)
@@ -98,9 +99,36 @@ defmodule Portal.Okta.Sync do
 
         raise Okta.SyncError,
           reason: "Failed to get access token",
-          cause: error,
+          context: error,
           directory_id: directory.id,
           step: :get_access_token
+    end
+  end
+
+  @required_scopes ~w[okta.apps.read okta.users.read okta.groups.read]
+
+  defp verify_access_token!(client, access_token, directory) do
+    Logger.debug("Verifying access token scopes", okta_directory_id: directory.id)
+
+    case Okta.APIClient.introspect_token(client, access_token) do
+      {:ok, %{"scope" => raw_scopes}} ->
+        scopes = String.split(raw_scopes, " ")
+        missing_scopes = @required_scopes -- scopes
+
+        if missing_scopes != [] do
+          raise Okta.SyncError,
+            reason: "Access token missing required scopes: #{Enum.join(missing_scopes, ", ")}",
+            context: "scopes: missing #{Enum.join(missing_scopes, ", ")}",
+            directory_id: directory.id,
+            step: :verify_scopes
+        end
+
+      _ ->
+        raise Okta.SyncError,
+          reason: "Could not verify access token scopes",
+          context: "scopes: missing #{Enum.join(@required_scopes, ", ")}",
+          directory_id: directory.id,
+          step: :verify_scopes
     end
   end
 
@@ -124,7 +152,7 @@ defmodule Portal.Okta.Sync do
 
         raise Okta.SyncError,
           reason: "Failed to fetch apps",
-          cause: error,
+          context: error,
           directory_id: directory.id,
           step: :list_apps
     end
@@ -183,7 +211,7 @@ defmodule Portal.Okta.Sync do
       [error | _] ->
         raise Okta.SyncError,
           reason: "Failed to stream app users",
-          cause: error,
+          context: error,
           directory_id: directory.id,
           step: :stream_app_users
 
@@ -225,8 +253,8 @@ defmodule Portal.Okta.Sync do
             )
 
             raise Okta.SyncError,
-              reason: "Failed to upsert identities",
-              cause: reason,
+              reason: "Failed to upsert identities: #{inspect(reason)}",
+              context: nil,
               directory_id: directory.id,
               step: :batch_upsert_identities
         end
@@ -265,7 +293,7 @@ defmodule Portal.Okta.Sync do
       [error | _] ->
         raise Okta.SyncError,
           reason: "Failed to stream app groups",
-          cause: error,
+          context: error,
           directory_id: directory.id,
           step: :stream_app_groups
 
@@ -361,8 +389,8 @@ defmodule Portal.Okta.Sync do
         )
 
         raise Okta.SyncError,
-          reason: "Failed to upsert memberships",
-          cause: reason,
+          reason: "Failed to upsert memberships: #{inspect(reason)}",
+          context: nil,
           directory_id: directory_id,
           step: :batch_upsert_memberships
     end
@@ -381,7 +409,7 @@ defmodule Portal.Okta.Sync do
       {:error, reason}, _acc ->
         raise Okta.SyncError,
           reason: "Failed to stream group members",
-          cause: reason,
+          context: reason,
           directory_id: directory_id,
           step: :stream_group_members
     end)
@@ -399,8 +427,8 @@ defmodule Portal.Okta.Sync do
 
     unless email do
       raise Okta.SyncError,
-        reason: "User missing required 'email' field",
-        cause: user,
+        reason: "User '#{user["id"]}' missing required 'email' field",
+        context: "validation: user '#{user["id"]}' missing 'email' field",
         directory_id: directory_id,
         step: :process_user
     end
@@ -472,9 +500,6 @@ defmodule Portal.Okta.Sync do
 
   # Circuit breaker protection against accidental mass deletion
   # This can happen if someone misconfigures or removes the Okta app
-  @deletion_threshold 0.90
-  @min_records_for_threshold 10
-
   defp check_deletion_threshold!(directory, synced_at) do
     # Skip check on first sync - there's nothing to delete
     if is_nil(directory.synced_at) do
@@ -507,52 +532,30 @@ defmodule Portal.Okta.Sync do
     end
   end
 
+  defp check_resource_threshold!(%{total: 0}, resource_name, directory) do
+    Logger.debug(
+      "Skipping deletion threshold check for #{resource_name} - no resources exist",
+      okta_directory_id: directory.id
+    )
+  end
+
   defp check_resource_threshold!(counts, resource_name, directory) do
     %{total: total, to_delete: to_delete} = counts
 
-    # Only apply threshold check if we have enough records
-    if total >= @min_records_for_threshold do
-      deletion_percentage = to_delete / total
-
-      if deletion_percentage >= @deletion_threshold do
-        Logger.error(
-          "Deletion threshold exceeded for #{resource_name}",
-          okta_directory_id: directory.id,
-          total: total,
-          to_delete: to_delete,
-          percentage: Float.round(deletion_percentage * 100, 1)
-        )
-
-        raise Okta.SyncError,
-          reason:
-            "Sync would delete #{to_delete} of #{total} #{resource_name} " <>
-              "(#{Float.round(deletion_percentage * 100, 0)}%). " <>
-              "This may indicate the Okta application was misconfigured or removed. " <>
-              "Please verify your Okta configuration and re-verify the directory connection.",
-          cause: %{
-            resource: resource_name,
-            total: total,
-            to_delete: to_delete,
-            threshold: @deletion_threshold
-          },
-          directory_id: directory.id,
-          step: :check_deletion_threshold
-      else
-        Logger.debug(
-          "Deletion threshold check passed for #{resource_name}",
-          okta_directory_id: directory.id,
-          total: total,
-          to_delete: to_delete,
-          percentage: Float.round(deletion_percentage * 100, 1)
-        )
-      end
-    else
-      Logger.debug(
-        "Skipping deletion threshold check for #{resource_name} - too few records",
-        okta_directory_id: directory.id,
-        total: total,
-        min_required: @min_records_for_threshold
+    if to_delete == total do
+      Logger.error(
+        "Deletion threshold exceeded for #{resource_name}",
+        okta_directory_id: directory.id
       )
+
+      raise Okta.SyncError,
+        reason:
+          "Sync would delete all #{resource_name}. " <>
+            "This may indicate the Okta application was misconfigured or removed. " <>
+            "Please verify your Okta configuration and re-verify the directory connection.",
+        context: "circuit_breaker: would delete all #{resource_name}",
+        directory_id: directory.id,
+        step: :check_deletion_threshold
     end
   end
 
