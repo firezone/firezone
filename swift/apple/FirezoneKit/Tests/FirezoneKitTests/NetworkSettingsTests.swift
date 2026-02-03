@@ -378,4 +378,79 @@ struct NetworkSettingsTests {
 
     #expect(result == nil, "Route order should not matter")
   }
+
+  // MARK: - Cidr Route Validation Tests
+
+  @Test("Valid IPv4 prefix returns route")
+  func validIPv4PrefixReturnsRoute() {
+    // Test boundary values
+    let cidr0 = NetworkSettings.Cidr(address: "0.0.0.0", prefix: 0)
+    let cidr24 = NetworkSettings.Cidr(address: "192.168.1.0", prefix: 24)
+    let cidr32 = NetworkSettings.Cidr(address: "10.0.0.1", prefix: 32)
+
+    #expect(cidr0.asNEIPv4Route != nil)
+    #expect(cidr24.asNEIPv4Route != nil)
+    #expect(cidr32.asNEIPv4Route != nil)
+  }
+
+  @Test("Invalid IPv4 prefix returns nil")
+  func invalidIPv4PrefixReturnsNil() {
+    let cidrNegative = NetworkSettings.Cidr(address: "192.168.1.0", prefix: -1)
+    let cidr33 = NetworkSettings.Cidr(address: "192.168.1.0", prefix: 33)
+    let cidr128 = NetworkSettings.Cidr(address: "192.168.1.0", prefix: 128)
+
+    #expect(cidrNegative.asNEIPv4Route == nil, "Negative prefix should return nil")
+    #expect(cidr33.asNEIPv4Route == nil, "Prefix > 32 should return nil for IPv4")
+    #expect(cidr128.asNEIPv4Route == nil, "IPv6 prefix should return nil for IPv4 route")
+  }
+
+  @Test("Valid IPv6 prefix returns route")
+  func validIPv6PrefixReturnsRoute() {
+    // Test boundary values
+    let cidr0 = NetworkSettings.Cidr(address: "::", prefix: 0)
+    let cidr64 = NetworkSettings.Cidr(address: "fd00::", prefix: 64)
+    let cidr128 = NetworkSettings.Cidr(address: "fd00::1", prefix: 128)
+
+    #expect(cidr0.asNEIPv6Route != nil)
+    #expect(cidr64.asNEIPv6Route != nil)
+    #expect(cidr128.asNEIPv6Route != nil)
+  }
+
+  @Test("Invalid IPv6 prefix returns nil")
+  func invalidIPv6PrefixReturnsNil() {
+    let cidrNegative = NetworkSettings.Cidr(address: "fd00::", prefix: -1)
+    let cidr129 = NetworkSettings.Cidr(address: "fd00::", prefix: 129)
+    let cidr256 = NetworkSettings.Cidr(address: "fd00::", prefix: 256)
+
+    #expect(cidrNegative.asNEIPv6Route == nil, "Negative prefix should return nil")
+    #expect(cidr129.asNEIPv6Route == nil, "Prefix > 128 should return nil for IPv6")
+    #expect(cidr256.asNEIPv6Route == nil, "Very large prefix should return nil")
+  }
+
+  @Test("Invalid routes are dropped during build")
+  func invalidRoutesDroppedDuringBuild() {
+    var settings = NetworkSettings()
+
+    // Mix valid and invalid routes
+    let validRoute = NetworkSettings.Cidr(address: "192.168.1.0", prefix: 24)
+    let invalidRoute = NetworkSettings.Cidr(address: "10.0.0.0", prefix: 33)
+    let validRoute6 = NetworkSettings.Cidr(address: "fd00::", prefix: 64)
+    let invalidRoute6 = NetworkSettings.Cidr(address: "fd00::", prefix: 129)
+
+    let payload = settings.updateTunInterface(
+      ipv4: "10.0.0.1",
+      ipv6: "fd00::1",
+      dnsServers: ["1.1.1.1"],
+      searchDomain: nil,
+      routes4: [validRoute, invalidRoute],
+      routes6: [validRoute6, invalidRoute6]
+    )
+    let result = payload?.build()
+
+    // Only valid routes should be present
+    #expect(
+      result?.ipv4Settings?.includedRoutes?.count == 1, "Invalid IPv4 route should be dropped")
+    #expect(
+      result?.ipv6Settings?.includedRoutes?.count == 1, "Invalid IPv6 route should be dropped")
+  }
 }
