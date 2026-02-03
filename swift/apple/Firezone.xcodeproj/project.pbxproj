@@ -34,8 +34,6 @@
 		8DCC022A28D512AE007E12D2 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022928D512AE007E12D2 /* Preview Assets.xcassets */; };
 		8DE452A82CE6C194004CEDF9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D5047E82CE6A8F4009802E9 /* main.swift */; };
 		8DFDEAC72D2CEBA500615095 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */; };
-		A1B2C3D4E5F6A78901234568 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */; };
-		A1B2C3D4E5F6A78901234569 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */; };
 		C1892134991C462C8E137DE3 /* Channel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C09DC14A4A04715A37BC04C /* Channel.swift */; };
 		C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
 		CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2847ACC9D73EA6F356F2DEE1 /* connlib.swift */; };
@@ -116,7 +114,6 @@
 		8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = config.xcconfig; path = xcconfig/config.xcconfig; sourceTree = "<group>"; };
 		8DE1077A2D2313EB00DB5A45 /* Info.iOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.iOS.plist; sourceTree = "<group>"; };
 		8DE1077B2D2313EB00DB5A45 /* Info.macOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.macOS.plist; sourceTree = "<group>"; };
-		A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathUpdates.swift; sourceTree = "<group>"; };
 		E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SessionEventLoop.swift; sourceTree = "<group>"; };
 		8D0000012D41000000A2 /* NetworkPathUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathUpdates.swift; sourceTree = "<group>"; };
 		8D0000012D41000000B1 /* ProviderCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderCommand.swift; sourceTree = "<group>"; };
@@ -170,7 +167,6 @@
 				177FB893F19457A113042247 /* Adapter.swift */,
 				05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */,
 				8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */,
-				A1B2C3D4E5F6A78901234567 /* NetworkPathUpdates.swift */,
 				6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */,
 			);
 			path = FirezoneNetworkExtension;
@@ -513,7 +509,6 @@
 				8D0000012D4100000003 /* NetworkPathUpdates.swift in Sources */,
 				8D0000012D4100000005 /* ProviderCommand.swift in Sources */,
 				C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */,
-				A1B2C3D4E5F6A78901234568 /* NetworkPathUpdates.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -531,7 +526,6 @@
 				6571861AB9324D6A9395BDB3 /* SessionEventLoop.swift in Sources */,
 				858AA13A09A55E3B1DD5DEDA /* Adapter.swift in Sources */,
 				CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */,
-				A1B2C3D4E5F6A78901234569 /* NetworkPathUpdates.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
