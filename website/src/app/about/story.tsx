@@ -15,7 +15,7 @@ export default function Story() {
             WireGuard.{" "}
             <span className="text-primary-500 font-medium">130 releases</span>{" "}
             and <span className="text-primary-500 font-medium">15,000+</span>{" "}
-            users later, it&apos;s grown into something much more.
+            {"users later, it's grown into something much more."}
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-12">
@@ -83,7 +83,7 @@ export default function Story() {
                   YC acceptance
                 </h3>
                 <p className="text-base font-normal text-neutral-800">
-                  Firezone is accepted into YC&apos;s Winter 2022 batch.
+                  {"Firezone is accepted into YC's Winter 2022 batch."}
                 </p>
               </li>
               <li className="mb-12 ms-4">

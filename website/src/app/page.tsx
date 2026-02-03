@@ -287,9 +287,9 @@ export default function Page() {
             </div>
             <div className="mt-auto text-center md:text-left">
               <p className="text-lg text-neutral-800">
-                Gateways are lightweight Linux binaries you deploy anywhere you
-                need access. Just configure a token with your preferred tool and
-                you&apos;re done.
+                {
+                  "Gateways are lightweight Linux binaries you deploy anywhere you need access. Just configure a token with your preferred tool and you're done."
+                }
               </p>
               <p className="mt-4">
                 <ActionLink
@@ -320,9 +320,9 @@ export default function Page() {
 
         <div className="mx-auto px-4 max-w-screen-md">
           <p className="text-lg text-center -mt-3 text-neutral-800 text-pretty">
-            How can you trust a zero-trust solution if you can&apos;t see its
-            source? We build Firezone in the open so anyone can make sure it
-            does exactly what we claim it does, and nothing more.
+            {
+              "How can you trust a zero-trust solution if you can't see its source? We build Firezone in the open so anyone can make sure it does exactly what we claim it does, and nothing more."
+            }
           </p>
         </div>
 

@@ -146,8 +146,9 @@ export default function UseCaseCards() {
             <div className="w-full mt-2 md:mt-4 lg:mt-6 text-center md:text-left">
               <CardHeading>Block malicious DNS</CardHeading>
               <p>
-                Use Firezone to improve your team&apos;s Internet security by
-                blocking DNS queries to known malicious domains.
+                {
+                  "Use Firezone to improve your team's Internet security by blocking DNS queries to known malicious domains."
+                }
               </p>
               <Button text="Secure your DNS" href="/kb/use-cases/secure-dns" />
             </div>
