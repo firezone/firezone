@@ -231,7 +231,7 @@ final class LogWriter: @unchecked Sendable {
       guard let self = self else { return }
       guard let handle = self.ensureFileExists() else { return }
 
-      _ = tryObjC {
+      try? catchingObjCException {
         try? handle.write(contentsOf: Data(line.utf8))
       }
     }

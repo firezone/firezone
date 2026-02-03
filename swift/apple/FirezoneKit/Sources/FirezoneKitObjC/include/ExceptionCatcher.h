@@ -5,10 +5,14 @@
 //
 //  ExceptionCatcher.h
 //
+//  Utilities for catching Objective-C exceptions in Swift code.
+//
 
 #import <Foundation/Foundation.h>
 
-NS_INLINE NSException * _Nullable tryObjC(void(^_Nonnull tryBlock)(void)) {
+// Catches Objective-C exceptions and returns them (or nil if no exception)
+// Use this when you want to handle exceptions without converting to Swift errors
+NS_INLINE NSException * _Nullable tryObjC(__attribute__((noescape)) void(^_Nonnull tryBlock)(void)) {
     @try {
         tryBlock();
     }
@@ -17,3 +21,6 @@ NS_INLINE NSException * _Nullable tryObjC(void(^_Nonnull tryBlock)(void)) {
     }
     return nil;
 }
+
+// Backward compatibility alias
+#define tryBlock tryObjC
