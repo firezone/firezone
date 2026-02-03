@@ -597,7 +597,7 @@ defmodule Portal.Okta.SyncTest do
       :ok
     end
 
-    test "raises SyncError when identity deletion exceeds 90% threshold" do
+    test "raises SyncError when identity deletion is 100%" do
       account = account_fixture(features: %{idp_sync: true})
 
       # Create directory that has already been synced (not a first sync)
