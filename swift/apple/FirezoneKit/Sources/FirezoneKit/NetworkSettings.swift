@@ -39,25 +39,9 @@ public struct NetworkSettings: Equatable, Sendable {
     fileprivate let routes4: [Cidr]
     fileprivate let routes6: [Cidr]
     fileprivate let matchDomains: [String]
+    // All properties are fileprivate, so Swift synthesizes a fileprivate memberwise init.
+    // This enforces that Payload can only be created within this file (via NetworkSettings methods).
     fileprivate let searchDomain: String?
-
-    fileprivate init(
-      tunnelAddressIPv4: String,
-      tunnelAddressIPv6: String,
-      dnsServers: [String],
-      routes4: [Cidr],
-      routes6: [Cidr],
-      matchDomains: [String],
-      searchDomain: String?
-    ) {
-      self.tunnelAddressIPv4 = tunnelAddressIPv4
-      self.tunnelAddressIPv6 = tunnelAddressIPv6
-      self.dnsServers = dnsServers
-      self.routes4 = routes4
-      self.routes6 = routes6
-      self.matchDomains = matchDomains
-      self.searchDomain = searchDomain
-    }
 
     /// Build NEPacketTunnelNetworkSettings from this payload.
     public func build() -> NEPacketTunnelNetworkSettings {

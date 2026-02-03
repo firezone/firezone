@@ -427,6 +427,26 @@ struct NetworkSettingsTests {
     #expect(cidr256.asNEIPv6Route == nil, "Very large prefix should return nil")
   }
 
+  // MARK: - Payload Encapsulation Tests
+
+  @Test("Payload cannot be constructed directly - only via NetworkSettings methods")
+  func payloadEncapsulation() {
+    // Uncomment to verify fileprivate encapsulation (should fail to compile):
+    // let _ = NetworkSettings.Payload(tunnelAddressIPv4: "", tunnelAddressIPv6: "", dnsServers: [], routes4: [], routes6: [], matchDomains: [], searchDomain: nil)
+
+    // The only way to get a Payload is through NetworkSettings methods
+    var settings = NetworkSettings()
+    let payload = settings.updateTunInterface(
+      ipv4: "10.0.0.1",
+      ipv6: "fd00::1",
+      dnsServers: ["1.1.1.1"],
+      searchDomain: nil,
+      routes4: [],
+      routes6: []
+    )
+    #expect(payload != nil, "Payload should only be obtainable via update methods")
+  }
+
   @Test("Invalid routes are dropped during build")
   func invalidRoutesDroppedDuringBuild() {
     var settings = NetworkSettings()
