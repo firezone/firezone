@@ -31,8 +31,7 @@ jobs:
         id: setup-rust-nightly
       - uses: ./.github/actions/setup-rust-target-dependency-cache
         with:
-          # save-if: ${{ github.ref == 'refs/heads/main' }}
-          save-if: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: ${{ steps.setup-rust-nightly.outputs.nightly_version }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
@@ -74,8 +73,7 @@ jobs:
         id: setup-rust-nightly
       - uses: ./.github/actions/setup-rust-target-dependency-cache
         with:
-          # save-if: ${{ github.ref == 'refs/heads/main' }}
-          save-if: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: ${{ steps.setup-rust-nightly.outputs.nightly_version }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
