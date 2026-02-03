@@ -5,8 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.webkit.URLUtil
 import androidx.core.content.FileProvider
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -38,8 +36,8 @@ internal class SettingsViewModel
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
 
-        private val actionMutableLiveData = MutableLiveData<ViewAction>()
-        val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
+        private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
+        val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
         private var config =
             Config(
@@ -56,12 +54,11 @@ internal class SettingsViewModel
                 repo.getConfig().collect {
                     config = it
                     onFieldUpdated()
-                    actionMutableLiveData.postValue(
+                    actionMutableStateFlow.value =
                         ViewAction.FillSettings(
                             it,
                             managedStatus = repo.getManagedStatus(),
-                        ),
-                    )
+                        )
                 }
             }
         }
@@ -84,13 +81,13 @@ internal class SettingsViewModel
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
                 repo.saveSettings(config).collect {
-                    actionMutableLiveData.postValue(ViewAction.NavigateBack)
+                    actionMutableStateFlow.value = ViewAction.NavigateBack
                 }
             }
         }
 
         fun onCancel() {
-            actionMutableLiveData.postValue(ViewAction.NavigateBack)
+            actionMutableStateFlow.value = ViewAction.NavigateBack
         }
 
         fun onValidateAuthUrl(authUrl: String) {
@@ -178,12 +175,15 @@ internal class SettingsViewModel
             config = repo.getDefaultConfigSync()
             repo.resetFavorites()
             onFieldUpdated()
-            actionMutableLiveData.postValue(
+            actionMutableStateFlow.value =
                 ViewAction.FillSettings(
                     config = config,
                     managedStatus = repo.getManagedStatus(),
-                ),
-            )
+                )
+        }
+
+        fun clearAction() {
+            actionMutableStateFlow.value = null
         }
 
         fun deleteLogZip(context: Context) {

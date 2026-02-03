@@ -9,9 +9,13 @@ import androidx.appcompat.widget.TooltipCompat
 import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.databinding.FragmentSettingsAdvancedBinding
+import kotlinx.coroutines.launch
 
 class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
     private var _binding: FragmentSettingsAdvancedBinding? = null
@@ -64,25 +68,32 @@ class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
     }
 
     private fun setupActionObservers() {
-        viewModel.actionLiveData.observe(viewLifecycleOwner) { action ->
-            when (action) {
-                is SettingsViewModel.ViewAction.NavigateBack ->
-                    requireActivity().finish()
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.actionStateFlow.collect { action ->
+                    action?.let {
+                        viewModel.clearAction()
+                        when (it) {
+                            is SettingsViewModel.ViewAction.NavigateBack ->
+                                requireActivity().finish()
 
-                is SettingsViewModel.ViewAction.FillSettings -> {
-                    binding.etAuthUrlInput.apply {
-                        setText(action.config.authUrl)
+                            is SettingsViewModel.ViewAction.FillSettings -> {
+                                binding.etAuthUrlInput.apply {
+                                    setText(it.config.authUrl)
+                                }
+
+                                binding.etApiUrlInput.apply {
+                                    setText(it.config.apiUrl)
+                                }
+
+                                binding.etLogFilterInput.apply {
+                                    setText(it.config.logFilter)
+                                }
+
+                                applyManagedStatus(it.managedStatus)
+                            }
+                        }
                     }
-
-                    binding.etApiUrlInput.apply {
-                        setText(action.config.apiUrl)
-                    }
-
-                    binding.etLogFilterInput.apply {
-                        setText(action.config.logFilter)
-                    }
-
-                    applyManagedStatus(action.managedStatus)
                 }
             }
         }
