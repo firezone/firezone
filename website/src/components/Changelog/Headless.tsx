@@ -11,8 +11,9 @@ export default function Headless({ os }: { os: OS }) {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="11882">
-          Adds the <code>sign-in</code> command to allow authenticating the
-          Client as a normal user via browser-based authentication.
+          Adds the <code>sign-in</code> and <code>sign-out</code> commands to
+          allow authenticating the Client as a normal user via browser-based
+          authentication.
         </ChangeItem>
         <ChangeItem pull="11625">
           Fails faster when the initial connection to the control plane cannot

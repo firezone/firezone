@@ -178,7 +178,11 @@ enum Cmd {
     },
 
     /// Sign out by removing the stored token
-    SignOut,
+    SignOut {
+        /// Skip confirmation prompt
+        #[arg(long, short)]
+        force: bool,
+    },
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -207,16 +211,23 @@ fn try_main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    if let Some(Cmd::SignIn {
-        auth_base_url,
-        account_slug,
-    }) = &cli._command
-    {
-        return handle_sign_in(auth_base_url.clone(), account_slug.clone(), &cli.token_path);
-    }
+    match &cli._command {
+        Some(Cmd::SignIn {
+            auth_base_url,
+            account_slug,
+        }) => {
+            handle_sign_in(auth_base_url.clone(), account_slug.clone(), &cli.token_path)?;
 
-    if let Some(Cmd::SignOut) = &cli._command {
-        return handle_sign_out(&cli.token_path);
+            return Ok(());
+        }
+        Some(Cmd::SignOut { force }) => {
+            handle_sign_out(&cli.token_path, *force)?;
+
+            return Ok(());
+        }
+        Some(Cmd::Standalone) | None => {
+            // Continue with normal operation
+        }
     }
 
     // Modifying the environment of a running process is unsafe. If any other
@@ -572,24 +583,48 @@ fn handle_sign_in(
     clippy::print_stdout,
     reason = "This command is designed to print to stdout for user interaction"
 )]
-fn handle_sign_out(token_path: &Path) -> Result<()> {
-    match std::fs::remove_file(token_path) {
-        Ok(()) => {
-            println!(
-                "✓ Token removed successfully from: {}",
-                token_path.display()
-            );
-            Ok(())
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            println!("No token file found at: {}", token_path.display());
-            Ok(())
-        }
-        Err(e) => Err(anyhow::anyhow!(e).context(format!(
-            "Failed to remove token file: {}",
-            token_path.display()
-        ))),
+fn handle_sign_out(token_path: &Path, force: bool) -> Result<()> {
+    use std::io::{self, BufRead, Write};
+
+    // Check if token file exists first
+    if !token_path.exists() {
+        println!("No token file found at: {}", token_path.display());
+        return Ok(());
     }
+
+    let token_path_display = token_path.display();
+
+    // Ask for confirmation unless --force is specified
+    if !force {
+        println!(
+            "Warning: This will permanently remove the token file at:\n  {}\n",
+            token_path_display
+        );
+        println!("The token cannot be recovered after deletion.");
+        print!("Are you sure you want to sign out? [y/N]: ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin()
+            .lock()
+            .read_line(&mut input)
+            .context("Failed to read user input")?;
+
+        let input = input.trim().to_lowercase();
+        if input != "y" && input != "yes" {
+            println!("Sign out cancelled.");
+            return Ok(());
+        }
+    }
+
+    std::fs::remove_file(token_path)
+        .with_context(|| format!("Failed to remove token file: {}", token_path_display))?;
+
+    println!(
+        "\n✓ Token removed successfully from: {}",
+        token_path_display
+    );
+    Ok(())
 }
 
 /// Read the token from disk if it was not in the environment
@@ -729,7 +764,20 @@ mod tests {
     #[test]
     fn sign_out_bare() {
         let actual = Cli::try_parse_from(["firezone-headless-client", "sign-out"]).unwrap();
-        assert!(matches!(actual._command, Some(Cmd::SignOut)));
+        assert!(matches!(
+            actual._command,
+            Some(Cmd::SignOut { force: false })
+        ));
+    }
+
+    #[test]
+    fn sign_out_with_force() {
+        let actual =
+            Cli::try_parse_from(["firezone-headless-client", "sign-out", "--force"]).unwrap();
+        assert!(matches!(
+            actual._command,
+            Some(Cmd::SignOut { force: true })
+        ));
     }
 
     #[test]
@@ -743,6 +791,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(actual.token_path, PathBuf::from("/custom/token/path"));
-        assert!(matches!(actual._command, Some(Cmd::SignOut)));
+        assert!(matches!(actual._command, Some(Cmd::SignOut { .. })));
     }
 }

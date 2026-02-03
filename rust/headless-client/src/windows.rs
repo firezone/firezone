@@ -20,7 +20,8 @@ pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
 #[expect(clippy::unnecessary_wraps)]
 pub(crate) fn set_token_permissions(_path: &Path) -> Result<()> {
     // TODO: Restrict token file access to SYSTEM and Administrators on Windows
-    tracing::warn!("Token file permissions are not restricted on Windows");
+    // Using eprintln! because logging isn't initialized when sign-in runs
+    eprintln!("Note: Token file permissions are not restricted on Windows.");
     Ok(())
 }
 
