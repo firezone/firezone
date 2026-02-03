@@ -69,7 +69,7 @@ bytecodec = "0.5.0"
 bytes = { version = "1.11.0", default-features = false }
 caps = "0.5.6"
 chrono = { version = "0.4.43", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-clap = "4.5.54"
+clap = "4.5.56"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
 crossbeam-queue = "0.3.12"
