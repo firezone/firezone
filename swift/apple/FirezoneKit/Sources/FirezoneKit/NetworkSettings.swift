@@ -7,30 +7,96 @@ import Foundation
 import NetworkExtension
 import os.log
 
-public struct NetworkSettings: Equatable {
+public struct NetworkSettings: Equatable, Sendable {
   private var tunnelAddressIPv4: String?
   private var tunnelAddressIPv6: String?
   private var dnsServers: [String] = []
-  private var routes4: [NEIPv4Route] = []
-  private var routes6: [NEIPv6Route] = []
+  private var routes4: [Cidr] = []
+  private var routes6: [Cidr] = []
   private var dnsResources: [String] = []
   private var matchDomains: [String] = [""]
   private var searchDomain: String?
 
   public init() {}
 
+  // MARK: - Payload
+
+  /// A Sendable snapshot of network settings that can cross actor boundaries.
+  ///
+  /// This type exists to solve two conflicting requirements:
+  /// 1. **Sendable safety**: We need to pass settings from the Adapter actor to PacketTunnelProvider
+  ///    without using `@unchecked Sendable` on non-Sendable `NEPacketTunnelNetworkSettings`.
+  /// 2. **Test invariant**: Settings should only be built when they actually change. Making
+  ///    `buildNetworkSettings()` public would allow arbitrary calls, breaking this guarantee.
+  ///
+  /// The `fileprivate init` ensures only `NetworkSettings` update methods can create a `Payload`.
+  /// Possession of a `Payload` proves you went through an update method that detected a change.
+  /// The actual `NEPacketTunnelNetworkSettings` is built via `build()` on the receiving side.
+  public struct Payload: Sendable {
+    fileprivate let tunnelAddressIPv4: String
+    fileprivate let tunnelAddressIPv6: String
+    fileprivate let dnsServers: [String]
+    fileprivate let routes4: [Cidr]
+    fileprivate let routes6: [Cidr]
+    fileprivate let matchDomains: [String]
+    // All properties are fileprivate, so Swift synthesizes a fileprivate memberwise init.
+    // This enforces that Payload can only be created within this file (via NetworkSettings methods).
+    fileprivate let searchDomain: String?
+
+    /// Build NEPacketTunnelNetworkSettings from this payload.
+    public func build() -> NEPacketTunnelNetworkSettings {
+      // Set tunnel addresses and routes
+      let ipv4Settings = NEIPv4Settings(
+        addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
+      let validRoutes4 = routes4.compactMap { $0.asNEIPv4Route }
+      if validRoutes4.count != routes4.count {
+        Log.warning("Dropped \(routes4.count - validRoutes4.count) invalid IPv4 routes")
+      }
+      ipv4Settings.includedRoutes = validRoutes4
+
+      // This is a hack since macos routing table ignores, for full route, any prefix smaller than 120.
+      // Without this, adding a full route, remove the previous default route and leaves the system with none,
+      // completely breaking IPv6 on the user's system.
+      let ipv6Settings = NEIPv6Settings(
+        addresses: [tunnelAddressIPv6], networkPrefixLengths: [120])
+      let validRoutes6 = routes6.compactMap { $0.asNEIPv6Route }
+      if validRoutes6.count != routes6.count {
+        Log.warning("Dropped \(routes6.count - validRoutes6.count) invalid IPv6 routes")
+      }
+      ipv6Settings.includedRoutes = validRoutes6
+
+      let dnsSettings = NEDNSSettings(servers: dnsServers)
+      dnsSettings.matchDomains = matchDomains
+      dnsSettings.searchDomains = searchDomain.map { [$0] } ?? [""]
+      dnsSettings.matchDomainsNoSearch = false
+
+      // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
+      // because the OS doesn't really need this IP address.
+      // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
+      // NEPacketTunnelNetworkSettings inheriting from NETunnelNetworkSettings.
+      let tunnelNetworkSettings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
+
+      tunnelNetworkSettings.ipv4Settings = ipv4Settings
+      tunnelNetworkSettings.ipv6Settings = ipv6Settings
+      tunnelNetworkSettings.dnsSettings = dnsSettings
+      tunnelNetworkSettings.mtu = 1280
+
+      return tunnelNetworkSettings
+    }
+  }
+
   // MARK: - Mutable update functions
 
   /// Update tunnel interface configuration
-  /// Returns NEPacketTunnelNetworkSettings if settings changed, nil if unchanged or build fails
+  /// Returns Payload if settings changed, nil if unchanged or missing required fields
   public mutating func updateTunInterface(
     ipv4: String?,
     ipv6: String?,
     dnsServers: [String],
     searchDomain: String?,
-    routes4: [NEIPv4Route],
-    routes6: [NEIPv6Route]
-  ) -> NEPacketTunnelNetworkSettings? {
+    routes4: [Cidr],
+    routes6: [Cidr]
+  ) -> Payload? {
     let oldSelf = self
 
     // Update values
@@ -39,30 +105,23 @@ public struct NetworkSettings: Equatable {
     self.dnsServers = dnsServers
     self.searchDomain = searchDomain
     self.matchDomains = searchDomain.map { ["", $0] } ?? [""]
-    self.routes4 = routes4.sorted {
-      ($0.destinationAddress, $0.destinationSubnetMask) < (
-        $1.destinationAddress, $1.destinationSubnetMask
-      )
-    }
-    self.routes6 = routes6.sorted {
-      ($0.destinationAddress, $0.destinationNetworkPrefixLength.intValue)
-        < ($1.destinationAddress, $1.destinationNetworkPrefixLength.intValue)
-    }
+    self.routes4 = routes4.sorted { ($0.address, $0.prefix) < ($1.address, $1.prefix) }
+    self.routes6 = routes6.sorted { ($0.address, $0.prefix) < ($1.address, $1.prefix) }
 
     // Check if anything actually changed
     if oldSelf == self {
       return nil
     }
 
-    return buildNetworkSettings()
+    return makePayload()
   }
 
   /// Update DNS resource addresses
   /// Used to trigger network settings apply when DNS resources change,
   /// which flushes the DNS cache so new DNS resources are immediately resolvable
-  /// Returns NEPacketTunnelNetworkSettings if settings changed, nil if unchanged or build fails
+  /// Returns Payload if settings changed, nil if unchanged or missing required fields
   public mutating func updateDnsResources(newDnsResources: [String])
-    -> NEPacketTunnelNetworkSettings?
+    -> Payload?
   {
     let oldSelf = self
 
@@ -74,30 +133,29 @@ public struct NetworkSettings: Equatable {
       return nil
     }
 
-    return buildNetworkSettings()
+    return makePayload()
   }
 
-  public mutating func setDummyMatchDomain() -> NEPacketTunnelNetworkSettings? {
+  public mutating func setDummyMatchDomain() -> Payload? {
     self.matchDomains = ["firezone-fd0020211111"]
 
-    return buildNetworkSettings()
+    return makePayload()
   }
 
-  public mutating func clearDummyMatchDomain() -> NEPacketTunnelNetworkSettings? {
+  public mutating func clearDummyMatchDomain() -> Payload? {
     if let searchDomain = self.searchDomain {
       self.matchDomains = ["", searchDomain]
     } else {
       self.matchDomains = [""]
     }
 
-    return buildNetworkSettings()
+    return makePayload()
   }
 
-  // MARK: - NEPacketTunnelNetworkSettings Builder
+  // MARK: - Private Helpers
 
-  /// Build NEPacketTunnelNetworkSettings from current state
-  private func buildNetworkSettings() -> NEPacketTunnelNetworkSettings? {
-    // Validate we have required fields
+  /// Create a Payload from current state, if tunnel addresses are present.
+  private func makePayload() -> Payload? {
     guard let tunnelAddressIPv4 = tunnelAddressIPv4,
       let tunnelAddressIPv6 = tunnelAddressIPv6
     else {
@@ -105,64 +163,15 @@ public struct NetworkSettings: Equatable {
       return nil
     }
 
-    // Set tunnel addresses and routes
-    let ipv4Settings = NEIPv4Settings(
-      addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
-    ipv4Settings.includedRoutes = routes4
-
-    // This is a hack since macos routing table ignores, for full route, any prefix smaller than 120.
-    // Without this, adding a full route, remove the previous default route and leaves the system with none,
-    // completely breaking IPv6 on the user's system.
-    let ipv6Settings = NEIPv6Settings(
-      addresses: [tunnelAddressIPv6], networkPrefixLengths: [120])
-    ipv6Settings.includedRoutes = routes6
-
-    let dnsSettings = NEDNSSettings(servers: dnsServers)
-    dnsSettings.matchDomains = matchDomains
-    dnsSettings.searchDomains = searchDomain.map { [$0] } ?? [""]
-    dnsSettings.matchDomainsNoSearch = false
-
-    // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
-    // because the OS doesn't really need this IP address.
-    // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
-    // NEPacketTunnelNetworkSettings inheriting from NETunnelNetworkSettings.
-    let tunnelNetworkSettings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
-
-    tunnelNetworkSettings.ipv4Settings = ipv4Settings
-    tunnelNetworkSettings.ipv6Settings = ipv6Settings
-    tunnelNetworkSettings.dnsSettings = dnsSettings
-    tunnelNetworkSettings.mtu = 1280
-
-    return tunnelNetworkSettings
-  }
-
-  // MARK: - Equatable Conformance
-
-  public static func == (lhs: NetworkSettings, rhs: NetworkSettings) -> Bool {
-    return lhs.tunnelAddressIPv4 == rhs.tunnelAddressIPv4
-      && lhs.tunnelAddressIPv6 == rhs.tunnelAddressIPv6
-      && lhs.dnsServers == rhs.dnsServers
-      && lhs.matchDomains == rhs.matchDomains
-      && lhs.searchDomain == rhs.searchDomain
-      && lhs.dnsResources == rhs.dnsResources
-      && compareRoutes4(lhs.routes4, rhs.routes4)
-      && compareRoutes6(lhs.routes6, rhs.routes6)
-  }
-
-  private static func compareRoutes4(_ lhs: [NEIPv4Route], _ rhs: [NEIPv4Route]) -> Bool {
-    guard lhs.count == rhs.count else { return false }
-    return zip(lhs, rhs).allSatisfy {
-      $0.destinationAddress == $1.destinationAddress
-        && $0.destinationSubnetMask == $1.destinationSubnetMask
-    }
-  }
-
-  private static func compareRoutes6(_ lhs: [NEIPv6Route], _ rhs: [NEIPv6Route]) -> Bool {
-    guard lhs.count == rhs.count else { return false }
-    return zip(lhs, rhs).allSatisfy {
-      $0.destinationAddress == $1.destinationAddress
-        && $0.destinationNetworkPrefixLength == $1.destinationNetworkPrefixLength
-    }
+    return Payload(
+      tunnelAddressIPv4: tunnelAddressIPv4,
+      tunnelAddressIPv6: tunnelAddressIPv6,
+      dnsServers: dnsServers,
+      routes4: routes4,
+      routes6: routes6,
+      matchDomains: matchDomains,
+      searchDomain: searchDomain
+    )
   }
 }
 
@@ -210,7 +219,7 @@ enum IPv4SubnetMaskLookup {
 // MARK: - Route Convenience Helpers
 
 extension NetworkSettings {
-  public struct Cidr {
+  public struct Cidr: Equatable, Sendable {
     public let address: String
     public let prefix: Int
 
