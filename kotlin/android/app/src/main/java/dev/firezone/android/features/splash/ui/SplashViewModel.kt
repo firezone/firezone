@@ -3,8 +3,6 @@ package dev.firezone.android.features.splash.ui
 
 import android.content.Context
 import android.os.Bundle
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -12,6 +10,8 @@ import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -25,8 +25,8 @@ internal class SplashViewModel
         private val applicationRestrictions: Bundle,
         private val applicationMode: ApplicationMode,
     ) : ViewModel() {
-        private val actionMutableLiveData = MutableLiveData<ViewAction>()
-        val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
+        private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
+        val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
         internal fun checkTunnelState(
             context: Context,
@@ -38,7 +38,7 @@ internal class SplashViewModel
 
                 // If we don't have VPN permission, we can't continue.
                 if (!hasVpnPermissions(context) && applicationMode != ApplicationMode.TESTING) {
-                    actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
+                    actionMutableStateFlow.value = ViewAction.NavigateToVpnPermission
                     return@launch
                 }
 
@@ -46,7 +46,7 @@ internal class SplashViewModel
 
                 // If we don't have a token, we can't connect.
                 if (token.isNullOrBlank()) {
-                    actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
+                    actionMutableStateFlow.value = ViewAction.NavigateToSignIn
                     return@launch
                 }
 
@@ -54,7 +54,7 @@ internal class SplashViewModel
 
                 // If the service is already running, we can go directly to the session.
                 if (isRunning) {
-                    actionMutableLiveData.postValue(ViewAction.NavigateToSession)
+                    actionMutableStateFlow.value = ViewAction.NavigateToSession
                     return@launch
                 }
 
@@ -63,13 +63,17 @@ internal class SplashViewModel
                 // If this is the initial launch and connectOnStart is true, try to connect
                 if (isInitialLaunch && connectOnStart) {
                     TunnelService.start(context)
-                    actionMutableLiveData.postValue(ViewAction.NavigateToSession)
+                    actionMutableStateFlow.value = ViewAction.NavigateToSession
                     return@launch
                 }
 
                 // If we get here, we shouldn't start the tunnel, so show the sign in screen
-                actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
+                actionMutableStateFlow.value = ViewAction.NavigateToSignIn
             }
+        }
+
+        internal fun clearAction() {
+            actionMutableStateFlow.value = null
         }
 
         private fun hasVpnPermissions(context: Context): Boolean = android.net.VpnService.prepare(context) == null

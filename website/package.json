@@ -21,7 +21,7 @@
     "@tailwindcss/postcss": "^4.1.17",
     "@types/mdx": "^2.0.13",
     "@types/node": "25.0.10",
-    "@types/react": "19.2.9",
+    "@types/react": "19.2.10",
     "@types/react-dom": "19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vercel/edge-config": "^1.4.3",
@@ -36,8 +36,8 @@
     "next-hubspot": "^2.0.1",
     "next-sitemap": "^4.2.3",
     "postcss": "8.5.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
     "react-fast-marquee": "^1.6.5",
     "react-icons": "^5.5.0",
     "react-markdown": "^10.1.0",
@@ -52,7 +52,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@typescript-eslint/typescript-estree": "^8.46.1"
+      "@typescript-eslint/typescript-estree": "^8.46.1",
+      "webpack": "^5.94.0"
     }
   },
   "devDependencies": {

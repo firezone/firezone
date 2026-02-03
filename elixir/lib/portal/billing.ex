@@ -501,7 +501,12 @@ defmodule Portal.Billing do
   end
 
   def handle_events(events) when is_list(events) do
-    Enum.each(events, &EventHandler.handle_event/1)
+    Enum.reduce_while(events, :ok, fn event, :ok ->
+      case EventHandler.handle_event(event) do
+        {:ok, _event} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp fetch_config!(key) do
