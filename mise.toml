@@ -11,6 +11,7 @@ description = "Install linting tools from version-pinned files (managed by Depen
 run = """
 pip install -r .github/requirements.txt
 pnpm i --frozen-lockfile --dir ./.github
+pnpm i --frozen-lockfile --dir ./website
 """
 
 [tasks.lint]
