@@ -50,7 +50,9 @@ defmodule Portal.Entra.SyncTest do
             cond do
               String.contains?(filter, directory_sync_client_id) ->
                 Req.Test.json(conn, %{
-                  "value" => [%{"id" => @test_service_principal_id, "appId" => directory_sync_client_id}]
+                  "value" => [
+                    %{"id" => @test_service_principal_id, "appId" => directory_sync_client_id}
+                  ]
                 })
 
               String.contains?(filter, auth_provider_client_id) ->
@@ -799,7 +801,9 @@ defmodule Portal.Entra.SyncTest do
             cond do
               String.contains?(filter, directory_sync_client_id) ->
                 Req.Test.json(conn, %{
-                  "value" => [%{"id" => directory_sync_sp_id, "appId" => directory_sync_client_id}]
+                  "value" => [
+                    %{"id" => directory_sync_sp_id, "appId" => directory_sync_client_id}
+                  ]
                 })
 
               String.contains?(filter, auth_provider_client_id) ->
@@ -931,7 +935,9 @@ defmodule Portal.Entra.SyncTest do
             cond do
               String.contains?(filter, directory_sync_client_id) ->
                 Req.Test.json(conn, %{
-                  "value" => [%{"id" => directory_sync_sp_id, "appId" => directory_sync_client_id}]
+                  "value" => [
+                    %{"id" => directory_sync_sp_id, "appId" => directory_sync_client_id}
+                  ]
                 })
 
               String.contains?(filter, auth_provider_client_id) ->
@@ -1070,7 +1076,9 @@ defmodule Portal.Entra.SyncTest do
             cond do
               String.contains?(filter, directory_sync_client_id) ->
                 Req.Test.json(conn, %{
-                  "value" => [%{"id" => directory_sync_sp_id, "appId" => directory_sync_client_id}]
+                  "value" => [
+                    %{"id" => directory_sync_sp_id, "appId" => directory_sync_client_id}
+                  ]
                 })
 
               String.contains?(filter, auth_provider_client_id) ->
@@ -1154,7 +1162,9 @@ defmodule Portal.Entra.SyncTest do
             cond do
               String.contains?(filter, directory_sync_client_id) ->
                 Req.Test.json(conn, %{
-                  "value" => [%{"id" => directory_sync_sp_id, "appId" => directory_sync_client_id}]
+                  "value" => [
+                    %{"id" => directory_sync_sp_id, "appId" => directory_sync_client_id}
+                  ]
                 })
 
               String.contains?(filter, auth_provider_client_id) ->
@@ -1248,7 +1258,9 @@ defmodule Portal.Entra.SyncTest do
               String.contains?(filter, directory_sync_client_id) ->
                 # Directory Sync app IS found
                 Req.Test.json(conn, %{
-                  "value" => [%{"id" => directory_sync_sp_id, "appId" => directory_sync_client_id}]
+                  "value" => [
+                    %{"id" => directory_sync_sp_id, "appId" => directory_sync_client_id}
+                  ]
                 })
 
               String.contains?(filter, auth_provider_client_id) ->
