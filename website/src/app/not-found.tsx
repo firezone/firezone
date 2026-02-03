@@ -40,7 +40,7 @@ export default function NotFound() {
             >
               contact us
             </Link>{" "}
-            if you&apos;re still having trouble.
+            {"if you're still having trouble."}
           </p>
         </div>
       </div>

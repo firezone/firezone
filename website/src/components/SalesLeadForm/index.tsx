@@ -22,7 +22,7 @@ export default function SalesLeadForm() {
           <ul className="md:text-xl mb-8 list-inside list-disc">
             <li>Dedicated Email and Slack support</li>
             <li>
-              Leverage Firezone&apos;s Relay network to guarantee connectivity
+              {"Leverage Firezone's Relay network to guarantee connectivity"}
             </li>
             <li>White-glove onboarding and deployment assistance</li>
           </ul>

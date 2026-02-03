@@ -1,6 +1,12 @@
 repos:
   - repo: local
     hooks:
+      - id: no-html-entity-apostrophe
+        name: "jsx: no HTML entity apostrophes"
+        entry: website/scripts/check-no-html-entity-apostrophe.sh
+        language: system
+        types_or: [tsx, jsx]
+        files: ^website/
       - id: no-tracing-macro-imports
         name: "rust: no direct tracing macro imports"
         entry: "bash -c 'if grep -E \"use tracing::(trace|debug|info|warn|error)[^_]|use tracing::\\{[^}]*(trace|debug|info|warn|error)[^_]\" \"$@\"; then echo \"Error: Do not import tracing macros\"; exit 1; fi' --"
