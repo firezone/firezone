@@ -1014,4 +1014,58 @@ defmodule Portal.BillingTest do
       assert Portal.Billing.Database.count_api_tokens_for_actor(api_client) == 0
     end
   end
+
+  describe "handle_events/1" do
+    test "returns :ok when event is processed successfully", %{account: account} do
+      account =
+        update_account(account, %{
+          metadata: %{stripe: %{customer_id: "cus_test123"}}
+        })
+
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 10)
+
+      customer =
+        Stripe.build_customer(
+          id: account.metadata.stripe.customer_id,
+          metadata: %{"account_id" => account.id}
+        )
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert :ok = handle_events([event])
+    end
+
+    test "returns error when event processing fails", %{account: account} do
+      account =
+        update_account(account, %{
+          metadata: %{stripe: %{customer_id: "cus_test123"}}
+        })
+
+      subscription =
+        Stripe.subscription_object(account.metadata.stripe.customer_id, %{}, %{}, 10)
+
+      customer =
+        Stripe.build_customer(
+          id: account.metadata.stripe.customer_id,
+          metadata: %{"account_id" => account.id}
+        )
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      # Only stub customer endpoint, NOT the product endpoint
+      # This will cause fetch_product to fail
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+
+      # Should return error instead of silently swallowing it
+      assert capture_log(fn ->
+               assert {:error, :retry_later} = handle_events([event])
+             end) =~ "Cannot fetch Stripe product"
+    end
+  end
 end

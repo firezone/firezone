@@ -717,6 +717,119 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated.limits.sites_count == 50
       assert updated.limits.service_accounts_count == 25
     end
+
+    test "updates account_admin_users_count when upgrading plan", %{
+      account: account,
+      customer: customer
+    } do
+      # Start with starter plan limits
+      update_account(account, %{limits: %{account_admin_users_count: 1, sites_count: 10}})
+
+      account_before = Portal.Repo.get!(Portal.Account, account.id)
+      assert account_before.limits.account_admin_users_count == 1
+
+      # Update to team plan (account_admin_users_count: 10)
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 10)
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.account_admin_users_count == 10
+      assert updated.limits.sites_count == 100
+    end
+
+    test "resets limit to nil when field not in new subscription metadata", %{
+      account: account,
+      customer: customer
+    } do
+      # Set up account with existing limits
+      update_account(account, %{limits: %{account_admin_users_count: 5, sites_count: 50}})
+
+      account_before = Portal.Repo.get!(Portal.Account, account.id)
+      assert account_before.limits.account_admin_users_count == 5
+
+      # Process subscription with metadata that DOESN'T include account_admin_users_count
+      product =
+        Stripe.build_product(
+          id: "prod_test_team",
+          name: "Team",
+          metadata: %{
+            "sites_count" => "100"
+          }
+        )
+
+      price = Stripe.build_price(product: product["id"])
+
+      subscription =
+        Stripe.build_subscription(customer: customer["id"], items: [[price: price, quantity: 5]])
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.sites_count == 100
+      # Limit field not in metadata is reset to nil (not preserved)
+      assert updated.limits.account_admin_users_count == nil
+    end
+
+    test "sets users_count from quantity when no limit fields in metadata", %{
+      account: account,
+      customer: customer
+    } do
+      update_account(account, %{
+        limits: %{
+          account_admin_users_count: 5,
+          sites_count: 50,
+          service_accounts_count: 20
+        }
+      })
+
+      # Process subscription with only feature flags, no limits
+      product =
+        Stripe.build_product(
+          id: "prod_test_team",
+          name: "Team",
+          metadata: %{"policy_conditions" => "true"}
+        )
+
+      price = Stripe.build_price(product: product["id"])
+
+      subscription =
+        Stripe.build_subscription(customer: customer["id"], items: [[price: price, quantity: 5]])
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+
+      # All limits reset to nil when not in metadata
+      assert updated.limits.account_admin_users_count == nil
+      assert updated.limits.sites_count == nil
+      assert updated.limits.service_accounts_count == nil
+
+      # users_count is set from subscription quantity
+      assert updated.limits.users_count == 5
+    end
   end
 
   describe "handle_event/1 with subscription.resumed" do

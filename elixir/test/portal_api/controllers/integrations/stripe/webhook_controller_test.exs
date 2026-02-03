@@ -35,9 +35,13 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
         |> Ecto.Changeset.put_change(:metadata, %{stripe: %{customer_id: customer_id}})
         |> Portal.Repo.update!()
 
+      # Build product with team metadata (subscription_object uses prod_test_team by default)
+      product =
+        Stripe.build_product(id: "prod_test_team", name: "Team", metadata: Stripe.team_metadata())
+
       expectations =
         Stripe.mock_fetch_customer_endpoint(account) ++
-          Stripe.mock_fetch_product_endpoint("prod_Na6dGcTsmU0I4R")
+          Stripe.fetch_product_endpoint(product)
 
       Stripe.stub(expectations)
 
@@ -80,6 +84,44 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
         |> post("/integrations/stripe/webhooks", payload)
 
       assert response(conn, 400) == "Bad Request: expired signature"
+    end
+
+    test "returns 500 when event handling fails so Stripe will retry", %{conn: conn} do
+      customer_id = "cus_xxx"
+      account = account_fixture()
+
+      account =
+        account
+        |> Ecto.Changeset.change()
+        |> Ecto.Changeset.put_change(:metadata, %{stripe: %{customer_id: customer_id}})
+        |> Portal.Repo.update!()
+
+      # Only stub customer endpoint, NOT the product endpoint
+      # This will cause handle_events to fail when fetching the product
+      Stripe.stub(Stripe.mock_fetch_customer_endpoint(account))
+
+      payload =
+        Stripe.build_event(
+          "customer.subscription.updated",
+          Stripe.subscription_object(customer_id, %{}, %{}, 0)
+        )
+        |> JSON.encode!()
+
+      signed_at = System.system_time(:second) - 15
+      signature = generate_signature(signed_at, payload)
+      signature_header = create_signature_header(signed_at, signature)
+
+      import ExUnit.CaptureLog
+
+      {conn, _log} =
+        with_log(fn ->
+          conn
+          |> put_req_header("content-type", "application/json")
+          |> put_req_header("stripe-signature", signature_header)
+          |> post("/integrations/stripe/webhooks", payload)
+        end)
+
+      assert response(conn, 500) == "Internal Error"
     end
   end
 
