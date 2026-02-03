@@ -225,6 +225,7 @@ pub(crate) async fn check() -> Result<Release> {
     let response = client
         .get(&api_url)
         .header("User-Agent", &user_agent)
+        .header("Accept", "application/json")
         .send()
         .await?;
 
@@ -244,7 +245,7 @@ pub(crate) async fn check() -> Result<Release> {
     let download_url = url::Url::parse(&format!(
         "{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}"
     ))
-    .expect("download URL is valid");
+    .context("Failed to construct download URL")?;
 
     Ok(Release {
         download_url,
