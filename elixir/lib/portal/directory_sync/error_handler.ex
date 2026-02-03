@@ -18,7 +18,6 @@ defmodule Portal.DirectorySync.ErrorHandler do
   """
 
   alias __MODULE__.Database
-  alias Portal.DirectorySync.SyncError.Context
   require Logger
 
   @doc """
@@ -76,49 +75,44 @@ defmodule Portal.DirectorySync.ErrorHandler do
     update_directory(:okta, directory_id, :transient, message)
   end
 
-  # Error classification - pattern matches on the Context struct
+  # Error classification - pattern matches on raw errors
 
   # HTTP 4xx -> client_error (disable immediately)
-  defp classify_error(%Context{type: :http, data: %{status: status}} = ctx, format_fn)
+  defp classify_error(%Req.Response{status: status} = resp, format_fn)
        when status >= 400 and status < 500 do
-    {:client_error, format_fn.(ctx)}
+    {:client_error, format_fn.(resp)}
   end
 
   # HTTP 5xx -> transient
-  defp classify_error(%Context{type: :http} = ctx, format_fn) do
-    {:transient, format_fn.(ctx)}
+  defp classify_error(%Req.Response{} = resp, format_fn) do
+    {:transient, format_fn.(resp)}
   end
 
   # Network errors -> transient
-  defp classify_error(%Context{type: :network} = ctx, _format_fn) do
-    {:transient, format_network_error(ctx)}
+  defp classify_error(%Req.TransportError{} = err, _format_fn) do
+    {:transient, format_transport_error(err)}
   end
 
-  # Validation errors -> client_error (bad data in IdP)
-  defp classify_error(%Context{type: :validation} = ctx, _format_fn) do
-    {:client_error, format_validation_error(ctx)}
-  end
-
-  # Missing scopes -> client_error
-  defp classify_error(%Context{type: :scopes} = ctx, _format_fn) do
-    {:client_error, format_scopes_error(ctx)}
-  end
-
-  # Circuit breaker -> client_error
-  defp classify_error(%Context{type: :circuit_breaker} = ctx, _format_fn) do
-    {:client_error, format_circuit_breaker_error(ctx)}
-  end
+  # String contexts starting with special prefixes -> client_error
+  defp classify_error("validation: " <> _ = msg, _format_fn), do: {:client_error, msg}
+  defp classify_error("scopes: " <> _ = msg, _format_fn), do: {:client_error, msg}
+  defp classify_error("circuit_breaker: " <> _ = msg, _format_fn), do: {:client_error, msg}
 
   # nil context -> transient with generic message
   defp classify_error(nil, _format_fn) do
     {:transient, "Unknown error occurred"}
   end
 
+  # Other string contexts -> transient
+  defp classify_error(msg, _format_fn) when is_binary(msg) do
+    {:transient, msg}
+  end
+
   # Error formatting - Provider-specific HTTP error formatting
 
-  defp format_entra_error(%Context{
-         type: :http,
-         data: %{status: status, body: %{"error" => error_obj}}
+  defp format_entra_error(%Req.Response{
+         status: status,
+         body: %{"error" => error_obj}
        }) do
     code = Map.get(error_obj, "code")
     message = Map.get(error_obj, "message")
@@ -136,22 +130,18 @@ defmodule Portal.DirectorySync.ErrorHandler do
     Enum.join(parts, " - ")
   end
 
-  defp format_entra_error(%Context{type: :http, data: %{status: status, body: body}})
+  defp format_entra_error(%Req.Response{status: status, body: body})
        when is_binary(body) do
     "HTTP #{status} - #{body}"
   end
 
-  defp format_entra_error(%Context{type: :http, data: %{status: status}}) do
+  defp format_entra_error(%Req.Response{status: status}) do
     "Entra API returned HTTP #{status}"
   end
 
-  defp format_entra_error(%Context{} = ctx) do
-    format_context_error(ctx)
-  end
-
-  defp format_google_error(%Context{
-         type: :http,
-         data: %{status: status, body: %{"error" => error_obj}}
+  defp format_google_error(%Req.Response{
+         status: status,
+         body: %{"error" => error_obj}
        })
        when is_map(error_obj) do
     code = Map.get(error_obj, "code")
@@ -175,44 +165,28 @@ defmodule Portal.DirectorySync.ErrorHandler do
     Enum.join(parts, " - ")
   end
 
-  defp format_google_error(%Context{type: :http, data: %{status: status, body: body}})
+  defp format_google_error(%Req.Response{status: status, body: body})
        when is_binary(body) do
     "HTTP #{status} - #{body}"
   end
 
-  defp format_google_error(%Context{type: :http, data: %{status: status}}) do
+  defp format_google_error(%Req.Response{status: status}) do
     "Google API returned HTTP #{status}"
   end
 
-  defp format_google_error(%Context{} = ctx) do
-    format_context_error(ctx)
-  end
-
-  defp format_okta_error(%Context{type: :http, data: %{status: status, body: body}})
+  defp format_okta_error(%Req.Response{status: status, body: body})
        when is_map(body) do
     Portal.Okta.ErrorCodes.format_error(status, body)
   end
 
-  defp format_okta_error(%Context{type: :http, data: %{status: status, body: body}})
+  defp format_okta_error(%Req.Response{status: status, body: body})
        when is_binary(body) do
     Portal.Okta.ErrorCodes.format_error(status, body)
   end
 
-  defp format_okta_error(%Context{type: :http, data: %{status: status}}) do
+  defp format_okta_error(%Req.Response{status: status}) do
     Portal.Okta.ErrorCodes.format_error(status, nil)
   end
-
-  defp format_okta_error(%Context{} = ctx) do
-    format_context_error(ctx)
-  end
-
-  # Generic Context formatting for non-HTTP contexts
-  defp format_context_error(%Context{type: :network} = ctx), do: format_network_error(ctx)
-  defp format_context_error(%Context{type: :validation} = ctx), do: format_validation_error(ctx)
-  defp format_context_error(%Context{type: :scopes} = ctx), do: format_scopes_error(ctx)
-
-  defp format_context_error(%Context{type: :circuit_breaker} = ctx),
-    do: format_circuit_breaker_error(ctx)
 
   @doc """
   Format network/transport errors into user-friendly messages.
@@ -221,10 +195,6 @@ defmodule Portal.DirectorySync.ErrorHandler do
   """
   @spec format_transport_error(Exception.t()) :: String.t()
   def format_transport_error(%Req.TransportError{reason: reason}) do
-    format_transport_reason(reason)
-  end
-
-  defp format_network_error(%Context{type: :network, data: %{reason: reason}}) do
     format_transport_reason(reason)
   end
 
@@ -257,32 +227,6 @@ defmodule Portal.DirectorySync.ErrorHandler do
       _ ->
         "Network error: #{inspect(reason)}"
     end
-  end
-
-  defp format_validation_error(%Context{type: :validation, data: data}) do
-    entity = Map.get(data, :entity) || Map.get(data, :entity_type)
-    id = Map.get(data, :id) || Map.get(data, :entity_id)
-    field = Map.get(data, :field) || Map.get(data, :missing_field)
-
-    entity_desc =
-      if id do
-        "#{entity} '#{id}'"
-      else
-        to_string(entity)
-      end
-
-    "#{String.capitalize(entity_desc)} missing required '#{field}' field."
-  end
-
-  defp format_scopes_error(%Context{type: :scopes, data: %{missing: missing_scopes}}) do
-    "Access token missing required scopes: #{Enum.join(missing_scopes, ", ")}. " <>
-      "Grant the following scopes to your application: #{Enum.join(missing_scopes, ", ")}"
-  end
-
-  defp format_circuit_breaker_error(%Context{type: :circuit_breaker, data: %{resource: resource}}) do
-    "Sync would delete all #{resource}. " <>
-      "This may indicate your application was misconfigured. " <>
-      "Please verify your configuration and re-verify the directory."
   end
 
   defp format_generic_error(error) when is_exception(error) do
@@ -371,12 +315,6 @@ defmodule Portal.DirectorySync.ErrorHandler do
 
   defp build_sentry_context(_reason, job) do
     Map.take(job, [:id, :args, :meta, :queue, :worker])
-  end
-
-  defp format_context(%Context{} = ctx) do
-    ctx
-    |> Map.from_struct()
-    |> Map.put(:__type__, "Context")
   end
 
   defp format_context(%Req.Response{status: status, body: body}) when is_map(body) do

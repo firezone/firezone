@@ -11,7 +11,6 @@ defmodule Portal.Okta.Sync do
       keys: [:directory_id]
     ]
 
-  alias Portal.DirectorySync.SyncError.Context
   alias Portal.Okta
   alias __MODULE__.Database
 
@@ -100,7 +99,7 @@ defmodule Portal.Okta.Sync do
 
         raise Okta.SyncError,
           reason: "Failed to get access token",
-          context: Context.from_error(error),
+          context: error,
           directory_id: directory.id,
           step: :get_access_token
     end
@@ -119,7 +118,7 @@ defmodule Portal.Okta.Sync do
         if missing_scopes != [] do
           raise Okta.SyncError,
             reason: "Access token missing required scopes: #{Enum.join(missing_scopes, ", ")}",
-            context: %Context{type: :scopes, data: %{missing: missing_scopes}},
+            context: "scopes: missing #{Enum.join(missing_scopes, ", ")}",
             directory_id: directory.id,
             step: :verify_scopes
         end
@@ -127,7 +126,7 @@ defmodule Portal.Okta.Sync do
       _ ->
         raise Okta.SyncError,
           reason: "Could not verify access token scopes",
-          context: %Context{type: :scopes, data: %{missing: @required_scopes}},
+          context: "scopes: missing #{Enum.join(@required_scopes, ", ")}",
           directory_id: directory.id,
           step: :verify_scopes
     end
@@ -153,7 +152,7 @@ defmodule Portal.Okta.Sync do
 
         raise Okta.SyncError,
           reason: "Failed to fetch apps",
-          context: Context.from_error(error),
+          context: error,
           directory_id: directory.id,
           step: :list_apps
     end
@@ -212,7 +211,7 @@ defmodule Portal.Okta.Sync do
       [error | _] ->
         raise Okta.SyncError,
           reason: "Failed to stream app users",
-          context: Context.from_error(error),
+          context: error,
           directory_id: directory.id,
           step: :stream_app_users
 
@@ -294,7 +293,7 @@ defmodule Portal.Okta.Sync do
       [error | _] ->
         raise Okta.SyncError,
           reason: "Failed to stream app groups",
-          context: Context.from_error(error),
+          context: error,
           directory_id: directory.id,
           step: :stream_app_groups
 
@@ -410,7 +409,7 @@ defmodule Portal.Okta.Sync do
       {:error, reason}, _acc ->
         raise Okta.SyncError,
           reason: "Failed to stream group members",
-          context: Context.from_error(reason),
+          context: reason,
           directory_id: directory_id,
           step: :stream_group_members
     end)
@@ -429,10 +428,7 @@ defmodule Portal.Okta.Sync do
     unless email do
       raise Okta.SyncError,
         reason: "User '#{user["id"]}' missing required 'email' field",
-        context: %Context{
-          type: :validation,
-          data: %{entity: :user, id: user["id"], field: :email}
-        },
+        context: "validation: user '#{user["id"]}' missing 'email' field",
         directory_id: directory_id,
         step: :process_user
     end
@@ -557,7 +553,7 @@ defmodule Portal.Okta.Sync do
           "Sync would delete all #{resource_name}. " <>
             "This may indicate the Okta application was misconfigured or removed. " <>
             "Please verify your Okta configuration and re-verify the directory connection.",
-        context: %Context{type: :circuit_breaker, data: %{resource: resource_name}},
+        context: "circuit_breaker: would delete all #{resource_name}",
         directory_id: directory.id,
         step: :check_deletion_threshold
     end
