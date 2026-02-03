@@ -1,6 +1,21 @@
 # Customize flags given to the VM: http://erlang.org/doc/man/erl.html
 # -mode/-name/-sname/-setcookie are configured via env vars, do not set them here
 
+# Erlang distribution tick time - controls dead node detection speed.
+#
+# Erlang sends "ticks" between connected nodes. If 4 consecutive ticks are
+# missed, the node is considered dead and disconnected. With the default
+# net_ticktime of 60s, dead nodes take ~4 minutes to detect.
+#
+# We reduce this to 15s so dead nodes are detected in ~60 seconds. This is
+# important during rolling deployments when VMs are terminated - faster
+# detection means the cluster stabilizes more quickly and avoids prolonged
+# partition detection by the `global` module.
+#
+# Trade-off: More sensitive to transient network issues. 15s is still
+# conservative enough for cloud environments with occasional packet loss.
+-kernel net_ticktime 15
+
 # Number of dirty schedulers doing IO work (file, sockets, and others)
 #
 # Interacting with the file system usually goes through the async pool.

@@ -8,6 +8,7 @@ Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
 SQL.Query: SQL injection,lib/portal/safe.ex:344,2C3D7F0
 SQL.Query: SQL injection,lib/portal/safe.ex:350,3C9C61F
 DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:171,3D848A0
+DOS.BinToAtom: Unsafe atom interpolation,lib/portal/account.ex:92,43C74D4
 Config.Headers: Missing Secure Browser Headers,lib/portal_api/router.ex:15,464028
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:72,476160D
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:4,490DB25
@@ -24,7 +25,6 @@ Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/client_auth.ex:42,
 XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,696A7C1
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:216,69DCAC0
 Config.Secrets: Hardcoded Secret,config/config.exs:221,6D192B
-DOS.BinToAtom: Unsafe atom interpolation,lib/portal/account.ex:127,6E6B215
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:53,7047850
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:13,7269EC9
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:43,7695619

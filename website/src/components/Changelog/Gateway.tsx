@@ -204,8 +204,9 @@ export default function Gateway() {
           not be sent.
         </ChangeItem>
         <ChangeItem pull="9060">
-          Fixes an issue where service discovery for DNS resources would fail in
-          case the Gateway&apos;s started up with no network connectivity.
+          {
+            "Fixes an issue where service discovery for DNS resources would fail in case the Gateway's started up with no network connectivity."
+          }
         </ChangeItem>
         <ChangeItem pull="9088">
           Fixes an issue where large batches of packets to the same Client got
@@ -277,8 +278,9 @@ export default function Gateway() {
       </Entry>
       <Entry version="1.4.3" date={new Date("2025-01-28")}>
         <ChangeItem pull="7567">
-          Fixes an issue where ICMPv6&apos;s &apos;PacketTooBig&apos; errors
-          were not correctly translated by the NAT64 module.
+          {
+            "Fixes an issue where ICMPv6's 'PacketTooBig' errors were not correctly translated by the NAT64 module."
+          }
         </ChangeItem>
         <ChangeItem pull="7565">
           Fails early in case the binary is not started as <code>root</code> or
@@ -344,9 +346,9 @@ export default function Gateway() {
       </Entry>
       <Entry version="1.3.2" date={new Date("2024-10-02")}>
         <ChangeItem pull="6733">
-          Reduces log level of the &quot;Couldn&apos;t find connection by
-          IP&quot; message so that it doesn&apos;t log each time a client
-          disconnects.
+          {
+            "Reduces log level of the \"Couldn't find connection by IP\" message so that it doesn't log each time a client disconnects."
+          }
         </ChangeItem>
         <ChangeItem pull="6845">
           Fixes connectivity issues on idle connections by entering an

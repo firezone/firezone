@@ -1,20 +1,30 @@
 Account Limits Exceeded
 
-Your Firezone account has exceeded the following limits:
+Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has exceeded the following limits:
 
 <%= @warning %>
-
-Please upgrade your plan or remove resources to resolve this issue.
 
 What happens next?
 - Your existing connections will continue to work
 - New client sign-ins will be blocked until limits are resolved
 - Account administrators can still access the admin portal
 
+<%= case @plan_type do %>
+<% :enterprise -> %>
+To resolve this:
+Please contact your account manager to increase these limits, or remove excess resources to get back within your current limits.
+<% :team -> %>
+To resolve this:
+You can change your paid users by going to Settings -> Billing (<%= @billing_url %>) in the admin portal and clicking the "Manage" button in the upper-right. Or remove excess resources to get back within your current limits.
+<% :starter -> %>
+To resolve this:
+You can upgrade to Team by going to Settings -> Billing (<%= @billing_url %>) in the admin portal. Or remove excess resources to get back within your current limits.
+<% _ -> %>
 To resolve this:
 1. Log into your Firezone admin portal
-2. Navigate to Settings -> Billing to upgrade your plan
+2. Navigate to Settings -> Billing (<%= @billing_url %>) to upgrade your plan
 3. Or remove excess resources to get back within your limits
+<% end %>
 
 If you have any questions, please contact our support team.
 

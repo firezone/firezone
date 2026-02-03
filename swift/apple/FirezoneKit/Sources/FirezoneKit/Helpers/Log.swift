@@ -128,7 +128,7 @@ public final class Log {
 
 /// Thread-safe: All mutable state access is serialised through workQueue.
 /// Log writes are queued asynchronously to avoid blocking the caller.
-private final class LogWriter: @unchecked Sendable {
+final class LogWriter: @unchecked Sendable {
   enum Severity: String {
     case trace = "TRACE"
     case debug = "DEBUG"
@@ -192,7 +192,7 @@ private final class LogWriter: @unchecked Sendable {
   }
 
   // Returns a valid file handle, recreating file if necessary
-  private func ensureFileExists() -> FileHandle? {
+  func ensureFileExists() -> FileHandle? {
     let fileManager = FileManager.default
 
     // Check if current file still exists
@@ -230,7 +230,7 @@ private final class LogWriter: @unchecked Sendable {
       guard let self = self else { return }
       guard let handle = self.ensureFileExists() else { return }
 
-      handle.write(Data(line.utf8))
+      try? handle.write(contentsOf: Data(line.utf8))
     }
   }
 }
