@@ -12,6 +12,22 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
+      title: "January 2026 Devlog",
+      date: "February 1, 2026",
+      href: "/blog/devlog/2026-01",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Engineering",
+      description: (
+        <p className="mb-2">
+          Multi-region infrastructure with database read replicas and Postgres
+          clustering. Portal performance improvements with Bandit HTTP server
+          and WebSocket rate limiting. Enhanced partition tolerance for gateways
+          and relays.
+        </p>
+      ),
+    },
+    {
       title: "December 2025 Devlog",
       date: "December 31, 2025",
       href: "/blog/devlog/2025-12",
