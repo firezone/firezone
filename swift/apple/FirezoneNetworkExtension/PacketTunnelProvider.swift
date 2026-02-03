@@ -434,6 +434,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   #endif
 
   /// Handle commands from the Adapter via channel.
+  ///
+  /// **Must be called on the main thread.** NEPacketTunnelProvider's properties and methods
+  /// have undocumented main-thread requirements:
+  /// - `reasserting`: Reading/writing from background threads silently returns stale values
+  /// - `cancelTunnelWithError(_:)`: May not properly signal the system from background threads
+  /// - `setTunnelNetworkSettings(_:completionHandler:)`: Works from any thread but we keep
+  ///   it consistent with other calls
+  ///
+  /// The caller (`PacketTunnelProviderActorBridge.handle`) dispatches to main before calling.
   private func handleProviderCommand(_ command: ProviderCommand) {
     switch command {
     case .cancelWithError(let sendableError):
