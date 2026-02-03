@@ -24,7 +24,11 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="11988">
+          Fixes a crash if the currently active log file gets deleted.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.13" date={new Date("2026-01-30")}>
         <ChangeItem pull="11901">
           Fixes an issue where the tunnel may not come up after a fresh install
