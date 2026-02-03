@@ -357,11 +357,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Hardcoded 100MB limit for log cleanup
     let maxSizeMb: UInt32 = 100
 
-    // Run cleanup immediately at startup
-    Self.performLogCleanup(maxSizeMb: maxSizeMb)
-
-    // Schedule hourly cleanup
+    // Run cleanup in background task - both immediately and hourly
     logCleanupTask = CancellableTask {
+      Self.performLogCleanup(maxSizeMb: maxSizeMb)
+
       while !Task.isCancelled {
         try? await Task.sleep(nanoseconds: 3600 * 1_000_000_000)
         guard !Task.isCancelled else { break }
