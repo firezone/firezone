@@ -317,20 +317,12 @@ defmodule Portal.DirectorySync.ErrorHandler do
     Map.take(job, [:id, :args, :meta, :queue, :worker])
   end
 
-  defp format_context(%Req.Response{status: status, body: body}) when is_map(body) do
-    %{type: "Req.Response", status: status, body: body}
+  defp format_context(%Req.Response{} = response) do
+    Map.from_struct(response)
   end
 
-  defp format_context(%Req.Response{status: status, body: body}) when is_binary(body) do
-    %{type: "Req.Response", status: status, body: String.slice(body, 0, 500)}
-  end
-
-  defp format_context(%Req.Response{status: status}) do
-    %{type: "Req.Response", status: status}
-  end
-
-  defp format_context(%Req.TransportError{reason: reason}) do
-    %{type: "Req.TransportError", reason: inspect(reason)}
+  defp format_context(%Req.TransportError{} = error) do
+    Map.from_struct(error)
   end
 
   defp format_context(context) when is_exception(context) do
