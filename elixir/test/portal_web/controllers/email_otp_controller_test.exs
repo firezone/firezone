@@ -753,7 +753,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert flash(conn, :error) =~ "exceeding billing limits"
     end
 
-    test "logs error and allows gui-client sign-in when account has exceeded monthly active users limits",
+    test "allows gui-client sign-in when account has exceeded monthly active users limits (soft limit)",
          %{
            conn: conn,
            account: account,
@@ -782,28 +782,19 @@ defmodule PortalWeb.EmailOTPControllerTest do
       # Set limit exceeded flag on the account (seats_limit_exceeded is used for monthly active users)
       update_account(account, %{seats_limit_exceeded: true})
 
-      # Try to verify
-      log =
-        capture_log(fn ->
-          conn =
-            conn
-            |> recycle_with_cookie()
-            |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
-              "secret" => code,
-              "as" => "gui-client",
-              "state" => "test-state",
-              "nonce" => "test-nonce"
-            })
+      # Try to verify - sign-in should still succeed since seats is a soft limit
+      conn =
+        conn
+        |> recycle_with_cookie()
+        |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}/verify", %{
+          "secret" => code,
+          "as" => "gui-client",
+          "state" => "test-state",
+          "nonce" => "test-nonce"
+        })
 
-          # Sign-in should still succeed
-          assert conn.status == 200
-          assert conn.resp_body =~ "client_redirect"
-        end)
-
-      assert log =~ "Account seats limit exceeded"
-      assert log =~ "account_id=#{account.id}"
-      assert log =~ "account_slug=#{account.slug}"
-      assert log =~ "actor_id=#{actor.id}"
+      assert conn.status == 200
+      assert conn.resp_body =~ "client_redirect"
     end
 
     test "rejects headless-client sign-in when account has exceeded user limits", %{

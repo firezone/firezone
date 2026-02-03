@@ -27,10 +27,18 @@ defmodule Portal.Mailer.Notifications do
     )
   end
 
-  def limits_exceeded_email(warning, email) do
+  def limits_exceeded_email(account, warning, email) do
+    billing_url = url(~p"/#{account.id}/settings/billing")
+    plan_type = Portal.Billing.plan_type(account)
+
     default_email()
     |> subject("Firezone Account Limits Exceeded")
     |> to(email)
-    |> render_body(__MODULE__, :limits_exceeded, warning: warning)
+    |> render_body(__MODULE__, :limits_exceeded,
+      account: account,
+      warning: warning,
+      billing_url: billing_url,
+      plan_type: plan_type
+    )
   end
 end

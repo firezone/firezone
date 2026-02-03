@@ -371,7 +371,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       # Limit flags should be cleared after subscription update
       updated = Portal.Repo.get!(Portal.Account, account.id)
-      refute Portal.Account.any_limit_exceeded?(updated)
+      refute Portal.Billing.any_limit_exceeded?(updated)
     end
 
     test "sets account limit flags when subscription update results in exceeded limits", %{
@@ -384,7 +384,7 @@ defmodule Portal.Billing.EventHandlerTest do
       Portal.ActorFixtures.actor_fixture(account: account, type: :account_user)
 
       # Account starts with no limit flags set
-      refute Portal.Account.any_limit_exceeded?(account)
+      refute Portal.Billing.any_limit_exceeded?(account)
 
       # Process subscription update with low limits (1 user)
       {product, _price, subscription} =
