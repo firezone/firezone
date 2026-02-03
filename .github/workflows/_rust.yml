@@ -57,6 +57,15 @@ jobs:
       - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
         shell: bash
 
+  monitor-static-analysis:
+    needs: [static-analysis]
+    if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   unused-dependencies:
     name: unused-dependencies-${{ matrix.runs-on }}
     strategy:
@@ -106,9 +115,9 @@ jobs:
       - run: cargo +${{ steps.setup-rust-nightly.outputs.nightly_version }} udeps --verbose --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
         name: cargo udeps
 
-  monitor-static-analysis:
-    needs: [static-analysis]
-    if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
+  monitor-unused-dependencies:
+    needs: [unused-dependencies]
+    if: "!cancelled() && needs.unused-dependencies.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
       - run: gh run cancel ${{ github.run_id }}
