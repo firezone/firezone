@@ -96,7 +96,7 @@ jobs:
 
       - name: Modify mtime of toolchain files (Linux & macOS)
         if: ${{ runner.os == 'Linux' || runner.os == 'macOS' }}
-        run: find ~/.rustup/toolchains/${{ steps.setup-rust-nightly.outputs.nightly_version }}-* -print0 | xargs -0 touch -d '2025-09-30'
+        run: find ~/.rustup/toolchains/ -maxdepth 1 -name "${{ steps.setup-rust-nightly.outputs.nightly_version }}-*" -print0 | xargs -0 touch -d '2025-09-30'
       - name: Modify mtime of toolchain files (Windows)
         if: ${{ runner.os == 'Windows' }}
         shell: powershell
