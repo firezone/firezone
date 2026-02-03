@@ -1,12 +1,6 @@
 repos:
   - repo: local
     hooks:
-      - id: no-html-entity-apostrophe
-        name: "jsx: no HTML entity apostrophes"
-        entry: website/scripts/check-no-html-entity-apostrophe.sh
-        language: system
-        types_or: [tsx, jsx]
-        files: ^website/
       - id: no-tracing-macro-imports
         name: "rust: no direct tracing macro imports"
         entry: "bash -c 'if grep -E \"use tracing::(trace|debug|info|warn|error)[^_]|use tracing::\\{[^}]*(trace|debug|info|warn|error)[^_]\" \"$@\"; then echo \"Error: Do not import tracing macros\"; exit 1; fi' --"
@@ -23,6 +17,12 @@ repos:
         entry: bash -c 'cd .github && git -C .. ls-files "*.md" "*.json" "*.yaml" "*.yml" "*.css" "*.js" "*.ts" "*.tsx" | sed "s|^|../|" | xargs pnpm exec prettier --ignore-path ../.prettierignore --check --ignore-unknown --no-error-on-unmatched-pattern'
         language: system
         pass_filenames: false
+      - id: website-eslint
+        name: "website: eslint"
+        entry: bash -c 'cd website && pnpm exec eslint "$@"' --
+        language: system
+        types_or: [ts, tsx, javascript, jsx]
+        files: ^website/
 
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
