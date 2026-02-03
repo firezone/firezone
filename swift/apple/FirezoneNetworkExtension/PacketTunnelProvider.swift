@@ -443,7 +443,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   ///   it consistent with other calls
   ///
   /// The caller (`PacketTunnelProviderActorBridge.handle`) dispatches to main before calling.
-  private func handleProviderCommand(_ command: ProviderCommand) {
+  fileprivate func handleProviderCommand(_ command: ProviderCommand) {
     switch command {
     case .cancelWithError(let sendableError):
       if let sendableError {
