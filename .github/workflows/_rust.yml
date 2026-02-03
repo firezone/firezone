@@ -90,9 +90,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: bpf-linker
-      - name: Modify mtime of toolchain files
+
+      # Fix-up mtime of toolchain files
+      # Inspired by https://github.com/est31/cargo-udeps/issues/149.
+
+      - name: Modify mtime of toolchain files (Linux & macOS)
         if: ${{ runner.os == 'Linux' || runner.os == 'macOS' }}
-        run: find ~/.rustup/toolchains/${{ steps.setup-rust-nightly.outputs.nightly_version }}-x86_64-unknown-linux-gnu -print0 | xargs -0 touch -d '2025-09-30' # https://github.com/est31/cargo-udeps/issues/149
+        run: find ~/.rustup/toolchains/${{ steps.setup-rust-nightly.outputs.nightly_version }}-x86_64-unknown-linux-gnu -print0 | xargs -0 touch -d '2025-09-30'
+      - name: Modify mtime of toolchain files (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: powershell
+        run: Get-ChildItem -Path "$env:USERPROFILE\.rustup\toolchains\${{ steps.setup-rust-nightly.outputs.nightly_version }}-x86_64-pc-windows-msvc" -Recurse | ForEach-Object { $_.LastWriteTime = '2025-09-30' }
+
       - run: cargo +${{ steps.setup-rust-nightly.outputs.nightly_version }} udeps --verbose --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
         name: cargo udeps
 
