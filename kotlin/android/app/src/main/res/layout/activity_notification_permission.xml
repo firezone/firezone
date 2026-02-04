@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="@dimen/spacing_medium"
+    tools:context=".features.permission.notification.ui.NotificationPermissionActivity"
+    android:fitsSystemWindows="true">
+
+  <androidx.appcompat.widget.AppCompatImageView
+      android:id="@+id/ivLogo"
+      android:layout_width="@dimen/iv_logo_size"
+      android:layout_height="@dimen/iv_logo_size"
+      android:layout_marginTop="8dp"
+      android:src="@drawable/ic_firezone_logo"
+      app:layout_constraintEnd_toEndOf="parent"
+      app:layout_constraintHorizontal_bias="0.498"
+      app:layout_constraintStart_toStartOf="parent"
+      app:layout_constraintTop_toTopOf="parent" />
+
+  <com.google.android.material.textview.MaterialTextView
+      style="@style/AppTheme.Base.HeaderText"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:gravity="center"
+      android:text="@string/app_short_name"
+      android:textSize="48sp"
+      app:fontFamily="@font/manrope_bold"
+      app:layout_constraintBottom_toTopOf="@+id/constraintLayout"
+      app:layout_constraintEnd_toEndOf="parent"
+      app:layout_constraintStart_toStartOf="parent"
+      app:layout_constraintTop_toBottomOf="@+id/ivLogo" />
+
+  <androidx.constraintlayout.widget.ConstraintLayout
+      android:id="@+id/constraintLayout"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:padding="@dimen/spacing_medium"
+      app:layout_constraintBottom_toBottomOf="parent"
+      app:layout_constraintTop_toTopOf="parent"
+      tools:ignore="MissingConstraints"
+      tools:layout_editor_absoluteX="16dp">
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/tvHeaderTitle"
+        style="@style/AppTheme.Base.H5"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="36dp"
+        android:text="@string/enable_notification_permission"
+        android:textAlignment="center"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/tvBody"
+        style="@style/AppTheme.Base.Body1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/notification_permission_description"
+        android:textAlignment="center"
+        app:layout_constraintTop_toBottomOf="@+id/tvHeaderTitle"
+        tools:layout_editor_absoluteX="16dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnRequest"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="@string/request_permission"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvBody" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnSkip"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/skip"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btnRequest" />
+  </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

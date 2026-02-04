@@ -51,6 +51,13 @@
 		the button below.
 	</string>
 	<string name="request_permission">Request Permission</string>
+	<string name="enable_notification_permission">Enable Notifications</string>
+	<string name="notification_permission_description">
+		Firezone can send notifications to keep you informed about your connection status.
+		This helps you know when you\'re connected to resources and if any issues occur.
+		You can change this later in your device settings.
+	</string>
+	<string name="skip">Skip</string>
 
 	<!-- Managed Configuration -->
 	<string name="config_token_title">Token</string>

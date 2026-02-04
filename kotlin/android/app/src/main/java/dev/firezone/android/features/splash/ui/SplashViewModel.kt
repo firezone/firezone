@@ -1,8 +1,14 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.splash.ui
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,6 +48,12 @@ internal class SplashViewModel
                     return@launch
                 }
 
+                // Check if we need to request notification permission (only once)
+                if (shouldRequestNotificationPermission(context)) {
+                    actionMutableLiveData.postValue(ViewAction.NavigateToNotificationPermission)
+                    return@launch
+                }
+
                 val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
 
                 // If we don't have a token, we can't connect.
@@ -78,8 +90,38 @@ internal class SplashViewModel
 
         private fun hasVpnPermissions(context: Context): Boolean = android.net.VpnService.prepare(context) == null
 
+        private fun shouldRequestNotificationPermission(context: Context): Boolean {
+            // Only request on Android 13+ where runtime permission is required
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                return false
+            }
+
+            // Check if we've already requested permission
+            if (repo.hasRequestedNotificationPermission()) {
+                return false
+            }
+
+            // Check if permission is already granted
+            val isGranted =
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED
+
+            // If already granted, mark as requested and don't show the screen
+            if (isGranted) {
+                repo.setNotificationPermissionRequested()
+                return false
+            }
+
+            // Permission not granted and not yet requested
+            return true
+        }
+
         internal sealed class ViewAction {
             object NavigateToVpnPermission : ViewAction()
+
+            object NavigateToNotificationPermission : ViewAction()
 
             object NavigateToSettings : ViewAction()
 

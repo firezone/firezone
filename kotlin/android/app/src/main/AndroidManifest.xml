@@ -72,6 +72,10 @@
             android:exported="false" />
 
         <activity
+            android:name="dev.firezone.android.features.permission.notification.ui.NotificationPermissionActivity"
+            android:exported="false" />
+
+        <activity
             android:name="dev.firezone.android.features.session.ui.SessionActivity"
             android:exported="false" />
 
