@@ -1,0 +1,53 @@
+# Rust development tasks
+#
+# Usage: mise run <task> (from this directory) or mise //rust:<task> (from repo root)
+
+[env]
+# Match CI environment - enables tokio unstable features and denies warnings
+RUSTFLAGS = "--cfg tokio_unstable --deny warnings"
+# Nightly version used for cargo-udeps (keep in sync with .github/actions/setup-rust-nightly)
+NIGHTLY_VERSION = "nightly-2025-09-30"
+
+# =============================================================================
+# Individual checks (matching CI)
+# =============================================================================
+
+[tasks.fmt]
+description = "Format Rust code"
+run = "cargo fmt"
+
+[tasks.fmt-check]
+description = "Check Rust formatting (CI check)"
+run = "cargo fmt -- --check"
+
+[tasks.clippy]
+description = "Run clippy lints (CI check)"
+run = "cargo clippy --all-targets --all-features"
+
+[tasks.doc]
+description = "Build documentation (CI check)"
+run = "cargo doc --all-features --no-deps --document-private-items"
+
+[tasks.udeps]
+description = "Check for unused dependencies (CI check, requires nightly)"
+run = "cargo +$NIGHTLY_VERSION udeps --all-targets --all-features"
+
+[tasks.deny]
+description = "Check licenses and security advisories (CI check)"
+run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip"
+
+[tasks.test]
+description = "Run tests (CI check)"
+run = "cargo test --all-features -- --include-ignored --nocapture"
+
+# =============================================================================
+# Composite tasks
+# =============================================================================
+
+[tasks.check]
+description = "Run all CI static analysis checks"
+depends = ["fmt-check", "clippy", "doc", "deny"]
+
+[tasks.check-all]
+description = "Run all CI static analysis checks including udeps (requires nightly)"
+depends = ["fmt-check", "clippy", "doc", "udeps", "deny"]
