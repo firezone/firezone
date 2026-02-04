@@ -146,8 +146,15 @@ pub enum IngressMessages {
     ResourceCreatedOrUpdated(ResourceDescription),
     ResourceDeleted(ResourceId),
 
-    IceCandidates(GatewayIceCandidates),
-    InvalidateIceCandidates(GatewayIceCandidates),
+    // Backwards compatibility prior to client <> client feature.
+    #[serde(alias = "ice_candidates")]
+    GatewayIceCandidates(GatewayIceCandidates),
+    // Backwards compatibility prior to client <> client feature.
+    #[serde(alias = "invalidate_ice_candidates")]
+    InvalidateGatewayIceCandidates(GatewayIceCandidates),
+
+    ClientIceCandidates(ClientIceCandidates),
+    InvalidateClientIceCandidates(ClientIceCandidates),
 
     ConfigChanged(ConfigUpdate),
 
@@ -170,6 +177,16 @@ pub struct GatewaysIceCandidates {
 pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
     pub gateway_id: GatewayId,
+    /// Actual RTC ice candidates
+    #[serde_as(as = "serde_with::VecSkipError<_>")]
+    pub candidates: Vec<IceCandidate>,
+}
+
+#[serde_with::serde_as]
+#[derive(Debug, Deserialize)]
+pub struct ClientIceCandidates {
+    /// Client's id the ice candidates are from
+    pub client_id: GatewayId,
     /// Actual RTC ice candidates
     #[serde_as(as = "serde_with::VecSkipError<_>")]
     pub candidates: Vec<IceCandidate>,
@@ -272,7 +289,7 @@ mod tests {
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert!(matches!(message, IngressMessages::IceCandidates(_)));
+        assert!(matches!(message, IngressMessages::GatewayIceCandidates(_)));
     }
 
     #[test]
@@ -283,7 +300,7 @@ mod tests {
 
         assert!(matches!(
             message,
-            IngressMessages::InvalidateIceCandidates(_)
+            IngressMessages::InvalidateGatewayIceCandidates(_)
         ));
     }
 

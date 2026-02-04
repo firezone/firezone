@@ -20,8 +20,8 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
-    EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
-    GatewaysIceCandidates, IngressMessages, InitClient,
+    ClientIceCandidates, EgressMessages, FailReason, FlowCreated, FlowCreationFailed,
+    GatewayIceCandidates, GatewaysIceCandidates, IngressMessages, InitClient,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -363,7 +363,7 @@ impl Eventloop {
             IngressMessages::ConfigChanged(config) => {
                 tunnel.state_mut().update_interface_config(config.interface)
             }
-            IngressMessages::IceCandidates(GatewayIceCandidates {
+            IngressMessages::GatewayIceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,
             }) => {
@@ -371,6 +371,16 @@ impl Eventloop {
                     tunnel
                         .state_mut()
                         .add_ice_candidate(gateway_id, candidate, Instant::now())
+                }
+            }
+            IngressMessages::ClientIceCandidates(ClientIceCandidates {
+                client_id,
+                candidates,
+            }) => {
+                for candidate in candidates {
+                    tunnel
+                        .state_mut()
+                        .add_ice_candidate(client_id, candidate, Instant::now())
                 }
             }
             IngressMessages::Init(InitClient {
@@ -398,7 +408,7 @@ impl Eventloop {
                 tunnel::turn(&connected),
                 Instant::now(),
             ),
-            IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
+            IngressMessages::InvalidateGatewayIceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,
             }) => {
@@ -406,6 +416,16 @@ impl Eventloop {
                     tunnel
                         .state_mut()
                         .remove_ice_candidate(gateway_id, candidate, Instant::now())
+                }
+            }
+            IngressMessages::InvalidateClientIceCandidates(ClientIceCandidates {
+                client_id,
+                candidates,
+            }) => {
+                for candidate in candidates {
+                    tunnel
+                        .state_mut()
+                        .remove_ice_candidate(client_id, candidate, Instant::now())
                 }
             }
             IngressMessages::FlowCreated(FlowCreated {

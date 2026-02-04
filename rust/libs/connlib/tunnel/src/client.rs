@@ -613,30 +613,24 @@ impl ClientState {
 
     pub fn add_ice_candidate(
         &mut self,
-        conn_id: GatewayId,
+        conn_id: impl Into<ClientOrGatewayId>,
         ice_candidate: IceCandidate,
         now: Instant,
     ) {
-        self.node.add_remote_candidate(
-            ClientOrGatewayId::Gateway(conn_id),
-            ice_candidate.into(),
-            now,
-        );
+        self.node
+            .add_remote_candidate(conn_id.into(), ice_candidate.into(), now);
         self.node.handle_timeout(now);
         self.drain_node_events();
     }
 
     pub fn remove_ice_candidate(
         &mut self,
-        conn_id: GatewayId,
+        conn_id: impl Into<ClientOrGatewayId>,
         ice_candidate: IceCandidate,
         now: Instant,
     ) {
-        self.node.remove_remote_candidate(
-            ClientOrGatewayId::Gateway(conn_id),
-            ice_candidate.into(),
-            now,
-        );
+        self.node
+            .remove_remote_candidate(conn_id.into(), ice_candidate.into(), now);
         self.node.handle_timeout(now);
         self.drain_node_events();
     }
