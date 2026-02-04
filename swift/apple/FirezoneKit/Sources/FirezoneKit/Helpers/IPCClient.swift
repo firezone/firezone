@@ -136,7 +136,7 @@ enum IPCClient {
       let chunk = try await nextChunk()
 
       try fileHandle.seekToEnd()
-      fileHandle.write(chunk.data)
+      try fileHandle.write(contentsOf: chunk.data)
 
       if chunk.done { break }
     }
