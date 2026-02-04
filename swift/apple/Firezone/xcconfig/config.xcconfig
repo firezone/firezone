@@ -7,6 +7,10 @@ APP_GROUP_ID[sdk=iphoneos*] = group.dev.firezone.firezone
 APP_GROUP_ID_PRE_1_4_0[sdk=iphoneos*] = group.dev.firezone.firezone
 CODE_SIGN_STYLE = Automatic
 
+// Default build number - will be overridden by dynamic_build_number.xcconfig if it exists
+// This ensures Xcode builds work even on first run before mise creates the dynamic file
+CURRENT_PROJECT_VERSION = 0
+
 // Include the dynamic build number created during the build phase
 #include? "dynamic_build_number.xcconfig"
 
