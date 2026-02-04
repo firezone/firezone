@@ -122,10 +122,74 @@ defmodule Portal.Entra.Sync do
   end
 
   defp sync_assigned_groups(directory, access_token, synced_at) do
-    service_principal_id = fetch_service_principal_id!(directory, access_token)
+    # Directory Sync app is REQUIRED - fail if not found (consent may have been revoked)
+    directory_sync_sp_id = fetch_directory_sync_service_principal!(directory, access_token)
 
-    # Stream and sync app role assignments page by page
-    Logger.debug("Streaming app role assignments", entra_directory_id: directory.id)
+    # Auth Provider app is optional (deprecated) - returns nil if not found
+    auth_provider_sp_id = fetch_auth_provider_service_principal(directory, access_token)
+
+    sync_assignments(directory, access_token, synced_at, directory_sync_sp_id)
+
+    # DEPRECATED: Also sync assignments from the Authentication app for backwards compatibility.
+    # This supports existing Entra directory sync setups that have users assigned to the
+    # Authentication app rather than the Directory Sync app.
+    # TODO: Remove this once all customers have migrated to assigning users to the
+    # Directory Sync app.
+    if auth_provider_sp_id do
+      sync_assignments(directory, access_token, synced_at, auth_provider_sp_id)
+    end
+
+    :ok
+  end
+
+  defp fetch_directory_sync_service_principal!(directory, access_token) do
+    case fetch_service_principal_id(directory, access_token, :directory_sync) do
+      {:ok, id} ->
+        id
+
+      {:error, {:not_found, _response}} ->
+        raise Entra.SyncError,
+          reason:
+            "Directory Sync app service principal not found in tenant. Admin consent may have been revoked.",
+          directory_id: directory.id,
+          step: :fetch_directory_sync_service_principal
+
+      {:error, {:request_failed, error}} ->
+        raise Entra.SyncError,
+          reason: "Failed to fetch Directory Sync service principal",
+          context: error,
+          directory_id: directory.id,
+          step: :fetch_directory_sync_service_principal
+    end
+  end
+
+  defp fetch_auth_provider_service_principal(directory, access_token) do
+    case fetch_service_principal_id(directory, access_token, :auth_provider) do
+      {:ok, id} ->
+        id
+
+      {:error, {:not_found, _response}} ->
+        Logger.debug("Auth Provider app service principal not found, skipping (deprecated app)",
+          entra_directory_id: directory.id
+        )
+
+        nil
+
+      {:error, {:request_failed, error}} ->
+        Logger.info("Failed to fetch Auth Provider service principal, skipping",
+          entra_directory_id: directory.id,
+          error: inspect(error)
+        )
+
+        nil
+    end
+  end
+
+  defp sync_assignments(directory, access_token, synced_at, service_principal_id) do
+    Logger.debug("Streaming app role assignments",
+      entra_directory_id: directory.id,
+      service_principal_id: service_principal_id
+    )
 
     Entra.APIClient.stream_app_role_assignments(access_token, service_principal_id)
     |> Stream.each(fn
@@ -145,56 +209,52 @@ defmodule Portal.Entra.Sync do
         process_app_role_assignments(directory, access_token, synced_at, assignments)
     end)
     |> Stream.run()
-
-    :ok
   end
 
-  defp fetch_service_principal_id!(directory, access_token) do
-    # Get the service principal ID for the Entra Auth Provider app (not the Directory Sync app)
-    # We use app role assignments from the auth app to determine group memberships
-    config = Portal.Config.fetch_env!(:portal, Portal.Entra.AuthProvider)
+  # Fetches the service principal ID for the specified app type.
+  # Returns {:ok, id} on success, {:error, reason} on failure.
+  defp fetch_service_principal_id(directory, access_token, app_type) do
+    {config_module, app_name} =
+      case app_type do
+        :directory_sync -> {Portal.Entra.APIClient, "Directory Sync"}
+        :auth_provider -> {Portal.Entra.AuthProvider, "Authentication"}
+      end
+
+    config = Portal.Config.fetch_env!(:portal, config_module)
     client_id = config[:client_id]
 
-    Logger.debug("Getting service principal for Entra Auth Provider",
+    Logger.debug("Getting service principal for Entra #{app_name} app",
       entra_directory_id: directory.id,
       client_id: client_id
     )
 
     case Entra.APIClient.get_service_principal(access_token, client_id) do
       {:ok, %{body: %{"value" => [%{"id" => id} | _]} = body}} ->
-        Logger.debug("Found service principal",
+        Logger.debug("Found service principal for #{app_name} app",
           entra_directory_id: directory.id,
           service_principal_id: id,
           response_body: inspect(body)
         )
 
-        id
+        {:ok, id}
 
       {:ok, %{body: body} = response} ->
-        Logger.debug("Service principal not found",
+        Logger.debug("Service principal not found for #{app_name} app",
           entra_directory_id: directory.id,
           client_id: client_id,
           status: response.status,
           response_body: inspect(body)
         )
 
-        raise Entra.SyncError,
-          reason: "Service principal not found",
-          context: response,
-          directory_id: directory.id,
-          step: :get_service_principal
+        {:error, {:not_found, response}}
 
       {:error, error} ->
-        Logger.debug("Failed to get service principal",
+        Logger.debug("Failed to get service principal for #{app_name} app",
           entra_directory_id: directory.id,
           error: inspect(error)
         )
 
-        raise Entra.SyncError,
-          reason: "Failed to get service principal",
-          context: error,
-          directory_id: directory.id,
-          step: :get_service_principal
+        {:error, {:request_failed, error}}
     end
   end
 
