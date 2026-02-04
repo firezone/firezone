@@ -1969,7 +1969,7 @@ source = "git+https://github.com/algesten/dimpl?branch=main#97c9e9d83a7a7548f90c
 dependencies = [
  "arrayvec",
  "log",
- "nom",
+ "nom 7.1.3",
  "once_cell",
  "rand 0.9.1",
  "subtle",
