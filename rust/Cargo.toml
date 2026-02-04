@@ -254,6 +254,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
+dimpl = { git = "https://github.com/algesten/dimpl", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.30" } # Waiting for release.
