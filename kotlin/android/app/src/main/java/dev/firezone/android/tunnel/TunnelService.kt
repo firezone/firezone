@@ -287,7 +287,7 @@ class TunnelService : VpnService() {
 
             commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
 
-            val context = this;
+            val context = this
 
             serviceScope.launch {
                 try {
