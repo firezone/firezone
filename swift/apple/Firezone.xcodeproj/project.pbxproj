@@ -17,6 +17,10 @@
 		794C38152970A2660029F38F /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 794C38142970A2660029F38F /* FirezoneKit */; };
 		79756C6629704A7A0018E2D5 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 79756C6529704A7A0018E2D5 /* FirezoneKit */; };
 		858AA13A09A55E3B1DD5DEDA /* Adapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 177FB893F19457A113042247 /* Adapter.swift */; };
+		8D0000012D4100000003 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000A2 /* NetworkPathUpdates.swift */; };
+		8D0000012D4100000004 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000A2 /* NetworkPathUpdates.swift */; };
+		8D0000012D4100000005 /* ProviderCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000B1 /* ProviderCommand.swift */; };
+		8D0000012D4100000006 /* ProviderCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000B1 /* ProviderCommand.swift */; };
 		8D41B9A52D15DD6800D16065 /* TunnelLogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */; };
 		8D41B9A62D15DD6800D16065 /* TunnelLogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */; };
 		8D5047F82CE6AA22009802E9 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8D5047F72CE6AA22009802E9 /* FirezoneKit */; };
@@ -37,10 +41,6 @@
 		C1892134991C462C8E137DE3 /* Channel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C09DC14A4A04715A37BC04C /* Channel.swift */; };
 		C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
 		CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2847ACC9D73EA6F356F2DEE1 /* connlib.swift */; };
-		8D0000012D4100000003 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000A2 /* NetworkPathUpdates.swift */; };
-		8D0000012D4100000004 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000A2 /* NetworkPathUpdates.swift */; };
-		8D0000012D4100000005 /* ProviderCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000B1 /* ProviderCommand.swift */; };
-		8D0000012D4100000006 /* ProviderCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000B1 /* ProviderCommand.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -96,6 +96,8 @@
 		6FB20C422E7049A300E41294 /* ConnlibFFI.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = ConnlibFFI.xcframework; path = Frameworks/ConnlibFFI.xcframework; sourceTree = "<group>"; };
 		6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "FirezoneNetworkExtension-Bridging-Header.h"; sourceTree = "<group>"; };
 		6FFECD5B2AD6998400E00273 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
+		8D0000012D41000000A2 /* NetworkPathUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathUpdates.swift; sourceTree = "<group>"; };
+		8D0000012D41000000B1 /* ProviderCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderCommand.swift; sourceTree = "<group>"; };
 		8D1D405C2CFF6F5200E669F9 /* Firezone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Firezone.entitlements; sourceTree = "<group>"; };
 		8D1D405D2CFF6F5D00E669F9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelLogArchive.swift; sourceTree = "<group>"; };
@@ -115,8 +117,6 @@
 		8DE1077A2D2313EB00DB5A45 /* Info.iOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.iOS.plist; sourceTree = "<group>"; };
 		8DE1077B2D2313EB00DB5A45 /* Info.macOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.macOS.plist; sourceTree = "<group>"; };
 		E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SessionEventLoop.swift; sourceTree = "<group>"; };
-		8D0000012D41000000A2 /* NetworkPathUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathUpdates.swift; sourceTree = "<group>"; };
-		8D0000012D41000000B1 /* ProviderCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderCommand.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -180,19 +180,9 @@
 			path = Application;
 			sourceTree = "<group>";
 		};
-		64A772F0917639D7745EA995 /* Connlib */ = {
-			isa = PBXGroup;
-			children = (
-				99553B27AEABC2EA3782DDEA /* Generated */,
-			);
-			name = Connlib;
-			path = FirezoneNetworkExtension/Connlib;
-			sourceTree = "<group>";
-		};
 		8BCDECDF49DAFFD25CF140AF /* FirezoneNetworkExtension */ = {
 			isa = PBXGroup;
 			children = (
-				64A772F0917639D7745EA995 /* Connlib */,
 			);
 			path = FirezoneNetworkExtension;
 			sourceTree = "<group>";
@@ -221,7 +211,6 @@
 				8DCC021A28D512AC007E12D2 /* Products */,
 				8D3F90C328D64FAD00980124 /* Frameworks */,
 				8BCDECDF49DAFFD25CF140AF /* FirezoneNetworkExtension */,
-				2847ACC9D73EA6F356F2DEE1 /* connlib.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -262,14 +251,6 @@
 				8DD2C4C3297B37BA00F984BF /* FirezoneKit */,
 			);
 			name = Packages;
-			sourceTree = "<group>";
-		};
-		99553B27AEABC2EA3782DDEA /* Generated */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Generated;
-			path = FirezoneNetworkExtension/Connlib/Generated;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
