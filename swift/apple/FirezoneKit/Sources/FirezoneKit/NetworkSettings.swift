@@ -136,22 +136,6 @@ public struct NetworkSettings: Equatable, Sendable {
     return makePayload()
   }
 
-  public mutating func setDummyMatchDomain() -> Payload? {
-    self.matchDomains = ["firezone-fd0020211111"]
-
-    return makePayload()
-  }
-
-  public mutating func clearDummyMatchDomain() -> Payload? {
-    if let searchDomain = self.searchDomain {
-      self.matchDomains = ["", searchDomain]
-    } else {
-      self.matchDomains = [""]
-    }
-
-    return makePayload()
-  }
-
   // MARK: - Private Helpers
 
   /// Create a Payload from current state, if tunnel addresses are present.
