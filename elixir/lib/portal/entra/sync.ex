@@ -151,6 +151,8 @@ defmodule Portal.Entra.Sync do
         raise Entra.SyncError,
           reason:
             "Directory Sync app service principal not found in tenant. Admin consent may have been revoked.",
+          context:
+            "consent_revoked: Directory Sync app service principal not found. Please re-grant admin consent.",
           directory_id: directory.id,
           step: :fetch_directory_sync_service_principal
 
