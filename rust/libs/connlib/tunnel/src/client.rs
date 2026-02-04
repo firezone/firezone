@@ -29,7 +29,8 @@ use crate::peer_store::PeerStore;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::{Context, ErrorExt};
 use connlib_model::{
-    GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
+    ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus,
+    ResourceView,
 };
 use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -86,10 +87,14 @@ const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
 ///
 /// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
 /// Clients differ from gateways in that they also implement a DNS resolver for DNS resources.
-/// They also initiate connections to Gateways based on packets sent to Resources. Gateways only accept incoming connections.
+/// They also initiate connections to:
+/// - Gateways based on packets sent to Resources
+/// - Other clients based on packets to their TUN device IPs
+///
+/// Gateways only accept incoming connections.
 pub struct ClientState {
-    /// Manages wireguard tunnels to gateways.
-    node: Node<GatewayId, RelayId>,
+    /// Manages wireguard tunnels to gateways and clients.
+    node: Node<ClientOrGatewayId, RelayId>,
     /// All gateways we are connected to and the associated, connection-specific state.
     gateways: PeerStore<GatewayId, GatewayOnClient>,
     /// Tracks the flows to resources that we are currently trying to establish.
@@ -391,7 +396,7 @@ impl ClientState {
         packet: &[u8],
         now: Instant,
     ) -> Option<IpPacket> {
-        let (gid, packet) = self.node.decapsulate(
+        let (id, packet) = self.node.decapsulate(
             local,
             from,
             packet.as_ref(),
@@ -400,6 +405,22 @@ impl ClientState {
         .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate: {e:#}"))
         .ok()??;
 
+        match id {
+            ClientOrGatewayId::Client(_cid) => None,
+            ClientOrGatewayId::Gateway(gid) => {
+                self.handle_packet_from_gateway(gid, packet, local, from, now)
+            }
+        }
+    }
+
+    fn handle_packet_from_gateway(
+        &mut self,
+        gid: GatewayId,
+        packet: IpPacket,
+        local: SocketAddr,
+        from: SocketAddr,
+        now: Instant,
+    ) -> Option<IpPacket> {
         if self.udp_dns_client.accepts(&packet) {
             self.udp_dns_client.handle_inbound(packet);
             return None;
@@ -430,7 +451,11 @@ impl ClientState {
                     }
                 }
                 p2p_control::GOODBYE_EVENT => {
-                    self.node.remove_connection(gid, "received `goodbye`", now);
+                    self.node.remove_connection(
+                        ClientOrGatewayId::Gateway(gid),
+                        "received `goodbye`",
+                        now,
+                    );
                     self.cleanup_connected_gateway(&gid);
                 }
                 code => {
@@ -564,7 +589,7 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(gid, &packet, now)
+            .encapsulate(ClientOrGatewayId::Gateway(gid), &packet, now)
             .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e:#}"))
             .ok()??;
 
@@ -577,8 +602,11 @@ impl ClientState {
         ice_candidate: IceCandidate,
         now: Instant,
     ) {
-        self.node
-            .add_remote_candidate(conn_id, ice_candidate.into(), now);
+        self.node.add_remote_candidate(
+            ClientOrGatewayId::Gateway(conn_id),
+            ice_candidate.into(),
+            now,
+        );
         self.node.handle_timeout(now);
         self.drain_node_events();
     }
@@ -589,8 +617,11 @@ impl ClientState {
         ice_candidate: IceCandidate,
         now: Instant,
     ) {
-        self.node
-            .remove_remote_candidate(conn_id, ice_candidate.into(), now);
+        self.node.remove_remote_candidate(
+            ClientOrGatewayId::Gateway(conn_id),
+            ice_candidate.into(),
+            now,
+        );
         self.node.handle_timeout(now);
         self.drain_node_events();
     }
@@ -619,7 +650,7 @@ impl ClientState {
         };
 
         match self.node.upsert_connection(
-            gid,
+            ClientOrGatewayId::Gateway(gid),
             gateway_key,
             x25519::StaticSecret::from(preshared_key.expose_secret().0),
             snownet::Credentials {
@@ -1450,11 +1481,16 @@ impl ClientState {
 
         while let Some(event) = self.node.poll_event() {
             match event {
-                snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
+                snownet::Event::ConnectionFailed(ClientOrGatewayId::Gateway(id))
+                | snownet::Event::ConnectionClosed(ClientOrGatewayId::Gateway(id)) => {
                     self.cleanup_connected_gateway(&id);
                 }
+                snownet::Event::ConnectionFailed(ClientOrGatewayId::Client(_))
+                | snownet::Event::ConnectionClosed(ClientOrGatewayId::Client(_)) => {
+                    // TODO
+                }
                 snownet::Event::NewIceCandidate {
-                    connection,
+                    connection: ClientOrGatewayId::Gateway(connection),
                     candidate,
                 } => {
                     added_ice_candidates
@@ -1463,7 +1499,7 @@ impl ClientState {
                         .insert(candidate.into());
                 }
                 snownet::Event::InvalidateIceCandidate {
-                    connection,
+                    connection: ClientOrGatewayId::Gateway(connection),
                     candidate,
                 } => {
                     removed_ice_candidates
@@ -1471,8 +1507,23 @@ impl ClientState {
                         .or_default()
                         .insert(candidate.into());
                 }
-                snownet::Event::ConnectionEstablished(id) => {
+                snownet::Event::NewIceCandidate {
+                    connection: ClientOrGatewayId::Client(_),
+                    ..
+                } => {
+                    // TODO
+                }
+                snownet::Event::InvalidateIceCandidate {
+                    connection: ClientOrGatewayId::Client(_),
+                    ..
+                } => {
+                    // TODO
+                }
+                snownet::Event::ConnectionEstablished(ClientOrGatewayId::Gateway(id)) => {
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online);
+                }
+                snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(_)) => {
+                    // TODO;
                 }
             }
         }
@@ -1752,7 +1803,11 @@ impl ClientState {
         for (gid, _) in unused_gateways {
             tracing::debug!(%gid, "Disabled / deactivated last resource for peer");
 
-            self.node.close_connection(gid, p2p_control::goodbye(), now);
+            self.node.close_connection(
+                ClientOrGatewayId::Gateway(gid),
+                p2p_control::goodbye(),
+                now,
+            );
             self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown);
             self.resource_list.update(self.resources());
         }
@@ -1790,11 +1845,11 @@ fn encapsulate_and_buffer(
     packet: IpPacket,
     gid: GatewayId,
     now: Instant,
-    node: &mut Node<GatewayId, RelayId>,
+    node: &mut Node<ClientOrGatewayId, RelayId>,
     buffered_transmits: &mut VecDeque<Transmit>,
 ) {
     let Some(transmit) = node
-        .encapsulate(gid, &packet, now)
+        .encapsulate(ClientOrGatewayId::Gateway(gid), &packet, now)
         .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
         .ok()
         .flatten()
