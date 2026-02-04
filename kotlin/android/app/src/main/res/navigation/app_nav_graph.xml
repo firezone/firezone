@@ -34,4 +34,8 @@
         android:id="@+id/vpnPermissionActivity"
         android:name="dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity" />
 
+    <activity
+        android:id="@+id/notificationPermissionActivity"
+        android:name="dev.firezone.android.features.permission.notification.ui.NotificationPermissionActivity" />
+
 </navigation>
