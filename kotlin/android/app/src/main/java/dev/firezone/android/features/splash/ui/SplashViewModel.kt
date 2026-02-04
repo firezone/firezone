@@ -50,7 +50,7 @@ internal class SplashViewModel
 
                 // Check if we need to request notification permission (only once)
                 if (shouldRequestNotificationPermission(context)) {
-                    actionMutableLiveData.postValue(ViewAction.NavigateToNotificationPermission)
+                    actionMutableStateFlow.value = ViewAction.NavigateToNotificationPermission
                     return@launch
                 }
 
