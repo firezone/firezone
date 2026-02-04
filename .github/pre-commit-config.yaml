@@ -17,7 +17,12 @@ repos:
         entry: bash -c 'cd .github && git -C .. ls-files "*.md" "*.json" "*.yaml" "*.yml" "*.css" "*.js" "*.ts" "*.tsx" | sed "s|^|../|" | xargs pnpm exec prettier --ignore-path ../.prettierignore --check --ignore-unknown --no-error-on-unmatched-pattern'
         language: system
         pass_filenames: false
-
+      - id: website-eslint
+        name: "website: eslint"
+        entry: bash -c 'cd website && pnpm exec eslint .'
+        language: system
+        pass_filenames: false
+        files: ^website/.*\.(js|jsx|ts|tsx)$
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

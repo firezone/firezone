@@ -1,7 +1,6 @@
 defmodule PortalWeb.UserpassControllerTest do
   use PortalWeb.ConnCase, async: true
 
-  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
@@ -267,7 +266,7 @@ defmodule PortalWeb.UserpassControllerTest do
       assert flash(conn, :error) =~ "exceeding billing limits"
     end
 
-    test "logs error and allows gui-client sign-in when account has exceeded monthly active users limits",
+    test "allows gui-client sign-in when account has exceeded monthly active users limits (soft limit)",
          %{
            conn: conn,
            account: account,
@@ -283,25 +282,17 @@ defmodule PortalWeb.UserpassControllerTest do
           password_hash
         )
 
-      log =
-        capture_log(fn ->
-          conn =
-            post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
-              "userpass" => %{"idp_id" => actor.email, "secret" => @password},
-              "as" => "gui-client",
-              "state" => "test-state",
-              "nonce" => "test-nonce"
-            })
+      # Sign-in should still succeed since seats is a soft limit
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "gui-client",
+          "state" => "test-state",
+          "nonce" => "test-nonce"
+        })
 
-          # Sign-in should still succeed
-          assert conn.status == 200
-          assert conn.resp_body =~ "client_redirect"
-        end)
-
-      assert log =~ "Account seats limit exceeded"
-      assert log =~ "account_id=#{account.id}"
-      assert log =~ "account_slug=#{account.slug}"
-      assert log =~ "actor_id=#{actor.id}"
+      assert conn.status == 200
+      assert conn.resp_body =~ "client_redirect"
     end
 
     test "rejects headless-client sign-in when account has exceeded limits", %{

@@ -10,7 +10,8 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.10" date={new Date("2026-02-02")}>
         <ChangeItem pull="11625">
           Fails faster when the initial connection to the control plane cannot
           be established, allowing the user to retry sooner.
@@ -54,7 +55,7 @@ export default function GUI({ os }: { os: OS }) {
           for IPv4-only DNS resources if the setting was only changed after a
           DNS query had already been processed.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.9" date={new Date("2025-12-23")}>
         {os == OS.Linux && (
           <ChangeItem pull="10742">
@@ -112,10 +113,9 @@ export default function GUI({ os }: { os: OS }) {
       </Entry>
       <Entry version="1.5.7" date={new Date("2025-09-10")}>
         <ChangeItem pull="10104">
-          Fixes an issue where DNS resources would resolve to a different IP
-          after signing out and back into Firezone. This would break
-          connectivity for long-running services that don&apos;t re-resolve DNS,
-          like SSH sessions or mongoose.
+          {
+            "Fixes an issue where DNS resources would resolve to a different IP after signing out and back into Firezone. This would break connectivity for long-running services that don't re-resolve DNS, like SSH sessions or mongoose."
+          }
         </ChangeItem>
       </Entry>
       <Entry version="1.5.6" date={new Date("2025-07-28")}>
@@ -504,16 +504,19 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="6874">Fixes the GUI shutting down slowly.</ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="6931">
-            Mitigates an issue where <code>ipconfig</code> and WSL weren&apos;t
-            aware of Firezone DNS resolvers. Users may need to restart WSL after
-            signing in to Firezone.
+            {"Mitigates an issue where "}
+            <code>ipconfig</code>
+            {
+              " and WSL weren't aware of Firezone DNS resolvers. Users may need to restart WSL after signing in to Firezone."
+            }
           </ChangeItem>
         )}
       </Entry>
       <Entry version="1.3.7" date={new Date("2024-10-02")}>
         <ChangeItem pull="6831">
-          Ensures Firefox doesn&apos;t attempt to use DNS over HTTPS when
-          Firezone is active.
+          {
+            "Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is active."
+          }
         </ChangeItem>
         <ChangeItem pull="6845">
           Fixes connectivity issues on idle connections by entering an
@@ -528,7 +531,7 @@ export default function GUI({ os }: { os: OS }) {
           </ChangeItem>
         )}
         <ChangeItem pull="6857">
-          Tries to send motherboard&apos;s hardware ID for device verification.
+          {"Tries to send motherboard's hardware ID for device verification."}
         </ChangeItem>
       </Entry>
       <Entry version="1.3.6" date={new Date("2024-09-25")}>
@@ -545,13 +548,15 @@ export default function GUI({ os }: { os: OS }) {
         </ChangeItem>
         {os === OS.Linux && (
           <ChangeItem pull="6780">
-            Fixes a bug where the Linux Clients didn&apos;t work on ZFS
-            filesystems.
+            {
+              "Fixes a bug where the Linux Clients didn't work on ZFS filesystems."
+            }
           </ChangeItem>
         )}
         <ChangeItem pull="6795">
-          Fixes a bug where auto-sign-in with an expired token would cause a
-          &quot;Couldn&apos;t send Disconnect&quot; error message.
+          {
+            'Fixes a bug where auto-sign-in with an expired token would cause a "Couldn\'t send Disconnect" error message.'
+          }
         </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="6810">
@@ -607,15 +612,17 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="6449">Checks for updates once a day</ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="6472">
-            Fixes an issue where Split DNS didn&apos;t work for domain-joined
-            Windows machines
+            {
+              "Fixes an issue where Split DNS didn't work for domain-joined Windows machines"
+            }
           </ChangeItem>
         )}
       </Entry>
       <Entry version="1.2.1" date={new Date("2024-08-27")}>
         <ChangeItem pull="6414">
-          Waits for Internet to connect to Firezone if there&apos;s no Internet
-          at startup and you&apos;re already signed in.
+          {
+            "Waits for Internet to connect to Firezone if there's no Internet at startup and you're already signed in."
+          }
         </ChangeItem>
         <ChangeItem pull="6455">
           Fixes a false positive warning log at startup about DNS interception
@@ -646,8 +653,9 @@ export default function GUI({ os }: { os: OS }) {
           change the setting in the GUI.
         </ChangeItem>
         <ChangeItem pull="6361">
-          Connections to Gateways are now sticky for the duration of the
-          Client&apos;s session to fix issues with long-lived TCP connections.
+          {
+            "Connections to Gateways are now sticky for the duration of the Client's session to fix issues with long-lived TCP connections."
+          }
         </ChangeItem>
       </Entry>
       <Entry version="1.1.12" date={new Date("2024-08-13")}>
@@ -753,9 +761,9 @@ export default function GUI({ os }: { os: OS }) {
       </Entry>
       <Entry version="1.1.3" date={new Date("2024-07-03")}>
         <li className="pl-2">
-          Prevents Firezone&apos;s stub resolver from intercepting DNS record
-          types besides A, AAAA, and PTR. These are now forwarded to your
-          upstream DNS resolver.
+          {
+            "Prevents Firezone's stub resolver from intercepting DNS record types besides A, AAAA, and PTR. These are now forwarded to your upstream DNS resolver."
+          }
         </li>
       </Entry>
       <Entry version="1.1.2" date={new Date("2024-06-29")}>

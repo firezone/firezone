@@ -2738,6 +2738,7 @@ defmodule PortalAPI.Client.ChannelTest do
   describe "handle_in/3 prepare_connection" do
     test "returns error when resource is not found", %{client: client, subject: subject} do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       ref = push(socket, "prepare_connection", %{"resource_id" => Ecto.UUID.generate()})
       assert_reply ref, :error, %{reason: :not_found}
     end
@@ -2748,6 +2749,7 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource: resource
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :error, %{reason: :offline}
     end
@@ -2758,6 +2760,7 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource: resource
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :error, %{reason: :offline}
     end
@@ -2768,6 +2771,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       resource = resource_fixture(account: account)
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
@@ -2789,6 +2793,7 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource: resource
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
@@ -2806,6 +2811,7 @@ defmodule PortalAPI.Client.ChannelTest do
       global_relay: global_relay
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       :ok = Portal.Presence.Relays.connect(global_relay)
 
       gateway = Repo.preload(gateway, :site)
@@ -2833,6 +2839,7 @@ defmodule PortalAPI.Client.ChannelTest do
       internet_resource: internet_resource
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
@@ -2853,6 +2860,7 @@ defmodule PortalAPI.Client.ChannelTest do
       global_relay: global_relay
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       :ok = Portal.Presence.Relays.connect(global_relay)
 
       site = site_fixture(account: account)
@@ -2940,6 +2948,7 @@ defmodule PortalAPI.Client.ChannelTest do
       global_relay: global_relay
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
 
       account =
         update_account(account,
@@ -3013,6 +3022,8 @@ defmodule PortalAPI.Client.ChannelTest do
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
       :ok =
         Portal.Presence.Relays.connect(global_relay)
 
@@ -3058,6 +3069,8 @@ defmodule PortalAPI.Client.ChannelTest do
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
       assert_reply ref, :error, %{reason: :version_mismatch}
@@ -3087,6 +3100,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway: gateway
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
 
       attrs = %{
         "resource_id" => Ecto.UUID.generate(),
@@ -3104,6 +3118,7 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource: resource
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3122,6 +3137,7 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource: resource
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
@@ -3146,6 +3162,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
 
       resource =
         resource_fixture(
@@ -3209,6 +3226,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       resource = resource_fixture(account: account)
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
@@ -3232,6 +3250,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway: gateway
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3253,6 +3272,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       public_key = gateway.public_key
       resource_id = resource.id
       client_id = client.id
@@ -3339,6 +3359,8 @@ defmodule PortalAPI.Client.ChannelTest do
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
@@ -3383,6 +3405,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway: gateway
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
 
       attrs = %{
         "resource_id" => Ecto.UUID.generate(),
@@ -3401,6 +3424,7 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource: resource
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3420,6 +3444,7 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource: resource
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
@@ -3441,6 +3466,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       resource = resource_fixture(account: account)
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
@@ -3468,6 +3494,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
 
       resource =
         resource_fixture(
@@ -3534,6 +3561,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway: gateway
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3554,6 +3582,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       public_key = gateway.public_key
       resource_id = resource.id
       client_id = client.id
@@ -3625,6 +3654,8 @@ defmodule PortalAPI.Client.ChannelTest do
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
@@ -3651,6 +3682,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       candidates = ["foo", "bar"]
 
       attrs = %{
@@ -3669,6 +3701,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       candidates = ["foo", "bar"]
 
       attrs = %{
@@ -3698,6 +3731,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       candidates = ["foo", "bar"]
 
       attrs = %{
@@ -3716,6 +3750,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       candidates = ["foo", "bar"]
 
       attrs = %{
@@ -3741,6 +3776,7 @@ defmodule PortalAPI.Client.ChannelTest do
   describe "handle_in/3 for unknown message" do
     test "it doesn't crash", %{client: client, subject: subject} do
       socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
       ref = push(socket, "unknown_message", %{})
       assert_reply ref, :error, %{reason: :unknown_message}
     end

@@ -460,34 +460,6 @@ defmodule Portal.BillingTest do
     end
   end
 
-  describe "log_seats_limit_exceeded/2" do
-    test "logs error when seats_limit_exceeded is true", %{account: account} do
-      account = update_account(account, %{seats_limit_exceeded: true})
-      actor = actor_fixture(account: account)
-
-      log =
-        capture_log(fn ->
-          assert log_seats_limit_exceeded(account, actor.id) == :ok
-        end)
-
-      assert log =~ "Account seats limit exceeded"
-      assert log =~ "account_id=#{account.id}"
-      assert log =~ "account_slug=#{account.slug}"
-      assert log =~ "actor_id=#{actor.id}"
-    end
-
-    test "does not log when seats_limit_exceeded is false", %{account: account} do
-      actor = actor_fixture(account: account)
-
-      log =
-        capture_log(fn ->
-          assert log_seats_limit_exceeded(account, actor.id) == :ok
-        end)
-
-      refute log =~ "Account seats limit exceeded"
-    end
-  end
-
   describe "client_connect_restricted?/1" do
     test "returns false when no limits are exceeded", %{account: account} do
       refute client_connect_restricted?(account)
@@ -807,6 +779,293 @@ defmodule Portal.BillingTest do
                Portal.Billing.billing_portal_url(account, "https://example.com", subject)
 
       assert url =~ "billing.stripe.com"
+    end
+  end
+
+  describe "Database.count_users_for_account/1" do
+    test "counts enabled users and admin users", %{account: account} do
+      actor_fixture(type: :account_user, account: account)
+      actor_fixture(type: :account_user, account: account)
+      actor_fixture(type: :account_admin_user, account: account)
+
+      assert Portal.Billing.Database.count_users_for_account(account) == 3
+    end
+
+    test "excludes disabled users", %{account: account} do
+      actor_fixture(type: :account_user, account: account)
+      disabled_actor_fixture(type: :account_user, account: account)
+
+      assert Portal.Billing.Database.count_users_for_account(account) == 1
+    end
+
+    test "excludes service accounts", %{account: account} do
+      actor_fixture(type: :account_user, account: account)
+      actor_fixture(type: :service_account, account: account)
+
+      assert Portal.Billing.Database.count_users_for_account(account) == 1
+    end
+
+    test "excludes api clients", %{account: account} do
+      actor_fixture(type: :account_user, account: account)
+      api_client_fixture(account: account)
+
+      assert Portal.Billing.Database.count_users_for_account(account) == 1
+    end
+
+    test "returns 0 for account with no users", %{account: account} do
+      assert Portal.Billing.Database.count_users_for_account(account) == 0
+    end
+  end
+
+  describe "Database.count_service_accounts_for_account/1" do
+    test "counts enabled service accounts", %{account: account} do
+      actor_fixture(type: :service_account, account: account)
+      actor_fixture(type: :service_account, account: account)
+
+      assert Portal.Billing.Database.count_service_accounts_for_account(account) == 2
+    end
+
+    test "excludes disabled service accounts", %{account: account} do
+      actor_fixture(type: :service_account, account: account)
+      disabled_actor_fixture(type: :service_account, account: account)
+
+      assert Portal.Billing.Database.count_service_accounts_for_account(account) == 1
+    end
+
+    test "excludes users and admin users", %{account: account} do
+      actor_fixture(type: :service_account, account: account)
+      actor_fixture(type: :account_user, account: account)
+      actor_fixture(type: :account_admin_user, account: account)
+
+      assert Portal.Billing.Database.count_service_accounts_for_account(account) == 1
+    end
+
+    test "returns 0 for account with no service accounts", %{account: account} do
+      assert Portal.Billing.Database.count_service_accounts_for_account(account) == 0
+    end
+  end
+
+  describe "Database.count_account_admin_users_for_account/1" do
+    test "counts enabled admin users", %{account: account} do
+      actor_fixture(type: :account_admin_user, account: account)
+      actor_fixture(type: :account_admin_user, account: account)
+
+      assert Portal.Billing.Database.count_account_admin_users_for_account(account) == 2
+    end
+
+    test "excludes disabled admin users", %{account: account} do
+      actor_fixture(type: :account_admin_user, account: account)
+      disabled_actor_fixture(type: :account_admin_user, account: account)
+
+      assert Portal.Billing.Database.count_account_admin_users_for_account(account) == 1
+    end
+
+    test "excludes regular users", %{account: account} do
+      actor_fixture(type: :account_admin_user, account: account)
+      actor_fixture(type: :account_user, account: account)
+
+      assert Portal.Billing.Database.count_account_admin_users_for_account(account) == 1
+    end
+
+    test "returns 0 for account with no admin users", %{account: account} do
+      assert Portal.Billing.Database.count_account_admin_users_for_account(account) == 0
+    end
+  end
+
+  describe "Database.count_1m_active_users_for_account/1" do
+    test "counts distinct active users within last month", %{account: account} do
+      actor1 = actor_fixture(type: :account_user, account: account)
+      actor2 = actor_fixture(type: :account_admin_user, account: account)
+
+      # Create clients seen within last month
+      client_fixture(account: account, actor: actor1)
+      client_fixture(account: account, actor: actor2)
+
+      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 2
+    end
+
+    test "counts user only once even with multiple clients", %{account: account} do
+      actor = actor_fixture(type: :account_user, account: account)
+
+      # Same actor with multiple clients
+      client_fixture(account: account, actor: actor)
+      client_fixture(account: account, actor: actor)
+
+      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
+    end
+
+    test "excludes users not seen in last month", %{account: account} do
+      actor1 = actor_fixture(type: :account_user, account: account)
+      actor2 = actor_fixture(type: :account_user, account: account)
+
+      # Actor1 seen recently
+      client_fixture(account: account, actor: actor1)
+
+      # Actor2 seen more than a month ago
+      client =
+        client_fixture(account: account, actor: actor2)
+
+      client
+      |> Ecto.Changeset.change(last_seen_at: DateTime.add(DateTime.utc_now(), -35, :day))
+      |> Portal.Repo.update!()
+
+      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
+    end
+
+    test "excludes disabled users", %{account: account} do
+      actor = actor_fixture(type: :account_user, account: account)
+      disabled_actor = disabled_actor_fixture(type: :account_user, account: account)
+
+      client_fixture(account: account, actor: actor)
+      client_fixture(account: account, actor: disabled_actor)
+
+      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
+    end
+
+    test "excludes service accounts", %{account: account} do
+      user = actor_fixture(type: :account_user, account: account)
+      service_account = actor_fixture(type: :service_account, account: account)
+
+      client_fixture(account: account, actor: user)
+      client_fixture(account: account, actor: service_account)
+
+      # Only the user should be counted, not the service account
+      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
+    end
+
+    test "returns 0 for account with no active users", %{account: account} do
+      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 0
+    end
+  end
+
+  describe "Database.count_sites_for_account/1" do
+    test "counts account-managed sites", %{account: account} do
+      site_fixture(account: account, managed_by: :account)
+      site_fixture(account: account, managed_by: :account)
+
+      assert Portal.Billing.Database.count_sites_for_account(account) == 2
+    end
+
+    test "excludes system-managed sites", %{account: account} do
+      site_fixture(account: account, managed_by: :account)
+      site_fixture(account: account, managed_by: :system)
+
+      assert Portal.Billing.Database.count_sites_for_account(account) == 1
+    end
+
+    test "returns 0 for account with no sites", %{account: account} do
+      assert Portal.Billing.Database.count_sites_for_account(account) == 0
+    end
+  end
+
+  describe "Database.count_api_clients_for_account/1" do
+    test "counts enabled API clients", %{account: account} do
+      api_client_fixture(account: account)
+      api_client_fixture(account: account)
+
+      assert Portal.Billing.Database.count_api_clients_for_account(account) == 2
+    end
+
+    test "excludes disabled API clients", %{account: account} do
+      api_client_fixture(account: account)
+      disabled_actor_fixture(type: :api_client, account: account)
+
+      assert Portal.Billing.Database.count_api_clients_for_account(account) == 1
+    end
+
+    test "excludes users and service accounts", %{account: account} do
+      api_client_fixture(account: account)
+      actor_fixture(type: :account_user, account: account)
+      actor_fixture(type: :service_account, account: account)
+
+      assert Portal.Billing.Database.count_api_clients_for_account(account) == 1
+    end
+
+    test "returns 0 for account with no API clients", %{account: account} do
+      assert Portal.Billing.Database.count_api_clients_for_account(account) == 0
+    end
+  end
+
+  describe "Database.count_api_tokens_for_actor/1" do
+    test "counts tokens for the given actor", %{account: account} do
+      api_client = api_client_fixture(account: account)
+
+      api_token_fixture(account: account, actor: api_client)
+      api_token_fixture(account: account, actor: api_client)
+
+      assert Portal.Billing.Database.count_api_tokens_for_actor(api_client) == 2
+    end
+
+    test "does not count tokens from other actors", %{account: account} do
+      api_client1 = api_client_fixture(account: account)
+      api_client2 = api_client_fixture(account: account)
+
+      api_token_fixture(account: account, actor: api_client1)
+      api_token_fixture(account: account, actor: api_client2)
+      api_token_fixture(account: account, actor: api_client2)
+
+      assert Portal.Billing.Database.count_api_tokens_for_actor(api_client1) == 1
+      assert Portal.Billing.Database.count_api_tokens_for_actor(api_client2) == 2
+    end
+
+    test "returns 0 for actor with no tokens", %{account: account} do
+      api_client = api_client_fixture(account: account)
+
+      assert Portal.Billing.Database.count_api_tokens_for_actor(api_client) == 0
+    end
+  end
+
+  describe "handle_events/1" do
+    test "returns :ok when event is processed successfully", %{account: account} do
+      account =
+        update_account(account, %{
+          metadata: %{stripe: %{customer_id: "cus_test123"}}
+        })
+
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 10)
+
+      customer =
+        Stripe.build_customer(
+          id: account.metadata.stripe.customer_id,
+          metadata: %{"account_id" => account.id}
+        )
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert :ok = handle_events([event])
+    end
+
+    test "returns error when event processing fails", %{account: account} do
+      account =
+        update_account(account, %{
+          metadata: %{stripe: %{customer_id: "cus_test123"}}
+        })
+
+      subscription =
+        Stripe.subscription_object(account.metadata.stripe.customer_id, %{}, %{}, 10)
+
+      customer =
+        Stripe.build_customer(
+          id: account.metadata.stripe.customer_id,
+          metadata: %{"account_id" => account.id}
+        )
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      # Only stub customer endpoint, NOT the product endpoint
+      # This will cause fetch_product to fail
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+
+      # Should return error instead of silently swallowing it
+      assert capture_log(fn ->
+               assert {:error, :retry_later} = handle_events([event])
+             end) =~ "Cannot fetch Stripe product"
     end
   end
 end

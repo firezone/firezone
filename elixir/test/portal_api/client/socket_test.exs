@@ -1,6 +1,6 @@
 defmodule PortalAPI.Client.SocketTest do
   use PortalAPI.ChannelCase, async: true
-  import ExUnit.CaptureLog
+
   import PortalAPI.Client.Socket, only: [id: 1]
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -304,7 +304,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :limits_exceeded}
     end
 
-    test "logs error and allows connection when seats_limit_exceeded is true" do
+    test "allows connection when seats_limit_exceeded is true (soft limit)" do
       account = account_fixture()
       update_account(account, %{seats_limit_exceeded: true})
 
@@ -315,15 +315,7 @@ defmodule PortalAPI.Client.SocketTest do
       attrs = connect_attrs(token: encoded_token)
       connect_info = build_connect_info(token: encoded_token)
 
-      log =
-        capture_log(fn ->
-          assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
-        end)
-
-      assert log =~ "Account seats limit exceeded"
-      assert log =~ "account_id=#{account.id}"
-      assert log =~ "account_slug=#{account.slug}"
-      assert log =~ "actor_id=#{actor.id}"
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
     end
 
     test "returns error when service_accounts_limit_exceeded is true" do

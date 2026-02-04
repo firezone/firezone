@@ -1,7 +1,6 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.permission.vpn.ui
 
-import android.app.Activity
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -12,7 +11,7 @@ class VpnPermissionActivity : AppCompatActivity() {
 
     private val result =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            if (it.resultCode == Activity.RESULT_OK) {
+            if (android.net.VpnService.prepare(this) == null) {
                 finish()
             }
         }
@@ -29,8 +28,12 @@ class VpnPermissionActivity : AppCompatActivity() {
 
     private fun requestPermissions() {
         val permissionIntent = android.net.VpnService.prepare(this)
-        if (permissionIntent != null) {
-            result.launch(permissionIntent)
+        if (permissionIntent == null) {
+            // Permission already granted
+            finish()
+            return
         }
+
+        result.launch(permissionIntent)
     }
 }

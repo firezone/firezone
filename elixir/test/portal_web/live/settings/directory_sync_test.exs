@@ -1478,6 +1478,54 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "Failed to connect to Google API"
     end
 
+    test "displays transient error warning when errored_at is set but not disabled", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      # Create a directory with a transient error (errored_at set but not disabled)
+      google_directory_fixture(
+        account: account,
+        name: "Transient Error Dir",
+        is_disabled: false,
+        errored_at: DateTime.utc_now(),
+        error_message: "Connection timed out."
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert html =~ "Sync encountered a temporary error"
+      assert html =~ "Connection timed out."
+      assert html =~ "Sync will automatically retry"
+      assert html =~ "24 hours"
+    end
+
+    test "does not display transient error warning when no error", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      # Create a healthy directory (no errored_at)
+      google_directory_fixture(
+        account: account,
+        name: "Healthy Dir",
+        is_disabled: false,
+        errored_at: nil,
+        error_message: nil
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      refute html =~ "Sync encountered a temporary error"
+      refute html =~ "Sync will automatically retry"
+    end
+
     test "displays never synced state", %{account: account, actor: actor, conn: conn} do
       google_directory_fixture(account: account, name: "Never Synced", synced_at: nil)
 

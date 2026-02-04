@@ -1,0 +1,4 @@
+module FirezoneKitObjC {
+    header "ExceptionCatcher.h"
+    export *
+}

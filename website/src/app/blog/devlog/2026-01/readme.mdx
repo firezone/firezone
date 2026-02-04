@@ -1,0 +1,95 @@
+January focused on infrastructure work for multi-region deployment, portal performance improvements, and enhanced resilience across the system.
+
+## Multi-Region Infrastructure
+
+The most significant infrastructure work this month was adding support for geographically distributed database read replicas.[^1]
+For regional redundancy and lower latency, we deployed Postgres replicas across regions.
+The application now routes read queries to the local replica while writes go to the primary, all transparent to the rest of the codebase.
+We also added a new `libcluster` strategy using Postgres LISTEN/NOTIFY as a message bus,[^2] enabling app servers across GCP and Azure to join the same Erlang cluster during our infrastructure migration.
+This required careful handling of node disconnects—both from missed heartbeats and graceful SIGTERM handling.
+
+## Portal Performance
+
+The HTTP server was swapped from Cowboy to Bandit,[^3] Phoenix's new default since 1.8.
+Bandit offers 1.5–4x faster response times and reduced memory usage through fewer processes per connection—a meaningful improvement given our API nodes' memory profile.
+
+To protect the cluster from reconnection storms, we added application-level rate limiting for WebSocket connections.[^4]
+The cloud load balancers only support 10-second windows minimum, which still allows bursts that could overwhelm the cluster.
+The new rate limiter enforces one connection per second per IP-token pair, returning a 503 with proper `Retry-After` headers when exceeded.
+
+We also upgraded to Elixir 1.19.4 on OTP 28,[^5] taking advantage of faster compile times and the improved type system.
+DoH support, which landed in November, was enabled for the control plane[^6] after being feature-flagged for testing.
+
+## Partition Tolerance
+
+Gateways and relays now survive portal partitions for up to 24 hours.[^7][^8]
+Previously, a 15-minute portal outage would cause relays to shut down, dropping allocations and bindings even though the data plane was still functional.
+Clients and gateways have their own unhealthy relay detection, so extending this timeout reduces customer impact during infrastructure outages.
+
+The WebSocket client was also made more resilient: we now retry all errors except 401s,[^9] and properly handle 429 and 408 responses with exponential backoff using the `Retry-After` header when present.[^10]
+
+## Headless Client Authentication
+
+Headless clients gained browser-based authentication.[^11]
+Unlike GUI clients which receive tokens via deep links, headless clients need the token displayed in the browser for manual copy-paste.
+The new flow presents a token display page with copy-to-clipboard functionality after IdP sign-in completes.
+
+## Connection Reliability
+
+A subtle ICE bug was fixed where server-reflexive candidates weren't being added to the local agent.[^12]
+This created a split-brain situation where peers had different views of available candidates, causing connection flapping between relayed and direct paths during repeated access authorizations.
+The fix ensures both peers maintain consistent candidate lists.
+
+The IP stack setting is now honored even after initial DNS queries.[^13]
+Previously, changing the setting from "Dual" to "IPv4 only" wouldn't take effect because DNS resource IPs were cached at first query time.
+We now always assign both address types internally but filter based on the current setting when answering queries.
+
+## Client Improvements
+
+Apple clients gained log size caps[^14]—set a maximum log folder size of 100 MB with automatic cleanup of oldest files.
+
+On macOS, alerts now use non-blocking presentation[^15] to avoid freezing the UI during sign-in flows.
+Linux notifications were fixed by switching from the Tauri plugin to `notify-rust` directly,[^16] resolving flaky notification delivery.
+
+## Compatibility
+
+The portal now returns explicit `version_mismatch` messages to outdated clients attempting to connect to newer sites,[^17] providing clearer feedback than generic connection failures.
+We also removed support for the 1.3.x connection scheme,[^18] which had been deprecated for over a year.
+
+---
+
+[^1]: [feat(portal): add database read replica support](https://github.com/firezone/firezone/pull/11837)
+
+[^2]: [feat(portal): add Postgres clustering strategy](https://github.com/firezone/firezone/pull/11661)
+
+[^3]: [refactor(portal): use bandit over cowboy](https://github.com/firezone/firezone/pull/11607)
+
+[^4]: [feat(portal): rate-limit websocket connects](https://github.com/firezone/firezone/pull/11611)
+
+[^5]: [chore(portal): bump elixir 1.18.4-otp-27 -> 1.19.4-otp-28](https://github.com/firezone/firezone/pull/11610)
+
+[^6]: [feat(portal): enable DoH for control plane](https://github.com/firezone/firezone/pull/11825)
+
+[^7]: [fix(gateway): survive portal partitions up to 24h](https://github.com/firezone/firezone/pull/11664)
+
+[^8]: [fix(relay): survive portal partitions up to 24 hours](https://github.com/firezone/firezone/pull/11663)
+
+[^9]: [fix(phoenix-channel): retry everything but 401](https://github.com/firezone/firezone/pull/11654)
+
+[^10]: [fix(connlib): retry with backoff on 429, 408](https://github.com/firezone/firezone/pull/11594)
+
+[^11]: [feat(portal): browser-authentication tokens for headless clients](https://github.com/firezone/firezone/pull/11799)
+
+[^12]: [fix(connlib): add server-reflexive candidates to local agent](https://github.com/firezone/firezone/pull/11804)
+
+[^13]: [fix(connlib): honor changes to "IP stack" after initial query](https://github.com/firezone/firezone/pull/11891)
+
+[^14]: [feat(apple): add log size cap enforcement](https://github.com/firezone/firezone/pull/11659)
+
+[^15]: [fix(apple): use non-blocking alerts on macOS](https://github.com/firezone/firezone/pull/11907)
+
+[^16]: [fix(linux): replace Tauri notification plugin with `notify-rust`](https://github.com/firezone/firezone/pull/11813)
+
+[^17]: [feat(portal): return 'version_mismatch' to clients](https://github.com/firezone/firezone/pull/11795)
+
+[^18]: [chore(gateway): remove \<= 1.3 connection scheme](https://github.com/firezone/firezone/pull/11771)
