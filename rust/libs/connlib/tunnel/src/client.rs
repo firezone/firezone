@@ -440,10 +440,10 @@ impl ClientState {
                         );
                     }
                 }
-                (p2p_control::GOODBYE_EVENT, id) => {
-                    self.node.remove_connection(id, "received `goodbye`", now);
+                (p2p_control::GOODBYE_EVENT, pid) => {
+                    self.node.remove_connection(pid, "received `goodbye`", now);
 
-                    match id {
+                    match pid {
                         ClientOrGatewayId::Client(_) => {
                             // TODO
                         }
