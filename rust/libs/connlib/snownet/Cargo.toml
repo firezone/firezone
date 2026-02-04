@@ -14,12 +14,14 @@ bytes = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 hex = { workspace = true }
 hex-display = { workspace = true }
+hmac = { workspace = true }
 ip-packet = { workspace = true }
 itertools = { workspace = true }
 logging = { workspace = true }
 once_cell = { workspace = true }
 rand = { workspace = true }
 ringbuffer = { workspace = true }
+sha1 = { workspace = true }
 sha2 = { workspace = true }
 str0m = { workspace = true }
 stun_codec = { workspace = true }

@@ -12,13 +12,15 @@ let package = Package(
     .library(name: "FirezoneKit", targets: ["FirezoneKit"])
   ],
   dependencies: [
-    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.1.0")
+    .package(url: "https://github.com/apple/swift-system", exact: "1.6.4"),
+    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.1.0"),
   ],
   targets: [
     .target(
       name: "FirezoneKit",
       dependencies: [
-        .product(name: "Sentry", package: "sentry-cocoa")
+        .product(name: "SystemPackage", package: "swift-system"),
+        .product(name: "Sentry", package: "sentry-cocoa"),
       ]
     ),
     .testTarget(

@@ -345,6 +345,12 @@ class Repository
 
         fun isConnectOnStartManaged(): Boolean = sharedPreferences.contains(MANAGED_CONNECT_ON_START_KEY)
 
+        fun hasRequestedNotificationPermission(): Boolean = sharedPreferences.getBoolean(NOTIFICATION_PERMISSION_REQUESTED_KEY, false)
+
+        fun setNotificationPermissionRequested() {
+            sharedPreferences.edit().putBoolean(NOTIFICATION_PERMISSION_REQUESTED_KEY, true).apply()
+        }
+
         companion object {
             private const val AUTH_URL_KEY = "authUrl"
             private const val ACTOR_NAME_KEY = "actorName"
@@ -365,5 +371,6 @@ class Repository
             private const val STATE_KEY = "state"
             private const val DEVICE_ID_KEY = "deviceId"
             private const val ENABLED_INTERNET_RESOURCE_KEY = "enabledInternetResource"
+            private const val NOTIFICATION_PERMISSION_REQUESTED_KEY = "notificationPermissionRequested"
         }
     }

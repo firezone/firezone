@@ -29,14 +29,17 @@ jobs:
         id: setup-rust-stable
       - uses: ./.github/actions/setup-rust-nightly
         id: setup-rust-nightly
-      - uses: ./.github/actions/setup-rust-sccache
+      - uses: ./.github/actions/setup-rust-target-dependency-cache
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          key: ${{ steps.setup-rust-nightly.outputs.nightly_version }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
       - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tool: cargo-udeps,cargo-deny
+          tool: cargo-deny
       - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
         if: ${{ runner.os == 'Linux' }}
         env:
@@ -51,14 +54,70 @@ jobs:
         name: cargo doc
         shell: bash
       - run: cargo fmt -- --check
-      - run: cargo +${{ steps.setup-rust-nightly.outputs.nightly_version }} udeps --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
-        name: cargo udeps
       - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
         shell: bash
 
   monitor-static-analysis:
     needs: [static-analysis]
     if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh run cancel ${{ github.run_id }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  unused-dependencies:
+    name: unused-dependencies-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        # TODO: https://github.com/rust-lang/cargo/issues/5220
+        runs-on: [ubuntu-24.04, macos-14, windows-2022]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/setup-rust-stable
+        id: setup-rust-stable
+      - uses: ./.github/actions/setup-rust-nightly
+        id: setup-rust-nightly
+      - uses: ./.github/actions/setup-rust-target-dependency-cache
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          key: ${{ steps.setup-rust-nightly.outputs.nightly_version }}
+      - uses: ./.github/actions/setup-tauri-v2
+        timeout-minutes: 15
+      - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: cargo-udeps
+      - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
+        if: ${{ runner.os == 'Linux' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: bpf-linker
+
+      # Fix-up mtime of toolchain files
+      # Inspired by https://github.com/est31/cargo-udeps/issues/149.
+
+      - name: Modify mtime of toolchain files
+        if: ${{ runner.os == 'Linux' }}
+        run: find ~/.rustup/toolchains/${{ steps.setup-rust-nightly.outputs.nightly_version }}-x86_64-unknown-linux-gnu -print0 | xargs -0 touch -d '2025-09-30'
+      - name: Modify mtime of toolchain files
+        if: ${{ runner.os == 'macOS' }}
+        run: find ~/.rustup/toolchains/${{ steps.setup-rust-nightly.outputs.nightly_version }}-aarch64-apple-darwin -print0 | xargs -0 touch -t 202509300000
+      - name: Modify mtime of toolchain files
+        if: ${{ runner.os == 'Windows' }}
+        shell: powershell
+        run: Get-ChildItem -Path "$env:USERPROFILE\.rustup\toolchains\${{ steps.setup-rust-nightly.outputs.nightly_version }}-x86_64-pc-windows-msvc" -Recurse | ForEach-Object { $_.LastWriteTime = '2025-09-30' }
+
+      - run: cargo +${{ steps.setup-rust-nightly.outputs.nightly_version }} udeps --verbose --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
+        name: cargo udeps
+
+  monitor-unused-dependencies:
+    needs: [unused-dependencies]
+    if: "!cancelled() && needs.unused-dependencies.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
       - run: gh run cancel ${{ github.run_id }}

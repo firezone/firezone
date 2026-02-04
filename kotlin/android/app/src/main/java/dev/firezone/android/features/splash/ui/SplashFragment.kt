@@ -61,6 +61,10 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
                                 findNavController().navigate(
                                     R.id.vpnPermissionActivity,
                                 )
+                            SplashViewModel.ViewAction.NavigateToNotificationPermission ->
+                                findNavController().navigate(
+                                    R.id.notificationPermissionActivity,
+                                )
                             SplashViewModel.ViewAction.NavigateToSignIn ->
                                 findNavController().navigate(
                                     R.id.signInFragment,
