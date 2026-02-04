@@ -271,15 +271,15 @@ jobs:
           cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
       # For pushing built images to Google Cloud Storage
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
         with:
           token_format: access_token
           workload_identity_provider: "projects/85623168602/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           service_account: "github-account@firezone-staging.iam.gserviceaccount.com"
           export_environment_variables: true
           create_credentials_file: true
-      - name: Copy relay to Cloud Storage
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
+      - name: Copy binary to Azure Blob Storage
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
         run: |
           set -e
 
