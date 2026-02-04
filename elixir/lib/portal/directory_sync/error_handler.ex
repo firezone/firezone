@@ -2,10 +2,10 @@ defmodule Portal.DirectorySync.ErrorHandler do
   @moduledoc """
   Handles errors from directory sync Oban jobs (Entra, Google, Okta).
 
-  This module is responsible for:
-  - Extracting meaningful error messages from exceptions
+  This module orchestrates error handling by:
+  - Delegating to provider-specific error formatters
   - Updating directory state based on error type
-  - Disabling directories on persistent errors
+  - Building Sentry context for error reporting
 
   Error handling strategy:
   - 4xx HTTP errors: Disable directory immediately (user action required)
@@ -18,7 +18,11 @@ defmodule Portal.DirectorySync.ErrorHandler do
   """
 
   alias __MODULE__.Database
+  alias Portal.DirectorySync.ErrorFormatter
   require Logger
+
+  # Re-export format_transport_error for backwards compatibility
+  defdelegate format_transport_error(error), to: ErrorFormatter
 
   @doc """
   Handle an error from a directory sync job.
@@ -30,211 +34,45 @@ defmodule Portal.DirectorySync.ErrorHandler do
     directory_id = job.args["directory_id"]
 
     case job.worker do
-      "Portal.Entra.Sync" -> handle_entra_error(reason, directory_id)
-      "Portal.Google.Sync" -> handle_google_error(reason, directory_id)
-      "Portal.Okta.Sync" -> handle_okta_error(reason, directory_id)
+      "Portal.Entra.Sync" -> handle_provider_error(Portal.Entra, reason, directory_id)
+      "Portal.Google.Sync" -> handle_provider_error(Portal.Google, reason, directory_id)
+      "Portal.Okta.Sync" -> handle_provider_error(Portal.Okta, reason, directory_id)
       _ -> :ok
     end
 
     build_sentry_context(reason, job)
   end
 
-  # Entra error handling
+  # Provider error handling
 
-  defp handle_entra_error(%Portal.Entra.SyncError{context: context}, directory_id) do
-    {error_type, message} = classify_error(context, &format_entra_error/1)
-    update_directory(:entra, directory_id, error_type, message)
+  defp handle_provider_error(Portal.Entra, %Portal.Entra.SyncError{context: context}, dir_id) do
+    {error_type, message} = Portal.Entra.ErrorFormatter.classify_and_format(context)
+    update_directory(:entra, dir_id, error_type, message)
   end
 
-  defp handle_entra_error(error, directory_id) do
-    message = format_generic_error(error)
+  defp handle_provider_error(Portal.Entra, error, directory_id) do
+    message = Portal.Entra.ErrorFormatter.format_generic_error(error)
     update_directory(:entra, directory_id, :transient, message)
   end
 
-  # Google error handling
-
-  defp handle_google_error(%Portal.Google.SyncError{context: context}, directory_id) do
-    {error_type, message} = classify_error(context, &format_google_error/1)
-    update_directory(:google, directory_id, error_type, message)
+  defp handle_provider_error(Portal.Google, %Portal.Google.SyncError{context: context}, dir_id) do
+    {error_type, message} = Portal.Google.ErrorFormatter.classify_and_format(context)
+    update_directory(:google, dir_id, error_type, message)
   end
 
-  defp handle_google_error(error, directory_id) do
-    message = format_generic_error(error)
+  defp handle_provider_error(Portal.Google, error, directory_id) do
+    message = Portal.Google.ErrorFormatter.format_generic_error(error)
     update_directory(:google, directory_id, :transient, message)
   end
 
-  # Okta error handling
-
-  defp handle_okta_error(%Portal.Okta.SyncError{context: context}, directory_id) do
-    {error_type, message} = classify_error(context, &format_okta_error/1)
-    update_directory(:okta, directory_id, error_type, message)
+  defp handle_provider_error(Portal.Okta, %Portal.Okta.SyncError{context: context}, dir_id) do
+    {error_type, message} = Portal.Okta.ErrorFormatter.classify_and_format(context)
+    update_directory(:okta, dir_id, error_type, message)
   end
 
-  defp handle_okta_error(error, directory_id) do
-    message = format_generic_error(error)
+  defp handle_provider_error(Portal.Okta, error, directory_id) do
+    message = Portal.Okta.ErrorFormatter.format_generic_error(error)
     update_directory(:okta, directory_id, :transient, message)
-  end
-
-  # Error classification - pattern matches on raw errors
-
-  # HTTP 4xx -> client_error (disable immediately)
-  defp classify_error(%Req.Response{status: status} = resp, format_fn)
-       when status >= 400 and status < 500 do
-    {:client_error, format_fn.(resp)}
-  end
-
-  # HTTP 5xx -> transient
-  defp classify_error(%Req.Response{} = resp, format_fn) do
-    {:transient, format_fn.(resp)}
-  end
-
-  # Network errors -> transient
-  defp classify_error(%Req.TransportError{} = err, _format_fn) do
-    {:transient, format_transport_error(err)}
-  end
-
-  # String contexts starting with special prefixes -> client_error
-  defp classify_error("validation: " <> _ = msg, _format_fn), do: {:client_error, msg}
-  defp classify_error("scopes: " <> _ = msg, _format_fn), do: {:client_error, msg}
-  defp classify_error("circuit_breaker: " <> _ = msg, _format_fn), do: {:client_error, msg}
-
-  # nil context -> transient with generic message
-  defp classify_error(nil, _format_fn) do
-    {:transient, "Unknown error occurred"}
-  end
-
-  # Other string contexts -> transient
-  defp classify_error(msg, _format_fn) when is_binary(msg) do
-    {:transient, msg}
-  end
-
-  # Error formatting - Provider-specific HTTP error formatting
-
-  defp format_entra_error(%Req.Response{
-         status: status,
-         body: %{"error" => error_obj}
-       }) do
-    code = Map.get(error_obj, "code")
-    message = Map.get(error_obj, "message")
-    inner_code = get_in(error_obj, ["innerError", "code"])
-
-    parts =
-      [
-        "HTTP #{status}",
-        if(code, do: "Code: #{code}"),
-        if(inner_code && inner_code != code, do: "Inner Code: #{inner_code}"),
-        if(message, do: message)
-      ]
-      |> Enum.filter(& &1)
-
-    Enum.join(parts, " - ")
-  end
-
-  defp format_entra_error(%Req.Response{status: status, body: body})
-       when is_binary(body) do
-    "HTTP #{status} - #{body}"
-  end
-
-  defp format_entra_error(%Req.Response{status: status}) do
-    "Entra API returned HTTP #{status}"
-  end
-
-  defp format_google_error(%Req.Response{
-         status: status,
-         body: %{"error" => error_obj}
-       })
-       when is_map(error_obj) do
-    code = Map.get(error_obj, "code")
-    message = Map.get(error_obj, "message")
-
-    reason =
-      case Map.get(error_obj, "errors") do
-        [%{"reason" => r} | _] -> r
-        _ -> nil
-      end
-
-    parts =
-      [
-        "HTTP #{status}",
-        if(code && code != status, do: "Code: #{code}"),
-        if(reason, do: "Reason: #{reason}"),
-        if(message, do: message)
-      ]
-      |> Enum.filter(& &1)
-
-    Enum.join(parts, " - ")
-  end
-
-  defp format_google_error(%Req.Response{status: status, body: body})
-       when is_binary(body) do
-    "HTTP #{status} - #{body}"
-  end
-
-  defp format_google_error(%Req.Response{status: status}) do
-    "Google API returned HTTP #{status}"
-  end
-
-  defp format_okta_error(%Req.Response{status: status, body: body})
-       when is_map(body) do
-    Portal.Okta.ErrorCodes.format_error(status, body)
-  end
-
-  defp format_okta_error(%Req.Response{status: status, body: body})
-       when is_binary(body) do
-    Portal.Okta.ErrorCodes.format_error(status, body)
-  end
-
-  defp format_okta_error(%Req.Response{status: status}) do
-    Portal.Okta.ErrorCodes.format_error(status, nil)
-  end
-
-  @doc """
-  Format network/transport errors into user-friendly messages.
-
-  Handles DNS failures, timeouts, TLS errors, and other network issues.
-  """
-  @spec format_transport_error(Exception.t()) :: String.t()
-  def format_transport_error(%Req.TransportError{reason: reason}) do
-    format_transport_reason(reason)
-  end
-
-  defp format_transport_reason(reason) do
-    case reason do
-      :nxdomain ->
-        "DNS lookup failed."
-
-      :timeout ->
-        "Connection timed out."
-
-      :connect_timeout ->
-        "Connection timed out."
-
-      :econnrefused ->
-        "Connection refused."
-
-      :closed ->
-        "Connection closed unexpectedly."
-
-      {:tls_alert, {alert_type, _}} ->
-        "TLS error (#{alert_type})."
-
-      :ehostunreach ->
-        "Host is unreachable."
-
-      :enetunreach ->
-        "Network is unreachable."
-
-      _ ->
-        "Network error: #{inspect(reason)}"
-    end
-  end
-
-  defp format_generic_error(error) when is_exception(error) do
-    Exception.message(error)
-  end
-
-  defp format_generic_error(error) do
-    inspect(error)
   end
 
   # Directory updates
