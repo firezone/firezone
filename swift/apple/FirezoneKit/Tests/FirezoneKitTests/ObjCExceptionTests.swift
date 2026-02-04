@@ -48,6 +48,8 @@ struct ObjCExceptionTests {
       #expect(Bool(false), "Should have thrown an error")
     } catch let error as TestError {
       caughtError = error
+    } catch {
+      Issue.record("Should have caught TestError, got \(error)")
     }
 
     #expect(caughtError != nil, "Swift error should have been rethrown")
