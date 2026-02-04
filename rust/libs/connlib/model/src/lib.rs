@@ -24,6 +24,27 @@ make_id!(RelayId);
 make_id!(ClientId);
 make_id!(SiteId);
 
+#[derive(Hash, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ClientOrGatewayId {
+    Client(ClientId),
+    Gateway(GatewayId),
+}
+
+impl fmt::Display for ClientOrGatewayId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClientOrGatewayId::Client(inner) => write!(f, "Client({inner})"),
+            ClientOrGatewayId::Gateway(inner) => write!(f, "Gateway({inner})"),
+        }
+    }
+}
+
+impl fmt::Debug for ClientOrGatewayId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialOrd, Ord)]
 pub struct Site {
     pub id: SiteId,
