@@ -12,18 +12,14 @@ let package = Package(
     .library(name: "FirezoneKit", targets: ["FirezoneKit"])
   ],
   dependencies: [
-    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.1.0")
+    .package(url: "https://github.com/apple/swift-system", exact: "1.6.4"),
+    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.1.0"),
   ],
   targets: [
     .target(
-      name: "FirezoneKitObjC",
-      dependencies: [],
-      publicHeadersPath: "include"
-    ),
-    .target(
       name: "FirezoneKit",
       dependencies: [
-        "FirezoneKitObjC",
+        .product(name: "SystemPackage", package: "swift-system"),
         .product(name: "Sentry", package: "sentry-cocoa"),
       ]
     ),

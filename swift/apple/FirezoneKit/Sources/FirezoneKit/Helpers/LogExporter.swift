@@ -7,7 +7,7 @@
 import AppleArchive
 import Foundation
 @preconcurrency import NetworkExtension
-import System
+import SystemPackage
 
 /// Convenience module for smoothing over the differences between exporting logs on macOS and iOS.
 ///
@@ -23,7 +23,6 @@ import System
   enum LogExporter {
     enum ExportError: Error {
       case invalidSourceDirectory
-      case invalidFilePath
       case invalidFileHandle
     }
 
@@ -51,12 +50,16 @@ import System
       let tunnelLogURL =
         sharedLogFolderURL
         .appendingPathComponent("tunnel.zip")
-      fileManager.createFile(atPath: tunnelLogURL.path, contents: nil)
-      let fileHandle = try FileHandle(forWritingTo: tunnelLogURL)
-      defer { try? fileHandle.close() }
+      let fd = try FileDescriptor.open(
+        FilePath(tunnelLogURL.path),
+        .writeOnly,
+        options: [.create, .truncate],
+        permissions: [.ownerReadWrite, .groupRead, .otherRead]
+      )
+      defer { try? fd.close() }
 
       // 3. Await tunnel log export from tunnel process
-      try await IPCClient.exportLogs(session: session, fileHandle: fileHandle)
+      try await IPCClient.exportLogs(session: session, fd: fd)
 
       // 4. Create app log archive
       let appLogURL = sharedLogFolderURL.appendingPathComponent("app.zip")
@@ -85,7 +88,6 @@ import System
   enum LogExporter {
     enum ExportError: Error {
       case invalidSourceDirectory
-      case invalidFilePath
       case documentDirectoryNotAvailable
     }
 
@@ -148,14 +150,5 @@ extension LogExporter {
     let timeStampString = dateFormatter.string(from: Date())
 
     return timeStampString
-  }
-
-  private static func toPath(_ url: URL) throws -> FilePath {
-    guard let path = FilePath(url)
-    else {
-      throw ExportError.invalidFilePath
-    }
-
-    return path
   }
 }

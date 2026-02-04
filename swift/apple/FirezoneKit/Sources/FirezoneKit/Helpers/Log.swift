@@ -4,9 +4,9 @@
 //  LICENSE: Apache-2.0
 //
 
-import FirezoneKitObjC
 import Foundation
 import OSLog
+import SystemPackage
 
 public final class Log {
   private static let logger: Logger = {
@@ -141,13 +141,12 @@ final class LogWriter: @unchecked Sendable {
   // All log writes happen in the workQueue
   private let workQueue: DispatchQueue
   private let logger: Logger
-  private var handle: FileHandle
+  private var fd: FileDescriptor
   private let dateFormatter: ISO8601DateFormatter
   private let folderURL: URL
-  private var currentLogFileURL: URL
+  private var currentLogFilePath: FilePath
 
   init?(folderURL: URL?, logger: Logger) {
-    let fileManager = FileManager.default
     let dateFormatter = ISO8601DateFormatter()
     dateFormatter.formatOptions = [.withFullDate, .withFullTime, .withFractionalSeconds]
 
@@ -162,47 +161,52 @@ final class LogWriter: @unchecked Sendable {
       return nil
     }
 
-    self.folderURL = folderURL  // Store folder URL
+    self.folderURL = folderURL
 
     let logFileURL =
       folderURL
       .appendingPathComponent(dateFormatter.string(from: Date()))
       .appendingPathExtension("log")
 
-    self.currentLogFileURL = logFileURL  // Store current file URL
+    let logFilePath = FilePath(logFileURL.path)
+    self.currentLogFilePath = logFilePath
 
-    // Create log file
-    guard fileManager.createFile(atPath: logFileURL.path, contents: Data()),
-      let handle = try? FileHandle(forWritingTo: logFileURL),
-      (try? handle.seekToEnd()) != nil
+    // Open log file for writing (create if needed, append mode)
+    guard
+      let fd = try? FileDescriptor.open(
+        logFilePath,
+        .writeOnly,
+        options: [.create, .append],
+        permissions: [.ownerReadWrite, .groupRead, .otherRead]
+      )
     else {
       logger.error("Could not create log file: \(logFileURL.path)")
       return nil
     }
 
-    self.handle = handle
+    self.fd = fd
     self.workQueue = DispatchQueue(label: "LogWriter.workQueue", qos: .utility)
   }
 
   deinit {
     do {
-      try self.handle.close()
+      try self.fd.close()
     } catch {
       logger.error("Could not close logfile: \(error)")
     }
   }
 
-  // Returns a valid file handle, recreating file if necessary
-  func ensureFileExists() -> FileHandle? {
+  // Returns a valid file descriptor, recreating file if necessary
+  func ensureFileExists() -> FileDescriptor? {
     let fileManager = FileManager.default
 
     // Check if current file still exists
-    if fileManager.fileExists(atPath: currentLogFileURL.path) {
-      return handle
+    if fileManager.fileExists(atPath: currentLogFilePath.string) {
+      return fd
     }
 
     // File was deleted, need to recreate
-    try? handle.close()
+    try? fd.close()
 
     // Ensure directory exists
     guard SharedAccess.ensureDirectoryExists(at: folderURL.path) else {
@@ -210,17 +214,21 @@ final class LogWriter: @unchecked Sendable {
       return nil
     }
 
-    // Create new log file
-    guard fileManager.createFile(atPath: currentLogFileURL.path, contents: Data()),
-      let newHandle = try? FileHandle(forWritingTo: currentLogFileURL),
-      (try? newHandle.seekToEnd()) != nil
+    // Reopen log file
+    guard
+      let newFd = try? FileDescriptor.open(
+        currentLogFilePath,
+        .writeOnly,
+        options: [.create, .append],
+        permissions: [.ownerReadWrite, .groupRead, .otherRead]
+      )
     else {
-      logger.error("Could not recreate log file: \(self.currentLogFileURL.path)")
+      logger.error("Could not recreate log file: \(self.currentLogFilePath)")
       return nil
     }
 
-    self.handle = newHandle
-    return newHandle
+    self.fd = newFd
+    return newFd
   }
 
   func write(severity: Severity, message: String) {
@@ -229,10 +237,12 @@ final class LogWriter: @unchecked Sendable {
 
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard let handle = self.ensureFileExists() else { return }
+      guard let fd = self.ensureFileExists() else { return }
 
-      try? catchingObjCException {
-        try handle.write(contentsOf: Data(line.utf8))
+      do {
+        try fd.writeAll(line.utf8)
+      } catch {
+        self.logger.error("Failed to write log: \(error)")
       }
     }
   }

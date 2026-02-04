@@ -6,6 +6,7 @@
 
 import Foundation
 @preconcurrency import NetworkExtension
+import SystemPackage
 
 // TODO: Use a more abstract IPC protocol to make this less terse
 
@@ -105,7 +106,7 @@ enum IPCClient {
   }
 
   @MainActor
-  static func exportLogs(session: NETunnelProviderSession, fileHandle: FileHandle) async throws {
+  static func exportLogs(session: NETunnelProviderSession, fd: FileDescriptor) async throws {
     let isCycleStart = try await maybeCycleStart(session)
     defer {
       if isCycleStart { session.stopTunnel() }
@@ -135,10 +136,7 @@ enum IPCClient {
     while true {
       let chunk = try await nextChunk()
 
-      try fileHandle.seekToEnd()
-      try catchingObjCException {
-        try fileHandle.write(contentsOf: chunk.data)
-      }
+      try fd.writeAll(chunk.data)
 
       if chunk.done { break }
     }
