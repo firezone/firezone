@@ -16,9 +16,15 @@ let package = Package(
   ],
   targets: [
     .target(
+      name: "FirezoneKitObjC",
+      dependencies: [],
+      publicHeadersPath: "include"
+    ),
+    .target(
       name: "FirezoneKit",
       dependencies: [
-        .product(name: "Sentry", package: "sentry-cocoa")
+        "FirezoneKitObjC",
+        .product(name: "Sentry", package: "sentry-cocoa"),
       ]
     ),
     .testTarget(
