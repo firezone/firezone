@@ -267,7 +267,8 @@ class TunnelService : VpnService() {
 
         if (!token.isNullOrBlank()) {
             tunnelState = State.CONNECTING
-            updateStatusNotification(TunnelStatusNotification.Connecting)
+            // Dismiss any previous disconnected notifications
+            TunnelStatusNotification.dismissDisconnectedNotification(this)
 
             val firebaseInstallationId =
                 runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
@@ -285,6 +286,8 @@ class TunnelService : VpnService() {
                 )
 
             commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
+
+            val context = this;
 
             serviceScope.launch {
                 try {
@@ -309,7 +312,8 @@ class TunnelService : VpnService() {
                             Log.i(TAG, "Event-loop finished")
 
                             if (startedByUser) {
-                                updateStatusNotification(TunnelStatusNotification.SignedOut)
+                                // Show dismissable disconnected notification
+                                TunnelStatusNotification.showDisconnectedNotification(context)
                             }
                         }
                 } catch (e: ConnlibException) {
@@ -322,6 +326,9 @@ class TunnelService : VpnService() {
 
                     stopNetworkMonitoring()
                     stopDisconnectMonitoring()
+
+                    // Stop the foreground notification
+                    stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
             }
@@ -431,9 +438,9 @@ class TunnelService : VpnService() {
         return logDir
     }
 
-    fun updateStatusNotification(statusType: TunnelStatusNotification.StatusType) {
-        val notification = TunnelStatusNotification.update(this, statusType).build()
-        startForeground(TunnelStatusNotification.ID, notification)
+    fun startConnectedNotification() {
+        val notification = TunnelStatusNotification.createConnectedNotification(this)
+        startForeground(TunnelStatusNotification.CONNECTED_NOTIFICATION_ID, notification)
     }
 
     private fun getDeviceName(): String {
