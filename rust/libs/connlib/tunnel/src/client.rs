@@ -553,13 +553,13 @@ impl ClientState {
     fn encapsulate(&mut self, mut packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
         let dst = packet.destination();
 
-        let peer = if is_peer(dst) {
+        let pid = if is_peer(dst) {
             let Some(peer) = self.gateways.peer_by_ip_mut(dst) else {
                 tracing::trace!(?packet, "Unknown peer");
                 return None;
             };
 
-            peer
+            ClientOrGatewayId::Gateway(peer.id())
         } else {
             let Some(resource) = self.get_resource_by_destination(dst) else {
                 tracing::trace!(?packet, "Unknown resource");
@@ -573,24 +573,24 @@ impl ClientState {
                 return None;
             };
 
-            peer
+            ClientOrGatewayId::Gateway(peer.id())
         };
 
         // TODO: Check DNS resource NAT state for the domain that the destination IP belongs to.
         // Re-send if older than X.
 
-        if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
+        if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst)
+            && let ClientOrGatewayId::Gateway(gid) = pid
+        {
             packet = self
                 .dns_resource_nat
-                .handle_outgoing(peer.id(), domain, packet, now)?;
+                .handle_outgoing(gid, domain, packet, now)?;
         }
-
-        let gid = peer.id();
 
         let transmit = self
             .node
-            .encapsulate(ClientOrGatewayId::Gateway(gid), &packet, now)
-            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e:#}"))
+            .encapsulate(pid, &packet, now)
+            .inspect_err(|e| tracing::debug!(%pid, "Failed to encapsulate: {e:#}"))
             .ok()??;
 
         Some(transmit)
