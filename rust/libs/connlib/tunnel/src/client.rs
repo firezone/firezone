@@ -402,7 +402,7 @@ impl ClientState {
         packet: &[u8],
         now: Instant,
     ) -> Option<IpPacket> {
-        let (id, packet) = self.node.decapsulate(
+        let (pid, packet) = self.node.decapsulate(
             local,
             from,
             packet.as_ref(),
@@ -411,35 +411,19 @@ impl ClientState {
         .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate: {e:#}"))
         .ok()??;
 
-        match id {
-            ClientOrGatewayId::Client(_cid) => None,
-            ClientOrGatewayId::Gateway(gid) => {
-                self.handle_packet_from_gateway(gid, packet, local, from, now)
-            }
-        }
-    }
-
-    fn handle_packet_from_gateway(
-        &mut self,
-        gid: GatewayId,
-        packet: IpPacket,
-        local: SocketAddr,
-        from: SocketAddr,
-        now: Instant,
-    ) -> Option<IpPacket> {
-        if self.udp_dns_client.accepts(&packet) {
+        if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.udp_dns_client.accepts(&packet) {
             self.udp_dns_client.handle_inbound(packet);
             return None;
         }
 
-        if self.tcp_dns_client.accepts(&packet) {
+        if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.tcp_dns_client.accepts(&packet) {
             self.tcp_dns_client.handle_inbound(packet);
             return None;
         }
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
-            match fz_p2p_control.event_type() {
-                p2p_control::DOMAIN_STATUS_EVENT => {
+            match (fz_p2p_control.event_type(), pid) {
+                (p2p_control::DOMAIN_STATUS_EVENT, ClientOrGatewayId::Gateway(gid)) => {
                     let res = p2p_control::dns_resource_nat::decode_domain_status(fz_p2p_control)
                         .inspect_err(|e| tracing::debug!("{e:#}"))
                         .ok()?;
@@ -456,44 +440,61 @@ impl ClientState {
                         );
                     }
                 }
-                p2p_control::GOODBYE_EVENT => {
-                    self.node.remove_connection(
-                        ClientOrGatewayId::Gateway(gid),
-                        "received `goodbye`",
-                        now,
-                    );
-                    self.cleanup_connected_gateway(&gid);
+                (p2p_control::GOODBYE_EVENT, id) => {
+                    self.node.remove_connection(id, "received `goodbye`", now);
+
+                    match id {
+                        ClientOrGatewayId::Client(_) => {
+                            // TODO
+                        }
+                        ClientOrGatewayId::Gateway(gid) => self.cleanup_connected_gateway(&gid),
+                    }
                 }
-                code => {
-                    tracing::debug!(code = %code.into_u8(), "Unknown control protocol");
+                (code, pid) => {
+                    tracing::debug!(code = %code.into_u8(), %pid, "Unknown / unsupported control protocol");
                 }
             };
 
             return None;
         }
 
-        let Some(peer) = self.gateways.get_mut(&gid) else {
-            tracing::error!(%gid, "Couldn't find connection by ID");
+        match pid {
+            ClientOrGatewayId::Client(cid) => {
+                let Some(_peer) = self.clients.get_mut(&cid) else {
+                    tracing::error!(%cid, "Couldn't find connection by ID");
 
-            return None;
-        };
+                    return None;
+                };
 
-        peer.ensure_allowed_src(&packet)
-            .inspect_err(|e| tracing::debug!(%gid, %local, %from, "{e}"))
-            .ok()?;
+                // TODO: Validate packet with state in `peer`?
+            }
+            ClientOrGatewayId::Gateway(gid) => {
+                let Some(peer) = self.gateways.get_mut(&gid) else {
+                    tracing::error!(%gid, "Couldn't find connection by ID");
 
-        if feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
-            && let Ok(Some((failed_packet, error))) = packet.icmp_error()
-            && error.is_unreachable_prohibited()
-            && let Some(resource) = self.get_resource_by_destination(failed_packet.dst())
-        {
-            analytics::feature_flag_called("icmp-error-unreachable-prohibited-create-new-flow");
+                    return None;
+                };
 
-            self.on_not_connected_resource(
-                resource,
-                ConnectionTrigger::IcmpDestinationUnreachableProhibited,
-                now,
-            );
+                peer.ensure_allowed_src(&packet)
+                    .inspect_err(|e| tracing::debug!(%gid, %local, %from, "{e}"))
+                    .ok()?;
+
+                if feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
+                    && let Ok(Some((failed_packet, error))) = packet.icmp_error()
+                    && error.is_unreachable_prohibited()
+                    && let Some(resource) = self.get_resource_by_destination(failed_packet.dst())
+                {
+                    analytics::feature_flag_called(
+                        "icmp-error-unreachable-prohibited-create-new-flow",
+                    );
+
+                    self.on_not_connected_resource(
+                        resource,
+                        ConnectionTrigger::IcmpDestinationUnreachableProhibited,
+                        now,
+                    );
+                }
+            }
         }
 
         Some(packet)
