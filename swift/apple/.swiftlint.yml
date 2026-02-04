@@ -151,7 +151,7 @@ custom_rules:
   avoid_file_handle_write:
     name: "FileHandle.write is dangerous"
     regex: '(handle|fileHandle)\.write\((?!contentsOf:)'
-    message: "'write' can throw uncatchable NSExceptions"
+    message: "'write' can throw uncatchable NSExceptions  - prefer `.write(contentsOf:)`"
     severity: error
 
 reporter: xcode
