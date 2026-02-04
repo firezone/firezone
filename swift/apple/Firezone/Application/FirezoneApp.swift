@@ -4,6 +4,7 @@
 //  LICENSE: Apache-2.0
 //
 
+import Combine
 import FirezoneKit
 import Sentry
 import SwiftUI
@@ -12,6 +13,7 @@ import SwiftUI
 struct FirezoneApp: App {
   #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @State private var connectingAnimationFrame: Int = 0
   #endif
 
   @StateObject var store: Store
@@ -41,14 +43,8 @@ struct FirezoneApp: App {
         "Welcome to Firezone",
         id: AppView.WindowDefinition.main.identifier
       ) {
-        if let menuBar = appDelegate.menuBar {
-          // menuBar will be initialized by this point
-          AppView()
-            .environmentObject(store)
-            .environmentObject(menuBar)
-        } else {
-          ProgressView("Loading...")
-        }
+        AppView()
+          .environmentObject(store)
       }
       .handlesExternalEvents(
         matching: [AppView.WindowDefinition.main.externalEventMatchString]
@@ -63,8 +59,56 @@ struct FirezoneApp: App {
       .handlesExternalEvents(
         matching: [AppView.WindowDefinition.settings.externalEventMatchString]
       )
+
+      MenuBarExtra {
+        MenuBarView()
+          .environmentObject(store)
+          .onReceive(connectingAnimationPublisher) { _ in
+            connectingAnimationFrame = (connectingAnimationFrame + 1) % 3
+          }
+          .onReceive(store.$menuBarOpenRequested) { requested in
+            if requested {
+              StatusItemIntrospection.statusItem()?.button?.performClick(nil)
+              store.menuBarOpenRequested = false
+            }
+          }
+      } label: {
+        Label {
+          Text("Firezone")
+        } icon: {
+          Image(menuBarIconName)
+            .renderingMode(.template)
+        }
+      }
+      .menuBarExtraStyle(.menu)
     #endif
   }
+
+  #if os(macOS)
+    var menuBarIconName: String {
+      switch store.vpnStatus {
+      case .connecting, .disconnecting, .reasserting:
+        return "MenuBarIconConnecting\(connectingAnimationFrame + 1)"
+      default:
+        return store.menuBarIconName
+      }
+    }
+
+    /// Publisher that emits timer ticks only when VPN is in a transitional state
+    private var connectingAnimationPublisher: AnyPublisher<Date, Never> {
+      Timer.publish(every: 0.25, on: .main, in: .common)
+        .autoconnect()
+        .filter { [store] _ in
+          switch store.vpnStatus {
+          case .connecting, .disconnecting, .reasserting:
+            return true
+          default:
+            return false
+          }
+        }
+        .eraseToAnyPublisher()
+    }
+  #endif
 }
 
 #if os(macOS)
@@ -74,7 +118,6 @@ struct FirezoneApp: App {
       string: "x-apple.systempreferences:com.apple.preferences.softwareupdate"
     )!  // swiftlint:disable:this force_unwrapping
 
-    var menuBar: MenuBar?
     var store: Store?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -87,7 +130,6 @@ struct FirezoneApp: App {
 
     func applicationDidFinishLaunching(_: Notification) {
       if let store {
-        menuBar = MenuBar(store: store)
         AppView.subscribeToGlobalEvents(store: store)
       }
 
