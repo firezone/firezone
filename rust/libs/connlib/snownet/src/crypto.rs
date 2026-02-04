@@ -8,7 +8,7 @@ type HmacSha1 = Hmac<Sha1>;
 pub(crate) static CRYPTO_PROVIDER: RustCryptoSha1HmacProvider = RustCryptoSha1HmacProvider;
 
 #[derive(Debug)]
-pub(super) struct RustCryptoSha1HmacProvider;
+struct RustCryptoSha1HmacProvider;
 
 impl Sha1HmacProvider for RustCryptoSha1HmacProvider {
     fn sha1_hmac(&self, key: &[u8], payloads: &[&[u8]]) -> [u8; 20] {
