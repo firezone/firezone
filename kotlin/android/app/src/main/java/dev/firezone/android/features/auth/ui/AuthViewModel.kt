@@ -27,7 +27,7 @@ internal class AuthViewModel
                 repo.saveNonceSync(nonce)
                 repo.saveStateSync(state)
                 val config = repo.getConfigSync()
-                val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=client"
+                val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=gui-client"
 
                 actionMutableStateFlow.value =
                     ViewAction.LaunchAuthFlow(authUrl)

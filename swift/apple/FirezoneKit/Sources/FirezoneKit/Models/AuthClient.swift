@@ -51,7 +51,7 @@ struct AuthClient {
       authURL
       .appendingQueryItem(URLQueryItem(name: "state", value: state))
       .appendingQueryItem(URLQueryItem(name: "nonce", value: nonce))
-      .appendingQueryItem(URLQueryItem(name: "as", value: "client"))
+      .appendingQueryItem(URLQueryItem(name: "as", value: "gui-client"))
   }
 
   func response(url: URL?) throws -> AuthResponse {
