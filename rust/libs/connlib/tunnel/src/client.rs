@@ -564,13 +564,15 @@ impl ClientState {
     fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
         let dst = packet.destination();
 
-        let (gid, mut packet) = if is_peer(packet.destination()) {
+        let (pid, mut packet) = if is_peer(packet.destination()) {
             self.route_packet_to_peer(packet)?
         } else {
             self.route_packet_to_resource(packet, now)?
         };
 
-        if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
+        if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst)
+            && let ClientOrGatewayId::Gateway(gid) = pid
+        {
             packet = self
                 .dns_resource_nat
                 .handle_outgoing(gid, domain, packet, now)?;
@@ -578,18 +580,18 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(ClientOrGatewayId::Gateway(gid), &packet, now)
-            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e:#}"))
+            .encapsulate(pid, &packet, now)
+            .inspect_err(|e| tracing::debug!(%pid, "Failed to encapsulate: {e:#}"))
             .ok()??;
 
         Some(transmit)
     }
 
-    fn route_packet_to_peer(&mut self, packet: IpPacket) -> Option<(GatewayId, IpPacket)> {
+    fn route_packet_to_peer(&mut self, packet: IpPacket) -> Option<(ClientOrGatewayId, IpPacket)> {
         let dst = packet.destination();
 
         if let Some(gateway) = self.gateways.peer_by_ip(dst) {
-            return Some((gateway.id(), packet));
+            return Some((ClientOrGatewayId::Gateway(gateway.id()), packet));
         }
 
         None
@@ -599,7 +601,7 @@ impl ClientState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Option<(GatewayId, IpPacket)> {
+    ) -> Option<(ClientOrGatewayId, IpPacket)> {
         let dst = packet.destination();
 
         let Some(resource) = self.get_resource_by_destination(dst) else {
@@ -614,7 +616,7 @@ impl ClientState {
             return None;
         };
 
-        Some((peer.id(), packet))
+        Some((ClientOrGatewayId::Gateway(peer.id()), packet))
     }
 
     pub fn add_ice_candidate(
