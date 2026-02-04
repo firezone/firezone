@@ -1057,7 +1057,12 @@ mod tests {
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
 
-        boot_tunnel(&mut test_controller, &mut mock_tunnel, vec![dns_resource()]).await;
+        boot_tunnel(
+            &mut test_controller,
+            &mut mock_tunnel,
+            vec![dns_resource_foo()],
+        )
+        .await;
 
         let (title, body) = test_controller
             .wait_integration(|i| i.nth_notification(0))
@@ -1065,7 +1070,7 @@ mod tests {
         assert_eq!(title, "Firezone connected");
         assert_eq!(body, "You are now signed in and able to access resources.");
 
-        mock_tunnel.send_resources(vec![dns_resource()]).await;
+        mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
 
         tokio::time::sleep(Duration::from_millis(500)).await;
         assert_eq!(
@@ -1073,6 +1078,140 @@ mod tests {
             1,
             "should not show repeated notifications"
         );
+    }
+
+    #[tokio::test]
+    async fn shows_offline_gateway_notification_once_per_site() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        let resource_foo = dns_resource_foo();
+        let resource_bar = dns_resource_bar();
+        boot_tunnel(
+            &mut test_controller,
+            &mut mock_tunnel,
+            vec![resource_foo.clone(), resource_bar.clone()],
+        )
+        .await;
+
+        // Trigger offline notification for first resource
+        mock_tunnel
+            .send_all_gateways_offline(resource_foo.id())
+            .await;
+
+        let (title, body) = test_controller
+            .wait_integration(|i| i.nth_notification(1))
+            .await;
+        assert_eq!(title, "Failed to connect to 'foo.example.com'");
+        assert!(body.contains("All Gateways in the site 'Example Site' are offline"));
+
+        // Trigger offline notification for second resource in same site
+        mock_tunnel
+            .send_all_gateways_offline(resource_bar.id())
+            .await;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(
+            test_controller.integration().notifications.len(),
+            2,
+            "should not show notification again for same site"
+        );
+    }
+
+    #[tokio::test]
+    async fn shows_offline_gateway_notification_for_different_sites() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        let resource_foo = dns_resource_foo();
+        let resource_baz = dns_resource_baz();
+        boot_tunnel(
+            &mut test_controller,
+            &mut mock_tunnel,
+            vec![resource_foo.clone(), resource_baz.clone()],
+        )
+        .await;
+
+        // Trigger offline notification for first resource
+        mock_tunnel
+            .send_all_gateways_offline(resource_foo.id())
+            .await;
+
+        let (title, body) = test_controller
+            .wait_integration(|i| i.nth_notification(1))
+            .await;
+        assert_eq!(title, "Failed to connect to 'foo.example.com'");
+        assert!(body.contains("All Gateways in the site 'Example Site' are offline"));
+
+        // Trigger offline notification for resource in different site
+        mock_tunnel
+            .send_all_gateways_offline(resource_baz.id())
+            .await;
+
+        let (title, body) = test_controller
+            .wait_integration(|i| i.nth_notification(2))
+            .await;
+        assert_eq!(title, "Failed to connect to 'baz.example.com'");
+        assert!(body.contains("All Gateways in the site 'Other Site' are offline"));
+    }
+
+    #[tokio::test]
+    async fn shows_version_mismatch_notification_once_per_site() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        let resource_foo = dns_resource_foo();
+        let resource_bar = dns_resource_bar();
+        boot_tunnel(
+            &mut test_controller,
+            &mut mock_tunnel,
+            vec![resource_foo.clone(), resource_bar.clone()],
+        )
+        .await;
+
+        // Trigger version mismatch notification for first resource
+        mock_tunnel
+            .send_gateway_version_mismatch(resource_foo.id())
+            .await;
+
+        let (title, body) = test_controller
+            .wait_integration(|i| i.nth_notification(1))
+            .await;
+        assert_eq!(title, "Failed to connect to 'foo.example.com'");
+        assert!(body.contains(
+            "Your Firezone Client is incompatible with all Gateways in the site 'Example Site'"
+        ));
+
+        // Trigger version mismatch for second resource in same site
+        mock_tunnel
+            .send_gateway_version_mismatch(resource_bar.id())
+            .await;
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(
+            test_controller.integration().notifications.len(),
+            2,
+            "should not show notification again for same site"
+        );
+    }
+
+    #[test]
+    fn foo_and_bar_are_in_same_site() {
+        let foo = dns_resource_foo();
+        let bar = dns_resource_bar();
+
+        assert_eq!(foo.sites(), bar.sites());
+    }
+
+    #[test]
+    fn foo_and_baz_are_in_different_site() {
+        let foo = dns_resource_foo();
+        let baz = dns_resource_baz();
+
+        assert_ne!(foo.sites(), baz.sites());
     }
 
     async fn boot_tunnel(
@@ -1319,6 +1458,20 @@ mod tests {
                 .await
                 .unwrap();
         }
+
+        async fn send_all_gateways_offline(&mut self, resource_id: ResourceId) {
+            self.tx
+                .send(&service::ServerMsg::AllGatewaysOffline { resource_id })
+                .await
+                .unwrap();
+        }
+
+        async fn send_gateway_version_mismatch(&mut self, resource_id: ResourceId) {
+            self.tx
+                .send(&service::ServerMsg::GatewayVersionMismatch { resource_id })
+                .await
+                .unwrap();
+        }
     }
 
     impl Controller<Arc<Mutex<MockIntegration>>> {
@@ -1358,15 +1511,43 @@ mod tests {
         }
     }
 
-    fn dns_resource() -> ResourceView {
+    fn dns_resource_foo() -> ResourceView {
         ResourceView::Dns(connlib_model::DnsResourceView {
             id: ResourceId::from_u128(1),
-            address: "example.com".to_owned(),
-            name: "example.com".to_owned(),
+            address: "foo.example.com".to_owned(),
+            name: "foo.example.com".to_owned(),
             address_description: None,
             sites: vec![Site {
                 id: SiteId::from_u128(2),
                 name: "Example Site".to_owned(),
+            }],
+            status: connlib_model::ResourceStatus::Offline,
+        })
+    }
+
+    fn dns_resource_bar() -> ResourceView {
+        ResourceView::Dns(connlib_model::DnsResourceView {
+            id: ResourceId::from_u128(3),
+            address: "bar.example.com".to_owned(),
+            name: "bar.example.com".to_owned(),
+            address_description: None,
+            sites: vec![Site {
+                id: SiteId::from_u128(2),
+                name: "Example Site".to_owned(),
+            }],
+            status: connlib_model::ResourceStatus::Offline,
+        })
+    }
+
+    fn dns_resource_baz() -> ResourceView {
+        ResourceView::Dns(connlib_model::DnsResourceView {
+            id: ResourceId::from_u128(4),
+            address: "baz.example.com".to_owned(),
+            name: "baz.example.com".to_owned(),
+            address_description: None,
+            sites: vec![Site {
+                id: SiteId::from_u128(5),
+                name: "Other Site".to_owned(),
             }],
             status: connlib_model::ResourceStatus::Offline,
         })
