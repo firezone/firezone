@@ -1,3 +1,4 @@
+mod client_on_client;
 mod dns_cache;
 pub(crate) mod dns_config;
 mod dns_resource_nat;
@@ -6,8 +7,10 @@ mod pending_flows;
 mod resource;
 mod tracked_state;
 
-use crate::client::dns_config::DnsConfig;
+pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
+
+use crate::client::dns_config::DnsConfig;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
 use boringtun::x25519;
@@ -29,8 +32,8 @@ use crate::peer_store::PeerStore;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::{Context, ErrorExt};
 use connlib_model::{
-    ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus,
-    ResourceView,
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, RelayId, ResourceId,
+    ResourceStatus, ResourceView,
 };
 use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -97,6 +100,8 @@ pub struct ClientState {
     node: Node<ClientOrGatewayId, RelayId>,
     /// All gateways we are connected to and the associated, connection-specific state.
     gateways: PeerStore<GatewayId, GatewayOnClient>,
+    /// All clients we are connected to and the associated, connection-specific state.
+    clients: PeerStore<ClientId, ClientOnClient>,
     /// Tracks the flows to resources that we are currently trying to establish.
     pending_flows: PendingFlows,
     dns_resource_nat: DnsResourceNat,
@@ -158,6 +163,7 @@ impl ClientState {
             active_cidr_resources: IpNetworkTable::new(),
             resources_by_id: Default::default(),
             gateways: Default::default(),
+            clients: Default::default(),
             dns_config: Default::default(),
             buffered_events: Default::default(),
             tun_config: Default::default(),
@@ -554,12 +560,21 @@ impl ClientState {
         let dst = packet.destination();
 
         let pid = if is_peer(dst) {
-            let Some(peer) = self.gateways.peer_by_ip_mut(dst) else {
+            let maybe_gateway = self
+                .gateways
+                .peer_by_ip_mut(dst)
+                .map(|p| ClientOrGatewayId::Gateway(p.id()));
+            let maybe_client = self
+                .clients
+                .peer_by_ip_mut(dst)
+                .map(|p| ClientOrGatewayId::Client(p.id()));
+
+            let Some(id) = maybe_client.or(maybe_gateway) else {
                 tracing::trace!(?packet, "Unknown peer");
                 return None;
             };
 
-            ClientOrGatewayId::Gateway(peer.id())
+            id
         } else {
             let Some(resource) = self.get_resource_by_destination(dst) else {
                 tracing::trace!(?packet, "Unknown resource");

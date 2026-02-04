@@ -7,7 +7,7 @@ use connlib_model::{ClientId, GatewayId, ResourceId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 
-use crate::client::GatewayOnClient;
+use crate::client::{ClientOnClient, GatewayOnClient};
 use crate::gateway::ClientOnGateway;
 
 pub(crate) struct PeerStore<TId, P> {
@@ -140,6 +140,14 @@ impl Peer for GatewayOnClient {
 
     fn id(&self) -> Self::Id {
         GatewayOnClient::id(self)
+    }
+}
+
+impl Peer for ClientOnClient {
+    type Id = ClientId;
+
+    fn id(&self) -> Self::Id {
+        ClientOnClient::id(self)
     }
 }
 
