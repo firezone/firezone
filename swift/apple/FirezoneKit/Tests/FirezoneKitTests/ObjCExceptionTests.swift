@@ -37,4 +37,26 @@ struct ObjCExceptionTests {
     #expect(caughtException?.name == "TestException")
     #expect(caughtException?.reason == "Test exception reason")
   }
+
+  @Test("catchingObjCException rethrows Swift error")
+  func rethrowsSwiftError() async {
+    struct TestError: Error, Equatable {
+      let message: String
+    }
+
+    var caughtError: TestError?
+
+    do {
+      try catchingObjCException {
+        // Throw a Swift error - this should be rethrown as-is
+        throw TestError(message: "Test Swift error")
+      }
+      #expect(Bool(false), "Should have thrown an error")
+    } catch let error as TestError {
+      caughtError = error
+    }
+
+    #expect(caughtError != nil, "Swift error should have been rethrown")
+    #expect(caughtError?.message == "Test Swift error")
+  }
 }
