@@ -13,8 +13,8 @@ import Testing
 @Suite("LogWriter Tests")
 struct LogWriterTests {
 
-  @Test("LogWriter doesn't crash when handle is closed during writes")
-  func doesntCrashWhenHandleClosedDuringWrites() async throws {
+  @Test("LogWriter doesn't crash when file descriptor is closed during writes")
+  func doesntCrashWhenFdClosedDuringWrites() async throws {
     let tempDir = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
 
@@ -26,7 +26,7 @@ struct LogWriterTests {
       return
     }
 
-    // Trigger race condition: close handle while writes are in flight
+    // Trigger race condition: close fd while writes are in flight
     await withTaskGroup(of: Void.self) { group in
       // Writer task: queue many writes
       group.addTask {
@@ -35,11 +35,11 @@ struct LogWriterTests {
         }
       }
 
-      // Closer task: grab handle via ensureFileExists and close it
+      // Closer task: grab fd via ensureFileExists and close it
       group.addTask {
         try? await Task.sleep(for: .milliseconds(5))
-        if let handle = writer.ensureFileExists() {
-          try? handle.close()
+        if let fd = writer.ensureFileExists() {
+          try? fd.close()
         }
       }
     }
