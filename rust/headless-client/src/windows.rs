@@ -20,8 +20,33 @@ pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
 #[expect(clippy::unnecessary_wraps)]
 pub(crate) fn set_token_permissions(_path: &Path) -> Result<()> {
     // TODO: Restrict token file access to SYSTEM and Administrators on Windows
-    // Using eprintln! because logging isn't initialized when sign-in runs
+    Ok(())
+}
+
+/// Writes a token to the specified path.
+/// Creates the parent directory if needed.
+/// TODO: Implement proper Windows ACLs to restrict access.
+pub(crate) fn write_token(path: &Path, token: &str) -> Result<()> {
+    use anyhow::Context as _;
+    use std::io::Write;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).context("Failed to create token directory")?;
+    }
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)
+        .context("Failed to create token file")?;
+
+    file.write_all(token.as_bytes())
+        .context("Failed to write token to file")?;
+
+    // TODO: Set proper Windows ACLs here
     eprintln!("Note: Token file permissions are not restricted on Windows.");
+
     Ok(())
 }
 

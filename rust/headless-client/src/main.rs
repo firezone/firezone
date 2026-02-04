@@ -169,8 +169,12 @@ enum Cmd {
     /// Sign in via browser-based authentication
     SignIn {
         /// Auth base URL (e.g., https://app.firezone.dev)
-        #[arg(long, env = "FIREZONE_AUTH_BASE_URL")]
-        auth_base_url: Option<url::Url>,
+        #[arg(
+            long,
+            env = "FIREZONE_AUTH_BASE_URL",
+            default_value = "https://app.firezone.dev"
+        )]
+        auth_base_url: url::Url,
 
         /// Account slug
         #[arg(long, env = "FIREZONE_ACCOUNT_SLUG")]
@@ -216,7 +220,7 @@ fn try_main() -> Result<()> {
             auth_base_url,
             account_slug,
         }) => {
-            handle_sign_in(auth_base_url.clone(), account_slug.clone(), &cli.token_path)?;
+            handle_sign_in(auth_base_url, account_slug.as_deref(), &cli.token_path)?;
 
             return Ok(());
         }
@@ -496,21 +500,14 @@ fn try_main() -> Result<()> {
     reason = "This command is designed to print to stdout for user interaction"
 )]
 fn handle_sign_in(
-    auth_base_url: Option<url::Url>,
-    account_slug: Option<String>,
+    auth_base_url: &url::Url,
+    account_slug: Option<&str>,
     token_path: &Path,
 ) -> Result<()> {
     use std::io::{self, Write};
 
-    const MIN_TOKEN_LENGTH: usize = 64;
-
-    let base_url = auth_base_url.unwrap_or_else(|| {
-        url::Url::parse("https://app.firezone.dev")
-            .expect("Default auth base URL should always be valid")
-    });
-
-    let mut auth_url = base_url;
-    if let Some(slug) = account_slug.as_deref() {
+    let mut auth_url = auth_base_url.clone();
+    if let Some(slug) = account_slug {
         auth_url.set_path(slug);
     }
 
@@ -540,38 +537,7 @@ fn handle_sign_in(
         anyhow::bail!("No token provided");
     }
 
-    if token.len() < MIN_TOKEN_LENGTH {
-        anyhow::bail!(
-            "Token appears to be too short (expected at least {} characters, got {}). Please ensure you copied the complete token.",
-            MIN_TOKEN_LENGTH,
-            token.len()
-        );
-    }
-
-    if let Some(parent) = token_path.parent() {
-        std::fs::create_dir_all(parent).context("Failed to create token directory")?;
-    }
-
-    // Write token with restrictive permissions from the start to avoid
-    // a window where the file may be world-readable via umask-derived permissions.
-    {
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-
-        let mut file = options
-            .open(token_path)
-            .context("Failed to create token file")?;
-        file.write_all(token.as_bytes())
-            .context("Failed to write token to file")?;
-    }
-
-    platform::set_token_permissions(token_path)?;
+    platform::write_token(token_path, token)?;
 
     println!("\n✓ Token saved successfully to: {}", token_path.display());
     println!("\nYou can now start the Firezone client. It will automatically use this token.");
@@ -707,13 +673,16 @@ mod tests {
     #[test]
     fn sign_in_bare() {
         let actual = Cli::try_parse_from(["firezone-headless-client", "sign-in"]).unwrap();
-        assert!(matches!(
-            actual._command,
+        match actual._command {
             Some(Cmd::SignIn {
-                auth_base_url: None,
-                account_slug: None,
-            })
-        ));
+                auth_base_url,
+                account_slug,
+            }) => {
+                assert_eq!(auth_base_url.as_str(), "https://app.firezone.dev/");
+                assert_eq!(account_slug, None);
+            }
+            _ => panic!("Expected SignIn command"),
+        }
     }
 
     #[test]
@@ -733,7 +702,7 @@ mod tests {
                 auth_base_url,
                 account_slug,
             }) => {
-                assert_eq!(auth_base_url.unwrap().as_str(), "https://auth.example.com/");
+                assert_eq!(auth_base_url.as_str(), "https://auth.example.com/");
                 assert_eq!(account_slug.unwrap(), "my-team");
             }
             _ => panic!("Expected SignIn command"),
@@ -792,5 +761,31 @@ mod tests {
 
         assert_eq!(actual.token_path, PathBuf::from("/custom/token/path"));
         assert!(matches!(actual._command, Some(Cmd::SignOut { .. })));
+    }
+
+    /// Verifies that `set_token_permissions` produces a file that passes `check_token_permissions`.
+    /// On Linux, this requires running as root (CI runs in Docker as root).
+    /// On macOS/Windows, both functions are no-ops so this always passes.
+    #[test]
+    fn set_token_permissions_satisfies_check() {
+        use std::io::Write;
+
+        let token_path = std::env::temp_dir().join("firezone_test_token");
+
+        // Create a token file
+        let mut file = std::fs::File::create(&token_path).unwrap();
+        file.write_all(b"test_token").unwrap();
+        drop(file);
+
+        // Set permissions
+        super::platform::set_token_permissions(&token_path)
+            .expect("set_token_permissions should succeed");
+
+        // Verify that check_token_permissions is satisfied
+        super::platform::check_token_permissions(&token_path)
+            .expect("check_token_permissions should succeed after set_token_permissions");
+
+        // Cleanup
+        let _ = std::fs::remove_file(&token_path);
     }
 }
