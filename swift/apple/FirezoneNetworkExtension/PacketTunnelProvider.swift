@@ -127,22 +127,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let (commandSender, commandReceiver): (Sender<ProviderCommand>, Receiver<ProviderCommand>) =
       Channel.create()
 
-    let adapter: Adapter
-    do {
-      adapter = try Adapter(
-        apiURL: apiURL,
-        token: token,
-        deviceId: id,
-        logFilter: logFilter,
-        accountSlug: accountSlug,
-        internetResourceEnabled: internetResourceEnabled,
-        providerCommandSender: commandSender
-      )
-    } catch {
-      Log.error(error)
-      completionHandler(error)
-      return
-    }
+    let adapter = Adapter(
+      apiURL: apiURL,
+      token: token,
+      deviceId: id,
+      logFilter: logFilter,
+      accountSlug: accountSlug,
+      internetResourceEnabled: internetResourceEnabled,
+      providerCommandSender: commandSender
+    )
 
     // Store adapter reference so it's accessible to wake() and stopTunnel()
     self.adapter = adapter

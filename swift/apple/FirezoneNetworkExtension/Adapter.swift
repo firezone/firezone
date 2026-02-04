@@ -131,7 +131,7 @@ actor Adapter {
     accountSlug: String,
     internetResourceEnabled: Bool,
     providerCommandSender: Sender<ProviderCommand>
-  ) throws {
+  ) {
     self.apiURL = apiURL
     self.token = token
     self.deviceId = deviceId
@@ -449,7 +449,7 @@ actor Adapter {
     let resolvers = self.scopedResolvers.getDefaultDNSServers(
       interfaceName: path.availableInterfaces.first?.name)
 
-    // Step 2: Validate and strip scope suffixes
+    // Step 2: Validate addresses and filter out sentinel ranges
     var parsedResolvers: [String] = []
 
     for stringAddress in resolvers {

@@ -47,7 +47,7 @@ struct ScopedResolversTests {
   func canQueryRealInterface() async throws {
     let resolvers = ScopedResolvers()
 
-    // en0 is typically the primary interface on macOS
+    // Use "en0" as a commonly used example interface name on Apple platforms
     // This test verifies the dlsym/dns_configuration_copy path works without crashing
     let result = resolvers.getDefaultDNSServers(interfaceName: "en0")
 

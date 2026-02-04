@@ -109,10 +109,8 @@ public class ScopedResolvers {
   // MARK: - Private: Unaligned memory read
 
   private static func readUnaligned<T>(from pointer: UnsafeRawPointer, offset: Int) -> T {
-    let value = UnsafeMutablePointer<T>.allocate(capacity: 1)
-    defer { value.deallocate() }
-    memcpy(value, pointer.advanced(by: offset), MemoryLayout<T>.size)
-    return value.pointee
+    // Use Swift's unaligned load to avoid heap allocations in tight loops
+    return pointer.loadUnaligned(fromByteOffset: offset, as: T.self)
   }
 
   // MARK: - Private: dns_configuration via dlsym
@@ -156,11 +154,16 @@ public class ScopedResolvers {
     guard getnameinfo(sa, len, &buf, socklen_t(buf.count), nil, 0, NI_NUMERICHOST) == 0 else {
       return nil
     }
-    return stringFromCCharArray(buf)
+    var result = stringFromCCharArray(buf)
+    // Strip IPv6 scope suffix (e.g., "fe80::1%en0" -> "fe80::1")
+    if let percentIndex = result.firstIndex(of: "%") {
+      result = String(result[..<percentIndex])
+    }
+    return result
   }
 
   private static func stringFromCCharArray(_ array: [CChar]) -> String {
-    // Use withCString to safely convert null-terminated C string to Swift String
+    // Convert a null-terminated CChar array to a Swift String by reading up to the first NUL and decoding as UTF-8
     return array.withUnsafeBufferPointer { buffer in
       // swiftlint:disable:next optional_data_string_conversion
       String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
