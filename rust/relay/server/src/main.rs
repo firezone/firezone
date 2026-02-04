@@ -18,7 +18,8 @@ use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
 use stun_codec::rfc5766::attributes::ChannelNumber;
@@ -218,12 +219,14 @@ async fn try_main(args: Args) -> Result<()> {
         args.lowest_port..=args.highest_port,
     );
 
-    let last_heartbeat_sent = Arc::new(Mutex::new(Option::<Instant>::None));
+    let is_connected = Arc::new(AtomicBool::new(false));
 
-    tokio::spawn(http_health_check::serve(
-        args.health_check.health_check_addr,
-        make_is_healthy(last_heartbeat_sent.clone()),
-    ));
+    tokio::spawn({
+        let is_connected = is_connected.clone();
+        http_health_check::serve(args.health_check.health_check_addr, move || {
+            is_connected.load(Ordering::Relaxed)
+        })
+    });
 
     tokio::spawn(control_endpoint::serve(
         args.control_endpoint,
@@ -254,7 +257,7 @@ async fn try_main(args: Args) -> Result<()> {
         Arc::new(socket_factory::tcp),
     );
 
-    let mut eventloop = Eventloop::new(server, ebpf, channel, public_addr, last_heartbeat_sent)?;
+    let mut eventloop = Eventloop::new(server, ebpf, channel, public_addr, is_connected)?;
 
     tracing::info!(target: "relay", "Listening for incoming traffic on UDP port {0}", args.listen_port);
 
@@ -438,7 +441,7 @@ where
         ebpf: Option<ebpf::Program>,
         portal: PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
         public_address: IpStack,
-        last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
+        is_connected: Arc<AtomicBool>,
     ) -> Result<Self> {
         let mut sockets = Sockets::new();
 
@@ -464,11 +467,7 @@ where
         }
 
         let (event_tx, event_rx) = mpsc::channel(128);
-        tokio::spawn(phoenix_channel_event_loop(
-            portal,
-            event_tx,
-            last_heartbeat_sent,
-        ));
+        tokio::spawn(phoenix_channel_event_loop(portal, event_tx, is_connected));
 
         Ok(Self {
             server,
@@ -734,7 +733,7 @@ where
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
-    last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
+    is_connected: Arc<AtomicBool>,
 ) {
     update_portal_host_ips(&mut portal).await;
     portal.connect(NoParams);
@@ -744,15 +743,13 @@ async fn phoenix_channel_event_loop(
             Ok(Event::SuccessResponse { .. }) => {}
             Ok(Event::JoinedRoom { topic }) => {
                 tracing::info!(target: "relay", "Successfully joined room '{topic}'");
+                is_connected.store(true, Ordering::Relaxed);
             }
             Ok(Event::ErrorResponse { topic, req_id, res }) => {
                 tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {res:?}");
             }
             Ok(Event::HeartbeatSent) => {
                 tracing::debug!(target: "relay", "Heartbeat sent to portal");
-                *last_heartbeat_sent
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
             }
             Ok(Event::InboundMessage { msg, .. }) => {
                 if event_tx.send(Ok(msg)).await.is_err() {
@@ -760,14 +757,21 @@ async fn phoenix_channel_event_loop(
                     break;
                 }
             }
-            Ok(Event::Closed) => break,
+            Ok(Event::Closed) => {
+                is_connected.store(false, Ordering::Relaxed);
+                break;
+            }
             Ok(Event::NoAddresses) => update_portal_host_ips(&mut portal).await,
             Ok(Event::Hiccup {
                 backoff,
                 max_elapsed_time,
                 error,
-            }) => tracing::warn!(?backoff, ?max_elapsed_time, "{error:#}"),
+            }) => {
+                is_connected.store(false, Ordering::Relaxed);
+                tracing::warn!(?backoff, ?max_elapsed_time, "{error:#}");
+            }
             Err(e) => {
+                is_connected.store(false, Ordering::Relaxed);
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 
                 break;
@@ -809,25 +813,6 @@ fn fmt_human_throughput(mut throughput: f64) -> String {
     format!("{throughput:.2} TB/s")
 }
 
-/// Factory fn for [`is_healthy`].
-fn make_is_healthy(
-    last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
-) -> impl Fn() -> bool + Clone + Send + Sync + 'static {
-    move || is_healthy(Instant::now(), last_heartbeat_sent.clone())
-}
-
-fn is_healthy(now: Instant, last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
-    let guard = last_heartbeat_sent
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-
-    let Some(last_hearbeat_sent) = *guard else {
-        return true; // If we are not connected to the portal, we are always healthy.
-    };
-
-    now.duration_since(last_hearbeat_sent) < MAX_PARTITION_TIME
-}
-
 fn make_otel_metadata() -> opentelemetry_sdk::Resource {
     use opentelemetry::{Key, KeyValue};
     use opentelemetry_sdk::Resource;
@@ -853,38 +838,6 @@ mod tests {
         assert_eq!(fmt_human_throughput(1_234.0), "1.23 kB/s");
         assert_eq!(fmt_human_throughput(955_333_999.0), "955.33 MB/s");
         assert_eq!(fmt_human_throughput(100_000_000_000.0), "100.00 GB/s");
-    }
-
-    // If we are running in standalone mode, we are always healthy.
-    #[test]
-    fn given_no_heartbeat_is_healthy() {
-        let is_healthy = is_healthy(Instant::now(), Arc::new(Mutex::new(None)));
-
-        assert!(is_healthy)
-    }
-
-    #[test]
-    fn given_heartbeat_in_last_15_min_is_healthy() {
-        let now = Instant::now() + Duration::from_hours(1);
-
-        let is_healthy = is_healthy(
-            now,
-            Arc::new(Mutex::new(Some(now - Duration::from_secs(10)))),
-        );
-
-        assert!(is_healthy)
-    }
-
-    #[test]
-    fn given_last_heartbeat_older_than_24_hours_is_not_healthy() {
-        let now = Instant::now() + Duration::from_hours(48); // Advance to the future to avoid underflow.
-
-        let is_healthy = is_healthy(
-            now,
-            Arc::new(Mutex::new(Some(now - Duration::from_hours(24)))),
-        );
-
-        assert!(!is_healthy)
     }
 
     // Regression tests to ensure we can parse sockets as well as domains for the otlp-grpc endpoint.

@@ -855,6 +855,7 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "nix",
+ "reqwest",
  "resolv-conf",
  "ring",
  "rtnetlink",

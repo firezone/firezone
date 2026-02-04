@@ -80,6 +80,7 @@ features = [
 [dev-dependencies]
 bufferpool = { workspace = true }
 bytes = { workspace = true }
+reqwest = { workspace = true, features = ["rustls-tls"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }
 
