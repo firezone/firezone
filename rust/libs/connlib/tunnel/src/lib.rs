@@ -9,7 +9,9 @@
 
 use anyhow::{Context as _, ErrorExt as _, Result};
 use chrono::Utc;
-use connlib_model::{ClientId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView};
+use connlib_model::{
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView,
+};
 use dns_types::DomainName;
 use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
@@ -576,11 +578,11 @@ impl GatewayTunnel {
 #[derive(Debug)]
 pub enum ClientEvent {
     AddedIceCandidates {
-        conn_id: GatewayId,
+        conn_id: ClientOrGatewayId,
         candidates: BTreeSet<IceCandidate>,
     },
     RemovedIceCandidates {
-        conn_id: GatewayId,
+        conn_id: ClientOrGatewayId,
         candidates: BTreeSet<IceCandidate>,
     },
     ConnectionIntent {

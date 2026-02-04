@@ -17,7 +17,7 @@ use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::{ClientEvent, GatewayEvent, dns, messages::Interface};
 use bufferpool::BufferPool;
-use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
 use ip_packet::Ecn;
@@ -948,7 +948,7 @@ impl TunnelTest {
         match event {
             ClientEvent::AddedIceCandidates {
                 candidates,
-                conn_id,
+                conn_id: ClientOrGatewayId::Gateway(conn_id),
             } => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
@@ -962,7 +962,7 @@ impl TunnelTest {
             }
             ClientEvent::RemovedIceCandidates {
                 candidates,
-                conn_id,
+                conn_id: ClientOrGatewayId::Gateway(conn_id),
             } => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
@@ -973,6 +973,18 @@ impl TunnelTest {
                 });
 
                 Ok(())
+            }
+            ClientEvent::AddedIceCandidates {
+                conn_id: ClientOrGatewayId::Client(_),
+                ..
+            } => {
+                todo!()
+            }
+            ClientEvent::RemovedIceCandidates {
+                conn_id: ClientOrGatewayId::Client(_),
+                ..
+            } => {
+                todo!()
             }
             ClientEvent::ConnectionIntent {
                 resource: resource_id,

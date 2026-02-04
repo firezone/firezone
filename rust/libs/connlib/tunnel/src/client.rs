@@ -619,30 +619,24 @@ impl ClientState {
 
     pub fn add_ice_candidate(
         &mut self,
-        conn_id: GatewayId,
+        conn_id: impl Into<ClientOrGatewayId>,
         ice_candidate: IceCandidate,
         now: Instant,
     ) {
-        self.node.add_remote_candidate(
-            ClientOrGatewayId::Gateway(conn_id),
-            ice_candidate.into(),
-            now,
-        );
+        self.node
+            .add_remote_candidate(conn_id.into(), ice_candidate.into(), now);
         self.node.handle_timeout(now);
         self.drain_node_events(now);
     }
 
     pub fn remove_ice_candidate(
         &mut self,
-        conn_id: GatewayId,
+        conn_id: impl Into<ClientOrGatewayId>,
         ice_candidate: IceCandidate,
         now: Instant,
     ) {
-        self.node.remove_remote_candidate(
-            ClientOrGatewayId::Gateway(conn_id),
-            ice_candidate.into(),
-            now,
-        );
+        self.node
+            .remove_remote_candidate(conn_id.into(), ice_candidate.into(), now);
         self.node.handle_timeout(now);
         self.drain_node_events(now);
     }
@@ -1512,8 +1506,10 @@ impl ClientState {
     }
 
     fn drain_node_events(&mut self, now: Instant) {
-        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
-        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
+        let mut added_ice_candidates =
+            BTreeMap::<ClientOrGatewayId, BTreeSet<IceCandidate>>::default();
+        let mut removed_ice_candidates =
+            BTreeMap::<ClientOrGatewayId, BTreeSet<IceCandidate>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -1526,7 +1522,7 @@ impl ClientState {
                     // TODO
                 }
                 snownet::Event::NewIceCandidate {
-                    connection: ClientOrGatewayId::Gateway(connection),
+                    connection,
                     candidate,
                 } => {
                     added_ice_candidates
@@ -1535,25 +1531,13 @@ impl ClientState {
                         .insert(candidate.into());
                 }
                 snownet::Event::InvalidateIceCandidate {
-                    connection: ClientOrGatewayId::Gateway(connection),
+                    connection,
                     candidate,
                 } => {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
                         .insert(candidate.into());
-                }
-                snownet::Event::NewIceCandidate {
-                    connection: ClientOrGatewayId::Client(_),
-                    ..
-                } => {
-                    // TODO
-                }
-                snownet::Event::InvalidateIceCandidate {
-                    connection: ClientOrGatewayId::Client(_),
-                    ..
-                } => {
-                    // TODO
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Gateway(id)) => {
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online, now);

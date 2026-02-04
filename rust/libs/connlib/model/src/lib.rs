@@ -24,7 +24,9 @@ make_id!(RelayId);
 make_id!(ClientId);
 make_id!(SiteId);
 
-#[derive(Hash, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Hash, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::From,
+)]
 pub enum ClientOrGatewayId {
     Client(ClientId),
     Gateway(GatewayId),
