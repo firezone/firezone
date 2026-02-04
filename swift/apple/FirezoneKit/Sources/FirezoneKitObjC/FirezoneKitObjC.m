@@ -1,9 +1,3 @@
-//
-//  FirezoneKitObjC.m
-//  © 2026 Firezone, Inc.
-//  LICENSE: Apache-2.0
-//
-
 #import <Foundation/Foundation.h>
 
 // This file exists to satisfy Xcode's requirement that a target
