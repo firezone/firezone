@@ -637,7 +637,7 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
-    pub fn handle_flow_created(
+    pub fn handle_resource_access_authorized(
         &mut self,
         rid: ResourceId,
         gid: GatewayId,
@@ -649,7 +649,7 @@ impl ClientState {
         gateway_ice: IceCredentials,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
-        tracing::debug!(%gid, "New flow authorized for resource");
+        tracing::debug!(%gid, "New resource access authorized");
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
 

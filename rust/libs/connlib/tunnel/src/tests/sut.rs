@@ -895,7 +895,7 @@ impl TunnelTest {
                     .map_err(AuthorizeFlowError::Gateway)?;
                 self.client
                     .exec_mut(|c| {
-                        c.sut.handle_flow_created(
+                        c.sut.handle_resource_access_authorized(
                             resource_id,
                             gateway_id,
                             gateway_key,

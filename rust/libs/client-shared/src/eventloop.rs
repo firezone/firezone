@@ -439,7 +439,7 @@ impl Eventloop {
                 client_ice_credentials,
                 gateway_ice_credentials,
             }) => {
-                match tunnel.state_mut().handle_flow_created(
+                match tunnel.state_mut().handle_resource_access_authorized(
                     resource_id,
                     gateway_id,
                     PublicKey::from(gateway_public_key.0),
