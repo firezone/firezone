@@ -155,6 +155,7 @@ config :portal, Portal.Okta.AuthProvider,
   ]
 
 config :portal, Portal.Entra.AuthProvider,
+  client_id: "test_auth_provider_client_id",
   req_opts: [
     retry: false,
     plug: {Req.Test, PortalWeb.OIDC}
