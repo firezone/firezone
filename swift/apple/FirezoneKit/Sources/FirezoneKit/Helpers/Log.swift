@@ -4,6 +4,7 @@
 //  LICENSE: Apache-2.0
 //
 
+import FirezoneKitObjC
 import Foundation
 import OSLog
 
@@ -230,7 +231,9 @@ final class LogWriter: @unchecked Sendable {
       guard let self = self else { return }
       guard let handle = self.ensureFileExists() else { return }
 
-      try? handle.write(contentsOf: Data(line.utf8))
+      try? catchingObjCException {
+        try handle.write(contentsOf: Data(line.utf8))
+      }
     }
   }
 }
