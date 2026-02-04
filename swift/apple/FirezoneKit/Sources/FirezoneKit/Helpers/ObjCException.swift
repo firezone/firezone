@@ -42,6 +42,6 @@ public func catchingObjCException<T>(_ body: () throws -> T) throws -> T {
   }
 
   // Force unwrapping is okay here. We throw an error in all other code-paths.
-  // swiftlint:disable:next force_unwrapping.
+  // swiftlint:disable:next force_unwrapping
   return result!
 }
