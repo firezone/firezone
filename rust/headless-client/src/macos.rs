@@ -39,6 +39,8 @@ pub(crate) fn write_token(path: &Path, token: &str) -> Result<()> {
     file.write_all(token.as_bytes())
         .context("Failed to write token to file")?;
 
+    set_token_permissions(path)?;
+
     Ok(())
 }
 
