@@ -3213,6 +3213,10 @@ defmodule PortalAPI.Client.ChannelTest do
         struct: membership
       })
 
+      # Synchronize: ensure all change messages are processed before pushing
+      # :sys.get_state is synchronous and forces the GenServer to drain its mailbox
+      :sys.get_state(socket.channel_pid)
+
       ref = push(socket, "reuse_connection", attrs)
 
       assert_reply ref, :error, %{
@@ -3300,6 +3304,9 @@ defmodule PortalAPI.Client.ChannelTest do
         struct: membership
       })
 
+      # Synchronize: ensure all change messages are processed before pushing
+      :sys.get_state(socket.channel_pid)
+
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
@@ -3385,6 +3392,9 @@ defmodule PortalAPI.Client.ChannelTest do
         op: :insert,
         struct: membership
       })
+
+      # Synchronize: ensure all change messages are processed before pushing
+      :sys.get_state(socket.channel_pid)
 
       push(socket, "reuse_connection", %{
         "resource_id" => resource.id,
@@ -3546,6 +3556,9 @@ defmodule PortalAPI.Client.ChannelTest do
         op: :insert,
         struct: membership
       })
+
+      # Synchronize: ensure all change messages are processed before pushing
+      :sys.get_state(socket.channel_pid)
 
       ref = push(socket, "request_connection", attrs)
 
