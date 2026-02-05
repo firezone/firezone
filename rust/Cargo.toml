@@ -209,6 +209,7 @@ tokio-stream = "0.1.18"
 tokio-tungstenite = "0.28.0"
 tokio-util = "0.7.18"
 toml = "0.9.6"
+tower = "0.5"
 tracing = { version = "0.1.40" }
 tracing-appender = "0.2.4"
 tracing-core = "0.1.36"
