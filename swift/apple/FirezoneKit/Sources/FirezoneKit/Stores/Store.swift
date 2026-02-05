@@ -442,19 +442,19 @@ public final class Store: ObservableObject {
     }
 
     // Decode state and compute hash
-    let (state, hash) = try ConnlibState.decode(from: data)
+    let (resources, unreachableResources, hash) = try ConnlibState.decode(from: data)
 
     // Update both hash and resource list
     self.connlibStateHash = hash
 
-    if let resources = state.resources {
+    if let resources = resources {
       resourceList = ResourceList.loaded(resources)
     }
 
     // Handle unreachable resources and show notifications
     await showNotificationsForUnreachableResources(
-      unreachableResources: state.unreachableResources,
-      resources: state.resources ?? []
+      unreachableResources: unreachableResources,
+      resources: resources ?? []
     )
   }
 

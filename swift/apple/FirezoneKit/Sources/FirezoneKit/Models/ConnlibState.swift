@@ -36,16 +36,20 @@ public struct ConnlibState: Encodable, Decodable {
     case unreachableResources
   }
 
-  /// Decodes a ConnlibState from data and returns both the state and its hash
+  /// Decodes a ConnlibState from data and returns the fields and hash
   /// - Parameter data: The encoded data to decode
-  /// - Returns: A tuple containing the decoded state and its hash
+  /// - Returns: A tuple containing the resources, unreachable resources, and hash
   /// - Throws: If decoding fails
   public static func decode(
     from data: Data
-  ) throws -> (state: ConnlibState, hash: Data) {
+  ) throws -> (
+    resources: [FirezoneKit.Resource]?, unreachableResources: Set<UnreachableResource>, hash: Data
+  ) {
     let hash = Data(SHA256.hash(data: data))
     let state = try Self.decoder.decode(ConnlibState.self, from: data)
-    return (state: state, hash: hash)
+    return (
+      resources: state.resources, unreachableResources: state.unreachableResources, hash: hash
+    )
   }
 
   /// Creates a ConnlibState from resources and returns encoded data only if different from currentHash
