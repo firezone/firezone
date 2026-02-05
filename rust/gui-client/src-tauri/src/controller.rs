@@ -697,6 +697,7 @@ impl<I: GuiIntegration> Controller<I> {
         }
         Ok(ControlFlow::Continue(()))
     }
+
     async fn handle_gui_ipc_msg(
         &mut self,
         maybe_msg: Option<Result<gui::ClientMsg>>,
