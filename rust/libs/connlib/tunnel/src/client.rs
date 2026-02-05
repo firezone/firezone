@@ -1523,8 +1523,10 @@ impl ClientState {
     }
 
     fn drain_node_events(&mut self) {
-        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
-        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
+        let mut added_ice_candidates =
+            BTreeMap::<ClientOrGatewayId, BTreeSet<IceCandidate>>::default();
+        let mut removed_ice_candidates =
+            BTreeMap::<ClientOrGatewayId, BTreeSet<IceCandidate>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -1537,7 +1539,7 @@ impl ClientState {
                     // TODO
                 }
                 snownet::Event::NewIceCandidate {
-                    connection: ClientOrGatewayId::Gateway(connection),
+                    connection,
                     candidate,
                 } => {
                     added_ice_candidates
@@ -1546,25 +1548,13 @@ impl ClientState {
                         .insert(candidate.into());
                 }
                 snownet::Event::InvalidateIceCandidate {
-                    connection: ClientOrGatewayId::Gateway(connection),
+                    connection,
                     candidate,
                 } => {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
                         .insert(candidate.into());
-                }
-                snownet::Event::NewIceCandidate {
-                    connection: ClientOrGatewayId::Client(_),
-                    ..
-                } => {
-                    // TODO
-                }
-                snownet::Event::InvalidateIceCandidate {
-                    connection: ClientOrGatewayId::Client(_),
-                    ..
-                } => {
-                    // TODO
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Gateway(id)) => {
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online);

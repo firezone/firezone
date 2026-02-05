@@ -1,6 +1,6 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, ErrorExt as _, Result};
-use connlib_model::{PublicKey, ResourceId, ResourceView};
+use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceView};
 use l4_udp_dns_client::UdpDnsClient;
 use parking_lot::Mutex;
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
@@ -21,7 +21,7 @@ use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
     ClientIceCandidates, EgressMessages, FailReason, FlowCreated, FlowCreationFailed,
-    GatewayIceCandidates, GatewaysIceCandidates, IngressMessages, InitClient,
+    GatewayIceCandidates, IngressMessages, InitClient,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -253,32 +253,64 @@ impl Eventloop {
     async fn handle_tunnel_event(&mut self, event: ClientEvent) -> Result<()> {
         match event {
             ClientEvent::AddedIceCandidates {
-                conn_id: gid,
+                conn_id: ClientOrGatewayId::Gateway(gid),
                 candidates,
             } => {
                 tracing::debug!(%gid, ?candidates, "Sending new ICE candidates to gateway");
 
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::BroadcastIceCandidates(
-                        GatewaysIceCandidates {
-                            gateway_ids: vec![gid],
-                            candidates,
-                        },
-                    )))
+                    .send(PortalCommand::Send(
+                        EgressMessages::NewGatewayIceCandidates(GatewayIceCandidates {
+                            gateway_id: gid,
+                            candidates: Vec::from_iter(candidates),
+                        }),
+                    ))
                     .await
                     .context("Failed to send message to portal")?;
             }
             ClientEvent::RemovedIceCandidates {
-                conn_id: gid,
+                conn_id: ClientOrGatewayId::Gateway(gid),
                 candidates,
             } => {
                 tracing::debug!(%gid, ?candidates, "Sending invalidated ICE candidates to gateway");
 
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(
-                        EgressMessages::BroadcastInvalidatedIceCandidates(GatewaysIceCandidates {
-                            gateway_ids: vec![gid],
-                            candidates,
+                        EgressMessages::InvalidatedGatewayIceCandidates(GatewayIceCandidates {
+                            gateway_id: gid,
+                            candidates: Vec::from_iter(candidates),
+                        }),
+                    ))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
+            ClientEvent::AddedIceCandidates {
+                conn_id: ClientOrGatewayId::Client(cid),
+                candidates,
+            } => {
+                tracing::debug!(%cid, ?candidates, "Sending new ICE candidates to client");
+
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::NewClientIceCandidates(
+                        ClientIceCandidates {
+                            client_id: cid,
+                            candidates: Vec::from_iter(candidates),
+                        },
+                    )))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
+            ClientEvent::RemovedIceCandidates {
+                conn_id: ClientOrGatewayId::Client(cid),
+                candidates,
+            } => {
+                tracing::debug!(%cid, ?candidates, "Sending invalidated ICE candidates to client");
+
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(
+                        EgressMessages::InvalidatedClientIceCandidates(ClientIceCandidates {
+                            client_id: cid,
+                            candidates: Vec::from_iter(candidates),
                         }),
                     ))
                     .await

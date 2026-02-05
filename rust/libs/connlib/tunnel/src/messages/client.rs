@@ -1,13 +1,10 @@
 //! Client related messages that are needed within connlib
 
 use crate::messages::{IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
-use connlib_model::{GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
+use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeSet,
-    net::{Ipv4Addr, Ipv6Addr},
-};
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize)]
@@ -164,18 +161,10 @@ pub enum IngressMessages {
     FlowCreationFailed(FlowCreationFailed),
 }
 
-#[derive(Debug, Serialize, PartialEq)]
-pub struct GatewaysIceCandidates {
-    /// The list of gateway IDs these candidates will be broadcast to.
-    pub gateway_ids: Vec<GatewayId>,
-    /// Actual RTC ice candidates
-    pub candidates: BTreeSet<IceCandidate>,
-}
-
 #[serde_with::serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct GatewayIceCandidates {
-    /// Gateway's id the ice candidates are from
+    /// Gateway's id the ice candidates are sent to / received from
     pub gateway_id: GatewayId,
     /// Actual RTC ice candidates
     #[serde_as(as = "serde_with::VecSkipError<_>")]
@@ -183,10 +172,10 @@ pub struct GatewayIceCandidates {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct ClientIceCandidates {
-    /// Client's id the ice candidates are from
-    pub client_id: GatewayId,
+    /// Client's id the ice candidates are sent to / received from
+    pub client_id: ClientId,
     /// Actual RTC ice candidates
     #[serde_as(as = "serde_with::VecSkipError<_>")]
     pub candidates: Vec<IceCandidate>,
@@ -202,10 +191,10 @@ pub enum EgressMessages {
         #[serde(rename = "connected_gateway_ids")]
         preferred_gateways: Vec<GatewayId>,
     },
-    /// Candidates that can be used by the addressed gateways.
-    BroadcastIceCandidates(GatewaysIceCandidates),
-    /// Candidates that should no longer be used by the addressed gateways.
-    BroadcastInvalidatedIceCandidates(GatewaysIceCandidates),
+    NewGatewayIceCandidates(GatewayIceCandidates),
+    InvalidatedGatewayIceCandidates(GatewayIceCandidates),
+    NewClientIceCandidates(ClientIceCandidates),
+    InvalidatedClientIceCandidates(ClientIceCandidates),
 }
 
 #[cfg(test)]
