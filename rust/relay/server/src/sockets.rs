@@ -3,7 +3,7 @@ use std::{
     borrow::Cow,
     collections::{BTreeSet, HashMap, VecDeque},
     io,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
     task::{Context, Poll, Waker},
     time::Duration,
 };
@@ -78,9 +78,17 @@ impl Sockets {
     /// Fails if the channel is:
     ///  - full (not expected to happen in production)
     ///  - disconnected (we can't operate without the [`mio`] worker thread)
-    pub fn bind(&mut self, port: u16, address_family: AddressFamily) -> Result<()> {
-        self.cmd_tx
-            .try_send(Command::NewSocket((port, address_family)))?;
+    pub fn bind(
+        &mut self,
+        port: u16,
+        address_family: AddressFamily,
+        bind_addr: IpAddr,
+    ) -> Result<()> {
+        self.cmd_tx.try_send(Command::NewSocket {
+            port,
+            address_family,
+            bind_addr,
+        })?;
 
         Ok(())
     }
@@ -235,7 +243,11 @@ pub enum Error {
 }
 
 enum Command {
-    NewSocket((u16, AddressFamily)),
+    NewSocket {
+        port: u16,
+        address_family: AddressFamily,
+        bind_addr: IpAddr,
+    },
     DisposeSocket(mio::net::UdpSocket),
 }
 
@@ -287,9 +299,17 @@ fn mio_worker_task(
             match cmd_rx.try_recv() {
                 Err(mpsc::error::TryRecvError::Empty) => break, // Drain all events from the channel until it is empty.
 
-                Ok(Command::NewSocket((port, af))) => {
-                    let mut socket = mio::net::UdpSocket::from_std(make_wildcard_socket(af, port)?);
-                    let token = token_from_port_and_address_family(port, af);
+                Ok(Command::NewSocket {
+                    port,
+                    address_family,
+                    bind_addr,
+                }) => {
+                    let mut socket = mio::net::UdpSocket::from_std(make_socket(
+                        address_family,
+                        port,
+                        bind_addr,
+                    )?);
+                    let token = token_from_port_and_address_family(port, address_family);
 
                     poll.registry().register(
                         &mut socket,
@@ -339,16 +359,16 @@ fn token_to_port_and_address_family(token: mio::Token) -> (u16, AddressFamily) {
 /// Creates an [std::net::UdpSocket] via the [socket2] library that is configured for our needs.
 ///
 /// Most importantly, this sets the `IPV6_V6ONLY` flag to ensure we disallow IP4-mapped IPv6 addresses and can bind to IP4 and IP6 addresses on the same port.
-fn make_wildcard_socket(family: AddressFamily, port: u16) -> io::Result<std::net::UdpSocket> {
+fn make_socket(
+    family: AddressFamily,
+    port: u16,
+    bind_addr: IpAddr,
+) -> io::Result<std::net::UdpSocket> {
     use socket2::*;
 
     let domain = match family {
         AddressFamily::V4 => Domain::IPV4,
         AddressFamily::V6 => Domain::IPV6,
-    };
-    let address = match family {
-        AddressFamily::V4 => IpAddr::from(Ipv4Addr::UNSPECIFIED),
-        AddressFamily::V6 => IpAddr::from(Ipv6Addr::UNSPECIFIED),
     };
 
     let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
@@ -357,7 +377,7 @@ fn make_wildcard_socket(family: AddressFamily, port: u16) -> io::Result<std::net
     }
 
     socket.set_nonblocking(true)?;
-    socket.bind(&SockAddr::from(SocketAddr::new(address, port)))?;
+    socket.bind(&SockAddr::from(SocketAddr::new(bind_addr, port)))?;
 
     Ok(socket.into())
 }
