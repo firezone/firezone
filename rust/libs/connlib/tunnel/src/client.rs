@@ -762,9 +762,8 @@ impl ClientState {
         remote_client_ice: IceCredentials,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
-        // TODO: Check pending resource authorizations.
+        // TODO: Check pending client authorizations.
 
-        // TODO: Pass `controlling` ICE flag into here.
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
