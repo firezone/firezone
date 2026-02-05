@@ -57,7 +57,7 @@ actor Adapter {
   private var startContinuation: CheckedContinuation<Void, Error>?
 
   /// Used for finding system DNS resolvers when network conditions have changed.
-  private let systemConfigurationResolvers: SystemConfigurationResolvers
+  private let scopedResolvers: ScopedResolvers
 
   /// Remembers the last _relevant_ path update.
   /// A path update is considered relevant if certain properties change that require us to reset connlib's
@@ -74,10 +74,8 @@ actor Adapter {
   /// Apple doesn't give us very much info in this callback, so we don't know which of the
   /// events above triggered the callback.
   ///
-  /// On macOS, we use the SystemConfiguration framework to read the system's DNS resolvers directly.
-  ///
-  /// On iOS, we use dlsym to access the `dns_configuration_copy` function which
-  /// returns scoped resolvers that aren't shadowed by our tunnel's DNS settings.
+  /// We use dlsym to access the `dns_configuration_copy` function which returns scoped
+  /// resolvers that aren't shadowed by our tunnel's DNS settings.
   ///
   /// See the following issues for background:
   /// - https://github.com/firezone/firezone/issues/3302
@@ -133,7 +131,7 @@ actor Adapter {
     accountSlug: String,
     internetResourceEnabled: Bool,
     providerCommandSender: Sender<ProviderCommand>
-  ) throws {
+  ) {
     self.apiURL = apiURL
     self.token = token
     self.deviceId = deviceId
@@ -141,7 +139,7 @@ actor Adapter {
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
     self.providerCommandSender = providerCommandSender
-    self.systemConfigurationResolvers = try SystemConfigurationResolvers()
+    self.scopedResolvers = ScopedResolvers()
 
     // Start log cleanup immediately - doesn't depend on tunnel being connected
     providerCommandSender.send(.startLogCleanupTask)
@@ -448,10 +446,10 @@ actor Adapter {
 
   private func setSystemDefaultResolvers(_ path: Network.NWPath) async {
     // Step 1: Get system default resolvers
-    let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
+    let resolvers = self.scopedResolvers.getDefaultDNSServers(
       interfaceName: path.availableInterfaces.first?.name)
 
-    // Step 2: Validate and strip scope suffixes
+    // Step 2: Validate addresses and filter out sentinel ranges
     var parsedResolvers: [String] = []
 
     for stringAddress in resolvers {
