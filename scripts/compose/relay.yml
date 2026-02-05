@@ -20,7 +20,7 @@ services:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv6.conf.default.disable_ipv6=0
     healthcheck:
-      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      test: ["CMD-SHELL", "curl --fail http://localhost:8080/readyz"]
       start_period: 10s
       interval: 30s
       retries: 5
