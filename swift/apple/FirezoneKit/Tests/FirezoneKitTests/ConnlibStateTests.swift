@@ -26,7 +26,8 @@ struct ConnlibStateTests {
       comparedTo: Data()
     )
 
-    let (resources, unreachableResources, hash) = try ConnlibState.decode(from: data!)
+    let data = try #require(data)
+    let (resources, unreachableResources, hash) = try ConnlibState.decode(from: data)
 
     #expect(hash.count == 32)  // SHA256 hash size
     #expect(resources?.count == 1)
@@ -50,8 +51,10 @@ struct ConnlibStateTests {
       comparedTo: Data()
     )
 
-    let (_, _, hash1) = try ConnlibState.decode(from: data1!)
-    let (_, _, hash2) = try ConnlibState.decode(from: data2!)
+    let data1 = try #require(data1)
+    let data2 = try #require(data2)
+    let (_, _, hash1) = try ConnlibState.decode(from: data1)
+    let (_, _, hash2) = try ConnlibState.decode(from: data2)
 
     #expect(hash1 == hash2)
   }
@@ -73,8 +76,10 @@ struct ConnlibStateTests {
       comparedTo: Data()
     )
 
-    let (_, _, hash1) = try ConnlibState.decode(from: data1!)
-    let (_, _, hash2) = try ConnlibState.decode(from: data2!)
+    let data1 = try #require(data1)
+    let data2 = try #require(data2)
+    let (_, _, hash1) = try ConnlibState.decode(from: data1)
+    let (_, _, hash2) = try ConnlibState.decode(from: data2)
 
     #expect(hash1 != hash2)
   }
@@ -93,7 +98,8 @@ struct ConnlibStateTests {
       comparedTo: Data()
     )
 
-    let (_, _, hash) = try ConnlibState.decode(from: data!)
+    let data = try #require(data)
+    let (_, _, hash) = try ConnlibState.decode(from: data)
 
     // Now try to encode again with the same hash
     let result = try ConnlibState.encodeIfChanged(
@@ -117,7 +123,8 @@ struct ConnlibStateTests {
       comparedTo: Data()
     )
 
-    let (_, _, hash1) = try ConnlibState.decode(from: data1!)
+    let data1 = try #require(data1)
+    let (_, _, hash1) = try ConnlibState.decode(from: data1)
 
     // Try to encode different state with first hash
     let result = try ConnlibState.encodeIfChanged(
@@ -128,7 +135,8 @@ struct ConnlibStateTests {
 
     #expect(result != nil)
 
-    let (resources, _, _) = try ConnlibState.decode(from: result!)
+    let result = try #require(result)
+    let (resources, _, _) = try ConnlibState.decode(from: result)
     #expect(resources?.count == 1)
     #expect(resources?[0].id == "2")
   }
@@ -143,7 +151,8 @@ struct ConnlibStateTests {
 
     #expect(result != nil)
 
-    let (resources, unreachableResources, _) = try ConnlibState.decode(from: result!)
+    let result = try #require(result)
+    let (resources, unreachableResources, _) = try ConnlibState.decode(from: result)
     #expect(resources == nil)
     #expect(unreachableResources.isEmpty)
   }
@@ -172,8 +181,10 @@ struct ConnlibStateTests {
       comparedTo: Data()
     )
 
-    let (_, _, hash1) = try ConnlibState.decode(from: data1!)
-    let (_, _, hash2) = try ConnlibState.decode(from: data2!)
+    let data1 = try #require(data1)
+    let data2 = try #require(data2)
+    let (_, _, hash1) = try ConnlibState.decode(from: data1)
+    let (_, _, hash2) = try ConnlibState.decode(from: data2)
 
     #expect(hash1 == hash2)
   }

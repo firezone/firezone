@@ -42,6 +42,7 @@ public struct ConnlibState: Encodable, Decodable {
   /// - Throws: If decoding fails
   public static func decode(
     from data: Data
+      // swiftlint:disable:next discouraged_optional_collection
   ) throws -> (
     resources: [FirezoneKit.Resource]?, unreachableResources: Set<UnreachableResource>, hash: Data
   ) {
@@ -59,6 +60,7 @@ public struct ConnlibState: Encodable, Decodable {
   ///   - currentHash: The hash to compare against
   /// - Returns: The encoded data if the hash differs, nil otherwise
   /// - Throws: If encoding fails
+  // swiftlint:disable:next discouraged_optional_collection
   public static func encodeIfChanged(
     resources: [FirezoneKit.Resource]?,
     unreachableResources: Set<UnreachableResource>,
