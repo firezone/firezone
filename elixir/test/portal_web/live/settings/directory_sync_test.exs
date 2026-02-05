@@ -454,6 +454,135 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "kid"
       assert html =~ "Copy this public key"
     end
+
+    test "keypair is preserved when other form fields are changed in new form", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/new")
+
+      # Generate keypair first and capture the kid from the JSON content
+      html_after_generate = lv |> element("button", "Generate Keypair") |> render_click()
+
+      # Extract the kid from the JSON content (the public JWK contains "kid":"<value>")
+      [_, generated_kid] = Regex.run(~r/&quot;kid&quot;:&quot;([^&]+)&quot;/, html_after_generate)
+
+      # Fill in form fields - this triggers validate which should preserve the keypair
+      lv
+      |> form("#directory-form", %{
+        "directory" => %{
+          "name" => "Test Okta",
+          "okta_domain" => "test.okta.com",
+          "client_id" => "test-client-id"
+        }
+      })
+      |> render_change()
+
+      # Verify the SAME keypair is still displayed after form changes (same kid in JSON)
+      html = render(lv)
+      assert html =~ "kty"
+      assert html =~ "RSA"
+      assert html =~ "Copy this public key"
+      # Verify it's the same kid that was generated, not a different keypair
+      assert html =~ generated_kid
+    end
+
+    test "new keypair is preserved when other form fields are changed in edit form", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      # Create an existing Okta directory with a keypair
+      directory =
+        okta_directory_fixture(
+          account: account,
+          name: "Existing Okta",
+          okta_domain: "existing.okta.com",
+          client_id: "existing-client-id",
+          private_key_jwk: @test_private_key_jwk,
+          kid: "existing-kid",
+          is_verified: true
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/edit")
+
+      # Generate a new keypair
+      html_after_generate = lv |> element("button", "Generate Keypair") |> render_click()
+
+      # Extract the kid from the JSON content (the public JWK contains "kid":"<value>")
+      [_, generated_kid] = Regex.run(~r/&quot;kid&quot;:&quot;([^&]+)&quot;/, html_after_generate)
+
+      # Change another form field - this triggers validate
+      lv
+      |> form("#directory-form", %{
+        "directory" => %{
+          "name" => "Updated Okta Name"
+        }
+      })
+      |> render_change()
+
+      # Verify the new keypair is still displayed (not the old one)
+      html = render(lv)
+      assert html =~ "kty"
+      assert html =~ "RSA"
+      # The new keypair should have a different kid than the original
+      refute html =~ "existing-kid"
+      assert html =~ generated_kid
+    end
+
+    test "existing keypair is not changed when other form fields are edited", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      # Create an existing Okta directory with a keypair
+      directory =
+        okta_directory_fixture(
+          account: account,
+          name: "Existing Okta",
+          okta_domain: "existing.okta.com",
+          client_id: "existing-client-id",
+          private_key_jwk: @test_private_key_jwk,
+          kid: "existing-kid",
+          is_verified: true
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/edit")
+
+      # Change form fields WITHOUT generating a new keypair
+      lv
+      |> form("#directory-form", %{
+        "directory" => %{
+          "name" => "Updated Okta Name"
+        }
+      })
+      |> render_change()
+
+      # Submit the form
+      lv
+      |> form("#directory-form")
+      |> render_submit()
+
+      # Reload the directory from the database
+      updated_directory = Portal.Repo.get!(Okta.Directory, directory.id)
+
+      # Verify the name was updated
+      assert updated_directory.name == "Updated Okta Name"
+
+      # Verify the keypair was NOT changed
+      assert updated_directory.private_key_jwk == @test_private_key_jwk
+      assert updated_directory.kid == "existing-kid"
+    end
   end
 
   describe "handle_event - close_modal" do
