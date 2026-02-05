@@ -1,6 +1,5 @@
 name: Static Analysis
 on:
-  workflow_call:
   pull_request:
     types: [edited]
 
