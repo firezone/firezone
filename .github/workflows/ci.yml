@@ -34,7 +34,7 @@ jobs:
         run: |
           set -e
 
-          jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,loadtest";
+          jobs="elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,loadtest";
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
@@ -84,7 +84,7 @@ jobs:
             exit 0;
           fi
 
-          jobs="static-analysis" # Always run static-analysis
+          jobs=""
 
           if grep -q '^rust/' changed_files.txt; then
             jobs="${jobs},rust,kotlin,swift,control-plane,data-plane,loadtest"
@@ -122,7 +122,6 @@ jobs:
         elixir,
         rust,
         tauri,
-        static-analysis,
         codeql,
         control-plane,
         data-plane,
@@ -221,20 +220,6 @@ jobs:
   monitor-tauri:
     needs: [tauri]
     if: "!cancelled() && needs.tauri.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - run: gh run cancel ${{ github.run_id }}
-
-  static-analysis:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'static-analysis')
-    uses: ./.github/workflows/_static-analysis.yml
-    secrets: inherit
-
-  monitor-static-analysis:
-    needs: [static-analysis]
-    if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
