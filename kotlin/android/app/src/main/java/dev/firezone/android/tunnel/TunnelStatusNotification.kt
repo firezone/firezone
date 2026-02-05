@@ -16,30 +16,82 @@ object TunnelStatusNotification {
     private const val CHANNEL_ID = "firezone-connection-status"
     private const val CHANNEL_NAME = "firezone-connection-status"
     private const val CHANNEL_DESCRIPTION = "Firezone connection status"
-    const val ID = 1337
-    private const val TITLE = "Firezone Connection Status"
+
+    private const val DISCONNECTED_CHANNEL_ID = "firezone-disconnected"
+    private const val DISCONNECTED_CHANNEL_NAME = "Firezone Disconnected"
+    private const val DISCONNECTED_CHANNEL_DESCRIPTION = "Notifications when Firezone disconnects"
+
+    const val CONNECTED_NOTIFICATION_ID = 1337
+    const val DISCONNECTED_NOTIFICATION_ID = 1338
+
+    private const val TITLE = "Firezone"
     private const val TAG: String = "TunnelStatusNotification"
 
-    fun update(
-        context: Context,
-        status: StatusType,
-    ): NotificationCompat.Builder {
+    /**
+     * Creates and returns a sticky notification for connected state.
+     * This notification is ongoing and cannot be dismissed by the user.
+     */
+    fun createConnectedNotification(context: Context): Notification {
         val manager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
-        val chan =
+        val channel =
             NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_LOW,
+            )
+        channel.description = CHANNEL_DESCRIPTION
+        manager.createNotificationChannel(channel)
+
+        return NotificationCompat
+            .Builder(context, CHANNEL_ID)
+            .setContentIntent(configIntent(context))
+            .setSmallIcon(R.drawable.ic_firezone_logo)
+            .setContentTitle(TITLE)
+            .setContentText("Connected")
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+    }
+
+    /**
+     * Shows a dismissable notification when the tunnel disconnects.
+     * This notification can be dismissed by the user.
+     */
+    fun showDisconnectedNotification(context: Context) {
+        val manager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
+        val channel =
+            NotificationChannel(
+                DISCONNECTED_CHANNEL_ID,
+                DISCONNECTED_CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_DEFAULT,
             )
-        chan.description = CHANNEL_DESCRIPTION
-        manager.createNotificationChannel(chan)
+        channel.description = DISCONNECTED_CHANNEL_DESCRIPTION
+        manager.createNotificationChannel(channel)
 
-        val notificationBuilder =
+        val notification =
             NotificationCompat
-                .Builder(context, CHANNEL_ID)
+                .Builder(context, DISCONNECTED_CHANNEL_ID)
                 .setContentIntent(configIntent(context))
-        return status.applySettings(notificationBuilder)
+                .setSmallIcon(R.drawable.ic_firezone_logo)
+                .setContentTitle("Your Firezone session has ended")
+                .setContentText("Please sign in again to reconnect")
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+                .build()
+
+        manager.notify(DISCONNECTED_NOTIFICATION_ID, notification)
+    }
+
+    /**
+     * Dismisses the disconnected notification if it's showing.
+     */
+    fun dismissDisconnectedNotification(context: Context) {
+        val manager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(DISCONNECTED_NOTIFICATION_ID)
     }
 
     private fun configIntent(context: Context): PendingIntent {
@@ -51,48 +103,5 @@ object TunnelStatusNotification {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-    }
-
-    data object SignedOut : StatusType() {
-        private const val MESSAGE = "Status: Signed out. Tap here to sign in."
-
-        override fun applySettings(builder: NotificationCompat.Builder) =
-            builder
-                .setSmallIcon(R.drawable.ic_firezone_logo)
-                .setContentTitle(TITLE)
-                .setContentText(MESSAGE)
-                .setCategory(NotificationCompat.CATEGORY_ERROR)
-                .setPriority(NotificationManager.IMPORTANCE_HIGH)
-                .setAutoCancel(true)
-    }
-
-    data object Connecting : StatusType() {
-        private const val MESSAGE = "Status: Connecting..."
-
-        override fun applySettings(builder: NotificationCompat.Builder) =
-            builder
-                .setSmallIcon(R.drawable.ic_firezone_logo)
-                .setContentTitle(TITLE)
-                .setContentText(MESSAGE)
-                .setCategory(Notification.CATEGORY_SERVICE)
-                .setPriority(NotificationManager.IMPORTANCE_MIN)
-                .setOngoing(true)
-    }
-
-    data object Connected : StatusType() {
-        private const val MESSAGE = "Status: Connected"
-
-        override fun applySettings(builder: NotificationCompat.Builder) =
-            builder
-                .setSmallIcon(R.drawable.ic_firezone_logo)
-                .setContentTitle(TITLE)
-                .setContentText(MESSAGE)
-                .setCategory(Notification.CATEGORY_SERVICE)
-                .setPriority(NotificationManager.IMPORTANCE_MIN)
-                .setOngoing(true)
-    }
-
-    sealed class StatusType {
-        abstract fun applySettings(builder: NotificationCompat.Builder): NotificationCompat.Builder
     }
 }
