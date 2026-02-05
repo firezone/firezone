@@ -986,7 +986,7 @@ impl TunnelTest {
             } => {
                 todo!()
             }
-            ClientEvent::ConnectionIntent {
+            ClientEvent::ResourceConnectionIntent {
                 resource: resource_id,
                 preferred_gateways,
             } => {
@@ -1057,6 +1057,7 @@ impl TunnelTest {
 
                 Ok(())
             }
+            ClientEvent::DeviceConnectionIntent { .. } => Ok(()),
             ClientEvent::ResourcesChanged { resources } => {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| {

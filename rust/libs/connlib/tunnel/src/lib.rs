@@ -585,9 +585,12 @@ pub enum ClientEvent {
         conn_id: ClientOrGatewayId,
         candidates: BTreeSet<IceCandidate>,
     },
-    ConnectionIntent {
+    ResourceConnectionIntent {
         resource: ResourceId,
         preferred_gateways: Vec<GatewayId>,
+    },
+    DeviceConnectionIntent {
+        ipv4: Ipv4Addr,
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {

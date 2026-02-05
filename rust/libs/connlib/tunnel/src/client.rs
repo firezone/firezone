@@ -3,6 +3,7 @@ mod dns_cache;
 pub(crate) mod dns_config;
 mod dns_resource_nat;
 mod gateway_on_client;
+mod pending_device_access;
 mod pending_flows;
 mod resource;
 mod tracked_state;
@@ -11,6 +12,7 @@ pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 
 use crate::client::dns_config::DnsConfig;
+use crate::client::pending_device_access::PendingDeviceAccessRequests;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
 use boringtun::x25519;
@@ -26,8 +28,8 @@ use telemetry::{analytics, feature_flags};
 
 use crate::client::dns_cache::DnsCache;
 use crate::dns::{DnsResourceRecord, StubResolver};
-use crate::messages::Interface as InterfaceConfig;
 use crate::messages::{IceCredentials, SecretKey};
+use crate::messages::{IceRole, Interface as InterfaceConfig};
 use crate::peer_store::PeerStore;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::{Context, ErrorExt};
@@ -107,6 +109,9 @@ pub struct ClientState {
     clients: PeerStore<ClientId, ClientOnClient>,
     /// Tracks the flows to resources that we are currently trying to establish.
     pending_flows: PendingFlows,
+    /// Tracks pending access to other devices.
+    pending_device_access: PendingDeviceAccessRequests,
+
     dns_resource_nat: DnsResourceNat,
     /// Tracks the resources we have been authorized for and which Gateway to use to access them.
     ///
@@ -184,6 +189,7 @@ impl ClientState {
             tcp_dns_server: dns_over_tcp::Server::new(now),
             dns_streams_by_local_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
+            pending_device_access: Default::default(),
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
         }
@@ -244,8 +250,14 @@ impl ClientState {
                 .insert(*id, (ResourceStatus::Offline, now));
         }
 
-        self.on_connection_failed(id, now);
+        self.on_resource_connection_failed(id, now);
         self.resource_list.update(self.resources());
+    }
+
+    pub fn set_client_offline(&mut self, ipv4: Ipv4Addr) {
+        self.pending_device_access.remove(&ipv4);
+
+        // TODO: Update resource list with offline client.
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -435,7 +447,7 @@ impl ClientState {
                     for packet in buffered_packets {
                         encapsulate_and_buffer(
                             packet,
-                            gid,
+                            ClientOrGatewayId::Gateway(gid),
                             now,
                             &mut self.node,
                             &mut self.buffered_transmits,
@@ -446,9 +458,7 @@ impl ClientState {
                     self.node.remove_connection(pid, "received `goodbye`", now);
 
                     match pid {
-                        ClientOrGatewayId::Client(_) => {
-                            // TODO
-                        }
+                        ClientOrGatewayId::Client(cid) => self.cleanup_connected_client(&cid),
                         ClientOrGatewayId::Gateway(gid) => {
                             self.cleanup_connected_gateway(&gid, now)
                         }
@@ -469,8 +479,6 @@ impl ClientState {
 
                     return None;
                 };
-
-                // TODO: Validate packet with state in `peer`?
             }
             ClientOrGatewayId::Gateway(gid) => {
                 let Some(peer) = self.gateways.peer_by_id_mut(&gid) else {
@@ -565,7 +573,7 @@ impl ClientState {
         let dst = packet.destination();
 
         let (pid, mut packet) = if is_peer(packet.destination()) {
-            self.route_packet_to_peer(packet)?
+            self.route_packet_to_peer(packet, now)?
         } else {
             self.route_packet_to_resource(packet, now)?
         };
@@ -587,12 +595,27 @@ impl ClientState {
         Some(transmit)
     }
 
-    fn route_packet_to_peer(&mut self, packet: IpPacket) -> Option<(ClientOrGatewayId, IpPacket)> {
+    fn route_packet_to_peer(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> Option<(ClientOrGatewayId, IpPacket)> {
         let dst = packet.destination();
 
         if let Some(gateway) = self.gateways.peer_by_ip(dst) {
             return Some((ClientOrGatewayId::Gateway(gateway.id()), packet));
         }
+
+        if let Some(client) = self.clients.peer_by_ip(dst) {
+            return Some((ClientOrGatewayId::Client(client.id()), packet));
+        }
+
+        let ipv4_addr = match dst {
+            IpAddr::V4(ipv4_addr) => ipv4_addr,
+            IpAddr::V6(_) => return None, // Connecting to devices over IPv6 is not supported.
+        };
+
+        self.on_not_connected_device(ipv4_addr, packet, now);
 
         None
     }
@@ -712,7 +735,7 @@ impl ClientState {
                 for packet in buffered_resource_packets {
                     encapsulate_and_buffer(
                         packet,
-                        gid,
+                        ClientOrGatewayId::Gateway(gid),
                         now,
                         &mut self.node,
                         &mut self.buffered_transmits,
@@ -741,6 +764,49 @@ impl ClientState {
         }
 
         Ok(Ok(()))
+    }
+
+    pub fn handle_client_device_access_authorized(
+        &mut self,
+        cid: ClientId,
+        client_key: PublicKey,
+        client_tun: IpConfig,
+        preshared_key: SecretKey,
+        local_client_ice: IceCredentials,
+        remote_client_ice: IceCredentials,
+        ice_role: IceRole,
+        now: Instant,
+    ) -> Result<(), NoTurnServers> {
+        let pending_device_access = self.pending_device_access.remove(&client_tun.v4);
+
+        self.node.upsert_connection(
+            ClientOrGatewayId::Client(cid),
+            client_key,
+            x25519::StaticSecret::from(preshared_key.expose_secret().0),
+            local_client_ice.into(),
+            remote_client_ice.into(),
+            ice_role.into(),
+            snownet::IceConfig::client_default(),
+            snownet::IceConfig::client_default(),
+            now,
+        )?;
+
+        self.clients
+            .upsert(cid, || ClientOnClient::new(cid, client_tun));
+
+        if let Some(pending_client_access) = pending_device_access {
+            for packet in pending_client_access.into_buffered_packets() {
+                encapsulate_and_buffer(
+                    packet,
+                    ClientOrGatewayId::Client(cid),
+                    now,
+                    &mut self.node,
+                    &mut self.buffered_transmits,
+                );
+            }
+        }
+
+        Ok(())
     }
 
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
@@ -792,7 +858,7 @@ impl ClientState {
         ControlFlow::Break(())
     }
 
-    pub fn on_connection_failed(&mut self, resource: ResourceId, now: Instant) {
+    pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {
         self.pending_flows.remove(&resource);
         let Some(disconnected_gateway) = self.authorized_resources.remove(&resource) else {
             return;
@@ -902,6 +968,11 @@ impl ClientState {
         self.authorized_resources
             .retain(|_, g| g != disconnected_gateway);
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
+    }
+
+    #[tracing::instrument(level = "debug", skip_all, fields(gateway = %disconnected_client))]
+    fn cleanup_connected_client(&mut self, disconnected_client: &ClientId) {
+        self.clients.remove(disconnected_client);
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -1204,7 +1275,7 @@ impl ClientState {
 
             encapsulate_and_buffer(
                 packet,
-                gid,
+                ClientOrGatewayId::Gateway(gid),
                 now,
                 &mut self.node,
                 &mut self.buffered_transmits,
@@ -1519,9 +1590,9 @@ impl ClientState {
                 | snownet::Event::ConnectionClosed(ClientOrGatewayId::Gateway(id)) => {
                     self.cleanup_connected_gateway(&id, now);
                 }
-                snownet::Event::ConnectionFailed(ClientOrGatewayId::Client(_))
-                | snownet::Event::ConnectionClosed(ClientOrGatewayId::Client(_)) => {
-                    // TODO
+                snownet::Event::ConnectionFailed(ClientOrGatewayId::Client(id))
+                | snownet::Event::ConnectionClosed(ClientOrGatewayId::Client(id)) => {
+                    self.cleanup_connected_client(&id);
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -1545,7 +1616,7 @@ impl ClientState {
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online, now);
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(_)) => {
-                    // TODO;
+                    // TODO: Update resource list with online client.
                 }
             }
         }
@@ -1601,10 +1672,14 @@ impl ClientState {
         }
 
         if let Some(resource) = self.pending_flows.poll_connection_intents() {
-            return Some(ClientEvent::ConnectionIntent {
+            return Some(ClientEvent::ResourceConnectionIntent {
                 resource,
                 preferred_gateways: self.preferred_gateways(resource),
             });
+        }
+
+        if let Some(client) = self.pending_device_access.poll_connection_intents() {
+            return Some(ClientEvent::DeviceConnectionIntent { ipv4: client });
         }
 
         self.buffered_events
@@ -1845,6 +1920,11 @@ impl ClientState {
         self.pending_flows
             .on_not_connected_resource(resource, trigger, &self.resources_by_id, now);
     }
+
+    fn on_not_connected_device(&mut self, device: Ipv4Addr, trigger: IpPacket, now: Instant) {
+        self.pending_device_access
+            .on_not_connected_device(device, trigger, now);
+    }
 }
 
 fn is_llmnr(dst: IpAddr) -> bool {
@@ -1856,14 +1936,14 @@ fn is_llmnr(dst: IpAddr) -> bool {
 
 fn encapsulate_and_buffer(
     packet: IpPacket,
-    gid: GatewayId,
+    pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
     buffered_transmits: &mut VecDeque<Transmit>,
 ) {
     let Some(transmit) = node
-        .encapsulate(ClientOrGatewayId::Gateway(gid), &packet, now)
-        .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
+        .encapsulate(pid, &packet, now)
+        .inspect_err(|e| tracing::debug!(%pid, "Failed to encapsulate: {e}"))
         .ok()
         .flatten()
     else {

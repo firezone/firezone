@@ -20,8 +20,8 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
-    ClientIceCandidates, EgressMessages, FailReason, FlowCreated, FlowCreationFailed,
-    GatewayIceCandidates, IngressMessages, InitClient,
+    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates, EgressMessages,
+    FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -316,7 +316,7 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::ConnectionIntent {
+            ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
                 resource,
             } => {
@@ -324,6 +324,14 @@ impl Eventloop {
                     .send(PortalCommand::Send(EgressMessages::CreateFlow {
                         resource_id: resource,
                         preferred_gateways,
+                    }))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
+            ClientEvent::DeviceConnectionIntent { ipv4 } => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::RequestDeviceAccess {
+                        ipv4,
                     }))
                     .await
                     .context("Failed to send message to portal")?;
@@ -527,6 +535,59 @@ impl Eventloop {
                             .await;
                     }
                     FailReason::NotFound | FailReason::Forbidden | FailReason::Unknown => {}
+                }
+            }
+            IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {
+                client_id,
+                client_public_key,
+                client_ipv4,
+                client_ipv6,
+                preshared_key,
+                local_ice_credentials,
+                remote_ice_credentials,
+                ice_role,
+            }) => {
+                match tunnel.state_mut().handle_client_device_access_authorized(
+                    client_id,
+                    PublicKey::from(client_public_key.0),
+                    IpConfig {
+                        v4: client_ipv4,
+                        v6: client_ipv6,
+                    },
+                    preshared_key,
+                    local_ice_credentials,
+                    remote_ice_credentials,
+                    ice_role,
+                    Instant::now(),
+                ) {
+                    Ok(()) => {}
+                    Err(e @ snownet::NoTurnServers {}) => {
+                        tracing::debug!("Failed to handle client device access authorization: {e}");
+
+                        // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
+                        self.portal_cmd_tx
+                            .send(PortalCommand::Connect(PublicKeyParam(
+                                tunnel.public_key().to_bytes(),
+                            )))
+                            .await
+                            .context("Failed to connect phoenix-channel")?;
+                    }
+                };
+            }
+            IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
+                client_id,
+                client_ipv4,
+                reason,
+                ..
+            }) => {
+                tracing::debug!(?client_id, %client_ipv4, "Failed to access device: {reason:?}");
+
+                match reason {
+                    FailReason::Offline => tunnel.state_mut().set_client_offline(client_ipv4),
+                    FailReason::NotFound => {}
+                    FailReason::VersionMismatch => {}
+                    FailReason::Forbidden => {}
+                    FailReason::Unknown => {}
                 }
             }
         }
