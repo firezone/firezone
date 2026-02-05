@@ -61,15 +61,17 @@ defmodule Portal.Health do
   def call(conn, _opts), do: conn
 
   defp send_readyz_response(conn) do
+    version = Application.spec(:portal, :vsn) |> to_string()
+
     cond do
       draining?() ->
-        send_resp(conn, 503, JSON.encode!(%{status: :draining}))
+        send_resp(conn, 503, JSON.encode!(%{status: :draining, version: version}))
 
       not endpoints_ready?() ->
-        send_resp(conn, 503, JSON.encode!(%{status: :starting}))
+        send_resp(conn, 503, JSON.encode!(%{status: :starting, version: version}))
 
       true ->
-        send_resp(conn, 200, JSON.encode!(%{status: :ready}))
+        send_resp(conn, 200, JSON.encode!(%{status: :ready, version: version}))
     end
   end
 

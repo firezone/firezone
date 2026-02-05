@@ -6,26 +6,26 @@ Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal/types/filter.ex:22,1E1F28F
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/mailer.ex:49,2064866
 Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
 SQL.Query: SQL injection,lib/portal/safe.ex:344,2C3D7F0
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:74,2D2B0E3
 SQL.Query: SQL injection,lib/portal/safe.ex:350,3C9C61F
 DOS.BinToAtom: Unsafe atom interpolation,lib/portal/cluster/google_compute_labels_strategy.ex:171,3D848A0
 DOS.BinToAtom: Unsafe atom interpolation,lib/portal/account.ex:92,43C74D4
 Config.Headers: Missing Secure Browser Headers,lib/portal_api/router.ex:15,464028
-XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:72,476160D
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:4,490DB25
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:71,49978F4
 Config.Secrets: Hardcoded Secret,config/config.exs:222,4A8C9E3
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:20,4C29336
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/email_otp.ex:65,5078E69
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:211,52B9024
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:24,5775968
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/dumper.ex:33,58DA1AC
-XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:66,58F0C9B
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:403,5BB84FC
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/config/definitions.ex:399,5F2DE06
 Misc.BinToTerm: Unsafe `binary_to_term`,lib/portal_web/cookie/client_auth.ex:42,5F2F213
-XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:69,696A7C1
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/portal/cluster/postgres_strategy.ex:216,69DCAC0
 Config.Secrets: Hardcoded Secret,config/config.exs:221,6D192B
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:53,7047850
 Config.Headers: Missing Secure Browser Headers,lib/portal_web/router.ex:13,7269EC9
+XSS.SendResp: XSS in `send_resp`,lib/portal/health.ex:68,7331603
 Config.CSWH: Cross-Site Websocket Hijacking,lib/portal_api/endpoint.ex:43,7695619
 Config.Secrets: Hardcoded Secret,config/config.exs:117,C7408A
