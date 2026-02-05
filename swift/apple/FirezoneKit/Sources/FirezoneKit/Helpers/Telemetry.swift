@@ -52,13 +52,14 @@ public enum Telemetry {
     await state.setAccountSlug(slug)
   }
 
-  public static func start() {
+  public static func start(enableAppHangTracking: Bool = true) {
     SentrySDK.start { options in
       options.dsn =
         "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488"
       options.environment = "entrypoint"  // will be reconfigured in VPNConfigurationManager
       options.releaseName = releaseName()
       options.dist = distributionType()
+      options.enableAppHangTracking = enableAppHangTracking
     }
   }
 

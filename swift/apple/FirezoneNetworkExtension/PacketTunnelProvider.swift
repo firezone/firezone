@@ -33,8 +33,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   private let defaults = UserDefaults.standard
 
   override init() {
-    // Initialize Telemetry as early as possible
-    Telemetry.start()
+    // Initialize Telemetry as early as possible.
+    // Disable app hang tracking because Network Extensions legitimately block
+    // on mach_msg when idle, causing false positive reports.
+    Telemetry.start(enableAppHangTracking: false)
 
     super.init()
 
