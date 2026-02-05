@@ -223,9 +223,11 @@ async fn try_main(args: Args) -> Result<()> {
 
     tokio::spawn({
         let is_connected = is_connected.clone();
-        http_health_check::serve(args.health_check.health_check_addr, move || {
-            is_connected.load(Ordering::Relaxed)
-        })
+        http_health_check::serve_with_version(
+            args.health_check.health_check_addr,
+            firezone_relay::VERSION,
+            move || is_connected.load(Ordering::Relaxed),
+        )
     });
 
     tokio::spawn(control_endpoint::serve(
