@@ -32,6 +32,7 @@ use std::{
 };
 use telemetry::{Telemetry, analytics};
 use tokio::time::Instant;
+use tracing::Instrument as _;
 use url::Url;
 
 #[cfg(target_os = "linux")]
@@ -67,6 +68,8 @@ pub enum ClientMsg {
         release: String,
         account_slug: Option<String>,
     },
+    #[cfg(debug_assertions)]
+    Panic,
 }
 
 fn serialize_token<S>(token: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
@@ -110,12 +113,17 @@ impl ServerMsg {
 async fn ipc_listen(
     dns_control_method: DnsControlMethod,
     log_filter_reloader: &FilterReloadHandle,
+    socket_id: SocketId,
     signals: &mut signals::Terminate,
 ) -> Result<()> {
     // Create the device ID and Tunnel service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
+    #[cfg(not(test))]
     let device_id =
         device_id::get_or_create_client().context("Failed to read / create device ID")?;
+
+    #[cfg(test)]
+    let device_id = device_id::DeviceId::test();
 
     // Fix up the group of the device ID file and directory so the GUI client can access it.
     #[cfg(target_os = "linux")]
@@ -134,7 +142,7 @@ async fn ipc_listen(
             .with_context(|| format!("Failed to change ownership of '{}'", dir.display()))?;
     }
 
-    let mut server = ipc::Server::new(SocketId::Tunnel)?;
+    let mut server = ipc::Server::new(socket_id)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
         let mut handler_fut = pin!(Handler::new(
@@ -348,10 +356,9 @@ impl<'a> Handler<'a> {
                 Event::Ipc(msg) => {
                     let msg_variant = serde_variant::to_variant_name(&msg)
                         .expect("IPC messages should be enums, not structs or anything else.");
-                    let _entered =
-                        tracing::error_span!("handle_ipc_msg", msg = %msg_variant).entered();
-                    if let Err(error) = self.handle_ipc_msg(msg).await {
-                        tracing::error!("Error while handling IPC message from client: {error:#}");
+                    let span = tracing::error_span!("handle_ipc_msg", msg = %msg_variant);
+                    if let Err(error) = self.handle_ipc_msg(msg).instrument(span).await {
+                        tracing::error!(%msg_variant, "Error while handling IPC message from client: {error:#}");
                         continue;
                     }
                 }
@@ -601,6 +608,8 @@ impl<'a> Handler<'a> {
                     }
                 }
             }
+            #[cfg(debug_assertions)]
+            ClientMsg::Panic => panic!("Explicit panic"),
         }
         Ok(())
     }
@@ -716,7 +725,12 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
-    rt.block_on(ipc_listen(dns_control, &log_filter_reloader, &mut signals))
+    rt.block_on(ipc_listen(
+        dns_control,
+        &log_filter_reloader,
+        SocketId::Tunnel,
+        &mut signals,
+    ))
 }
 
 /// Listen for exactly one connection from a GUI, then exit
@@ -793,4 +807,39 @@ async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
 
         Ok(Some(((), worker)))
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn panic_inside_handler_doesnt_interrupt_service() {
+        let _guard = logging::test("debug");
+
+        let id = SocketId::Test(rand::random());
+
+        let handle = tokio::spawn(async move {
+            let (_, log_filter_reloader) = logging::try_filter::<()>("info").unwrap();
+            let mut signals = signals::Terminate::new().unwrap();
+
+            ipc_listen(
+                DnsControlMethod::default(),
+                &log_filter_reloader,
+                id,
+                &mut signals,
+            )
+            .await
+        });
+
+        let (_, mut tx) = ipc::connect::<ServerMsg, ClientMsg>(id, ipc::ConnectOptions::default())
+            .await
+            .unwrap();
+
+        tx.send(&ClientMsg::Panic).await.unwrap();
+
+        let _ = tokio::time::timeout(Duration::from_secs(1), handle)
+            .await
+            .unwrap_err(); // We want to timeout because that means the task is still running.
+    }
 }
