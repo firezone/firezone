@@ -9,17 +9,31 @@ import Foundation
 
 public struct ConnlibState: Encodable, Decodable {
   // swiftlint:disable:next discouraged_optional_collection
-  public let resources: [FirezoneKit.Resource]?
-  public let unreachableResources: Set<UnreachableResource>
+  private let resources: [FirezoneKit.Resource]?
+  private let unreachableResources: Set<UnreachableResource>
 
   private static let encoder = PropertyListEncoder()
   private static let decoder = PropertyListDecoder()
 
-  // swiftlint:disable:next discouraged_optional_collection
-  internal init(resources: [FirezoneKit.Resource]?, unreachableResources: Set<UnreachableResource>)
-  {
-    self.resources = resources
-    self.unreachableResources = unreachableResources
+  // Custom encoding to ensure deterministic hash by sorting the set
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encodeIfPresent(resources, forKey: .resources)
+
+    // Sort unreachable resources for deterministic encoding
+    let sortedUnreachableResources = unreachableResources.sorted { lhs, rhs in
+      if lhs.resourceId != rhs.resourceId {
+        return lhs.resourceId < rhs.resourceId
+      }
+      // If resourceIds are equal, sort by reason
+      return lhs.reason.sortValue < rhs.reason.sortValue
+    }
+    try container.encode(sortedUnreachableResources, forKey: .unreachableResources)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case resources
+    case unreachableResources
   }
 
   /// Decodes a ConnlibState from data and returns both the state and its hash
@@ -58,6 +72,14 @@ public struct ConnlibState: Encodable, Decodable {
 public enum UnreachableReason: Hashable, Encodable, Decodable {
   case offline
   case versionMismatch
+
+  // Helper for sorting
+  var sortValue: Int {
+    switch self {
+    case .offline: return 0
+    case .versionMismatch: return 1
+    }
+  }
 }
 
 public struct UnreachableResource: Hashable, Encodable, Decodable {
