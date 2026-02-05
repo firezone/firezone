@@ -198,10 +198,31 @@ defmodule PortalAPI.PolicyController do
     end
 
     def create_policy(attrs, %Authentication.Subject{} = subject) do
-      changeset = create_changeset(attrs, subject)
+      changeset =
+        create_changeset(attrs, subject)
+        |> populate_group_idp_id(subject)
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()
+    end
+
+    defp populate_group_idp_id(changeset, subject) do
+      case get_change(changeset, :group_id) || Ecto.Changeset.get_field(changeset, :group_id) do
+        nil ->
+          changeset
+
+        group_id ->
+          case get_group_idp_id(group_id, subject) do
+            nil -> changeset
+            idp_id -> put_change(changeset, :group_idp_id, idp_id)
+          end
+      end
+    end
+
+    defp get_group_idp_id(group_id, subject) do
+      from(g in Portal.Group, where: g.id == ^group_id, select: g.idp_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def delete_policy(policy, subject) do

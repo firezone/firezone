@@ -32,6 +32,12 @@ defmodule PortalWeb.Policies.Components do
 
   attr(:policy, :map, required: true)
 
+  def policy_name(%{policy: %{group: nil}} = assigns) do
+    ~H"""
+    <span class="text-amber-600">(Group unavailable)</span> → {@policy.resource.name}
+    """
+  end
+
   def policy_name(assigns) do
     ~H"{@policy.group.name} → {@policy.resource.name}"
   end

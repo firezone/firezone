@@ -10,7 +10,8 @@ defmodule Portal.Policy do
           id: Ecto.UUID.t(),
           description: String.t() | nil,
           conditions: [Portal.Policies.Condition.t()],
-          group_id: Ecto.UUID.t(),
+          group_id: Ecto.UUID.t() | nil,
+          group_idp_id: String.t() | nil,
           resource_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
           disabled_at: DateTime.t() | nil,
@@ -27,6 +28,7 @@ defmodule Portal.Policy do
     embeds_many :conditions, Portal.Policies.Condition, on_replace: :delete
 
     belongs_to :group, Portal.Group, foreign_key: :group_id
+    field :group_idp_id, :string
     belongs_to :resource, Portal.Resource
 
     field :disabled_at, :utc_datetime_usec
@@ -44,7 +46,7 @@ defmodule Portal.Policy do
     )
     |> assoc_constraint(:account)
     |> assoc_constraint(:resource)
-    |> assoc_constraint(:group)
+    |> maybe_validate_group()
     |> unique_constraint(
       :base,
       name: :policies_group_id_fkey,
@@ -55,5 +57,13 @@ defmodule Portal.Policy do
       name: :policies_resource_id_fkey,
       message: "Not allowed to create policies for resources outside of your account"
     )
+  end
+
+  defp maybe_validate_group(changeset) do
+    if Ecto.Changeset.get_change(changeset, :group_id) do
+      assoc_constraint(changeset, :group)
+    else
+      changeset
+    end
   end
 end

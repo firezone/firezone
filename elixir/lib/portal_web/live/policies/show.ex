@@ -133,7 +133,12 @@ defmodule PortalWeb.Policies.Show do
               Group
             </:label>
             <:value>
-              <.group_badge account={@account} group={@policy.group} return_to={@return_to} />
+              <.group_badge
+                account={@account}
+                group={@policy.group}
+                group_idp_id={@policy.group_idp_id}
+                return_to={@return_to}
+              />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -327,7 +332,7 @@ defmodule PortalWeb.Policies.Show do
     def get_policy!(id, %Authentication.Subject{} = subject) do
       from(p in Policy, as: :policies)
       |> where([policies: p], p.id == ^id)
-      |> preload(group: [], resource: [])
+      |> preload(group: [:directory], resource: [])
       |> Safe.scoped(subject, :replica)
       |> Safe.one!(fallback_to_primary: true)
     end
