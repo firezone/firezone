@@ -276,7 +276,7 @@ impl Eventloop {
 
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(
-                        EgressMessages::InvalidatedGatewayIceCandidates(GatewayIceCandidates {
+                        EgressMessages::InvalidateGatewayIceCandidates(GatewayIceCandidates {
                             gateway_id: gid,
                             candidates: Vec::from_iter(candidates),
                         }),
@@ -308,7 +308,7 @@ impl Eventloop {
 
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(
-                        EgressMessages::InvalidatedClientIceCandidates(ClientIceCandidates {
+                        EgressMessages::InvalidateClientIceCandidates(ClientIceCandidates {
                             client_id: cid,
                             candidates: Vec::from_iter(candidates),
                         }),

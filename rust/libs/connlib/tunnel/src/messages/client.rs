@@ -192,9 +192,9 @@ pub enum EgressMessages {
         preferred_gateways: Vec<GatewayId>,
     },
     NewGatewayIceCandidates(GatewayIceCandidates),
-    InvalidatedGatewayIceCandidates(GatewayIceCandidates),
+    InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),
-    InvalidatedClientIceCandidates(ClientIceCandidates),
+    InvalidateClientIceCandidates(ClientIceCandidates),
 }
 
 #[cfg(test)]
