@@ -14,7 +14,7 @@ use bin_shared::{
 };
 use connlib_model::ResourceView;
 use futures::{
-    Future as _, SinkExt as _, Stream, StreamExt,
+    Future as _, FutureExt, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
     stream::{self, BoxStream},
     task::{Context, Poll},
@@ -26,6 +26,7 @@ use secrecy::{ExposeSecret, SecretString};
 use std::{
     io::{self, Write},
     mem,
+    panic::AssertUnwindSafe,
     pin::pin,
     sync::Arc,
     time::Duration,
@@ -174,8 +175,21 @@ async fn ipc_listen(
                 continue;
             }
         };
-        if let HandlerOk::ServiceTerminating = handler.run(signals).await {
-            break;
+
+        match AssertUnwindSafe(handler.run(signals)).catch_unwind().await {
+            Ok(HandlerOk::ServiceTerminating) => break,
+            Ok(HandlerOk::ClientDisconnected | HandlerOk::Err) => {}
+            Err(e) => {
+                let panic_msg = if let Some(s) = e.downcast_ref::<&str>() {
+                    s
+                } else if let Some(s) = e.downcast_ref::<String>() {
+                    s
+                } else {
+                    "Unknown"
+                };
+
+                tracing::error!("Handler panicked: {panic_msg}")
+            }
         }
     }
     Ok(())
