@@ -1,8 +1,7 @@
 name: Static Analysis
 on:
-  workflow_call:
   pull_request:
-    types: [edited]
+    types: [opened, edited]
 
 jobs:
   pr-lint:
