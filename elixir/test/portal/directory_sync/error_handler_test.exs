@@ -1,78 +1,80 @@
-defmodule Portal.DirectorySync.ErrorHandlerTest do
+defmodule Portal.DirectorySync.ErrorTest do
   use Portal.DataCase, async: true
 
-  alias Portal.DirectorySync.ErrorHandler
+  alias Portal.DirectorySync.CommonError
+  alias Portal.Okta.SyncError, as: OktaSyncError
+  alias Portal.Entra.SyncError, as: EntraSyncError
 
   import Portal.AccountFixtures
   import Portal.EntraDirectoryFixtures
   import Portal.OktaDirectoryFixtures
 
-  describe "format_transport_error/1" do
+  describe "Portal.DirectorySync.CommonError.format/1" do
     test "handles DNS lookup failure (nxdomain)" do
       error = %Req.TransportError{reason: :nxdomain}
-      result = ErrorHandler.format_transport_error(error)
+      result = CommonError.format(error)
 
-      assert result == "DNS lookup failed."
+      assert result == "DNS lookup failed"
     end
 
     test "handles timeout" do
       error = %Req.TransportError{reason: :timeout}
-      result = ErrorHandler.format_transport_error(error)
+      result = CommonError.format(error)
 
-      assert result == "Connection timed out."
+      assert result == "Connection timed out"
     end
 
     test "handles connect_timeout" do
       error = %Req.TransportError{reason: :connect_timeout}
-      result = ErrorHandler.format_transport_error(error)
+      result = CommonError.format(error)
 
-      assert result == "Connection timed out."
+      assert result == "Connection timed out"
     end
 
     test "handles connection refused" do
       error = %Req.TransportError{reason: :econnrefused}
-      result = ErrorHandler.format_transport_error(error)
+      result = CommonError.format(error)
 
-      assert result == "Connection refused."
+      assert result == "Connection refused"
     end
 
     test "handles connection closed" do
       error = %Req.TransportError{reason: :closed}
-      result = ErrorHandler.format_transport_error(error)
+      result = CommonError.format(error)
 
-      assert result == "Connection closed unexpectedly."
+      assert result == "Connection closed unexpectedly"
     end
 
     test "handles TLS alert" do
       error = %Req.TransportError{reason: {:tls_alert, {:certificate_expired, "test"}}}
-      result = ErrorHandler.format_transport_error(error)
+      result = CommonError.format(error)
 
-      assert result == "TLS error (certificate_expired)."
+      assert result == "TLS error (certificate_expired)"
     end
 
     test "handles host unreachable" do
       error = %Req.TransportError{reason: :ehostunreach}
-      result = ErrorHandler.format_transport_error(error)
+      result = CommonError.format(error)
 
-      assert result == "Host is unreachable."
+      assert result == "Host is unreachable"
     end
 
     test "handles network unreachable" do
       error = %Req.TransportError{reason: :enetunreach}
-      result = ErrorHandler.format_transport_error(error)
+      result = CommonError.format(error)
 
-      assert result == "Network is unreachable."
+      assert result == "Network is unreachable"
     end
 
     test "handles unknown transport errors" do
       error = %Req.TransportError{reason: :some_unknown_error}
-      result = ErrorHandler.format_transport_error(error)
+      result = CommonError.format(error)
 
       assert result == "Network error: :some_unknown_error"
     end
   end
 
-  describe "handle_error/1 with Okta SyncError" do
+  describe "Portal.Okta.SyncError.handle_error/1" do
     setup do
       account = account_fixture(features: %{idp_sync: true})
       %{jwk: jwk, jwks: _jwks, kid: _kid} = Portal.Crypto.JWK.generate_jwk_and_jwks(1024)
@@ -87,21 +89,21 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       %{account: account, directory: directory}
     end
 
-    test "classifies check_deletion_threshold errors as client_error and disables directory",
+    test "classifies circuit_breaker errors as client_error and disables directory",
          %{directory: directory} do
       job = %Oban.Job{
         worker: "Portal.Okta.Sync",
         args: %{"directory_id" => directory.id}
       }
 
-      error = %Portal.Okta.SyncError{
-        reason: "Deletion threshold exceeded",
-        context: "circuit_breaker: would delete all identities",
+      error = %OktaSyncError{
+        message: "test",
+        error: {:circuit_breaker, "would delete all identities"},
         directory_id: directory.id,
         step: :check_deletion_threshold
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      OktaSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was disabled
       updated_directory = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
@@ -109,24 +111,24 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       assert updated_directory.is_disabled == true
       assert updated_directory.disabled_reason == "Sync error"
       assert updated_directory.is_verified == false
-      assert updated_directory.error_message =~ "circuit_breaker"
+      assert updated_directory.error_message =~ "delete all identities"
     end
 
-    test "classifies process_user errors as client_error and disables directory",
+    test "classifies validation errors as client_error and disables directory",
          %{directory: directory} do
       job = %Oban.Job{
         worker: "Portal.Okta.Sync",
         args: %{"directory_id" => directory.id}
       }
 
-      error = %Portal.Okta.SyncError{
-        reason: "User 'user_123' missing required 'email' field",
-        context: "validation: user 'user_123' missing 'email' field",
+      error = %OktaSyncError{
+        message: "test",
+        error: {:validation, "User 'user_123' missing required 'email' field"},
         directory_id: directory.id,
         step: :process_user
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      OktaSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was disabled
       updated_directory = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
@@ -144,9 +146,9 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         args: %{"directory_id" => directory.id}
       }
 
-      error = %Portal.Okta.SyncError{
-        reason: "Permission denied",
-        context: %Req.Response{
+      error = %OktaSyncError{
+        message: "test",
+        error: %Req.Response{
           status: 403,
           body: %{
             "errorCode" => "E0000006",
@@ -157,7 +159,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         step: :stream_app_users
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      OktaSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was disabled
       updated_directory = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
@@ -175,9 +177,9 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         args: %{"directory_id" => directory.id}
       }
 
-      error = %Portal.Okta.SyncError{
-        reason: "Server error",
-        context: %Req.Response{
+      error = %OktaSyncError{
+        message: "test",
+        error: %Req.Response{
           status: 503,
           body: %{"error" => "Service unavailable"}
         },
@@ -185,7 +187,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         step: :list_apps
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      OktaSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was NOT disabled
       updated_directory = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
@@ -201,38 +203,38 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         args: %{"directory_id" => directory.id}
       }
 
-      error = %Portal.Okta.SyncError{
-        reason: "Network error",
-        context: %Req.TransportError{reason: :timeout},
+      error = %OktaSyncError{
+        message: "test",
+        error: %Req.TransportError{reason: :timeout},
         directory_id: directory.id,
         step: :get_access_token
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      OktaSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was NOT disabled
       updated_directory = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
 
       assert updated_directory.is_disabled == false
       assert updated_directory.errored_at != nil
-      assert updated_directory.error_message == "Connection timed out."
+      assert updated_directory.error_message == "Connection timed out"
     end
 
-    test "classifies verify_scopes errors as client_error and disables directory",
+    test "classifies scopes errors as client_error and disables directory",
          %{directory: directory} do
       job = %Oban.Job{
         worker: "Portal.Okta.Sync",
         args: %{"directory_id" => directory.id}
       }
 
-      error = %Portal.Okta.SyncError{
-        reason: "Access token missing required scopes: okta.users.read",
-        context: "scopes: missing okta.users.read",
+      error = %OktaSyncError{
+        message: "test",
+        error: {:scopes, "okta.users.read"},
         directory_id: directory.id,
         step: :verify_scopes
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      OktaSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was disabled
       updated_directory = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
@@ -244,7 +246,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
     end
   end
 
-  describe "handle_error/1 with Entra SyncError" do
+  describe "Portal.Entra.SyncError.handle_error/1" do
     setup do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account)
@@ -259,16 +261,16 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         args: %{"directory_id" => directory.id}
       }
 
-      error = %Portal.Entra.SyncError{
-        reason:
-          "Directory Sync app service principal not found in tenant. Admin consent may have been revoked.",
-        context:
-          "consent_revoked: Directory Sync app service principal not found. Please re-grant admin consent.",
+      error = %EntraSyncError{
+        message: "test",
+        error:
+          {:consent_revoked,
+           "Directory Sync app service principal not found. Please re-grant admin consent."},
         directory_id: directory.id,
         step: :fetch_directory_sync_service_principal
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      EntraSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was disabled
       updated_directory = Portal.Repo.get!(Portal.Entra.Directory, directory.id)
@@ -276,7 +278,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       assert updated_directory.is_disabled == true
       assert updated_directory.disabled_reason == "Sync error"
       assert updated_directory.is_verified == false
-      assert updated_directory.error_message =~ "consent_revoked"
+      assert updated_directory.error_message =~ "consent"
     end
 
     test "classifies HTTP 403 permission errors as client_error and provides helpful message",
@@ -286,9 +288,9 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         args: %{"directory_id" => directory.id}
       }
 
-      error = %Portal.Entra.SyncError{
-        reason: "Permission denied",
-        context: %Req.Response{
+      error = %EntraSyncError{
+        message: "test",
+        error: %Req.Response{
           status: 403,
           body: %{
             "error" => %{
@@ -301,7 +303,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         step: :stream_app_role_assignments
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      EntraSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was disabled
       updated_directory = Portal.Repo.get!(Portal.Entra.Directory, directory.id)
@@ -320,9 +322,9 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         args: %{"directory_id" => directory.id}
       }
 
-      error = %Portal.Entra.SyncError{
-        reason: "Authentication failed",
-        context: %Req.Response{
+      error = %EntraSyncError{
+        message: "test",
+        error: %Req.Response{
           status: 401,
           body: %{
             "error" => %{
@@ -335,7 +337,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         step: :stream_groups
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      EntraSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was disabled
       updated_directory = Portal.Repo.get!(Portal.Entra.Directory, directory.id)
@@ -355,9 +357,9 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       # This is the exact error format from batch_get_users when all requests fail
-      error = %Portal.Entra.SyncError{
-        reason: "Failed to batch fetch users",
-        context:
+      error = %EntraSyncError{
+        message: "test",
+        error:
           {:batch_all_failed, 403,
            %{
              "error" => %{
@@ -369,7 +371,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         step: :batch_get_users
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      EntraSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was disabled
       updated_directory = Portal.Repo.get!(Portal.Entra.Directory, directory.id)
@@ -389,9 +391,9 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       # This is the error format when the batch request itself fails
-      error = %Portal.Entra.SyncError{
-        reason: "Failed to batch fetch users",
-        context:
+      error = %EntraSyncError{
+        message: "test",
+        error:
           {:batch_request_failed, 403,
            %{
              "error" => %{
@@ -403,7 +405,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
         step: :batch_get_users
       }
 
-      ErrorHandler.handle_error(%{reason: error, job: job})
+      EntraSyncError.handle_error(%{reason: error, job: job})
 
       # Reload directory and verify it was disabled
       updated_directory = Portal.Repo.get!(Portal.Entra.Directory, directory.id)

@@ -4,18 +4,14 @@ defmodule Portal.Telemetry.Reporter.Oban do
 
   This reporter:
   - Captures all Oban job exceptions to Sentry with contextual information
-  - Routes errors to domain-specific handlers based on worker type
-
-  Domain handlers are responsible for:
-  - Updating relevant state (e.g., directory sync status)
-  - Returning Sentry context specific to their domain
+  - Routes errors to provider-specific SyncError handlers based on worker type
   """
 
-  @directory_sync_workers [
-    "Portal.Entra.Sync",
-    "Portal.Google.Sync",
-    "Portal.Okta.Sync"
-  ]
+  @sync_worker_error_handlers %{
+    "Portal.Entra.Sync" => Portal.Entra.SyncError,
+    "Portal.Google.Sync" => Portal.Google.SyncError,
+    "Portal.Okta.Sync" => Portal.Okta.SyncError
+  }
 
   def attach do
     :telemetry.attach("oban-errors", [:oban, :job, :exception], &__MODULE__.handle_event/4, [])
@@ -27,18 +23,16 @@ defmodule Portal.Telemetry.Reporter.Oban do
     Sentry.capture_exception(meta.reason, stacktrace: meta.stacktrace, extra: sentry_context)
   end
 
-  # Route errors to domain-specific handlers based on worker type.
-  # Each handler updates relevant state and returns extra context for Sentry.
-  defp handle_error(%{job: %{worker: worker}} = meta) when worker in @directory_sync_workers do
-    Portal.DirectorySync.ErrorHandler.handle_error(meta)
+  # Route errors to provider-specific SyncError handlers based on worker type.
+  # Each handler classifies the error, updates directory state, and returns Sentry context.
+  defp handle_error(%{job: %{worker: worker}} = meta) do
+    case Map.get(@sync_worker_error_handlers, worker) do
+      nil -> build_default_sentry_context(meta.job)
+      handler -> handler.handle_error(meta)
+    end
   end
 
-  defp handle_error(%{job: job}) do
-    # Default Sentry context for jobs without a domain-specific handler
-    build_sentry_context(job)
-  end
-
-  defp build_sentry_context(job) do
+  defp build_default_sentry_context(job) do
     Map.take(job, [:id, :args, :meta, :queue, :worker])
   end
 end
