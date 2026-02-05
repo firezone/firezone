@@ -26,22 +26,20 @@ Inside the `/elixir` directory run the following commands:
 > mix deps.get
 
 # Generate dev cert, install npm packages and build assets
-# -------------------------------------
-> cd apps/web/
+# ---------------------------------------------------------
 > mix phx.gen.cert
 > mix setup
 
 # Setup and seed the DB
 # ---------------------
-> cd ../..
 > mix ecto.seed
 
-# Start all of the portal Elixir apps:
-# ------------------------------------
+# Start the portal:
+# ------------------
 > iex -S mix
 ```
 
-The web and api applications should now be running:
+The web and API endpoints should now be running:
 
 - Web -> https://localhost:13443/
 - API -> ws://localhost:13001/

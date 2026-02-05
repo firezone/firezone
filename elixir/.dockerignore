@@ -1,9 +1,7 @@
 # Elixir
-apps/web/assets/node_modules
-apps/web/priv/static/dist
-apps/web/priv/cert
-apps/api/priv/static/dist
-apps/api/priv/cert
+assets/node_modules
+priv/static/dist
+priv/cert
 _build
 **/cover
 
