@@ -43,6 +43,12 @@ struct Args {
     /// The public (i.e. internet-reachable) IPv6 address of the relay server.
     #[arg(long, env)]
     public_ip6_addr: Option<Ipv6Addr>,
+    /// The local IPv4 address to bind the relay's UDP sockets to.
+    #[arg(long, env, default_value = "0.0.0.0")]
+    bind_ip4_addr: Ipv4Addr,
+    /// The local IPv6 address to bind the relay's UDP sockets to.
+    #[arg(long, env, default_value = "::")]
+    bind_ip6_addr: Ipv6Addr,
     /// The port to listen on for STUN messages.
     #[arg(long, env, hide = true, default_value = "3478")]
     listen_port: u16,
@@ -259,7 +265,15 @@ async fn try_main(args: Args) -> Result<()> {
         Arc::new(socket_factory::tcp),
     );
 
-    let mut eventloop = Eventloop::new(server, ebpf, channel, public_addr, is_connected)?;
+    let mut eventloop = Eventloop::new(
+        server,
+        ebpf,
+        channel,
+        public_addr,
+        args.bind_ip4_addr,
+        args.bind_ip6_addr,
+        is_connected,
+    )?;
 
     tracing::info!(target: "relay", "Listening for incoming traffic on UDP port {0}", args.listen_port);
 
@@ -432,6 +446,11 @@ struct Eventloop<R> {
     last_num_bytes_relayed: u64,
 
     buffer: [u8; MAX_UDP_SIZE],
+
+    /// IPv4 address to bind sockets to.
+    bind_ip4: Ipv4Addr,
+    /// IPv6 address to bind sockets to.
+    bind_ip6: Ipv6Addr,
 }
 
 impl<R> Eventloop<R>
@@ -443,13 +462,15 @@ where
         ebpf: Option<ebpf::Program>,
         portal: PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
         public_address: IpStack,
+        bind_ip4: Ipv4Addr,
+        bind_ip6: Ipv6Addr,
         is_connected: Arc<AtomicBool>,
     ) -> Result<Self> {
         let mut sockets = Sockets::new();
 
         if public_address.as_v4().is_some() {
             sockets
-                .bind(server.listen_port(), AddressFamily::V4)
+                .bind(server.listen_port(), AddressFamily::V4, bind_ip4.into())
                 .with_context(|| {
                     format!(
                         "Failed to bind to port {0} on IPv4 interfaces",
@@ -459,7 +480,7 @@ where
         }
         if public_address.as_v6().is_some() {
             sockets
-                .bind(server.listen_port(), AddressFamily::V6)
+                .bind(server.listen_port(), AddressFamily::V6, bind_ip6.into())
                 .with_context(|| {
                     format!(
                         "Failed to bind to port {0} on IPv6 interfaces",
@@ -481,6 +502,8 @@ where
             ebpf,
             buffer: [0u8; MAX_UDP_SIZE],
             sigterm: signals::Terminate::new()?,
+            bind_ip4,
+            bind_ip6,
         })
     }
 
@@ -503,12 +526,18 @@ where
                         }
                     }
                     Command::CreateAllocation { port, family } => {
-                        self.sockets.bind(port.value(), family).with_context(|| {
-                            format!(
-                                "Failed to bind to port {} on {family} interfaces",
-                                port.value()
-                            )
-                        })?;
+                        let bind_addr = match family {
+                            AddressFamily::V4 => self.bind_ip4.into(),
+                            AddressFamily::V6 => self.bind_ip6.into(),
+                        };
+                        self.sockets
+                            .bind(port.value(), family, bind_addr)
+                            .with_context(|| {
+                                format!(
+                                    "Failed to bind to port {} on {family} interfaces",
+                                    port.value()
+                                )
+                            })?;
 
                         tracing::info!(target: "relay", %port, %family, "Created allocation");
                     }
