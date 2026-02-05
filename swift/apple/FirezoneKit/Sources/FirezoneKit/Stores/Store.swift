@@ -5,7 +5,6 @@
 //
 
 import Combine
-import CryptoKit
 import NetworkExtension
 import OSLog
 import UserNotifications
@@ -27,7 +26,6 @@ public final class Store: ObservableObject {
 
   // Hash for resource list optimisation
   private var connlibStateHash = Data()
-  private let decoder = PropertyListDecoder()
 
   // User notifications
   @Published private(set) var decision: UNAuthorizationStatus?
@@ -435,7 +433,7 @@ public final class Store: ObservableObject {
   /// - Throws: IPCClient.Error if IPC communication fails
   private func fetchState(session: NETunnelProviderSession) async throws {
     // Capture current hash before IPC call
-    let currentHash = connlibStateHash
+    let currentHash = self.connlibStateHash
 
     // If no data returned, state hasn't changed - no update needed
     guard let data = try await IPCClient.fetchState(session: session, currentHash: currentHash)
@@ -443,21 +441,20 @@ public final class Store: ObservableObject {
       return
     }
 
-    // Compute new hash and decode state
-    let newHash = Data(SHA256.hash(data: data))
-    let decoded = try decoder.decode(ConnlibState.self, from: data)
+    // Decode state and compute hash
+    let (state, hash) = try ConnlibState.decode(from: data)
 
     // Update both hash and resource list
-    connlibStateHash = newHash
+    self.connlibStateHash = hash
 
-    if let resources = decoded.resources {
+    if let resources = state.resources {
       resourceList = ResourceList.loaded(resources)
     }
 
     // Handle unreachable resources and show notifications
     await showNotificationsForUnreachableResources(
-      unreachableResources: decoded.unreachableResources,
-      resources: decoded.resources ?? []
+      unreachableResources: state.unreachableResources,
+      resources: state.resources ?? []
     )
   }
 

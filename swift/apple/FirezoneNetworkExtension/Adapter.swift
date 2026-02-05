@@ -6,7 +6,6 @@
 
 // TODO: Refactor to fix file length
 
-import CryptoKit
 import FirezoneKit
 import Foundation
 import NetworkExtension
@@ -291,21 +290,15 @@ actor Adapter {
   func getStateIfVersionDifferentFrom(
     hash: Data
   ) -> Data? {
-    let state = ConnlibState(
-      resources: self.resources?.map { self.convertResource($0) },
-      unreachableResources: self.unreachableResources
-    )
-
-    guard let encoded = try? PropertyListEncoder().encode(state)
-    else {
-      Log.log("Failed to encode state as PropertyList")
+    do {
+      return try ConnlibState.encodeIfChanged(
+        resources: self.resources?.map { self.convertResource($0) },
+        unreachableResources: self.unreachableResources,
+        comparedTo: hash
+      )
+    } catch {
+      Log.log("Failed to encode state as PropertyList: \(error)")
       return nil
-    }
-
-    if hash == Data(SHA256.hash(data: encoded)) {
-      return nil
-    } else {
-      return encoded
     }
   }
 
