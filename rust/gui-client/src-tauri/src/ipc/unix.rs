@@ -1,6 +1,11 @@
+//! Unix IPC implementation using Unix Domain Sockets.
+//!
+//! Shared by Linux and macOS. The production macOS client uses the native
+//! Swift implementation in `swift/apple/`; this enables running controller
+//! tests on macOS.
+
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result};
-use bin_shared::BUNDLE_ID;
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
@@ -71,9 +76,13 @@ impl Server {
         let perms = std::fs::Permissions::from_mode(0o660);
         std::fs::set_permissions(&sock_path, perms).context("Failed to set permissions on UDS")?;
 
-        // TODO: Change this to `notify_service_controller` and put it in
-        // the same place in the Tunnel service's main loop as in the Headless Client.
-        sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
+        #[cfg(target_os = "linux")]
+        {
+            // TODO: Change this to `notify_service_controller` and put it in
+            // the same place in the Tunnel service's main loop as in the Headless Client.
+            sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
+        }
+
         Ok(Self { listener, id })
     }
 
@@ -100,14 +109,31 @@ impl Server {
 ///
 /// Test sockets live in e.g. `/run/user/1000/dev.firezone.client/data/`
 fn ipc_path(id: SocketId) -> Result<PathBuf> {
-    Ok(match id {
-        SocketId::Tunnel => PathBuf::from("/run").join(BUNDLE_ID).join("tunnel.sock"),
-        SocketId::Gui => bin_shared::known_dirs::runtime()
-            .context("$XDG_RUNTIME_DIR not set")?
-            .join("gui.sock"),
-        #[cfg(test)]
-        SocketId::Test(id) => bin_shared::known_dirs::runtime()
-            .context("$XDG_RUNTIME_DIR not set")?
-            .join(format!("ipc_test_{id}.sock")),
-    })
+    #[cfg(target_os = "linux")]
+    {
+        use bin_shared::BUNDLE_ID;
+        Ok(match id {
+            SocketId::Tunnel => PathBuf::from("/run").join(BUNDLE_ID).join("tunnel.sock"),
+            SocketId::Gui => bin_shared::known_dirs::runtime()
+                .context("$XDG_RUNTIME_DIR not set")?
+                .join("gui.sock"),
+            #[cfg(test)]
+            SocketId::Test(id) => bin_shared::known_dirs::runtime()
+                .context("$XDG_RUNTIME_DIR not set")?
+                .join(format!("ipc_test_{id}.sock")),
+        })
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let runtime_dir =
+            bin_shared::known_dirs::runtime().context("Failed to get runtime directory")?;
+
+        Ok(match id {
+            SocketId::Tunnel => runtime_dir.join("tunnel.sock"),
+            SocketId::Gui => runtime_dir.join("gui.sock"),
+            #[cfg(test)]
+            SocketId::Test(id) => runtime_dir.join(format!("ipc_test_{id}.sock")),
+        })
+    }
 }
