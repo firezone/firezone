@@ -269,7 +269,7 @@ class TunnelService : VpnService() {
         if (!token.isNullOrBlank()) {
             tunnelState = State.CONNECTING
             // Dismiss any previous disconnected notifications
-            TunnelStatusNotification.dismissDisconnectedNotification(this)
+            TunnelNotification.dismissDisconnectedNotification(this)
 
             val firebaseInstallationId =
                 runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
@@ -314,7 +314,7 @@ class TunnelService : VpnService() {
 
                             if (startedByUser) {
                                 // Show dismissable disconnected notification
-                                TunnelStatusNotification.showDisconnectedNotification(context)
+                                TunnelNotification.showDisconnectedNotification(context)
                             }
                         }
                 } catch (e: ConnlibException) {
@@ -441,8 +441,8 @@ class TunnelService : VpnService() {
     }
 
     fun startConnectedNotification() {
-        val notification = TunnelStatusNotification.createConnectedNotification(this)
-        startForeground(TunnelStatusNotification.CONNECTED_NOTIFICATION_ID, notification)
+        val notification = TunnelNotification.createConnectedNotification(this)
+        startForeground(TunnelNotification.CONNECTED_NOTIFICATION_ID, notification)
     }
 
     private fun getDeviceName(): String {
@@ -486,11 +486,7 @@ class TunnelService : VpnService() {
         title: String,
         message: String,
     ) {
-        val notification =
-            TunnelErrorNotification.create(this, title, message).build()
-        val notificationManager =
-            getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-        notificationManager.notify(TunnelErrorNotification.ID, notification)
+        TunnelNotification.showErrorNotification(this, title, message)
     }
 
     private suspend fun eventLoop(

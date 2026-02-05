@@ -3,7 +3,7 @@ import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
 import dev.firezone.android.tunnel.TunnelService
-import dev.firezone.android.tunnel.TunnelStatusNotification
+import dev.firezone.android.tunnel.TunnelNotification
 import java.net.InetAddress
 
 class NetworkMonitor(
