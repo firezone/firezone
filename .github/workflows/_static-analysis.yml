@@ -1,7 +1,7 @@
 name: Static Analysis
 on:
   pull_request:
-    types: [edited]
+    types: [opened, edited]
 
 jobs:
   pr-lint:
