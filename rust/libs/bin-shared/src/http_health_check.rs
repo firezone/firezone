@@ -46,29 +46,18 @@ pub struct HealthCheckArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
+    use http::Request;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
-
-    async fn spawn_server(
-        is_ready: impl Fn() -> bool + Clone + Send + Sync + 'static,
-    ) -> SocketAddr {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        tokio::spawn(async move {
-            axum::serve(listener, router(is_ready).into_make_service())
-                .await
-                .unwrap();
-        });
-
-        addr
-    }
+    use tower::ServiceExt;
 
     #[tokio::test]
     async fn healthz_always_returns_200() {
-        let addr = spawn_server(|| false).await;
+        let app = router(|| false);
 
-        let response = reqwest::get(format!("http://{addr}/healthz"))
+        let response = app
+            .oneshot(Request::get("/healthz").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
@@ -76,44 +65,60 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn readyz_returns_200_when_connected() {
-        let addr = spawn_server(|| true).await;
+    async fn readyz_returns_200_when_ready() {
+        let app = router(|| true);
 
-        let response = reqwest::get(format!("http://{addr}/readyz")).await.unwrap();
+        let response = app
+            .oneshot(Request::get("/readyz").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]
-    async fn readyz_returns_503_when_not_connected() {
-        let addr = spawn_server(|| false).await;
+    async fn readyz_returns_503_when_not_ready() {
+        let app = router(|| false);
 
-        let response = reqwest::get(format!("http://{addr}/readyz")).await.unwrap();
+        let response = app
+            .oneshot(Request::get("/readyz").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
 
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
-    async fn readyz_reflects_connection_state_changes() {
-        let is_connected = Arc::new(AtomicBool::new(false));
-        let is_connected_clone = is_connected.clone();
+    async fn readyz_reflects_readiness_state_changes() {
+        let is_ready = Arc::new(AtomicBool::new(false));
+        let is_ready_clone = is_ready.clone();
+        let app = router(move || is_ready_clone.load(Ordering::Relaxed));
 
-        let addr = spawn_server(move || is_connected_clone.load(Ordering::Relaxed)).await;
-
-        // Initially not connected
-        let response = reqwest::get(format!("http://{addr}/readyz")).await.unwrap();
+        // Initially not ready
+        let response = app
+            .clone()
+            .oneshot(Request::get("/readyz").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 
-        // Simulate connection
-        is_connected.store(true, Ordering::Relaxed);
+        // Simulate becoming ready
+        is_ready.store(true, Ordering::Relaxed);
 
-        let response = reqwest::get(format!("http://{addr}/readyz")).await.unwrap();
+        let response = app
+            .clone()
+            .oneshot(Request::get("/readyz").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
-        // Simulate disconnection
-        is_connected.store(false, Ordering::Relaxed);
+        // Simulate becoming not ready
+        is_ready.store(false, Ordering::Relaxed);
 
-        let response = reqwest::get(format!("http://{addr}/readyz")).await.unwrap();
+        let response = app
+            .oneshot(Request::get("/readyz").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }
