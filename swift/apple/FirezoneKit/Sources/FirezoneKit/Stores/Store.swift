@@ -380,7 +380,7 @@ public final class Store: ObservableObject {
     }
 
     // Define the Timer's closure
-    let updateResources: @Sendable (Timer) -> Void = { _ in
+    let updateState: @Sendable (Timer) -> Void = { _ in
       Task {
         await MainActor.run {
           self.resourceUpdateTask?.cancel()
@@ -407,14 +407,14 @@ public final class Store: ObservableObject {
 
     // Configure the timer
     let intervalInSeconds: TimeInterval = 1
-    let timer = Timer(timeInterval: intervalInSeconds, repeats: true, block: updateResources)
+    let timer = Timer(timeInterval: intervalInSeconds, repeats: true, block: updateState)
 
     // Schedule the timer on the main runloop
     RunLoop.main.add(timer, forMode: .common)
     resourcesTimer = timer
 
     // We're impatient, make one call now
-    updateResources(timer)
+    updateState(timer)
   }
 
   private func endUpdatingResources() {
