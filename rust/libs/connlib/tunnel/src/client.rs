@@ -751,6 +751,43 @@ impl ClientState {
         Ok(Ok(()))
     }
 
+    pub fn handle_client_access_authorized(
+        &mut self,
+        cid: ClientId,
+        client_key: PublicKey,
+        client_tun: IpConfig,
+        preshared_key: SecretKey,
+        local_client_ice: IceCredentials,
+        remote_client_ice: IceCredentials,
+        now: Instant,
+    ) -> Result<(), NoTurnServers> {
+        // TODO: Check pending resource authorizations.
+
+        self.node.upsert_connection(
+            ClientOrGatewayId::Client(cid),
+            client_key,
+            x25519::StaticSecret::from(preshared_key.expose_secret().0),
+            snownet::Credentials {
+                username: local_client_ice.username,
+                password: local_client_ice.password,
+            },
+            snownet::Credentials {
+                username: remote_client_ice.username,
+                password: remote_client_ice.password,
+            },
+            now,
+        )?;
+
+        if self.clients.get(&cid).is_none() {
+            self.clients.insert(ClientOnClient::new(cid), &[]);
+        };
+
+        self.clients.add_ip(&cid, &client_tun.v4.into());
+        self.clients.add_ip(&cid, &client_tun.v6.into());
+
+        Ok(())
+    }
+
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
     ///
     /// We only want to do this if the upstream DNS server is set by the portal, otherwise, the server might be a local IP.
