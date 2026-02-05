@@ -352,7 +352,7 @@ defmodule Portal.Okta.SyncTest do
         end
       end)
 
-      assert_raise SyncError, ~r/missing required scopes.*okta\.users\.read/, fn ->
+      assert_raise SyncError, ~r/missing scopes.*okta\.users\.read/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
     end
@@ -517,7 +517,7 @@ defmodule Portal.Okta.SyncTest do
       }
 
       meta = %{reason: exception, job: job}
-      Portal.DirectorySync.ErrorHandler.handle_error(meta)
+      Portal.Okta.SyncError.handle_error(meta)
 
       # Verify error was recorded on directory
       updated_directory = Repo.get(Portal.Okta.Directory, directory.id)
@@ -578,7 +578,7 @@ defmodule Portal.Okta.SyncTest do
       }
 
       meta = %{reason: exception, job: job}
-      Portal.DirectorySync.ErrorHandler.handle_error(meta)
+      Portal.Okta.SyncError.handle_error(meta)
 
       updated_directory = Repo.get(Portal.Okta.Directory, directory.id)
       assert updated_directory.is_disabled == true

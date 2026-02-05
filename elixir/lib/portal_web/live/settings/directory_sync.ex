@@ -1544,10 +1544,10 @@ defmodule PortalWeb.Settings.DirectorySync do
     "Unknown error during verification. Please try again. If the problem persists, contact support."
   end
 
-  # Standard HTTP errors - delegate to ErrorCodes
+  # Standard HTTP errors - delegate to SyncError
   defp parse_okta_verification_error({:error, %Req.Response{status: status, body: body}})
        when is_map(body) and map_size(body) > 0 do
-    Portal.Okta.ErrorCodes.format_error(status, body)
+    Portal.Okta.SyncError.format_for_status(status, body)
   end
 
   # Special case: 403 with empty body has error in WWW-Authenticate header
@@ -1560,16 +1560,16 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp parse_okta_verification_error({:error, %Req.Response{status: status}}) do
-    Portal.Okta.ErrorCodes.format_error(status, nil)
+    Portal.Okta.SyncError.format_for_status(status, nil)
   end
 
   defp parse_okta_verification_error({:error, :empty, resource})
        when resource in [:apps, :users, :groups] do
-    Portal.Okta.ErrorCodes.empty_resource_message(resource)
+    Portal.Okta.SyncError.empty_resource_message(resource)
   end
 
   defp parse_okta_verification_error({:error, %Req.TransportError{} = error}) do
-    Logger.info(Portal.DirectorySync.ErrorHandler.format_transport_error(error))
+    Logger.info(Portal.DirectorySync.CommonError.format(error))
     "Transport error while contacting Okta API.  Please try again"
   end
 

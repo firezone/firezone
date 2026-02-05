@@ -98,8 +98,7 @@ defmodule Portal.Okta.Sync do
         )
 
         raise Okta.SyncError,
-          reason: "Failed to get access token",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :get_access_token
     end
@@ -117,16 +116,14 @@ defmodule Portal.Okta.Sync do
 
         if missing_scopes != [] do
           raise Okta.SyncError,
-            reason: "Access token missing required scopes: #{Enum.join(missing_scopes, ", ")}",
-            context: "scopes: missing #{Enum.join(missing_scopes, ", ")}",
+            error: {:scopes, Enum.join(missing_scopes, ", ")},
             directory_id: directory.id,
             step: :verify_scopes
         end
 
       _ ->
         raise Okta.SyncError,
-          reason: "Could not verify access token scopes",
-          context: "scopes: missing #{Enum.join(@required_scopes, ", ")}",
+          error: {:scopes, Enum.join(@required_scopes, ", ")},
           directory_id: directory.id,
           step: :verify_scopes
     end
@@ -151,8 +148,7 @@ defmodule Portal.Okta.Sync do
         )
 
         raise Okta.SyncError,
-          reason: "Failed to fetch apps",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :list_apps
     end
@@ -210,8 +206,7 @@ defmodule Portal.Okta.Sync do
     case errors do
       [error | _] ->
         raise Okta.SyncError,
-          reason: "Failed to stream app users",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_app_users
 
@@ -253,8 +248,7 @@ defmodule Portal.Okta.Sync do
             )
 
             raise Okta.SyncError,
-              reason: "Failed to upsert identities: #{inspect(reason)}",
-              context: nil,
+              error: {:db_error, reason},
               directory_id: directory.id,
               step: :batch_upsert_identities
         end
@@ -292,8 +286,7 @@ defmodule Portal.Okta.Sync do
     case errors do
       [error | _] ->
         raise Okta.SyncError,
-          reason: "Failed to stream app groups",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_app_groups
 
@@ -389,8 +382,7 @@ defmodule Portal.Okta.Sync do
         )
 
         raise Okta.SyncError,
-          reason: "Failed to upsert memberships: #{inspect(reason)}",
-          context: nil,
+          error: {:db_error, reason},
           directory_id: directory_id,
           step: :batch_upsert_memberships
     end
@@ -408,8 +400,7 @@ defmodule Portal.Okta.Sync do
 
       {:error, reason}, _acc ->
         raise Okta.SyncError,
-          reason: "Failed to stream group members",
-          context: reason,
+          error: reason,
           directory_id: directory_id,
           step: :stream_group_members
     end)
@@ -427,8 +418,7 @@ defmodule Portal.Okta.Sync do
 
     unless email do
       raise Okta.SyncError,
-        reason: "User '#{user["id"]}' missing required 'email' field",
-        context: "validation: user '#{user["id"]}' missing 'email' field",
+        error: {:validation, "User '#{user["id"]}' missing required 'email' field"},
         directory_id: directory_id,
         step: :process_user
     end
@@ -549,11 +539,11 @@ defmodule Portal.Okta.Sync do
       )
 
       raise Okta.SyncError,
-        reason:
-          "Sync would delete all #{resource_name}. " <>
-            "This may indicate the Okta application was misconfigured or removed. " <>
-            "Please verify your Okta configuration and re-verify the directory connection.",
-        context: "circuit_breaker: would delete all #{resource_name}",
+        error:
+          {:circuit_breaker,
+           "Sync would delete all #{resource_name}. " <>
+             "This may indicate the Okta application was misconfigured or removed. " <>
+             "Please verify your Okta configuration and re-verify the directory connection."},
         directory_id: directory.id,
         step: :check_deletion_threshold
     end
