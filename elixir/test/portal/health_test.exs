@@ -33,7 +33,8 @@ defmodule Portal.HealthTest do
         |> PortalWeb.Endpoint.call([])
 
       assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ready"}
+      assert %{"status" => "ready", "version" => version} = JSON.decode!(conn.resp_body)
+      assert is_binary(version)
     end
   end
 
@@ -53,7 +54,8 @@ defmodule Portal.HealthTest do
         |> PortalAPI.Endpoint.call([])
 
       assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ready"}
+      assert %{"status" => "ready", "version" => version} = JSON.decode!(conn.resp_body)
+      assert is_binary(version)
     end
   end
 
@@ -77,7 +79,8 @@ defmodule Portal.HealthTest do
         |> Portal.Health.call([])
 
       assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ready"}
+      assert %{"status" => "ready", "version" => version} = JSON.decode!(conn.resp_body)
+      assert is_binary(version)
     end
 
     test "returns 503 with status draining when draining file exists", %{
@@ -91,7 +94,8 @@ defmodule Portal.HealthTest do
         |> Portal.Health.call([])
 
       assert conn.status == 503
-      assert JSON.decode!(conn.resp_body) == %{"status" => "draining"}
+      assert %{"status" => "draining", "version" => version} = JSON.decode!(conn.resp_body)
+      assert is_binary(version)
     end
 
     test "returns 503 with status starting when an endpoint is not ready", %{
@@ -108,7 +112,8 @@ defmodule Portal.HealthTest do
         |> Portal.Health.call([])
 
       assert conn.status == 503
-      assert JSON.decode!(conn.resp_body) == %{"status" => "starting"}
+      assert %{"status" => "starting", "version" => version} = JSON.decode!(conn.resp_body)
+      assert is_binary(version)
     end
   end
 
