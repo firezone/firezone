@@ -751,6 +751,7 @@ impl ClientState {
         Ok(Ok(()))
     }
 
+    // TODO: Will this function be called on both sides?
     pub fn handle_client_access_authorized(
         &mut self,
         cid: ClientId,
@@ -763,6 +764,7 @@ impl ClientState {
     ) -> Result<(), NoTurnServers> {
         // TODO: Check pending resource authorizations.
 
+        // TODO: Pass `controlling` ICE flag into here.
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
