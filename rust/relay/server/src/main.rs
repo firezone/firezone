@@ -470,7 +470,7 @@ where
 
         if public_address.as_v4().is_some() {
             sockets
-                .bind(server.listen_port(), AddressFamily::V4, bind_ip4.into())
+                .bind(server.listen_port(), bind_ip4.into())
                 .with_context(|| {
                     format!(
                         "Failed to bind to port {0} on IPv4 interfaces",
@@ -480,7 +480,7 @@ where
         }
         if public_address.as_v6().is_some() {
             sockets
-                .bind(server.listen_port(), AddressFamily::V6, bind_ip6.into())
+                .bind(server.listen_port(), bind_ip6.into())
                 .with_context(|| {
                     format!(
                         "Failed to bind to port {0} on IPv6 interfaces",
@@ -531,7 +531,7 @@ where
                             AddressFamily::V6 => self.bind_ip6.into(),
                         };
                         self.sockets
-                            .bind(port.value(), family, bind_addr)
+                            .bind(port.value(), bind_addr)
                             .with_context(|| {
                                 format!(
                                     "Failed to bind to port {} on {family} interfaces",
