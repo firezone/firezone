@@ -117,6 +117,7 @@ pub struct FlowCreationFailed {
 pub enum FailReason {
     NotFound,
     Offline,
+    VersionMismatch,
     Forbidden,
     #[serde(other)]
     Unknown,

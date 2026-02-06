@@ -66,6 +66,39 @@ public class SessionNotification: NSObject {
 
     return settings.authorizationStatus
   }
+
+  /// Shows a notification for an unreachable resource
+  ///
+  /// - Parameters:
+  ///   - title: The notification title
+  ///   - body: The notification body text
+  func showResourceNotification(title: String, body: String) async {
+    // Check if we have permission to show notifications
+    let settings = await notificationCenter.notificationSettings()
+    guard settings.authorizationStatus == .authorized else {
+      Log.log("Cannot show notification - not authorized")
+      return
+    }
+
+    let content = UNMutableNotificationContent()
+    content.title = title
+    content.body = body
+    content.sound = .default
+
+    let request = UNNotificationRequest(
+      identifier: UUID().uuidString,
+      content: content,
+      trigger: nil  // Show immediately
+    )
+
+    do {
+      try await notificationCenter.add(request)
+      Log.log("Notification shown: \(title)")
+    } catch {
+      Log.warning("Failed to show notification: \(error)")
+    }
+  }
+
   #if os(iOS)
     // In iOS, use User Notifications.
     // This gets called from the tunnel side.
