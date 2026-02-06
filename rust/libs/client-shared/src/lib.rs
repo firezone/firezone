@@ -72,36 +72,25 @@ impl Session {
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-
-        // Use `watch` channels for resource list and TUN config because we are only ever interested in the last value and don't care about intermediate updates.
-        let (tun_config_sender, tun_config_receiver) = watch::channel(None);
-        let (resource_list_sender, resource_list_receiver) = watch::channel(Vec::default());
-        let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
-
-        let eventloop = handle.spawn(
-            Eventloop::new(
-                tcp_socket_factory,
-                udp_socket_factory,
-                is_internet_resource_active,
-                dns_servers,
-                portal,
-                cmd_rx,
-                resource_list_sender,
-                tun_config_sender,
-                user_notification_sender,
-            )
-            .run(),
+        let event_stream = EventStream::new(
+            |resource_list_sender, tun_config_sender, user_notification_sender| {
+                Eventloop::new(
+                    tcp_socket_factory,
+                    udp_socket_factory,
+                    is_internet_resource_active,
+                    dns_servers,
+                    portal,
+                    cmd_rx,
+                    resource_list_sender,
+                    tun_config_sender,
+                    user_notification_sender,
+                )
+                .run()
+            },
+            handle,
         );
 
-        (
-            Self { channel: cmd_tx },
-            EventStream {
-                eventloop: eventloop.fuse(),
-                resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
-                tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
-                user_notification_receiver,
-            },
-        )
+        (Self { channel: cmd_tx }, event_stream)
     }
 
     /// Reset a [`Session`].
@@ -187,5 +176,38 @@ impl EventStream {
 impl Drop for Session {
     fn drop(&mut self) {
         tracing::debug!("`Session` dropped")
+    }
+}
+
+impl EventStream {
+    fn new<E>(
+        make_event_loop: impl FnOnce(
+            watch::Sender<Vec<ResourceView>>,
+            watch::Sender<Option<TunConfig>>,
+            mpsc::Sender<UserNotification>,
+        ) -> E,
+        handle: tokio::runtime::Handle,
+    ) -> Self
+    where
+        E: Future<Output = Result<(), DisconnectError>> + Send + 'static,
+    {
+        let (tun_config_sender, tun_config_receiver) = watch::channel(None);
+        let (resource_list_sender, resource_list_receiver) = watch::channel(Vec::default());
+        let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
+
+        let event_loop = make_event_loop(
+            resource_list_sender,
+            tun_config_sender,
+            user_notification_sender,
+        );
+
+        let eventloop = handle.spawn(event_loop);
+
+        Self {
+            eventloop: eventloop.fuse(),
+            resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
+            tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
+            user_notification_receiver,
+        }
     }
 }
