@@ -211,3 +211,35 @@ impl EventStream {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn event_stream_turn_panic_into_disconnected() {
+        let mut stream = EventStream::new(
+            |_, _, _| async move { panic!("Boom!") },
+            tokio::runtime::Handle::current(),
+        );
+
+        let Event::Disconnected(error) = stream.next().await.unwrap() else {
+            panic!("Unexpected event!");
+        };
+
+        assert!(error.to_string().contains("Boom!"));
+    }
+
+    #[tokio::test]
+    async fn repeated_polls_dont_panic() {
+        let mut stream = EventStream::new(
+            |_, _, _| async move { panic!("Boom!") },
+            tokio::runtime::Handle::current(),
+        );
+
+        let _next = stream.next().await.unwrap();
+        let poll = stream.poll_next(&mut Context::from_waker(futures::task::noop_waker_ref()));
+
+        assert!(poll.is_pending());
+    }
+}
