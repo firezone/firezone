@@ -9,14 +9,14 @@ use crate::{
     view::{GeneralSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
-use connlib_model::{ResourceId, ResourceView, Site, SiteId};
+use connlib_model::{ResourceId, ResourceView, Site};
 use futures::{
     SinkExt, StreamExt,
     stream::{self, BoxStream},
 };
 use logging::FilterReloadHandle;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{collections::HashSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
+use std::{ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
 use telemetry::Telemetry;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
@@ -42,9 +42,6 @@ pub struct Controller<I: GuiIntegration> {
     status: Status,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
-
-    /// Sites we have tried to access, failed and showed a notification as a result.
-    unreachable_sites: HashSet<SiteId>,
 
     gui_ipc_clients: BoxStream<
         'static,
@@ -218,7 +215,6 @@ impl<I: GuiIntegration> Controller<I> {
                 Some((result, gui_ipc))
             })
             .boxed(),
-            unreachable_sites: Default::default(),
         };
 
         controller.main_loop().await?;
@@ -673,10 +669,6 @@ impl<I: GuiIntegration> Controller<I> {
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
 
-                if !self.unreachable_sites.insert(site.id) {
-                    return Ok(ControlFlow::Continue(()));
-                }
-
                 self.integration.show_notification(
                     format!("Failed to connect to '{}'", resource.name()),
                     format!("Your Firezone Client is incompatible with all Gateways in the site '{}'. Please update your Client to the latest version and contact your administrator if the issue persists.", site.name)
@@ -684,10 +676,6 @@ impl<I: GuiIntegration> Controller<I> {
             }
             service::ServerMsg::AllGatewaysOffline { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
-
-                if !self.unreachable_sites.insert(site.id) {
-                    return Ok(ControlFlow::Continue(()));
-                }
 
                 self.integration.show_notification(
                     format!("Failed to connect to '{}'", resource.name()),
@@ -904,7 +892,6 @@ impl<I: GuiIntegration> Controller<I> {
         }
         self.auth.sign_out()?;
         self.status = Status::Disconnected;
-        self.unreachable_sites.clear();
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
         // connlib already disconnected itself.
@@ -1082,21 +1069,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shows_offline_gateway_notification_once_per_site() {
+    async fn shows_offline_gateway_notification() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
 
         let resource_foo = dns_resource_foo();
-        let resource_bar = dns_resource_bar();
         boot_tunnel(
             &mut test_controller,
             &mut mock_tunnel,
-            vec![resource_foo.clone(), resource_bar.clone()],
+            vec![resource_foo.clone()],
         )
         .await;
 
-        // Trigger offline notification for first resource
+        // Trigger offline notification for resource
         mock_tunnel
             .send_all_gateways_offline(resource_foo.id())
             .await;
@@ -1105,75 +1091,27 @@ mod tests {
             .wait_integration(|i| i.nth_notification(1))
             .await;
         assert_eq!(title, "Failed to connect to 'foo.example.com'");
-        assert!(body.contains("All Gateways in the site 'Example Site' are offline"));
-
-        // Trigger offline notification for second resource in same site
-        mock_tunnel
-            .send_all_gateways_offline(resource_bar.id())
-            .await;
-
-        tokio::time::sleep(Duration::from_millis(500)).await;
         assert_eq!(
-            test_controller.integration().notifications.len(),
-            2,
-            "should not show notification again for same site"
+            body,
+            "All Gateways in the site 'Example Site' are offline. Contact your administrator to resolve this issue."
         );
     }
 
     #[tokio::test]
-    async fn shows_offline_gateway_notification_for_different_sites() {
+    async fn shows_gateway_version_mismatch_notification() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
 
         let resource_foo = dns_resource_foo();
-        let resource_baz = dns_resource_baz();
         boot_tunnel(
             &mut test_controller,
             &mut mock_tunnel,
-            vec![resource_foo.clone(), resource_baz.clone()],
+            vec![resource_foo.clone()],
         )
         .await;
 
-        // Trigger offline notification for first resource
-        mock_tunnel
-            .send_all_gateways_offline(resource_foo.id())
-            .await;
-
-        let (title, body) = test_controller
-            .wait_integration(|i| i.nth_notification(1))
-            .await;
-        assert_eq!(title, "Failed to connect to 'foo.example.com'");
-        assert!(body.contains("All Gateways in the site 'Example Site' are offline"));
-
-        // Trigger offline notification for resource in different site
-        mock_tunnel
-            .send_all_gateways_offline(resource_baz.id())
-            .await;
-
-        let (title, body) = test_controller
-            .wait_integration(|i| i.nth_notification(2))
-            .await;
-        assert_eq!(title, "Failed to connect to 'baz.example.com'");
-        assert!(body.contains("All Gateways in the site 'Other Site' are offline"));
-    }
-
-    #[tokio::test]
-    async fn shows_version_mismatch_notification_once_per_site() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-
-        let resource_foo = dns_resource_foo();
-        let resource_bar = dns_resource_bar();
-        boot_tunnel(
-            &mut test_controller,
-            &mut mock_tunnel,
-            vec![resource_foo.clone(), resource_bar.clone()],
-        )
-        .await;
-
-        // Trigger version mismatch notification for first resource
+        // Trigger offline notification for resource
         mock_tunnel
             .send_gateway_version_mismatch(resource_foo.id())
             .await;
@@ -1182,37 +1120,10 @@ mod tests {
             .wait_integration(|i| i.nth_notification(1))
             .await;
         assert_eq!(title, "Failed to connect to 'foo.example.com'");
-        assert!(body.contains(
-            "Your Firezone Client is incompatible with all Gateways in the site 'Example Site'"
-        ));
-
-        // Trigger version mismatch for second resource in same site
-        mock_tunnel
-            .send_gateway_version_mismatch(resource_bar.id())
-            .await;
-
-        tokio::time::sleep(Duration::from_millis(500)).await;
         assert_eq!(
-            test_controller.integration().notifications.len(),
-            2,
-            "should not show notification again for same site"
+            body,
+            "Your Firezone Client is incompatible with all Gateways in the site 'Example Site'. Please update your Client to the latest version and contact your administrator if the issue persists."
         );
-    }
-
-    #[test]
-    fn foo_and_bar_are_in_same_site() {
-        let foo = dns_resource_foo();
-        let bar = dns_resource_bar();
-
-        assert_eq!(foo.sites(), bar.sites());
-    }
-
-    #[test]
-    fn foo_and_baz_are_in_different_site() {
-        let foo = dns_resource_foo();
-        let baz = dns_resource_baz();
-
-        assert_ne!(foo.sites(), baz.sites());
     }
 
     async fn boot_tunnel(
@@ -1521,34 +1432,6 @@ mod tests {
             sites: vec![Site {
                 id: SiteId::from_u128(2),
                 name: "Example Site".to_owned(),
-            }],
-            status: connlib_model::ResourceStatus::Offline,
-        })
-    }
-
-    fn dns_resource_bar() -> ResourceView {
-        ResourceView::Dns(connlib_model::DnsResourceView {
-            id: ResourceId::from_u128(3),
-            address: "bar.example.com".to_owned(),
-            name: "bar.example.com".to_owned(),
-            address_description: None,
-            sites: vec![Site {
-                id: SiteId::from_u128(2),
-                name: "Example Site".to_owned(),
-            }],
-            status: connlib_model::ResourceStatus::Offline,
-        })
-    }
-
-    fn dns_resource_baz() -> ResourceView {
-        ResourceView::Dns(connlib_model::DnsResourceView {
-            id: ResourceId::from_u128(4),
-            address: "baz.example.com".to_owned(),
-            name: "baz.example.com".to_owned(),
-            address_description: None,
-            sites: vec![Site {
-                id: SiteId::from_u128(5),
-                name: "Other Site".to_owned(),
             }],
             status: connlib_model::ResourceStatus::Offline,
         })
