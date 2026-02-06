@@ -14,6 +14,7 @@ use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use std::collections::HashSet;
 use std::future;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -45,6 +46,8 @@ pub struct EventStream {
     resource_list_receiver: WatchStream<Vec<ResourceView>>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
     user_notification_receiver: mpsc::Receiver<UserNotification>,
+
+    seen_notifications: HashSet<UserNotification>,
 }
 
 /// Events the Client application should use to update the state of the operating system / app.
@@ -130,36 +133,48 @@ impl Session {
 
 impl EventStream {
     pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Event>> {
-        if let Poll::Ready(Some(resources)) = self.resource_list_receiver.poll_next_unpin(cx) {
-            return Poll::Ready(Some(Event::ResourcesUpdated(resources)));
-        }
-
-        if let Poll::Ready(Some(Some(config))) = self.tun_config_receiver.poll_next_unpin(cx) {
-            return Poll::Ready(Some(Event::TunInterfaceUpdated(config)));
-        }
-
-        match self.user_notification_receiver.poll_recv(cx) {
-            Poll::Ready(Some(UserNotification::AllGatewaysOffline { resource_id })) => {
-                return Poll::Ready(Some(Event::AllGatewaysOffline { resource_id }));
+        loop {
+            if let Poll::Ready(Some(resources)) = self.resource_list_receiver.poll_next_unpin(cx) {
+                return Poll::Ready(Some(Event::ResourcesUpdated(resources)));
             }
-            Poll::Ready(Some(UserNotification::GatewayVersionMismatch { resource_id })) => {
-                return Poll::Ready(Some(Event::GatewayVersionMismatch { resource_id }));
-            }
-            Poll::Ready(None) | Poll::Pending => {}
-        }
 
-        match self.eventloop.poll_unpin(cx) {
-            Poll::Ready(Ok(Ok(()))) => return Poll::Ready(None),
-            Poll::Ready(Ok(Err(e))) => return Poll::Ready(Some(Event::Disconnected(e))),
-            Poll::Ready(Err(e)) => {
-                return Poll::Ready(Some(Event::Disconnected(DisconnectError::from(
-                    anyhow::Error::new(e).context("connlib crashed"),
-                ))));
+            if let Poll::Ready(Some(Some(config))) = self.tun_config_receiver.poll_next_unpin(cx) {
+                return Poll::Ready(Some(Event::TunInterfaceUpdated(config)));
             }
-            Poll::Pending => {}
-        }
 
-        Poll::Pending
+            match self.user_notification_receiver.poll_recv(cx) {
+                Poll::Ready(Some(event @ UserNotification::AllGatewaysOffline { resource_id })) => {
+                    if !self.seen_notifications.insert(event) {
+                        continue;
+                    }
+
+                    return Poll::Ready(Some(Event::AllGatewaysOffline { resource_id }));
+                }
+                Poll::Ready(Some(
+                    event @ UserNotification::GatewayVersionMismatch { resource_id },
+                )) => {
+                    if !self.seen_notifications.insert(event) {
+                        continue;
+                    }
+
+                    return Poll::Ready(Some(Event::GatewayVersionMismatch { resource_id }));
+                }
+                Poll::Ready(None) | Poll::Pending => {}
+            }
+
+            match self.eventloop.poll_unpin(cx) {
+                Poll::Ready(Ok(Ok(()))) => return Poll::Ready(None),
+                Poll::Ready(Ok(Err(e))) => return Poll::Ready(Some(Event::Disconnected(e))),
+                Poll::Ready(Err(e)) => {
+                    return Poll::Ready(Some(Event::Disconnected(DisconnectError::from(
+                        anyhow::Error::new(e).context("connlib crashed"),
+                    ))));
+                }
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
+        }
     }
 
     pub async fn next(&mut self) -> Option<Event> {
@@ -208,6 +223,7 @@ impl EventStream {
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
             tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
             user_notification_receiver,
+            seen_notifications: Default::default(),
         }
     }
 }
@@ -241,5 +257,71 @@ mod tests {
         let poll = stream.poll_next(&mut Context::from_waker(futures::task::noop_waker_ref()));
 
         assert!(poll.is_pending());
+    }
+
+    #[tokio::test]
+    async fn deduplicates_offline_notifications() {
+        let mut stream = EventStream::new(
+            |_, _, sender| async move {
+                sender
+                    .send(UserNotification::AllGatewaysOffline {
+                        resource_id: ResourceId::from_u128(1),
+                    })
+                    .await
+                    .unwrap();
+                sender
+                    .send(UserNotification::AllGatewaysOffline {
+                        resource_id: ResourceId::from_u128(1),
+                    })
+                    .await
+                    .unwrap();
+
+                Ok(())
+            },
+            tokio::runtime::Handle::current(),
+        );
+
+        let Event::AllGatewaysOffline { resource_id } = stream.next().await.unwrap() else {
+            panic!("Unexpected event")
+        };
+
+        assert_eq!(resource_id, ResourceId::from_u128(1));
+        assert!(
+            stream.next().await.is_none(),
+            "stream should be closed if event-loop returns"
+        );
+    }
+
+    #[tokio::test]
+    async fn deduplicates_version_mismatch_notifications() {
+        let mut stream = EventStream::new(
+            |_, _, sender| async move {
+                sender
+                    .send(UserNotification::GatewayVersionMismatch {
+                        resource_id: ResourceId::from_u128(1),
+                    })
+                    .await
+                    .unwrap();
+                sender
+                    .send(UserNotification::GatewayVersionMismatch {
+                        resource_id: ResourceId::from_u128(1),
+                    })
+                    .await
+                    .unwrap();
+
+                Ok(())
+            },
+            tokio::runtime::Handle::current(),
+        );
+
+        let Event::GatewayVersionMismatch { resource_id } = stream.next().await.unwrap() else {
+            panic!("Unexpected event")
+        };
+
+        assert_eq!(resource_id, ResourceId::from_u128(1));
+        assert!(
+            stream.next().await.is_none(),
+            "stream should be closed if event-loop returns"
+        );
     }
 }

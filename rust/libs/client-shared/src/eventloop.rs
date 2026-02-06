@@ -68,6 +68,7 @@ pub enum Command {
     SetInternetResourceState(bool),
 }
 
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum UserNotification {
     AllGatewaysOffline { resource_id: ResourceId },
     GatewayVersionMismatch { resource_id: ResourceId },
