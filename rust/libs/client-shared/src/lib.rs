@@ -130,17 +130,6 @@ impl Session {
 
 impl EventStream {
     pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Event>> {
-        match self.eventloop.poll_unpin(cx) {
-            Poll::Ready(Ok(Ok(()))) => return Poll::Ready(None),
-            Poll::Ready(Ok(Err(e))) => return Poll::Ready(Some(Event::Disconnected(e))),
-            Poll::Ready(Err(e)) => {
-                return Poll::Ready(Some(Event::Disconnected(DisconnectError::from(
-                    anyhow::Error::new(e).context("connlib crashed"),
-                ))));
-            }
-            Poll::Pending => {}
-        }
-
         if let Poll::Ready(Some(resources)) = self.resource_list_receiver.poll_next_unpin(cx) {
             return Poll::Ready(Some(Event::ResourcesUpdated(resources)));
         }
@@ -157,6 +146,17 @@ impl EventStream {
                 return Poll::Ready(Some(Event::GatewayVersionMismatch { resource_id }));
             }
             Poll::Ready(None) | Poll::Pending => {}
+        }
+
+        match self.eventloop.poll_unpin(cx) {
+            Poll::Ready(Ok(Ok(()))) => return Poll::Ready(None),
+            Poll::Ready(Ok(Err(e))) => return Poll::Ready(Some(Event::Disconnected(e))),
+            Poll::Ready(Err(e)) => {
+                return Poll::Ready(Some(Event::Disconnected(DisconnectError::from(
+                    anyhow::Error::new(e).context("connlib crashed"),
+                ))));
+            }
+            Poll::Pending => {}
         }
 
         Poll::Pending
