@@ -10,7 +10,12 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="11779">
+          Notifies the user when a connection to a resource cannot be
+          established.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.10" date={new Date("2026-02-02")}>
         <ChangeItem pull="11625">
           Fails faster when the initial connection to the control plane cannot

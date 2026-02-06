@@ -239,7 +239,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       case .signOut:
         do { try Token.delete() } catch { Log.error(error) }
         completionHandler?(nil)
-      case .getResourceList(let hash):
+      case .getState(let hash):
         guard let adapter else {
           Log.warning("Adapter is nil")
           completionHandler?(nil)
@@ -248,8 +248,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // Use hash comparison to only return resources if they've changed
         Task { @Sendable in
-          let resourceData = await adapter.getResourcesIfVersionDifferentFrom(hash: hash)
-          completionHandler?(resourceData)
+          // Use hash comparison to only return state if it changed
+          let connlibState = await adapter.getStateIfVersionDifferentFrom(hash: hash)
+          completionHandler?(connlibState)
         }
       case .clearLogs:
         clearLogs(completionHandler)

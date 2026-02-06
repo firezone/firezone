@@ -5,7 +5,6 @@
 //
 
 import Combine
-import CryptoKit
 import NetworkExtension
 import OSLog
 import UserNotifications
@@ -26,8 +25,7 @@ public final class Store: ObservableObject {
   @Published public private(set) var vpnStatus: NEVPNStatus?
 
   // Hash for resource list optimisation
-  private var resourceListHash = Data()
-  private let decoder = PropertyListDecoder()
+  private var connlibStateHash = Data()
 
   // User notifications
   @Published private(set) var decision: UNAuthorizationStatus?
@@ -57,6 +55,9 @@ public final class Store: ObservableObject {
 
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
+
+  // Track which unreachable resource notifications we have already shown
+  private var unreachableResources: Set<UnreachableResource> = []
 
   public init(configuration: Configuration? = nil) {
     self.configuration = configuration ?? Configuration.shared
@@ -333,6 +334,9 @@ public final class Store: ObservableObject {
     shownAlertIds.removeAll()
     UserDefaults.standard.removeObject(forKey: "shownAlertIds")
 
+    // Clear notified unreachable resources for fresh session
+    unreachableResources.removeAll()
+
     // Bring the tunnel up and send it a token and configuration to start
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
@@ -374,7 +378,7 @@ public final class Store: ObservableObject {
     }
 
     // Define the Timer's closure
-    let updateResources: @Sendable (Timer) -> Void = { _ in
+    let updateState: @Sendable (Timer) -> Void = { _ in
       Task {
         await MainActor.run {
           self.resourceUpdateTask?.cancel()
@@ -382,7 +386,7 @@ public final class Store: ObservableObject {
             if !Task.isCancelled {
               do {
                 guard let session = try self.manager().session() else { return }
-                try await self.fetchResources(session: session)
+                try await self.fetchState(session: session)
               } catch let error as NSError {
                 // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
                 if error.domain == "NEVPNErrorDomain" && error.code == 1 {
@@ -401,14 +405,14 @@ public final class Store: ObservableObject {
 
     // Configure the timer
     let intervalInSeconds: TimeInterval = 1
-    let timer = Timer(timeInterval: intervalInSeconds, repeats: true, block: updateResources)
+    let timer = Timer(timeInterval: intervalInSeconds, repeats: true, block: updateState)
 
     // Schedule the timer on the main runloop
     RunLoop.main.add(timer, forMode: .common)
     resourcesTimer = timer
 
     // We're impatient, make one call now
-    updateResources(timer)
+    updateState(timer)
   }
 
   private func endUpdatingResources() {
@@ -416,32 +420,77 @@ public final class Store: ObservableObject {
     resourcesTimer?.invalidate()
     resourcesTimer = nil
     resourceList = ResourceList.loading
-    resourceListHash = Data()
+    connlibStateHash = Data()
+    unreachableResources.removeAll()
   }
 
-  /// Fetches resources from the tunnel provider, using hash-based optimisation.
+  /// Fetches state from the tunnel provider, using hash-based optimisation.
   ///
-  /// If the resource list hash matches what the provider has, resources are unchanged.
-  /// Otherwise, fetches and caches the new list.
+  /// If the hash matches what the provider has, state is unchanged.
+  /// Otherwise, fetches and caches the new state.
   ///
   /// - Parameter session: The tunnel provider session to communicate with
   /// - Throws: IPCClient.Error if IPC communication fails
-  private func fetchResources(session: NETunnelProviderSession) async throws {
+  private func fetchState(session: NETunnelProviderSession) async throws {
     // Capture current hash before IPC call
-    let currentHash = resourceListHash
+    let currentHash = self.connlibStateHash
 
-    // If no data returned, resources haven't changed - no update needed
-    guard let data = try await IPCClient.fetchResources(session: session, currentHash: currentHash)
+    // If no data returned, state hasn't changed - no update needed
+    guard let data = try await IPCClient.fetchState(session: session, currentHash: currentHash)
     else {
       return
     }
 
-    // Compute new hash and decode resources
-    let newHash = Data(SHA256.hash(data: data))
-    let decoded = try decoder.decode([Resource].self, from: data)
+    // Decode state and compute hash
+    let (resources, unreachableResources, hash) = try ConnlibState.decode(from: data)
 
     // Update both hash and resource list
-    resourceListHash = newHash
-    resourceList = ResourceList.loaded(decoded)
+    self.connlibStateHash = hash
+
+    if let resources = resources {
+      resourceList = ResourceList.loaded(resources)
+    }
+
+    let newlyUnreachableResources = Set(unreachableResources).subtracting(self.unreachableResources)
+
+    await showNotificationsForUnreachableResources(
+      unreachableResources: newlyUnreachableResources,
+      resources: resources ?? []
+    )
+
+    self.unreachableResources = Set(unreachableResources)
   }
+
+  private func showNotificationsForUnreachableResources(
+    unreachableResources: Set<UnreachableResource>,
+    resources: [FirezoneKit.Resource]
+  ) async {
+    for unreachableResource in unreachableResources {
+      // Find the resource and site to get names for the notification
+      guard let resource = resources.first(where: { $0.id == unreachableResource.resourceId }),
+        let site = resource.sites.first
+      else {
+        Log.debug("Unknown resource: \(unreachableResource.resourceId)")
+        continue
+      }
+
+      // Show notification based on reason
+      let title: String
+      let body: String
+
+      switch unreachableResource.reason {
+      case .offline:
+        title = "Failed to connect to '\(resource.name)'"
+        body =
+          "All Gateways in the site '\(site.name)' are offline. Contact your administrator to resolve this issue."
+      case .versionMismatch:
+        title = "Failed to connect to '\(resource.name)'"
+        body =
+          "Your Firezone Client is incompatible with all Gateways in the site '\(site.name)'. Please update your Client to the latest version and contact your administrator if the issue persists."
+      }
+
+      await sessionNotification.showResourceNotification(title: title, body: body)
+    }
+  }
+
 }

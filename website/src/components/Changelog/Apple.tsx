@@ -28,6 +28,10 @@ export default function Apple() {
         <ChangeItem pull="11988">
           Fixes a crash if the currently active log file gets deleted.
         </ChangeItem>
+        <ChangeItem pull="11779">
+          Notifies the user when a connection to a resource cannot be
+          established.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.13" date={new Date("2026-01-30")}>
         <ChangeItem pull="11901">

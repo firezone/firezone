@@ -12,7 +12,7 @@ use bin_shared::{
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
-use connlib_model::ResourceView;
+use connlib_model::{ResourceId, ResourceView};
 use futures::{
     Future as _, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
@@ -87,6 +87,12 @@ pub enum ServerMsg {
     OnDisconnect {
         error_msg: String,
         is_authentication_error: bool,
+    },
+    AllGatewaysOffline {
+        resource_id: ResourceId,
+    },
+    GatewayVersionMismatch {
+        resource_id: ResourceId,
     },
     OnUpdateResources(Vec<ResourceView>),
     /// The Tunnel service is terminating, maybe due to a software update
@@ -493,6 +499,14 @@ impl<'a> Handler<'a> {
                     }))
                     .await?;
                 self.dns_controller.flush()?;
+            }
+            client_shared::Event::AllGatewaysOffline { resource_id } => {
+                self.send_ipc(ServerMsg::AllGatewaysOffline { resource_id })
+                    .await?;
+            }
+            client_shared::Event::GatewayVersionMismatch { resource_id } => {
+                self.send_ipc(ServerMsg::GatewayVersionMismatch { resource_id })
+                    .await?;
             }
             client_shared::Event::ResourcesUpdated(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>

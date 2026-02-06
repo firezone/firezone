@@ -6,7 +6,6 @@
 
 // TODO: Refactor to fix file length
 
-import CryptoKit
 import FirezoneKit
 import Foundation
 import NetworkExtension
@@ -119,6 +118,9 @@ actor Adapter {
   /// Keep track of resources for UI
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
 
+  /// Resources we couldn't connect to
+  private var unreachableResources: [UnreachableResource]
+
   /// Starting parameters
   private let apiURL: String
   private let token: Token
@@ -141,6 +143,7 @@ actor Adapter {
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
     self.providerCommandSender = providerCommandSender
+    self.unreachableResources = []
     self.systemConfigurationResolvers = try SystemConfigurationResolvers()
 
     // Start log cleanup immediately - doesn't depend on tunnel being connected
@@ -282,28 +285,20 @@ actor Adapter {
     // No need to cancel them here - they'll clean up via their defer blocks
   }
 
-  /// Get the current set of resources, only returning them if the resource list has changed.
-  /// Returns `nil` if resources haven't changed (hash matches) or if encoding fails.
-  func getResourcesIfVersionDifferentFrom(hash: Data) -> Data? {
-    // Convert uniffi resources to FirezoneKit resources and encode with PropertyList
-    guard let uniffiResources = resources else {
-      return nil
-    }
-
-    let firezoneResources = uniffiResources.map { convertResource($0) }
-
-    let encoded: Data
+  /// Get the current state in the completionHandler, only returning
+  /// them if the content has changed.
+  func getStateIfVersionDifferentFrom(
+    hash: Data
+  ) -> Data? {
     do {
-      encoded = try PropertyListEncoder().encode(firezoneResources)
+      return try ConnlibState.encodeIfChanged(
+        resources: self.resources?.map { self.convertResource($0) },
+        unreachableResources: self.unreachableResources,
+        comparedTo: hash
+      )
     } catch {
-      Log.log("Failed to encode resources as PropertyList")
+      Log.log("Failed to encode state as PropertyList: \(error)")
       return nil
-    }
-
-    if hash == Data(SHA256.hash(data: encoded)) {
-      return nil
-    } else {
-      return encoded
     }
   }
 
@@ -443,6 +438,14 @@ actor Adapter {
       } else {
         providerCommandSender.send(.cancelWithError(nil))
       }
+
+    case .allGatewaysOffline(let resourceId):
+      self.unreachableResources.append(
+        UnreachableResource(resourceId: resourceId, reason: UnreachableReason.offline))
+
+    case .gatewayVersionMismatch(let resourceId):
+      self.unreachableResources.append(
+        UnreachableResource(resourceId: resourceId, reason: UnreachableReason.versionMismatch))
     }
   }
 

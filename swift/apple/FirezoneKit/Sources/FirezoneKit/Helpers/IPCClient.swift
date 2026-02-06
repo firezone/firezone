@@ -67,10 +67,10 @@ enum IPCClient {
   }
 
   @MainActor
-  static func fetchResources(
+  static func fetchState(
     session: NETunnelProviderSession, currentHash: Data
   ) async throws -> Data? {
-    let message = ProviderMessage.getResourceList(currentHash)
+    let message = ProviderMessage.getState(currentHash)
 
     // Get data from the provider - if hash matches, provider returns nil
     return try await sendProviderMessage(session: session, message: message)

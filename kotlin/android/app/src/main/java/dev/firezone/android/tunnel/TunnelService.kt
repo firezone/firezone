@@ -268,7 +268,7 @@ class TunnelService : VpnService() {
         if (!token.isNullOrBlank()) {
             tunnelState = State.CONNECTING
             // Dismiss any previous disconnected notifications
-            TunnelStatusNotification.dismissDisconnectedNotification(this)
+            TunnelNotification.dismissDisconnectedNotification(this)
 
             val firebaseInstallationId =
                 runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
@@ -313,7 +313,7 @@ class TunnelService : VpnService() {
 
                             if (startedByUser) {
                                 // Show dismissable disconnected notification
-                                TunnelStatusNotification.showDisconnectedNotification(context)
+                                TunnelNotification.showDisconnectedNotification(context)
                             }
                         }
                 } catch (e: ConnlibException) {
@@ -439,8 +439,8 @@ class TunnelService : VpnService() {
     }
 
     fun startConnectedNotification() {
-        val notification = TunnelStatusNotification.createConnectedNotification(this)
-        startForeground(TunnelStatusNotification.CONNECTED_NOTIFICATION_ID, notification)
+        val notification = TunnelNotification.createConnectedNotification(this)
+        startForeground(TunnelNotification.CONNECTED_NOTIFICATION_ID, notification)
     }
 
     private fun getDeviceName(): String {
@@ -472,6 +472,19 @@ class TunnelService : VpnService() {
         ) : TunnelCommand()
 
         data object Reset : TunnelCommand()
+    }
+
+    private fun resourceById(resourceId: String): Pair<Resource, Site>? {
+        val resource = _tunnelResources.find { it.id == resourceId } ?: return null
+        val site = resource.sites?.firstOrNull() ?: return null
+        return Pair(resource, site)
+    }
+
+    private fun showErrorNotification(
+        title: String,
+        message: String,
+    ) {
+        TunnelNotification.showErrorNotification(this, title, message)
     }
 
     private suspend fun eventLoop(
@@ -555,6 +568,24 @@ class TunnelService : VpnService() {
                                     repo.clearActorName()
 
                                     running = false
+                                }
+
+                                is Event.GatewayVersionMismatch -> {
+                                    val (resource, site) = resourceById(event.resourceId) ?: return@use
+
+                                    showErrorNotification(
+                                        "Failed to connect to '${resource.name}'",
+                                        "Your Firezone Client is incompatible with all Gateways in the site '${site.name}'. Please update your Client to the latest version and contact your administrator if the issue persists.",
+                                    )
+                                }
+
+                                is Event.AllGatewaysOffline -> {
+                                    val (resource, site) = resourceById(event.resourceId) ?: return@use
+
+                                    showErrorNotification(
+                                        "Failed to connect to '${resource.name}'",
+                                        "All Gateways in the site '${site.name}' are offline. Contact your administrator to resolve this issue.",
+                                    )
                                 }
 
                                 null -> {
