@@ -49,6 +49,7 @@ config :portal, Portal.Repo.Replica,
 config :portal, Portal.ChangeLogs.ReplicationConnection,
   replication_slot_name: "change_logs_slot",
   publication_name: "change_logs_publication",
+  region: "default",
   enabled: true,
   connection_opts: [
     hostname: "localhost",
@@ -106,6 +107,7 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
 config :portal, Portal.Changes.ReplicationConnection,
   replication_slot_name: "changes_slot",
   publication_name: "changes_publication",
+  region: "default",
   enabled: true,
   connection_opts: [
     hostname: "localhost",
@@ -277,6 +279,8 @@ config :portal, docker_registry: "ghcr.io/firezone"
 config :portal, outbound_email_adapter_configured?: false
 
 config :portal, relay_presence_topic: "presences:global_relays"
+
+config :portal, changes_pubsub_region: "default"
 
 config :portal, web_external_url: "https://localhost:13443"
 

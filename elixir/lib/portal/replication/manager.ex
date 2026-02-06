@@ -19,8 +19,12 @@ defmodule Portal.Replication.Manager do
   @impl true
   def init(connection_module) do
     Process.flag(:trap_exit, true)
+    config = Application.fetch_env!(:portal, connection_module)
+    pg_key = {connection_module, config[:region] || "default"}
     send(self(), :connect)
-    {:ok, %{retries: 0, connection_pid: nil, connection_module: connection_module}}
+
+    {:ok,
+     %{retries: 0, connection_pid: nil, connection_module: connection_module, pg_key: pg_key}}
   end
 
   # Try to find an existing connection process via pg groups, or start a new one.
@@ -28,11 +32,11 @@ defmodule Portal.Replication.Manager do
   # message if it dies, allowing us to immediately try to take over the slot.
 
   @impl true
-  def handle_info(:connect, %{connection_module: connection_module, connection_pid: nil} = state) do
+  def handle_info(:connect, %{connection_pid: nil} = state) do
     Process.send_after(self(), :connect, @retry_interval)
 
     # Check if another node already has the connection
-    case :pg.get_members(connection_module) do
+    case :pg.get_members(state.pg_key) do
       [pid | _] ->
         # Found existing connection, link to it for failover
         link_existing_pid(pid, state)
@@ -45,10 +49,10 @@ defmodule Portal.Replication.Manager do
 
   def handle_info(
         {:EXIT, pid, _reason},
-        %{connection_module: connection_module, connection_pid: pid} = state
+        %{connection_pid: pid} = state
       ) do
     Logger.info(
-      "#{connection_module}: Replication connection died unexpectedly, restarting immediately",
+      "#{inspect(state.pg_key)}: Replication connection died unexpectedly, restarting immediately",
       died_pid: inspect(pid),
       died_node: node(pid)
     )

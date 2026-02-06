@@ -91,7 +91,8 @@ defmodule Portal.Replication.Connection do
               warning_threshold: integer(),
               error_threshold: integer(),
               last_sent_lsn: integer() | nil,
-              last_keep_alive: DateTime.t() | nil
+              last_keep_alive: DateTime.t() | nil,
+              region: String.t()
             }
 
       defstruct(
@@ -134,7 +135,9 @@ defmodule Portal.Replication.Connection do
         # last sent LSN, used to log acknowledgement progress
         last_sent_lsn: nil,
         # last keep alive message received at
-        last_keep_alive: nil
+        last_keep_alive: nil,
+        # region for scoping :pg leader election
+        region: "default"
       )
     end
   end
@@ -148,8 +151,9 @@ defmodule Portal.Replication.Connection do
 
       @impl true
       def init(state) do
-        # Join pg group so other nodes can discover and link to us
-        :ok = :pg.join(__MODULE__, self())
+        # Join pg group so other nodes can discover and link to us.
+        # Scoped by region so each region elects its own leader.
+        :ok = :pg.join({__MODULE__, state.region}, self())
 
         if state.flush_interval > 0 do
           Process.send_after(self(), :flush, state.flush_interval)

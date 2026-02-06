@@ -55,8 +55,7 @@ if config_env() == :prod do
            )
 
   config :portal, Portal.ChangeLogs.ReplicationConnection,
-    # TODO: Use a dedicated node for Change Log replication
-    enabled: env_var_to_config!(:background_jobs_enabled),
+    enabled: env_var_to_config!(:change_logs_replication_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
     publication_name: env_var_to_config!(:database_change_logs_publication_name),
     connection_opts:
@@ -81,8 +80,8 @@ if config_env() == :prod do
         )
 
   config :portal, Portal.Changes.ReplicationConnection,
-    # TODO: Use a dedicated node for Change Data Capture replication
-    enabled: env_var_to_config!(:background_jobs_enabled),
+    enabled: env_var_to_config!(:changes_replication_enabled),
+    region: env_var_to_config!(:changes_pubsub_region),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
     publication_name: env_var_to_config!(:database_changes_publication_name),
     connection_opts:
@@ -153,6 +152,8 @@ if config_env() == :prod do
   if platform_adapter = env_var_to_config!(:platform_adapter) do
     config :portal, platform_adapter, env_var_to_config!(:platform_adapter_config)
   end
+
+  config :portal, changes_pubsub_region: env_var_to_config!(:changes_pubsub_region)
 
   # Azure Front Door ID validation - when set, rejects requests without matching X-Azure-FDID header
   config :portal, azure_front_door_id: env_var_to_config!(:azure_front_door_id)
