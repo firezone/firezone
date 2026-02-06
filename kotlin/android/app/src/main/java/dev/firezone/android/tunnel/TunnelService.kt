@@ -72,7 +72,6 @@ class TunnelService : VpnService() {
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
     private var resourceState: ResourceState = ResourceState.UNSET
-    private val unreachableSites: MutableSet<String> = mutableSetOf()
 
     // For reacting to changes to the network
     private var networkCallback: NetworkMonitor? = null
@@ -324,7 +323,6 @@ class TunnelService : VpnService() {
                 } finally {
                     commandChannel = null
                     tunnelState = State.DOWN
-                    unreachableSites.clear()
 
                     stopNetworkMonitoring()
                     stopDisconnectMonitoring()
@@ -575,10 +573,6 @@ class TunnelService : VpnService() {
                                 is Event.GatewayVersionMismatch -> {
                                     val (resource, site) = resourceById(event.resourceId) ?: return@use
 
-                                    if (!unreachableSites.add(site.id)) {
-                                        return@use
-                                    }
-
                                     showErrorNotification(
                                         "Failed to connect to '${resource.name}'",
                                         "Your Firezone Client is incompatible with all Gateways in the site '${site.name}'. Please update your Client to the latest version and contact your administrator if the issue persists.",
@@ -587,10 +581,6 @@ class TunnelService : VpnService() {
 
                                 is Event.AllGatewaysOffline -> {
                                     val (resource, site) = resourceById(event.resourceId) ?: return@use
-
-                                    if (!unreachableSites.add(site.id)) {
-                                        return@use
-                                    }
 
                                     showErrorNotification(
                                         "Failed to connect to '${resource.name}'",
