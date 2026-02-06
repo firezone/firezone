@@ -31,6 +31,10 @@ defmodule PortalWeb.Settings.DirectorySync do
     Okta.Directory => @common_fields ++ ~w[okta_domain client_id private_key_jwk kid]a
   }
 
+  # Fields set programmatically (not via HTML form inputs) that must be
+  # preserved across validate events so they aren't lost on each keystroke.
+  @programmatic_fields ~w[is_verified private_key_jwk kid tenant_id domain]a
+
   def mount(_params, _session, socket) do
     socket = assign(socket, page_title: "Directory Sync")
 
@@ -120,31 +124,17 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   def handle_event("validate", %{"directory" => attrs}, socket) do
-    # EDIT: Use .data (original directory) so changeset.changes only contains actual
-    # changes from DB values (for proper UPDATE semantics).
-    # NEW: Use apply_changes() to capture all current values for INSERT.
-    # Programmatic fields (like Okta's keypair) are preserved by the Enum.reduce below.
     changeset = socket.assigns.form.source
+    attrs = preserve_programmatic_fields(changeset, attrs)
 
+    # EDIT: .data (original directory) so changes are relative to DB values (UPDATE semantics).
+    # NEW: apply_changes() to capture all current values (INSERT semantics).
     base =
       if socket.assigns.live_action == :edit do
         changeset.data
       else
         apply_changes(changeset)
       end
-
-    # Preserve is_verified from the current form state
-    attrs = Map.put(attrs, "is_verified", base.is_verified)
-
-    # Preserve programmatic fields (not in form) from current changeset changes.
-    # This ensures fields like Okta's keypair aren't lost when other form fields change.
-    attrs =
-      Enum.reduce([:private_key_jwk, :kid], attrs, fn field, acc ->
-        case Map.fetch(changeset.changes, field) do
-          {:ok, value} -> Map.put(acc, to_string(field), value)
-          :error -> acc
-        end
-      end)
 
     changeset =
       base
@@ -1478,6 +1468,15 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     cast(struct, attrs, Map.get(@fields, schema))
     |> schema.changeset()
+  end
+
+  defp preserve_programmatic_fields(changeset, attrs) do
+    Enum.reduce(@programmatic_fields, attrs, fn field, acc ->
+      case Map.fetch(changeset.changes, field) do
+        {:ok, value} -> Map.put(acc, to_string(field), value)
+        :error -> acc
+      end
+    end)
   end
 
   defp parse_google_verification_error({:ok, %Req.Response{status: 400, body: body}}) do

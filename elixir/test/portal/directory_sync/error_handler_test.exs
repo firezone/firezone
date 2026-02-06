@@ -95,8 +95,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Okta.SyncError{
-        reason: "Deletion threshold exceeded",
-        context: "circuit_breaker: would delete all identities",
+        error: "circuit_breaker: would delete all identities",
         directory_id: directory.id,
         step: :check_deletion_threshold
       }
@@ -120,8 +119,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Okta.SyncError{
-        reason: "User 'user_123' missing required 'email' field",
-        context: "validation: user 'user_123' missing 'email' field",
+        error: "validation: user 'user_123' missing 'email' field",
         directory_id: directory.id,
         step: :process_user
       }
@@ -145,8 +143,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Okta.SyncError{
-        reason: "Permission denied",
-        context: %Req.Response{
+        error: %Req.Response{
           status: 403,
           body: %{
             "errorCode" => "E0000006",
@@ -176,8 +173,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Okta.SyncError{
-        reason: "Server error",
-        context: %Req.Response{
+        error: %Req.Response{
           status: 503,
           body: %{"error" => "Service unavailable"}
         },
@@ -202,8 +198,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Okta.SyncError{
-        reason: "Network error",
-        context: %Req.TransportError{reason: :timeout},
+        error: %Req.TransportError{reason: :timeout},
         directory_id: directory.id,
         step: :get_access_token
       }
@@ -226,8 +221,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Okta.SyncError{
-        reason: "Access token missing required scopes: okta.users.read",
-        context: "scopes: missing okta.users.read",
+        error: "scopes: missing okta.users.read",
         directory_id: directory.id,
         step: :verify_scopes
       }
@@ -260,9 +254,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Entra.SyncError{
-        reason:
-          "Directory Sync app service principal not found in tenant. Admin consent may have been revoked.",
-        context:
+        error:
           "consent_revoked: Directory Sync app service principal not found. Please re-grant admin consent.",
         directory_id: directory.id,
         step: :fetch_directory_sync_service_principal
@@ -287,8 +279,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Entra.SyncError{
-        reason: "Permission denied",
-        context: %Req.Response{
+        error: %Req.Response{
           status: 403,
           body: %{
             "error" => %{
@@ -321,8 +312,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Entra.SyncError{
-        reason: "Authentication failed",
-        context: %Req.Response{
+        error: %Req.Response{
           status: 401,
           body: %{
             "error" => %{
@@ -356,8 +346,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       # This is the exact error format from batch_get_users when all requests fail
       error = %Portal.Entra.SyncError{
-        reason: "Failed to batch fetch users",
-        context:
+        error:
           {:batch_all_failed, 403,
            %{
              "error" => %{
@@ -390,8 +379,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       # This is the error format when the batch request itself fails
       error = %Portal.Entra.SyncError{
-        reason: "Failed to batch fetch users",
-        context:
+        error:
           {:batch_request_failed, 403,
            %{
              "error" => %{

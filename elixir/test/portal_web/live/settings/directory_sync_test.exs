@@ -654,6 +654,122 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "verified-domain.com"
     end
 
+    test "verification is preserved after editing other form fields (new)", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Req.Test.stub(Google.APIClient, fn conn ->
+        case conn.request_path do
+          "/token" ->
+            Req.Test.json(conn, %{"access_token" => "test_access_token"})
+
+          "/admin/directory/v1/customers/my_customer" ->
+            Req.Test.json(conn, %{"customerDomain" => "verified-domain.com"})
+
+          "/admin/directory/v1/users" ->
+            Req.Test.json(conn, %{"users" => []})
+
+          "/admin/directory/v1/groups" ->
+            Req.Test.json(conn, %{"groups" => []})
+
+          "/admin/directory/v1/customer/my_customer/orgunits" ->
+            Req.Test.json(conn, %{"organizationUnits" => []})
+
+          _ ->
+            Req.Test.json(conn, %{})
+        end
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      # Fill in form and verify
+      lv
+      |> form("#directory-form", %{
+        "directory" => %{
+          "name" => "Test Google",
+          "impersonation_email" => "admin@example.com"
+        }
+      })
+      |> render_change()
+
+      lv |> element("button", "Verify Now") |> render_click()
+      wait_for_verification_error(lv, "Verified")
+
+      # Now change the name — this triggers validate
+      lv
+      |> form("#directory-form", %{
+        "directory" => %{"name" => "Renamed Google"}
+      })
+      |> render_change()
+
+      html = render(lv)
+      assert html =~ "Verified"
+      assert html =~ "verified-domain.com"
+    end
+
+    test "verification is preserved after editing other form fields (edit)", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Req.Test.stub(Google.APIClient, fn conn ->
+        case conn.request_path do
+          "/token" ->
+            Req.Test.json(conn, %{"access_token" => "test_access_token"})
+
+          "/admin/directory/v1/customers/my_customer" ->
+            Req.Test.json(conn, %{"customerDomain" => "new-domain.com"})
+
+          "/admin/directory/v1/users" ->
+            Req.Test.json(conn, %{"users" => []})
+
+          "/admin/directory/v1/groups" ->
+            Req.Test.json(conn, %{"groups" => []})
+
+          "/admin/directory/v1/customer/my_customer/orgunits" ->
+            Req.Test.json(conn, %{"organizationUnits" => []})
+
+          _ ->
+            Req.Test.json(conn, %{})
+        end
+      end)
+
+      # Create an existing Google directory (unverified, re-verifying with new domain)
+      directory =
+        google_directory_fixture(
+          account: account,
+          name: "Existing Google",
+          impersonation_email: "admin@existing.com",
+          is_verified: false,
+          domain: "old-domain.com"
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/#{directory.id}/edit")
+
+      # Verify the directory
+      lv |> element("button", "Verify Now") |> render_click()
+      wait_for_verification_error(lv, "Verified")
+
+      # Now change the name — this triggers validate
+      lv
+      |> form("#directory-form", %{
+        "directory" => %{"name" => "Renamed Google"}
+      })
+      |> render_change()
+
+      # Verification and domain must survive the validate event
+      html = render(lv)
+      assert html =~ "Verified"
+      assert html =~ "new-domain.com"
+    end
+
     test "shows error for Google 400 invalid grant", %{account: account, actor: actor, conn: conn} do
       Req.Test.stub(Google.APIClient, fn conn ->
         conn
@@ -844,6 +960,63 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       lv |> element("button", "Verify Now") |> render_click()
 
       wait_for_verification_error(lv, "Verified")
+    end
+
+    test "verification is preserved after editing other form fields (edit)", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Req.Test.stub(Okta.APIClient, fn conn ->
+        case conn.request_path do
+          "/oauth2/v1/token" ->
+            Req.Test.json(conn, %{"access_token" => "test_access_token"})
+
+          "/api/v1/apps" ->
+            Req.Test.json(conn, [%{"id" => "app1"}])
+
+          "/api/v1/users" ->
+            Req.Test.json(conn, [%{"id" => "user1"}])
+
+          "/api/v1/groups" ->
+            Req.Test.json(conn, [%{"id" => "group1"}])
+
+          _ ->
+            Req.Test.json(conn, %{})
+        end
+      end)
+
+      # Create an existing unverified Okta directory with a keypair
+      directory =
+        okta_directory_fixture(
+          account: account,
+          name: "Existing Okta",
+          okta_domain: "test.okta.com",
+          client_id: "test-client-id",
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test-kid",
+          is_verified: false
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/edit")
+
+      # Verify the directory
+      lv |> element("button", "Verify Now") |> render_click()
+      wait_for_verification_error(lv, "Verified")
+
+      # Now change the name — triggers validate
+      lv
+      |> form("#directory-form", %{
+        "directory" => %{"name" => "Renamed Okta"}
+      })
+      |> render_change()
+
+      # Verification must survive the validate event
+      html = render(lv)
+      assert html =~ "Verified"
     end
 
     test "shows error for Okta 400 E0000021", %{account: account, actor: actor, conn: conn} do
