@@ -119,7 +119,7 @@ actor Adapter {
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
 
   /// Resources we couldn't connect to
-  private var unreachableResources: Set<UnreachableResource>
+  private var unreachableResources: [UnreachableResource]
 
   /// Starting parameters
   private let apiURL: String
@@ -143,7 +143,7 @@ actor Adapter {
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
     self.providerCommandSender = providerCommandSender
-    self.unreachableResources = Set()
+    self.unreachableResources = []
     self.systemConfigurationResolvers = try SystemConfigurationResolvers()
 
     // Start log cleanup immediately - doesn't depend on tunnel being connected
@@ -440,11 +440,11 @@ actor Adapter {
       }
 
     case .allGatewaysOffline(let resourceId):
-      self.unreachableResources.insert(
+      self.unreachableResources.append(
         UnreachableResource(resourceId: resourceId, reason: UnreachableReason.offline))
 
     case .gatewayVersionMismatch(let resourceId):
-      self.unreachableResources.insert(
+      self.unreachableResources.append(
         UnreachableResource(resourceId: resourceId, reason: UnreachableReason.versionMismatch))
     }
   }

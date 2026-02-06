@@ -56,8 +56,8 @@ public final class Store: ObservableObject {
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
 
-  // Track which sites we've already shown notifications for
-  private var unreachableSites: Set<String> = []
+  // Track which unreachable resource notifications we have already shown
+  private var unreachableResources: Set<UnreachableResource> = []
 
   public init(configuration: Configuration? = nil) {
     self.configuration = configuration ?? Configuration.shared
@@ -335,7 +335,7 @@ public final class Store: ObservableObject {
     UserDefaults.standard.removeObject(forKey: "shownAlertIds")
 
     // Clear notified unreachable resources for fresh session
-    unreachableSites.removeAll()
+    unreachableResources.removeAll()
 
     // Bring the tunnel up and send it a token and configuration to start
     guard let session = try manager().session() else {
@@ -421,7 +421,7 @@ public final class Store: ObservableObject {
     resourcesTimer = nil
     resourceList = ResourceList.loading
     connlibStateHash = Data()
-    unreachableSites.removeAll()
+    unreachableResources.removeAll()
   }
 
   /// Fetches state from the tunnel provider, using hash-based optimisation.
@@ -451,11 +451,14 @@ public final class Store: ObservableObject {
       resourceList = ResourceList.loaded(resources)
     }
 
-    // Handle unreachable resources and show notifications
+    let newlyUnreachableResources = Set(unreachableResources).subtracting(self.unreachableResources)
+
     await showNotificationsForUnreachableResources(
-      unreachableResources: unreachableResources,
+      unreachableResources: newlyUnreachableResources,
       resources: resources ?? []
     )
+
+    self.unreachableResources = Set(unreachableResources)
   }
 
   private func showNotificationsForUnreachableResources(
@@ -468,13 +471,6 @@ public final class Store: ObservableObject {
         let site = resource.sites.first
       else {
         Log.debug("Unknown resource: \(unreachableResource.resourceId)")
-        continue
-      }
-
-      let (inserted, _) = unreachableSites.insert(site.id)
-
-      // Don't show duplicate notifications
-      if !inserted {
         continue
       }
 
