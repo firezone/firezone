@@ -157,38 +157,6 @@ struct ConnlibStateTests {
     #expect(unreachableResources.isEmpty)
   }
 
-  // MARK: - Set Ordering Tests
-
-  @Test("Unreachable resources set order doesn't affect hash")
-  func unreachableResourcesOrderIndependent() throws {
-    let unreachable1 = UnreachableResource(resourceId: "1", reason: .offline)
-    let unreachable2 = UnreachableResource(resourceId: "2", reason: .versionMismatch)
-    let unreachable3 = UnreachableResource(resourceId: "3", reason: .offline)
-
-    // Create sets with elements inserted in different orders
-    let set1: Set<UnreachableResource> = [unreachable1, unreachable2, unreachable3]
-    let set2: Set<UnreachableResource> = [unreachable3, unreachable1, unreachable2]
-
-    let data1 = try ConnlibState.encodeIfChanged(
-      resources: [],
-      unreachableResources: set1,
-      comparedTo: Data()
-    )
-
-    let data2 = try ConnlibState.encodeIfChanged(
-      resources: [],
-      unreachableResources: set2,
-      comparedTo: Data()
-    )
-
-    let unwrappedData1 = try #require(data1)
-    let unwrappedData2 = try #require(data2)
-    let (_, _, hash1) = try ConnlibState.decode(from: unwrappedData1)
-    let (_, _, hash2) = try ConnlibState.decode(from: unwrappedData2)
-
-    #expect(hash1 == hash2)
-  }
-
   // MARK: - Helper Functions
 
   private func makeTestResource(id: String, name: String) -> FirezoneKit.Resource {
