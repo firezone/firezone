@@ -56,7 +56,7 @@ defmodule Portal.Config.Definitions do
   In a multi-region deployment, this ensures subscribers only receive change
   events from their own region.
   """
-  defconfig(:changes_pubsub_region, :string, default: "default")
+  defconfig(:changes_pubsub_region, :string, default: "")
 
   @doc """
   Enable or disable the Changes (CDC) replication consumer for this app instance.

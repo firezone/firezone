@@ -137,7 +137,7 @@ defmodule Portal.Replication.Connection do
         # last keep alive message received at
         last_keep_alive: nil,
         # region for scoping :pg leader election
-        region: "default"
+        region: ""
       )
     end
   end
