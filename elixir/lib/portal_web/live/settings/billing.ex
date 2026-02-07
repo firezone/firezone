@@ -66,7 +66,7 @@ defmodule PortalWeb.Settings.Billing do
           <.vertical_table_row>
             <:label>Current Plan</:label>
             <:value>
-              {@account.metadata.stripe.product_name}
+              {product_name(@account)}
               <span class="ml-1">
                 <.link
                   class={link_style()}
@@ -287,6 +287,14 @@ defmodule PortalWeb.Settings.Billing do
         {:noreply, socket}
     end
   end
+
+  # Returns the product name for display, with a fallback to "Starter" if empty or nil
+  defp product_name(%Portal.Account{metadata: %{stripe: %{product_name: name}}})
+       when is_binary(name) and name != "" do
+    name
+  end
+
+  defp product_name(%Portal.Account{}), do: "Starter"
 
   defmodule Database do
     import Ecto.Query

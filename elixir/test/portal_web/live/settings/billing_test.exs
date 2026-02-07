@@ -223,6 +223,68 @@ defmodule PortalWeb.Settings.BillingTest do
       assert rows["billing name"] =~ "Test Company Legal Name"
     end
 
+    test "renders 'Starter' when product_name is nil", %{conn: conn} do
+      # Create account with nil product_name
+      account =
+        account_fixture(
+          metadata: %{
+            stripe: %{
+              customer_id: "cus_nil_product",
+              subscription_id: "sub_nil_product",
+              product_name: nil,
+              billing_email: "nil@example.com",
+              support_type: "community"
+            }
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/billing")
+
+      rows =
+        lv
+        |> element("#billing")
+        |> render()
+        |> vertical_table_to_map()
+
+      assert rows["current plan"] =~ "Starter"
+    end
+
+    test "renders 'Starter' when product_name is empty string", %{conn: conn} do
+      # Create account with empty product_name
+      account =
+        account_fixture(
+          metadata: %{
+            stripe: %{
+              customer_id: "cus_empty_product",
+              subscription_id: "sub_empty_product",
+              product_name: "",
+              billing_email: "empty@example.com",
+              support_type: "community"
+            }
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/billing")
+
+      rows =
+        lv
+        |> element("#billing")
+        |> render()
+        |> vertical_table_to_map()
+
+      assert rows["current plan"] =~ "Starter"
+    end
+
     test "renders limits section with all limits", %{
       account: account,
       actor: actor,
