@@ -73,6 +73,22 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   @doc """
+  Additional origins allowed for WebSocket connections.
+
+  By default, origins are derived from `WEB_EXTERNAL_URL`. Use this setting to allow
+  WebSocket connections from additional origins, for example when the application is
+  accessed via multiple domains or a CDN.
+
+  Accepts a comma-separated list of origins (e.g. `https://app.example.com,https://cdn.example.com`).
+  """
+  defconfig(:websocket_additional_origins, {:array, ",", :string},
+    default: [],
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_uri(changeset, key)
+    end
+  )
+
+  @doc """
   The external URL the UI will be accessible at.
 
   If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.

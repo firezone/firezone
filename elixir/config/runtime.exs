@@ -304,12 +304,13 @@ if config_env() == :prod do
         path: web_external_url_path
       ],
       secret_key_base: env_var_to_config!(:secret_key_base),
-      check_origin: [
-        "#{web_external_url_scheme}://#{web_external_url_host}:#{web_external_url_port}",
-        "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
-        "#{web_external_url_scheme}://#{web_external_url_host}",
-        "#{web_external_url_scheme}://*.#{web_external_url_host}"
-      ],
+      check_origin:
+        [
+          "#{web_external_url_scheme}://#{web_external_url_host}:#{web_external_url_port}",
+          "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
+          "#{web_external_url_scheme}://#{web_external_url_host}",
+          "#{web_external_url_scheme}://*.#{web_external_url_host}"
+        ] ++ env_var_to_config!(:websocket_additional_origins),
       live_view: [
         signing_salt: env_var_to_config!(:live_view_signing_salt)
       ]
