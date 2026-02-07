@@ -20,7 +20,7 @@ defmodule Portal.Replication.Manager do
   def init(connection_module) do
     Process.flag(:trap_exit, true)
     config = Application.fetch_env!(:portal, connection_module)
-    pg_key = {connection_module, config[:region] || "default"}
+    pg_key = {connection_module, config[:region] || ""}
     send(self(), :connect)
 
     {:ok,
