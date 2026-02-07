@@ -72,7 +72,7 @@ defmodule Portal.Config.Validator do
 
     changeset =
       {%{}, %{key => type}}
-      |> cast(%{key => value}, [key])
+      |> cast(%{key => value}, [key], empty_values: [])
       |> apply_validations(callback, type, key)
 
     if changeset.valid? do
