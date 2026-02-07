@@ -288,7 +288,8 @@ defmodule PortalWeb.Settings.Billing do
     end
   end
 
-  # Returns the product name for display, with a fallback to "Starter" if empty or nil
+  # Returns the product name for display, with a fallback to "Starter" if empty, nil,
+  # or if the stripe metadata structure is missing
   defp product_name(%Portal.Account{metadata: %{stripe: %{product_name: name}}})
        when is_binary(name) and name != "" do
     name
