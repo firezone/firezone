@@ -9,7 +9,7 @@ defmodule Portal.Changes.Hooks.Resources do
     resource = struct_from_params(Portal.Resource, data)
     change = %Change{lsn: lsn, op: :insert, struct: resource}
 
-    PubSub.Account.broadcast(resource.account_id, change)
+    PubSub.Changes.broadcast(resource.account_id, change)
   end
 
   @impl true
@@ -34,7 +34,7 @@ defmodule Portal.Changes.Hooks.Resources do
       Database.delete_policy_authorizations_for(resource)
     end
 
-    PubSub.Account.broadcast(resource.account_id, change)
+    PubSub.Changes.broadcast(resource.account_id, change)
   end
 
   @impl true
@@ -42,7 +42,7 @@ defmodule Portal.Changes.Hooks.Resources do
     resource = struct_from_params(Portal.Resource, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: resource}
 
-    PubSub.Account.broadcast(resource.account_id, change)
+    PubSub.Changes.broadcast(resource.account_id, change)
   end
 
   defmodule Database do
