@@ -105,7 +105,7 @@ http-body-util = "0.1.3"
 http-client = { path = "libs/http-client" }
 humantime = "2.3.0"
 hyper = "1.8.1"
-hyper-util = "0.1.19"
+hyper-util = "0.1.20"
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
