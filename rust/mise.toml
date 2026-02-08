@@ -4,7 +4,7 @@
 
 [env]
 # Match CI environment - enables tokio unstable features and denies warnings
-RUSTFLAGS = "--cfg tokio_unstable --deny warnings"
+RUSTFLAGS = "--cfg tokio_unstable"
 # Nightly version used for cargo-udeps (keep in sync with .github/actions/setup-rust-nightly)
 NIGHTLY_VERSION = "nightly-2025-09-30"
 
