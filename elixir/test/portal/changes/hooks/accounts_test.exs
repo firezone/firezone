@@ -17,7 +17,7 @@ defmodule Portal.Changes.Hooks.AccountsTest do
     test "sends delete when account is disabled" do
       account_id = "00000000-0000-0000-0000-000000000001"
 
-      :ok = PubSub.Account.subscribe(account_id)
+      :ok = PubSub.Changes.subscribe(account_id)
 
       old_data = %{
         "id" => account_id,
@@ -75,7 +75,7 @@ defmodule Portal.Changes.Hooks.AccountsTest do
   describe "delete/1" do
     test "delete broadcasts deleted account" do
       account_id = "00000000-0000-0000-0000-000000000003"
-      :ok = PubSub.Account.subscribe(account_id)
+      :ok = PubSub.Changes.subscribe(account_id)
 
       old_data = %{"id" => account_id}
 

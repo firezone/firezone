@@ -14,6 +14,6 @@ defmodule Portal.Changes.Hooks.Gateways do
     gateway = struct_from_params(Gateway, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: gateway}
 
-    PubSub.Account.broadcast(gateway.account_id, change)
+    PubSub.Changes.broadcast(gateway.account_id, change)
   end
 end
