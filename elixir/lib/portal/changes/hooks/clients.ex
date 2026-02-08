@@ -20,7 +20,7 @@ defmodule Portal.Changes.Hooks.Clients do
       Database.delete_policy_authorizations_for_client(client)
     end
 
-    PubSub.Account.broadcast(client.account_id, change)
+    PubSub.Changes.broadcast(client.account_id, change)
   end
 
   @impl true
@@ -28,7 +28,7 @@ defmodule Portal.Changes.Hooks.Clients do
     client = struct_from_params(Portal.Client, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: client}
 
-    PubSub.Account.broadcast(client.account_id, change)
+    PubSub.Changes.broadcast(client.account_id, change)
   end
 
   defmodule Database do

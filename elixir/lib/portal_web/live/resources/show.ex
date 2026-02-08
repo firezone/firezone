@@ -9,7 +9,7 @@ defmodule PortalWeb.Resources.Show do
     resource = get_resource!(id, socket.assigns.subject)
 
     if connected?(socket) do
-      :ok = PubSub.Account.subscribe(resource.account_id)
+      :ok = PubSub.Changes.subscribe(resource.account_id)
     end
 
     socket =

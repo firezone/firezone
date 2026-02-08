@@ -21,6 +21,6 @@ defmodule Portal.Changes.Hooks.PolicyAuthorizations do
   def on_delete(lsn, old_data) do
     policy_authorization = struct_from_params(PolicyAuthorization, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: policy_authorization}
-    PubSub.Account.broadcast(policy_authorization.account_id, change)
+    PubSub.Changes.broadcast(policy_authorization.account_id, change)
   end
 end

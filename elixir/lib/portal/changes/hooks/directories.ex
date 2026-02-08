@@ -14,6 +14,6 @@ defmodule Portal.Changes.Hooks.Directories do
 
   # Used to notify the Settings -> Directory Sync LiveView
   defp broadcast(account_id) do
-    PubSub.Account.broadcast(account_id, :directories_changed)
+    PubSub.Changes.broadcast(account_id, :directories_changed)
   end
 end

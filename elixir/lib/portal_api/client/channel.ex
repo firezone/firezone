@@ -64,6 +64,7 @@ defmodule PortalAPI.Client.Channel do
 
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
+    :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
 
     push(socket, "init", %{
       resources: Views.Resource.render_many(resources),

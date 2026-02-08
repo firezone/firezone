@@ -5,7 +5,7 @@ defmodule PortalWeb.Resources.Index do
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = PubSub.Account.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
     end
 
     socket =

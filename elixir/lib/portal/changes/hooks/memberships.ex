@@ -8,7 +8,7 @@ defmodule Portal.Changes.Hooks.Memberships do
     membership = struct_from_params(Portal.Membership, data)
     change = %Change{lsn: lsn, op: :insert, struct: membership}
 
-    PubSub.Account.broadcast(membership.account_id, change)
+    PubSub.Changes.broadcast(membership.account_id, change)
   end
 
   @impl true
@@ -19,6 +19,6 @@ defmodule Portal.Changes.Hooks.Memberships do
     membership = struct_from_params(Portal.Membership, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: membership}
 
-    PubSub.Account.broadcast(membership.account_id, change)
+    PubSub.Changes.broadcast(membership.account_id, change)
   end
 end

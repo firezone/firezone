@@ -58,6 +58,24 @@ defmodule Portal.PubSub do
     end
 
     defp topic(account_id) do
+      Atom.to_string(__MODULE__) <> ":" <> account_id
+    end
+  end
+
+  defmodule Changes do
+    def subscribe(account_id) do
+      account_id
+      |> topic()
+      |> Portal.PubSub.subscribe()
+    end
+
+    def broadcast(account_id, payload) do
+      account_id
+      |> topic()
+      |> Portal.PubSub.broadcast(payload)
+    end
+
+    defp topic(account_id) do
       region = Portal.Config.get_env(:portal, :changes_pubsub_region, "")
       region <> Atom.to_string(__MODULE__) <> ":" <> account_id
     end

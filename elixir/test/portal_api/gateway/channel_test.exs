@@ -336,7 +336,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
     } do
       _socket = join_channel(gateway, site, token)
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id)
 
       old_data = %{
         "id" => account.id,
@@ -405,7 +405,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       Process.flag(:trap_exit, true)
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id)
 
       data = %{
         "id" => gateway.id,
@@ -569,7 +569,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       in_one_hour = DateTime.utc_now() |> DateTime.add(1, :hour)
       in_one_day = DateTime.utc_now() |> DateTime.add(1, :day)
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id)
 
       policy_authorization1 =
         policy_authorization_fixture(
@@ -988,7 +988,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
           group: group
         )
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id)
 
       send(
         socket.channel_pid,
