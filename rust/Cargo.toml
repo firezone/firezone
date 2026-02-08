@@ -225,7 +225,7 @@ tunnel = { path = "libs/connlib/tunnel" }
 uniffi = "0.31.0"
 url = "2.5.2"
 uuid = "1.20.0"
-webpki-roots = "1.0.5"
+webpki-roots = "1.0.6"
 which = "4.4.2"
 windows = "0.61.3"
 windows-core = "0.61.1"
