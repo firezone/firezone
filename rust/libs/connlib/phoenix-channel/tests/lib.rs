@@ -109,49 +109,25 @@ async fn client_does_not_pipeline_messages() {
 async fn client_deduplicates_messages() {
     use std::time::Duration;
 
-    use futures::{SinkExt, StreamExt};
     use phoenix_channel::PublicKeyParam;
-    use tokio::net::TcpListener;
-    use tokio_tungstenite::tungstenite::Message;
 
     let _guard = logging::test("debug,wire::api=trace");
 
-    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
-    let server_addr = listener.local_addr().unwrap();
-
-    let server = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-
-        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
-
-        loop {
-            match ws.next().await {
-                Some(Ok(Message::Text(text))) => match text.as_str() {
-                    r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                        ws.send(Message::text(
-                            r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#,
-                        )).await.unwrap();
-                    }
-                    // We only handle the message with `ref: 1` and thus guarantee that not more than 1 is received
-                    r#"{"topic":"test","event":"bar","ref":1}"# => {
-                        ws.send(Message::text(
-                            r#"{"topic":"test","event":"foo","payload":null}"#,
-                        ))
-                        .await
-                        .unwrap();
-                    }
-                    other => panic!("Unexpected message: {other}"),
-                },
-                Some(Ok(Message::Close(_))) => continue,
-                Some(other) => {
-                    panic!("Unexpected message: {other:?}")
-                }
-                None => break,
+    let (server, port) = spawn_websocket_server(|text| {
+        match text {
+            r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
+                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
             }
+            // We only handle the message with `ref: 1` and thus guarantee that not more than 1 is received
+            r#"{"topic":"test","event":"bar","ref":1}"# => {
+                r#"{"topic":"test","event":"foo","payload":null}"#
+            }
+            other => panic!("Unexpected message: {other}"),
         }
-    });
+    })
+    .await;
 
-    let mut channel = make_websocket_test_channel(server_addr.port());
+    let mut channel = make_websocket_test_channel(port);
 
     let mut num_responses = 0;
 
@@ -200,49 +176,25 @@ async fn client_deduplicates_messages() {
 
 #[tokio::test]
 async fn client_clears_local_message_on_connect() {
-    use futures::{SinkExt, StreamExt};
     use phoenix_channel::PublicKeyParam;
-    use tokio::net::TcpListener;
-    use tokio_tungstenite::tungstenite::Message;
 
     let _guard = logging::test("debug,wire::api=trace");
 
-    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
-    let server_addr = listener.local_addr().unwrap();
-
-    let server = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-
-        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
-
-        loop {
-            match ws.next().await {
-                Some(Ok(Message::Text(text))) => match text.as_str() {
-                    r#"{"topic":"test","event":"phx_join","payload":null,"ref":2}"# => {
-                        ws.send(Message::text(
-                            r#"{"event":"phx_reply","ref":2,"topic":"client","payload":{"status":"ok","response":{}}}"#,
-                        )).await.unwrap();
-                    }
-                    // We only handle the message with `ref: 1` and thus guarantee that the first one is not received.
-                    r#"{"topic":"test","event":"bar","ref":1}"# => {
-                        ws.send(Message::text(
-                            r#"{"topic":"test","event":"foo","payload":null}"#,
-                        ))
-                        .await
-                        .unwrap();
-                    }
-                    other => panic!("Unexpected message: {other}"),
-                },
-                Some(Ok(Message::Close(_))) => continue,
-                Some(other) => {
-                    panic!("Unexpected message: {other:?}")
-                }
-                None => break,
+    let (server, port) = spawn_websocket_server(|text| {
+        match text {
+            r#"{"topic":"test","event":"phx_join","payload":null,"ref":2}"# => {
+                r#"{"event":"phx_reply","ref":2,"topic":"client","payload":{"status":"ok","response":{}}}"#
             }
+            // We only handle the message with `ref: 1` and thus guarantee that the first one is not received.
+            r#"{"topic":"test","event":"bar","ref":1}"# => {
+                r#"{"topic":"test","event":"foo","payload":null}"#
+            }
+            other => panic!("Unexpected message: {other}"),
         }
-    });
+    })
+    .await;
 
-    let mut channel = make_websocket_test_channel(server_addr.port());
+    let mut channel = make_websocket_test_channel(port);
 
     let client = async {
         channel.send("test", OutboundMsg::Bar);
@@ -430,6 +382,41 @@ async fn does_not_clear_address_from_url_on_hiccup() {
             other => panic!("Unexpected event: {other:?}"), // This line ensures we never receive `Event::NoAddresses` which means we keep retrying.
         }
     }
+}
+
+/// Spawns a WebSocket server that responds to requests using a handler function.
+/// Returns the server task handle and the port number.
+async fn spawn_websocket_server<F>(handler: F) -> (tokio::task::JoinHandle<()>, u16)
+where
+    F: Fn(&str) -> &str + Send + 'static,
+{
+    use futures::{SinkExt, StreamExt};
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::tungstenite::Message;
+
+    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+
+        loop {
+            match ws.next().await {
+                Some(Ok(Message::Text(text))) => {
+                    let response = handler(text.as_str());
+                    ws.send(Message::text(response)).await.unwrap();
+                }
+                Some(Ok(Message::Close(_))) => continue,
+                Some(other) => {
+                    panic!("Unexpected message: {other:?}")
+                }
+                None => break,
+            }
+        }
+    });
+
+    (server, port)
 }
 
 fn make_websocket_test_channel(
