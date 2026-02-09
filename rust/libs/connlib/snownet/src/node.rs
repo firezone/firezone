@@ -771,7 +771,7 @@ where
     /// Tries to handle the packet using one of our [`Allocation`]s.
     ///
     /// This function is in the hot-path of packet processing and thus must be as efficient as possible.
-    /// Even look-ups in [`BTreeMap`]s and linear searches across small lists are expensive at this point.
+    /// Even look-ups in [`BTreeMap`](std::collections::BTreeMap)s and linear searches across small lists are expensive at this point.
     /// Thus, we use the first byte of the message as a heuristic for whether we should attempt to handle it here.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
