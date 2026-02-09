@@ -46,9 +46,6 @@ const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Grace-period for when we will act on an ICE disconnect.
 const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// How long we will at most wait for an [`Answer`] from the remote.
-pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
-
 /// Manages a set of wireguard connections for a server.
 pub type ServerNode<TId, RId> = Node<Server, TId, RId>;
 /// Manages a set of wireguard connections for a client.
