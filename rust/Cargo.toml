@@ -164,7 +164,7 @@ sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnera
 secrecy = "0.10.3"
 semver = "1.0.27"
 sentry = { version = "0.46.1", default-features = false }
-sentry-tracing = "0.46.1"
+sentry-tracing = "0.46.2"
 serde = "1.0.228"
 serde_json = "1.0.149"
 serde_variant = "0.1.3"
