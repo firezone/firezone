@@ -37,6 +37,7 @@ defmodule PortalWeb.Cookie.ClientAuth do
     |> :erlang.term_to_binary()
   end
 
+  # sobelow_skip ["Misc.BinToTerm"]
   defp from_binary(binary) when is_binary(binary) do
     {actor_name, fragment, identity_provider_identifier, state} =
       :erlang.binary_to_term(binary, [:safe])

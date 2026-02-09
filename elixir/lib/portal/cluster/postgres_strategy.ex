@@ -207,11 +207,13 @@ defmodule Portal.Cluster.PostgresStrategy do
     :exit, reason -> Logger.error("Failed to send cluster notification", reason: reason)
   end
 
+  # sobelow_skip ["DOS.StringToAtom"]
   defp handle_notification("heartbeat:" <> node_name, state) do
     node = String.to_atom(node_name)
     if node == node(), do: state, else: handle_heartbeat(node, state)
   end
 
+  # sobelow_skip ["DOS.StringToAtom"]
   defp handle_notification("goodbye:" <> node_name, state) do
     node = String.to_atom(node_name)
     if node == node(), do: state, else: handle_goodbye(node, state)
