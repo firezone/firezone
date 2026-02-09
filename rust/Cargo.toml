@@ -124,7 +124,7 @@ log = "0.4.29"
 logging = { path = "libs/logging" }
 lru = "0.16.1"
 mio = "1.1.1"
-moka = "0.12.11"
+moka = "0.12.13"
 native-dialog = "0.9.0"
 netlink-packet-core = "0.8.1"
 netlink-packet-route = "0.28.0"
