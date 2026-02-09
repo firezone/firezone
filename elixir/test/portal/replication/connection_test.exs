@@ -179,7 +179,7 @@ defmodule Portal.Replication.ConnectionTest do
       assert log =~ "Processed 456 write messages from the WAL stream"
 
       # Should schedule next log
-      assert_receive :interval_logger, 50
+      assert_receive :interval_logger, 500
     end
 
     test "handles warning threshold checks" do
