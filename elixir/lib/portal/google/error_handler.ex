@@ -32,9 +32,10 @@ defmodule Portal.Google.ErrorHandler do
 
   defp classify(%Req.Response{}), do: :transient
   defp classify(%Req.TransportError{}), do: :transient
-  defp classify("validation: " <> _), do: :client_error
-  defp classify("scopes: " <> _), do: :client_error
-  defp classify("circuit_breaker: " <> _), do: :client_error
+
+  defp classify({tag, _}) when tag in [:validation, :scopes, :circuit_breaker],
+    do: :client_error
+
   defp classify(nil), do: :transient
   defp classify(msg) when is_binary(msg), do: :transient
 
@@ -70,6 +71,7 @@ defmodule Portal.Google.ErrorHandler do
   end
 
   defp format(%Req.Response{status: status}), do: "Google API returned HTTP #{status}"
+  defp format({_tag, msg}) when is_binary(msg), do: msg
   defp format(nil), do: "Unknown error occurred"
   defp format(msg) when is_binary(msg), do: msg
 

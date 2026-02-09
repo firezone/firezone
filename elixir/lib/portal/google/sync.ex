@@ -161,7 +161,7 @@ defmodule Portal.Google.Sync do
             # Ensure critical fields exist
             unless user["id"] do
               raise Google.SyncError,
-                error: "validation: user missing 'id' field",
+                error: {:validation, "user missing 'id' field"},
                 directory_id: directory.id,
                 step: :process_user
             end
@@ -204,14 +204,14 @@ defmodule Portal.Google.Sync do
             # Ensure critical fields exist - if Google returns incomplete data, we must fail
             unless group["id"] do
               raise Google.SyncError,
-                error: "validation: group missing 'id' field",
+                error: {:validation, "group missing 'id' field"},
                 directory_id: directory.id,
                 step: :process_group
             end
 
             unless group["name"] || group["email"] do
               raise Google.SyncError,
-                error: "validation: group '#{group["id"]}' missing 'name' field",
+                error: {:validation, "group '#{group["id"]}' missing 'name' field"},
                 directory_id: directory.id,
                 step: :process_group
             end
@@ -280,7 +280,7 @@ defmodule Portal.Google.Sync do
       Enum.map(user_members, fn member ->
         unless member["id"] do
           raise Google.SyncError,
-            error: "validation: member missing 'id' field in group #{group_name}",
+            error: {:validation, "member missing 'id' field in group #{group_name}"},
             directory_id: directory.id,
             step: :process_member
         end
@@ -320,14 +320,14 @@ defmodule Portal.Google.Sync do
           Enum.map(org_units, fn org_unit ->
             unless org_unit["orgUnitId"] do
               raise Google.SyncError,
-                error: "validation: org_unit missing 'orgUnitId' field",
+                error: {:validation, "org_unit missing 'orgUnitId' field"},
                 directory_id: directory.id,
                 step: :process_org_unit
             end
 
             unless org_unit["name"] do
               raise Google.SyncError,
-                error: "validation: org_unit '#{org_unit["orgUnitId"]}' missing 'name' field",
+                error: {:validation, "org_unit '#{org_unit["orgUnitId"]}' missing 'name' field"},
                 directory_id: directory.id,
                 step: :process_org_unit
             end
@@ -335,7 +335,7 @@ defmodule Portal.Google.Sync do
             unless org_unit["orgUnitPath"] do
               raise Google.SyncError,
                 error:
-                  "validation: org_unit '#{org_unit["orgUnitId"]}' missing 'orgUnitPath' field",
+                  {:validation, "org_unit '#{org_unit["orgUnitId"]}' missing 'orgUnitPath' field"},
                 directory_id: directory.id,
                 step: :process_org_unit
             end
@@ -404,7 +404,7 @@ defmodule Portal.Google.Sync do
       Enum.map(users, fn user ->
         unless user["id"] do
           raise Google.SyncError,
-            error: "validation: user missing 'id' field in org unit #{org_unit_name}",
+            error: {:validation, "user missing 'id' field in org unit #{org_unit_name}"},
             directory_id: directory.id,
             step: :process_org_unit_member
         end
@@ -527,7 +527,7 @@ defmodule Portal.Google.Sync do
 
     unless primary_email do
       raise Google.SyncError,
-        error: "validation: user '#{user["id"]}' missing 'primaryEmail' field",
+        error: {:validation, "user '#{user["id"]}' missing 'primaryEmail' field"},
         directory_id: directory_id,
         step: :process_user
     end

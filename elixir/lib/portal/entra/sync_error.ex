@@ -30,6 +30,10 @@ defmodule Portal.Entra.SyncError do
     "Entra sync failed for directory #{directory_id} at #{step}: #{error}"
   end
 
+  defp build_message({tag, msg}, directory_id, step) when is_atom(tag) and is_binary(msg) do
+    "Entra sync failed for directory #{directory_id} at #{step}: #{tag}: #{msg}"
+  end
+
   defp build_message(%{status: status, body: body}, directory_id, step) when is_integer(status) do
     "Entra sync failed for directory #{directory_id} at #{step}: HTTP #{status} - #{inspect(body)}"
   end

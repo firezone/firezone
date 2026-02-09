@@ -95,7 +95,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Okta.SyncError{
-        error: "circuit_breaker: would delete all identities",
+        error: {:circuit_breaker, "would delete all identities"},
         directory_id: directory.id,
         step: :check_deletion_threshold
       }
@@ -108,7 +108,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       assert updated_directory.is_disabled == true
       assert updated_directory.disabled_reason == "Sync error"
       assert updated_directory.is_verified == false
-      assert updated_directory.error_message =~ "circuit_breaker"
+      assert updated_directory.error_message =~ "would delete all identities"
     end
 
     test "classifies process_user errors as client_error and disables directory",
@@ -119,7 +119,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Okta.SyncError{
-        error: "validation: user 'user_123' missing 'email' field",
+        error: {:validation, "user 'user_123' missing 'email' field"},
         directory_id: directory.id,
         step: :process_user
       }
@@ -221,7 +221,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       }
 
       error = %Portal.Okta.SyncError{
-        error: "scopes: missing okta.users.read",
+        error: {:scopes, "missing okta.users.read"},
         directory_id: directory.id,
         step: :verify_scopes
       }
@@ -255,7 +255,8 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       error = %Portal.Entra.SyncError{
         error:
-          "consent_revoked: Directory Sync app service principal not found. Please re-grant admin consent.",
+          {:consent_revoked,
+           "Directory Sync app service principal not found. Please re-grant admin consent."},
         directory_id: directory.id,
         step: :fetch_directory_sync_service_principal
       }
@@ -268,7 +269,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       assert updated_directory.is_disabled == true
       assert updated_directory.disabled_reason == "Sync error"
       assert updated_directory.is_verified == false
-      assert updated_directory.error_message =~ "consent_revoked"
+      assert updated_directory.error_message =~ "service principal not found"
     end
 
     test "classifies HTTP 403 permission errors as client_error and provides helpful message",

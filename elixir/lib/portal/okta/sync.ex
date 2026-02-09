@@ -116,14 +116,14 @@ defmodule Portal.Okta.Sync do
 
         if missing_scopes != [] do
           raise Okta.SyncError,
-            error: "scopes: missing #{Enum.join(missing_scopes, ", ")}",
+            error: {:scopes, "missing #{Enum.join(missing_scopes, ", ")}"},
             directory_id: directory.id,
             step: :verify_scopes
         end
 
       _ ->
         raise Okta.SyncError,
-          error: "scopes: missing #{Enum.join(@required_scopes, ", ")}",
+          error: {:scopes, "missing #{Enum.join(@required_scopes, ", ")}"},
           directory_id: directory.id,
           step: :verify_scopes
     end
@@ -418,7 +418,7 @@ defmodule Portal.Okta.Sync do
 
     unless email do
       raise Okta.SyncError,
-        error: "validation: user '#{user["id"]}' missing 'email' field",
+        error: {:validation, "user '#{user["id"]}' missing 'email' field"},
         directory_id: directory_id,
         step: :process_user
     end
@@ -539,7 +539,7 @@ defmodule Portal.Okta.Sync do
       )
 
       raise Okta.SyncError,
-        error: "circuit_breaker: would delete all #{resource_name}",
+        error: {:circuit_breaker, "would delete all #{resource_name}"},
         directory_id: directory.id,
         step: :check_deletion_threshold
     end
