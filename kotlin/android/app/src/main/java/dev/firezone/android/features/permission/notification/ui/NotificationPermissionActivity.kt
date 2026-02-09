@@ -55,6 +55,7 @@ class NotificationPermissionActivity : AppCompatActivity() {
                     repository.setNotificationPermissionRequested()
                     finish()
                 }
+
                 else -> {
                     // Request permission
                     requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
