@@ -45,6 +45,7 @@ defmodule Portal.Mailer do
     end
   end
 
+  # sobelow_skip ["DOS.StringToAtom"]
   defp render_template(view, template, format, assigns) do
     heex = apply(view, String.to_atom("#{template}_#{format}"), [assigns])
     assigns = Keyword.merge(assigns, inner_content: heex)

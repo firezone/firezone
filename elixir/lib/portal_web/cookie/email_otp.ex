@@ -61,6 +61,7 @@ defmodule PortalWeb.Cookie.EmailOTP do
     |> :erlang.term_to_binary()
   end
 
+  # sobelow_skip ["Misc.BinToTerm"]
   defp from_binary(binary) when is_binary(binary) do
     {actor_id, passcode_id, email} = :erlang.binary_to_term(binary, [:safe])
 

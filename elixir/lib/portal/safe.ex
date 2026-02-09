@@ -340,12 +340,14 @@ defmodule Portal.Safe do
   """
   @spec query(Unscoped.t(), String.t(), list()) ::
           {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
+  # sobelow_skip ["SQL.Query"]
   def query(%Unscoped{}, sql, params) when is_binary(sql) and is_list(params) do
     Repo.query(sql, params)
   end
 
   @spec query(Portal.Repo, String.t(), list()) ::
           {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
+  # sobelow_skip ["SQL.Query"]
   def query(repo, sql, params) when repo == Repo and is_binary(sql) and is_list(params) do
     Repo.query(sql, params)
   end

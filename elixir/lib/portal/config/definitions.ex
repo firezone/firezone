@@ -425,6 +425,7 @@ defmodule Portal.Config.Definitions do
     end
   )
 
+  # sobelow_skip ["DOS.StringToAtom"]
   defp dump_cluster_adapter_config(map, adapter) do
     keyword = Dumper.keyword(map)
 

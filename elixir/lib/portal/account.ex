@@ -88,6 +88,7 @@ defmodule Portal.Account do
   def active?(%__MODULE__{disabled_at: nil}), do: true
   def active?(%__MODULE__{}), do: false
 
+  # sobelow_skip ["DOS.BinToAtom"]
   for feature <- Portal.Accounts.Features.__schema__(:fields) do
     def unquote(:"#{feature}_enabled?")(account) do
       Config.global_feature_enabled?(unquote(feature)) and

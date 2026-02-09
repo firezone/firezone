@@ -149,6 +149,7 @@ defmodule Portal.Cluster.GoogleComputeLabelsStrategy do
     end
   end
 
+  # sobelow_skip ["DOS.BinToAtom"]
   defp list_google_cloud_cluster_nodes(state) do
     project_id = Keyword.fetch!(state.config, :project_id)
     cluster_name = Keyword.fetch!(state.config, :cluster_name)

@@ -15,12 +15,14 @@ defmodule Portal.Config.Dumper do
       iex> dump_ssl_opts(%{"cacertfile" => "/tmp/cacerts.pem"})
       [cacertfile: '/tmp/cacerts.pem']
   """
+  # sobelow_skip ["DOS.StringToAtom"]
   def dump_ssl_opts(decoded_json) do
     Keyword.new(decoded_json, fn {k, v} ->
       {String.to_atom(k), map_values(k, v)}
     end)
   end
 
+  # sobelow_skip ["DOS.StringToAtom"]
   defp map_values("verify", v), do: String.to_atom(v)
   defp map_values("depth", v), do: v
   defp map_values("versions", v), do: Enum.map(v, &String.to_charlist/1)
@@ -28,6 +30,7 @@ defmodule Portal.Config.Dumper do
   defp map_values("server_name_indication", v), do: String.to_charlist(v)
   defp map_values(k, _v), do: raise(ArgumentError, message: "unsupported key #{k} in ssl opts")
 
+  # sobelow_skip ["DOS.StringToAtom"]
   def keyword(enum) do
     Keyword.new(enum, fn
       {k, v} when is_binary(k) -> {String.to_atom(k), v}

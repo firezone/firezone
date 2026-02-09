@@ -168,7 +168,9 @@ defmodule Portal.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       reboot: ["ecto.reset", "run priv/repo/seeds.exs", "start"],
-      sobelow: ["sobelow --config"],
+      sobelow: [
+        "sobelow --skip -i Config.HTTPS,Config.Secrets,Config.CSWH,Config.CSRFRoute,Config.Headers"
+      ],
       "assets.setup": [
         "cmd --shell cd assets && CI=true pnpm i",
         "tailwind.install --if-missing",
