@@ -141,7 +141,7 @@ defmodule Portal.Application do
     # not be ready by the time Portal.Application.start/2 runs. Wait for the
     # async load to finish before proceeding with supervision tree startup.
     for %{id: id, source: source} <- Portal.Config.get_env(:geolix, :databases, []) do
-      await_geolix_database(id, source, _retries = 50)
+      await_geolix_database(id, source, _retries = 15)
     end
   end
 
@@ -152,7 +152,7 @@ defmodule Portal.Application do
   defp await_geolix_database(id, source, retries) do
     case Geolix.metadata(where: id) do
       nil ->
-        Process.sleep(100)
+        Process.sleep(1000)
         await_geolix_database(id, source, retries - 1)
 
       _metadata ->
