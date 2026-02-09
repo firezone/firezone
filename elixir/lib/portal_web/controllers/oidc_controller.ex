@@ -707,7 +707,7 @@ defmodule PortalWeb.OIDCController do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query |> Safe.unscoped() |> Safe.one!()
+      query |> Safe.unscoped(:replica) |> Safe.one!()
     end
 
     def get_provider!(account_id, type, id) do
@@ -716,7 +716,7 @@ defmodule PortalWeb.OIDCController do
       from(p in schema,
         where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.one!()
     end
 
@@ -808,7 +808,8 @@ defmodule PortalWeb.OIDCController do
           {:error, :actor_not_found}
 
         {_, [%ExternalIdentity{} = identity]} ->
-          {:ok, Safe.preload(identity, [:actor, :account])}
+          # actor and account are long-lived records, safe to read from replica
+          {:ok, Safe.preload(identity, [:actor, :account], :replica)}
       end
     end
   end

@@ -376,19 +376,20 @@ defmodule Portal.Authentication do
     alias Portal.Safe
     alias Portal.Account
     alias Portal.Actor
+
     alias Portal.ClientToken
     alias Portal.OneTimePasscode
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
-      |> Safe.unscoped()
-      |> Safe.one!()
+      |> Safe.unscoped(:replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def fetch_active_actor_by_id(id) do
       from(a in Actor, where: a.id == ^id, where: is_nil(a.disabled_at))
-      |> Safe.unscoped()
-      |> Safe.one()
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
       |> case do
         nil -> {:error, :not_found}
         actor -> {:ok, actor}
@@ -417,8 +418,8 @@ defmodule Portal.Authentication do
 
     def fetch_relay_token(id) do
       from(rt in Portal.RelayToken, where: rt.id == ^id)
-      |> Safe.unscoped()
-      |> Safe.one()
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
       |> case do
         nil -> {:error, :not_found}
         relay_token -> {:ok, relay_token}
@@ -442,8 +443,8 @@ defmodule Portal.Authentication do
         where: gt.account_id == ^account_id,
         where: gt.id == ^id
       )
-      |> Safe.unscoped()
-      |> Safe.one()
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
       |> case do
         nil -> {:error, :not_found}
         gateway_token -> {:ok, gateway_token}

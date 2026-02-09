@@ -194,6 +194,7 @@ config :portal, PortalWeb.Plugs.PutCSPHeader,
   ]
 
 config :portal, :constant_execution_time, 1
+config :portal, replica_repo: Portal.Repo
 
 ###############################
 ##### PortalAPI Endpoint ######

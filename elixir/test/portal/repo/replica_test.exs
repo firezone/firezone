@@ -99,8 +99,7 @@ defmodule Portal.Repo.ReplicaTest do
 
   describe "configuration" do
     test "is configured as a valid repo" do
-      # In tests, Replica is routed through Portal.Repo's sandbox connection
-      assert Replica.get_dynamic_repo() == Portal.Repo
+      assert Replica.get_dynamic_repo() == Replica
     end
 
     test "returns correct config" do

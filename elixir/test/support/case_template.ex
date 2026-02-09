@@ -10,10 +10,6 @@ defmodule Portal.CaseTemplate do
       setup tags do
         :ok = Sandbox.checkout(Portal.Repo)
 
-        # Route Replica queries through the primary Repo's sandbox connection
-        # so that Replica can see data created via Repo in the same test
-        Portal.Repo.Replica.put_dynamic_repo(Portal.Repo)
-
         unless tags[:async] do
           Sandbox.mode(Portal.Repo, {:shared, self()})
         end

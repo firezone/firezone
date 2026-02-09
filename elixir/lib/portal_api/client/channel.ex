@@ -967,7 +967,7 @@ defmodule PortalAPI.Client.Channel do
       result =
         from(g in Gateway, as: :gateways)
         |> where([gateways: g], g.id == ^id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do
@@ -991,7 +991,7 @@ defmodule PortalAPI.Client.Channel do
       online_gateways =
         from(g in Gateway, as: :gateways)
         |> where([gateways: g], g.id in ^connected_gateway_ids and g.site_id == ^resource_site_id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> case do
           {:error, :unauthorized} -> []
