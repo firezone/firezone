@@ -305,6 +305,25 @@
 
       show(alert)
     }
+
+    /// Shows a signed-out session alert and returns whether the user clicked "Sign In".
+    ///
+    /// - Returns: `true` if the user clicked "Sign In", `false` otherwise.
+    public static func showSignedOutAlert(_ message: String?) async -> Bool {
+      let alert = NSAlert()
+      alert.messageText = "Your Firezone session has ended"
+      alert.informativeText = """
+        Please sign in again to reconnect.
+
+        \(message ?? "")
+        """
+      alert.addButton(withTitle: "Sign In")
+      alert.addButton(withTitle: "Cancel")
+      NSApp.activate(ignoringOtherApps: true)
+
+      let response = await show(alert)
+      return response == .alertFirstButtonReturn
+    }
   }
 
 #endif

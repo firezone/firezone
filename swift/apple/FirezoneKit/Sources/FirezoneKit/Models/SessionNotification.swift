@@ -7,10 +7,6 @@
 import Foundation
 import UserNotifications
 
-#if os(macOS)
-  import AppKit
-#endif
-
 // SessionNotification helps with showing iOS local notifications
 // when the session ends.
 // In macOS, it helps with showing an alert when the session ends.
@@ -132,19 +128,8 @@ public class SessionNotification: NSObject {
     // This gets called from the app side.
     @MainActor
     func showSignedOutAlertmacOS(_ message: String?) async {
-      let alert = NSAlert()
-      alert.messageText = "Your Firezone session has ended"
-      alert.informativeText = """
-        Please sign in again to reconnect.
-
-        \(message ?? "")
-        """
-      alert.addButton(withTitle: "Sign In")
-      alert.addButton(withTitle: "Cancel")
-      NSApp.activate(ignoringOtherApps: true)
-
-      let response = await MacOSAlert.show(alert)
-      if response == .alertFirstButtonReturn {
+      let signInClicked = await MacOSAlert.showSignedOutAlert(message)
+      if signInClicked {
         Log.log("\(#function): 'Sign In' clicked in notification")
         signInHandler()
       }
