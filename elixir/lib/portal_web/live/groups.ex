@@ -803,7 +803,15 @@ defmodule PortalWeb.Groups do
   # Member search helpers
   defp get_search_results(search_term, socket) do
     if has_content?(search_term) do
-      Database.search_actors(search_term, socket.assigns.subject, socket.assigns.members_to_add)
+      group = Map.get(socket.assigns, :group, %Portal.Group{actors: []})
+      members_to_remove = Map.get(socket.assigns, :members_to_remove, [])
+      remove_ids = MapSet.new(members_to_remove, & &1.id)
+
+      # Exclude current members (minus those pending removal) and pending additions
+      current_actors = Enum.reject(group.actors, &MapSet.member?(remove_ids, &1.id))
+      exclude_actors = uniq_by_id(current_actors ++ socket.assigns.members_to_add)
+
+      Database.search_actors(search_term, socket.assigns.subject, exclude_actors)
     else
       nil
     end
@@ -859,8 +867,22 @@ defmodule PortalWeb.Groups do
   end
 
   defp build_attrs_with_memberships(attrs, socket) do
+    group = socket.assigns.group
     final_member_ids = calculate_final_member_ids(socket)
-    memberships = Enum.map(final_member_ids, &%{actor_id: &1})
+
+    # Build a lookup from actor_id to the existing membership struct so we can
+    # include PK fields (id, account_id) for unchanged memberships. Without these,
+    # cast_assoc treats every entry as new and deletes+re-inserts all rows.
+    existing_by_actor = Map.new(group.memberships, &{&1.actor_id, &1})
+
+    memberships =
+      Enum.map(final_member_ids, fn actor_id ->
+        case Map.get(existing_by_actor, actor_id) do
+          nil -> %{actor_id: actor_id}
+          m -> %{id: m.id, account_id: m.account_id, actor_id: actor_id}
+        end
+      end)
+
     Map.put(attrs, "memberships", memberships)
   end
 
