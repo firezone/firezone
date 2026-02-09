@@ -57,28 +57,37 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
                     action?.let {
                         viewModel.clearAction()
                         when (it) {
-                            SplashViewModel.ViewAction.NavigateToVpnPermission ->
+                            SplashViewModel.ViewAction.NavigateToVpnPermission -> {
                                 findNavController().navigate(
                                     R.id.vpnPermissionActivity,
                                 )
-                            SplashViewModel.ViewAction.NavigateToNotificationPermission ->
+                            }
+
+                            SplashViewModel.ViewAction.NavigateToNotificationPermission -> {
                                 findNavController().navigate(
                                     R.id.notificationPermissionActivity,
                                 )
-                            SplashViewModel.ViewAction.NavigateToSignIn ->
+                            }
+
+                            SplashViewModel.ViewAction.NavigateToSignIn -> {
                                 findNavController().navigate(
                                     R.id.signInFragment,
                                 )
-                            SplashViewModel.ViewAction.NavigateToSettings ->
+                            }
+
+                            SplashViewModel.ViewAction.NavigateToSettings -> {
                                 findNavController().navigate(
                                     R.id.settingsActivity,
                                 )
-                            SplashViewModel.ViewAction.NavigateToSession ->
+                            }
+
+                            SplashViewModel.ViewAction.NavigateToSession -> {
                                 startActivity(
                                     Intent(requireContext(), SessionActivity::class.java).apply {
                                         flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                                     },
                                 )
+                            }
                         }
                     }
                 }

@@ -65,8 +65,9 @@ class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
                     action?.let {
                         viewModel.clearAction()
                         when (it) {
-                            is SettingsViewModel.ViewAction.NavigateBack ->
+                            is SettingsViewModel.ViewAction.NavigateBack -> {
                                 requireActivity().finish()
+                            }
 
                             is SettingsViewModel.ViewAction.FillSettings -> {
                                 binding.etAccountSlugInput.apply {
