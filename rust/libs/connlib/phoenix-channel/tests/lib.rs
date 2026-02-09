@@ -12,15 +12,12 @@ use tokio_tungstenite::tungstenite::http;
 
 #[tokio::test]
 async fn client_does_not_pipeline_messages() {
-    use std::{str::FromStr, sync::Arc, time::Duration};
+    use std::time::Duration;
 
-    use backoff::ExponentialBackoffBuilder;
     use futures::{SinkExt, StreamExt};
-    use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, PublicKeyParam};
-    use secrecy::SecretString;
+    use phoenix_channel::PublicKeyParam;
     use tokio::net::TcpListener;
     use tokio_tungstenite::tungstenite::Message;
-    use url::Url;
 
     let _guard = logging::test("debug,wire::api=trace");
 
@@ -68,27 +65,7 @@ async fn client_does_not_pipeline_messages() {
         }
     });
 
-    let login_url = LoginUrl::client(
-        Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
-        String::new(),
-        None,
-        DeviceInfo::default(),
-    )
-    .unwrap();
-
-    let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
-        login_url,
-        SecretString::from("secret"),
-        "test/1.0.0".to_owned(),
-        "test",
-        (),
-        || {
-            ExponentialBackoffBuilder::default()
-                .with_initial_interval(Duration::from_secs(1))
-                .build()
-        },
-        Arc::new(socket_factory::tcp),
-    );
+    let mut channel = make_websocket_test_channel(server_addr.port());
 
     let client = async move {
         channel.connect(PublicKeyParam([0u8; 32]));
@@ -130,15 +107,12 @@ async fn client_does_not_pipeline_messages() {
 
 #[tokio::test]
 async fn client_deduplicates_messages() {
-    use std::{str::FromStr, sync::Arc, time::Duration};
+    use std::time::Duration;
 
-    use backoff::ExponentialBackoffBuilder;
     use futures::{SinkExt, StreamExt};
-    use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, PublicKeyParam};
-    use secrecy::SecretString;
+    use phoenix_channel::PublicKeyParam;
     use tokio::net::TcpListener;
     use tokio_tungstenite::tungstenite::Message;
-    use url::Url;
 
     let _guard = logging::test("debug,wire::api=trace");
 
@@ -177,27 +151,7 @@ async fn client_deduplicates_messages() {
         }
     });
 
-    let login_url = LoginUrl::client(
-        Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
-        String::new(),
-        None,
-        DeviceInfo::default(),
-    )
-    .unwrap();
-
-    let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
-        login_url,
-        SecretString::from("secret"),
-        "test/1.0.0".to_owned(),
-        "test",
-        (),
-        || {
-            ExponentialBackoffBuilder::default()
-                .with_initial_interval(Duration::from_secs(1))
-                .build()
-        },
-        Arc::new(socket_factory::tcp),
-    );
+    let mut channel = make_websocket_test_channel(server_addr.port());
 
     let mut num_responses = 0;
 
@@ -246,15 +200,10 @@ async fn client_deduplicates_messages() {
 
 #[tokio::test]
 async fn client_clears_local_message_on_connect() {
-    use std::{str::FromStr, sync::Arc, time::Duration};
-
-    use backoff::ExponentialBackoffBuilder;
     use futures::{SinkExt, StreamExt};
-    use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, PublicKeyParam};
-    use secrecy::SecretString;
+    use phoenix_channel::PublicKeyParam;
     use tokio::net::TcpListener;
     use tokio_tungstenite::tungstenite::Message;
-    use url::Url;
 
     let _guard = logging::test("debug,wire::api=trace");
 
@@ -293,27 +242,7 @@ async fn client_clears_local_message_on_connect() {
         }
     });
 
-    let login_url = LoginUrl::client(
-        Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
-        String::new(),
-        None,
-        DeviceInfo::default(),
-    )
-    .unwrap();
-
-    let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
-        login_url,
-        SecretString::from("secret"),
-        "test/1.0.0".to_owned(),
-        "test",
-        (),
-        || {
-            ExponentialBackoffBuilder::default()
-                .with_initial_interval(Duration::from_secs(1))
-                .build()
-        },
-        Arc::new(socket_factory::tcp),
-    );
+    let mut channel = make_websocket_test_channel(server_addr.port());
 
     let client = async {
         channel.send("test", OutboundMsg::Bar);
@@ -501,6 +430,39 @@ async fn does_not_clear_address_from_url_on_hiccup() {
             other => panic!("Unexpected event: {other:?}"), // This line ensures we never receive `Event::NoAddresses` which means we keep retrying.
         }
     }
+}
+
+fn make_websocket_test_channel(
+    port: u16,
+) -> PhoenixChannel<(), OutboundMsg, InboundMsg, PublicKeyParam> {
+    use std::{str::FromStr, sync::Arc, time::Duration};
+
+    use backoff::ExponentialBackoffBuilder;
+    use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel};
+    use secrecy::SecretString;
+    use url::Url;
+
+    let login_url = LoginUrl::client(
+        Url::from_str(&format!("ws://localhost:{}", port)).unwrap(),
+        String::new(),
+        None,
+        DeviceInfo::default(),
+    )
+    .unwrap();
+
+    PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
+        login_url,
+        SecretString::from("secret"),
+        "test/1.0.0".to_owned(),
+        "test",
+        (),
+        || {
+            ExponentialBackoffBuilder::default()
+                .with_initial_interval(Duration::from_secs(1))
+                .build()
+        },
+        Arc::new(socket_factory::tcp),
+    )
 }
 
 fn make_test_channel(host: &str, port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
