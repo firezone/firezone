@@ -10,7 +10,7 @@ defmodule PortalWeb.EmailOTPController do
 
   require Logger
 
-  @constant_execution_time Application.compile_env(:portal, :constant_execution_time, 2000)
+  @constant_execution_time Application.compile_env(:portal, :constant_execution_time, 3000)
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(
@@ -392,7 +392,7 @@ defmodule PortalWeb.EmailOTPController do
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
       query
-      |> Safe.unscoped()
+      |> Safe.unscoped(Portal.Repo.Replica)
       |> Safe.one()
       |> handle_nil()
     end
@@ -401,7 +401,7 @@ defmodule PortalWeb.EmailOTPController do
       from(p in EmailOTP.AuthProvider,
         where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(Portal.Repo.Replica)
       |> Safe.one()
       |> handle_nil()
     end
@@ -415,7 +415,7 @@ defmodule PortalWeb.EmailOTPController do
             a.allow_email_otp_sign_in == true
       )
       |> preload(:account)
-      |> Safe.unscoped()
+      |> Safe.unscoped(Portal.Repo.Replica)
       |> Safe.one()
       |> handle_nil()
     end
