@@ -244,6 +244,111 @@ async fn client_deduplicates_messages() {
     assert_eq!(num_responses, 1);
 }
 
+#[tokio::test]
+async fn client_clears_local_message_on_connect() {
+    use std::{str::FromStr, sync::Arc, time::Duration};
+
+    use backoff::ExponentialBackoffBuilder;
+    use futures::{SinkExt, StreamExt};
+    use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, PublicKeyParam};
+    use secrecy::SecretString;
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::tungstenite::Message;
+    use url::Url;
+
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+    let server_addr = listener.local_addr().unwrap();
+
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+
+        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+
+        loop {
+            match ws.next().await {
+                Some(Ok(Message::Text(text))) => match text.as_str() {
+                    r#"{"topic":"test","event":"phx_join","payload":null,"ref":2}"# => {
+                        ws.send(Message::text(
+                            r#"{"event":"phx_reply","ref":2,"topic":"client","payload":{"status":"ok","response":{}}}"#,
+                        )).await.unwrap();
+                    }
+                    // We only handle the message with `ref: 1` and thus guarantee that the first one is not received.
+                    r#"{"topic":"test","event":"bar","ref":1}"# => {
+                        ws.send(Message::text(
+                            r#"{"topic":"test","event":"foo","payload":null}"#,
+                        ))
+                        .await
+                        .unwrap();
+                    }
+                    other => panic!("Unexpected message: {other}"),
+                },
+                Some(Ok(Message::Close(_))) => continue,
+                Some(other) => {
+                    panic!("Unexpected message: {other:?}")
+                }
+                None => break,
+            }
+        }
+    });
+
+    let login_url = LoginUrl::client(
+        Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
+        String::new(),
+        None,
+        DeviceInfo::default(),
+    )
+    .unwrap();
+
+    let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
+        login_url,
+        SecretString::from("secret"),
+        "test/1.0.0".to_owned(),
+        "test",
+        (),
+        || {
+            ExponentialBackoffBuilder::default()
+                .with_initial_interval(Duration::from_secs(1))
+                .build()
+        },
+        Arc::new(socket_factory::tcp),
+    );
+
+    let client = async {
+        channel.send("test", OutboundMsg::Bar);
+        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.send("test", OutboundMsg::Bar);
+
+        loop {
+            match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
+                phoenix_channel::Event::SuccessResponse { .. } => {}
+                phoenix_channel::Event::ErrorResponse { res, .. } => {
+                    panic!("Unexpected error: {res:?}")
+                }
+                phoenix_channel::Event::JoinedRoom { .. } => {}
+                phoenix_channel::Event::HeartbeatSent => {}
+                phoenix_channel::Event::InboundMessage {
+                    msg: InboundMsg::Foo,
+                    ..
+                } => {
+                    channel.close().unwrap();
+                }
+                phoenix_channel::Event::Hiccup { error, .. } => {
+                    panic!("Unexpected hiccup: {error:?}")
+                }
+                phoenix_channel::Event::NoAddresses => {
+                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
+                }
+                phoenix_channel::Event::Closed => break,
+            }
+        }
+    };
+
+    client.await;
+    server.await.unwrap();
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum InboundMsg {
