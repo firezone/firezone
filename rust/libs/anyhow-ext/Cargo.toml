@@ -8,7 +8,7 @@ license = { workspace = true }
 path = "lib.rs"
 
 [dependencies]
-anyhow = "1.0.99"
+anyhow = "1.0.101"
 
 [dev-dependencies]
 thiserror = { workspace = true }
