@@ -183,7 +183,7 @@ static_assertions = "1.1.0"
 str0m = { version = "0.16.1", default-features = false }
 strum = { version = "0.27.2", features = ["derive"] }
 stun_codec = "0.4.0"
-subprocess = "0.2.13"
+subprocess = "0.2.15"
 subtle = "2.5.0"
 supports-color = "3.0.2"
 swift-bridge = "0.1.57"
