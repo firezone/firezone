@@ -2474,7 +2474,6 @@ dependencies = [
  "serde_json",
  "snownet",
  "socket-factory",
- "static_assertions",
  "telemetry",
  "tempfile",
  "thiserror 2.0.18",

@@ -13,6 +13,7 @@ permissions:
 
 env:
   RUSTFLAGS: "--cfg tokio_unstable --deny warnings"
+  RUSTDOCFLAGS: "--deny warnings"
 
 jobs:
   static-analysis:

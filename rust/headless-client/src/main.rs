@@ -168,7 +168,7 @@ enum Cmd {
 
     /// Sign in via browser-based authentication
     SignIn {
-        /// Auth base URL (e.g., https://app.firezone.dev)
+        /// Auth base URL
         #[arg(
             long,
             env = "FIREZONE_AUTH_BASE_URL",

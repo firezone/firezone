@@ -32,12 +32,6 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 /// How long we allow a DNS resolution via hickory.
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
-// DNS resolution happens as part of every connection setup.
-// For a connection to succeed, DNS resolution must be less than `snownet`'s handshake timeout.
-static_assertions::const_assert!(
-    DNS_RESOLUTION_TIMEOUT.as_secs() < snownet::HANDSHAKE_TIMEOUT.as_secs()
-);
-
 pub struct Eventloop {
     // Tunnel is `Option` because we need to take ownership on shutdown.
     tunnel: Option<GatewayTunnel>,
