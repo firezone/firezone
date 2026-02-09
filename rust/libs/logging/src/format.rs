@@ -16,7 +16,7 @@ use tracing_subscriber::{
     registry::LookupSpan,
 };
 
-/// A custom [`FormatEvent`] implementation for [`tracing-subscriber`] that renders compact, yet informative logs.
+/// A custom [`FormatEvent`] implementation for [`tracing_subscriber`] that renders compact, yet informative logs.
 ///
 /// Most importantly, we log:
 ///
