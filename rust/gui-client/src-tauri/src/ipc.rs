@@ -16,16 +16,12 @@ pub type ClientWrite<M> = FramedWrite<WriteHalf<ClientStream>, Encoder<M>>;
 pub(crate) type ServerRead<M> = FramedRead<ReadHalf<ServerStream>, Decoder<M>>;
 pub(crate) type ServerWrite<M> = FramedWrite<WriteHalf<ServerStream>, Encoder<M>>;
 
-#[cfg(target_os = "linux")]
-#[path = "ipc/linux.rs"]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[path = "ipc/unix.rs"]
 pub(crate) mod platform;
 
 #[cfg(target_os = "windows")]
 #[path = "ipc/windows.rs"]
-pub(crate) mod platform;
-
-#[cfg(target_os = "macos")]
-#[path = "ipc/macos.rs"]
 pub(crate) mod platform;
 
 #[derive(Debug, thiserror::Error)]
