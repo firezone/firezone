@@ -5,7 +5,7 @@ defmodule Portal.Repo.Migrations.MigratePksToUuid do
     ## connectivity_checks
     alter table("connectivity_checks") do
       remove(:id)
-      add(:id, :binary_id, primary_key: true, default: fragment("gen_random_uuid()"))
+      add(:id, :binary_id, primary_key: true, null: false, default: fragment("gen_random_uuid()"))
     end
 
     ## devices
@@ -31,7 +31,7 @@ defmodule Portal.Repo.Migrations.MigratePksToUuid do
     ## oidc_connections
     alter table("oidc_connections") do
       remove(:id)
-      add(:id, :binary_id, primary_key: true, default: fragment("gen_random_uuid()"))
+      add(:id, :binary_id, primary_key: true, null: false, default: fragment("gen_random_uuid()"))
     end
 
     ## users
