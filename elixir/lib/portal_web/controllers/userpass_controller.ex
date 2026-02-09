@@ -233,14 +233,14 @@ defmodule PortalWeb.UserpassController do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query |> Safe.unscoped() |> Safe.one()
+      query |> Safe.unscoped(:replica) |> Safe.one()
     end
 
     def get_provider(account, id) do
       from(p in Userpass.AuthProvider,
         where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.one()
     end
 
@@ -248,7 +248,7 @@ defmodule PortalWeb.UserpassController do
       from(a in Portal.Actor,
         where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at)
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.one()
     end
   end

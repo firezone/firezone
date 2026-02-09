@@ -743,12 +743,12 @@ defmodule PortalAPI.Gateway.Channel do
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.one!()
     end
 
     def preload_client_addresses(%Client{} = client) do
-      Safe.preload(client, [:ipv4_address, :ipv6_address])
+      Safe.preload(client, [:ipv4_address, :ipv6_address], :replica)
     end
   end
 end
