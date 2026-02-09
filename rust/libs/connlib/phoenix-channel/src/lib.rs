@@ -420,8 +420,9 @@ where
             return;
         }
 
-        // 1. Reset the backoff.
+        // 1. Reset the backoff and local state.
         self.backoff = None;
+        self.pending_messages.clear();
 
         // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
