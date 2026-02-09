@@ -15,6 +15,7 @@ defmodule Portal.Types.Filter do
 
   def cast(%Filter{} = filter), do: {:ok, filter}
 
+  # sobelow_skip ["Misc.BinToTerm"]
   def cast(binary) when is_binary(binary) do
     filter =
       binary

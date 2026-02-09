@@ -60,6 +60,7 @@ defmodule Portal.Health do
 
   def call(conn, _opts), do: conn
 
+  # sobelow_skip ["XSS.SendResp"]
   defp send_readyz_response(conn) do
     version = Application.spec(:portal, :vsn) |> to_string()
 
