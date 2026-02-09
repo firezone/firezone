@@ -59,7 +59,10 @@ internal class CustomUriViewModel
                             }
                         }
                     }
-                    else -> error("Unknown path segment: ${intent.data?.lastPathSegment}")
+
+                    else -> {
+                        error("Unknown path segment: ${intent.data?.lastPathSegment}")
+                    }
                 }
                 if (accumulatedErrors.isNotEmpty()) {
                     actionMutableStateFlow.value = ViewAction.AuthFlowError(accumulatedErrors)

@@ -74,8 +74,9 @@ class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
                     action?.let {
                         viewModel.clearAction()
                         when (it) {
-                            is SettingsViewModel.ViewAction.NavigateBack ->
+                            is SettingsViewModel.ViewAction.NavigateBack -> {
                                 requireActivity().finish()
+                            }
 
                             is SettingsViewModel.ViewAction.FillSettings -> {
                                 binding.etAuthUrlInput.apply {

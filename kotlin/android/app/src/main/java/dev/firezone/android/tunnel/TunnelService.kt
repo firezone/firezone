@@ -509,9 +509,11 @@ class TunnelService : VpnService() {
                                 session.disconnect()
                                 // Sending disconnect will close the event-stream which will exit this loop
                             }
+
                             is TunnelCommand.SetInternetResourceState -> {
                                 session.setInternetResourceState(command.active)
                             }
+
                             is TunnelCommand.SetDns -> {
                                 session.setDns(command.dnsServers)
                             }
@@ -606,7 +608,7 @@ class TunnelService : VpnService() {
 
     private fun convertResource(resource: uniffi.connlib.Resource): Resource =
         when (resource) {
-            is uniffi.connlib.Resource.Dns ->
+            is uniffi.connlib.Resource.Dns -> {
                 resource.resource.let { r ->
                     Resource(
                         ResourceType.DNS,
@@ -618,7 +620,9 @@ class TunnelService : VpnService() {
                         r.status.toModel(),
                     )
                 }
-            is uniffi.connlib.Resource.Cidr ->
+            }
+
+            is uniffi.connlib.Resource.Cidr -> {
                 resource.resource.let { r ->
                     Resource(
                         ResourceType.CIDR,
@@ -630,7 +634,9 @@ class TunnelService : VpnService() {
                         r.status.toModel(),
                     )
                 }
-            is uniffi.connlib.Resource.Internet ->
+            }
+
+            is uniffi.connlib.Resource.Internet -> {
                 resource.resource.let { r ->
                     Resource(
                         ResourceType.Internet,
@@ -642,6 +648,7 @@ class TunnelService : VpnService() {
                         r.status.toModel(),
                     )
                 }
+            }
         }
 
     companion object {

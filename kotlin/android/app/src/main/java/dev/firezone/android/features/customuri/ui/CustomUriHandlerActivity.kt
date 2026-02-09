@@ -44,6 +44,7 @@ class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_
                                     Intent(this@CustomUriHandlerActivity, MainActivity::class.java),
                                 )
                             }
+
                             is CustomUriViewModel.ViewAction.AuthFlowError -> {
                                 notifyError("Errors occurred during authentication:\n${it.errors.joinToString(separator = "\n")}")
                                 startActivity(Intent(this@CustomUriHandlerActivity, MainActivity::class.java))

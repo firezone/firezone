@@ -57,7 +57,9 @@ internal class SettingsActivity : AppCompatActivity() {
                         tab.setText("Logs")
                     }
 
-                    else -> throw IllegalArgumentException("Invalid tab position: $position")
+                    else -> {
+                        throw IllegalArgumentException("Invalid tab position: $position")
+                    }
                 }
             }.attach()
 
