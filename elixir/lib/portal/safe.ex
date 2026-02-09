@@ -9,6 +9,8 @@ defmodule Portal.Safe do
 
   alias Portal.{Authentication.Subject, Repo}
 
+  @replica Application.compile_env(:portal, :replica_repo)
+
   defmodule Scoped do
     @moduledoc """
     Scoped context that carries authorization information and optional queryable.
@@ -34,9 +36,15 @@ defmodule Portal.Safe do
     defstruct [:queryable, repo: Portal.Repo]
   end
 
+  defp resolve_repo(:primary), do: Repo
+  defp resolve_repo(:replica), do: @replica
+  defp resolve_repo(repo) when is_atom(repo), do: repo
+
   @doc """
   Returns a scoped context for operations with authorization and account filtering.
   Can optionally accept a queryable to enable chaining and a repo module.
+
+  The repo argument can be a module or the atoms `:primary` / `:replica`.
 
   ## Examples
 
@@ -47,17 +55,17 @@ defmodule Portal.Safe do
       query |> Safe.scoped(subject) |> Safe.one()
 
       # With replica
-      Safe.scoped(subject, Portal.Repo.Replica) |> Safe.one(query)
-      query |> Safe.scoped(subject, Portal.Repo.Replica) |> Safe.one()
+      Safe.scoped(subject, :replica) |> Safe.one(query)
+      query |> Safe.scoped(subject, :replica) |> Safe.one()
   """
   @spec scoped(Subject.t()) :: Scoped.t()
   def scoped(%Subject{} = subject) do
     %Scoped{subject: subject, queryable: nil, repo: Repo}
   end
 
-  @spec scoped(Subject.t(), module()) :: Scoped.t()
+  @spec scoped(Subject.t(), module() | :primary | :replica) :: Scoped.t()
   def scoped(%Subject{} = subject, repo) when is_atom(repo) do
-    %Scoped{subject: subject, queryable: nil, repo: repo}
+    %Scoped{subject: subject, queryable: nil, repo: resolve_repo(repo)}
   end
 
   @spec scoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), Subject.t()) ::
@@ -66,15 +74,21 @@ defmodule Portal.Safe do
     %Scoped{subject: subject, queryable: queryable, repo: Repo}
   end
 
-  @spec scoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), Subject.t(), module()) ::
+  @spec scoped(
+          Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(),
+          Subject.t(),
+          module() | :primary | :replica
+        ) ::
           Scoped.t()
-  def scoped(queryable, %Subject{} = subject, repo) do
-    %Scoped{subject: subject, queryable: queryable, repo: repo}
+  def scoped(queryable, %Subject{} = subject, repo) when is_atom(repo) do
+    %Scoped{subject: subject, queryable: queryable, repo: resolve_repo(repo)}
   end
 
   @doc """
   Returns an unscoped context for operations without authorization or filtering.
   Can optionally accept a queryable to enable chaining and a repo module.
+
+  The repo argument can be a module or the atoms `:primary` / `:replica`.
 
   ## Examples
 
@@ -82,22 +96,22 @@ defmodule Portal.Safe do
       Safe.unscoped() |> Safe.one(query)
 
       # With replica
-      Safe.unscoped(Portal.Repo.Replica) |> Safe.one(query)
+      Safe.unscoped(:replica) |> Safe.one(query)
 
       # Chainable style
       query |> Safe.unscoped() |> Safe.one()
 
       # Chainable with replica
-      query |> Safe.unscoped(Portal.Repo.Replica) |> Safe.one()
+      query |> Safe.unscoped(:replica) |> Safe.one()
   """
   @spec unscoped() :: Unscoped.t()
   def unscoped do
     %Unscoped{queryable: nil, repo: Repo}
   end
 
-  @spec unscoped(module()) :: Unscoped.t()
+  @spec unscoped(module() | :primary | :replica) :: Unscoped.t()
   def unscoped(repo) when is_atom(repo) do
-    %Unscoped{queryable: nil, repo: repo}
+    %Unscoped{queryable: nil, repo: resolve_repo(repo)}
   end
 
   @spec unscoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t()) :: Unscoped.t()
@@ -105,10 +119,13 @@ defmodule Portal.Safe do
     %Unscoped{queryable: queryable, repo: Repo}
   end
 
-  @spec unscoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), module()) ::
+  @spec unscoped(
+          Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(),
+          module() | :primary | :replica
+        ) ::
           Unscoped.t()
-  def unscoped(queryable, repo) do
-    %Unscoped{queryable: queryable, repo: repo}
+  def unscoped(queryable, repo) when is_atom(repo) do
+    %Unscoped{queryable: queryable, repo: resolve_repo(repo)}
   end
 
   defp safe_repo(fun) when is_function(fun, 0) do
@@ -165,6 +182,14 @@ defmodule Portal.Safe do
   def one(%Unscoped{queryable: queryable, repo: repo}),
     do: safe_repo(fn -> repo.one(queryable) end)
 
+  @spec one(Unscoped.t(), Keyword.t()) :: Ecto.Schema.t() | nil
+  def one(%Unscoped{queryable: queryable, repo: repo}, opts) do
+    case {safe_repo(fn -> repo.one(queryable) end), opts[:fallback_to_primary]} do
+      {nil, true} -> safe_repo(fn -> Repo.one(queryable) end)
+      {result, _} -> result
+    end
+  end
+
   @spec one(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | nil
   def one(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.one(queryable) end)
 
@@ -185,6 +210,15 @@ defmodule Portal.Safe do
   @spec one!(Unscoped.t()) :: Ecto.Schema.t() | term() | no_return()
   def one!(%Unscoped{queryable: queryable, repo: repo}),
     do: safe_repo!(fn -> repo.one!(queryable) end, queryable)
+
+  @spec one!(Unscoped.t(), Keyword.t()) :: Ecto.Schema.t() | term() | no_return()
+  def one!(%Unscoped{queryable: queryable, repo: repo}, opts) do
+    case {safe_repo(fn -> repo.one(queryable) end), opts[:fallback_to_primary]} do
+      {nil, true} -> safe_repo!(fn -> Repo.one!(queryable) end, queryable)
+      {nil, _} -> raise Ecto.NoResultsError, queryable: queryable
+      {result, _} -> result
+    end
+  end
 
   @spec one!(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | term() | no_return()
   def one!(repo, queryable) when repo == Repo,
@@ -308,9 +342,14 @@ defmodule Portal.Safe do
   @spec load(module(), {list(), list()}) :: Ecto.Schema.t()
   def load(schema, data) when is_atom(schema), do: Repo.load(schema, data)
 
-  @spec preload(Ecto.Schema.t() | [Ecto.Schema.t()], term(), module()) ::
+  @spec preload(Ecto.Schema.t() | [Ecto.Schema.t()], term(), module() | :primary | :replica) ::
           Ecto.Schema.t() | [Ecto.Schema.t()]
-  def preload(struct_or_structs, preloads, repo \\ Repo),
+  def preload(struct_or_structs, preloads, repo \\ Repo)
+
+  def preload(struct_or_structs, preloads, repo) when repo in [:primary, :replica],
+    do: resolve_repo(repo).preload(struct_or_structs, preloads)
+
+  def preload(struct_or_structs, preloads, repo) when is_atom(repo),
     do: repo.preload(struct_or_structs, preloads)
 
   @doc """

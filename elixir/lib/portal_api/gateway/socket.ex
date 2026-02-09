@@ -111,13 +111,14 @@ defmodule PortalAPI.Gateway.Socket do
     alias Portal.Gateway
     alias Portal.IPv4Address
     alias Portal.IPv6Address
+
     alias Portal.Safe
     alias Portal.Site
 
     def fetch_site(id) do
       result =
         from(s in Site, where: s.id == ^id)
-        |> Safe.unscoped()
+        |> Safe.unscoped(:replica)
         |> Safe.one()
 
       case result do
