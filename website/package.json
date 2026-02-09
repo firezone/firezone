@@ -28,7 +28,7 @@
     "asciinema-player": "^3.14.0",
     "fast-xml-parser": "^5.3.4",
     "flowbite-react": "^0.12.16",
-    "framer-motion": "^12.29.2",
+    "framer-motion": "^12.29.3",
     "highlight.js": "^11.11.1",
     "md5": "^2.3.0",
     "mixpanel-browser": "^2.73.0",
