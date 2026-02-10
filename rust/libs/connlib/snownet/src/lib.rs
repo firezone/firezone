@@ -19,6 +19,12 @@ pub use node::{
 };
 pub use stats::{ConnectionStats, NodeStats};
 
+#[derive(Debug, Clone, Copy)]
+pub enum IceRole {
+    Controlling,
+    Controlled,
+}
+
 pub(crate) use crypto::CRYPTO_PROVIDER;
 
 pub fn is_wireguard(payload: &[u8]) -> bool {

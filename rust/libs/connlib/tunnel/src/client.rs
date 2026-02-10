@@ -624,6 +624,7 @@ impl ClientState {
                 username: gateway_ice.username,
                 password: gateway_ice.password,
             },
+            snownet::IceRole::Controlling,
             now,
         ) {
             Ok(()) => {}

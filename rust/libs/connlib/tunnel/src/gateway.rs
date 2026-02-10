@@ -22,7 +22,7 @@ use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
-use snownet::{Credentials, NoTurnServers, RelaySocket, ServerNode, Transmit};
+use snownet::{Credentials, IceRole, NoTurnServers, RelaySocket, ServerNode, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
@@ -309,6 +309,7 @@ impl GatewayState {
                 username: client_ice.username,
                 password: client_ice.password,
             },
+            IceRole::Controlled,
             now,
         )?;
 
