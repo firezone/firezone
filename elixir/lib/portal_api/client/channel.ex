@@ -733,6 +733,7 @@ defmodule PortalAPI.Client.Channel do
   end
 
   # The client pushes it's ICE candidates list and the list of gateways that need to receive it
+  # Note: Deprecated with the introduction of client <> client.
   def handle_in(
         "broadcast_ice_candidates",
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
@@ -748,6 +749,7 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
+  # Note: Deprecated with the introduction of client <> client.
   def handle_in(
         "broadcast_invalidated_ice_candidates",
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
