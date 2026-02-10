@@ -229,7 +229,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should raise SyncError with appropriate message
-      assert_raise SyncError, ~r/missing required 'email' field/, fn ->
+      assert_raise SyncError, ~r/missing 'email' field/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
     end
@@ -293,7 +293,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should raise SyncError with appropriate message
-      assert_raise SyncError, ~r/missing required 'email' field/, fn ->
+      assert_raise SyncError, ~r/missing 'email' field/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
     end
@@ -352,7 +352,7 @@ defmodule Portal.Okta.SyncTest do
         end
       end)
 
-      assert_raise SyncError, ~r/missing required scopes.*okta\.users\.read/, fn ->
+      assert_raise SyncError, ~r/scopes: missing.*okta\.users\.read/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
     end
@@ -665,7 +665,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should raise SyncError due to circuit breaker
-      assert_raise SyncError, ~r/Sync would delete all identities/, fn ->
+      assert_raise SyncError, ~r/would delete all identities/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
 
@@ -774,7 +774,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should raise SyncError due to circuit breaker on groups
-      assert_raise SyncError, ~r/Sync would delete all groups/, fn ->
+      assert_raise SyncError, ~r/would delete all groups/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
 

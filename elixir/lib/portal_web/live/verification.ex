@@ -203,8 +203,9 @@ defmodule PortalWeb.Verification do
               Verification Successful
             </h2>
             <p class="mt-2 text-base text-gray-600">
-              You can close this window and return to the application.
+              If this window remains open, close it to return to the Firezone portal.
             </p>
+            <div id="close-window-success" phx-hook="CloseWindow" data-seconds="1"></div>
           <% else %>
             <%= if @error do %>
               <div class="mx-auto flex h-32 w-32 items-center justify-center">

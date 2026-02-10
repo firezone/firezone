@@ -6,17 +6,16 @@ defmodule Portal.Entra.SyncErrorTest do
   @test_directory_id "12345678-1234-1234-1234-123456789012"
 
   describe "exception/1" do
-    test "creates exception with string reason" do
+    test "creates exception with string error" do
       exception =
         SyncError.exception(
-          reason: "Failed to authenticate",
+          error: "Failed to authenticate",
           directory_id: @test_directory_id,
           step: :get_access_token
         )
 
       assert %SyncError{
-               reason: "Failed to authenticate",
-               context: nil,
+               error: "Failed to authenticate",
                directory_id: @test_directory_id,
                step: :get_access_token
              } = exception
@@ -27,20 +26,18 @@ defmodule Portal.Entra.SyncErrorTest do
       assert exception.message =~ "Failed to authenticate"
     end
 
-    test "creates exception with separate cause" do
+    test "creates exception with exception error" do
       original_error = %RuntimeError{message: "Network timeout"}
 
       exception =
         SyncError.exception(
-          reason: "Connection failed",
-          context: original_error,
+          error: original_error,
           directory_id: @test_directory_id,
           step: :stream_groups
         )
 
       assert %SyncError{
-               reason: "Connection failed",
-               context: %RuntimeError{message: "Network timeout"},
+               error: %RuntimeError{message: "Network timeout"},
                directory_id: @test_directory_id,
                step: :stream_groups
              } = exception
@@ -48,15 +45,15 @@ defmodule Portal.Entra.SyncErrorTest do
       assert exception.message =~ "Entra sync failed"
       assert exception.message =~ @test_directory_id
       assert exception.message =~ "stream_groups"
-      assert exception.message =~ "Connection failed"
+      assert exception.message =~ "Network timeout"
     end
 
-    test "builds message from HTTP response-like cause" do
+    test "builds message from HTTP response-like error" do
       http_response = %{status: 403, body: %{"error" => "Forbidden"}}
 
       exception =
         SyncError.exception(
-          reason: http_response,
+          error: http_response,
           directory_id: @test_directory_id,
           step: :list_users
         )
@@ -67,12 +64,12 @@ defmodule Portal.Entra.SyncErrorTest do
       assert exception.message =~ "list_users"
     end
 
-    test "builds message from exception cause" do
+    test "builds message from exception error" do
       original_exception = %ArgumentError{message: "Invalid argument"}
 
       exception =
         SyncError.exception(
-          reason: original_exception,
+          error: original_exception,
           directory_id: @test_directory_id,
           step: :process_user
         )
@@ -83,11 +80,11 @@ defmodule Portal.Entra.SyncErrorTest do
     end
 
     test "builds message from arbitrary term" do
-      arbitrary_reason = {:error, :timeout}
+      arbitrary_error = {:error, :timeout}
 
       exception =
         SyncError.exception(
-          reason: arbitrary_reason,
+          error: arbitrary_error,
           directory_id: @test_directory_id,
           step: :fetch_groups
         )
@@ -97,33 +94,31 @@ defmodule Portal.Entra.SyncErrorTest do
       assert exception.message =~ "fetch_groups"
     end
 
-    test "requires reason, directory_id, and step" do
+    test "requires directory_id and step" do
       assert_raise KeyError, fn ->
-        SyncError.exception(directory_id: @test_directory_id, step: :test)
+        SyncError.exception(directory_id: @test_directory_id)
       end
 
       assert_raise KeyError, fn ->
-        SyncError.exception(reason: "test", step: :test)
+        SyncError.exception(error: "test", step: :test)
       end
 
       assert_raise KeyError, fn ->
-        SyncError.exception(reason: "test", directory_id: @test_directory_id)
+        SyncError.exception(error: "test", directory_id: @test_directory_id)
       end
     end
 
     test "stores all fields correctly" do
-      context_error = %RuntimeError{message: "Original error"}
+      error_value = %RuntimeError{message: "Original error"}
 
       exception =
         SyncError.exception(
-          reason: "Sync failed",
-          context: context_error,
+          error: error_value,
           directory_id: @test_directory_id,
           step: :sync_all_groups
         )
 
-      assert exception.reason == "Sync failed"
-      assert exception.context == context_error
+      assert exception.error == error_value
       assert exception.directory_id == @test_directory_id
       assert exception.step == :sync_all_groups
       assert is_binary(exception.message)
@@ -132,7 +127,7 @@ defmodule Portal.Entra.SyncErrorTest do
     test "can be raised" do
       assert_raise SyncError, fn ->
         raise SyncError,
-          reason: "Test error",
+          error: "Test error",
           directory_id: @test_directory_id,
           step: :test_step
       end
@@ -141,7 +136,7 @@ defmodule Portal.Entra.SyncErrorTest do
     test "message includes all context when raised" do
       try do
         raise SyncError,
-          reason: "Test sync failure",
+          error: "Test sync failure",
           directory_id: @test_directory_id,
           step: :batch_upsert_identities
       rescue
@@ -156,10 +151,10 @@ defmodule Portal.Entra.SyncErrorTest do
   end
 
   describe "message building for different error types" do
-    test "formats string reason cleanly" do
+    test "formats string error cleanly" do
       exception =
         SyncError.exception(
-          reason: "User not found",
+          error: "User not found",
           directory_id: @test_directory_id,
           step: :fetch_user
         )
@@ -179,7 +174,7 @@ defmodule Portal.Entra.SyncErrorTest do
 
       exception =
         SyncError.exception(
-          reason: http_error,
+          error: http_error,
           directory_id: @test_directory_id,
           step: :get_access_token
         )
@@ -199,7 +194,7 @@ defmodule Portal.Entra.SyncErrorTest do
 
       exception =
         SyncError.exception(
-          reason: original,
+          error: original,
           directory_id: @test_directory_id,
           step: :batch_upsert_groups
         )
@@ -211,11 +206,11 @@ defmodule Portal.Entra.SyncErrorTest do
     end
 
     test "formats arbitrary terms with inspect" do
-      reason = {:batch_failed, [user_id: "123", error: :not_found]}
+      error = {:batch_failed, [user_id: "123", error: :not_found]}
 
       exception =
         SyncError.exception(
-          reason: reason,
+          error: error,
           directory_id: @test_directory_id,
           step: :process_batch
         )

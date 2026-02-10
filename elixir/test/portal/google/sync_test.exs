@@ -256,7 +256,7 @@ defmodule Portal.Google.SyncTest do
         |> Req.Test.json(%{"error" => "insufficient_permissions"})
       end)
 
-      assert_raise SyncError, ~r/Failed to stream users/, fn ->
+      assert_raise SyncError, ~r/at stream_users: HTTP 403/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
@@ -282,7 +282,7 @@ defmodule Portal.Google.SyncTest do
         |> Req.Test.json(%{"error" => "internal_error"})
       end)
 
-      assert_raise SyncError, ~r/Failed to stream groups/, fn ->
+      assert_raise SyncError, ~r/at stream_groups: HTTP 500/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
@@ -313,7 +313,7 @@ defmodule Portal.Google.SyncTest do
         |> Req.Test.json(%{"error" => "forbidden"})
       end)
 
-      assert_raise SyncError, ~r/Failed to stream organization units/, fn ->
+      assert_raise SyncError, ~r/at stream_org_units: HTTP 403/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
@@ -336,7 +336,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert_raise SyncError, ~r/User missing required 'id' field/, fn ->
+      assert_raise SyncError, ~r/user missing 'id' field/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
@@ -359,7 +359,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert_raise SyncError, ~r/User missing required 'primaryEmail' field/, fn ->
+      assert_raise SyncError, ~r/user .* missing 'primaryEmail' field/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
@@ -387,7 +387,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert_raise SyncError, ~r/Group missing required 'id' field/, fn ->
+      assert_raise SyncError, ~r/group missing 'id' field/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
@@ -415,7 +415,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert_raise SyncError, ~r/Group missing both 'name' and 'email' fields/, fn ->
+      assert_raise SyncError, ~r/group .* missing 'name' field/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
@@ -448,7 +448,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert_raise SyncError, ~r/Organization unit missing required 'orgUnitId' field/, fn ->
+      assert_raise SyncError, ~r/org_unit missing 'orgUnitId' field/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
@@ -481,7 +481,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert_raise SyncError, ~r/Organization unit missing required 'name' field/, fn ->
+      assert_raise SyncError, ~r/org_unit .* missing 'name' field/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
@@ -514,7 +514,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert_raise SyncError, ~r/Organization unit missing required 'orgUnitPath' field/, fn ->
+      assert_raise SyncError, ~r/org_unit .* missing 'orgUnitPath' field/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
