@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::fs;
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
 use std::time::{Duration, SystemTime};
 
 /// Default maximum total log size in MB across all log directories.
@@ -16,6 +18,56 @@ pub const DEFAULT_CLEANUP_INTERVAL: Duration = Duration::from_secs(3600);
 /// Minimum age for files to be eligible for deletion.
 /// Files modified more recently than this are protected.
 const MIN_AGE: Duration = Duration::from_secs(300);
+
+/// Handle to stop the cleanup background thread.
+///
+/// When dropped, disconnects the channel which wakes the thread's `recv_timeout`
+/// with [`RecvTimeoutError::Disconnected`], causing it to exit.
+#[must_use = "Dropping this handle immediately stops the cleanup thread -- store it in a variable to keep cleanup running"]
+pub struct CleanupHandle {
+    // Channel used for drop-based shutdown only, no messages are ever sent.
+    _stop_tx: mpsc::Sender<Infallible>,
+}
+
+/// Start a background thread that periodically enforces log size cap.
+///
+/// Runs cleanup immediately, then every `interval`.
+pub fn start_cleanup_thread(
+    log_dirs: Vec<PathBuf>,
+    max_size_mb: u32,
+    interval: Duration,
+) -> Option<CleanupHandle> {
+    let interval = interval.max(Duration::from_secs(60));
+    let (stop_tx, stop_rx) = mpsc::channel::<Infallible>();
+
+    let result = thread::Builder::new()
+        .name("log-cleanup".into())
+        .spawn(move || {
+            let dirs: Vec<&Path> = log_dirs.iter().map(|p| p.as_path()).collect();
+            loop {
+                let deleted = enforce_size_cap(&dirs, max_size_mb);
+                if deleted > 0 {
+                    tracing::debug!(bytes_deleted = deleted, "Log cleanup ran");
+                } else {
+                    tracing::trace!("Log cleanup: nothing to delete");
+                }
+
+                match stop_rx.recv_timeout(interval) {
+                    Ok(infallible) => match infallible {},
+                    Err(RecvTimeoutError::Disconnected) => break,
+                    Err(RecvTimeoutError::Timeout) => continue,
+                }
+            }
+        });
+
+    match result {
+        Ok(_) => Some(CleanupHandle { _stop_tx: stop_tx }),
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to spawn log cleanup thread");
+            None
+        }
+    }
+}
 
 /// Enforces a size cap on log directories by deleting oldest files first.
 /// FFI-friendly interface.
@@ -340,5 +392,34 @@ mod tests {
                 .unwrap();
         }
         path
+    }
+
+    /// Verifies that dropping the handle doesn't block even when the cleanup
+    /// thread is sleeping (waiting for the interval).
+    ///
+    /// This is critical for process shutdown - we don't want to hang.
+    #[test]
+    fn test_drop_does_not_block_when_thread_sleeping() {
+        let dir = TempDir::new().unwrap();
+
+        // Start with a very long interval - thread will be sleeping
+        let handle = start_cleanup_thread(
+            vec![dir.path().to_path_buf()],
+            100,
+            Duration::from_secs(3600), // 1 hour
+        );
+
+        // Give time for initial cleanup to run and thread to start sleeping
+        std::thread::sleep(Duration::from_millis(50));
+
+        // Drop should return immediately (within reasonable time)
+        let start = std::time::Instant::now();
+        drop(handle);
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "Drop took too long: {elapsed:?} - this would block process shutdown"
+        );
     }
 }

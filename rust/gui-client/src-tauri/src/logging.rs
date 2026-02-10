@@ -19,6 +19,7 @@ use tracing_subscriber::{EnvFilter, Layer, Registry, layer::SubscriberExt};
 pub struct Handles {
     pub logger: logging::file::Handle,
     pub reloader: FilterReloadHandle,
+    pub cleanup: Option<logging::CleanupHandle>,
 }
 
 struct LogPath {
@@ -92,9 +93,22 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
         "`gui-client` started logging"
     );
 
+    // Start background log cleanup thread
+    let log_dirs = log_paths()
+        .context("Can't compute log paths for cleanup")?
+        .into_iter()
+        .map(|lp| lp.src)
+        .collect();
+    let cleanup = logging::start_cleanup_thread(
+        log_dirs,
+        logging::DEFAULT_MAX_SIZE_MB,
+        logging::DEFAULT_CLEANUP_INTERVAL,
+    );
+
     Ok(Handles {
         logger,
         reloader: stdout_reloader.merge(file_reloader).merge(system_reloader),
+        cleanup,
     })
 }
 
