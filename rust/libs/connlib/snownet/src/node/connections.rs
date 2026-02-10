@@ -13,9 +13,7 @@ use str0m::ice::IceAgent;
 
 use crate::{
     ConnectionStats, Event,
-    node::{
-        Connection, ConnectionState, FzRoleKind, allocations::Allocations, new_ice_candidate_event,
-    },
+    node::{Connection, ConnectionState, Mode, allocations::Allocations, new_ice_candidate_event},
 };
 
 pub struct Connections<TId, RId> {
@@ -90,7 +88,7 @@ where
         allocations: &Allocations<RId>,
         pending_events: &mut VecDeque<Event<TId>>,
         rng: &mut impl Rng,
-        role: FzRoleKind,
+        role: Mode,
         now: Instant,
     ) {
         for (cid, c) in self.iter_established_mut() {

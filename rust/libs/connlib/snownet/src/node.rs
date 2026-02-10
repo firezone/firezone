@@ -59,33 +59,33 @@ pub struct Server {}
 pub struct Client {}
 
 #[derive(Debug, Clone, Copy)]
-enum FzRoleKind {
+enum Mode {
     Client,
     Server,
 }
 
-trait FzRole {
+trait DynMode {
     fn new() -> Self;
-    fn kind(&self) -> FzRoleKind;
+    fn kind(&self) -> Mode;
 }
 
-impl FzRole for Server {
+impl DynMode for Server {
     fn new() -> Self {
         Self {}
     }
 
-    fn kind(&self) -> FzRoleKind {
-        FzRoleKind::Server
+    fn kind(&self) -> Mode {
+        Mode::Server
     }
 }
 
-impl FzRole for Client {
+impl DynMode for Client {
     fn new() -> Self {
         Self {}
     }
 
-    fn kind(&self) -> FzRoleKind {
-        FzRoleKind::Client
+    fn kind(&self) -> Mode {
+        Mode::Client
     }
 }
 
@@ -113,7 +113,7 @@ impl FzRole for Client {
 /// 3. Call [`Node::handle_timeout`] once that time is reached
 ///
 /// A [`Node`] is generic over three things:
-/// - `T`: The role it is operating in, either [`Client`] or [`Server`].
+/// - `T`: The mode it is operating in, either [`Client`] or [`Server`].
 /// - `TId`: The type to use for uniquely identifying connections.
 /// - `RId`: The type to use for uniquely identifying relays.
 ///
@@ -138,7 +138,7 @@ pub struct Node<T, TId, RId> {
     stats: NodeStats,
     buffer_pool: BufferPool<Vec<u8>>,
 
-    role: T,
+    mode: T,
     rng: StdRng,
 
     /// The number of seconds since the UNIX epoch.
@@ -151,12 +151,12 @@ pub struct Node<T, TId, RId> {
 #[error("No TURN servers available")]
 pub struct NoTurnServers {}
 
-#[expect(private_bounds, reason = "We don't want `Role` to be public API")]
+#[expect(private_bounds, reason = "We don't want `Mode` to be public API")]
 impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
-    T: FzRole,
+    T: DynMode,
 {
     pub fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         let mut rng = StdRng::from_seed(seed);
@@ -169,7 +169,7 @@ where
             session_id: SessionId::new(*public_key),
             private_key,
             public_key: *public_key,
-            role: T::new(),
+            mode: T::new(),
             index,
             rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
             buffered_transmits: VecDeque::default(),
@@ -269,7 +269,7 @@ where
         {
             tracing::info!(local = ?local_creds, "Reusing existing connection");
 
-            c.state.on_upsert(cid, &mut c.agent, self.role.kind(), now);
+            c.state.on_upsert(cid, &mut c.agent, self.mode.kind(), now);
 
             // Take all current candidates.
             let current_candidates = c.agent.local_candidates().to_vec();
@@ -310,7 +310,7 @@ where
             tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
 
-        let mut agent = new_agent(ice_role, self.role.kind());
+        let mut agent = new_agent(ice_role, self.mode.kind());
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
@@ -382,7 +382,7 @@ where
             &goodbye,
             now,
             &mut self.allocations,
-            self.role.kind(),
+            self.mode.kind(),
         ) {
             Ok(Some(transmit)) => {
                 tracing::info!("Connection closed proactively (sent goodbye)");
@@ -451,7 +451,7 @@ where
         allocation.bind_channel(candidate.addr(), now);
 
         // Make sure we move out of idle mode when we add new candidates.
-        state.on_candidate(cid, agent, self.role.kind(), now);
+        state.on_candidate(cid, agent, self.mode.kind(), now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
@@ -460,7 +460,7 @@ where
             agent.invalidate_candidate(&candidate);
             agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
 
-            state.on_candidate(cid, agent, self.role.kind(), now)
+            state.on_candidate(cid, agent, self.mode.kind(), now)
         }
     }
 
@@ -514,7 +514,7 @@ where
     ) -> Result<Option<Transmit>> {
         let conn = self.connections.get_established_mut(&cid, now)?;
 
-        if matches!(self.role.kind(), FzRoleKind::Server) && !conn.state.has_nominated_socket() {
+        if matches!(self.mode.kind(), Mode::Server) && !conn.state.has_nominated_socket() {
             tracing::debug!(
                 ?packet,
                 "ICE is still in progress; dropping packet because server should not initiate WireGuard sessions"
@@ -546,7 +546,7 @@ where
                 packet,
                 now,
                 &mut self.allocations,
-                self.role.kind(),
+                self.mode.kind(),
             )
             .with_context(|| format!("cid={cid}"))?;
 
@@ -602,7 +602,7 @@ where
                 now,
                 &mut self.allocations,
                 &mut self.buffered_transmits,
-                self.role.kind(),
+                self.mode.kind(),
             );
         }
 
@@ -623,7 +623,7 @@ where
             &self.allocations,
             &mut self.pending_events,
             &mut self.rng,
-            self.role.kind(),
+            self.mode.kind(),
             now,
         );
         self.connections
@@ -982,7 +982,7 @@ where
             packet,
             &mut self.allocations,
             &mut self.buffered_transmits,
-            self.role.kind(),
+            self.mode.kind(),
             now,
         );
 
@@ -1020,7 +1020,7 @@ where
                                 .push_back(new_ice_candidate_event(cid, candidate));
                         }
 
-                        state.on_candidate(cid, agent, self.role.kind(), now);
+                        state.on_candidate(cid, agent, self.mode.kind(), now);
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
@@ -1335,7 +1335,7 @@ impl ConnectionState {
         }
     }
 
-    fn handle_timeout(&mut self, agent: &mut IceAgent, role: FzRoleKind, now: Instant) {
+    fn handle_timeout(&mut self, agent: &mut IceAgent, mode: Mode, now: Instant) {
         let Self::Connected {
             last_activity,
             peer_socket,
@@ -1354,10 +1354,10 @@ impl ConnectionState {
 
         let peer_socket = *peer_socket;
 
-        self.transition_to_idle(peer_socket, agent, role);
+        self.transition_to_idle(peer_socket, agent, mode);
     }
 
-    fn on_upsert<TId>(&mut self, cid: TId, agent: &mut IceAgent, role: FzRoleKind, now: Instant)
+    fn on_upsert<TId>(&mut self, cid: TId, agent: &mut IceAgent, mode: Mode, now: Instant)
     where
         TId: fmt::Display,
     {
@@ -1370,10 +1370,10 @@ impl ConnectionState {
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(cid, peer_socket, agent, role, "upsert", now);
+        self.transition_to_connected(cid, peer_socket, agent, mode, "upsert", now);
     }
 
-    fn on_candidate<TId>(&mut self, cid: TId, agent: &mut IceAgent, role: FzRoleKind, now: Instant)
+    fn on_candidate<TId>(&mut self, cid: TId, agent: &mut IceAgent, mode: Mode, now: Instant)
     where
         TId: fmt::Display,
     {
@@ -1386,14 +1386,14 @@ impl ConnectionState {
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(cid, peer_socket, agent, role, "candidates changed", now);
+        self.transition_to_connected(cid, peer_socket, agent, mode, "candidates changed", now);
     }
 
     fn on_outgoing<TId>(
         &mut self,
         cid: TId,
         agent: &mut IceAgent,
-        role: FzRoleKind,
+        mode: Mode,
         packet: &IpPacket,
         now: Instant,
     ) where
@@ -1412,7 +1412,7 @@ impl ConnectionState {
             cid,
             peer_socket,
             agent,
-            role,
+            mode,
             tracing::field::debug(packet),
             now,
         );
@@ -1422,7 +1422,7 @@ impl ConnectionState {
         &mut self,
         cid: TId,
         agent: &mut IceAgent,
-        role: FzRoleKind,
+        mode: Mode,
         packet: &IpPacket,
         now: Instant,
     ) where
@@ -1441,21 +1441,16 @@ impl ConnectionState {
             cid,
             peer_socket,
             agent,
-            role,
+            mode,
             tracing::field::debug(packet),
             now,
         );
     }
 
-    fn transition_to_idle(
-        &mut self,
-        peer_socket: PeerSocket,
-        agent: &mut IceAgent,
-        role: FzRoleKind,
-    ) {
+    fn transition_to_idle(&mut self, peer_socket: PeerSocket, agent: &mut IceAgent, mode: Mode) {
         tracing::debug!("Connection is idle");
         *self = Self::Idle { peer_socket };
-        apply_idle_stun_timings(agent, role);
+        apply_idle_stun_timings(agent, mode);
     }
 
     fn transition_to_connected<TId>(
@@ -1463,7 +1458,7 @@ impl ConnectionState {
         cid: TId,
         peer_socket: PeerSocket,
         agent: &mut IceAgent,
-        role: FzRoleKind,
+        mode: Mode,
         trigger: impl tracing::Value,
         now: Instant,
     ) where
@@ -1474,7 +1469,7 @@ impl ConnectionState {
             peer_socket,
             last_activity: now,
         };
-        apply_default_stun_timings(agent, role);
+        apply_default_stun_timings(agent, mode);
     }
 
     fn has_nominated_socket(&self) -> bool {
@@ -1604,7 +1599,7 @@ where
         now: Instant,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
-        role: FzRoleKind,
+        mode: Mode,
     ) where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + fmt::Display,
@@ -1612,7 +1607,7 @@ where
         let _guard = tracing::info_span!("handle_timeout", %cid).entered();
 
         self.agent.handle_timeout(now);
-        self.state.handle_timeout(&mut self.agent, role, now);
+        self.state.handle_timeout(&mut self.agent, mode, now);
 
         if self
             .candidate_timeout()
@@ -1731,7 +1726,7 @@ where
                                         &packet,
                                         now,
                                         allocations,
-                                        role,
+                                        mode,
                                     )
                                     .inspect_err(|e| {
                                         tracing::debug!(
@@ -1889,13 +1884,13 @@ where
         packet: &IpPacket,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        role: FzRoleKind,
+        mode: Mode,
     ) -> Result<Option<Transmit>>
     where
         TId: fmt::Display,
     {
         self.state
-            .on_outgoing(cid, &mut self.agent, role, packet, now);
+            .on_outgoing(cid, &mut self.agent, mode, packet, now);
 
         let packet_start = if socket.send_from_relay() { 4 } else { 0 };
 
@@ -1962,7 +1957,7 @@ where
         packet: &[u8],
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
-        role: FzRoleKind,
+        mode: Mode,
         now: Instant,
     ) -> ControlFlow<Result<()>, IpPacket>
     where
@@ -2061,7 +2056,7 @@ where
 
         if let ControlFlow::Continue(packet) = &control_flow {
             self.state
-                .on_incoming(cid, &mut self.agent, role, packet, now);
+                .on_incoming(cid, &mut self.agent, mode, packet, now);
         }
 
         control_flow
@@ -2182,24 +2177,24 @@ where
     Some(transmit)
 }
 
-fn new_agent(ice_role: IceRole, role: FzRoleKind) -> IceAgent {
+fn new_agent(ice_role: IceRole, mode: Mode) -> IceAgent {
     let mut agent = IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER);
     agent.set_controlling(matches!(ice_role, IceRole::Controlling));
     agent.set_timing_advance(Duration::ZERO);
 
-    apply_default_stun_timings(&mut agent, role);
+    apply_default_stun_timings(&mut agent, mode);
 
     agent
 }
 
-fn apply_default_stun_timings(agent: &mut IceAgent, role: FzRoleKind) {
-    let retrans = match role {
-        FzRoleKind::Client => 12,
-        FzRoleKind::Server => 45,
+fn apply_default_stun_timings(agent: &mut IceAgent, mode: Mode) {
+    let retrans = match mode {
+        Mode::Client => 12,
+        Mode::Server => 45,
     };
-    let max_stun_rto = match role {
-        FzRoleKind::Client => 1500,
-        FzRoleKind::Server => 15_000,
+    let max_stun_rto = match mode {
+        Mode::Client => 1500,
+        Mode::Server => 15_000,
     };
 
     agent.set_max_stun_retransmits(retrans);
@@ -2207,10 +2202,10 @@ fn apply_default_stun_timings(agent: &mut IceAgent, role: FzRoleKind) {
     agent.set_initial_stun_rto(Duration::from_millis(250))
 }
 
-fn apply_idle_stun_timings(agent: &mut IceAgent, role: FzRoleKind) {
-    let retrans = match role {
-        FzRoleKind::Client => 4,
-        FzRoleKind::Server => 40,
+fn apply_idle_stun_timings(agent: &mut IceAgent, mode: Mode) {
+    let retrans = match mode {
+        Mode::Client => 4,
+        Mode::Server => 40,
     };
 
     agent.set_max_stun_retransmits(retrans);
@@ -2248,54 +2243,54 @@ mod tests {
 
     #[test]
     fn client_default_ice_timeout_controlling() {
-        let mut agent = new_agent(IceRole::Controlling, FzRoleKind::Client);
+        let mut agent = new_agent(IceRole::Controlling, Mode::Client);
 
-        apply_default_stun_timings(&mut agent, FzRoleKind::Client);
+        apply_default_stun_timings(&mut agent, Mode::Client);
 
         assert_eq!(agent.ice_timeout(), Duration::from_millis(15250))
     }
 
     #[test]
     fn client_default_ice_timeout_not_controlling() {
-        let mut agent = new_agent(IceRole::Controlled, FzRoleKind::Client);
+        let mut agent = new_agent(IceRole::Controlled, Mode::Client);
 
-        apply_default_stun_timings(&mut agent, FzRoleKind::Client);
+        apply_default_stun_timings(&mut agent, Mode::Client);
 
         assert_eq!(agent.ice_timeout(), Duration::from_millis(15250))
     }
 
     #[test]
     fn client_idle_ice_timeout_controlling() {
-        let mut agent = new_agent(IceRole::Controlling, FzRoleKind::Client);
+        let mut agent = new_agent(IceRole::Controlling, Mode::Client);
 
-        apply_idle_stun_timings(&mut agent, FzRoleKind::Client);
+        apply_idle_stun_timings(&mut agent, Mode::Client);
 
         assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
     }
 
     #[test]
     fn client_idle_ice_timeout_not_controlling() {
-        let mut agent = new_agent(IceRole::Controlled, FzRoleKind::Client);
+        let mut agent = new_agent(IceRole::Controlled, Mode::Client);
 
-        apply_idle_stun_timings(&mut agent, FzRoleKind::Client);
+        apply_idle_stun_timings(&mut agent, Mode::Client);
 
         assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
     }
 
     #[test]
     fn server_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlled, FzRoleKind::Server);
+        let mut agent = new_agent(IceRole::Controlled, Mode::Server);
 
-        apply_default_stun_timings(&mut agent, FzRoleKind::Server);
+        apply_default_stun_timings(&mut agent, Mode::Server);
 
         assert_eq!(agent.ice_timeout(), Duration::from_millis(600_750))
     }
 
     #[test]
     fn server_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlled, FzRoleKind::Server);
+        let mut agent = new_agent(IceRole::Controlled, Mode::Server);
 
-        apply_idle_stun_timings(&mut agent, FzRoleKind::Server);
+        apply_idle_stun_timings(&mut agent, Mode::Server);
 
         assert_eq!(agent.ice_timeout(), Duration::from_secs(1000))
     }
