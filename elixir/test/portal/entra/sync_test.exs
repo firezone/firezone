@@ -1229,7 +1229,8 @@ defmodule Portal.Entra.SyncTest do
         end
 
       assert error.step == :fetch_directory_sync_service_principal
-      assert error.reason =~ "Directory Sync app service principal not found"
+      assert {:consent_revoked, msg} = error.error
+      assert msg =~ "Directory Sync app service principal not found"
     end
 
     test "continues sync when Auth Provider service principal not found (deprecated app)" do

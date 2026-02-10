@@ -92,8 +92,7 @@ defmodule Portal.Google.Sync do
         )
 
         raise Google.SyncError,
-          reason: "Invalid access token response",
-          context: response,
+          error: response,
           directory_id: directory.id,
           step: :get_access_token
 
@@ -104,8 +103,7 @@ defmodule Portal.Google.Sync do
         )
 
         raise Google.SyncError,
-          reason: "Failed to get access token",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :get_access_token
     end
@@ -147,8 +145,7 @@ defmodule Portal.Google.Sync do
         )
 
         raise Google.SyncError,
-          reason: "Failed to stream users",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_users
 
@@ -164,8 +161,7 @@ defmodule Portal.Google.Sync do
             # Ensure critical fields exist
             unless user["id"] do
               raise Google.SyncError,
-                reason: "User missing required 'id' field",
-                context: "validation: user missing 'id' field",
+                error: {:validation, "user missing 'id' field"},
                 directory_id: directory.id,
                 step: :process_user
             end
@@ -192,8 +188,7 @@ defmodule Portal.Google.Sync do
         )
 
         raise Google.SyncError,
-          reason: "Failed to stream groups",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_groups
 
@@ -209,16 +204,14 @@ defmodule Portal.Google.Sync do
             # Ensure critical fields exist - if Google returns incomplete data, we must fail
             unless group["id"] do
               raise Google.SyncError,
-                reason: "Group missing required 'id' field",
-                context: "validation: group missing 'id' field",
+                error: {:validation, "group missing 'id' field"},
                 directory_id: directory.id,
                 step: :process_group
             end
 
             unless group["name"] || group["email"] do
               raise Google.SyncError,
-                reason: "Group missing both 'name' and 'email' fields",
-                context: "validation: group '#{group["id"]}' missing 'name' field",
+                error: {:validation, "group '#{group["id"]}' missing 'name' field"},
                 directory_id: directory.id,
                 step: :process_group
             end
@@ -262,8 +255,7 @@ defmodule Portal.Google.Sync do
         )
 
         raise Google.SyncError,
-          reason: "Failed to stream group members for #{group_name}",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_group_members
 
@@ -288,8 +280,7 @@ defmodule Portal.Google.Sync do
       Enum.map(user_members, fn member ->
         unless member["id"] do
           raise Google.SyncError,
-            reason: "Member missing required 'id' field in group #{group_name}",
-            context: "validation: member missing 'id' field",
+            error: {:validation, "member missing 'id' field in group #{group_name}"},
             directory_id: directory.id,
             step: :process_member
         end
@@ -314,8 +305,7 @@ defmodule Portal.Google.Sync do
         )
 
         raise Google.SyncError,
-          reason: "Failed to stream organization units",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_org_units
 
@@ -330,25 +320,22 @@ defmodule Portal.Google.Sync do
           Enum.map(org_units, fn org_unit ->
             unless org_unit["orgUnitId"] do
               raise Google.SyncError,
-                reason: "Organization unit missing required 'orgUnitId' field",
-                context: "validation: org_unit missing 'orgUnitId' field",
+                error: {:validation, "org_unit missing 'orgUnitId' field"},
                 directory_id: directory.id,
                 step: :process_org_unit
             end
 
             unless org_unit["name"] do
               raise Google.SyncError,
-                reason: "Organization unit missing required 'name' field",
-                context: "validation: org_unit '#{org_unit["orgUnitId"]}' missing 'name' field",
+                error: {:validation, "org_unit '#{org_unit["orgUnitId"]}' missing 'name' field"},
                 directory_id: directory.id,
                 step: :process_org_unit
             end
 
             unless org_unit["orgUnitPath"] do
               raise Google.SyncError,
-                reason: "Organization unit missing required 'orgUnitPath' field",
-                context:
-                  "validation: org_unit '#{org_unit["orgUnitId"]}' missing 'orgUnitPath' field",
+                error:
+                  {:validation, "org_unit '#{org_unit["orgUnitId"]}' missing 'orgUnitPath' field"},
                 directory_id: directory.id,
                 step: :process_org_unit
             end
@@ -395,8 +382,7 @@ defmodule Portal.Google.Sync do
         )
 
         raise Google.SyncError,
-          reason: "Failed to stream org unit users for #{org_unit_name}",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_org_unit_members
 
@@ -418,8 +404,7 @@ defmodule Portal.Google.Sync do
       Enum.map(users, fn user ->
         unless user["id"] do
           raise Google.SyncError,
-            reason: "User missing required 'id' field in organization unit #{org_unit_name}",
-            context: "validation: user missing 'id' field",
+            error: {:validation, "user missing 'id' field in org unit #{org_unit_name}"},
             directory_id: directory.id,
             step: :process_org_unit_member
         end
@@ -542,8 +527,7 @@ defmodule Portal.Google.Sync do
 
     unless primary_email do
       raise Google.SyncError,
-        reason: "User missing required 'primaryEmail' field",
-        context: "validation: user '#{user["id"]}' missing 'primaryEmail' field",
+        error: {:validation, "user '#{user["id"]}' missing 'primaryEmail' field"},
         directory_id: directory_id,
         step: :process_user
     end

@@ -31,6 +31,10 @@ defmodule PortalWeb.Settings.DirectorySync do
     Okta.Directory => @common_fields ++ ~w[okta_domain client_id private_key_jwk kid]a
   }
 
+  # Fields set programmatically (not via HTML form inputs) that must be
+  # preserved across validate events so they aren't lost on each keystroke.
+  @programmatic_fields ~w[is_verified private_key_jwk kid tenant_id domain]a
+
   def mount(_params, _session, socket) do
     socket = assign(socket, page_title: "Directory Sync")
 
@@ -120,12 +124,20 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   def handle_event("validate", %{"directory" => attrs}, socket) do
-    # Preserve is_verified from the current form state
-    current = apply_changes(socket.assigns.form.source)
-    attrs = Map.put(attrs, "is_verified", current.is_verified)
+    changeset = socket.assigns.form.source
+    attrs = preserve_programmatic_fields(changeset, attrs)
+
+    # EDIT: .data (original directory) so changes are relative to DB values (UPDATE semantics).
+    # NEW: apply_changes() to capture all current values (INSERT semantics).
+    base =
+      if socket.assigns.live_action == :edit do
+        changeset.data
+      else
+        apply_changes(changeset)
+      end
 
     changeset =
-      current
+      base
       |> changeset(attrs)
       |> clear_verification_if_trigger_fields_changed()
       |> Map.put(:action, :validate)
@@ -137,7 +149,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     # Generate the keypair
     keypair = JWK.generate_jwk_and_jwks()
 
-    # Update the changeset with the prevate key JWK and kid
+    # Update the changeset with the private key JWK and kid
     changeset =
       socket.assigns.form.source
       |> apply_changes()
@@ -162,19 +174,29 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   def handle_event("reset_verification", _params, socket) do
-    changeset =
-      socket.assigns.form.source
-      |> delete_change(:is_verified)
-      |> delete_change(:domain)
-      |> delete_change(:tenant_id)
-      |> delete_change(:okta_domain)
-      |> apply_changes()
-      |> changeset(%{
-        "is_verified" => false,
-        "domain" => nil,
-        "tenant_id" => nil,
-        "okta_domain" => nil
-      })
+    # For EDIT: Use .data (original directory) so changes are tracked relative to DB values.
+    # For NEW: Use apply_changes to preserve programmatically set fields (like Okta's keypair).
+    changeset = socket.assigns.form.source
+
+    base =
+      if socket.assigns.live_action == :edit do
+        changeset.data
+      else
+        apply_changes(changeset)
+      end
+
+    # Start with current changes, drop verification fields, add verification resets.
+    # This preserves programmatic fields (like Okta's keypair) and form field changes.
+    attrs =
+      changeset.changes
+      |> Map.drop([:is_verified, :domain, :tenant_id, :okta_domain])
+      |> Map.put(:is_verified, false)
+      |> Map.put(:domain, nil)
+      |> Map.put(:tenant_id, nil)
+      |> Map.put(:okta_domain, nil)
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
+
+    changeset = changeset(base, attrs)
 
     {:noreply, assign(socket, verification_error: nil, form: to_form(changeset))}
   end
@@ -295,16 +317,16 @@ defmodule PortalWeb.Settings.DirectorySync do
     if stored_token && Plug.Crypto.secure_compare(stored_token, state_token) do
       send(pid, :success)
 
-      # Verification was already done in verification.ex before broadcasting
-      attrs = %{
-        "is_verified" => true,
-        "tenant_id" => tenant_id
-      }
+      # For EDIT: Use .data (original directory) so changes are tracked relative to DB values.
+      # For NEW: Entra has no programmatically set fields, so .data works here too.
+      changeset = socket.assigns.form.source
 
-      changeset =
-        socket.assigns.form.source
-        |> apply_changes()
-        |> changeset(attrs)
+      attrs =
+        changeset.changes
+        |> Map.put(:is_verified, true)
+        |> Map.put(:tenant_id, tenant_id)
+
+      changeset = changeset(changeset.data, attrs)
 
       {:noreply, assign(socket, form: to_form(changeset), verification_error: nil)}
     else
@@ -917,10 +939,11 @@ defmodule PortalWeb.Settings.DirectorySync do
           <label class="block text-sm font-medium text-neutral-700 mb-3">
             Group sync mode
           </label>
+          <% sync_all_groups = get_field(@form.source, :sync_all_groups) %>
           <div class="grid gap-4 md:grid-cols-2">
             <label class={[
               "flex flex-col p-4 border-2 rounded-lg cursor-pointer transition-all",
-              if(@form[:sync_all_groups].value == false,
+              if(sync_all_groups == false,
                 do: "border-accent-500 bg-accent-50",
                 else: "border-neutral-200 hover:border-neutral-300"
               )
@@ -929,7 +952,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 type="radio"
                 name={@form[:sync_all_groups].name}
                 value="false"
-                checked={@form[:sync_all_groups].value == false}
+                checked={sync_all_groups == false}
                 class="sr-only"
               />
               <div class="mb-2">
@@ -947,7 +970,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
             <label class={[
               "flex flex-col p-4 border-2 rounded-lg cursor-pointer transition-all",
-              if(@form[:sync_all_groups].value == true,
+              if(sync_all_groups == true,
                 do: "border-accent-500 bg-accent-50",
                 else: "border-neutral-200 hover:border-neutral-300"
               )
@@ -956,7 +979,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 type="radio"
                 name={@form[:sync_all_groups].name}
                 value="true"
-                checked={@form[:sync_all_groups].value == true}
+                checked={sync_all_groups == true}
                 class="sr-only"
               />
               <div class="mb-2">
@@ -1445,6 +1468,15 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     cast(struct, attrs, Map.get(@fields, schema))
     |> schema.changeset()
+  end
+
+  defp preserve_programmatic_fields(changeset, attrs) do
+    Enum.reduce(@programmatic_fields, attrs, fn field, acc ->
+      case Map.fetch(changeset.changes, field) do
+        {:ok, value} -> Map.put(acc, to_string(field), value)
+        :error -> acc
+      end
+    end)
   end
 
   defp parse_google_verification_error({:ok, %Req.Response{status: 400, body: body}}) do
