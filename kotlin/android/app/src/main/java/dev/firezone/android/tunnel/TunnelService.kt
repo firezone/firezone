@@ -32,11 +32,14 @@ import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.channels.produce
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -47,10 +50,14 @@ import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
+import uniffi.connlib.enforceLogSizeCap
+import uniffi.connlib.logCleanupDefaultIntervalSecs
+import uniffi.connlib.logCleanupDefaultMaxSizeMb
 import uniffi.connlib.use
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
@@ -79,6 +86,8 @@ class TunnelService : VpnService() {
     // For reacting to disconnects of our VPN service, for example when the user disconnects
     // the VPN from the system settings or MDM disconnects us.
     private var disconnectCallback: DisconnectMonitor? = null
+
+    private var logCleanupJob: Job? = null
 
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
@@ -306,6 +315,7 @@ class TunnelService : VpnService() {
                         ).use { session ->
                             startNetworkMonitoring()
                             startDisconnectMonitoring()
+                            startLogCleanup()
 
                             eventLoop(session, commandChannel!!)
 
@@ -329,6 +339,7 @@ class TunnelService : VpnService() {
 
                     // Stop the foreground notification
                     stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopLogCleanup()
                     stopSelf()
                 }
             }
@@ -392,6 +403,39 @@ class TunnelService : VpnService() {
 
             disconnectCallback = null
         }
+    }
+
+    private fun startLogCleanup() {
+        logCleanupJob =
+            serviceScope.launch(Dispatchers.IO) {
+                try {
+                    val logDir = getLogDir()
+                    val maxSizeMb = logCleanupDefaultMaxSizeMb()
+                    val intervalMs = logCleanupDefaultIntervalSecs().toLong() * 1000
+                    while (isActive) {
+                        try {
+                            val bytesDeleted = enforceLogSizeCap(listOf(logDir), maxSizeMb)
+                            if (bytesDeleted > 0u) {
+                                Log.d(TAG, "Log cleanup deleted $bytesDeleted bytes")
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Log cleanup failed", e)
+                        }
+                        delay(intervalMs)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Log cleanup could not start", e)
+                }
+            }
+    }
+
+    private fun stopLogCleanup() {
+        logCleanupJob?.cancel()
+        logCleanupJob = null
     }
 
     fun setServiceStateMutableStateFlow(stateFlow: MutableStateFlow<State?>) {
