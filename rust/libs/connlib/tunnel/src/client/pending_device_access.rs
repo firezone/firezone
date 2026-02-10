@@ -20,7 +20,7 @@ impl PendingDeviceAccessRequests {
     pub fn on_not_connected_device(&mut self, device: Ipv4Addr, trigger: IpPacket, now: Instant) {
         let pending_flow = self
             .inner
-            .entry(device.clone())
+            .entry(device)
             .or_insert_with(|| PendingClientAccessRequest::new(now - Duration::from_secs(10))); // Insert with a negative time to ensure we instantly send an intent.
 
         pending_flow.push(trigger);
@@ -92,11 +92,8 @@ mod tests {
         let mut now = Instant::now();
         let device = device_foo();
 
-        pending_requests.on_not_connected_device(device.clone(), trigger(1), now);
-        assert_eq!(
-            pending_requests.poll_connection_intents(),
-            Some(device.clone())
-        );
+        pending_requests.on_not_connected_device(device, trigger(1), now);
+        assert_eq!(pending_requests.poll_connection_intents(), Some(device));
 
         now += Duration::from_secs(1);
 
@@ -110,11 +107,8 @@ mod tests {
         let mut now = Instant::now();
         let device = device_foo();
 
-        pending_requests.on_not_connected_device(device.clone(), trigger(1), now);
-        assert_eq!(
-            pending_requests.poll_connection_intents(),
-            Some(device.clone())
-        );
+        pending_requests.on_not_connected_device(device, trigger(1), now);
+        assert_eq!(pending_requests.poll_connection_intents(), Some(device));
 
         now += Duration::from_secs(3);
 
@@ -131,9 +125,9 @@ mod tests {
         let device_foo = device_foo();
         let device_bar = device_bar();
 
-        pending_flows.on_not_connected_device(device_foo.clone(), trigger(1), now);
+        pending_flows.on_not_connected_device(device_foo, trigger(1), now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(device_foo));
-        pending_flows.on_not_connected_device(device_bar.clone(), trigger(2), now);
+        pending_flows.on_not_connected_device(device_bar, trigger(2), now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(device_bar));
     }
 

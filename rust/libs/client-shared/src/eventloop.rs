@@ -20,8 +20,8 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
-    ClientIceCandidates, EgressMessages, FailReason, FlowCreated, FlowCreationFailed,
-    GatewayIceCandidates, IngressMessages, InitClient,
+    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates, EgressMessages,
+    FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -534,6 +534,46 @@ impl Eventloop {
                     }
                     FailReason::NotFound | FailReason::Forbidden | FailReason::Unknown => {}
                 }
+            }
+            IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {
+                client_id,
+                client_public_key,
+                client_ipv4,
+                client_ipv6,
+                preshared_key,
+                local_ice_credentials,
+                remote_ice_credentials,
+                ice_role,
+            }) => {
+                match tunnel.state_mut().handle_client_device_access_authorized(
+                    client_id,
+                    PublicKey::from(client_public_key.0),
+                    IpConfig {
+                        v4: client_ipv4,
+                        v6: client_ipv6,
+                    },
+                    preshared_key,
+                    local_ice_credentials,
+                    remote_ice_credentials,
+                    ice_role,
+                    Instant::now(),
+                ) {
+                    Ok(()) => {}
+                    Err(e @ snownet::NoTurnServers {}) => {
+                        tracing::debug!("Failed to handle client device access authorization: {e}");
+
+                        // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
+                        self.portal_cmd_tx
+                            .send(PortalCommand::Connect(PublicKeyParam(
+                                tunnel.public_key().to_bytes(),
+                            )))
+                            .await
+                            .context("Failed to connect phoenix-channel")?;
+                    }
+                };
+            }
+            IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied { .. }) => {
+                // TODO:
             }
         }
 

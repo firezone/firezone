@@ -62,6 +62,12 @@ pub struct IceCredentials {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IceRole {
+    Controlling,
+    Controlled,
+}
+
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
 pub enum DnsServer {

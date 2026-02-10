@@ -28,8 +28,8 @@ use telemetry::{analytics, feature_flags};
 
 use crate::client::dns_cache::DnsCache;
 use crate::dns::{DnsResourceRecord, StubResolver};
-use crate::messages::Interface as InterfaceConfig;
 use crate::messages::{IceCredentials, SecretKey};
+use crate::messages::{IceRole, Interface as InterfaceConfig};
 use crate::peer_store::PeerStore;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::{Context, ErrorExt};
@@ -106,8 +106,8 @@ pub struct ClientState {
     clients: PeerStore<ClientId, ClientOnClient>,
     /// Tracks the flows to resources that we are currently trying to establish.
     pending_flows: PendingFlows,
-    /// Tracks pending access to another Client.
-    pending_client_access: PendingDeviceAccessRequests,
+    /// Tracks pending access to other devices.
+    pending_device_access: PendingDeviceAccessRequests,
 
     dns_resource_nat: DnsResourceNat,
     /// Tracks the resources we have been authorized for and which Gateway to use to access them.
@@ -192,7 +192,7 @@ impl ClientState {
             tcp_dns_server: dns_over_tcp::Server::new(now),
             dns_streams_by_local_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
-            pending_client_access: Default::default(),
+            pending_device_access: Default::default(),
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
         }
@@ -769,7 +769,7 @@ impl ClientState {
         Ok(Ok(()))
     }
 
-    pub fn handle_device_access_authorized(
+    pub fn handle_client_device_access_authorized(
         &mut self,
         cid: ClientId,
         client_key: PublicKey,
@@ -777,9 +777,10 @@ impl ClientState {
         preshared_key: SecretKey,
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
+        ice_role: IceRole,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
-        let pending_device_access = self.pending_client_access.remove(&client_tun.v4);
+        let pending_device_access = self.pending_device_access.remove(&client_tun.v4);
 
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
@@ -1647,7 +1648,7 @@ impl ClientState {
             });
         }
 
-        if let Some(client) = self.pending_client_access.poll_connection_intents() {
+        if let Some(client) = self.pending_device_access.poll_connection_intents() {
             return Some(ClientEvent::DeviceConnectionIntent { ipv4: client });
         }
 
@@ -1905,7 +1906,7 @@ impl ClientState {
     }
 
     fn on_not_connected_device(&mut self, device: Ipv4Addr, trigger: IpPacket, now: Instant) {
-        self.pending_client_access
+        self.pending_device_access
             .on_not_connected_device(device, trigger, now);
     }
 }
