@@ -273,8 +273,8 @@ fn try_main() -> Result<()> {
     .context("Failed to set up logging")?;
 
     // Start background log cleanup if file logging is enabled
-    let _cleanup_handle = cli.log_dir.as_ref().map(|log_dir| {
-        logging::start_cleanup_thread(
+    let _cleanup_handle = cli.log_dir.as_ref().and_then(|log_dir| {
+        logging::start_log_cleanup_thread(
             vec![log_dir.clone()],
             cli.log_max_size_mb,
             Duration::from_secs(cli.log_cleanup_interval_secs),

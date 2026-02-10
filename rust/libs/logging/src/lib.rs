@@ -4,7 +4,7 @@ pub mod cleanup;
 pub mod file;
 
 pub use cleanup::{
-    CleanupHandle, DEFAULT_CLEANUP_INTERVAL, DEFAULT_MAX_SIZE_MB, start_cleanup_thread,
+    CleanupHandle, DEFAULT_CLEANUP_INTERVAL, DEFAULT_MAX_SIZE_MB, start_log_cleanup_thread,
 };
 mod format;
 #[macro_use]

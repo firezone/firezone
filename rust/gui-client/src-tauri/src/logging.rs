@@ -99,7 +99,7 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
         .into_iter()
         .map(|lp| lp.src)
         .collect();
-    let cleanup = logging::start_cleanup_thread(
+    let cleanup = logging::start_log_cleanup_thread(
         log_dirs,
         logging::DEFAULT_MAX_SIZE_MB,
         logging::DEFAULT_CLEANUP_INTERVAL,

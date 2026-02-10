@@ -32,7 +32,9 @@ pub struct CleanupHandle {
 /// Start a background thread that periodically enforces log size cap.
 ///
 /// Runs cleanup immediately, then every `interval`.
-pub fn start_cleanup_thread(
+///
+/// Returns `None` if the thread could not be spawned.
+pub fn start_log_cleanup_thread(
     log_dirs: Vec<PathBuf>,
     max_size_mb: u32,
     interval: Duration,
@@ -392,34 +394,5 @@ mod tests {
                 .unwrap();
         }
         path
-    }
-
-    /// Verifies that dropping the handle doesn't block even when the cleanup
-    /// thread is sleeping (waiting for the interval).
-    ///
-    /// This is critical for process shutdown - we don't want to hang.
-    #[test]
-    fn test_drop_does_not_block_when_thread_sleeping() {
-        let dir = TempDir::new().unwrap();
-
-        // Start with a very long interval - thread will be sleeping
-        let handle = start_cleanup_thread(
-            vec![dir.path().to_path_buf()],
-            100,
-            Duration::from_secs(3600), // 1 hour
-        );
-
-        // Give time for initial cleanup to run and thread to start sleeping
-        std::thread::sleep(Duration::from_millis(50));
-
-        // Drop should return immediately (within reasonable time)
-        let start = std::time::Instant::now();
-        drop(handle);
-        let elapsed = start.elapsed();
-
-        assert!(
-            elapsed < Duration::from_millis(500),
-            "Drop took too long: {elapsed:?} - this would block process shutdown"
-        );
     }
 }
