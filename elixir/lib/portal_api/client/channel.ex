@@ -485,7 +485,7 @@ defmodule PortalAPI.Client.Channel do
   def handle_in(
         "request_device_access",
         %{
-          "ipv4" => ivp4
+          "ipv4" => _ivp4
         },
         socket
       ) do
