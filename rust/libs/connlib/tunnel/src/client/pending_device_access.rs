@@ -53,10 +53,7 @@ pub struct PendingClientAccessRequest {
 }
 
 impl PendingClientAccessRequest {
-    /// How many packets we will at most buffer in a [`PendingFlow`].
-    ///
-    /// `PendingFlow`s are per _resource_ (which could be Internet Resource or wildcard DNS resources).
-    /// Thus, we may receive a fair few packets before we can send them.
+    /// How many packets we will at most buffer in a [`PendingClientAccessRequest`].
     const CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
     fn new(now: Instant) -> Self {
@@ -64,7 +61,7 @@ impl PendingClientAccessRequest {
             last_intent_sent_at: now,
             packets: UniquePacketBuffer::with_capacity_power_of_2(
                 Self::CAPACITY_POW_2,
-                "pending-client-access",
+                "pending-device-access",
             ),
         }
     }
