@@ -34,7 +34,7 @@ defmodule PortalAPI.Gateway.Socket do
     attrs = Map.take(attrs, ~w[external_id name public_key])
 
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
-         {:ok, site} <- Database.fetch_site(gateway_token.site_id),
+         {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
          changeset = upsert_changeset(site, attrs, context),
          {:ok, gateway} <- Database.upsert_gateway(changeset, site) do
       OpenTelemetry.Tracer.set_attributes(%{
@@ -115,9 +115,12 @@ defmodule PortalAPI.Gateway.Socket do
     alias Portal.Safe
     alias Portal.Site
 
-    def fetch_site(id) do
+    def fetch_site(account_id, id) do
       result =
-        from(s in Site, where: s.id == ^id)
+        from(s in Site,
+          where: s.account_id == ^account_id,
+          where: s.id == ^id
+        )
         |> Safe.unscoped(:replica)
         |> Safe.one()
 
