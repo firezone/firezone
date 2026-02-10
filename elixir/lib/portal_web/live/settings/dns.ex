@@ -325,8 +325,8 @@ defmodule PortalWeb.Settings.DNS do
 
     def get_account_by_id!(id, subject) do
       from(a in Account, where: a.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def update(changeset, subject) do

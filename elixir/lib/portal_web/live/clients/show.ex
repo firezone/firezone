@@ -478,8 +478,8 @@ defmodule PortalWeb.Clients.Show do
       from(c in Client, as: :clients)
       |> where([clients: c], c.id == ^id)
       |> preload([:actor, :ipv4_address, :ipv6_address])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def verify_client(changeset, subject) do
@@ -577,7 +577,7 @@ defmodule PortalWeb.Clients.Show do
 
     defp list_policy_authorizations(queryable, subject, opts) do
       queryable
-      |> Portal.Safe.scoped(subject)
+      |> Portal.Safe.scoped(subject, :replica)
       |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
     end
   end

@@ -424,16 +424,16 @@ defmodule PortalWeb.Resources.Show do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.id == ^id)
       |> preload([:site, :policies])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def get_internet_resource!(subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.type == :internet)
       |> preload([:site, :policies])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def delete_resource(resource, subject) do
@@ -443,7 +443,7 @@ defmodule PortalWeb.Resources.Show do
 
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(Database, opts)
     end
 
@@ -608,7 +608,7 @@ defmodule PortalWeb.Resources.Show do
 
     defp list_policy_authorizations(queryable, subject, opts) do
       queryable
-      |> Portal.Safe.scoped(subject)
+      |> Portal.Safe.scoped(subject, :replica)
       |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
     end
   end

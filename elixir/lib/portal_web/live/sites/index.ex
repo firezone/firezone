@@ -219,7 +219,7 @@ defmodule PortalWeb.Sites.Index do
     def list_sites(subject, opts \\ []) do
       from(g in Site, as: :sites)
       |> where([sites: s], s.managed_by != :system)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -228,7 +228,7 @@ defmodule PortalWeb.Sites.Index do
       |> where([resources: r], r.site_id in ^site_ids)
       |> group_by([resources: r], r.site_id)
       |> select([resources: r], {r.site_id, count(r.id)})
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> Map.new()
     end
@@ -242,7 +242,7 @@ defmodule PortalWeb.Sites.Index do
       |> where([resources: r], r.site_id in ^site_ids)
       |> group_by([resources: r], r.site_id)
       |> select([resources: r], {r.site_id, count()})
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> Map.new()
     end
@@ -252,8 +252,8 @@ defmodule PortalWeb.Sites.Index do
         from(r in Resource, as: :resources)
         |> where([resources: r], r.type == :internet)
         |> preload(site: :gateways)
-        |> Safe.scoped(subject)
-        |> Safe.one()
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one(fallback_to_primary: true)
 
       case resource do
         nil ->

@@ -161,6 +161,8 @@ defmodule Portal.Safe do
   end
 
   # Query operations
+
+  # one/1
   @spec one(Scoped.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
   def one(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
@@ -182,6 +184,28 @@ defmodule Portal.Safe do
   def one(%Unscoped{queryable: queryable, repo: repo}),
     do: safe_repo(fn -> repo.one(queryable) end)
 
+  # one/2
+  @spec one(Scoped.t(), Keyword.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
+  def one(
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: queryable,
+          repo: repo
+        },
+        opts
+      ) do
+    schema = get_schema_module(queryable)
+
+    with :ok <- permit(:read, schema, subject) do
+      filtered_query = apply_account_filter(queryable, schema, account_id)
+
+      case {safe_repo(fn -> repo.one(filtered_query) end), opts[:fallback_to_primary]} do
+        {nil, true} -> safe_repo(fn -> Repo.one(filtered_query) end)
+        {result, _} -> result
+      end
+    end
+  end
+
   @spec one(Unscoped.t(), Keyword.t()) :: Ecto.Schema.t() | nil
   def one(%Unscoped{queryable: queryable, repo: repo}, opts) do
     case {safe_repo(fn -> repo.one(queryable) end), opts[:fallback_to_primary]} do
@@ -193,6 +217,7 @@ defmodule Portal.Safe do
   @spec one(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | nil
   def one(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.one(queryable) end)
 
+  # one!/1
   @spec one!(Scoped.t()) :: Ecto.Schema.t() | term() | no_return()
   def one!(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
@@ -211,6 +236,30 @@ defmodule Portal.Safe do
   def one!(%Unscoped{queryable: queryable, repo: repo}),
     do: safe_repo!(fn -> repo.one!(queryable) end, queryable)
 
+  # one!/2
+  @spec one!(Scoped.t(), Keyword.t()) ::
+          Ecto.Schema.t() | term() | no_return() | {:error, :unauthorized}
+  def one!(
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: queryable,
+          repo: repo
+        },
+        opts
+      ) do
+    schema = get_schema_module(queryable)
+
+    with :ok <- permit(:read, schema, subject) do
+      filtered_query = apply_account_filter(queryable, schema, account_id)
+
+      case {safe_repo(fn -> repo.one(filtered_query) end), opts[:fallback_to_primary]} do
+        {nil, true} -> safe_repo!(fn -> Repo.one!(filtered_query) end, filtered_query)
+        {nil, _} -> raise Ecto.NoResultsError, queryable: filtered_query
+        {result, _} -> result
+      end
+    end
+  end
+
   @spec one!(Unscoped.t(), Keyword.t()) :: Ecto.Schema.t() | term() | no_return()
   def one!(%Unscoped{queryable: queryable, repo: repo}, opts) do
     case {safe_repo(fn -> repo.one(queryable) end), opts[:fallback_to_primary]} do
@@ -224,6 +273,7 @@ defmodule Portal.Safe do
   def one!(repo, queryable) when repo == Repo,
     do: safe_repo!(fn -> Repo.one!(queryable) end, queryable)
 
+  # all/1
   @spec all(Scoped.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
   def all(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
@@ -248,6 +298,7 @@ defmodule Portal.Safe do
   @spec all(Portal.Repo, Ecto.Queryable.t()) :: [Ecto.Schema.t()]
   def all(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.all(queryable) end) || []
 
+  # exists?/1
   @spec exists?(Scoped.t()) :: boolean() | {:error, :unauthorized}
   def exists?(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
@@ -268,6 +319,37 @@ defmodule Portal.Safe do
   @spec exists?(Unscoped.t()) :: boolean()
   def exists?(%Unscoped{queryable: queryable, repo: repo}),
     do: safe_repo(fn -> repo.exists?(queryable) end) || false
+
+  # exists?/2
+  @spec exists?(Scoped.t(), Keyword.t()) :: boolean() | {:error, :unauthorized}
+  def exists?(
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: queryable,
+          repo: repo
+        },
+        opts
+      ) do
+    schema = get_schema_module(queryable)
+
+    with :ok <- permit(:read, schema, subject) do
+      filtered_query = apply_account_filter(queryable, schema, account_id)
+
+      case {safe_repo(fn -> repo.exists?(filtered_query) end) || false,
+            opts[:fallback_to_primary]} do
+        {false, true} -> safe_repo(fn -> Repo.exists?(filtered_query) end) || false
+        {result, _} -> result
+      end
+    end
+  end
+
+  @spec exists?(Unscoped.t(), Keyword.t()) :: boolean()
+  def exists?(%Unscoped{queryable: queryable, repo: repo}, opts) do
+    case {safe_repo(fn -> repo.exists?(queryable) end) || false, opts[:fallback_to_primary]} do
+      {false, true} -> safe_repo(fn -> Repo.exists?(queryable) end) || false
+      {result, _} -> result
+    end
+  end
 
   @spec exists?(Portal.Repo, Ecto.Queryable.t()) :: boolean()
   def exists?(repo, queryable) when repo == Repo,

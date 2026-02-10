@@ -986,7 +986,7 @@ defmodule PortalWeb.Groups do
         end
 
       query
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, Keyword.put(opts, :order_by, final_order_by))
     end
 
@@ -1037,7 +1037,7 @@ defmodule PortalWeb.Groups do
           },
           order_by: [asc: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name)]
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> case do
           {:error, _} ->
@@ -1078,15 +1078,15 @@ defmodule PortalWeb.Groups do
       |> select_merge([groups: g, directory: d], %{
         directory_type: d.type
       })
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def get_actor!(id, subject) do
       from(a in Portal.Actor, as: :actors)
       |> where([actors: a], a.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def search_actors(search_term, subject, exclude_actors) do
@@ -1099,7 +1099,7 @@ defmodule PortalWeb.Groups do
                a.id not in ^exclude_ids
            )
            |> limit(10)
-           |> Safe.scoped(subject)
+           |> Safe.scoped(subject, :replica)
            |> Safe.all() do
         actors when is_list(actors) -> actors
         {:error, _} -> []
@@ -1142,7 +1142,7 @@ defmodule PortalWeb.Groups do
         )
         |> preload([memberships: m, actors: a], memberships: m, actors: a)
 
-      query |> Safe.scoped(subject) |> Safe.one!()
+      query |> Safe.scoped(subject, :replica) |> Safe.one!(fallback_to_primary: true)
     end
 
     def preloads do

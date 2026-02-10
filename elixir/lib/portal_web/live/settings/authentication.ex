@@ -1386,20 +1386,20 @@ defmodule PortalWeb.Settings.Authentication do
 
     def list_all_providers(subject) do
       [
-        EmailOTP.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Userpass.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Google.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Entra.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        Okta.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
-        OIDC.AuthProvider |> Safe.scoped(subject) |> Safe.all()
+        EmailOTP.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all(),
+        Userpass.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all(),
+        Google.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all(),
+        Entra.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all(),
+        Okta.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all(),
+        OIDC.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all()
       ]
       |> List.flatten()
     end
 
     def get_provider!(schema, id, subject) do
       from(p in schema, where: p.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def insert_provider(changeset, subject) do
@@ -1467,7 +1467,7 @@ defmodule PortalWeb.Settings.Authentication do
           group_by: ct.auth_provider_id,
           select: {ct.auth_provider_id, count(ct.id)}
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> Map.new()
 
@@ -1477,7 +1477,7 @@ defmodule PortalWeb.Settings.Authentication do
           group_by: ps.auth_provider_id,
           select: {ps.auth_provider_id, count(ps.id)}
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> Map.new()
 

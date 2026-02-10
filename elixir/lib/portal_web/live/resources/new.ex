@@ -297,7 +297,7 @@ defmodule PortalWeb.Resources.New do
     def all_sites(subject) do
       from(g in Portal.Site, as: :sites)
       |> where([sites: s], s.managed_by != :system)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
     end
 
