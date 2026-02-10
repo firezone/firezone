@@ -572,6 +572,7 @@ impl ClientState {
         let maybe_resource = self.get_resource_by_destination(dst);
 
         let pid = match (maybe_client, maybe_gateway, maybe_resource) {
+            // Not connected to anything but it is a peer IP.
             (None, None, None) if is_peer => match dst {
                 IpAddr::V4(dst) => {
                     self.on_not_connected_device(dst, packet, now);
@@ -579,23 +580,17 @@ impl ClientState {
                 }
                 IpAddr::V6(_) => return None, // Connecting to device over IPv6 is not supported.
             },
-            (None, None, None) => return None,
+            // IP refers to client we are already connected to.
             (Some(client), None, None) => ClientOrGatewayId::Client(client.id()),
+            // IP refers to gatway we are already connected to.
             (None, Some(gateway), None) => ClientOrGatewayId::Gateway(gateway.id()),
+            // IP refers to resource we are not yet connected to.
             (None, None, Some(resource)) => {
-                match peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
-                {
-                    Some(peer) => ClientOrGatewayId::Gateway(peer.id()),
-                    None => {
-                        self.on_not_connected_resource(resource, packet, now);
-                        return None;
-                    }
-                }
-            }
-            (None, Some(_gateway), Some(_resource)) => {
-                debug_assert!(false, "IP refers to resource and gateway");
+                self.on_not_connected_resource(resource, packet, now);
                 return None;
             }
+            // IP refers to resource we are already connected to.
+            (None, Some(gateway), Some(_resource)) => ClientOrGatewayId::Gateway(gateway.id()),
             (Some(_client), None, Some(_resource)) => {
                 debug_assert!(false, "IP refers to resource and client");
                 return None;
@@ -608,6 +603,7 @@ impl ClientState {
                 debug_assert!(false, "IP refers to gateway, client and resource");
                 return None;
             }
+            (None, None, None) => return None,
         };
 
         // TODO: Check DNS resource NAT state for the domain that the destination IP belongs to.
