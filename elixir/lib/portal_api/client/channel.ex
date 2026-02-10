@@ -261,6 +261,24 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
+  def handle_info({:ice_candidates, client_id, candidates}, socket) do
+    push(socket, "new_client_ice_candidates", %{
+      client_id: client_id,
+      candidates: candidates
+    })
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:invalidate_ice_candidates, client_id, candidates}, socket) do
+    push(socket, "invalidate_client_ice_candidates", %{
+      client_id: client_id,
+      candidates: candidates
+    })
+
+    {:noreply, socket}
+  end
+
   # DEPRECATED IN 1.4
   # This message is sent by the gateway when it is ready to accept the connection from the client
   def handle_info(
@@ -461,6 +479,39 @@ defmodule PortalAPI.Client.Channel do
 
         {:noreply, socket}
     end
+  end
+
+  # This message is sent from a client to request access to another device.
+  def handle_in(
+        "request_device_access",
+        %{
+          "ipv4" => ivp4
+        },
+        socket
+      ) do
+    # TODO: Connect to device.
+
+    # push(socket, "client_device_access_authorized", %{
+    #   client_id: ...,
+    #   client_public_key: ...,
+    #   client_ipv4: ...,
+    #   client_ipv6: ...,
+    #   preshared_key: ...,
+    #   local_ice_credentials: ...,
+    #   remote_ice_credentials: ...,
+    #   ice_role: :controlling | :controlled,
+    # })
+    #
+    # Or fail:
+    #
+    # push(socket, "client_device_access_denied", %{
+    #   client_id: ...,
+    #   client_ipv4: ...,
+    #   client_ipv6: ...,
+    #   reason: :not_found | :forbidden etc (same as for gateway)
+    # })
+
+    {:noreply, socket}
   end
 
   # DEPRECATED IN 1.4
@@ -704,6 +755,64 @@ defmodule PortalAPI.Client.Channel do
         {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
       )
     end)
+
+    {:noreply, socket}
+  end
+
+  # The client pushes it's ICE candidates list and the gateways that need to receive it
+  def handle_in(
+        "new_gateway_ice_candidates",
+        %{"candidates" => candidates, "gateway_id" => gateway_id},
+        socket
+      ) do
+    :ok =
+      Channels.send_to_gateway(
+        gateway_id,
+        {:ice_candidates, socket.assigns.client.id, candidates}
+      )
+
+    {:noreply, socket}
+  end
+
+  def handle_in(
+        "invalidate_gateway_ice_candidates",
+        %{"candidates" => candidates, "gateway_id" => gateway_id},
+        socket
+      ) do
+    :ok =
+      Channels.send_to_gateway(
+        gateway_id,
+        {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
+      )
+
+    {:noreply, socket}
+  end
+
+  # The client pushes it's ICE candidates list and the gateways that need to receive it
+  def handle_in(
+        "new_client_ice_candidates",
+        %{"candidates" => candidates, "client_id" => client_id},
+        socket
+      ) do
+    :ok =
+      Channels.send_to_client(
+        client_id,
+        {:ice_candidates, socket.assigns.client.id, candidates}
+      )
+
+    {:noreply, socket}
+  end
+
+  def handle_in(
+        "invalidate_client_ice_candidates",
+        %{"candidates" => candidates, "client_id" => client_id},
+        socket
+      ) do
+    :ok =
+      Channels.send_to_client(
+        client_id,
+        {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
+      )
 
     {:noreply, socket}
   end
