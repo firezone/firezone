@@ -115,7 +115,7 @@ defmodule PortalAPI.GatewayController do
 
     def list_gateways(subject, opts \\ []) do
       from(g in Gateway, as: :gateways)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -153,7 +153,7 @@ defmodule PortalAPI.GatewayController do
         from(g in Gateway, as: :gateways)
         |> where([gateways: g], g.id == ^id)
         |> preload([:ipv4_address, :ipv6_address])
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do

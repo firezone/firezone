@@ -145,14 +145,14 @@ defmodule PortalAPI.PolicyController do
 
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_policy(id, subject) do
       result =
         from(p in Policy, where: p.id == ^id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do
@@ -175,7 +175,7 @@ defmodule PortalAPI.PolicyController do
       if resource_id do
         resource =
           from(r in Portal.Resource, where: r.id == ^resource_id)
-          |> Safe.scoped(subject)
+          |> Safe.scoped(subject, :replica)
           |> Safe.one()
 
         case resource do
