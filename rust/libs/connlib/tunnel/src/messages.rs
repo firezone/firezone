@@ -63,6 +63,7 @@ pub struct IceCredentials {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
 pub enum IceRole {
     Controlling,
     Controlled,
