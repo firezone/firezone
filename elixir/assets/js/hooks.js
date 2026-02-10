@@ -416,7 +416,7 @@ Hooks.CloseWindow = {
   },
   destroyed() {
     if (this.timer) clearTimeout(this.timer);
-  }
+  },
 };
 
 export default Hooks;

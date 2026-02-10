@@ -1,11 +1,11 @@
-import Mixpanel from "./Mixpanel";
+import PostHog from "./PostHog";
 import GoogleAds from "./GoogleAds";
 import LinkedInInsights from "./LinkedInInsights";
 
 export default function Analytics() {
   return (
     <>
-      <Mixpanel />
+      <PostHog />
       <GoogleAds />
       <LinkedInInsights />
     </>
