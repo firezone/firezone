@@ -244,6 +244,8 @@ defmodule PortalAPI.Client.Channel do
 
   # This the list of ICE candidates gathered by the gateway and relayed to the client
   def handle_info({:ice_candidates, gateway_id, candidates}, socket) do
+    # TODO: Add version gate to rename this message to `new_gateway_ice_candidates`
+    # once client <> client is live.
     push(socket, "ice_candidates", %{
       gateway_id: gateway_id,
       candidates: candidates
@@ -253,6 +255,8 @@ defmodule PortalAPI.Client.Channel do
   end
 
   def handle_info({:invalidate_ice_candidates, gateway_id, candidates}, socket) do
+    # TODO: Add version gate to rename this message to `invalidate_gateway_ice_candidates`
+    # once client <> client is live.
     push(socket, "invalidate_ice_candidates", %{
       gateway_id: gateway_id,
       candidates: candidates
