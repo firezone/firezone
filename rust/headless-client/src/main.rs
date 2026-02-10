@@ -65,6 +65,14 @@ struct Cli {
     #[arg(short, long, env = "LOG_DIR")]
     log_dir: Option<PathBuf>,
 
+    /// Maximum total log size in MB before old files are cleaned up.
+    #[arg(long, env = "LOG_MAX_SIZE_MB", default_value_t = logging::DEFAULT_MAX_SIZE_MB)]
+    log_max_size_mb: u32,
+
+    /// Interval in seconds between log cleanup runs.
+    #[arg(long, env = "LOG_CLEANUP_INTERVAL_SECS", default_value_t = logging::DEFAULT_CLEANUP_INTERVAL.as_secs())]
+    log_cleanup_interval_secs: u64,
+
     /// Maximum length of time to retry connecting to the portal if we're having internet issues or
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
@@ -268,8 +276,8 @@ fn try_main() -> Result<()> {
     let _cleanup_handle = cli.log_dir.as_ref().map(|log_dir| {
         logging::start_cleanup_thread(
             vec![log_dir.clone()],
-            logging::DEFAULT_MAX_SIZE_MB,
-            logging::DEFAULT_CLEANUP_INTERVAL,
+            cli.log_max_size_mb,
+            Duration::from_secs(cli.log_cleanup_interval_secs),
         )
     });
 
