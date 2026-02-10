@@ -15,8 +15,8 @@ portal_send_reject_access "mycro-aws-gws" "MyCorp Network (IPv6)" # This is the 
 
 # Try to access resource 1 again
 # First one for each IP will fail because we get an ICMP error.
-expect_error client_curl_resource "172.20.0.100/get"
-expect_error client_curl_resource "[172:20:0::100]/get"
+expect_error client_curl "172.20.0.100/get"
+expect_error client_curl "[172:20:0::100]/get"
 
 client_curl "172.20.0.100/get"
 client_curl "[172:20:0::100]/get"
