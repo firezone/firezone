@@ -3,6 +3,7 @@ mod dns_cache;
 pub(crate) mod dns_config;
 mod dns_resource_nat;
 mod gateway_on_client;
+mod pending_device_access;
 mod pending_flows;
 mod resource;
 mod tracked_state;
@@ -11,6 +12,7 @@ pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 
 use crate::client::dns_config::DnsConfig;
+use crate::client::pending_device_access::PendingDeviceAccessRequests;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
 use boringtun::x25519;
@@ -104,6 +106,9 @@ pub struct ClientState {
     clients: PeerStore<ClientId, ClientOnClient>,
     /// Tracks the flows to resources that we are currently trying to establish.
     pending_flows: PendingFlows,
+    /// Tracks pending access to another Client.
+    pending_client_access: PendingDeviceAccessRequests,
+
     dns_resource_nat: DnsResourceNat,
     /// Tracks the resources we have been authorized for and which Gateway to use to access them.
     ///
@@ -187,6 +192,7 @@ impl ClientState {
             tcp_dns_server: dns_over_tcp::Server::new(now),
             dns_streams_by_local_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
+            pending_client_access: Default::default(),
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
         }
@@ -433,7 +439,7 @@ impl ClientState {
                     for packet in buffered_packets {
                         encapsulate_and_buffer(
                             packet,
-                            gid,
+                            ClientOrGatewayId::Gateway(gid),
                             now,
                             &mut self.node,
                             &mut self.buffered_transmits,
@@ -560,36 +566,48 @@ impl ClientState {
     fn encapsulate(&mut self, mut packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
         let dst = packet.destination();
 
-        let pid = if is_peer(dst) {
-            let maybe_gateway = self
-                .gateways
-                .peer_by_ip_mut(dst)
-                .map(|p| ClientOrGatewayId::Gateway(p.id()));
-            let maybe_client = self
-                .clients
-                .peer_by_ip_mut(dst)
-                .map(|p| ClientOrGatewayId::Client(p.id()));
+        let is_peer = is_peer(dst);
+        let maybe_client = self.clients.peer_by_ip(dst);
+        let maybe_gateway = self.gateways.peer_by_ip(dst);
+        let maybe_resource = self.get_resource_by_destination(dst);
 
-            let Some(id) = maybe_client.or(maybe_gateway) else {
-                tracing::trace!(?packet, "Unknown peer");
+        let pid = match (maybe_client, maybe_gateway, maybe_resource) {
+            (None, None, None) if is_peer => match dst {
+                IpAddr::V4(dst) => {
+                    self.on_not_connected_device(dst, packet, now);
+                    return None;
+                }
+                IpAddr::V6(_) => return None, // Connecting to device over IPv6 is not supported.
+            },
+            (None, None, None) => return None,
+            (Some(client), None, None) => ClientOrGatewayId::Client(client.id()),
+            (None, Some(gateway), None) => ClientOrGatewayId::Gateway(gateway.id()),
+            (None, None, Some(resource)) => {
+                match peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
+                {
+                    Some(peer) => ClientOrGatewayId::Gateway(peer.id()),
+                    None => {
+                        self.on_not_connected_resource(resource, packet, now);
+                        return None;
+                    }
+                }
+            }
+            (None, Some(_gateway), Some(_resource)) => {
+                debug_assert!(false, "IP refers to resource and gateway");
                 return None;
-            };
-
-            id
-        } else {
-            let Some(resource) = self.get_resource_by_destination(dst) else {
-                tracing::trace!(?packet, "Unknown resource");
+            }
+            (Some(_client), None, Some(_resource)) => {
+                debug_assert!(false, "IP refers to resource and client");
                 return None;
-            };
-
-            let Some(peer) =
-                peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
-            else {
-                self.on_not_connected_resource(resource, packet, now);
+            }
+            (Some(_client), Some(_gateway), None) => {
+                debug_assert!(false, "IP refers to gateway and client");
                 return None;
-            };
-
-            ClientOrGatewayId::Gateway(peer.id())
+            }
+            (Some(_client), Some(_gateway), Some(_resource)) => {
+                debug_assert!(false, "IP refers to gateway, client and resource");
+                return None;
+            }
         };
 
         // TODO: Check DNS resource NAT state for the domain that the destination IP belongs to.
@@ -707,7 +725,7 @@ impl ClientState {
                 for packet in buffered_resource_packets {
                     encapsulate_and_buffer(
                         packet,
-                        gid,
+                        ClientOrGatewayId::Gateway(gid),
                         now,
                         &mut self.node,
                         &mut self.buffered_transmits,
@@ -751,8 +769,7 @@ impl ClientState {
         Ok(Ok(()))
     }
 
-    // TODO: Will this function be called on both sides?
-    pub fn handle_client_access_authorized(
+    pub fn handle_device_access_authorized(
         &mut self,
         cid: ClientId,
         client_key: PublicKey,
@@ -762,7 +779,7 @@ impl ClientState {
         remote_client_ice: IceCredentials,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
-        // TODO: Check pending client authorizations.
+        let pending_device_access = self.pending_client_access.remove(&client_tun.v4);
 
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
@@ -785,6 +802,18 @@ impl ClientState {
 
         self.clients.add_ip(&cid, &client_tun.v4.into());
         self.clients.add_ip(&cid, &client_tun.v6.into());
+
+        if let Some(pending_client_access) = pending_device_access {
+            for packet in pending_client_access.into_buffered_packets() {
+                encapsulate_and_buffer(
+                    packet,
+                    ClientOrGatewayId::Client(cid),
+                    now,
+                    &mut self.node,
+                    &mut self.buffered_transmits,
+                );
+            }
+        }
 
         Ok(())
     }
@@ -1246,7 +1275,7 @@ impl ClientState {
 
             encapsulate_and_buffer(
                 packet,
-                gid,
+                ClientOrGatewayId::Gateway(gid),
                 now,
                 &mut self.node,
                 &mut self.buffered_transmits,
@@ -1612,10 +1641,14 @@ impl ClientState {
         }
 
         if let Some(resource) = self.pending_flows.poll_connection_intents() {
-            return Some(ClientEvent::ConnectionIntent {
+            return Some(ClientEvent::ResourceConnectionIntent {
                 resource,
                 preferred_gateways: self.preferred_gateways(resource),
             });
+        }
+
+        if let Some(client) = self.pending_client_access.poll_connection_intents() {
+            return Some(ClientEvent::DeviceConnectionIntent { ipv4: client });
         }
 
         self.buffered_events
@@ -1870,6 +1903,11 @@ impl ClientState {
         self.pending_flows
             .on_not_connected_resource(resource, trigger, &self.resources_by_id, now);
     }
+
+    fn on_not_connected_device(&mut self, device: Ipv4Addr, trigger: IpPacket, now: Instant) {
+        self.pending_client_access
+            .on_not_connected_device(device, trigger, now);
+    }
 }
 
 fn is_llmnr(dst: IpAddr) -> bool {
@@ -1881,14 +1919,14 @@ fn is_llmnr(dst: IpAddr) -> bool {
 
 fn encapsulate_and_buffer(
     packet: IpPacket,
-    gid: GatewayId,
+    pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
     buffered_transmits: &mut VecDeque<Transmit>,
 ) {
     let Some(transmit) = node
-        .encapsulate(ClientOrGatewayId::Gateway(gid), &packet, now)
-        .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
+        .encapsulate(pid, &packet, now)
+        .inspect_err(|e| tracing::debug!(%pid, "Failed to encapsulate: {e}"))
         .ok()
         .flatten()
     else {

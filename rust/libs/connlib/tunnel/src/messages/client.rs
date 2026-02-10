@@ -191,6 +191,9 @@ pub enum EgressMessages {
         #[serde(rename = "connected_gateway_ids")]
         preferred_gateways: Vec<GatewayId>,
     },
+    RequestDeviceAccess {
+        ipv4: Ipv4Addr,
+    },
     NewGatewayIceCandidates(GatewayIceCandidates),
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),

@@ -860,7 +860,7 @@ impl TunnelTest {
             } => {
                 todo!()
             }
-            ClientEvent::ConnectionIntent {
+            ClientEvent::ResourceConnectionIntent {
                 resource: resource_id,
                 preferred_gateways,
             } => {
@@ -928,6 +928,7 @@ impl TunnelTest {
 
                 Ok(())
             }
+            ClientEvent::DeviceConnectionIntent { .. } => Ok(()),
             ClientEvent::ResourcesChanged { resources } => {
                 self.client.exec_mut(|c| {
                     c.resource_status = resources

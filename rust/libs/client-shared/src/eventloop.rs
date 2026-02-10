@@ -316,7 +316,7 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::ConnectionIntent {
+            ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
                 resource,
             } => {
@@ -324,6 +324,14 @@ impl Eventloop {
                     .send(PortalCommand::Send(EgressMessages::CreateFlow {
                         resource_id: resource,
                         preferred_gateways,
+                    }))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
+            ClientEvent::DeviceConnectionIntent { ipv4 } => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::RequestDeviceAccess {
+                        ipv4,
                     }))
                     .await
                     .context("Failed to send message to portal")?;
