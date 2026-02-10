@@ -147,6 +147,11 @@ defmodule Portal.MixProject do
       {:excoveralls, "~> 0.18", only: :test},
       {:junit_formatter, "~> 3.3", only: :test},
 
+      # `ecto_sql` and `postgrex` have conflicting requirements
+      {:db_connection, "~> 2.9", only: :test, override: true},
+      # `opentelemetry_phoenix` and `opentelemetry_exporter` have conflicting requirements
+      {:opentelemetry_api, "~> 1.5.0", only: :test, override: true},
+
       # Dev/test deps
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
