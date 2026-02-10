@@ -10,13 +10,8 @@
 
   @testable import FirezoneKit
 
-  @Suite("MacOSAlert Tests")
+  @Suite("MacOSAlert Tests", .requiresAppKit)
   struct MacOSAlertTests {
-    init() {
-      // Bootstrap AppKit's connection to the window server.
-      NSApp.setActivationPolicy(.accessory)
-    }
-
     /// Waits for an alert's sheet to become visible before interacting with it.
     /// This is more reliable than arbitrary sleep delays as it polls for actual window state.
     @MainActor
