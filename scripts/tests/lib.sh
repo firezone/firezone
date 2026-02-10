@@ -18,11 +18,11 @@ function relay2() {
     docker compose exec -T relay-2 "$@"
 }
 
-function client_curl_resource() {
+function client_curl() {
     client curl --connect-timeout 10 --fail "$1" >/dev/null
 }
 
-function client_ping_resource() {
+function client_ping() {
     client timeout 30 \
         sh -c "until ping -W 1 -c 1 $1 &>/dev/null; do true; done"
 }

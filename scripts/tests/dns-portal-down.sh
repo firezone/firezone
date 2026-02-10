@@ -6,7 +6,7 @@ HTTPBIN=dns
 
 function run_test() {
     echo "# Access httpbin by DNS"
-    client_curl_resource "$HTTPBIN/get"
+    client_curl "$HTTPBIN/get"
 
     echo "# Make sure it's going through the tunnel"
     client_nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
