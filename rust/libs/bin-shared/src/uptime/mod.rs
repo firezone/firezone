@@ -54,6 +54,7 @@ pub fn get() -> Option<Duration> {
 #[cfg(test)]
 mod tests {
     #[test]
+    #[cfg_attr(target_os = "macos", ignore = "uptime::get is stubbed on macOS")]
     fn test_uptime_get() {
         assert!(super::get().is_some());
     }
