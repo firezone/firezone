@@ -13,8 +13,8 @@ use std::{
 use tokio::task::spawn_blocking;
 use tracing_subscriber::{EnvFilter, Layer, Registry, layer::SubscriberExt};
 
-/// If you don't store `Handles` in a variable, the file logger handle will drop immediately,
-/// resulting in empty log files.
+/// If you don't store `Handles` in a variable, the file logger and cleanup thread will
+/// stop immediately, resulting in empty log files and no log rotation.
 #[must_use]
 pub struct Handles {
     pub logger: logging::file::Handle,

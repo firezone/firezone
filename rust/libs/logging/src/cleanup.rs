@@ -1,14 +1,21 @@
 //! Log cleanup utilities for enforcing size caps on log directories.
 
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-/// Minimum age in seconds for files to be eligible for deletion.
+/// Default maximum total log size in MB across all log directories.
+pub const DEFAULT_MAX_SIZE_MB: u32 = 100;
+
+/// Default interval between log cleanup runs (1 hour).
+pub const DEFAULT_CLEANUP_INTERVAL: Duration = Duration::from_secs(3600);
+
+/// Minimum age for files to be eligible for deletion.
 /// Files modified more recently than this are protected.
-const MIN_AGE_SECS: Duration = Duration::from_secs(300);
+const MIN_AGE: Duration = Duration::from_secs(300);
 
 /// Enforces a size cap on log directories by deleting oldest files first.
 /// FFI-friendly interface.
@@ -23,6 +30,10 @@ const MIN_AGE_SECS: Duration = Duration::from_secs(300);
 /// - Logs debug/warning messages for errors encountered during cleanup
 #[allow(clippy::wildcard_enum_match_arm)] // Intentional catch-all for other IO errors
 pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
+    if max_size_mb == 0 {
+        tracing::warn!("max_size_mb is 0, refusing to delete all logs");
+        return 0;
+    }
     let max_bytes = u64::from(max_size_mb) * 1024 * 1024;
     let now = SystemTime::now();
 
@@ -104,7 +115,7 @@ pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
 
         // Skip if too recent
         if let Ok(age) = now.duration_since(*mtime) {
-            if age < MIN_AGE_SECS {
+            if age < MIN_AGE {
                 continue;
             }
         } else {
