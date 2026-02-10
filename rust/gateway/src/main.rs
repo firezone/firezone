@@ -214,6 +214,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         (),
         move || {
             ExponentialBackoffBuilder::default()
+                .with_max_interval(Duration::from_secs(60))
                 .with_max_elapsed_time(Some(max_partition_time))
                 .build()
         },
