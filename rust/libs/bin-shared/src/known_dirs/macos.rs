@@ -32,10 +32,18 @@ pub fn logs() -> Option<PathBuf> {
     )
 }
 
-/// Runtime directory for temporary files
-pub fn runtime() -> Option<PathBuf> {
+/// System-wide runtime directory for temporary files.
+///
+/// On macOS, this is the same as [`user_runtime`] because the production
+/// macOS client uses the native Swift IPC implementation.
+pub fn root_runtime() -> Option<PathBuf> {
+    user_runtime()
+}
+
+/// Per-user runtime directory for temporary files
+pub fn user_runtime() -> Option<PathBuf> {
     let user = std::env::var("USER").ok()?;
-    Some(PathBuf::from("/tmp").join(format!("{BUNDLE_ID}-{user}")))
+    Some(PathBuf::from("/tmp").join(BUNDLE_ID).join(user))
 }
 
 /// User session data directory

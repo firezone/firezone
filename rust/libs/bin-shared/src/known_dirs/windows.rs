@@ -44,10 +44,18 @@ pub fn logs() -> Option<PathBuf> {
     Some(app_local_data_dir().ok()?.join("data").join("logs"))
 }
 
+/// System-wide runtime directory.
+///
+/// On Windows, this is the same as [`user_runtime`] because Windows
+/// uses named pipes for IPC rather than filesystem paths.
+pub fn root_runtime() -> Option<PathBuf> {
+    user_runtime()
+}
+
 /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data`
 ///
 /// Crash handler socket and other temp files go here
-pub fn runtime() -> Option<PathBuf> {
+pub fn user_runtime() -> Option<PathBuf> {
     Some(app_local_data_dir().ok()?.join("data"))
 }
 
