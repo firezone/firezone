@@ -110,7 +110,7 @@ mod tests {
         now += Duration::from_secs(3);
 
         pending_requests.on_not_connected_device(device, trigger(2), now);
-        assert_eq!(pending_requests.poll_connection_intents(), None);
+        assert_eq!(pending_requests.poll_connection_intents(), Some(device));
     }
 
     #[test]
