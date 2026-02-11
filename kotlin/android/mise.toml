@@ -17,3 +17,7 @@ run = "./gradlew assembleDebug"
 [tasks.test]
 description = "Run unit tests"
 run = "./gradlew test"
+
+[tasks.install-phone]
+description = "Build debug APK and install on connected Android device"
+run = "./gradlew installDebug"
