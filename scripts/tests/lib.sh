@@ -46,7 +46,7 @@ site = Portal.Repo.get_by!(Portal.Site, account_id: account_id, name: \"$site_na
 [client_id | _] = Portal.Presence.Clients.Account.list(account_id) |> Map.keys()
 resource = Portal.Repo.get_by!(Portal.Resource, account_id: account_id, name: \"$resource_name\")
 
-Portal.PubSub.Account.broadcast(account_id, {{:reject_access, gateway_id}, client_id, resource.id})
+Portal.Channels.reject_access(gateway_id, client_id, resource.id)
 "
 }
 
