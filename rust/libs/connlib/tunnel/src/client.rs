@@ -252,8 +252,15 @@ impl ClientState {
             self.sites_status.insert(*id, ResourceStatus::Offline);
         }
 
-        self.on_connection_failed(id);
+        self.on_resource_connection_failed(id);
         self.resource_list.update(self.resources());
+    }
+
+    pub fn set_client_offline(&mut self, id: ClientId, ipv4: Ipv4Addr) {
+        self.pending_device_access.remove(&ipv4);
+        self.cleanup_connected_client(&id);
+
+        // TODO: Update resource list with offline client.
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -450,9 +457,7 @@ impl ClientState {
                     self.node.remove_connection(pid, "received `goodbye`", now);
 
                     match pid {
-                        ClientOrGatewayId::Client(_) => {
-                            // TODO
-                        }
+                        ClientOrGatewayId::Client(cid) => self.cleanup_connected_client(&cid),
                         ClientOrGatewayId::Gateway(gid) => self.cleanup_connected_gateway(&gid),
                     }
                 }
@@ -874,7 +879,7 @@ impl ClientState {
         ControlFlow::Break(())
     }
 
-    pub fn on_connection_failed(&mut self, resource: ResourceId) {
+    pub fn on_resource_connection_failed(&mut self, resource: ResourceId) {
         self.pending_flows.remove(&resource);
         let Some(disconnected_gateway) = self.authorized_resources.remove(&resource) else {
             return;
@@ -981,6 +986,11 @@ impl ClientState {
         self.authorized_resources
             .retain(|_, g| g != disconnected_gateway);
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
+    }
+
+    #[tracing::instrument(level = "debug", skip_all, fields(gateway = %disconnected_client))]
+    fn cleanup_connected_client(&mut self, disconnected_client: &ClientId) {
+        self.clients.remove(disconnected_client);
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -1571,9 +1581,9 @@ impl ClientState {
                 | snownet::Event::ConnectionClosed(ClientOrGatewayId::Gateway(id)) => {
                     self.cleanup_connected_gateway(&id);
                 }
-                snownet::Event::ConnectionFailed(ClientOrGatewayId::Client(_))
-                | snownet::Event::ConnectionClosed(ClientOrGatewayId::Client(_)) => {
-                    // TODO
+                snownet::Event::ConnectionFailed(ClientOrGatewayId::Client(id))
+                | snownet::Event::ConnectionClosed(ClientOrGatewayId::Client(id)) => {
+                    self.cleanup_connected_client(&id);
                 }
                 snownet::Event::NewIceCandidate {
                     connection,

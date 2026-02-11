@@ -572,8 +572,23 @@ impl Eventloop {
                     }
                 };
             }
-            IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied { .. }) => {
-                // TODO:
+            IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
+                client_id,
+                client_ipv4,
+                reason,
+                ..
+            }) => {
+                tracing::debug!(%client_id, %client_ipv4, "Failed to access device: {reason:?}");
+
+                match reason {
+                    FailReason::Offline => tunnel
+                        .state_mut()
+                        .set_client_offline(client_id, client_ipv4),
+                    FailReason::NotFound => {}
+                    FailReason::VersionMismatch => {}
+                    FailReason::Forbidden => {}
+                    FailReason::Unknown => {}
+                }
             }
         }
 
