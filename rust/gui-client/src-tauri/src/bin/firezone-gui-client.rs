@@ -109,6 +109,7 @@ fn try_main(
     let logging::Handles {
         logger: _logger,
         reloader,
+        cleanup: _cleanup,
     } = firezone_gui_client::logging::setup_gui(&log_filter)?;
 
     match cli.command {

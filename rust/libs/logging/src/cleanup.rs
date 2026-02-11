@@ -1,14 +1,81 @@
 //! Log cleanup utilities for enforcing size caps on log directories.
 
+use anyhow::Context;
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::fs;
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
 use std::time::{Duration, SystemTime};
 
-/// Minimum age in seconds for files to be eligible for deletion.
+/// Default maximum total log size in MB across all log directories.
+pub const DEFAULT_MAX_SIZE_MB: u32 = 100;
+
+/// Default interval between log cleanup runs
+pub const DEFAULT_CLEANUP_INTERVAL: Duration = Duration::from_hours(1);
+
+/// Minimum age for files to be eligible for deletion.
 /// Files modified more recently than this are protected.
-const MIN_AGE_SECS: Duration = Duration::from_secs(300);
+const MIN_AGE: Duration = Duration::from_mins(5);
+
+const MIN_CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Handle to stop the cleanup background thread.
+///
+/// When dropped, disconnects the channel which wakes the thread's `recv_timeout`
+/// with [`RecvTimeoutError::Disconnected`], causing it to exit.
+#[must_use = "Dropping this handle immediately stops the cleanup thread -- store it in a variable to keep cleanup running"]
+pub struct CleanupHandle {
+    // Channel used for drop-based shutdown only, no messages are ever sent.
+    _stop_tx: mpsc::Sender<Infallible>,
+}
+
+/// Start a background thread that periodically enforces log size cap.
+///
+/// Runs cleanup immediately, then every `interval`.
+pub fn start_log_cleanup_thread(
+    log_dirs: Vec<PathBuf>,
+    max_size_mb: u32,
+    interval: Duration,
+) -> anyhow::Result<CleanupHandle> {
+    // Prevent excessively frequent cleanup that could cause performance issues
+    let interval = if interval < MIN_CLEANUP_INTERVAL {
+        tracing::info!(
+            ?interval,
+            "Requested log cleanup interval is very short, increasing to 30 seconds to prevent performance issues"
+        );
+        MIN_CLEANUP_INTERVAL
+    } else {
+        interval
+    };
+    let (stop_tx, stop_rx) = mpsc::channel::<Infallible>();
+
+    let result = thread::Builder::new()
+        .name("log-cleanup".into())
+        .spawn(move || {
+            let dirs: Vec<&Path> = log_dirs.iter().map(|p| p.as_path()).collect();
+            loop {
+                let deleted = enforce_size_cap(&dirs, max_size_mb);
+                if deleted > 0 {
+                    tracing::debug!(bytes_deleted = deleted, "Log cleanup ran");
+                } else {
+                    tracing::trace!("Log cleanup: nothing to delete");
+                }
+
+                match stop_rx.recv_timeout(interval) {
+                    Ok(infallible) => match infallible {},
+                    Err(RecvTimeoutError::Disconnected) => break,
+                    Err(RecvTimeoutError::Timeout) => continue,
+                }
+            }
+        });
+
+    result.context("Failed to spawn log cleanup thread")?;
+
+    Ok(CleanupHandle { _stop_tx: stop_tx })
+}
 
 /// Enforces a size cap on log directories by deleting oldest files first.
 /// FFI-friendly interface.
@@ -23,6 +90,10 @@ const MIN_AGE_SECS: Duration = Duration::from_secs(300);
 /// - Logs debug/warning messages for errors encountered during cleanup
 #[allow(clippy::wildcard_enum_match_arm)] // Intentional catch-all for other IO errors
 pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
+    if max_size_mb == 0 {
+        tracing::warn!("max_size_mb is 0, refusing to delete all logs");
+        return 0;
+    }
     let max_bytes = u64::from(max_size_mb) * 1024 * 1024;
     let now = SystemTime::now();
 
@@ -104,7 +175,7 @@ pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
 
         // Skip if too recent
         if let Ok(age) = now.duration_since(*mtime) {
-            if age < MIN_AGE_SECS {
+            if age < MIN_AGE {
                 continue;
             }
         } else {
