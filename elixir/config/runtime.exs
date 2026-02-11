@@ -191,77 +191,80 @@ if config_env() == :prod do
 
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
+  background_jobs_enabled = env_var_to_config!(:background_jobs_enabled)
+
+  oban_crontab = [
+    # Delete expired policy_authorizations every minute
+    {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
+
+    # Schedule Entra directory sync every 2 hours
+    {"0 */2 * * *", Portal.Entra.Scheduler},
+
+    # Schedule Google directory sync every 2 hours
+    {"20 */2 * * *", Portal.Google.Scheduler},
+
+    # Schedule Okta directory sync every 2 hours
+    {"40 */2 * * *", Portal.Okta.Scheduler},
+
+    # Directory sync error notifications - daily check for low error count
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "entra", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "google", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "okta", frequency: "daily"}},
+
+    # Directory sync error notifications - every 3 days for medium error count
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "entra", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "google", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "okta", frequency: "three_days"}},
+
+    # Directory sync error notifications - weekly for high error count
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "entra", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "google", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "okta", frequency: "weekly"}},
+
+    # Check account limits every 30 minutes
+    {"*/30 * * * *", Portal.Workers.CheckAccountLimits},
+
+    # Check for outdated gateways - Sundays at 9am
+    {"0 9 * * 0", Portal.Workers.OutdatedGateways},
+
+    # Delete expired tokens every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredClientTokens},
+
+    # Delete expired API tokens every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredAPITokens},
+
+    # Delete expired one-time passcodes every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredOneTimePasscodes},
+
+    # Delete expired portal sessions every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions}
+  ]
+
   config :portal, Oban,
-    # Periodic jobs don't make sense in tests
-    plugins: [
-      # Keep the last 7 days of completed, cancelled, and discarded jobs
-      {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
-
-      # Rescue jobs that have been stuck in executing state due to node crashes,
-      # deploys, or other issues. Jobs will be moved back to available state
-      # after the timeout. This can happen after a deploy or if a node crashes.
-      {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(120)},
-
-      # Periodic jobs
-      {Oban.Plugins.Cron,
-       crontab: [
-         # Delete expired policy_authorizations every minute
-         {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
-
-         # Schedule Entra directory sync every 2 hours
-         {"0 */2 * * *", Portal.Entra.Scheduler},
-
-         # Schedule Google directory sync every 2 hours
-         {"20 */2 * * *", Portal.Google.Scheduler},
-
-         # Schedule Okta directory sync every 2 hours
-         {"40 */2 * * *", Portal.Okta.Scheduler},
-
-         # Directory sync error notifications - daily check for low error count
-         {"0 9 * * *", Portal.Workers.SyncErrorNotification,
-          args: %{provider: "entra", frequency: "daily"}},
-         {"0 9 * * *", Portal.Workers.SyncErrorNotification,
-          args: %{provider: "google", frequency: "daily"}},
-         {"0 9 * * *", Portal.Workers.SyncErrorNotification,
-          args: %{provider: "okta", frequency: "daily"}},
-
-         # Directory sync error notifications - every 3 days for medium error count
-         {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
-          args: %{provider: "entra", frequency: "three_days"}},
-         {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
-          args: %{provider: "google", frequency: "three_days"}},
-         {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
-          args: %{provider: "okta", frequency: "three_days"}},
-
-         # Directory sync error notifications - weekly for high error count
-         {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
-          args: %{provider: "entra", frequency: "weekly"}},
-         {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
-          args: %{provider: "google", frequency: "weekly"}},
-         {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
-          args: %{provider: "okta", frequency: "weekly"}},
-
-         # Check account limits every 30 minutes
-         {"*/30 * * * *", Portal.Workers.CheckAccountLimits},
-
-         # Check for outdated gateways - Sundays at 9am
-         {"0 9 * * 0", Portal.Workers.OutdatedGateways},
-
-         # Delete expired tokens every 5 minutes
-         {"*/5 * * * *", Portal.Workers.DeleteExpiredClientTokens},
-
-         # Delete expired API tokens every 5 minutes
-         {"*/5 * * * *", Portal.Workers.DeleteExpiredAPITokens},
-
-         # Delete expired one-time passcodes every 5 minutes
-         {"*/5 * * * *", Portal.Workers.DeleteExpiredOneTimePasscodes},
-
-         # Delete expired portal sessions every 5 minutes
-         {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions}
-       ]}
-    ],
+    # Disable peer election and plugins on web/api nodes to avoid DB row-lock
+    # contention during blue/green deploys. With pool_size=2, Oban.Peers.Database
+    # transactions competing for the oban_peers lock can starve the connection pool.
+    peer: if(background_jobs_enabled, do: Oban.Peers.Database, else: false),
+    plugins:
+      if(background_jobs_enabled,
+        do: [
+          {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
+          {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(120)},
+          {Oban.Plugins.Cron, crontab: oban_crontab}
+        ],
+        else: []
+      ),
     queues:
-      if(env_var_to_config!(:background_jobs_enabled),
+      if(background_jobs_enabled,
         do: [
           default: 10,
           entra_scheduler: 1,
