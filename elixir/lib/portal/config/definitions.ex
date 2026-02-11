@@ -51,12 +51,12 @@ defmodule Portal.Config.Definitions do
   defconfig(:background_jobs_enabled, :boolean, default: false)
 
   @doc """
-  Region identifier used to scope Changes PubSub topics.
+  Region identifier used to target direct_broadcast! to web/api nodes.
 
-  In a multi-region deployment, this ensures subscribers only receive change
-  events from their own region.
+  In a multi-region deployment, this ensures change events are only sent to
+  web and api nodes in the same region. Maps to the `REGION` env var.
   """
-  defconfig(:changes_pubsub_region, :string, default: "")
+  defconfig(:region, :string, default: "")
 
   @doc """
   Enable or disable the Changes (CDC) replication consumer for this app instance.
