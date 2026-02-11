@@ -43,7 +43,7 @@ pub fn start_log_cleanup_thread(
 ) -> Option<CleanupHandle> {
     // Prevent excessively frequent cleanup that could cause performance issues
     let interval = if interval < MIN_CLEANUP_INTERVAL {
-        tracing::warn!(
+        tracing::info!(
             ?interval,
             "Requested log cleanup interval is very short, increasing to 30 seconds to prevent performance issues"
         );
