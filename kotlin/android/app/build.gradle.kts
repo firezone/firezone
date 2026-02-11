@@ -233,6 +233,33 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.18.1@aar")
 }
 
+val rustDir = layout.projectDirectory.dir("../../../rust")
+
+// Resolve the cargo target directory from cargo metadata so we don't hardcode a path that may
+// be overridden by the user's ~/.cargo/config.toml (e.g. `target-dir`).
+val cargoTargetDir: String by lazy {
+    val metadataOutput = ByteArrayOutputStream()
+    project.exec {
+        workingDir = rustDir.asFile
+        commandLine("cargo", "metadata", "--format-version", "1")
+        standardOutput = metadataOutput
+    }
+    val metadataJson = metadataOutput.toString(Charsets.UTF_8.name())
+    val metadata =
+        try {
+            JsonSlurper().parseText(metadataJson) as Map<*, *>
+        } catch (e: Exception) {
+            throw GradleException(
+                "Failed to parse cargo metadata JSON. Ensure 'cargo' is installed and accessible. Error: ${e.message}",
+                e,
+            )
+        }
+    metadata["target_directory"] as? String
+        ?: throw GradleException(
+            "cargo metadata did not contain 'target_directory' field. Output was: ${metadataJson.take(500)}",
+        )
+}
+
 cargo {
     if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
         profile = "release"
@@ -251,7 +278,7 @@ cargo {
             "x86",
             "arm",
         )
-    targetDirectory = "../../../rust/target"
+    targetDirectory = cargoTargetDir
 }
 
 // Custom task to run uniffi-bindgen
@@ -271,35 +298,11 @@ val generateUniffiBindings =
                 "debug"
             }
 
-        val rustDir = layout.projectDirectory.dir("../../../rust")
         val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get()
-
-        // Get the cargo target directory at configuration time for proper input tracking
-        val metadataOutput = ByteArrayOutputStream()
-        project.exec {
-            workingDir = rustDir.asFile
-            commandLine("cargo", "metadata", "--format-version", "1")
-            standardOutput = metadataOutput
-        }
-        val metadataJson = metadataOutput.toString()
-        val metadata =
-            try {
-                JsonSlurper().parseText(metadataJson) as Map<*, *>
-            } catch (e: Exception) {
-                throw GradleException(
-                    "Failed to parse cargo metadata JSON. Ensure 'cargo' is installed and accessible. Error: ${e.message}",
-                    e,
-                )
-            }
-        val targetDir =
-            metadata["target_directory"] as? String
-                ?: throw GradleException(
-                    "cargo metadata did not contain 'target_directory' field. Output was: ${metadataJson.take(500)}",
-                )
 
         // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
         // all the same from the bindings PoV.
-        val inputFile = file("$targetDir/x86_64-linux-android/$profile/libconnlib.so")
+        val inputFile = file("$cargoTargetDir/x86_64-linux-android/$profile/libconnlib.so")
 
         inputs.file(inputFile)
         outputs.dir(outDir)
