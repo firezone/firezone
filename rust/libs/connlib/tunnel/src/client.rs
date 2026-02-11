@@ -84,7 +84,7 @@ const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
 
 /// A sans-IO implementation of a Client's functionality.
 ///
-/// Internally, this composes a [`snownet::ClientNode`] with firezone's policy engine around resources.
+/// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
 /// Clients differ from gateways in that they also implement a DNS resolver for DNS resources.
 /// They also initiate connections to Gateways based on packets sent to Resources. Gateways only accept incoming connections.
 pub struct ClientState {

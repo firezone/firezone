@@ -35,10 +35,8 @@ const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 /// A SANS-IO implementation of a gateway's functionality.
 ///
-/// Internally, this composes a [`snownet::ServerNode`] with firezone's policy engine around resources.
+/// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
 pub struct GatewayState {
-    /// The [`snownet::ClientNode`].
-    ///
     /// Manages wireguard tunnels to clients.
     node: Node<ClientId, RelayId>,
     /// All clients we are connected to and the associated, connection-specific state.
