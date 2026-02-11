@@ -244,6 +244,12 @@ defmodule Portal.Telemetry do
   defp register_otel_instruments do
     meter = :opentelemetry_experimental.get_meter()
 
+    # Common attributes for all metrics to enable splitting by node in Azure Monitor
+    node_attrs = %{
+      "node_name" => System.get_env("NODE_NAME", to_string(node())),
+      "node_type" => System.get_env("NODE_TYPE", "unknown")
+    }
+
     # Observable gauges for BEAM health
     :otel_meter.create_observable_gauge(
       meter,
@@ -254,9 +260,9 @@ defmodule Portal.Telemetry do
         utilization = Float.round(count / limit * 100, 2)
 
         [
-          {count, %{"type" => "total"}},
-          {limit, %{"type" => "limit"}},
-          {utilization, %{"type" => "utilization_percent"}}
+          {count, Map.put(node_attrs, "type", "total")},
+          {limit, Map.put(node_attrs, "type", "limit")},
+          {utilization, Map.put(node_attrs, "type", "utilization_percent")}
         ]
       end,
       [],
@@ -272,9 +278,9 @@ defmodule Portal.Telemetry do
         utilization = Float.round(count / limit * 100, 2)
 
         [
-          {count, %{"type" => "count"}},
-          {limit, %{"type" => "limit"}},
-          {utilization, %{"type" => "utilization_percent"}}
+          {count, Map.put(node_attrs, "type", "count")},
+          {limit, Map.put(node_attrs, "type", "limit")},
+          {utilization, Map.put(node_attrs, "type", "utilization_percent")}
         ]
       end,
       [],
@@ -290,9 +296,9 @@ defmodule Portal.Telemetry do
         utilization = Float.round(count / limit * 100, 2)
 
         [
-          {count, %{"type" => "count"}},
-          {limit, %{"type" => "limit"}},
-          {utilization, %{"type" => "utilization_percent"}}
+          {count, Map.put(node_attrs, "type", "count")},
+          {limit, Map.put(node_attrs, "type", "limit")},
+          {utilization, Map.put(node_attrs, "type", "utilization_percent")}
         ]
       end,
       [],
@@ -303,7 +309,7 @@ defmodule Portal.Telemetry do
       meter,
       :"vm.ets.count",
       fn _args ->
-        [{length(:ets.all()), %{}}]
+        [{length(:ets.all()), node_attrs}]
       end,
       [],
       %{description: "Number of ETS tables"}
@@ -316,12 +322,12 @@ defmodule Portal.Telemetry do
         memory = :erlang.memory() |> Enum.into(%{})
 
         [
-          {memory[:processes], %{"type" => "processes"}},
-          {memory[:system], %{"type" => "system"}},
-          {memory[:atom], %{"type" => "atom"}},
-          {memory[:binary], %{"type" => "binary"}},
-          {memory[:code], %{"type" => "code"}},
-          {memory[:ets], %{"type" => "ets"}}
+          {memory[:processes], Map.put(node_attrs, "type", "processes")},
+          {memory[:system], Map.put(node_attrs, "type", "system")},
+          {memory[:atom], Map.put(node_attrs, "type", "atom")},
+          {memory[:binary], Map.put(node_attrs, "type", "binary")},
+          {memory[:code], Map.put(node_attrs, "type", "code")},
+          {memory[:ets], Map.put(node_attrs, "type", "ets")}
         ]
       end,
       [],
@@ -344,10 +350,10 @@ defmodule Portal.Telemetry do
           end
 
         [
-          {total_run_queue, %{"type" => "total_run_queue"}},
-          {max_run_queue, %{"type" => "max_run_queue"}},
-          {avg_run_queue, %{"type" => "avg_run_queue"}},
-          {length(run_queue_lengths), %{"type" => "scheduler_count"}}
+          {total_run_queue, Map.put(node_attrs, "type", "total_run_queue")},
+          {max_run_queue, Map.put(node_attrs, "type", "max_run_queue")},
+          {avg_run_queue, Map.put(node_attrs, "type", "avg_run_queue")},
+          {length(run_queue_lengths), Map.put(node_attrs, "type", "scheduler_count")}
         ]
       end,
       [],
@@ -360,7 +366,7 @@ defmodule Portal.Telemetry do
       :"vm.gc.collections_count",
       fn _args ->
         {collections, _words_reclaimed, _} = :erlang.statistics(:garbage_collection)
-        [{collections, %{}}]
+        [{collections, node_attrs}]
       end,
       [],
       %{description: "Total number of garbage collections"}
@@ -371,7 +377,7 @@ defmodule Portal.Telemetry do
       :"vm.gc.words_reclaimed",
       fn _args ->
         {_collections, words_reclaimed, _} = :erlang.statistics(:garbage_collection)
-        [{words_reclaimed, %{}}]
+        [{words_reclaimed, node_attrs}]
       end,
       [],
       %{description: "Total words reclaimed by garbage collection"}
