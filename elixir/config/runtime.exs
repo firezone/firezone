@@ -397,7 +397,8 @@ if config_env() == :prod do
           module: :otel_metric_reader,
           config: %{
             export_interval_ms: 30_000,
-            exporter: {:otel_exporter_metrics_otlp, %{}}
+            exporter:
+              {:otel_exporter_metrics_otlp, %{endpoints: [System.get_env("OTLP_ENDPOINT")]}}
           }
         }
       ]
