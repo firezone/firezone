@@ -107,7 +107,7 @@ defmodule PortalAPI.GatewayTokenController do
       result =
         from(s in Site, as: :sites)
         |> where([sites: s], s.id == ^id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do
@@ -120,7 +120,7 @@ defmodule PortalAPI.GatewayTokenController do
     def fetch_token(id, subject) do
       result =
         from(t in GatewayToken, where: t.id == ^id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do

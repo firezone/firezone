@@ -12,7 +12,13 @@ defmodule PortalAPI.ApiSpec do
       ],
       info: %Info{
         title: "Firezone API",
-        version: "1.0"
+        version: "1.0",
+        description: """
+        The Firezone REST API is eventually consistent. After creating or updating \
+        a resource, it may take a second or two for the change to be reflected in \
+        subsequent read requests. If you receive a 404 for a recently created or \
+        updated entity, wait briefly and retry the request.\
+        """
       },
       # Populate the paths from a phoenix router
       paths: Paths.from_router(Router),

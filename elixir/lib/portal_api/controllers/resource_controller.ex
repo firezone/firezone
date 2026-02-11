@@ -166,14 +166,14 @@ defmodule PortalAPI.ResourceController do
 
     def list_resources(subject, opts \\ []) do
       from(r in Portal.Resource, as: :resources)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_resource(id, subject) do
       result =
         from(r in Portal.Resource, where: r.id == ^id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do

@@ -165,7 +165,7 @@ defmodule PortalAPI.SiteController do
 
     def list_sites(subject, opts \\ []) do
       from(g in Site, as: :sites)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -173,7 +173,7 @@ defmodule PortalAPI.SiteController do
       result =
         from(s in Site, as: :sites)
         |> where([sites: s], s.id == ^id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do

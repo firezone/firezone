@@ -107,7 +107,7 @@ defmodule PortalAPI.ExternalIdentityController do
         where: ei.actor_id == ^actor_id,
         order_by: [desc: ei.inserted_at]
       )
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -121,7 +121,7 @@ defmodule PortalAPI.ExternalIdentityController do
     def fetch_external_identity(id, subject) do
       result =
         from(ei in ExternalIdentity, where: ei.id == ^id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do

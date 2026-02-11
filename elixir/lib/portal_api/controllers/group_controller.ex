@@ -180,7 +180,7 @@ defmodule PortalAPI.GroupController do
         [groups: g],
         not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
       )
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -190,7 +190,7 @@ defmodule PortalAPI.GroupController do
           where: g.id == ^id,
           where: g.type != :managed
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do

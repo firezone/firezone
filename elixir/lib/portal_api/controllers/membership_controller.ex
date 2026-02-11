@@ -170,14 +170,14 @@ defmodule PortalAPI.MembershipController do
 
     def list_actors(subject, opts) do
       from(a in Portal.Actor, as: :actors)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_group(id, subject) do
       from(g in Portal.Group, where: g.id == ^id)
       |> preload(:memberships)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.one()
       |> case do
         nil -> {:error, :not_found}

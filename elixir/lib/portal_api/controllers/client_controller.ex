@@ -200,7 +200,7 @@ defmodule PortalAPI.ClientController do
 
     def list_clients(subject, opts \\ []) do
       from(c in Client, as: :clients)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -222,7 +222,7 @@ defmodule PortalAPI.ClientController do
         from(c in Client, as: :clients)
         |> where([clients: c], c.id == ^id)
         |> preload([:ipv4_address, :ipv6_address])
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do
