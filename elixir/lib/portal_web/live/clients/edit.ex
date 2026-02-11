@@ -80,7 +80,7 @@ defmodule PortalWeb.Clients.Edit do
   defp update_changeset(client, attrs) do
     import Ecto.Changeset
     update_fields = ~w[name]a
-    required_fields = ~w[external_id name public_key]a
+    required_fields = ~w[external_id name]a
 
     client
     |> cast(attrs, update_fields)

@@ -28,38 +28,6 @@ defmodule PortalAPI.Schemas.Client do
           type: :boolean,
           description: "Online status of Client"
         },
-        last_seen_user_agent: %Schema{
-          type: :string,
-          description: "Last seen user agent"
-        },
-        last_seen_remote_ip: %Schema{
-          type: :string,
-          description: "Last seen remote IP"
-        },
-        last_seen_remote_ip_location_region: %Schema{
-          type: :string,
-          description: "Last seen remote IP location region"
-        },
-        last_seen_remote_ip_location_city: %Schema{
-          type: :string,
-          description: "Last seen remote IP location city"
-        },
-        last_seen_remote_ip_location_lat: %Schema{
-          type: :number,
-          description: "Last seen remote IP location latitude"
-        },
-        last_seen_remote_ip_location_lon: %Schema{
-          type: :number,
-          description: "Last seen remote IP location longitude"
-        },
-        last_seen_version: %Schema{
-          type: :string,
-          description: "Last seen version"
-        },
-        last_seen_at: %Schema{
-          type: :string,
-          description: "Last seen at"
-        },
         device_serial: %Schema{
           type: :string,
           description: "Device manufacturer serial number (unavailable for mobile devices)"
@@ -97,14 +65,6 @@ defmodule PortalAPI.Schemas.Client do
         :ipv4,
         :ipv6,
         :online,
-        :last_seen_user_agent,
-        :last_seen_remote_ip,
-        :last_seen_remote_ip_location_region,
-        :last_seen_remote_ip_location_city,
-        :last_seen_remote_ip_location_lat,
-        :last_seen_remote_ip_location_lon,
-        :last_seen_version,
-        :last_seen_at,
         :created_at,
         :updated_at
       ],
@@ -116,14 +76,11 @@ defmodule PortalAPI.Schemas.Client do
         "ipv4" => "100.64.0.1",
         "ipv6" => "fd00:2021:1111::1",
         "online" => true,
-        "last_seen_user_agent" => "Mac OS/15.1.1 connlib/1.4.5 (arm64; 24.1.0)",
-        "last_seen_remote_ip" => "1.2.3.4",
-        "last_seen_remote_ip_location_region" => "California",
-        "last_seen_remote_ip_location_city" => "San Francisco",
-        "last_seen_remote_ip_location_lat" => 37.7749,
-        "last_seen_remote_ip_location_lon" => -122.4194,
-        "last_seen_version" => "1.4.5",
-        "last_seen_at" => "2025-01-01T00:00:00Z",
+        "device_serial" => "GCCFX0DBQ6L5",
+        "device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
+        "identifier_for_vendor" => nil,
+        "firebase_installation_id" => nil,
+        "verified_at" => "2025-01-01T00:00:00Z",
         "created_at" => "2025-01-01T00:00:00Z",
         "updated_at" => "2025-01-01T00:00:00Z"
       }
@@ -193,14 +150,6 @@ defmodule PortalAPI.Schemas.Client do
           "ipv4" => "100.64.0.1",
           "ipv6" => "fd00:2021:1111::1",
           "online" => true,
-          "last_seen_user_agent" => "Mac OS/15.1.1 connlib/1.4.5 (arm64; 24.1.0)",
-          "last_seen_remote_ip" => "1.2.3.4",
-          "last_seen_remote_ip_location_region" => "California",
-          "last_seen_remote_ip_location_city" => "San Francisco",
-          "last_seen_remote_ip_location_lat" => 37.7749,
-          "last_seen_remote_ip_location_lon" => -122.4194,
-          "last_seen_version" => "1.4.5",
-          "last_seen_at" => "2025-01-01T00:00:00Z",
           "device_serial" => "GCCFX0DBQ6L5",
           "device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
           "identifier_for_vendor" => nil,
@@ -236,14 +185,6 @@ defmodule PortalAPI.Schemas.Client do
             "ipv4" => "100.64.0.1",
             "ipv6" => "fd00:2021:1111::1",
             "online" => true,
-            "last_seen_user_agent" => "Mac OS/15.1.1 connlib/1.4.5 (arm64; 24.1.0)",
-            "last_seen_remote_ip" => "1.2.3.4",
-            "last_seen_remote_ip_location_region" => "California",
-            "last_seen_remote_ip_location_city" => "San Francisco",
-            "last_seen_remote_ip_location_lat" => 37.7749,
-            "last_seen_remote_ip_location_lon" => -122.4194,
-            "last_seen_version" => "1.4.5",
-            "last_seen_at" => "2025-01-01T00:00:00Z",
             "device_serial" => "GCCFX0DBQ6L5",
             "device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
             "identifier_for_vendor" => nil,
@@ -260,14 +201,6 @@ defmodule PortalAPI.Schemas.Client do
             "ipv4" => "100.64.0.2",
             "ipv6" => "fd00:2021:1111::2",
             "online" => false,
-            "last_seen_user_agent" => "iOS/18.3.1 connlib/1.4.6 (24.3.0)",
-            "last_seen_remote_ip" => "1.2.3.4",
-            "last_seen_remote_ip_location_region" => "California",
-            "last_seen_remote_ip_location_city" => "San Francisco",
-            "last_seen_remote_ip_location_lat" => 37.7749,
-            "last_seen_remote_ip_location_lon" => -122.4194,
-            "last_seen_version" => "1.4.6",
-            "last_seen_at" => "2025-01-01T00:00:00Z",
             "device_serial" => nil,
             "device_uuid" => nil,
             "identifier_for_vendor" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",

@@ -14,12 +14,29 @@ defmodule Portal.Cache.ClientTest do
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
 
-  describe "update_resource/4" do
+  describe "update_resource/5" do
     setup do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
+
+      # Build session struct (mimics Socket.connect)
+      version =
+        case Portal.Version.fetch_version(subject.context.user_agent) do
+          {:ok, version} -> version
+          _ -> nil
+        end
+
+      session = %Portal.ClientSession{
+        client_id: client.id,
+        account_id: client.account_id,
+        user_agent: subject.context.user_agent,
+        remote_ip: subject.context.remote_ip,
+        remote_ip_location_region: subject.context.remote_ip_location_region,
+        version: version
+      }
+
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
 
@@ -37,6 +54,7 @@ defmodule Portal.Cache.ClientTest do
         account: account,
         subject: subject,
         client: client,
+        session: session,
         site: site,
         resource: resource
       }
@@ -45,6 +63,7 @@ defmodule Portal.Cache.ClientTest do
     test "handles cached resource with nil site by fetching from database", %{
       subject: subject,
       client: client,
+      session: session,
       site: site,
       resource: resource
     } do
@@ -87,7 +106,7 @@ defmodule Portal.Cache.ClientTest do
 
       # This should not crash - it should fetch the site from the database
       {:ok, _added, _removed, updated_cache} =
-        Cache.update_resource(cache, updated_resource, client, subject)
+        Cache.update_resource(cache, updated_resource, client, session, subject)
 
       # Verify the site was hydrated from the database
       cached = Map.get(updated_cache.resources, resource_id)
@@ -100,6 +119,7 @@ defmodule Portal.Cache.ClientTest do
     test "handles resource with nil site_id (site deleted)", %{
       subject: subject,
       client: client,
+      session: session,
       resource: resource
     } do
       resource_id = Ecto.UUID.dump!(resource.id)
@@ -145,7 +165,7 @@ defmodule Portal.Cache.ClientTest do
 
       # This should not crash - it should handle nil site_id gracefully
       {:ok, added, removed_ids, updated_cache} =
-        Cache.update_resource(cache, updated_resource, client, subject)
+        Cache.update_resource(cache, updated_resource, client, session, subject)
 
       # Verify the resource now has nil site
       cached = Map.get(updated_cache.resources, resource_id)
@@ -159,6 +179,7 @@ defmodule Portal.Cache.ClientTest do
     test "reuses cached site when site_id has not changed", %{
       subject: subject,
       client: client,
+      session: session,
       site: site,
       resource: resource
     } do
@@ -204,7 +225,7 @@ defmodule Portal.Cache.ClientTest do
       updated_resource = %{resource | name: "Updated Name"}
 
       {:ok, _added, _removed, updated_cache} =
-        Cache.update_resource(cache, updated_resource, client, subject)
+        Cache.update_resource(cache, updated_resource, client, session, subject)
 
       # Verify the cached site was reused (same struct reference)
       cached = Map.get(updated_cache.resources, resource_id)

@@ -4,6 +4,7 @@ defmodule PortalWeb.Live.Clients.ShowTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ClientFixtures
+  import Portal.ClientSessionFixtures
   import Portal.PolicyAuthorizationFixtures
   import Portal.TokenFixtures
 
@@ -73,6 +74,16 @@ defmodule PortalWeb.Live.Clients.ShowTest do
     actor: actor,
     conn: conn
   } do
+    session =
+      client_session_fixture(
+        account: account,
+        actor: actor,
+        client: client,
+        user_agent: "macOS/14.0 apple-client/1.3.0",
+        version: "1.3.0",
+        remote_ip: {100, 64, 0, 1}
+      )
+
     {:ok, lv, _html} =
       conn
       |> authorize_conn(actor)
@@ -90,8 +101,8 @@ defmodule PortalWeb.Live.Clients.ShowTest do
     assert table["status"] =~ "Offline"
     assert table["created"]
     assert table["last started"]
-    assert table["version"] =~ client.last_seen_version
-    assert table["user agent"] =~ client.last_seen_user_agent
+    assert table["version"] =~ session.version
+    assert table["user agent"] =~ session.user_agent
     assert table["tunnel interface ipv4 address"] =~ to_string(client.ipv4_address.address)
     assert table["tunnel interface ipv6 address"] =~ to_string(client.ipv6_address.address)
 
@@ -107,7 +118,7 @@ defmodule PortalWeb.Live.Clients.ShowTest do
     assert table["device serial"] =~ to_string(client.device_serial)
     assert table["device uuid"] =~ to_string(client.device_uuid)
     assert table["app installation id"] =~ to_string(client.firebase_installation_id)
-    assert table["last seen remote ip"] =~ to_string(client.last_seen_remote_ip)
+    assert table["last seen remote ip"] =~ to_string(session.remote_ip)
   end
 
   test "shows client online status", %{
@@ -210,7 +221,7 @@ defmodule PortalWeb.Live.Clients.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["remote ip"] == to_string(client.last_seen_remote_ip)
+    assert row["remote ip"] == to_string(policy_authorization.client_remote_ip)
     assert row["policy"] =~ policy_authorization.policy.group.name
     assert row["policy"] =~ policy_authorization.policy.resource.name
 

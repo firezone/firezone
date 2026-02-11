@@ -333,6 +333,9 @@ defmodule Portal.Resource do
     1. Filters out resources that are not compatible with the given client or gateway version.
     2. Converts DNS resource addresses back to the pre-1.2.0 format if the client or gateway version is < 1.2.0.
   """
+  # Version can be nil when derive_version/1 fails to parse the user agent
+  def adapt_resource_for_version(resource, nil), do: resource
+
   def adapt_resource_for_version(resource, client_or_gateway_version) do
     cond do
       # internet resources require client and gateway >= 1.3.0

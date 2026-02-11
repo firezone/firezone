@@ -4,6 +4,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
   alias Portal.{Channels, PubSub}
   import Portal.Cache.Cacheable, only: [to_cache: 1]
 
+  @test_user_agent "macOS/14.0 apple-client/1.3.0"
+
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ClientFixtures
@@ -177,6 +179,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       channel_pid = self()
       socket_ref = make_ref()
       preshared_key = "PSK"
+      public_key = Portal.ClientFixtures.generate_public_key()
 
       ice_credentials = %{
         client: %{username: "A", password: "B"},
@@ -187,7 +190,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
-           client: PortalAPI.Gateway.Views.Client.render(client, preshared_key),
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
@@ -259,6 +268,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       channel_pid = self()
       socket_ref = make_ref()
       preshared_key = "PSK"
+      public_key = Portal.ClientFixtures.generate_public_key()
 
       ice_credentials = %{
         client: %{username: "A", password: "B"},
@@ -269,7 +279,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
-           client: PortalAPI.Gateway.Views.Client.render(client, preshared_key),
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
@@ -286,7 +302,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
-           client: PortalAPI.Gateway.Views.Client.render(client, preshared_key),
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
@@ -1527,6 +1549,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
       client_payload = "RTC_SD"
+      public_key = Portal.ClientFixtures.generate_public_key()
 
       :ok = Portal.Presence.Relays.connect(relay)
 
@@ -1534,7 +1557,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         socket.channel_pid,
         {:request_connection, {channel_pid, socket_ref},
          %{
-           client: PortalAPI.Gateway.Views.Client.render(client, client_payload, preshared_key),
+           client:
+             PortalAPI.Gateway.Views.Client.render_legacy(
+               client,
+               public_key,
+               client_payload,
+               preshared_key
+             ),
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at
@@ -1560,7 +1589,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                  ipv6: client.ipv6_address.address,
                  persistent_keepalive: 25,
                  preshared_key: preshared_key,
-                 public_key: client.public_key
+                 public_key: public_key
                },
                payload: client_payload
              }
@@ -1589,6 +1618,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
       preshared_key = "PSK"
+      public_key = Portal.ClientFixtures.generate_public_key()
 
       :ok = Portal.Presence.Relays.connect(relay)
 
@@ -1607,7 +1637,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         socket.channel_pid,
         {:request_connection, {channel_pid, socket_ref},
          %{
-           client: PortalAPI.Gateway.Views.Client.render(client, client_payload, preshared_key),
+           client:
+             PortalAPI.Gateway.Views.Client.render_legacy(
+               client,
+               public_key,
+               client_payload,
+               preshared_key
+             ),
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at
@@ -1665,6 +1701,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
+      public_key = Portal.ClientFixtures.generate_public_key()
 
       ice_credentials = %{
         client: %{username: "A", password: "B"},
@@ -1675,7 +1712,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
-           client: PortalAPI.Gateway.Views.Client.render(client, preshared_key),
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
@@ -1703,8 +1746,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
                ipv4: client.ipv4_address.address,
                ipv6: client.ipv6_address.address,
                preshared_key: preshared_key,
-               public_key: client.public_key,
-               version: client.last_seen_version,
+               public_key: public_key,
+               version: "1.3.0",
                device_serial: client.device_serial,
                device_uuid: client.device_uuid,
                identifier_for_vendor: client.identifier_for_vendor,
@@ -1746,6 +1789,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
+      public_key = Portal.ClientFixtures.generate_public_key()
 
       ice_credentials = %{
         client: %{username: "A", password: "B"},
@@ -1767,7 +1811,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
-           client: PortalAPI.Gateway.Views.Client.render(client, preshared_key),
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
@@ -1840,6 +1890,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
+      public_key = Portal.ClientFixtures.generate_public_key()
       site_id = gateway.site_id
       gateway_id = gateway.id
       gateway_public_key = gateway.public_key
@@ -1856,7 +1907,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
-           client: PortalAPI.Gateway.Views.Client.render(client, preshared_key),
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
@@ -1929,6 +1986,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
+      public_key = Portal.ClientFixtures.generate_public_key()
       gateway_public_key = gateway.public_key
       payload = "RTC_SD"
 
@@ -1938,7 +1996,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         socket.channel_pid,
         {:request_connection, {channel_pid, socket_ref},
          %{
-           client: PortalAPI.Gateway.Views.Client.render(client, payload, preshared_key),
+           client:
+             PortalAPI.Gateway.Views.Client.render_legacy(
+               client,
+               public_key,
+               payload,
+               preshared_key
+             ),
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
            authorization_expires_at: expires_at
@@ -1959,7 +2023,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert client_id == client.id
       assert peer.ipv4 == client.ipv4_address.address
       assert peer.ipv6 == client.ipv6_address.address
-      assert peer.public_key == client.public_key
+      assert peer.public_key == public_key
       assert peer.persistent_keepalive == 25
       assert peer.preshared_key == preshared_key
       assert re.id == resource.id
