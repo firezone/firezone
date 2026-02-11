@@ -332,34 +332,12 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   @doc """
-  Cloud platform on which the Firezone runs on which is used to unlock
-  platform-specific features (logging, tracing, monitoring, clustering).
-  """
-  defconfig(
-    :platform_adapter,
-    Ecto.ParameterizedType.init(Ecto.Enum,
-      values: [
-        Elixir.Portal.GoogleCloudPlatform
-      ]
-    ),
-    default: nil
-  )
-
-  @doc """
   Azure Front Door ID (GUID format) for validating the X-Azure-FDID header.
 
   When set, requests without a matching X-Azure-FDID header will be rejected with 502.
   This prevents other Azure Front Door instances from sending traffic to this application.
   """
   defconfig(:azure_front_door_id, :string, default: nil)
-
-  @doc """
-  Config for the platform adapter.
-  """
-  defconfig(:platform_adapter_config, :map,
-    default: [],
-    dump: &Dumper.keyword/1
-  )
 
   ##############################################
   ## Erlang Cluster
@@ -377,7 +355,6 @@ defmodule Portal.Config.Definitions do
         Elixir.Cluster.Strategy.Gossip,
         Elixir.Cluster.Strategy.Kubernetes,
         Elixir.Cluster.Strategy.DNSPoll,
-        Elixir.Portal.Cluster.GoogleComputeLabelsStrategy,
         Elixir.Portal.Cluster.PostgresStrategy
       ]
     ),
@@ -408,7 +385,6 @@ defmodule Portal.Config.Definitions do
         Elixir.Cluster.Strategy.Gossip,
         Elixir.Cluster.Strategy.Kubernetes,
         Elixir.Cluster.Strategy.DNSPoll,
-        Elixir.Portal.Cluster.GoogleComputeLabelsStrategy,
         Elixir.Portal.Cluster.PostgresStrategy
       ]
     ),
@@ -607,8 +583,7 @@ defmodule Portal.Config.Definitions do
     :telemetry_metrics_reporter,
     Ecto.ParameterizedType.init(Ecto.Enum,
       values: [
-        Telemetry.Metrics.ConsoleReporter,
-        Elixir.Portal.Telemetry.Reporter.GoogleCloudMetrics
+        Telemetry.Metrics.ConsoleReporter
       ]
     ),
     default: nil
