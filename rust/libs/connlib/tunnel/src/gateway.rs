@@ -22,7 +22,7 @@ use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
-use snownet::{Credentials, NoTurnServers, RelaySocket, ServerNode, Transmit};
+use snownet::{Credentials, IceConfig, IceRole, NoTurnServers, Node, RelaySocket, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
@@ -40,7 +40,7 @@ pub struct GatewayState {
     /// The [`snownet::ClientNode`].
     ///
     /// Manages wireguard tunnels to clients.
-    node: ServerNode<ClientId, RelayId>,
+    node: Node<ClientId, RelayId>,
     /// All clients we are connected to and the associated, connection-specific state.
     peers: PeerStore<ClientId, ClientOnGateway>,
 
@@ -76,7 +76,13 @@ impl GatewayState {
     pub(crate) fn new(flow_logs: bool, seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         Self {
             peers: Default::default(),
-            node: ServerNode::new(seed, now, unix_ts),
+            node: Node::new(
+                seed,
+                now,
+                unix_ts,
+                IceConfig::server_default(),
+                IceConfig::server_idle(),
+            ),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
@@ -309,6 +315,7 @@ impl GatewayState {
                 username: client_ice.username,
                 password: client_ice.password,
             },
+            IceRole::Controlled,
             now,
         )?;
 
@@ -699,7 +706,7 @@ fn handle_assigned_ips_event(
 fn encrypt_packet(
     packet: IpPacket,
     cid: ClientId,
-    node: &mut ServerNode<ClientId, RelayId>,
+    node: &mut Node<ClientId, RelayId>,
     now: Instant,
 ) -> Result<Option<Transmit>> {
     let transmit = node
