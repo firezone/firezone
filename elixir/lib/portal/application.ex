@@ -62,8 +62,6 @@ defmodule Portal.Application do
       Portal.PubSub,
 
       # Infrastructure services
-      # Note: only one of platform adapters will be actually started.
-      Portal.GoogleCloudPlatform,
       Portal.Cluster,
 
       # Application services
@@ -89,16 +87,9 @@ defmodule Portal.Application do
     :ok = LoggerJSON.configure_log_level_from_env!("LOG_LEVEL")
 
     config = Application.get_env(:logger_json, :config)
-    platform_adapter = Application.get_env(:portal, :platform_adapter)
 
     if not is_nil(config) do
-      formatter =
-        if platform_adapter == Portal.GoogleCloudPlatform do
-          LoggerJSON.Formatters.GoogleCloud.new(config)
-        else
-          LoggerJSON.Formatters.Basic.new(config)
-        end
-
+      formatter = LoggerJSON.Formatters.Basic.new(config)
       :logger.update_handler_config(:default, :formatter, formatter)
     end
 
