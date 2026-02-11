@@ -264,8 +264,8 @@ defmodule PortalWeb.Policies.Edit do
       from(p in Policy, as: :policies)
       |> where([policies: p], p.id == ^id)
       |> preload([:group, :resource])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def update_policy(changeset, %Authentication.Subject{} = subject) do
@@ -284,7 +284,7 @@ defmodule PortalWeb.Policies.Edit do
       ]
       |> Enum.flat_map(fn schema ->
         from(p in schema, where: not p.is_disabled)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
       end)
     end
@@ -319,8 +319,8 @@ defmodule PortalWeb.Policies.Edit do
             directory_type: d.type
           }
         )
-        |> Safe.scoped(subject)
-        |> Safe.one!()
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one!(fallback_to_primary: true)
 
       {:ok, group_option(group)}
     end
@@ -364,7 +364,7 @@ defmodule PortalWeb.Policies.Edit do
           query
         end
 
-      groups = query |> Safe.scoped(subject) |> Safe.all()
+      groups = query |> Safe.scoped(subject, :replica) |> Safe.all()
       metadata = %{limit: 25, count: length(groups)}
 
       {:ok, grouped_select_options(groups), metadata}

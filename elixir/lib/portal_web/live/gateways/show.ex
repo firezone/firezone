@@ -184,8 +184,8 @@ defmodule PortalWeb.Gateways.Show do
       from(g in Gateway, as: :gateways)
       |> where([gateways: g], g.id == ^id)
       |> preload([:site, :ipv4_address, :ipv6_address])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def delete_gateway(gateway, subject) do

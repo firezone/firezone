@@ -167,7 +167,7 @@ defmodule PortalWeb.Clients.Index do
         end
 
       base_query
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 

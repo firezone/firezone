@@ -328,8 +328,8 @@ defmodule PortalWeb.Policies.Show do
       from(p in Policy, as: :policies)
       |> where([policies: p], p.id == ^id)
       |> preload(group: [], resource: [])
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def update_policy(changeset, %Authentication.Subject{} = subject) do
@@ -353,7 +353,7 @@ defmodule PortalWeb.Policies.Show do
       ]
       |> Enum.flat_map(fn schema ->
         from(p in schema, where: not p.is_disabled)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
       end)
     end
@@ -365,7 +365,7 @@ defmodule PortalWeb.Policies.Show do
         ) do
       Database.PolicyAuthorizationQuery.all()
       |> Database.PolicyAuthorizationQuery.by_policy_id(policy.id)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(Database.PolicyAuthorizationQuery, opts)
     end
   end

@@ -8,7 +8,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     def list_actors(subject, opts \\ []) do
       from(a in Portal.Actor, as: :actors)
       |> where([actors: a], a.type == :api_client)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 

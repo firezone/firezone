@@ -295,7 +295,7 @@ defmodule PortalWeb.Resources.Edit do
     def all_sites(subject) do
       from(s in Portal.Site, as: :sites)
       |> where([sites: s], s.managed_by != :system)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
     end
 
@@ -303,8 +303,8 @@ defmodule PortalWeb.Resources.Edit do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.id == ^id)
       |> preload(:site)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def update_resource(changeset, subject) do

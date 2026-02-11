@@ -93,8 +93,8 @@ defmodule PortalWeb.Settings.ApiClients.Edit do
         where: a.id == ^id,
         where: a.type == :api_client
       )
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def update_api_client(changeset, subject) do

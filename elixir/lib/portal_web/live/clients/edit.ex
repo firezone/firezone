@@ -97,8 +97,8 @@ defmodule PortalWeb.Clients.Edit do
       from(c in Client, as: :clients)
       |> where([clients: c], c.id == ^id)
       |> preload(:actor)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def update_client(changeset, subject) do

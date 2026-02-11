@@ -192,14 +192,14 @@ defmodule PortalWeb.Resources.Index do
     def get_site(id, subject) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one(fallback_to_primary: true)
     end
 
     def list_resources(subject, opts \\ []) do
       from(resources in Resource, as: :resources)
       |> where([resources: r], r.type != :internet)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -211,7 +211,7 @@ defmodule PortalWeb.Resources.Index do
       |> where([policies: p], is_nil(p.disabled_at))
       |> group_by([policies: p], p.resource_id)
       |> select([policies: p], {p.resource_id, count(p.id)})
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> case do
         {:error, _} -> %{}

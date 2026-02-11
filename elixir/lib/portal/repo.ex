@@ -3,7 +3,8 @@ defmodule Portal.Repo do
     otp_app: :portal,
     adapter: Ecto.Adapters.Postgres
 
-  alias Portal.Repo.{Paginator, Preloader, Filter}
+  alias Portal.Repo
+  alias Portal.Repo.Paginator
   require Ecto.Query
 
   def valid_uuid?(binary) when is_binary(binary),
@@ -64,25 +65,6 @@ defmodule Portal.Repo do
           | {:error, {:invalid_value, metadata :: Keyword.t()}}
           | {:error, term()}
   def list(queryable, query_module, opts \\ []) do
-    {preload, opts} = Keyword.pop(opts, :preload, [])
-    {filter, opts} = Keyword.pop(opts, :filter, [])
-    {order_by, opts} = Keyword.pop(opts, :order_by, [])
-    {paginator_opts, opts} = Keyword.pop(opts, :page, [])
-
-    with {:ok, paginator_opts} <- Paginator.init(query_module, order_by, paginator_opts),
-         {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do
-      count = __MODULE__.aggregate(queryable, :count, :id)
-
-      {results, metadata} =
-        queryable
-        |> Paginator.query(paginator_opts)
-        |> __MODULE__.all(opts)
-        |> Paginator.metadata(paginator_opts)
-
-      {results, ecto_preloads} = Preloader.preload(results, preload, query_module)
-      results = __MODULE__.preload(results, ecto_preloads)
-
-      {:ok, results, %{metadata | count: count}}
-    end
+    Repo.List.call(__MODULE__, queryable, query_module, opts)
   end
 end

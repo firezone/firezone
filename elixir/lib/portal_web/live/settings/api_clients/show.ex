@@ -307,8 +307,8 @@ defmodule PortalWeb.Settings.ApiClients.Show do
         where: a.id == ^id,
         where: a.type == :api_client
       )
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def update_actor(changeset, subject) do
@@ -323,7 +323,7 @@ defmodule PortalWeb.Settings.ApiClients.Show do
         where: t.actor_id == ^actor.id,
         order_by: [desc: t.inserted_at, desc: t.id]
       )
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
