@@ -48,5 +48,11 @@ Type=notify
 User=root
 Group=firezone-client
 
+# Restart on failure
+TimeoutStartSec=15s
+TimeoutStopSec=15s
+Restart=always
+RestartSec=7
+
 [Install]
 WantedBy=default.target
