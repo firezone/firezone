@@ -119,6 +119,8 @@ defmodule Portal.MixProject do
       {:observer_cli, "~> 1.7"},
       {:opentelemetry, "~> 1.5"},
       {:opentelemetry_logger_metadata, "~> 0.2.0"},
+      {:opentelemetry_api_experimental, "~> 0.5"},
+      {:opentelemetry_experimental, "~> 0.5"},
       {:opentelemetry_exporter, "~> 1.8"},
       {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_oban, "~> 1.1.1"},
@@ -192,6 +194,7 @@ defmodule Portal.MixProject do
         applications: [
           portal: :permanent,
           opentelemetry_exporter: :permanent,
+          opentelemetry_experimental: :permanent,
           opentelemetry: :temporary
         ]
       ]

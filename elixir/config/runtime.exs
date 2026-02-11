@@ -372,6 +372,10 @@ if config_env() == :prod do
           version: System.get_env("RELEASE_VSN"),
           instance: %{id: System.get_env("NODE_NAME")}
         },
+        host: %{
+          name: System.get_env("NODE_NAME"),
+          id: System.get_env("NODE_NAME")
+        },
         cloud: %{
           provider: "azure",
           region: System.get_env("REGION")
@@ -380,14 +384,23 @@ if config_env() == :prod do
 
     config :opentelemetry,
       span_processor: :batch,
-      traces_exporter: :otlp,
-      metrics_exporter: :otlp
+      traces_exporter: :otlp
 
     config :opentelemetry_exporter,
       otlp_protocol: :http_protobuf,
       otlp_traces_protocol: :http_protobuf,
-      otlp_metrics_protocol: :http_protobuf,
       otlp_endpoint: System.get_env("OTLP_ENDPOINT")
+
+    config :opentelemetry_experimental,
+      readers: [
+        %{
+          module: :otel_metric_reader,
+          config: %{
+            export_interval_ms: 30_000,
+            exporter: {:otel_exporter_metrics_otlp, %{}}
+          }
+        }
+      ]
   end
 
   config :portal, Portal.Health, health_port: env_var_to_config!(:health_port)
