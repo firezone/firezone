@@ -51,14 +51,14 @@ defmodule PortalAPI.GoogleDirectoryController do
 
     def list_directories(subject) do
       from(d in Google.Directory, as: :directories, order_by: [desc: d.inserted_at])
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
     end
 
     def fetch_directory(id, subject) do
       result =
         from(d in Google.Directory, where: d.id == ^id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do
