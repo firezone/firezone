@@ -476,8 +476,6 @@ impl ClientState {
 
                     return None;
                 };
-
-                // TODO: Validate packet with state in `peer`?
             }
             ClientOrGatewayId::Gateway(gid) => {
                 let Some(peer) = self.gateways.get_mut(&gid) else {
@@ -1607,7 +1605,7 @@ impl ClientState {
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online);
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(_)) => {
-                    // TODO;
+                    // TODO: Update resource list with online client.
                 }
             }
         }
