@@ -11,8 +11,7 @@ use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
 pub use platform::{
-    logs, root_runtime, session, settings, tunnel_service_config, tunnel_service_logs,
-    user_runtime,
+    logs, root_runtime, session, settings, tunnel_service_config, tunnel_service_logs, user_runtime,
 };
 
 #[cfg(target_os = "linux")]
