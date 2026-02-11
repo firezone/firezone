@@ -2,7 +2,7 @@ defmodule PortalAPI.Client.ChannelTest do
   use PortalAPI.ChannelCase, async: true
   alias Portal.Changes
   alias Portal.Presence
-  alias Portal.PubSub
+  alias Portal.{Channels, PubSub}
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -2098,7 +2098,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         socket.channel_pid,
-        {{:ice_candidates, client.id}, gateway.id, candidates}
+        {:ice_candidates, gateway.id, candidates}
       )
 
       assert_push "ice_candidates", payload
@@ -2121,7 +2121,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         socket.channel_pid,
-        {{:invalidate_ice_candidates, client.id}, gateway.id, candidates}
+        {:invalidate_ice_candidates, gateway.id, candidates}
       )
 
       assert_push "invalidate_ice_candidates", payload
@@ -2294,7 +2294,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
 
-      :ok = PubSub.Account.subscribe(gateway.account_id)
+      :ok = Channels.register_gateway(gateway.id)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
@@ -2322,9 +2322,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      gateway_id = gateway.id
-
-      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, payload}
+      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, payload}
 
       assert %{
                client: received_client,
@@ -2335,7 +2333,7 @@ defmodule PortalAPI.Client.ChannelTest do
              } = payload
 
       assert received_client.id == client.id
-      assert received_resource.id == Ecto.UUID.dump!(resource.id)
+      assert received_resource.id == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
     end
@@ -2360,7 +2358,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(global_relay)
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = Channels.register_gateway(gateway.id)
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
@@ -2390,9 +2388,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      gateway_id = gateway.id
-
-      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, payload}
+      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, payload}
 
       assert %{
                client: recv_client,
@@ -2403,7 +2399,7 @@ defmodule PortalAPI.Client.ChannelTest do
              } = payload
 
       assert recv_client.id == client.id
-      assert recv_resource.id == Ecto.UUID.dump!(resource.id)
+      assert recv_resource.id == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
     end
@@ -2420,7 +2416,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = PubSub.Account.subscribe(gateway.account_id)
+      :ok = Channels.register_gateway(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -2448,20 +2444,14 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      gateway_id = gateway.id
-
-      assert_receive {{:authorize_policy, ^gateway_id}, {channel_pid, socket_ref}, payload}
+      assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
 
       assert %{
-               client: recv_client,
-               resource: recv_resource,
+               resource: %{id: resource_id},
                authorization_expires_at: authorization_expires_at,
                ice_credentials: ice_credentials,
                preshared_key: preshared_key
              } = payload
-
-      client_id = recv_client.id
-      resource_id = recv_resource.id
 
       assert policy_authorization =
                Repo.get_by(Portal.PolicyAuthorization,
@@ -2469,19 +2459,20 @@ defmodule PortalAPI.Client.ChannelTest do
                  resource_id: resource.id
                )
 
-      assert policy_authorization.client_id == client_id
-      assert policy_authorization.resource_id == Ecto.UUID.load!(resource_id)
+      assert policy_authorization.client_id == client.id
+      assert policy_authorization.resource_id == resource_id
       assert policy_authorization.gateway_id == gateway.id
       assert policy_authorization.policy_id == policy.id
       assert policy_authorization.token_id == subject.credential.id
 
-      assert client_id == client.id
-      assert Ecto.UUID.load!(resource_id) == resource.id
+      assert resource_id == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
+
+      rid_bytes = Ecto.UUID.dump!(resource_id)
 
       send(
         channel_pid,
-        {:connect, socket_ref, resource_id, gateway.site_id, gateway.id, gateway.public_key,
+        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id, gateway.public_key,
          gateway.ipv4_address.address, gateway.ipv6_address.address, preshared_key,
          ice_credentials}
       )
@@ -2491,8 +2482,6 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_public_key = gateway.public_key
       gateway_ipv4 = gateway.ipv4_address.address
       gateway_ipv6 = gateway.ipv6_address.address
-
-      resource_id = Ecto.UUID.load!(resource_id)
 
       assert_push "flow_created", %{
         gateway_public_key: ^gateway_public_key,
@@ -2548,7 +2537,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = Channels.register_gateway(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -2573,9 +2562,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      gateway_id = gateway.id
-
-      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, _payload}
+      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, _payload}
     end
 
     test "selects compatible gateway versions", %{
@@ -2606,7 +2593,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = Channels.register_gateway(gateway.id)
 
       {:ok, _reply, socket} =
         PortalAPI.Client.Socket
@@ -2639,15 +2626,14 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = Channels.register_gateway(gateway.id)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
         "connected_gateway_ids" => []
       })
 
-      gateway_id = gateway.id
-
-      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, _payload}
+      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, _payload}
     end
 
     test "selects already connected gateway", %{
@@ -2683,7 +2669,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :ok = Presence.Gateways.connect(gateway2, gateway_token.id)
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = Channels.register_gateway(gateway1.id)
+      :ok = Channels.register_gateway(gateway2.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -2708,9 +2695,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => [gateway2.id]
       })
 
-      gateway_id = gateway2.id
-
-      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, %{}}
+      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, %{}}
 
       assert Repo.get_by(Portal.PolicyAuthorization,
                resource_id: resource.id,
@@ -2723,15 +2708,181 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => [gateway1.id]
       })
 
-      gateway_id = gateway1.id
-
-      assert_receive {{:authorize_policy, ^gateway_id}, {_channel_pid, _socket_ref}, %{}}
+      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, %{}}
 
       assert Repo.get_by(Portal.PolicyAuthorization,
                resource_id: resource.id,
                gateway_id: gateway1.id,
                account_id: account.id
              )
+    end
+  end
+
+  describe "handle_info/2 flow_creation_timeout" do
+    test "pushes flow_creation_failed when gateway does not respond in time", %{
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = Channels.register_gateway(gateway.id)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, _payload}
+
+      # Simulate the timeout firing before the gateway responds
+      send(socket.channel_pid, {:flow_creation_timeout, resource.id})
+
+      assert_push "flow_creation_failed", %{resource_id: resource_id, reason: :offline}
+      assert resource_id == resource.id
+    end
+
+    test "ignores late {:connect, ...} after flow has already timed out", %{
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = Channels.register_gateway(gateway.id)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
+
+      # Simulate the timeout firing first
+      send(channel_pid, {:flow_creation_timeout, resource.id})
+
+      assert_push "flow_creation_failed", %{resource_id: resource_id, reason: :offline}
+      assert resource_id == resource.id
+
+      # Now simulate the late gateway response arriving after timeout
+      rid_bytes = Ecto.UUID.dump!(resource.id)
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id, gateway.public_key,
+         gateway.ipv4_address.address, gateway.ipv6_address.address, payload.preshared_key,
+         payload.ice_credentials}
+      )
+
+      # The late connect should be ignored — no "flow_created" push
+      refute_push "flow_created", _
+    end
+
+    test "timeout is ignored when flow has already succeeded", %{
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = Channels.register_gateway(gateway.id)
+      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
+
+      # Gateway responds successfully
+      rid_bytes = Ecto.UUID.dump!(resource.id)
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id, gateway.public_key,
+         gateway.ipv4_address.address, gateway.ipv6_address.address, payload.preshared_key,
+         payload.ice_credentials}
+      )
+
+      assert_push "flow_created", %{resource_id: resource_id}
+      assert resource_id == resource.id
+
+      # Now the stale timeout fires — should be a no-op
+      send(channel_pid, {:flow_creation_timeout, resource.id})
+
+      refute_push "flow_creation_failed", _
     end
   end
 
@@ -2907,7 +3058,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = Channels.register_gateway(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -3193,7 +3344,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = Channels.register_gateway(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -3284,7 +3435,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
-      :ok = PubSub.Account.subscribe(resource.account_id)
+      :ok = Channels.register_gateway(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -3315,19 +3466,19 @@ defmodule PortalAPI.Client.ChannelTest do
 
       ref = push(socket, "reuse_connection", attrs)
 
-      gateway_id = gateway.id
-
-      assert_receive {{:allow_access, ^gateway_id}, {channel_pid, socket_ref}, payload}
+      assert_receive {:allow_access, {channel_pid, socket_ref}, payload}
 
       assert %{
                resource: recv_resource,
-               client: recv_client,
+               client_id: recv_client_id,
+               client_ipv4: _client_ipv4,
+               client_ipv6: _client_ipv6,
                authorization_expires_at: authorization_expires_at,
                client_payload: "DNS_Q"
              } = payload
 
       assert recv_resource.id == Ecto.UUID.dump!(resource_id)
-      assert recv_client.id == client_id
+      assert recv_client_id == client_id
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
       send(
@@ -3373,7 +3524,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       Phoenix.PubSub.subscribe(PubSub, Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = Channels.register_gateway(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -3402,9 +3553,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "payload" => "DNS_Q"
       })
 
-      gateway_id = gateway.id
-
-      assert_receive {{:allow_access, ^gateway_id}, _refs, _payload}
+      assert_receive {:allow_access, _refs, _payload}
     end
   end
 
@@ -3537,7 +3686,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = Channels.register_gateway(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -3598,14 +3747,13 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{resources: _, relays: _, interface: _}
       public_key = gateway.public_key
       resource_id = resource.id
-      client_id = client.id
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = PubSub.Account.subscribe(resource.account_id)
+      :ok = Channels.register_gateway(gateway.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3616,20 +3764,17 @@ defmodule PortalAPI.Client.ChannelTest do
 
       ref = push(socket, "request_connection", attrs)
 
-      gateway_id = gateway.id
-
-      assert_receive {{:request_connection, ^gateway_id}, {channel_pid, socket_ref}, payload}
+      assert_receive {:request_connection, {channel_pid, socket_ref}, payload}
 
       assert %{
                resource: recv_resource,
                client: recv_client,
-               client_preshared_key: "PSK",
-               client_payload: "RTC_SD",
                authorization_expires_at: authorization_expires_at
              } = payload
 
+      assert recv_client.peer.preshared_key == "PSK"
+      assert recv_client.payload == "RTC_SD"
       assert recv_resource.id == Ecto.UUID.dump!(resource_id)
-      assert recv_client.id == client_id
 
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
@@ -3674,7 +3819,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       Phoenix.PubSub.subscribe(PubSub, Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = PubSub.Account.subscribe(account.id)
+      :ok = Channels.register_gateway(gateway.id)
 
       push(socket, "request_connection", %{
         "resource_id" => resource.id,
@@ -3683,9 +3828,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "client_preshared_key" => "PSK"
       })
 
-      gateway_id = gateway.id
-
-      assert_receive {{:request_connection, ^gateway_id}, _refs, _payload}
+      assert_receive {:request_connection, _refs, _payload}
     end
   end
 
@@ -3727,13 +3870,11 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = PubSub.Account.subscribe(client.account_id)
+      :ok = Channels.register_gateway(gateway.id)
 
       push(socket, "broadcast_ice_candidates", attrs)
 
-      gateway_id = gateway.id
-
-      assert_receive {{:ice_candidates, ^gateway_id}, client_id, ^candidates}, 200
+      assert_receive {:ice_candidates, client_id, ^candidates}, 200
       assert client.id == client_id
     end
   end
@@ -3775,13 +3916,11 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = Presence.Gateways.connect(gateway, gateway_token.id)
       :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
-      :ok = PubSub.Account.subscribe(client.account_id)
+      :ok = Channels.register_gateway(gateway.id)
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
-      gateway_id = gateway.id
-
-      assert_receive {{:invalidate_ice_candidates, ^gateway_id}, client_id, ^candidates}, 200
+      assert_receive {:invalidate_ice_candidates, client_id, ^candidates}, 200
       assert client.id == client_id
     end
   end

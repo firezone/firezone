@@ -5,8 +5,8 @@ defmodule PortalAPI.Gateway.Channel do
 
   alias Portal.{
     Cache,
+    Channels,
     Changes.Change,
-    Authentication,
     PubSub,
     Resource,
     Presence
@@ -52,8 +52,8 @@ defmodule PortalAPI.Gateway.Channel do
 
     :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id)
 
-    # Subscribe to all account updates
-    :ok = PubSub.Account.subscribe(socket.assigns.gateway.account_id)
+    # Register for targeted messages from client channels
+    :ok = Channels.register_gateway(socket.assigns.gateway.id)
     :ok = PubSub.Changes.subscribe(socket.assigns.gateway.account_id)
 
     # Return all connected relays and subscribe to global relay presence
@@ -202,10 +202,7 @@ defmodule PortalAPI.Gateway.Channel do
   #### Connection setup #####
   ###########################
 
-  def handle_info(
-        {{:ice_candidates, gateway_id}, client_id, candidates},
-        %{assigns: %{gateway: %{id: gateway_id}}} = socket
-      ) do
+  def handle_info({:ice_candidates, client_id, candidates}, socket) do
     push(socket, "ice_candidates", %{
       client_id: client_id,
       candidates: candidates
@@ -214,10 +211,7 @@ defmodule PortalAPI.Gateway.Channel do
     {:noreply, socket}
   end
 
-  def handle_info(
-        {{:invalidate_ice_candidates, gateway_id}, client_id, candidates},
-        %{assigns: %{gateway: %{id: gateway_id}}} = socket
-      ) do
+  def handle_info({:invalidate_ice_candidates, client_id, candidates}, socket) do
     push(socket, "invalidate_ice_candidates", %{
       client_id: client_id,
       candidates: candidates
@@ -226,47 +220,43 @@ defmodule PortalAPI.Gateway.Channel do
     {:noreply, socket}
   end
 
-  def handle_info(
-        {{:authorize_policy, gateway_id}, {channel_pid, socket_ref}, payload},
-        %{assigns: %{gateway: %{id: gateway_id}}} = socket
-      ) do
+  def handle_info({:authorize_policy, {channel_pid, socket_ref}, payload}, socket) do
     %{
       client: client,
-      resource: %Cache.Cacheable.Resource{} = resource,
+      subject: subject,
+      resource: resource,
       policy_authorization_id: policy_authorization_id,
       authorization_expires_at: authorization_expires_at,
       ice_credentials: ice_credentials,
-      preshared_key: preshared_key,
-      subject: %Authentication.Subject{} = subject
+      preshared_key: preshared_key
     } = payload
 
-    # Preload addresses in case client was received via PubSub without them
-    client = Database.preload_client_addresses(client)
+    rid_bytes = Ecto.UUID.dump!(resource.id)
 
     ref =
       encode_ref(socket, {
         channel_pid,
         socket_ref,
-        resource.id,
+        rid_bytes,
         preshared_key,
         ice_credentials
       })
 
     push(socket, "authorize_flow", %{
       ref: ref,
-      resource: Views.Resource.render(resource),
+      resource: resource,
       gateway_ice_credentials: ice_credentials.gateway,
-      client: Views.Client.render(client, preshared_key),
+      client: client,
       client_ice_credentials: ice_credentials.client,
       expires_at: DateTime.to_unix(authorization_expires_at, :second),
-      subject: Views.Subject.render(subject)
+      subject: subject
     })
 
     cache =
       socket.assigns.cache
       |> Cache.Gateway.put(
         client.id,
-        resource.id,
+        rid_bytes,
         policy_authorization_id,
         authorization_expires_at
       )
@@ -275,20 +265,16 @@ defmodule PortalAPI.Gateway.Channel do
   end
 
   # DEPRECATED IN 1.4
-  def handle_info(
-        {{:allow_access, gateway_id}, {channel_pid, socket_ref}, attrs},
-        %{assigns: %{gateway: %{id: gateway_id}}} = socket
-      ) do
+  def handle_info({:allow_access, {channel_pid, socket_ref}, attrs}, socket) do
     %{
-      client: client,
+      client_id: client_id,
+      client_ipv4: client_ipv4,
+      client_ipv6: client_ipv6,
       resource: %Cache.Cacheable.Resource{} = resource,
       policy_authorization_id: policy_authorization_id,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload
     } = attrs
-
-    # Preload addresses in case client was received via PubSub without them
-    client = Database.preload_client_addresses(client)
 
     case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
@@ -303,18 +289,18 @@ defmodule PortalAPI.Gateway.Channel do
 
         push(socket, "allow_access", %{
           ref: ref,
-          client_id: client.id,
+          client_id: client_id,
           resource: Views.Resource.render(resource),
           expires_at: DateTime.to_unix(authorization_expires_at, :second),
           payload: payload,
-          client_ipv4: client.ipv4_address.address,
-          client_ipv6: client.ipv6_address.address
+          client_ipv4: client_ipv4,
+          client_ipv6: client_ipv6
         })
 
         cache =
           socket.assigns.cache
           |> Cache.Gateway.put(
-            client.id,
+            client_id,
             resource.id,
             policy_authorization_id,
             authorization_expires_at
@@ -325,21 +311,13 @@ defmodule PortalAPI.Gateway.Channel do
   end
 
   # DEPRECATED IN 1.4
-  def handle_info(
-        {{:request_connection, gateway_id}, {channel_pid, socket_ref}, attrs},
-        %{assigns: %{gateway: %{id: gateway_id}}} = socket
-      ) do
+  def handle_info({:request_connection, {channel_pid, socket_ref}, attrs}, socket) do
     %{
       client: client,
       resource: %Cache.Cacheable.Resource{} = resource,
       policy_authorization_id: policy_authorization_id,
-      authorization_expires_at: authorization_expires_at,
-      client_payload: payload,
-      client_preshared_key: preshared_key
+      authorization_expires_at: authorization_expires_at
     } = attrs
-
-    # Preload addresses in case client was received via PubSub without them
-    client = Database.preload_client_addresses(client)
 
     case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
@@ -355,7 +333,7 @@ defmodule PortalAPI.Gateway.Channel do
         push(socket, "request_connection", %{
           ref: ref,
           resource: Views.Resource.render(resource),
-          client: Views.Client.render(client, payload, preshared_key),
+          client: client,
           expires_at: DateTime.to_unix(authorization_expires_at, :second)
         })
 
@@ -372,11 +350,7 @@ defmodule PortalAPI.Gateway.Channel do
     end
   end
 
-  # Helper to directly send reject_access in integration tests
-  def handle_info(
-        {{:reject_access, gateway_id}, client_id, resource_id},
-        %{assigns: %{gateway: %{id: gateway_id}}} = socket
-      ) do
+  def handle_info({:reject_access, client_id, resource_id}, socket) do
     push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
     {:noreply, socket}
   end
@@ -453,13 +427,12 @@ defmodule PortalAPI.Gateway.Channel do
         %{"candidates" => candidates, "client_ids" => client_ids},
         socket
       ) do
-    :ok =
-      Enum.each(client_ids, fn client_id ->
-        PubSub.Account.broadcast(
-          socket.assigns.gateway.account_id,
-          {{:ice_candidates, client_id}, socket.assigns.gateway.id, candidates}
-        )
-      end)
+    Enum.each(client_ids, fn client_id ->
+      Channels.send_to_client(
+        client_id,
+        {:ice_candidates, socket.assigns.gateway.id, candidates}
+      )
+    end)
 
     {:noreply, socket}
   end
@@ -469,13 +442,12 @@ defmodule PortalAPI.Gateway.Channel do
         %{"candidates" => candidates, "client_ids" => client_ids},
         socket
       ) do
-    :ok =
-      Enum.each(client_ids, fn client_id ->
-        PubSub.Account.broadcast(
-          socket.assigns.gateway.account_id,
-          {{:invalidate_ice_candidates, client_id}, socket.assigns.gateway.id, candidates}
-        )
-      end)
+    Enum.each(client_ids, fn client_id ->
+      Channels.send_to_client(
+        client_id,
+        {:invalidate_ice_candidates, socket.assigns.gateway.id, candidates}
+      )
+    end)
 
     {:noreply, socket}
   end
@@ -739,16 +711,11 @@ defmodule PortalAPI.Gateway.Channel do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account
-    alias Portal.Client
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
       |> Safe.unscoped(:replica)
       |> Safe.one!()
-    end
-
-    def preload_client_addresses(%Client{} = client) do
-      Safe.preload(client, [:ipv4_address, :ipv6_address], :replica)
     end
   end
 end
