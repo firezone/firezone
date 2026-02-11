@@ -144,13 +144,13 @@ defmodule PortalWeb.Sites.Gateways.Index do
     def get_site!(id, subject) do
       from(s in Portal.Site, as: :sites)
       |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def list_gateways(subject, opts \\ []) do
       from(g in Gateway, as: :gateways)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 

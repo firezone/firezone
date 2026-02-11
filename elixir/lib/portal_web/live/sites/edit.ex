@@ -100,8 +100,8 @@ defmodule PortalWeb.Sites.Edit do
       from(s in Portal.Site, as: :site)
       |> where([site: s], s.id == ^id)
       |> preload(:account)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def update_site(changeset, subject) do

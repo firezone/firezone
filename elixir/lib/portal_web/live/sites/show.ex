@@ -513,8 +513,8 @@ defmodule PortalWeb.Sites.Show do
     def get_site!(id, subject) do
       from(s in Portal.Site, as: :sites)
       |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def delete_tokens_for_site(site, subject) do
@@ -525,7 +525,7 @@ defmodule PortalWeb.Sites.Show do
 
     def list_gateways(subject, opts \\ []) do
       from(g in Gateway, as: :gateways)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -575,17 +575,17 @@ defmodule PortalWeb.Sites.Show do
     def count_site_deletion_stats(site, subject) do
       gateways =
         from(g in Gateway, where: g.site_id == ^site.id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.aggregate(:count)
 
       tokens =
         from(t in Portal.GatewayToken, where: t.site_id == ^site.id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.aggregate(:count)
 
       resources =
         from(r in Portal.Resource, where: r.site_id == ^site.id)
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.aggregate(:count)
 
       %{gateways: gateways, tokens: tokens, resources: resources}
@@ -595,13 +595,13 @@ defmodule PortalWeb.Sites.Show do
       from(r in Portal.Resource, as: :resources)
       |> where([resources: r], r.type == :internet)
       |> limit(1)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def list_resources(subject, opts \\ []) do
       from(r in Portal.Resource, as: :resources)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(Database.ResourceQuery, opts)
     end
 
@@ -610,14 +610,14 @@ defmodule PortalWeb.Sites.Show do
       |> where([policies: p], p.resource_id in ^resource_ids)
       |> group_by([policies: p], p.resource_id)
       |> select([policies: p], {p.resource_id, count(p.id)})
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> Map.new()
     end
 
     def list_policies(subject, opts \\ []) do
       from(p in Portal.Policy, as: :policies)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(Database.PolicyQuery, opts)
     end
   end

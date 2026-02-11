@@ -1642,9 +1642,9 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     def list_all_directories(subject) do
       [
-        Entra.Directory |> Safe.scoped(subject) |> Safe.all(),
-        Google.Directory |> Safe.scoped(subject) |> Safe.all(),
-        Okta.Directory |> Safe.scoped(subject) |> Safe.all()
+        Entra.Directory |> Safe.scoped(subject, :replica) |> Safe.all(),
+        Google.Directory |> Safe.scoped(subject, :replica) |> Safe.all(),
+        Okta.Directory |> Safe.scoped(subject, :replica) |> Safe.all()
       ]
       |> List.flatten()
       |> enrich_with_job_status()
@@ -1653,8 +1653,8 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     def get_directory!(schema, id, subject) do
       from(d in schema, where: d.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def insert_directory(changeset, subject) do
@@ -1686,21 +1686,21 @@ defmodule PortalWeb.Settings.DirectorySync do
         from(a in Portal.Actor,
           where: a.created_by_directory_id == ^directory_id
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.aggregate(:count)
 
       identities_count =
         from(ei in Portal.ExternalIdentity,
           where: ei.directory_id == ^directory_id
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.aggregate(:count)
 
       groups_count =
         from(g in Portal.Group,
           where: g.directory_id == ^directory_id
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.aggregate(:count)
 
       policies_count =
@@ -1709,7 +1709,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           on: p.group_id == g.id and p.account_id == g.account_id,
           where: g.directory_id == ^directory_id
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.aggregate(:count)
 
       %{
@@ -1727,8 +1727,8 @@ defmodule PortalWeb.Settings.DirectorySync do
       schema = directory.__struct__
 
       from(d in schema, where: d.id == ^directory.id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one(fallback_to_primary: true)
     end
 
     defp enrich_with_job_status(directories) do
@@ -1745,7 +1745,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           where: fragment("?->>'directory_id'", j.args) in ^directory_ids,
           order_by: [desc: j.inserted_at]
         )
-        |> Safe.unscoped()
+        |> Safe.unscoped(:replica)
         |> Safe.all()
         |> Enum.map(fn job -> {job.args["directory_id"], job} end)
         |> Map.new()
@@ -1758,7 +1758,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           where: fragment("?->>'directory_id'", j.args) in ^directory_ids,
           order_by: [desc: j.completed_at]
         )
-        |> Safe.unscoped()
+        |> Safe.unscoped(:replica)
         |> Safe.all()
         |> Enum.uniq_by(& &1.args["directory_id"])
         |> Enum.map(fn job -> {job.args["directory_id"], job} end)
@@ -1804,7 +1804,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           group_by: ei.directory_id,
           select: {ei.directory_id, count(ei.actor_id, :distinct)}
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> Map.new()
 
@@ -1815,7 +1815,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           group_by: g.directory_id,
           select: {g.directory_id, count(g.id)}
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> Map.new()
 

@@ -1831,7 +1831,7 @@ defmodule PortalWeb.Actors do
           },
           order_by: [asc: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name)]
         )
-        |> Safe.scoped(subject)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> case do
           {:error, _} ->
@@ -1892,7 +1892,7 @@ defmodule PortalWeb.Actors do
 
     def list_actors(subject, opts \\ []) do
       all()
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -1900,8 +1900,8 @@ defmodule PortalWeb.Actors do
       from(a in Actor, as: :actors)
       |> where([actors: a], a.id == ^id)
       |> where([actors: a], a.type != :api_client)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def get_identities_for_actor(actor_id, subject) do
@@ -1933,7 +1933,7 @@ defmodule PortalWeb.Actors do
         }
       )
       |> order_by([identities: i], desc: i.inserted_at)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
     end
 
@@ -1944,15 +1944,15 @@ defmodule PortalWeb.Actors do
         where: a.id != ^actor_id,
         where: is_nil(a.disabled_at)
       )
-      |> Safe.scoped(subject)
-      |> Safe.exists?()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.exists?(fallback_to_primary: true)
     end
 
     def get_client_tokens_for_actor(actor_id, subject) do
       from(c in ClientToken, as: :client_tokens)
       |> where([client_tokens: c], c.actor_id == ^actor_id)
       |> order_by([client_tokens: c], desc: c.inserted_at)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> Presence.Clients.preload_client_tokens_presence()
     end
@@ -1960,15 +1960,15 @@ defmodule PortalWeb.Actors do
     def get_identity_by_id(identity_id, subject) do
       from(i in ExternalIdentity, as: :identities)
       |> where([identities: i], i.id == ^identity_id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one(fallback_to_primary: true)
     end
 
     def get_client_token_by_id(token_id, subject) do
       from(c in ClientToken, as: :client_tokens)
       |> where([client_tokens: c], c.id == ^token_id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one(fallback_to_primary: true)
     end
 
     def get_portal_sessions_for_actor(actor_id, subject) do
@@ -1998,7 +1998,7 @@ defmodule PortalWeb.Actors do
           )
       })
       |> order_by([portal_sessions: ps], desc: ps.inserted_at)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> Presence.PortalSessions.preload_portal_sessions_presence()
     end
@@ -2006,8 +2006,8 @@ defmodule PortalWeb.Actors do
     def get_portal_session_by_id(session_id, subject) do
       from(ps in PortalSession, as: :portal_sessions)
       |> where([portal_sessions: ps], ps.id == ^session_id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one(fallback_to_primary: true)
     end
 
     def get_groups_for_actor(actor_id, subject) do
@@ -2038,7 +2038,7 @@ defmodule PortalWeb.Actors do
         }
       )
       |> order_by([groups: g], asc: g.name)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
     end
 

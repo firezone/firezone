@@ -3,6 +3,10 @@ defmodule Portal.Repo.ReplicaTest do
 
   alias Portal.Repo.Replica
 
+  defmodule AccountQuery do
+    def cursor_fields, do: [{:accounts, :asc, :inserted_at}, {:accounts, :asc, :id}]
+  end
+
   describe "read operations" do
     # Note: Due to sandbox isolation, data inserted via Portal.Repo is not visible
     # to Portal.Repo.Replica in tests. These tests verify the read functions exist
@@ -43,6 +47,17 @@ defmodule Portal.Repo.ReplicaTest do
       query = from(a in Portal.Account, where: a.id == ^Ecto.UUID.generate())
 
       refute Replica.exists?(query)
+    end
+
+    test "list/3 returns {:ok, results, metadata}" do
+      import Ecto.Query
+      queryable = from(a in Portal.Account, as: :accounts)
+
+      assert {:ok, results, metadata} = Replica.list(queryable, AccountQuery)
+      assert is_list(results)
+      assert is_map(metadata)
+      assert Map.has_key?(metadata, :count)
+      assert is_integer(metadata.count)
     end
 
     test "preload/2 works on structs" do
