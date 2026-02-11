@@ -298,8 +298,7 @@ defmodule PortalWeb.Policies.New do
     end
 
     defp populate_group_idp_id(changeset, subject) do
-      case Ecto.Changeset.get_change(changeset, :group_id) ||
-             Ecto.Changeset.get_field(changeset, :group_id) do
+      case Ecto.Changeset.get_field(changeset, :group_id) do
         nil ->
           changeset
 
@@ -313,7 +312,7 @@ defmodule PortalWeb.Policies.New do
 
     defp get_group_idp_id(group_id, subject) do
       from(g in Group, where: g.id == ^group_id, select: g.idp_id)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.one()
     end
 

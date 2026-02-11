@@ -207,7 +207,7 @@ defmodule PortalAPI.PolicyController do
     end
 
     defp populate_group_idp_id(changeset, subject) do
-      case get_change(changeset, :group_id) || Ecto.Changeset.get_field(changeset, :group_id) do
+      case get_field(changeset, :group_id) do
         nil ->
           changeset
 

@@ -1149,7 +1149,6 @@ defmodule PortalWeb.CoreComponents do
   """
   attr :account, :any, required: true
   attr :group, :any, default: nil
-  attr :group_idp_id, :string, default: nil
   attr :class, :string, default: nil
   attr :return_to, :string, default: nil
 
@@ -1163,8 +1162,7 @@ defmodule PortalWeb.CoreComponents do
         <.icon name="hero-exclamation-triangle-mini" class="h-3.5 w-3.5" />
       </span>
       <span class="text-xs truncate min-w-0 py-0.5 pl-1.5 pr-2.5 text-amber-700">
-        Group unavailable
-        <span :if={@group_idp_id} class="text-amber-500 text-[10px]">(will reconnect)</span>
+        Group deleted
       </span>
     </span>
     """

@@ -119,7 +119,6 @@ defmodule PortalWeb.Policies.Index do
             <.group_badge
               account={@account}
               group={policy.group}
-              group_idp_id={policy.group_idp_id}
               return_to={@return_to}
             />
           </:col>

@@ -60,7 +60,7 @@ defmodule Portal.Policy do
   end
 
   defp maybe_validate_group(changeset) do
-    if Ecto.Changeset.get_change(changeset, :group_id) do
+    if get_change(changeset, :group_id) do
       assoc_constraint(changeset, :group)
     else
       changeset

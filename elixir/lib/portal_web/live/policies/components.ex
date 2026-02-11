@@ -34,7 +34,7 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_name(%{policy: %{group: nil}} = assigns) do
     ~H"""
-    <span class="text-amber-600">(Group unavailable)</span> → {@policy.resource.name}
+    <span class="text-amber-600">(Group deleted)</span> → {@policy.resource.name}
     """
   end
 

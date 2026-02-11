@@ -32,7 +32,8 @@ defmodule Portal.Changes.Hooks.Policies do
   end
 
   # Group was deleted - process as delete
-  def on_update(lsn, old_data, %{"group_id" => nil} = _data) do
+  def on_update(lsn, %{"group_id" => group_id} = old_data, %{"group_id" => nil} = _data)
+      when not is_nil(group_id) do
     on_delete(lsn, old_data)
   end
 

@@ -133,12 +133,24 @@ defmodule PortalWeb.Policies.Show do
               Group
             </:label>
             <:value>
-              <.group_badge
-                account={@account}
-                group={@policy.group}
-                group_idp_id={@policy.group_idp_id}
-                return_to={@return_to}
-              />
+              <span class="inline-flex items-center gap-1.5">
+                <.group_badge
+                  account={@account}
+                  group={@policy.group}
+                  return_to={@return_to}
+                />
+                <.popover :if={is_nil(@policy.group) and not is_nil(@policy.group_idp_id)}>
+                  <:target>
+                    <.icon
+                      name="hero-information-circle"
+                      class="h-4 w-4 text-neutral-700 cursor-help"
+                    />
+                  </:target>
+                  <:content>
+                    Group was deleted during sync. To reattach, ensure this group is included in synced groups.
+                  </:content>
+                </.popover>
+              </span>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
