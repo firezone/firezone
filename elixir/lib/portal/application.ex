@@ -22,24 +22,33 @@ defmodule Portal.Application do
     Supervisor.start_link(children(), strategy: :one_for_one, name: __MODULE__.Supervisor)
   end
 
-  # Terminate endpoints before the supervision tree shuts down.
+  # Gracefully shut down services that have conflicting start/stop ordering
+  # requirements before the supervision tree tears down.
   #
-  # Presence must start before endpoints (channels call Presence.track on join),
-  # but during shutdown the reverse ordering means endpoints stop first, killing
-  # all channel processes at once. The Presence shard is linked to every tracked
-  # PID, so it receives a flood of EXIT messages, each spawning an async_merge
-  # task. If those tasks fail (because PubSub/Repo are also shutting down), their
-  # unhandled DOWN messages crash the shard with a FunctionClauseError in
-  # Phoenix.Presence.handle_info/2.
+  # prep_stop/1 runs while the full supervision tree is still alive, so each
+  # step below executes with all remaining services fully operational.
   #
-  # prep_stop/1 runs while the full supervision tree is still alive, so the
-  # disconnection cascade is processed by a fully operational Presence system.
-  # We can't fix this by reordering children because start and shutdown have
-  # conflicting ordering requirements.
+  # Order matters:
+  #
+  #   1. Portal.Cluster — broadcast goodbye while DB and PubSub are healthy.
+  #      Other nodes receive the goodbye, disconnect immediately, and clean up
+  #      our Presence entries via :nodedown — no cross-node CRDT merge tasks
+  #      needed, which avoids the Phoenix.Presence FunctionClauseError on
+  #      remote nodes when merge tasks time out.
+  #
+  #   2. Endpoints — kill all channel processes. Presence receives the flood of
+  #      EXIT messages and processes them with a fully operational PubSub and
+  #      Repo (they're still alive at positions 1-4 in the children list).
+  #
+  #   3. PortalAPI.RateLimit — destroy the Hammer ETS table only after all
+  #      endpoint request processing has stopped, preventing "unknown table"
+  #      errors from lingering channel processes.
   @impl true
   def prep_stop(state) do
+    _ = Supervisor.terminate_child(__MODULE__.Supervisor, Portal.Cluster)
     _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalWeb.Endpoint)
     _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalAPI.Endpoint)
+    _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalAPI.RateLimit)
 
     state
   end
