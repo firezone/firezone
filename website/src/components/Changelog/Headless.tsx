@@ -10,7 +10,7 @@ export default function Headless({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
-        <ChangeItem>
+        <ChangeItem pull="#12111">
           Prevents unbounded log growth by enforcing a 100 MB log size cap with
           automatic cleanup of oldest files.
         </ChangeItem>
