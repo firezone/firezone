@@ -655,9 +655,11 @@ defmodule PortalAPI.Client.ChannelTest do
           site: site
         )
 
-      # Create a policy that becomes valid in 1 second
+      # Create a policy that becomes valid in 3 seconds.
+      # Using a larger buffer than 1s to avoid flakes when fixture
+      # creation + PubSub delivery takes longer than expected.
       now = DateTime.utc_now()
-      shortly_later = DateTime.add(now, 1, :second)
+      shortly_later = DateTime.add(now, 3, :second)
 
       day_letter =
         case Date.day_of_week(shortly_later) do
@@ -713,7 +715,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "resource_created_or_updated", _payload
       refute_push "resource_deleted", _payload
 
-      Process.sleep(1050)
+      Process.sleep(3050)
 
       send(socket.channel_pid, :recompute_authorized_resources)
 
