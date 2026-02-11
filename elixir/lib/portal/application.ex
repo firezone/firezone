@@ -22,6 +22,28 @@ defmodule Portal.Application do
     Supervisor.start_link(children(), strategy: :one_for_one, name: __MODULE__.Supervisor)
   end
 
+  # Terminate endpoints before the supervision tree shuts down.
+  #
+  # Presence must start before endpoints (channels call Presence.track on join),
+  # but during shutdown the reverse ordering means endpoints stop first, killing
+  # all channel processes at once. The Presence shard is linked to every tracked
+  # PID, so it receives a flood of EXIT messages, each spawning an async_merge
+  # task. If those tasks fail (because PubSub/Repo are also shutting down), their
+  # unhandled DOWN messages crash the shard with a FunctionClauseError in
+  # Phoenix.Presence.handle_info/2.
+  #
+  # prep_stop/1 runs while the full supervision tree is still alive, so the
+  # disconnection cascade is processed by a fully operational Presence system.
+  # We can't fix this by reordering children because start and shutdown have
+  # conflicting ordering requirements.
+  @impl true
+  def prep_stop(state) do
+    _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalWeb.Endpoint)
+    _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalAPI.Endpoint)
+
+    state
+  end
+
   @impl true
   def stop(_state) do
     # Remove the Sentry logger handler before Sentry.Supervisor terminates
