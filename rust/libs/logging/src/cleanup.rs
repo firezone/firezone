@@ -12,12 +12,14 @@ use std::time::{Duration, SystemTime};
 /// Default maximum total log size in MB across all log directories.
 pub const DEFAULT_MAX_SIZE_MB: u32 = 100;
 
-/// Default interval between log cleanup runs (1 hour).
-pub const DEFAULT_CLEANUP_INTERVAL: Duration = Duration::from_secs(3600);
+/// Default interval between log cleanup runs
+pub const DEFAULT_CLEANUP_INTERVAL: Duration = Duration::from_hours(1);
 
 /// Minimum age for files to be eligible for deletion.
 /// Files modified more recently than this are protected.
-const MIN_AGE: Duration = Duration::from_secs(300);
+const MIN_AGE: Duration = Duration::from_mins(5);
+
+const MIN_CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Handle to stop the cleanup background thread.
 ///
@@ -39,7 +41,16 @@ pub fn start_log_cleanup_thread(
     max_size_mb: u32,
     interval: Duration,
 ) -> Option<CleanupHandle> {
-    let interval = interval.max(Duration::from_secs(60));
+    // Prevent excessively frequent cleanup that could cause performance issues
+    let interval = if interval < MIN_CLEANUP_INTERVAL {
+        tracing::warn!(
+            ?interval,
+            "Requested log cleanup interval is very short, increasing to 30 seconds to prevent performance issues"
+        );
+        MIN_CLEANUP_INTERVAL
+    } else {
+        interval
+    };
     let (stop_tx, stop_rx) = mpsc::channel::<Infallible>();
 
     let result = thread::Builder::new()
