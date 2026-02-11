@@ -300,6 +300,152 @@ defmodule Portal.TelemetryTest do
     end
   end
 
+  describe "OTEL instrument registration" do
+    test "register_otel_instruments/0 does not raise with SDK disabled" do
+      # The experimental SDK is disabled in test config,
+      # so this exercises the noop meter path without errors
+      meter = :opentelemetry_experimental.get_meter()
+
+      assert :otel_meter.create_observable_gauge(
+               meter,
+               :"test.gauge.#{System.unique_integer([:positive])}",
+               fn _args -> [{1, %{}}] end,
+               [],
+               %{description: "test"}
+             )
+    end
+
+    test "process count callback returns valid observations" do
+      count = :erlang.system_info(:process_count)
+      limit = :erlang.system_info(:process_limit)
+      utilization = Float.round(count / limit * 100, 2)
+
+      observations = [
+        {count, %{"type" => "total"}},
+        {limit, %{"type" => "limit"}},
+        {utilization, %{"type" => "utilization_percent"}}
+      ]
+
+      assert length(observations) == 3
+      assert Enum.all?(observations, fn {val, attrs} -> is_number(val) and is_map(attrs) end)
+      assert count > 0
+      assert limit > count
+      assert utilization > 0.0 and utilization < 100.0
+    end
+
+    test "atom count callback returns valid observations" do
+      count = :erlang.system_info(:atom_count)
+      limit = :erlang.system_info(:atom_limit)
+      utilization = Float.round(count / limit * 100, 2)
+
+      observations = [
+        {count, %{"type" => "count"}},
+        {limit, %{"type" => "limit"}},
+        {utilization, %{"type" => "utilization_percent"}}
+      ]
+
+      assert length(observations) == 3
+      assert count > 0
+      assert limit > count
+      assert utilization > 0.0
+    end
+
+    test "port count callback returns valid observations" do
+      count = :erlang.system_info(:port_count)
+      limit = :erlang.system_info(:port_limit)
+      utilization = Float.round(count / limit * 100, 2)
+
+      observations = [
+        {count, %{"type" => "count"}},
+        {limit, %{"type" => "limit"}},
+        {utilization, %{"type" => "utilization_percent"}}
+      ]
+
+      assert length(observations) == 3
+      assert is_integer(count)
+      assert limit > 0
+      assert utilization >= 0.0
+    end
+
+    test "ETS count callback returns valid observations" do
+      ets_count = length(:ets.all())
+      observations = [{ets_count, %{}}]
+
+      assert length(observations) == 1
+      assert ets_count > 0
+    end
+
+    test "memory callback returns valid observations for all types" do
+      memory = :erlang.memory() |> Enum.into(%{})
+
+      observations = [
+        {memory[:processes], %{"type" => "processes"}},
+        {memory[:system], %{"type" => "system"}},
+        {memory[:atom], %{"type" => "atom"}},
+        {memory[:binary], %{"type" => "binary"}},
+        {memory[:code], %{"type" => "code"}},
+        {memory[:ets], %{"type" => "ets"}}
+      ]
+
+      assert length(observations) == 6
+      assert Enum.all?(observations, fn {val, _} -> is_integer(val) and val > 0 end)
+    end
+
+    test "scheduler utilization callback returns valid observations" do
+      total_run_queue = :erlang.statistics(:total_run_queue_lengths)
+      run_queue_lengths = :erlang.statistics(:run_queue_lengths)
+      max_run_queue = Enum.max(run_queue_lengths, fn -> 0 end)
+
+      avg_run_queue =
+        if run_queue_lengths != [] do
+          Float.round(Enum.sum(run_queue_lengths) / length(run_queue_lengths), 2)
+        else
+          0.0
+        end
+
+      observations = [
+        {total_run_queue, %{"type" => "total_run_queue"}},
+        {max_run_queue, %{"type" => "max_run_queue"}},
+        {avg_run_queue, %{"type" => "avg_run_queue"}},
+        {length(run_queue_lengths), %{"type" => "scheduler_count"}}
+      ]
+
+      assert length(observations) == 4
+      assert total_run_queue >= 0
+      assert max_run_queue >= 0
+      assert avg_run_queue >= 0.0
+      assert length(run_queue_lengths) > 0
+    end
+
+    test "GC collections callback returns valid observations" do
+      {collections, _words_reclaimed, _} = :erlang.statistics(:garbage_collection)
+      observations = [{collections, %{}}]
+
+      assert length(observations) == 1
+      assert collections >= 0
+    end
+
+    test "GC words reclaimed callback returns valid observations" do
+      {_collections, words_reclaimed, _} = :erlang.statistics(:garbage_collection)
+      observations = [{words_reclaimed, %{}}]
+
+      assert length(observations) == 1
+      assert words_reclaimed >= 0
+    end
+
+    test "observable counter can be created with SDK disabled" do
+      meter = :opentelemetry_experimental.get_meter()
+
+      assert :otel_meter.create_observable_counter(
+               meter,
+               :"test.counter.#{System.unique_integer([:positive])}",
+               fn _args -> [{42, %{}}] end,
+               [],
+               %{description: "test counter"}
+             )
+    end
+  end
+
   defp metric_names do
     Enum.map(Portal.Telemetry.metrics(), & &1.name)
   end

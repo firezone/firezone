@@ -112,6 +112,8 @@ config :portal, Portal.Entra.APIClient,
 
 config :portal, Portal.Telemetry, enabled: false
 
+config :opentelemetry_experimental, sdk_disabled: true
+
 config :portal, Portal.ConnectivityChecks, enabled: false
 
 config :portal, Portal.ComponentVersions,

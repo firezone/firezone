@@ -11,6 +11,8 @@ defmodule Portal.Telemetry do
   def init(_arg) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
+    register_otel_instruments()
+
     children = [
       # Telemetry poller will execute the given period measurements
       # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
@@ -236,6 +238,149 @@ defmodule Portal.Telemetry do
         reason: inspect(error)
       )
 
+      :ok
+  end
+
+  defp register_otel_instruments do
+    meter = :opentelemetry_experimental.get_meter()
+
+    # Observable gauges for BEAM health
+    :otel_meter.create_observable_gauge(
+      meter,
+      :"vm.process_count",
+      fn _args ->
+        count = :erlang.system_info(:process_count)
+        limit = :erlang.system_info(:process_limit)
+        utilization = Float.round(count / limit * 100, 2)
+
+        [
+          {count, %{"type" => "total"}},
+          {limit, %{"type" => "limit"}},
+          {utilization, %{"type" => "utilization_percent"}}
+        ]
+      end,
+      [],
+      %{description: "BEAM process count, limit, and utilization"}
+    )
+
+    :otel_meter.create_observable_gauge(
+      meter,
+      :"vm.atom_count",
+      fn _args ->
+        count = :erlang.system_info(:atom_count)
+        limit = :erlang.system_info(:atom_limit)
+        utilization = Float.round(count / limit * 100, 2)
+
+        [
+          {count, %{"type" => "count"}},
+          {limit, %{"type" => "limit"}},
+          {utilization, %{"type" => "utilization_percent"}}
+        ]
+      end,
+      [],
+      %{description: "BEAM atom count, limit, and utilization"}
+    )
+
+    :otel_meter.create_observable_gauge(
+      meter,
+      :"vm.port_count",
+      fn _args ->
+        count = :erlang.system_info(:port_count)
+        limit = :erlang.system_info(:port_limit)
+        utilization = Float.round(count / limit * 100, 2)
+
+        [
+          {count, %{"type" => "count"}},
+          {limit, %{"type" => "limit"}},
+          {utilization, %{"type" => "utilization_percent"}}
+        ]
+      end,
+      [],
+      %{description: "BEAM port count, limit, and utilization"}
+    )
+
+    :otel_meter.create_observable_gauge(
+      meter,
+      :"vm.ets.count",
+      fn _args ->
+        [{length(:ets.all()), %{}}]
+      end,
+      [],
+      %{description: "Number of ETS tables"}
+    )
+
+    :otel_meter.create_observable_gauge(
+      meter,
+      :"vm.memory",
+      fn _args ->
+        memory = :erlang.memory() |> Enum.into(%{})
+
+        [
+          {memory[:processes], %{"type" => "processes"}},
+          {memory[:system], %{"type" => "system"}},
+          {memory[:atom], %{"type" => "atom"}},
+          {memory[:binary], %{"type" => "binary"}},
+          {memory[:code], %{"type" => "code"}},
+          {memory[:ets], %{"type" => "ets"}}
+        ]
+      end,
+      [],
+      %{description: "BEAM memory usage in bytes", unit: :By}
+    )
+
+    :otel_meter.create_observable_gauge(
+      meter,
+      :"vm.scheduler_utilization",
+      fn _args ->
+        total_run_queue = :erlang.statistics(:total_run_queue_lengths)
+        run_queue_lengths = :erlang.statistics(:run_queue_lengths)
+        max_run_queue = Enum.max(run_queue_lengths, fn -> 0 end)
+
+        avg_run_queue =
+          if run_queue_lengths != [] do
+            Float.round(Enum.sum(run_queue_lengths) / length(run_queue_lengths), 2)
+          else
+            0.0
+          end
+
+        [
+          {total_run_queue, %{"type" => "total_run_queue"}},
+          {max_run_queue, %{"type" => "max_run_queue"}},
+          {avg_run_queue, %{"type" => "avg_run_queue"}},
+          {length(run_queue_lengths), %{"type" => "scheduler_count"}}
+        ]
+      end,
+      [],
+      %{description: "BEAM scheduler run queue metrics"}
+    )
+
+    # Observable counters for monotonically increasing values
+    :otel_meter.create_observable_counter(
+      meter,
+      :"vm.gc.collections_count",
+      fn _args ->
+        {collections, _words_reclaimed, _} = :erlang.statistics(:garbage_collection)
+        [{collections, %{}}]
+      end,
+      [],
+      %{description: "Total number of garbage collections"}
+    )
+
+    :otel_meter.create_observable_counter(
+      meter,
+      :"vm.gc.words_reclaimed",
+      fn _args ->
+        {_collections, words_reclaimed, _} = :erlang.statistics(:garbage_collection)
+        [{words_reclaimed, %{}}]
+      end,
+      [],
+      %{description: "Total words reclaimed by garbage collection"}
+    )
+
+    :ok
+  rescue
+    error ->
+      Logger.info("Failed to register OTEL instruments", reason: inspect(error))
       :ok
   end
 
