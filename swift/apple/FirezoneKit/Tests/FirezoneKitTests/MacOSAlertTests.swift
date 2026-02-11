@@ -10,7 +10,7 @@
 
   @testable import FirezoneKit
 
-  @Suite("MacOSAlert Tests")
+  @Suite("MacOSAlert Tests", .requiresAppKit)
   struct MacOSAlertTests {
     /// Waits for an alert's sheet to become visible before interacting with it.
     /// This is more reliable than arbitrary sleep delays as it polls for actual window state.
