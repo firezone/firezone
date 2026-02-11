@@ -9,7 +9,7 @@ RESOURCE1=dns
 RESOURCE2=download.httpbin
 
 echo "# Try to ping httpbin as DNS resource 1"
-client_ping_resource "$RESOURCE1"
+client_ping "$RESOURCE1"
 
 echo "# Try to ping httpbin as DNS resource 2"
-client_ping_resource "$RESOURCE2"
+client_ping "$RESOURCE2"

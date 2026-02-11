@@ -12,15 +12,12 @@ use tokio_tungstenite::tungstenite::http;
 
 #[tokio::test]
 async fn client_does_not_pipeline_messages() {
-    use std::{str::FromStr, sync::Arc, time::Duration};
+    use std::time::Duration;
 
-    use backoff::ExponentialBackoffBuilder;
     use futures::{SinkExt, StreamExt};
-    use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, PublicKeyParam};
-    use secrecy::SecretString;
+    use phoenix_channel::PublicKeyParam;
     use tokio::net::TcpListener;
     use tokio_tungstenite::tungstenite::Message;
-    use url::Url;
 
     let _guard = logging::test("debug,wire::api=trace");
 
@@ -68,27 +65,7 @@ async fn client_does_not_pipeline_messages() {
         }
     });
 
-    let login_url = LoginUrl::client(
-        Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
-        String::new(),
-        None,
-        DeviceInfo::default(),
-    )
-    .unwrap();
-
-    let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
-        login_url,
-        SecretString::from("secret"),
-        "test/1.0.0".to_owned(),
-        "test",
-        (),
-        || {
-            ExponentialBackoffBuilder::default()
-                .with_initial_interval(Duration::from_secs(1))
-                .build()
-        },
-        Arc::new(socket_factory::tcp),
-    );
+    let mut channel = make_websocket_test_channel(server_addr.port());
 
     let client = async move {
         channel.connect(PublicKeyParam([0u8; 32]));
@@ -130,74 +107,27 @@ async fn client_does_not_pipeline_messages() {
 
 #[tokio::test]
 async fn client_deduplicates_messages() {
-    use std::{str::FromStr, sync::Arc, time::Duration};
+    use std::time::Duration;
 
-    use backoff::ExponentialBackoffBuilder;
-    use futures::{SinkExt, StreamExt};
-    use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, PublicKeyParam};
-    use secrecy::SecretString;
-    use tokio::net::TcpListener;
-    use tokio_tungstenite::tungstenite::Message;
-    use url::Url;
+    use phoenix_channel::PublicKeyParam;
 
     let _guard = logging::test("debug,wire::api=trace");
 
-    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
-    let server_addr = listener.local_addr().unwrap();
-
-    let server = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-
-        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
-
-        loop {
-            match ws.next().await {
-                Some(Ok(Message::Text(text))) => match text.as_str() {
-                    r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                        ws.send(Message::text(
-                            r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#,
-                        )).await.unwrap();
-                    }
-                    // We only handle the message with `ref: 1` and thus guarantee that not more than 1 is received
-                    r#"{"topic":"test","event":"bar","ref":1}"# => {
-                        ws.send(Message::text(
-                            r#"{"topic":"test","event":"foo","payload":null}"#,
-                        ))
-                        .await
-                        .unwrap();
-                    }
-                    other => panic!("Unexpected message: {other}"),
-                },
-                Some(Ok(Message::Close(_))) => continue,
-                Some(other) => {
-                    panic!("Unexpected message: {other:?}")
-                }
-                None => break,
+    let (server, port) = spawn_websocket_server(|text| {
+        match text {
+            r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
+                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
             }
+            // We only handle the message with `ref: 1` and thus guarantee that not more than 1 is received
+            r#"{"topic":"test","event":"bar","ref":1}"# => {
+                r#"{"topic":"test","event":"foo","payload":null}"#
+            }
+            other => panic!("Unexpected message: {other}"),
         }
-    });
+    })
+    .await;
 
-    let login_url = LoginUrl::client(
-        Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
-        String::new(),
-        None,
-        DeviceInfo::default(),
-    )
-    .unwrap();
-
-    let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
-        login_url,
-        SecretString::from("secret"),
-        "test/1.0.0".to_owned(),
-        "test",
-        (),
-        || {
-            ExponentialBackoffBuilder::default()
-                .with_initial_interval(Duration::from_secs(1))
-                .build()
-        },
-        Arc::new(socket_factory::tcp),
-    );
+    let mut channel = make_websocket_test_channel(port);
 
     let mut num_responses = 0;
 
@@ -242,6 +172,62 @@ async fn client_deduplicates_messages() {
     .unwrap_err(); // We expect to timeout because we don't ever exit from the tasks.
 
     assert_eq!(num_responses, 1);
+}
+
+#[tokio::test]
+async fn client_clears_local_message_on_connect() {
+    use phoenix_channel::PublicKeyParam;
+
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let (server, port) = spawn_websocket_server(|text| {
+        match text {
+            r#"{"topic":"test","event":"phx_join","payload":null,"ref":2}"# => {
+                r#"{"event":"phx_reply","ref":2,"topic":"client","payload":{"status":"ok","response":{}}}"#
+            }
+            // We only handle the message with `ref: 1` and thus guarantee that the first one is not received.
+            r#"{"topic":"test","event":"bar","ref":1}"# => {
+                r#"{"topic":"test","event":"foo","payload":null}"#
+            }
+            other => panic!("Unexpected message: {other}"),
+        }
+    })
+    .await;
+
+    let mut channel = make_websocket_test_channel(port);
+
+    let client = async {
+        channel.send("test", OutboundMsg::Bar);
+        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.send("test", OutboundMsg::Bar);
+
+        loop {
+            match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
+                phoenix_channel::Event::SuccessResponse { .. } => {}
+                phoenix_channel::Event::ErrorResponse { res, .. } => {
+                    panic!("Unexpected error: {res:?}")
+                }
+                phoenix_channel::Event::JoinedRoom { .. } => {}
+                phoenix_channel::Event::HeartbeatSent => {}
+                phoenix_channel::Event::InboundMessage {
+                    msg: InboundMsg::Foo,
+                    ..
+                } => {
+                    channel.close().unwrap();
+                }
+                phoenix_channel::Event::Hiccup { error, .. } => {
+                    panic!("Unexpected hiccup: {error:?}")
+                }
+                phoenix_channel::Event::NoAddresses => {
+                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
+                }
+                phoenix_channel::Event::Closed => break,
+            }
+        }
+    };
+
+    client.await;
+    server.await.unwrap();
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -396,6 +382,74 @@ async fn does_not_clear_address_from_url_on_hiccup() {
             other => panic!("Unexpected event: {other:?}"), // This line ensures we never receive `Event::NoAddresses` which means we keep retrying.
         }
     }
+}
+
+/// Spawns a WebSocket server that responds to requests using a handler function.
+/// Returns the server task handle and the port number.
+async fn spawn_websocket_server<F>(handler: F) -> (tokio::task::JoinHandle<()>, u16)
+where
+    F: Fn(&str) -> &str + Send + 'static,
+{
+    use futures::{SinkExt, StreamExt};
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::tungstenite::Message;
+
+    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+
+        loop {
+            match ws.next().await {
+                Some(Ok(Message::Text(text))) => {
+                    let response = handler(text.as_str());
+                    ws.send(Message::text(response)).await.unwrap();
+                }
+                Some(Ok(Message::Close(_))) => continue,
+                Some(other) => {
+                    panic!("Unexpected message: {other:?}")
+                }
+                None => break,
+            }
+        }
+    });
+
+    (server, port)
+}
+
+fn make_websocket_test_channel(
+    port: u16,
+) -> PhoenixChannel<(), OutboundMsg, InboundMsg, PublicKeyParam> {
+    use std::{str::FromStr, sync::Arc, time::Duration};
+
+    use backoff::ExponentialBackoffBuilder;
+    use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel};
+    use secrecy::SecretString;
+    use url::Url;
+
+    let login_url = LoginUrl::client(
+        Url::from_str(&format!("ws://localhost:{}", port)).unwrap(),
+        String::new(),
+        None,
+        DeviceInfo::default(),
+    )
+    .unwrap();
+
+    PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
+        login_url,
+        SecretString::from("secret"),
+        "test/1.0.0".to_owned(),
+        "test",
+        (),
+        || {
+            ExponentialBackoffBuilder::default()
+                .with_initial_interval(Duration::from_secs(1))
+                .build()
+        },
+        Arc::new(socket_factory::tcp),
+    )
 }
 
 fn make_test_channel(host: &str, port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {

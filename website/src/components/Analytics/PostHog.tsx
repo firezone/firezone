@@ -2,26 +2,24 @@
 
 import { useEffect, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import mixpanel from "mixpanel-browser";
+import posthog from "posthog-js";
 import { HubSpotSubmittedFormData } from "./types";
 
-function MixpanelComponent() {
+function PostHogComponent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const mpToken = "b0ab1d66424a27555ed45a27a4fd0cd2";
-  const host = "https://t.firez.one";
+  const apiKey = "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK";
 
   useEffect(() => {
     if (!pathname) return;
-    if (!mixpanel) return;
 
-    mixpanel.init(mpToken, { api_host: host });
+    posthog.init(apiKey, { api_host: "https://us.i.posthog.com" });
 
     let url = window.origin + pathname;
     if (searchParams.toString()) {
       url = url + `?${searchParams.toString()}`;
     }
-    mixpanel.track("$mp_web_page_view", {
+    posthog.capture("$pageview", {
       $current_url: url,
     });
 
@@ -41,13 +39,14 @@ function MixpanelComponent() {
           formData.submissionValues.firstname &&
           formData.submissionValues.lastname
         ) {
-          mixpanel.people.set({
-            $email: formData.submissionValues.email,
-            $first_name: formData.submissionValues.firstname,
-            $last_name: formData.submissionValues.lastname,
+          posthog.identify(formData.submissionValues.email);
+          posthog.people.set({
+            email: formData.submissionValues.email,
+            first_name: formData.submissionValues.firstname,
+            last_name: formData.submissionValues.lastname,
           });
 
-          mixpanel.track("HubSpot Form Submitted", {
+          posthog.capture("HubSpot Form Submitted", {
             formId: formData.formGuid,
             conversionId: formData.conversionId,
           });
@@ -60,15 +59,15 @@ function MixpanelComponent() {
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [pathname, searchParams, mpToken]);
+  }, [pathname, searchParams, apiKey]);
 
   return null;
 }
 
-export default function Mixpanel() {
+export default function PostHog() {
   return (
     <Suspense fallback={null}>
-      <MixpanelComponent />
+      <PostHogComponent />
     </Suspense>
   );
 }

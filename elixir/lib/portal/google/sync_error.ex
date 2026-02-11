@@ -2,35 +2,36 @@ defmodule Portal.Google.SyncError do
   @moduledoc """
   Wrapper exception for Google Workspace directory sync failures.
 
-  This exception wraps the underlying context and adds the directory_id
+  This exception wraps the underlying error and adds the directory_id
   and sync step that are extracted by the Oban telemetry reporter and sent to Sentry.
 
-  The `reason` field is a human-readable message, while `context` preserves
-  structured error context for classification and debugging.
+  The `error` field preserves structured error context for classification and debugging.
   """
 
-  defexception [:message, :reason, :context, :directory_id, :step]
+  defexception [:message, :error, :directory_id, :step]
 
   @impl true
   def exception(opts) do
-    reason = Keyword.fetch!(opts, :reason)
-    context = Keyword.get(opts, :context)
+    error = Keyword.get(opts, :error)
     directory_id = Keyword.fetch!(opts, :directory_id)
     step = Keyword.fetch!(opts, :step)
 
-    message = build_message(reason, directory_id, step)
+    message = build_message(error, directory_id, step)
 
     %__MODULE__{
       message: message,
-      reason: reason,
-      context: context,
+      error: error,
       directory_id: directory_id,
       step: step
     }
   end
 
-  defp build_message(reason, directory_id, step) when is_binary(reason) do
-    "Google sync failed for directory #{directory_id} at #{step}: #{reason}"
+  defp build_message(error, directory_id, step) when is_binary(error) do
+    "Google sync failed for directory #{directory_id} at #{step}: #{error}"
+  end
+
+  defp build_message({tag, msg}, directory_id, step) when is_atom(tag) and is_binary(msg) do
+    "Google sync failed for directory #{directory_id} at #{step}: #{tag}: #{msg}"
   end
 
   defp build_message(%{status: status, body: body}, directory_id, step) when is_integer(status) do
@@ -41,7 +42,7 @@ defmodule Portal.Google.SyncError do
     "Google sync failed for directory #{directory_id} at #{step}: #{Exception.message(exception)}"
   end
 
-  defp build_message(reason, directory_id, step) do
-    "Google sync failed for directory #{directory_id} at #{step}: #{inspect(reason)}"
+  defp build_message(error, directory_id, step) do
+    "Google sync failed for directory #{directory_id} at #{step}: #{inspect(error)}"
   end
 end

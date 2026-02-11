@@ -174,8 +174,6 @@ if config_env() == :prod do
 
   config :portal, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
 
-  config :portal, docker_registry: env_var_to_config!(:docker_registry)
-
   config :portal,
     outbound_email_adapter_configured?: !!env_var_to_config!(:outbound_email_adapter)
 

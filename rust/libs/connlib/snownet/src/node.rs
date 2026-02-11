@@ -46,9 +46,6 @@ const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Grace-period for when we will act on an ICE disconnect.
 const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// How long we will at most wait for an [`Answer`] from the remote.
-pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
-
 /// Manages a set of wireguard connections for a server.
 pub type ServerNode<TId, RId> = Node<Server, TId, RId>;
 /// Manages a set of wireguard connections for a client.
@@ -774,7 +771,7 @@ where
     /// Tries to handle the packet using one of our [`Allocation`]s.
     ///
     /// This function is in the hot-path of packet processing and thus must be as efficient as possible.
-    /// Even look-ups in [`BTreeMap`]s and linear searches across small lists are expensive at this point.
+    /// Even look-ups in [`BTreeMap`](std::collections::BTreeMap)s and linear searches across small lists are expensive at this point.
     /// Thus, we use the first byte of the message as a heuristic for whether we should attempt to handle it here.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.

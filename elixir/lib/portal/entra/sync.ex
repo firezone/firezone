@@ -92,8 +92,7 @@ defmodule Portal.Entra.Sync do
         )
 
         raise Entra.SyncError,
-          reason: "Invalid access token response",
-          context: response,
+          error: response,
           directory_id: directory.id,
           step: :get_access_token
 
@@ -104,8 +103,7 @@ defmodule Portal.Entra.Sync do
         )
 
         raise Entra.SyncError,
-          reason: "Failed to get access token",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :get_access_token
     end
@@ -149,15 +147,15 @@ defmodule Portal.Entra.Sync do
 
       {:error, {:not_found, _response}} ->
         raise Entra.SyncError,
-          reason:
-            "Directory Sync app service principal not found in tenant. Admin consent may have been revoked.",
+          error:
+            {:consent_revoked,
+             "Directory Sync app service principal not found. Please re-grant admin consent."},
           directory_id: directory.id,
           step: :fetch_directory_sync_service_principal
 
       {:error, {:request_failed, error}} ->
         raise Entra.SyncError,
-          reason: "Failed to fetch Directory Sync service principal",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :fetch_directory_sync_service_principal
     end
@@ -200,8 +198,7 @@ defmodule Portal.Entra.Sync do
         )
 
         raise Entra.SyncError,
-          reason: "Failed to stream app role assignments",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_app_role_assignments
 
@@ -287,26 +284,25 @@ defmodule Portal.Entra.Sync do
     Enum.each(assignments, fn assignment ->
       unless assignment["principalId"] do
         raise Entra.SyncError,
-          reason: "Assignment missing required 'principalId' field",
-          context: "validation: assignment missing 'principalId' field",
+          error: {:validation, "assignment missing 'principalId' field"},
           directory_id: directory_id,
           step: :process_assignment
       end
 
       unless assignment["principalType"] do
         raise Entra.SyncError,
-          reason: "Assignment missing required 'principalType' field",
-          context:
-            "validation: assignment '#{assignment["principalId"]}' missing 'principalType' field",
+          error:
+            {:validation,
+             "assignment '#{assignment["principalId"]}' missing 'principalType' field"},
           directory_id: directory_id,
           step: :process_assignment
       end
 
       unless assignment["principalDisplayName"] do
         raise Entra.SyncError,
-          reason: "Assignment missing required 'principalDisplayName' field",
-          context:
-            "validation: assignment '#{assignment["principalId"]}' missing 'principalDisplayName' field",
+          error:
+            {:validation,
+             "assignment '#{assignment["principalId"]}' missing 'principalDisplayName' field"},
           directory_id: directory_id,
           step: :process_assignment
       end
@@ -357,8 +353,7 @@ defmodule Portal.Entra.Sync do
 
       {:error, error} ->
         raise Entra.SyncError,
-          reason: "Failed to batch fetch users",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :batch_get_users
     end
@@ -403,8 +398,7 @@ defmodule Portal.Entra.Sync do
     |> Stream.each(fn
       {:error, error} ->
         raise Entra.SyncError,
-          reason: "Failed to stream group transitive members for #{group_name}",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_group_transitive_members
 
@@ -431,8 +425,7 @@ defmodule Portal.Entra.Sync do
     Enum.each(user_members, fn member ->
       unless member["id"] do
         raise Entra.SyncError,
-          reason: "User member missing required 'id' field in group #{group_name}",
-          context: "validation: user missing 'id' field",
+          error: {:validation, "user missing 'id' field in group #{group_name}"},
           directory_id: directory.id,
           step: :process_group_member
       end
@@ -467,8 +460,7 @@ defmodule Portal.Entra.Sync do
         )
 
         raise Entra.SyncError,
-          reason: "Failed to stream groups",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_groups
 
@@ -482,16 +474,14 @@ defmodule Portal.Entra.Sync do
         Enum.each(groups, fn group ->
           unless group["id"] do
             raise Entra.SyncError,
-              reason: "Group missing required 'id' field",
-              context: "validation: group missing 'id' field",
+              error: {:validation, "group missing 'id' field"},
               directory_id: directory.id,
               step: :process_group
           end
 
           unless group["displayName"] do
             raise Entra.SyncError,
-              reason: "Group missing required 'displayName' field",
-              context: "validation: group '#{group["id"]}' missing 'displayName' field",
+              error: {:validation, "group '#{group["id"]}' missing 'displayName' field"},
               directory_id: directory.id,
               step: :process_group
           end
@@ -539,8 +529,7 @@ defmodule Portal.Entra.Sync do
     |> Stream.each(fn
       {:error, error} ->
         raise Entra.SyncError,
-          reason: "Failed to stream group transitive members",
-          context: error,
+          error: error,
           directory_id: directory.id,
           step: :stream_group_transitive_members
 
@@ -567,8 +556,7 @@ defmodule Portal.Entra.Sync do
     Enum.each(user_members, fn member ->
       unless member["id"] do
         raise Entra.SyncError,
-          reason: "User member missing required 'id' field in group #{group_name}",
-          context: "validation: user missing 'id' field",
+          error: {:validation, "user missing 'id' field in group #{group_name}"},
           directory_id: directory.id,
           step: :process_group_member
       end
@@ -704,8 +692,7 @@ defmodule Portal.Entra.Sync do
     # Validate that critical fields are present
     unless user["id"] do
       raise Entra.SyncError,
-        reason: "User missing required 'id' field",
-        context: "validation: user missing 'id' field",
+        error: {:validation, "user missing 'id' field"},
         directory_id: directory_id,
         step: :process_user
     end
@@ -714,8 +701,7 @@ defmodule Portal.Entra.Sync do
 
     unless primary_email do
       raise Entra.SyncError,
-        reason: "User missing both 'mail' and 'userPrincipalName' fields",
-        context: "validation: user '#{user["id"]}' missing 'mail' field",
+        error: {:validation, "user '#{user["id"]}' missing 'mail' field"},
         directory_id: directory_id,
         step: :process_user
     end

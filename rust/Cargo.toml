@@ -69,7 +69,7 @@ bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }
 caps = "0.5.6"
 chrono = { version = "0.4.43", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-clap = "4.5.56"
+clap = "4.5.57"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
 crossbeam-queue = "0.3.12"
@@ -105,7 +105,7 @@ http-body-util = "0.1.3"
 http-client = { path = "libs/http-client" }
 humantime = "2.3.0"
 hyper = "1.8.1"
-hyper-util = "0.1.19"
+hyper-util = "0.1.20"
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
@@ -124,7 +124,7 @@ log = "0.4.29"
 logging = { path = "libs/logging" }
 lru = "0.16.1"
 mio = "1.1.1"
-moka = "0.12.11"
+moka = "0.12.13"
 native-dialog = "0.9.0"
 netlink-packet-core = "0.8.1"
 netlink-packet-route = "0.28.0"
@@ -164,7 +164,7 @@ sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnera
 secrecy = "0.10.3"
 semver = "1.0.27"
 sentry = { version = "0.46.1", default-features = false }
-sentry-tracing = "0.46.1"
+sentry-tracing = "0.46.2"
 serde = "1.0.228"
 serde_json = "1.0.149"
 serde_variant = "0.1.3"
@@ -179,11 +179,10 @@ socket-factory = { path = "libs/connlib/socket-factory" }
 socket2 = { version = "0.6.2" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
-static_assertions = "1.1.0"
 str0m = { version = "0.16.1", default-features = false }
 strum = { version = "0.27.2", features = ["derive"] }
 stun_codec = "0.4.0"
-subprocess = "0.2.13"
+subprocess = "0.2.15"
 subtle = "2.5.0"
 supports-color = "3.0.2"
 swift-bridge = "0.1.57"

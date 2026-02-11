@@ -67,6 +67,7 @@ defmodule PortalWeb.Cookie.OIDC do
     |> :erlang.term_to_binary()
   end
 
+  # sobelow_skip ["Misc.BinToTerm"]
   defp from_binary(binary) when is_binary(binary) do
     {auth_provider_type, auth_provider_id, account_id, account_slug, state, verifier, params} =
       :erlang.binary_to_term(binary, [:safe])

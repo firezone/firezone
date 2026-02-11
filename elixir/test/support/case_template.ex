@@ -9,11 +9,9 @@ defmodule Portal.CaseTemplate do
     quote do
       setup tags do
         :ok = Sandbox.checkout(Portal.Repo)
-        :ok = Sandbox.checkout(Portal.Repo.Replica)
 
         unless tags[:async] do
           Sandbox.mode(Portal.Repo, {:shared, self()})
-          Sandbox.mode(Portal.Repo.Replica, {:shared, self()})
         end
 
         :ok

@@ -28,7 +28,3 @@ do
   done
 done
 ```
-
-## Adding a new repository to Google Cloud workload identity
-
-Use Terraform configuration for this. See the `iam.tf` configuration in the https://github.com/firezone/infra repo for an example.
