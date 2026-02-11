@@ -19,7 +19,7 @@ use tracing_subscriber::{EnvFilter, Layer, Registry, layer::SubscriberExt};
 pub struct Handles {
     pub logger: logging::file::Handle,
     pub reloader: FilterReloadHandle,
-    pub cleanup: Option<logging::CleanupHandle>,
+    pub cleanup: logging::CleanupHandle,
 }
 
 struct LogPath {
@@ -103,7 +103,7 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
         log_dirs,
         logging::DEFAULT_MAX_SIZE_MB,
         logging::DEFAULT_CLEANUP_INTERVAL,
-    );
+    )?;
 
     Ok(Handles {
         logger,

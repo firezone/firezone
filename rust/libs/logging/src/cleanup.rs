@@ -1,5 +1,6 @@
 //! Log cleanup utilities for enforcing size caps on log directories.
 
+use anyhow::Context;
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::fs;
@@ -34,13 +35,11 @@ pub struct CleanupHandle {
 /// Start a background thread that periodically enforces log size cap.
 ///
 /// Runs cleanup immediately, then every `interval`.
-///
-/// Returns `None` if the thread could not be spawned.
 pub fn start_log_cleanup_thread(
     log_dirs: Vec<PathBuf>,
     max_size_mb: u32,
     interval: Duration,
-) -> Option<CleanupHandle> {
+) -> anyhow::Result<CleanupHandle> {
     // Prevent excessively frequent cleanup that could cause performance issues
     let interval = if interval < MIN_CLEANUP_INTERVAL {
         tracing::info!(
@@ -73,13 +72,9 @@ pub fn start_log_cleanup_thread(
             }
         });
 
-    match result {
-        Ok(_) => Some(CleanupHandle { _stop_tx: stop_tx }),
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to spawn log cleanup thread");
-            None
-        }
-    }
+    result.context("Failed to spawn log cleanup thread")?;
+
+    Ok(CleanupHandle { _stop_tx: stop_tx })
 }
 
 /// Enforces a size cap on log directories by deleting oldest files first.

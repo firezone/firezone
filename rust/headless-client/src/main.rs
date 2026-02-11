@@ -265,13 +265,18 @@ fn try_main() -> Result<()> {
     .context("Failed to set up logging")?;
 
     // Start background log cleanup if file logging is enabled
-    let _cleanup_handle = cli.log_dir.as_ref().and_then(|log_dir| {
-        logging::start_log_cleanup_thread(
-            vec![log_dir.clone()],
-            logging::DEFAULT_MAX_SIZE_MB,
-            logging::DEFAULT_CLEANUP_INTERVAL,
-        )
-    });
+    let _cleanup_handle = cli
+        .log_dir
+        .as_ref()
+        .map(|log_dir| {
+            logging::start_log_cleanup_thread(
+                vec![log_dir.clone()],
+                logging::DEFAULT_MAX_SIZE_MB,
+                logging::DEFAULT_CLEANUP_INTERVAL,
+            )
+        })
+        .transpose()
+        .context("Failed to start log cleanup thread")?;
 
     // Deactivate DNS control before starting telemetry or connecting to the portal,
     // in case a previous run of Firezone left DNS control on and messed anything up.
