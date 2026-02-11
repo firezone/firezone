@@ -81,7 +81,7 @@ if config_env() == :prod do
 
   config :portal, Portal.Changes.ReplicationConnection,
     enabled: env_var_to_config!(:changes_replication_enabled),
-    region: env_var_to_config!(:changes_pubsub_region),
+    region: env_var_to_config!(:region),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
     publication_name: env_var_to_config!(:database_changes_publication_name),
     connection_opts:
@@ -147,7 +147,7 @@ if config_env() == :prod do
              else: []
            )
 
-  config :portal, changes_pubsub_region: env_var_to_config!(:changes_pubsub_region)
+  config :portal, region: env_var_to_config!(:region)
 
   # Azure Front Door ID validation - when set, rejects requests without matching X-Azure-FDID header
   config :portal, azure_front_door_id: env_var_to_config!(:azure_front_door_id)

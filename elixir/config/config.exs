@@ -270,7 +270,7 @@ config :portal, outbound_email_adapter_configured?: false
 
 config :portal, relay_presence_topic: "presences:global_relays"
 
-config :portal, changes_pubsub_region: ""
+config :portal, region: ""
 
 config :portal, web_external_url: "https://localhost:13443"
 
