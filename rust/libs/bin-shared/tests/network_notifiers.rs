@@ -10,6 +10,10 @@ use tokio::time::timeout;
 /// Turn them on, wait a second, turn them off.
 /// This tests that the threads quit gracefully when we call `close`, and they don't crash on startup.
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "Network notifiers not implemented on macOS"
+)]
 async fn notifiers() {
     logging::test_global("debug");
     let tokio_handle = tokio::runtime::Handle::current();
