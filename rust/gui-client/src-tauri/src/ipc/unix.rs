@@ -109,31 +109,16 @@ impl Server {
 ///
 /// Test sockets live in e.g. `/run/user/1000/dev.firezone.client/data/`
 fn ipc_path(id: SocketId) -> Result<PathBuf> {
-    #[cfg(target_os = "linux")]
-    {
-        use bin_shared::BUNDLE_ID;
-        Ok(match id {
-            SocketId::Tunnel => PathBuf::from("/run").join(BUNDLE_ID).join("tunnel.sock"),
-            SocketId::Gui => bin_shared::known_dirs::runtime()
-                .context("$XDG_RUNTIME_DIR not set")?
-                .join("gui.sock"),
-            #[cfg(test)]
-            SocketId::Test(id) => bin_shared::known_dirs::runtime()
-                .context("$XDG_RUNTIME_DIR not set")?
-                .join(format!("ipc_test_{id}.sock")),
-        })
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let runtime_dir =
-            bin_shared::known_dirs::runtime().context("Failed to get runtime directory")?;
-
-        Ok(match id {
-            SocketId::Tunnel => runtime_dir.join("tunnel.sock"),
-            SocketId::Gui => runtime_dir.join("gui.sock"),
-            #[cfg(test)]
-            SocketId::Test(id) => runtime_dir.join(format!("ipc_test_{id}.sock")),
-        })
-    }
+    Ok(match id {
+        SocketId::Tunnel => bin_shared::known_dirs::root_runtime()
+            .context("Failed to get root runtime directory")?
+            .join("tunnel.sock"),
+        SocketId::Gui => bin_shared::known_dirs::user_runtime()
+            .context("Failed to get user runtime directory")?
+            .join("gui.sock"),
+        #[cfg(test)]
+        SocketId::Test(id) => bin_shared::known_dirs::user_runtime()
+            .context("Failed to get user runtime directory")?
+            .join(format!("ipc_test_{id}.sock")),
+    })
 }

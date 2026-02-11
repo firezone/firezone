@@ -33,10 +33,19 @@ pub fn logs() -> Option<PathBuf> {
     Some(dirs::cache_dir()?.join(BUNDLE_ID).join("data").join("logs"))
 }
 
+/// e.g. `/run/dev.firezone.client`
+///
+/// System-wide runtime directory, typically root-owned.
+/// Used for the tunnel service IPC socket.
+#[expect(clippy::unnecessary_wraps)] // Signature must match other platforms
+pub fn root_runtime() -> Option<PathBuf> {
+    Some(PathBuf::from("/run").join(BUNDLE_ID))
+}
+
 /// e.g. `/run/user/1000/dev.firezone.client/data`
 ///
-/// Crash handler socket and other temp files go here
-pub fn runtime() -> Option<PathBuf> {
+/// Per-user runtime directory. Crash handler socket and other temp files go here.
+pub fn user_runtime() -> Option<PathBuf> {
     Some(dirs::runtime_dir()?.join(BUNDLE_ID).join("data"))
 }
 
