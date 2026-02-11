@@ -618,6 +618,18 @@ pub fn enforce_log_size_cap(log_dirs: Vec<String>, max_size_mb: u32) -> u64 {
     logging::cleanup::enforce_size_cap(&path_refs, max_size_mb)
 }
 
+/// Default maximum total log size in MB across all log directories.
+#[uniffi::export]
+pub fn log_cleanup_default_max_size_mb() -> u32 {
+    logging::DEFAULT_MAX_SIZE_MB
+}
+
+/// Default interval between log cleanup runs in seconds (1 hour).
+#[uniffi::export]
+pub fn log_cleanup_default_interval_secs() -> u64 {
+    logging::DEFAULT_CLEANUP_INTERVAL.as_secs()
+}
+
 impl From<connlib_model::ResourceView> for Resource {
     fn from(resource: connlib_model::ResourceView) -> Self {
         match resource {
