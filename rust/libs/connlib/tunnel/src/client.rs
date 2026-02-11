@@ -783,7 +783,7 @@ impl ClientState {
         preshared_key: SecretKey,
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
-        ice_role: IceRole,
+        _ice_role: IceRole,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         let pending_device_access = self.pending_device_access.remove(&client_tun.v4);
