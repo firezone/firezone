@@ -114,15 +114,6 @@ config :portal, Portal.Telemetry, enabled: false
 
 config :portal, Portal.ConnectivityChecks, enabled: false
 
-config :portal, platform_adapter: Portal.GoogleCloudPlatform
-
-config :portal, Portal.GoogleCloudPlatform,
-  service_account_email: "foo@iam.example.com",
-  req_opts: [
-    plug: {Req.Test, Portal.GoogleCloudPlatform},
-    retry: false
-  ]
-
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
   versions: [
@@ -166,8 +157,6 @@ config :portal, Portal.OIDC.AuthProvider,
     retry: false,
     plug: {Req.Test, PortalWeb.OIDC}
   ]
-
-config :portal, Portal.Telemetry.Reporter.GoogleCloudMetrics, project_id: "fz-test"
 
 config :portal, web_external_url: "http://localhost:13100"
 

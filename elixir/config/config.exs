@@ -236,17 +236,7 @@ config :portal, Portal.Billing,
   adhoc_device_product_id: "prod_TrPXF2LVHSJpMk"
 
 config :portal,
-  platform_adapter: nil,
   azure_front_door_id: nil
-
-config :portal, Portal.GoogleCloudPlatform,
-  metadata_endpoint_url: "http://metadata.google.internal/computeMetadata/v1",
-  aggregated_list_endpoint_url:
-    "https://compute.googleapis.com/compute/v1/projects/${project_id}/aggregated/instances",
-  cloud_metrics_endpoint_url:
-    "https://monitoring.googleapis.com/v3/projects/${project_id}/timeSeries",
-  sign_endpoint_url: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/",
-  cloud_storage_url: "https://storage.googleapis.com"
 
 config :portal, Portal.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",

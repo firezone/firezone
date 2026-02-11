@@ -1,7 +1,6 @@
 defmodule Portal.Telemetry.Sentry do
   @ignored_message_patterns [
     # This happens when libcluster loses connection to a node, which is normal during deploys.
-    # We have threshold-based error logging in Portal.Cluster.GoogleComputeLabelsStrategy to report those.
     "Node ~p not responding **~n** Removing (timedout) connection",
     "[libcluster:default] unable to connect to"
   ]

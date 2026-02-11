@@ -147,12 +147,6 @@ if config_env() == :prod do
              else: []
            )
 
-  config :portal, platform_adapter: env_var_to_config!(:platform_adapter)
-
-  if platform_adapter = env_var_to_config!(:platform_adapter) do
-    config :portal, platform_adapter, env_var_to_config!(:platform_adapter_config)
-  end
-
   config :portal, changes_pubsub_region: env_var_to_config!(:changes_pubsub_region)
 
   # Azure Front Door ID validation - when set, rejects requests without matching X-Azure-FDID header
@@ -373,21 +367,26 @@ if config_env() == :prod do
       resource_detectors: [:otel_resource_env_var, :otel_resource_app_env],
       resource: %{
         service: %{
-          # These are populated on our GCP VMs
-          name: System.get_env("APPLICATION_NAME"),
-          namespace: System.get_env("GCP_PROJECT_ID"),
+          name: System.get_env("NODE_TYPE", "portal"),
+          namespace: "firezone",
           version: System.get_env("RELEASE_VSN"),
-          instance: %{id: System.get_env("GCP_INSTANCE_NAME")}
+          instance: %{id: System.get_env("NODE_NAME")}
+        },
+        cloud: %{
+          provider: "azure",
+          region: System.get_env("REGION")
         }
       }
 
     config :opentelemetry,
       span_processor: :batch,
-      traces_exporter: :otlp
+      traces_exporter: :otlp,
+      metrics_exporter: :otlp
 
     config :opentelemetry_exporter,
       otlp_protocol: :http_protobuf,
       otlp_traces_protocol: :http_protobuf,
+      otlp_metrics_protocol: :http_protobuf,
       otlp_endpoint: System.get_env("OTLP_ENDPOINT")
   end
 
