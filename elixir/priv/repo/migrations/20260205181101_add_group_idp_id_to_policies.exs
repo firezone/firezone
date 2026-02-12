@@ -17,7 +17,7 @@ defmodule Portal.Repo.Migrations.AddGroupIdpIdToPolicies do
     end
 
     # Drop existing FK constraint — instant
-    execute("ALTER TABLE policies DROP CONSTRAINT policies_group_id_fkey")
+    execute("ALTER TABLE policies DROP CONSTRAINT IF EXISTS policies_group_id_fkey")
 
     # Make group_id nullable — instant catalog change
     alter table(:policies) do
