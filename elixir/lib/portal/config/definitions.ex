@@ -59,6 +59,13 @@ defmodule Portal.Config.Definitions do
   defconfig(:region, :string, default: "")
 
   @doc """
+  Role of this node in the deployment.
+
+  Used to conditionally enable node-specific services.
+  """
+  defconfig(:node_type, :string, default: "portal")
+
+  @doc """
   Enable or disable the Changes (CDC) replication consumer for this app instance.
   """
   defconfig(:changes_replication_enabled, :boolean, default: false)

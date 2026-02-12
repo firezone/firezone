@@ -83,9 +83,8 @@ defmodule Portal.Application do
 
       # Web and API apps are always started to allow VerifiedRoutes to work
       PortalWeb.Endpoint,
-      PortalAPI.Endpoint,
-      PortalAPI.RateLimit
-    ] ++ telemetry() ++ oban() ++ replication()
+      PortalAPI.Endpoint
+    ] ++ rate_limit() ++ telemetry() ++ oban() ++ replication()
   end
 
   defp configure_logger do
@@ -156,6 +155,13 @@ defmodule Portal.Application do
         enabled
       end
     end)
+  end
+
+  defp rate_limit do
+    case Portal.Config.get_env(:portal, :node_type, "portal") do
+      type when type in ["api", "portal"] -> [PortalAPI.RateLimit]
+      _ -> []
+    end
   end
 
   defp verify_geolix_databases do
