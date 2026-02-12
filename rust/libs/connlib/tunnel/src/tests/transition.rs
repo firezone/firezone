@@ -4,7 +4,7 @@ use crate::{
     messages::{UpstreamDo53, UpstreamDoH},
     proptest::{host_v4, host_v6},
 };
-use connlib_model::{RelayId, ResourceId, Site};
+use connlib_model::{ClientId, RelayId, ResourceId, Site};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::IpNetwork;
 
@@ -36,10 +36,11 @@ pub(crate) enum Transition {
     MoveResourceToNewSite { resource: Resource, new_site: Site },
 
     /// Toggle the Internet Resource on / off
-    SetInternetResourceState { active: bool },
+    SetInternetResourceState { client_id: ClientId, active: bool },
 
     /// Send an ICMP packet to destination (IP resource, DNS resource or IP non-resource).
     SendIcmpPacket {
+        client_id: ClientId,
         src: IpAddr,
         dst: Destination,
         seq: Seq,
@@ -48,6 +49,7 @@ pub(crate) enum Transition {
     },
     /// Send an UDP packet to destination (IP resource, DNS resource or IP non-resource).
     SendUdpPacket {
+        client_id: ClientId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
@@ -56,6 +58,7 @@ pub(crate) enum Transition {
     },
 
     ConnectTcp {
+        client_id: ClientId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
@@ -63,7 +66,7 @@ pub(crate) enum Transition {
     },
 
     /// Send a DNS query.
-    SendDnsQueries(Vec<DnsQuery>),
+    SendDnsQueries(Vec<(ClientId, DnsQuery)>),
 
     /// The system's DNS servers changed.
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
@@ -76,15 +79,19 @@ pub(crate) enum Transition {
 
     /// Roam the client to a new pair of sockets.
     RoamClient {
+        client_id: ClientId,
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
     },
 
     /// Reconnect to the portal.
-    ReconnectPortal,
+    ReconnectPortal { client_id: ClientId },
 
     /// Restart the client.
-    RestartClient { key: PrivateKey },
+    RestartClient {
+        client_id: ClientId,
+        key: PrivateKey,
+    },
 
     /// Simulate deployment of new relays.
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
@@ -265,6 +272,7 @@ impl PacketDestination {
 
 #[expect(private_bounds)]
 pub(crate) fn icmp_packet<I, D>(
+    client_id: ClientId,
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,
 ) -> impl Strategy<Value = Transition>
@@ -280,8 +288,9 @@ where
         any::<sample::Selector>(),
         any::<u64>(),
     )
-        .prop_map(|(src, dst, seq, identifier, resolved_ip, payload)| {
+        .prop_map(move |(src, dst, seq, identifier, resolved_ip, payload)| {
             Transition::SendIcmpPacket {
+                client_id,
                 src,
                 dst: dst.into_destination(resolved_ip),
                 seq: Seq(seq),
@@ -293,6 +302,7 @@ where
 
 #[expect(private_bounds)]
 pub(crate) fn udp_packet<I, D>(
+    client_id: ClientId,
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,
 ) -> impl Strategy<Value = Transition>
@@ -308,18 +318,20 @@ where
         any::<sample::Selector>(),
         any::<u64>(),
     )
-        .prop_map(
-            |(src, dst, sport, dport, resolved_ip, payload)| Transition::SendUdpPacket {
+        .prop_map(move |(src, dst, sport, dport, resolved_ip, payload)| {
+            Transition::SendUdpPacket {
+                client_id,
                 src,
                 dst: dst.into_destination(resolved_ip),
                 sport: SPort(sport),
                 dport: DPort(dport),
                 payload,
-            },
-        )
+            }
+        })
 }
 
 pub(crate) fn connect_tcp<I>(
+    client_id: ClientId,
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = DomainName>,
 ) -> impl Strategy<Value = Transition>
@@ -334,7 +346,8 @@ where
         any::<sample::Selector>(),
     )
         .prop_map(
-            |(src, name, sport, dport, resolved_ip)| Transition::ConnectTcp {
+            move |(src, name, sport, dport, resolved_ip)| Transition::ConnectTcp {
+                client_id,
                 src,
                 dst: Destination::DomainName { resolved_ip, name },
                 sport: SPort(sport),
@@ -453,9 +466,7 @@ pub(crate) fn maybe_available_response_rtypes(
     }
 }
 
-pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
-    (any_ip_stack()).prop_map(move |ip_stack| Transition::RoamClient {
-        ip4: ip_stack.as_v4().copied(),
-        ip6: ip_stack.as_v6().copied(),
-    })
+pub(crate) fn roam_client() -> impl Strategy<Value = (Option<Ipv4Addr>, Option<Ipv6Addr>)> {
+    (any_ip_stack())
+        .prop_map(move |ip_stack| (ip_stack.as_v4().copied(), ip_stack.as_v6().copied()))
 }
